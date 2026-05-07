@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hymn Credit Control Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <!--
+    Optional live-data injection example:
+    <script>
+    window.HYMN_PANEL_DATA = {
+      organisation: {
+        name: "Your Organisation",
+        status: "Connected",
+        lastSync: "Last sync 2 minutes ago"
+      },
+      dashboard: {
+        totalReceivables: 120000,
+        totalOverdue: 35000,
+        openInvoices: 18,
+        accountsNeedingAction: 6,
+        potentialInterest: 412.55
+      },
+      customers: [],
+      audit: [],
+      selectedInvoice: null
+    };
+    window.HYMN_PANEL_API = {
+      baseUrl: "https://your-api.example.com",
+      headers: {
+        Authorization: "Bearer your-token"
+      },
+      endpoints: {
+        login: "/auth/xero/start"
+      }
+    };
+    </script>
+    -->
+    <style>
+:root {
+    --bg: #f7f3ec;
+    --panel: rgba(255, 251, 246, 0.94);
+    --panel-strong: #fffdf9;
+    --ink: #172126;
+    --muted: #6e7b80;
+    --line: rgba(23, 33, 38, 0.12);
+    --accent: #b35f2e;
+    --accent-deep: #8f4218;
+    --accent-soft: #f3dfd0;
+    --success: #2b7d63;
+    --danger: #c55252;
+    --night: #161a1d;
+    --shadow: 0 20px 60px rgba(23, 21, 18, 0.08);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+    font-family: "Manrope", sans-serif;
+    color: var(--ink);
+    background:
+        radial-gradient(circle at top left, rgba(179, 95, 46, 0.16), transparent 26%),
+        radial-gradient(circle at bottom right, rgba(43, 125, 99, 0.10), transparent 24%),
+        linear-gradient(180deg, #fcfaf7 0%, var(--bg) 100%);
+}
+button, input, textarea, select { font: inherit; }
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 28px;
+    background: rgba(252, 250, 247, 0.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+}
+.topbar-brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, var(--accent), #efbf97);
+    color: white;
+    font-family: "Fraunces", serif;
+    font-size: 1.7rem;
+    box-shadow: 0 14px 28px rgba(179, 95, 46, 0.25);
+}
+.topbar-brand strong,
+.workspace-header h2,
+.sidebar h1,
+.panel h3,
+.sidebar h2,
+.empty-state h4 {
+    font-family: "Fraunces", serif;
+    margin: 0;
+    letter-spacing: -0.02em;
+}
+.topbar-meta { display: flex; align-items: center; gap: 14px; }
+.sync-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--line);
+    color: var(--muted);
+}
+.sync-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--success);
+    box-shadow: 0 0 0 5px rgba(43, 125, 99, 0.12);
+}
+.app-shell {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 20px;
+    padding: 20px;
+}
+.sidebar { display: flex; flex-direction: column; gap: 16px; }
+.sidebar-card,
+.workspace-header,
+.panel,
+.metric-card {
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+}
+.sidebar-card { padding: 22px; }
+.hero-card {
+    background:
+        linear-gradient(180deg, rgba(22, 26, 29, 0.96), rgba(26, 31, 35, 0.94)),
+        var(--night);
+    color: #f6f2eb;
+    min-height: 220px;
+}
+.hero-card .muted,
+.hero-card .eyebrow { color: rgba(246, 242, 235, 0.72); }
+.sidebar-nav { display: grid; gap: 8px; }
+.nav-link {
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 18px;
+    padding: 14px 16px;
+    text-align: left;
+    color: var(--ink);
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+.nav-link:hover,
+.nav-link.is-active {
+    background: var(--panel-strong);
+    border-color: var(--line);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.workspace { display: grid; gap: 20px; }
+.workspace-header { padding: 28px 30px; }
+.view { display: none; }
+.view.is-active { display: grid; gap: 20px; }
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+.metric-card { padding: 22px; }
+.metric-card span,
+.mini-metric span {
+    display: block;
+    color: var(--muted);
+    margin-bottom: 10px;
+}
+.metric-card strong,
+.mini-metric strong {
+    display: block;
+    font-size: 1.95rem;
+    margin-bottom: 8px;
+}
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 20px;
+}
+.panel { padding: 24px; }
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.table-wrap { overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td {
+    padding: 14px 8px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+}
+th {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+}
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: rgba(179, 95, 46, 0.04); }
+.invoice-summary { display: grid; gap: 18px; }
+.mini-metric-grid,
+.three-column { display: grid; gap: 16px; }
+.mini-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mini-metric {
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--panel-strong);
+}
+.three-column { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stack-form { display: grid; gap: 12px; }
+.stack-form label span { display: block; margin-bottom: 6px; font-weight: 600; }
+.stack-form input,
+.stack-form textarea,
+.stack-form select,
+.search-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--ink);
+}
+.timeline { display: grid; gap: 14px; }
+.timeline.compact { margin-top: 18px; }
+.timeline-item {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+}
+.timeline-marker {
+    width: 12px;
+    height: 12px;
+    margin-top: 6px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--accent), #efbf97);
+}
+.timeline-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+.timeline-head span { color: var(--muted); font-size: 0.9rem; }
+.timeline-copy p,
+.empty-state p { margin: 0; }
+.info-callout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    align-items: start;
+    padding: 16px;
+    border-radius: 22px;
+    background: var(--accent-soft);
+}
+.info-button {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--accent-deep);
+    font-weight: 800;
+}
+.status-pill {
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(23, 33, 38, 0.08);
+    color: var(--muted);
+    font-weight: 700;
+}
+.secondary-button,
+.ghost-button {
+    border-radius: 999px;
+    padding: 11px 16px;
+    cursor: pointer;
+}
+.sidebar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.secondary-button {
+    border: 0;
+    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+    color: white;
+}
+.ghost-button {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: inherit;
+}
+.eyebrow {
+    margin: 0 0 4px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.muted { color: var(--muted); }
+.empty-state {
+    display: grid;
+    gap: 8px;
+    place-items: start;
+    padding: 28px;
+    border: 1px dashed var(--line);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.45);
+}
+.empty-state h4 { font-size: 1.35rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media (max-width: 1220px) {
+    .metric-grid,
+    .mini-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three-column { grid-template-columns: 1fr; }
+}
+@media (max-width: 960px) {
+    .app-shell { grid-template-columns: 1fr; }
+    .dashboard-layout { grid-template-columns: 1fr; }
+    .topbar,
+    .workspace-header { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 640px) {
+    .topbar,
+    .app-shell { padding: 16px; }
+    .metric-grid,
+    .mini-metric-grid { grid-template-columns: 1fr; }
+}
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-brand">
+            <div class="brand-mark">H</div>
+            <div>
+                <p class="eyebrow">Hymn</p>
+                <strong>Credit Control</strong>
+            </div>
+        </div>
+        <div class="topbar-meta">
+            <div class="sync-chip">
+                <span class="sync-dot"></span>
+                <span id="syncStamp">Waiting for first sync</span>
+            </div>
+            <button class="ghost-button" id="connectXeroButton">Connect Xero</button>
+            <button class="secondary-button" id="primarySyncButton">Resync from Xero</button>
+        </div>
+    </div>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <section class="sidebar-card hero-card">
+                <p class="eyebrow">Control Centre</p>
+                <h1>Credit operations in one place.</h1>
+                <p class="muted">Operational chasing, promises, audit trail and late-payment guidance, grouped by customer.</p>
+            </section>
+            <nav class="sidebar-nav">
+                <button class="nav-link is-active" data-view="dashboard">Dashboard</button>
+                <button class="nav-link" data-view="customers">Customers</button>
+                <button class="nav-link" data-view="invoice">Invoice Detail</button>
+                <button class="nav-link" data-view="activity">Audit Trail</button>
+            </nav>
+            <section class="sidebar-card">
+                <p class="eyebrow">Live status</p>
+                <h2 id="organisationName">No organisation connected</h2>
+                <p class="muted" id="organisationStatus">Connect your real Xero data source and inject live payloads into the panel.</p>
+                <div class="sidebar-actions">
+                    <button class="ghost-button" id="sidebarConnectButton">Login with Xero</button>
+                    <button class="ghost-button" id="sidebarSyncButton">Run sync</button>
+                </div>
+            </section>
+            <section class="sidebar-card">
+                <p class="eyebrow">Implementation note</p>
+                <p class="muted">This panel now ships empty by default. Feed live data into <code>window.HYMN_PANEL_DATA</code> or your own API layer.</p>
+            </section>
+        </aside>
+        <main class="workspace">
+            <header class="workspace-header">
+                <div>
+                    <p class="eyebrow" id="viewEyebrow">Live workflow</p>
+                    <h2 id="viewTitle">Credit Control Dashboard</h2>
+                    <p class="muted" id="viewSubtitle">Headline numbers, grouped customer risk, and operational actions without seeded demo content.</p>
+                </div>
+            </header>
+            <section class="view is-active" id="dashboardView">
+                <div class="metric-grid" id="metricGrid"></div>
+                <div class="dashboard-layout">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Priority accounts</p>
+                                <h3>Accounts requiring action</h3>
+                            </div>
+                        </div>
+                        <div id="priorityAccounts"></div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Recent activity</p>
+                                <h3>Operational timeline</h3>
+                            </div>
+                        </div>
+                        <div class="timeline" id="dashboardTimeline"></div>
+                    </section>
+                </div>
+            </section>
+            <section class="view" id="customersView">
+                <section class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Customer balances</p>
+                            <h3>Grouped by customer</h3>
+                        </div>
+                        <input class="search-input" id="customerSearch" placeholder="Search customer">
+                    </div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>Open invoices</th>
+                                    <th>Total due</th>
+                                    <th>Overdue</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="customerTableBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+            <section class="view" id="invoiceView">
+                <section class="panel invoice-summary">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Invoice workflow</p>
+                            <h3 id="invoiceTitle">Select a live invoice</h3>
+                            <p class="muted" id="invoiceMeta">Choose a customer or invoice once data is loaded.</p>
+                        </div>
+                        <div class="status-pill" id="invoiceStatusPill">Awaiting data</div>
+                    </div>
+                    <div class="mini-metric-grid" id="invoiceMetricGrid"></div>
+                    <div class="info-callout">
+                        <button class="info-button" type="button">i</button>
+                        <p id="interestInfoText">Late-payment interest and court-cost guidance will appear here once a real invoice is selected.</p>
+                    </div>
+                </section>
+                <div class="three-column">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Status</p>
+                                <h3>Update control status</h3>
+                            </div>
+                        </div>
+                        <form class="stack-form" id="statusForm">
+                            <label>
+                                <span>Status</span>
+                                <select id="statusSelect">
+                                    <option value="New">New</option>
+                                    <option value="Chased">Chased</option>
+                                    <option value="Promise Received">Promise Received</option>
+                                    <option value="Legal Review">Legal Review</option>
+                                    <option value="Paid">Paid</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span>Note</span>
+                                <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
+                            </label>
+                            <button class="secondary-button" type="submit">Save status</button>
+                        </form>
+                        <div class="timeline compact" id="statusTimeline"></div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Notes</p>
+                                <h3>Internal notes</h3>
+                            </div>
+                        </div>
+                        <form class="stack-form" id="noteForm">
+                            <label>
+                                <span>Add note</span>
+                                <textarea id="noteInput" rows="5" placeholder="Capture the latest conversation"></textarea>
+                            </label>
+                            <button class="secondary-button" type="submit">Add note</button>
+                        </form>
+                        <div class="timeline compact" id="notesTimeline"></div>
+                    </section>
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <p class="eyebrow">Promise to pay</p>
+                                <h3>Track commitments</h3>
+                            </div>
+                        </div>
+                        <form class="stack-form" id="promiseForm">
+                            <label>
+                                <span>Promised amount</span>
+                                <input id="promiseAmount" placeholder="0.00">
+                            </label>
+                            <label>
+                                <span>Promised date</span>
+                                <input id="promiseDate" type="date">
+                            </label>
+                            <label>
+                                <span>Note</span>
+                                <textarea id="promiseNote" rows="4" placeholder="Commitment context"></textarea>
+                            </label>
+                            <button class="secondary-button" type="submit">Record promise</button>
+                        </form>
+                        <div class="timeline compact" id="promiseTimeline"></div>
+                    </section>
+                </div>
+            </section>
+            <section class="view" id="activityView">
+                <section class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <p class="eyebrow">Audit trail</p>
+                            <h3>Full history</h3>
+                        </div>
+                    </div>
+                    <div class="timeline" id="auditTimeline"></div>
+                </section>
+            </section>
+        </main>
+    </div>
+    <template id="timelineItemTemplate">
+        <article class="timeline-item">
+            <div class="timeline-marker"></div>
+            <div class="timeline-copy">
+                <div class="timeline-head">
+                    <strong></strong>
+                    <span></span>
+                </div>
+                <p></p>
+            </div>
+        </article>
+    </template>
+    <template id="emptyStateTemplate">
+        <div class="empty-state">
+            <p class="eyebrow"></p>
+            <h4></h4>
+            <p class="muted"></p>
+        </div>
+    </template>
+    <script>
+const STORAGE_KEY = "hymn-credit-control-panel";
+const api = normaliseAPI(window.HYMN_PANEL_API || null);
+const emptyData = {
+    organisation: { name: "", status: "Awaiting live connection" },
+    dashboard: {
+        totalReceivables: null,
+        totalOverdue: null,
+        openInvoices: null,
+        accountsNeedingAction: null,
+        potentialInterest: null
+    },
+    customers: [],
+    audit: [],
+    selectedInvoice: null
+};
+const state = loadState();
+const views = {
+    dashboard: {
+        eyebrow: "Live workflow",
+        title: "Credit Control Dashboard",
+        subtitle: "Headline numbers, grouped customer risk, and operational actions without seeded demo content."
+    },
+    customers: {
+        eyebrow: "Customer balances",
+        title: "Grouped customer ledger",
+        subtitle: "A customer-first view of open invoices, overdue balances and control status."
+    },
+    invoice: {
+        eyebrow: "Invoice workflow",
+        title: "Invoice detail",
+        subtitle: "Notes, status changes, promises to pay and late-payment guidance for the selected invoice."
+    },
+    activity: {
+        eyebrow: "Audit trail",
+        title: "Full history",
+        subtitle: "A chronological record of syncs, notes, promises and status movement."
+    }
+};
+let currentCustomer = state.customers[0] || null;
+let currentInvoice = state.selectedInvoice || firstInvoice(currentCustomer);
+function normaliseState(payload) {
+    return {
+        organisation: payload.organisation || emptyData.organisation,
+        dashboard: payload.dashboard || emptyData.dashboard,
+        customers: Array.isArray(payload.customers) ? payload.customers : [],
+        audit: Array.isArray(payload.audit) ? payload.audit : [],
+        selectedInvoice: payload.selectedInvoice || null
+    };
+}
+function normaliseAPI(config) {
+    if (!config || !config.baseUrl) return null;
+    return {
+        baseUrl: String(config.baseUrl).replace(/\/$/, ""),
+        headers: config.headers || {},
+        endpoints: {
+            panel: config.endpoints?.panel || "/api/panel",
+            sync: config.endpoints?.sync || "/api/panel/sync",
+            note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
+            promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
+            status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
+            login: config.endpoints?.login || "/auth/xero/start"
+        }
+    };
+}
+function loadState() {
+    const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) return injected;
+        const parsed = JSON.parse(stored);
+        return normaliseState({ ...injected, ...parsed });
+    } catch {
+        return injected;
+    }
+}
+function persistState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+function replaceState(next) {
+    state.organisation = next.organisation;
+    state.dashboard = next.dashboard;
+    state.customers = next.customers;
+    state.audit = next.audit;
+    state.selectedInvoice = next.selectedInvoice;
+    currentCustomer = state.customers[0] || null;
+    currentInvoice = state.selectedInvoice || firstInvoice(currentCustomer);
+    persistState();
+}
+function endpointURL(template, params = {}) {
+    if (!api) return "";
+    const path = Object.entries(params).reduce(
+        (accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)),
+        template
+    );
+    return `${api.baseUrl}${path}`;
+}
+function loginURL() {
+    if (!api) return "";
+    const separator = api.endpoints.login.includes("?") ? "&" : "?";
+    return `${endpointURL(api.endpoints.login)}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
+}
+async function requestJSON(template, options = {}, params = {}) {
+    if (!api) return null;
+    const response = await fetch(endpointURL(template, params), {
+        ...options,
+        headers: {
+            "Content-Type": "application/json",
+            ...api.headers,
+            ...(options.headers || {})
+        }
+    });
+    if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
+    const contentType = response.headers.get("content-type") || "";
+    return contentType.includes("application/json") ? response.json() : null;
+}
+async function hydrateFromAPI() {
+    if (!api) return;
+    try {
+        const payload = await requestJSON(api.endpoints.panel);
+        if (payload) replaceState(normaliseState(payload));
+    } catch (error) {
+        console.error("Unable to load panel data from API", error);
+    }
+}
+function firstInvoice(customer) {
+    return customer && Array.isArray(customer.invoices) ? customer.invoices[0] || null : null;
+}
+function formatCurrency(value, precise = false) {
+    if (value === null || value === undefined || value === "") return "--";
+    return new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: "GBP",
+        minimumFractionDigits: precise ? 2 : 0,
+        maximumFractionDigits: precise ? 2 : 0
+    }).format(Number(value));
+}
+function renderEmptyState(target, eyebrow, title, body) {
+    const template = document.getElementById("emptyStateTemplate");
+    const node = template.content.firstElementChild.cloneNode(true);
+    node.querySelector(".eyebrow").textContent = eyebrow;
+    node.querySelector("h4").textContent = title;
+    node.querySelector(".muted").textContent = body;
+    target.innerHTML = "";
+    target.appendChild(node);
+}
+function renderTimeline(items, target, emptyMessage) {
+    target.innerHTML = "";
+    if (!items.length) {
+        renderEmptyState(target, "No activity", emptyMessage.title, emptyMessage.body);
+        return;
+    }
+    const template = document.getElementById("timelineItemTemplate");
+    items.forEach((item) => {
+        const node = template.content.firstElementChild.cloneNode(true);
+        node.querySelector("strong").textContent = item.title || "Update";
+        node.querySelector("span").textContent = item.stamp || "";
+        node.querySelector("p").textContent = item.body || "";
+        target.appendChild(node);
+    });
+}
+function renderMetrics() {
+    const metrics = [
+        ["Total receivables", formatCurrency(state.dashboard.totalReceivables), "Open receivables across the full ledger"],
+        ["Total overdue", formatCurrency(state.dashboard.totalOverdue), "Current overdue exposure"],
+        ["Open invoices", state.dashboard.openInvoices ?? "--", "Invoices not yet fully settled"],
+        ["Accounts needing action", state.dashboard.accountsNeedingAction ?? "--", "Customers currently requiring follow-up"],
+        ["Potential interest", formatCurrency(state.dashboard.potentialInterest, true), "Statutory late-payment estimate"]
+    ];
+    const grid = document.getElementById("metricGrid");
+    grid.innerHTML = "";
+    metrics.forEach(([label, value, caption]) => {
+        const card = document.createElement("article");
+        card.className = "metric-card";
+        card.innerHTML = `<span>${label}</span><strong>${value}</strong><small>${caption}</small>`;
+        grid.appendChild(card);
+    });
+}
+function renderPriorityAccounts() {
+    const target = document.getElementById("priorityAccounts");
+    if (!state.customers.length) {
+        renderEmptyState(target, "No accounts", "No live customers loaded yet", "Populate window.HYMN_PANEL_DATA.customers from your backend to show real action lists.");
+        return;
+    }
+    target.innerHTML = "";
+    [...state.customers]
+        .sort((a, b) => Number(b.overdue || 0) - Number(a.overdue || 0))
+        .slice(0, 5)
+        .forEach((customer) => {
+            const row = document.createElement("article");
+            row.className = "timeline-item";
+            row.innerHTML = `
+                <div class="timeline-marker"></div>
+                <div class="timeline-copy">
+                    <div class="timeline-head">
+                        <strong>${customer.name || "Unnamed customer"}</strong>
+                        <span>${formatCurrency(customer.overdue)}</span>
+                    </div>
+                    <p>${customer.status || "Awaiting status"} · ${customer.openInvoices ?? 0} open invoices · ${formatCurrency(customer.totalDue)} total due</p>
+                </div>
+            `;
+            row.addEventListener("click", () => {
+                currentCustomer = customer;
+                currentInvoice = firstInvoice(customer);
+                renderInvoiceView();
+                activateView("invoice");
+            });
+            target.appendChild(row);
+        });
+}
+function renderCustomersTable(searchTerm = "") {
+    const body = document.getElementById("customerTableBody");
+    body.innerHTML = "";
+    const customers = state.customers.filter((customer) =>
+        (customer.name || "").toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    if (!customers.length) {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td colspan="5">
+                <div class="empty-state">
+                    <p class="eyebrow">No live rows</p>
+                    <h4>Customer data will appear here</h4>
+                    <p class="muted">Inject customers into window.HYMN_PANEL_DATA.customers or bind this table to your live API.</p>
+                </div>
+            </td>
+        `;
+        body.appendChild(row);
+        return;
+    }
+    customers.forEach((customer) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td><strong>${customer.name || "Unnamed customer"}</strong><br><span class="muted">${customer.contact || ""}</span></td>
+            <td>${customer.openInvoices ?? 0}</td>
+            <td>${formatCurrency(customer.totalDue)}</td>
+            <td>${formatCurrency(customer.overdue)}</td>
+            <td>${customer.status || "Awaiting status"}</td>
+        `;
+        row.addEventListener("click", () => {
+            currentCustomer = customer;
+            currentInvoice = firstInvoice(customer);
+            renderInvoiceView();
+            activateView("invoice");
+        });
+        body.appendChild(row);
+    });
+}
+function calculateInterest(invoice) {
+    if (!invoice || !invoice.amountDue || !invoice.dueDate) return null;
+    const overdueDays = Math.max(0, Math.floor((new Date() - new Date(invoice.dueDate)) / (1000 * 60 * 60 * 24)));
+    return Math.round((Number(invoice.amountDue) * 0.08 * overdueDays / 365) * 100) / 100;
+}
+function calculateCourtCost(invoice) {
+    if (!invoice || !invoice.amountDue) return null;
+    const amount = Number(invoice.amountDue);
+    if (amount <= 300) return 35;
+    if (amount <= 500) return 50;
+    if (amount <= 1000) return 70;
+    if (amount <= 1500) return 80;
+    if (amount <= 3000) return 115;
+    if (amount <= 5000) return 205;
+    return 455;
+}
+function renderInvoiceView() {
+    const invoice = currentInvoice;
+    const metricGrid = document.getElementById("invoiceMetricGrid");
+    const title = document.getElementById("invoiceTitle");
+    const meta = document.getElementById("invoiceMeta");
+    const statusPill = document.getElementById("invoiceStatusPill");
+    const infoText = document.getElementById("interestInfoText");
+    if (!invoice) {
+        title.textContent = "Select a live invoice";
+        meta.textContent = "Choose a customer once live data is loaded.";
+        statusPill.textContent = "Awaiting data";
+        metricGrid.innerHTML = "";
+        [["Amount due", "--"], ["Interest so far", "--"], ["Court costs", "--"], ["Promise date", "--"]].forEach(([label, value]) => {
+            const card = document.createElement("article");
+            card.className = "mini-metric";
+            card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+            metricGrid.appendChild(card);
+        });
+        infoText.textContent = "Late-payment interest and court-cost guidance will appear here once a real invoice is selected.";
+        renderTimeline([], document.getElementById("notesTimeline"), {
+            title: "No notes yet",
+            body: "Invoice notes will appear when a real invoice is selected."
+        });
+        renderTimeline([], document.getElementById("promiseTimeline"), {
+            title: "No promises yet",
+            body: "Payment promises will appear when a real invoice is selected."
+        });
+        renderTimeline([], document.getElementById("statusTimeline"), {
+            title: "No status history yet",
+            body: "Status changes will appear when a real invoice is selected."
+        });
+        return;
+    }
+    const interest = calculateInterest(invoice);
+    const courtCost = calculateCourtCost(invoice);
+    title.textContent = invoice.id || "Unnamed invoice";
+    meta.textContent = `${currentCustomer?.name || "Customer"} · Due ${invoice.dueDate || "Unknown due date"}`;
+    statusPill.textContent = invoice.status || "Awaiting status";
+    metricGrid.innerHTML = "";
+    [["Amount due", formatCurrency(invoice.amountDue)], ["Interest so far", formatCurrency(interest, true)], ["Court costs", formatCurrency(courtCost)], ["Promise date", invoice.promiseDate || "--"]].forEach(([label, value]) => {
+        const card = document.createElement("article");
+        card.className = "mini-metric";
+        card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+        metricGrid.appendChild(card);
+    });
+    infoText.textContent = `If this proceeded to court today, estimated court costs would be ${formatCurrency(courtCost)} and statutory interest accrued so far would be ${formatCurrency(interest, true)}.`;
+    renderTimeline(invoice.notes || [], document.getElementById("notesTimeline"), {
+        title: "No notes yet",
+        body: "Add internal commentary when your workflow is live."
+    });
+    renderTimeline(invoice.promises || [], document.getElementById("promiseTimeline"), {
+        title: "No promises yet",
+        body: "Promise-to-pay entries will appear here."
+    });
+    renderTimeline(invoice.statuses || [], document.getElementById("statusTimeline"), {
+        title: "No status history yet",
+        body: "Status updates will appear here."
+    });
+}
+function activateView(viewName) {
+    document.querySelectorAll(".view").forEach((view) => {
+        view.classList.toggle("is-active", view.id === `${viewName}View`);
+    });
+    document.querySelectorAll(".nav-link").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.view === viewName);
+    });
+    document.getElementById("viewEyebrow").textContent = views[viewName].eyebrow;
+    document.getElementById("viewTitle").textContent = views[viewName].title;
+    document.getElementById("viewSubtitle").textContent = views[viewName].subtitle;
+}
+function wireForms() {
+    document.getElementById("noteForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentInvoice) return;
+        const input = document.getElementById("noteInput");
+        const value = input.value.trim();
+        if (!value) return;
+        currentInvoice.notes = currentInvoice.notes || [];
+        currentInvoice.notes.unshift({ title: "Manual note", stamp: "Just now", body: value });
+        input.value = "";
+        persistState();
+        renderInvoiceView();
+        if (api) {
+            try {
+                await requestJSON(api.endpoints.note, {
+                    method: "POST",
+                    body: JSON.stringify({ body: value })
+                }, { invoiceId: currentInvoice.id });
+                await hydrateFromAPI();
+            } catch (error) {
+                console.error("Unable to save note to API", error);
+            }
+        }
+    });
+    document.getElementById("promiseForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentInvoice) return;
+        const amount = document.getElementById("promiseAmount").value.trim();
+        const date = document.getElementById("promiseDate").value;
+        const note = document.getElementById("promiseNote").value.trim();
+        if (!amount || !date) return;
+        currentInvoice.promises = currentInvoice.promises || [];
+        currentInvoice.promiseDate = date;
+        currentInvoice.promises.unshift({
+            title: `Promise to pay ${formatCurrency(amount)}`,
+            stamp: `Due ${date}`,
+            body: note || "Promise recorded."
+        });
+        document.getElementById("promiseAmount").value = "";
+        document.getElementById("promiseDate").value = "";
+        document.getElementById("promiseNote").value = "";
+        persistState();
+        renderInvoiceView();
+        if (api) {
+            try {
+                await requestJSON(api.endpoints.promise, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        promisedAmount: amount,
+                        promisedDate: date,
+                        note
+                    })
+                }, { invoiceId: currentInvoice.id });
+                await hydrateFromAPI();
+            } catch (error) {
+                console.error("Unable to save promise to API", error);
+            }
+        }
+    });
+    document.getElementById("statusForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!currentInvoice) return;
+        const status = document.getElementById("statusSelect").value;
+        const note = document.getElementById("statusNote").value.trim();
+        currentInvoice.status = status;
+        currentInvoice.statuses = currentInvoice.statuses || [];
+        currentInvoice.statuses.unshift({ title: status, stamp: "Just now", body: note || "Status updated." });
+        document.getElementById("statusNote").value = "";
+        persistState();
+        renderInvoiceView();
+        if (api) {
+            try {
+                await requestJSON(api.endpoints.status, {
+                    method: "POST",
+                    body: JSON.stringify({ status, note })
+                }, { invoiceId: currentInvoice.id });
+                await hydrateFromAPI();
+            } catch (error) {
+                console.error("Unable to save status to API", error);
+            }
+        }
+    });
+}
+function wireSearch() {
+    document.getElementById("customerSearch").addEventListener("input", (event) => {
+        renderCustomersTable(event.target.value);
+    });
+}
+function wireNavigation() {
+    document.querySelectorAll(".nav-link").forEach((button) => {
+        button.addEventListener("click", () => activateView(button.dataset.view));
+    });
+}
+function wireSyncButtons() {
+    const syncHandler = async () => {
+        document.getElementById("syncStamp").textContent = "Sync requested";
+        state.organisation.lastSync = "Sync requested just now";
+        persistState();
+        if (api) {
+            try {
+                await requestJSON(api.endpoints.sync, { method: "POST" });
+                await hydrateFromAPI();
+                return;
+            } catch (error) {
+                console.error("Unable to trigger sync via API", error);
+            }
+        }
+        if (typeof window.HYMN_PANEL_RESYNC === "function") await window.HYMN_PANEL_RESYNC();
+    };
+    document.getElementById("primarySyncButton").addEventListener("click", syncHandler);
+    document.getElementById("sidebarSyncButton").addEventListener("click", syncHandler);
+}
+function wireLoginButtons() {
+    const connect = () => {
+        const url = loginURL();
+        if (!url) {
+            alert("Set window.HYMN_PANEL_API.baseUrl to enable Xero login.");
+            return;
+        }
+        window.location.href = url;
+    };
+    document.getElementById("connectXeroButton").addEventListener("click", connect);
+    document.getElementById("sidebarConnectButton").addEventListener("click", connect);
+}
+function renderChrome() {
+    document.getElementById("organisationName").textContent = state.organisation.name || "No organisation connected";
+    document.getElementById("organisationStatus").textContent = state.organisation.status || "Awaiting live connection";
+    if (state.organisation.lastSync) document.getElementById("syncStamp").textContent = state.organisation.lastSync;
+    const connectButtons = [
+        document.getElementById("connectXeroButton"),
+        document.getElementById("sidebarConnectButton")
+    ];
+    const connected = Boolean(state.organisation.name);
+    connectButtons.forEach((button) => {
+        button.textContent = connected ? "Reconnect Xero" : "Connect Xero";
+    });
+}
+async function init() {
+    await hydrateFromAPI();
+    renderChrome();
+    renderMetrics();
+    renderPriorityAccounts();
+    renderCustomersTable();
+    renderInvoiceView();
+    renderTimeline(state.audit, document.getElementById("auditTimeline"), {
+        title: "No audit events yet",
+        body: "Live sync history and operational actions will appear here."
+    });
+    renderTimeline(state.audit.slice(0, 4), document.getElementById("dashboardTimeline"), {
+        title: "No recent activity yet",
+        body: "Once the workflow is live, the latest actions will appear here."
+    });
+    wireForms();
+    wireSearch();
+    wireNavigation();
+    wireSyncButtons();
+    wireLoginButtons();
+}
+init();
+    </script>
+</body>
+</html>

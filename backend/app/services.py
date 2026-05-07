@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -256,6 +257,151 @@ def dashboard_payload() -> dict:
             }
             for row in risks
         ],
+    }
+
+
+def _iso(value):
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
+
+
+def _float(value) -> float:
+    return float(value or 0)
+
+
+def _serialize_timeline_items(rows: list[dict], title_key: str, body_key: str, stamp_key: str = "created_at") -> list[dict]:
+    items = []
+    for row in rows:
+        items.append(
+            {
+                "id": row.get("id"),
+                "title": row.get(title_key) or "Update",
+                "body": row.get(body_key) or "",
+                "stamp": _iso(row.get(stamp_key)) or "",
+            }
+        )
+    return items
+
+
+def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
+    payload = {
+        "id": invoice["id"],
+        "invoiceNumber": invoice.get("invoice_number") or "",
+        "status": invoice.get("status") or "",
+        "controlStatus": invoice.get("control_status") or invoice.get("status") or "New",
+        "dueDate": _iso(invoice.get("due_date")),
+        "invoiceDate": _iso(invoice.get("invoice_date")),
+        "currencyCode": invoice.get("currency_code") or "GBP",
+        "total": _float(invoice.get("total")),
+        "amountDue": _float(invoice.get("amount_due")),
+        "amountPaid": _float(invoice.get("amount_paid")),
+        "promisedDate": _iso(invoice.get("promised_date")),
+        "promiseStatus": invoice.get("promise_status") or "",
+        "overdueDays": invoice.get("overdue_days") or 0,
+        "latePayment": invoice.get("late_payment") or {"interest": 0, "court_cost": 35},
+    }
+    if detail:
+        payload["notes"] = _serialize_timeline_items(detail["notes"], "full_name", "body")
+        payload["promises"] = [
+            {
+                "id": row.get("id"),
+                "title": f"Promise for £{_float(row.get('promised_amount')):,.2f}",
+                "body": row.get("note") or "",
+                "stamp": _iso(row.get("promised_date")) or "",
+                "status": row.get("status") or "",
+            }
+            for row in detail["promises"]
+        ]
+        payload["statuses"] = [
+            {
+                "id": row.get("id"),
+                "title": row.get("status") or "Status updated",
+                "body": row.get("note") or "",
+                "stamp": _iso(row.get("created_at")) or "",
+            }
+            for row in detail["statuses"]
+        ]
+        payload["audit"] = [
+            {
+                "id": row.get("id"),
+                "title": row.get("event_type") or "Audit event",
+                "body": row.get("payload") if isinstance(row.get("payload"), str) else __import__("json").dumps(row.get("payload") or {}),
+                "stamp": _iso(row.get("created_at")) or "",
+            }
+            for row in detail["audit"]
+        ]
+    return payload
+
+
+def panel_payload() -> dict:
+    customers = []
+    selected_invoice = None
+
+    for customer_row in list_customers():
+        detail = customer_detail(customer_row["id"])
+        invoices = []
+        for invoice in detail["invoices"]:
+            invoice_payload = _serialize_invoice(invoice, invoice_detail(invoice["id"]))
+            invoices.append(invoice_payload)
+            if selected_invoice is None:
+                selected_invoice = invoice_payload
+
+        open_invoices = sum(1 for invoice in detail["invoices"] if _float(invoice.get("amount_due")) > 0)
+        customers.append(
+            {
+                "id": customer_row["id"],
+                "name": customer_row.get("name") or "",
+                "contact": customer_row.get("email") or customer_row.get("phone") or "",
+                "status": customer_row.get("status") or ("Action needed" if _float(customer_row.get("overdue_amount")) > 0 else "Current"),
+                "openInvoices": open_invoices,
+                "totalDue": _float(customer_row.get("total_due")),
+                "overdue": _float(customer_row.get("overdue_amount")),
+                "invoices": invoices,
+            }
+        )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM audit_events
+                ORDER BY created_at DESC
+                LIMIT 30
+                """
+            )
+            audit_rows = cursor.fetchall()
+        connection.commit()
+
+    dashboard = dashboard_payload()
+    return {
+        "organisation": {
+            "name": "Xero organisation connected" if customers else "",
+            "status": "Connected" if customers else "Awaiting live connection",
+            "lastSync": f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync",
+        },
+        "dashboard": {
+            "totalReceivables": dashboard["total_receivables"],
+            "totalOverdue": dashboard["total_overdue"],
+            "openInvoices": dashboard["invoice_count"],
+            "accountsNeedingAction": dashboard["accounts_needing_action"],
+            "potentialInterest": round(
+                sum((invoice.get("late_payment") or {}).get("interest", 0) for customer in customers for invoice in customer["invoices"]),
+                2,
+            ),
+        },
+        "customers": customers,
+        "audit": [
+            {
+                "id": row.get("id"),
+                "title": row.get("event_type") or "Audit event",
+                "body": row.get("payload") if isinstance(row.get("payload"), str) else __import__("json").dumps(row.get("payload") or {}),
+                "stamp": _iso(row.get("created_at")) or "",
+            }
+            for row in audit_rows
+        ],
+        "selectedInvoice": selected_invoice,
     }
 
 

@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
@@ -28,6 +29,7 @@ from .services import (
     get_xero_connection_for_user,
     invoice_detail,
     list_customers,
+    panel_payload,
     run_sync,
     update_control_status,
 )
@@ -47,6 +49,12 @@ def startup() -> None:
 
 def template_context(request: Request, **extra):
     return {"request": request, "user": current_user_from_request(request), **extra}
+
+
+def wants_json(request: Request) -> bool:
+    accept = request.headers.get("accept", "")
+    content_type = request.headers.get("content-type", "")
+    return "application/json" in accept or "application/json" in content_type
 
 
 @app.get("/health")
@@ -266,6 +274,63 @@ def api_device_poll(device_code: str = Query(...)):
 @app.get("/api/dashboard")
 def api_dashboard(user: dict = Depends(require_api_user)):
     return dashboard_payload()
+
+
+@app.get("/api/panel")
+def api_panel(user: dict = Depends(require_user)):
+    return panel_payload()
+
+
+@app.post("/api/panel/sync")
+async def api_panel_sync(user: dict = Depends(require_user)):
+    sync_run = await run_sync(user)
+    return {
+        "status": "ok",
+        "summary": sync_run["summary"],
+        "panel": panel_payload(),
+    }
+
+
+@app.post("/api/invoices/{invoice_id}/notes")
+async def api_invoice_add_note(invoice_id: str, request: Request, user: dict = Depends(require_user)):
+    payload = await request.json()
+    body = str(payload.get("body", "")).strip()
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note body is required.")
+    add_note(invoice_id, user, body)
+    return {
+        "status": "ok",
+        "invoice": invoice_detail(invoice_id),
+    }
+
+
+@app.post("/api/invoices/{invoice_id}/promises")
+async def api_invoice_add_promise(invoice_id: str, request: Request, user: dict = Depends(require_user)):
+    payload = await request.json()
+    promised_amount = str(payload.get("promisedAmount", "")).strip()
+    promised_date = str(payload.get("promisedDate", "")).strip()
+    note = str(payload.get("note", "")).strip()
+    if not promised_amount or not promised_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Promised amount and date are required.")
+    add_promise(invoice_id, user, promised_amount, promised_date, note)
+    return {
+        "status": "ok",
+        "invoice": invoice_detail(invoice_id),
+    }
+
+
+@app.post("/api/invoices/{invoice_id}/status")
+async def api_invoice_set_status(invoice_id: str, request: Request, user: dict = Depends(require_user)):
+    payload = await request.json()
+    status_value = str(payload.get("statusValue", "")).strip()
+    note = str(payload.get("note", "")).strip()
+    if not status_value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status is required.")
+    update_control_status(invoice_id, user, status_value, note)
+    return {
+        "status": "ok",
+        "invoice": invoice_detail(invoice_id),
+    }
 
 
 @app.exception_handler(XeroConfigurationError)
