@@ -38,12 +38,48 @@ struct TopRiskAccount: Decodable, Identifiable {
     let amountDue: Double
     let dueDate: Date?
 
-    var id: String { name }
+    var id: String { "\(name)-\(dueDate?.timeIntervalSince1970 ?? 0)" }
 
     enum CodingKeys: String, CodingKey {
         case name
         case amountDue = "amount_due"
         case dueDate = "due_date"
+    }
+}
+
+struct DeviceLoginPayload: Decodable {
+    let deviceCode: String
+    let verificationCode: String
+    let verificationURI: URL
+    let loginURI: URL
+
+    enum CodingKeys: String, CodingKey {
+        case deviceCode = "device_code"
+        case verificationCode = "verification_code"
+        case verificationURI = "verification_uri"
+        case loginURI = "login_uri"
+    }
+}
+
+struct DevicePollResponse: Decodable {
+    let status: String
+    let sessionToken: String?
+    let user: DeviceUser?
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case sessionToken = "session_token"
+        case user
+    }
+}
+
+struct DeviceUser: Decodable {
+    let email: String
+    let fullName: String
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case fullName = "full_name"
     }
 }
 
@@ -54,48 +90,66 @@ enum DashboardLoadingState {
     case failed(String)
 }
 
-struct DashboardService {
+enum AuthenticationState {
+    case signedOut
+    case authorising(DeviceLoginPayload)
+    case signedIn(DeviceUser?)
+    case failed(String)
+}
+
+struct BackendService {
     private let baseURL: URL
-    private let apiToken: String
     private let session: URLSession
 
-    init(
-        baseURL: URL,
-        apiToken: String,
-        session: URLSession = .shared
-    ) {
+    init(baseURL: URL, session: URLSession = .shared) {
         self.baseURL = baseURL
-        self.apiToken = apiToken
         self.session = session
     }
 
-    func loadDashboard() async throws -> DashboardPayload {
-        var request = URLRequest(url: baseURL.appending(path: "/api/dashboard"))
-        request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+    func startDeviceLogin() async throws -> DeviceLoginPayload {
+        let (data, response) = try await session.data(from: baseURL.appending(path: "/api/device/start"))
+        try validate(response: response)
+        return try JSONDecoder.dashboardDecoder.decode(DeviceLoginPayload.self, from: data)
+    }
 
+    func pollDeviceLogin(deviceCode: String) async throws -> DevicePollResponse {
+        let endpoint = baseURL.appending(path: "/api/device/poll").appending(queryItems: [
+            URLQueryItem(name: "device_code", value: deviceCode),
+        ])
+        let (data, response) = try await session.data(from: endpoint)
+        try validate(response: response)
+        return try JSONDecoder.dashboardDecoder.decode(DevicePollResponse.self, from: data)
+    }
+
+    func loadDashboard(sessionToken: String) async throws -> DashboardPayload {
+        var request = URLRequest(url: baseURL.appending(path: "/api/dashboard"))
+        request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else {
+        try validate(response: response)
+        return try JSONDecoder.dashboardDecoder.decode(DashboardPayload.self, from: data)
+    }
+
+    private func validate(response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
 
-        guard (200 ..< 300).contains(response.statusCode) else {
-            throw DashboardServiceError.invalidStatus(response.statusCode)
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendServiceError.invalidStatus(http.statusCode)
         }
-
-        return try JSONDecoder.dashboardDecoder.decode(DashboardPayload.self, from: data)
     }
 }
 
-enum DashboardServiceError: LocalizedError {
+enum BackendServiceError: LocalizedError {
     case invalidConfiguration
     case invalidStatus(Int)
 
     var errorDescription: String? {
         switch self {
         case .invalidConfiguration:
-            "Missing dashboard API configuration."
+            "Missing backend configuration."
         case let .invalidStatus(code):
-            "Dashboard request failed with status \(code)."
+            "Backend request failed with status \(code)."
         }
     }
 }

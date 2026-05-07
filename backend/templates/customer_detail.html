@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header">
+    <div>
+        <p class="eyebrow">Customer</p>
+        <h2>{{ customer.name }}</h2>
+        <p class="muted">{{ customer.email or "No email" }}{% if customer.phone %} · {{ customer.phone }}{% endif %}</p>
+    </div>
+</header>
+<section class="panel">
+    <table>
+        <thead><tr><th>Invoice</th><th>Status</th><th>Due</th><th>Amount Due</th><th>Late Payment</th></tr></thead>
+        <tbody>
+            {% for invoice in invoices %}
+            <tr>
+                <td><a href="/invoices/{{ invoice.id }}">{{ invoice.invoice_number }}</a></td>
+                <td>{{ invoice.control_status }}</td>
+                <td>{{ invoice.due_date or "-" }}</td>
+                <td>£{{ "%.2f"|format(invoice.amount_due) }}</td>
+                <td>
+                    £{{ "%.2f"|format(invoice.late_payment.interest) }} interest
+                    <span class="muted"> · £{{ invoice.late_payment.court_cost }} court costs</span>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">No invoices available.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

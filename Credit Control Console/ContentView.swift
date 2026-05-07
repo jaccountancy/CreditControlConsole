@@ -8,86 +8,177 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var loadingState: DashboardLoadingState = .idle
+    @Environment(\.openURL) private var openURL
+    @State private var authenticationState: AuthenticationState = .signedOut
+    @State private var dashboardState: DashboardLoadingState = .idle
+    @State private var sessionToken = UserDefaults.standard.string(forKey: "BackendSessionToken") ?? ""
+    @State private var signedInUser: DeviceUser?
+    @State private var pollingTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
-            dashboardBody
-                .toolbar {
-                    ToolbarItem {
+            Group {
+                if sessionToken.isEmpty {
+                    loginView
+                } else {
+                    dashboardView
+                }
+            }
+            .navigationTitle("Credit Control")
+            .toolbar {
+                if !sessionToken.isEmpty {
+                    ToolbarItemGroup {
                         Button {
-                            Task {
-                                await loadDashboard()
-                            }
+                            Task { await loadDashboard() }
                         } label: {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
+
+                        Button("Sign Out") {
+                            signOut()
+                        }
                     }
                 }
-                .navigationTitle("Credit Control")
-                .task {
+            }
+            .task {
+                if !sessionToken.isEmpty, case .idle = dashboardState {
                     await loadDashboard()
                 }
+            }
         }
     }
 
     @ViewBuilder
-    private var dashboardBody: some View {
-        switch loadingState {
+    private var loginView: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Widget Dashboard Login")
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+
+            Text("Authenticate against the credit control backend via Xero. The app only shows headline figures and risk widgets.")
+                .foregroundStyle(.secondary)
+
+            switch authenticationState {
+            case .signedOut, .failed:
+                if case let .failed(message) = authenticationState {
+                    Text(message)
+                        .foregroundStyle(.red)
+                }
+
+                Button("Login with Xero") {
+                    Task { await startDeviceLogin() }
+                }
+                .buttonStyle(.borderedProminent)
+
+            case let .authorising(device):
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Verification code: \(device.verificationCode)")
+                        .font(.title2.monospaced())
+
+                    Text("1. Open Xero in your browser.\n2. Sign in and approve access.\n3. Return to this app while it finishes login.")
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("Open Xero Login") {
+                            openURL(device.loginURI)
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Open Approval Page") {
+                            openURL(device.verificationURI)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+            case let .signedIn(user):
+                Text("Signed in as \(user?.fullName ?? "authorised user").")
+            }
+        }
+        .frame(maxWidth: 560, alignment: .leading)
+        .padding(32)
+    }
+
+    @ViewBuilder
+    private var dashboardView: some View {
+        switch dashboardState {
         case .idle, .loading:
             ProgressView("Loading dashboard...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case let .failed(message):
-            ContentUnavailableView(
-                "Unable to Load Dashboard",
-                systemImage: "exclamationmark.triangle",
-                description: Text(message)
-            )
+            VStack(spacing: 16) {
+                ContentUnavailableView(
+                    "Unable to Load Dashboard",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
+                Button("Try Again") {
+                    Task { await loadDashboard() }
+                }
+            }
         case let .loaded(dashboard):
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    headerView(asOf: dashboard.asOf)
-                    metricsGrid(dashboard: dashboard)
-                    riskSection(accounts: dashboard.topRiskAccounts)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Headline Numbers")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+
+                        if let signedInUser {
+                            Text("Signed in as \(signedInUser.fullName)")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let asOf = dashboard.asOf {
+                            Text("As of \(asOf.formatted(date: .abbreviated, time: .shortened))")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: 16),
+                            GridItem(.flexible(), spacing: 16),
+                        ],
+                        spacing: 16
+                    ) {
+                        metricCard(title: "Total Receivables", value: dashboard.totalReceivables, tint: .blue)
+                        metricCard(title: "Total Overdue", value: dashboard.totalOverdue, tint: .red)
+                        metricCard(title: "Invoices Open", value: Double(dashboard.invoiceCount), tint: .indigo, isCurrency: false)
+                        metricCard(title: "Accounts Needing Action", value: Double(dashboard.accountsNeedingAction), tint: .orange, isCurrency: false)
+                        metricCard(title: "1-30 Days", value: dashboard.overdue1To30, tint: .yellow)
+                        metricCard(title: "31-60 Days", value: dashboard.overdue31To60, tint: .mint)
+                        metricCard(title: "61-90 Days", value: dashboard.overdue61To90, tint: .teal)
+                        metricCard(title: "90+ Days", value: dashboard.overdue90Plus, tint: .pink)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Top Risk Accounts")
+                            .font(.title2.weight(.semibold))
+
+                        ForEach(dashboard.topRiskAccounts) { account in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(account.name)
+                                        .font(.headline)
+
+                                    if let dueDate = account.dueDate {
+                                        Text("Due \(dueDate.formatted(date: .abbreviated, time: .omitted))")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Spacer()
+
+                                Text(account.amountDue, format: .currency(code: "GBP"))
+                                    .font(.headline.monospacedDigit())
+                            }
+                            .padding(.vertical, 8)
+
+                            Divider()
+                        }
+                    }
                 }
                 .padding(24)
             }
-        }
-    }
-
-    @ViewBuilder
-    private func headerView(asOf: Date?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Headline Numbers")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-
-            if let asOf {
-                Text("As of \(asOf.formatted(date: .abbreviated, time: .shortened))")
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("No sync has been completed yet.")
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func metricsGrid(dashboard: DashboardPayload) -> some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(), spacing: 16),
-                GridItem(.flexible(), spacing: 16),
-            ],
-            spacing: 16
-        ) {
-            metricCard(title: "Total Receivables", value: dashboard.totalReceivables, tint: .blue)
-            metricCard(title: "Total Overdue", value: dashboard.totalOverdue, tint: .red)
-            metricCard(title: "Invoices Open", value: Double(dashboard.invoiceCount), tint: .indigo, isCurrency: false)
-            metricCard(title: "Accounts Needing Action", value: Double(dashboard.accountsNeedingAction), tint: .orange, isCurrency: false)
-            metricCard(title: "1-30 Days Overdue", value: dashboard.overdue1To30, tint: .yellow)
-            metricCard(title: "31-60 Days Overdue", value: dashboard.overdue31To60, tint: .mint)
-            metricCard(title: "61-90 Days Overdue", value: dashboard.overdue61To90, tint: .teal)
-            metricCard(title: "90+ Days Overdue", value: dashboard.overdue90Plus, tint: .pink)
         }
     }
 
@@ -98,11 +189,13 @@ struct ContentView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
-            Text(metricValueText(value: value, isCurrency: isCurrency))
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            Text(
+                isCurrency
+                    ? value.formatted(.currency(code: "GBP"))
+                    : value.formatted(.number.precision(.fractionLength(0)))
+            )
+            .font(.system(size: 28, weight: .semibold, design: .rounded))
+            .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -112,74 +205,76 @@ struct ContentView: View {
         )
     }
 
-    @ViewBuilder
-    private func riskSection(accounts: [TopRiskAccount]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Top Risk Accounts")
-                .font(.title2.weight(.semibold))
-
-            if accounts.isEmpty {
-                ContentUnavailableView(
-                    "No Accounts to Show",
-                    systemImage: "checkmark.circle",
-                    description: Text("Run the Xero sync on the backend to populate live data.")
-                )
-            } else {
-                ForEach(accounts) { account in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(account.name)
-                                .font(.headline)
-
-                            if let dueDate = account.dueDate {
-                                Text("Due \(dueDate.formatted(date: .abbreviated, time: .omitted))")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Spacer()
-
-                        Text(account.amountDue, format: .currency(code: "GBP"))
-                            .font(.headline.monospacedDigit())
-                    }
-                    .padding(.vertical, 8)
-                    Divider()
-                }
-            }
+    @MainActor
+    private func startDeviceLogin() async {
+        do {
+            let service = try configuredService()
+            let device = try await service.startDeviceLogin()
+            authenticationState = .authorising(device)
+            beginPolling(deviceCode: device.deviceCode, service: service)
+        } catch {
+            authenticationState = .failed(error.localizedDescription)
         }
     }
 
-    private func metricValueText(value: Double, isCurrency: Bool) -> String {
-        if isCurrency {
-            value.formatted(.currency(code: "GBP"))
-        } else {
-            value.formatted(.number.precision(.fractionLength(0)))
+    private func beginPolling(deviceCode: String, service: BackendService) {
+        pollingTask?.cancel()
+        pollingTask = Task {
+            while !Task.isCancelled {
+                do {
+                    let response = try await service.pollDeviceLogin(deviceCode: deviceCode)
+                    if response.status == "approved", let token = response.sessionToken {
+                        await MainActor.run {
+                            sessionToken = token
+                            UserDefaults.standard.set(token, forKey: "BackendSessionToken")
+                            signedInUser = response.user
+                            authenticationState = .signedIn(response.user)
+                        }
+                        await loadDashboard()
+                        return
+                    }
+                } catch {
+                    await MainActor.run {
+                        authenticationState = .failed(error.localizedDescription)
+                    }
+                    return
+                }
+
+                try? await Task.sleep(for: .seconds(3))
+            }
         }
     }
 
     @MainActor
     private func loadDashboard() async {
-        loadingState = .loading
+        dashboardState = .loading
 
         do {
-            let dashboard = try await configuredService().loadDashboard()
-            loadingState = .loaded(dashboard)
+            let dashboard = try await configuredService().loadDashboard(sessionToken: sessionToken)
+            dashboardState = .loaded(dashboard)
         } catch {
-            loadingState = .failed(error.localizedDescription)
+            dashboardState = .failed(error.localizedDescription)
         }
     }
 
-    private func configuredService() throws -> DashboardService {
+    private func signOut() {
+        pollingTask?.cancel()
+        sessionToken = ""
+        signedInUser = nil
+        dashboardState = .idle
+        authenticationState = .signedOut
+        UserDefaults.standard.removeObject(forKey: "BackendSessionToken")
+    }
+
+    private func configuredService() throws -> BackendService {
         guard
             let baseURLString = Bundle.main.object(forInfoDictionaryKey: "DashboardAPIBaseURL") as? String,
-            let baseURL = URL(string: baseURLString),
-            let apiToken = Bundle.main.object(forInfoDictionaryKey: "DashboardAPIToken") as? String,
-            !apiToken.isEmpty
+            let baseURL = URL(string: baseURLString)
         else {
-            throw DashboardServiceError.invalidConfiguration
+            throw BackendServiceError.invalidConfiguration
         }
 
-        return DashboardService(baseURL: baseURL, apiToken: apiToken)
+        return BackendService(baseURL: baseURL)
     }
 }
 

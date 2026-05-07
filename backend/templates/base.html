@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Credit Control{% endblock %}</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="shell">
+        <aside class="sidebar">
+            <div>
+                <p class="eyebrow">Credit Control</p>
+                <h1>Panel</h1>
+            </div>
+            <nav>
+                <a href="/">Dashboard</a>
+                <a href="/customers">Customers</a>
+                <a href="/device">Device Login</a>
+            </nav>
+            <div class="sidebar-footer">
+                {% if user %}
+                <p>{{ user.full_name }}</p>
+                <p class="muted">{{ user.email }}</p>
+                <form method="post" action="/auth/logout">
+                    <button type="submit" class="ghost">Logout</button>
+                </form>
+                {% else %}
+                <a class="button" href="/auth/xero/start">Login with Xero</a>
+                {% endif %}
+            </div>
+        </aside>
+        <main class="content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>

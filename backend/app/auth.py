@@ -1,0 +1,215 @@
+from datetime import timedelta
+from urllib.parse import urlencode
+
+from fastapi import HTTPException, Request, status
+
+from .config import get_settings
+from .database import get_connection, utcnow
+from .security import create_session, hash_token, random_token
+
+
+COOKIE_NAME = "credit_control_session"
+
+
+def current_user_from_request(request: Request) -> dict | None:
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        return None
+
+    return user_for_session_token(token)
+
+
+def require_user(request: Request) -> dict:
+    user = current_user_from_request(request)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    return user
+
+
+def require_api_user(request: Request) -> dict:
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    if token == get_settings().widget_token:
+        return {"id": None, "email": "widget@system", "full_name": "Widget Token", "widget_only": True}
+
+    user = user_for_session_token(token)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
+    return user
+
+
+def user_for_session_token(token: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT users.*, sessions.id AS session_id
+                FROM sessions
+                JOIN users ON users.id = sessions.user_id
+                WHERE sessions.token_hash = %s
+                  AND sessions.expires_at > NOW()
+                """,
+                (hash_token(token),),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+
+            cursor.execute(
+                "UPDATE sessions SET last_seen_at = %s WHERE id = %s",
+                (utcnow(), row["session_id"]),
+            )
+        connection.commit()
+
+    return row
+
+
+def set_session_cookie(response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.base_url.startswith("https://"),
+        max_age=settings.session_ttl_days * 24 * 60 * 60,
+    )
+
+
+def clear_session_cookie(response) -> None:
+    response.delete_cookie(COOKIE_NAME)
+
+
+def start_oauth_state(redirect_to: str | None = None, device_code: str | None = None) -> str:
+    settings = get_settings()
+    state_token = random_token()
+    expires_at = utcnow() + timedelta(seconds=settings.xero_state_ttl_seconds)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO oauth_states (state_token, redirect_to, device_code, expires_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (state_token, redirect_to, device_code, expires_at),
+            )
+        connection.commit()
+
+    return state_token
+
+
+def consume_oauth_state(state_token: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM oauth_states
+                WHERE state_token = %s
+                  AND expires_at > NOW()
+                """,
+                (state_token,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired state.")
+            cursor.execute("DELETE FROM oauth_states WHERE id = %s", (row["id"],))
+        connection.commit()
+
+    return row
+
+
+def create_device_login() -> dict:
+    settings = get_settings()
+    device_code = random_token(24)
+    verification_code = random_token(8).replace("-", "")[:8].upper()
+    expires_at = utcnow() + timedelta(minutes=settings.device_code_ttl_minutes)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO device_logins (device_code, verification_code, expires_at)
+                VALUES (%s, %s, %s)
+                RETURNING *
+                """,
+                (device_code, verification_code, expires_at),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+
+    return row
+
+
+def complete_device_login(device_code: str, user_id: str) -> str:
+    session_token = create_session(user_id, "macOS app")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE device_logins
+                SET status = 'approved',
+                    user_id = %s,
+                    completed_at = %s
+                WHERE device_code = %s
+                  AND expires_at > NOW()
+                RETURNING id
+                """,
+                (user_id, utcnow(), device_code),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Device login expired.")
+            cursor.execute(
+                """
+                UPDATE device_logins
+                SET session_id = (SELECT id FROM sessions WHERE token_hash = %s),
+                    session_token = %s
+                WHERE id = %s
+                """,
+                (hash_token(session_token), session_token, row["id"]),
+            )
+        connection.commit()
+
+    return session_token
+
+
+def approve_device_code(verification_code: str, user_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM device_logins
+                WHERE verification_code = %s
+                  AND status = 'pending'
+                  AND expires_at > NOW()
+                """,
+                (verification_code.upper(),),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code.")
+
+    return complete_device_login(row["device_code"], user_id)
+
+
+def xero_authorize_url(state_token: str) -> str:
+    settings = get_settings()
+    query = urlencode(
+        {
+            "response_type": "code",
+            "client_id": settings.xero_client_id,
+            "redirect_uri": settings.xero_redirect_uri,
+            "scope": settings.xero_scopes,
+            "state": state_token,
+        }
+    )
+    return f"https://login.xero.com/identity/connect/authorize?{query}"

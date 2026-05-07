@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header">
+    <div>
+        <p class="eyebrow">Overview</p>
+        <h2>Headline numbers</h2>
+        <p class="muted">As of {{ dashboard.as_of or "no sync yet" }}</p>
+    </div>
+    <div class="toolbar">
+        {% if xero_connected %}
+        <form method="post" action="/sync/run">
+            <button class="button" type="submit">Resync Xero</button>
+        </form>
+        {% else %}
+        <a class="button" href="/auth/xero/start">Connect Xero</a>
+        {% endif %}
+    </div>
+</header>
+
+<section class="metrics-grid">
+    <article class="metric-card"><span>Total Receivables</span><strong>£{{ "%.2f"|format(dashboard.total_receivables) }}</strong></article>
+    <article class="metric-card"><span>Total Overdue</span><strong>£{{ "%.2f"|format(dashboard.total_overdue) }}</strong></article>
+    <article class="metric-card"><span>Invoices Open</span><strong>{{ dashboard.invoice_count }}</strong></article>
+    <article class="metric-card"><span>Accounts Needing Action</span><strong>{{ dashboard.accounts_needing_action }}</strong></article>
+    <article class="metric-card"><span>1-30 Days</span><strong>£{{ "%.2f"|format(dashboard.overdue_1_30) }}</strong></article>
+    <article class="metric-card"><span>31-60 Days</span><strong>£{{ "%.2f"|format(dashboard.overdue_31_60) }}</strong></article>
+    <article class="metric-card"><span>61-90 Days</span><strong>£{{ "%.2f"|format(dashboard.overdue_61_90) }}</strong></article>
+    <article class="metric-card"><span>90+ Days</span><strong>£{{ "%.2f"|format(dashboard.overdue_90_plus) }}</strong></article>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h3>Top Risk Accounts</h3>
+    </div>
+    <table>
+        <thead><tr><th>Customer</th><th>Due Date</th><th>Amount</th></tr></thead>
+        <tbody>
+            {% for account in dashboard.top_risk_accounts %}
+            <tr>
+                <td>{{ account.name }}</td>
+                <td>{{ account.due_date or "-" }}</td>
+                <td>£{{ "%.2f"|format(account.amount_due) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3">No data yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

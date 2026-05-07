@@ -1,64 +1,50 @@
 # Credit Control Backend
 
-This service is the deployable Railway backend for the native macOS app.
+This backend now owns:
 
-It is responsible for:
+- Xero OAuth login and callback
+- token storage and refresh handling
+- PostgreSQL persistence
+- sync jobs for customers and invoices
+- dashboard metrics for the macOS app
+- the full web-based credit control panel
 
-- authenticating to Xero with a Custom Connection
-- pulling read-only accounts receivable data from Xero
-- storing a normalized cache in PostgreSQL
-- exposing a read-only dashboard API for the Swift app
+## Local run
 
-## Stack
+1. Create `.env` from `.env.example`
+2. Install dependencies:
+   `pip install -e .`
+3. Start the app:
+   `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
-- FastAPI
-- psycopg
-- PostgreSQL on Railway
-- Xero Custom Connection via OAuth 2.0 client credentials
+## Railway
 
-## Local development
+Recommended Railway settings:
 
-1. Create a virtual environment.
-2. Install dependencies with `pip install -e .`.
-3. Copy `.env.example` to `.env` and fill in the real values.
-4. Run `uvicorn app.main:app --reload`.
+- `Root Directory`: `backend`
+- `Build Command`: `pip install -e .`
+- `Start Command`: `pip install -e . && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
-## Railway deployment
+Required variables:
 
-Set these environment variables in Railway:
-
+- `BASE_URL`
 - `DATABASE_URL`
-- `API_TOKEN`
+- `APP_SECRET`
+- `WIDGET_TOKEN`
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
+- `XERO_REDIRECT_URI`
 - `XERO_SCOPES`
 
-Optional:
+## Main routes
 
-- `APP_ENV`
-- `PORT`
-- `DASHBOARD_STALE_AFTER_MINUTES`
-
-Use Railway cron or an external scheduler to call:
-
-- `POST /api/xero/sync`
-
-with:
-
-- `Authorization: Bearer <API_TOKEN>`
-
-The macOS app should call:
-
-- `GET /api/dashboard`
-
-with the same bearer token.
-
-## Xero setup
-
-This backend assumes a Xero Custom Connection rather than a desktop OAuth flow.
-
-Current Xero references:
-
-- https://developer.xero.com/custom-development
-- https://developer.xero.com/faq/custom-integration
-- https://developer.xero.com/documentation/guides/oauth2/client-credentials/
+- `/` web dashboard
+- `/auth/xero/start` login with Xero
+- `/auth/xero/callback` OAuth callback
+- `/customers` customer list
+- `/customers/{customer_id}` customer detail
+- `/invoices/{invoice_id}` invoice detail
+- `POST /sync/run` manual Xero resync
+- `GET /api/device/start` device login bootstrap for the macOS app
+- `GET /api/device/poll` device login polling for the macOS app
+- `GET /api/dashboard` headline metrics API for the macOS app

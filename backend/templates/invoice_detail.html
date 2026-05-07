@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="page-header">
+    <div>
+        <p class="eyebrow">Invoice</p>
+        <h2>{{ invoice.invoice_number }}</h2>
+        <p class="muted">{{ invoice.customer_name }} · {{ invoice.status }} · due {{ invoice.due_date or "-" }}</p>
+    </div>
+</header>
+
+<section class="metrics-grid">
+    <article class="metric-card"><span>Amount Due</span><strong>£{{ "%.2f"|format(invoice.amount_due) }}</strong></article>
+    <article class="metric-card"><span>Interest So Far</span><strong>£{{ "%.2f"|format(invoice.late_payment.interest) }}</strong></article>
+    <article class="metric-card"><span>Court Costs</span><strong>£{{ invoice.late_payment.court_cost }}</strong></article>
+    <article class="metric-card"><span>Overdue Days</span><strong>{{ invoice.overdue_days }}</strong></article>
+</section>
+
+<section class="three-column">
+    <article class="panel">
+        <h3>Status Updates</h3>
+        <form method="post" action="/invoices/{{ invoice.id }}/status" class="stack">
+            <select name="status_value">
+                <option value="new">New</option>
+                <option value="chased">Chased</option>
+                <option value="promise_received">Promise Received</option>
+                <option value="legal_review">Legal Review</option>
+                <option value="paid">Paid</option>
+            </select>
+            <textarea name="note" rows="3" placeholder="Context for the status change"></textarea>
+            <button class="button" type="submit">Update Status</button>
+        </form>
+        <ul class="timeline">
+            {% for status_item in statuses %}
+            <li><strong>{{ status_item.status }}</strong><span>{{ status_item.created_at }}</span><p>{{ status_item.note or "" }}</p></li>
+            {% else %}
+            <li>No status history yet.</li>
+            {% endfor %}
+        </ul>
+    </article>
+
+    <article class="panel">
+        <h3>Notes</h3>
+        <form method="post" action="/invoices/{{ invoice.id }}/notes" class="stack">
+            <textarea name="body" rows="4" placeholder="Add a note"></textarea>
+            <button class="button" type="submit">Add Note</button>
+        </form>
+        <ul class="timeline">
+            {% for note in notes %}
+            <li><strong>{{ note.full_name or "Unknown" }}</strong><span>{{ note.created_at }}</span><p>{{ note.body }}</p></li>
+            {% else %}
+            <li>No notes yet.</li>
+            {% endfor %}
+        </ul>
+    </article>
+
+    <article class="panel">
+        <h3>Promises to Pay</h3>
+        <form method="post" action="/invoices/{{ invoice.id }}/promises" class="stack">
+            <input name="promised_amount" placeholder="Promised amount" />
+            <input type="date" name="promised_date" />
+            <textarea name="note" rows="3" placeholder="Promise note"></textarea>
+            <button class="button" type="submit">Record Promise</button>
+        </form>
+        <ul class="timeline">
+            {% for promise in promises %}
+            <li><strong>£{{ "%.2f"|format(promise.promised_amount) }}</strong><span>{{ promise.promised_date }} · {{ promise.status }}</span><p>{{ promise.note or "" }}</p></li>
+            {% else %}
+            <li>No promises logged.</li>
+            {% endfor %}
+        </ul>
+    </article>
+</section>
+
+<section class="panel">
+    <h3>Audit Trail</h3>
+    <ul class="timeline">
+        {% for event in audit %}
+        <li><strong>{{ event.event_type }}</strong><span>{{ event.created_at }}</span><p>{{ event.payload }}</p></li>
+        {% else %}
+        <li>No audit events yet.</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}
