@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -249,6 +249,11 @@ def logout():
 
 
 @app.get("/", response_class=HTMLResponse)
+def console_page():
+    return FileResponse(BASE_DIR / "static" / "console.html")
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
 def dashboard_page(request: Request, user: dict = Depends(require_user)):
     xero_connected = False
     try:
