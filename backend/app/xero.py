@@ -17,6 +17,21 @@ class XeroConfigurationError(RuntimeError):
     pass
 
 
+def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
+    try:
+        detail = response.json()
+    except ValueError:
+        detail = response.text
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail={
+            "message": f"Xero {action} failed.",
+            "status_code": response.status_code,
+            "response": detail,
+        },
+    )
+
+
 def _iso_to_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -43,7 +58,8 @@ async def exchange_code_for_tokens(code: str) -> dict:
             },
             auth=(settings.xero_client_id, settings.xero_client_secret),
         )
-        response.raise_for_status()
+        if response.is_error:
+            _raise_xero_http_error(response, "token exchange")
         return response.json()
 
 
@@ -70,7 +86,8 @@ async def refresh_connection(connection_id: str) -> dict:
             },
             auth=(settings.xero_client_id, settings.xero_client_secret),
         )
-        response.raise_for_status()
+        if response.is_error:
+            _raise_xero_http_error(response, "token refresh")
         payload = response.json()
 
     expires_at = utcnow() + timedelta(seconds=payload["expires_in"])
@@ -106,7 +123,8 @@ async def fetch_user_profile(access_token: str) -> dict:
             USERINFO_URL,
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        response.raise_for_status()
+        if response.is_error:
+            _raise_xero_http_error(response, "profile fetch")
         return response.json()
 
 
@@ -116,7 +134,8 @@ async def fetch_connections(access_token: str) -> list[dict]:
             CONNECTIONS_URL,
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        response.raise_for_status()
+        if response.is_error:
+            _raise_xero_http_error(response, "organisation fetch")
         return response.json()
 
 
@@ -125,6 +144,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No Xero organisations linked.")
 
     chosen = connections[0]
+    tenant_id = chosen["tenantId"]
     expires_at = utcnow() + timedelta(seconds=token_payload["expires_in"])
     email = profile.get("email") or f'{profile.get("sub")}@xero.local'
     full_name = (
@@ -151,6 +171,14 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
 
             cursor.execute(
                 """
+                DELETE FROM xero_connections
+                WHERE user_id = %s
+                  AND tenant_id <> %s
+                """,
+                (user["id"], tenant_id),
+            )
+            cursor.execute(
+                """
                 INSERT INTO xero_connections (
                     user_id,
                     xero_user_id,
@@ -164,8 +192,9 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                     updated_at
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE
+                ON CONFLICT (tenant_id) DO UPDATE
                 SET xero_user_id = EXCLUDED.xero_user_id,
+                    user_id = EXCLUDED.user_id,
                     tenant_id = EXCLUDED.tenant_id,
                     tenant_name = EXCLUDED.tenant_name,
                     tenant_type = EXCLUDED.tenant_type,
@@ -179,7 +208,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                 (
                     user["id"],
                     profile.get("sub", ""),
-                    chosen["tenantId"],
+                    tenant_id,
                     chosen.get("tenantName", "Xero Organisation"),
                     chosen.get("tenantType"),
                     token_payload["access_token"],
@@ -208,7 +237,8 @@ async def xero_api_get(connection_row: dict, url: str, params: dict | None = Non
                 "Accept": "application/json",
             },
         )
-        response.raise_for_status()
+        if response.is_error:
+            _raise_xero_http_error(response, "API request")
         return response.json()
 
 
