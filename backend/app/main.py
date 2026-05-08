@@ -120,7 +120,7 @@ def health() -> dict:
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", template_context(request))
+    return templates.TemplateResponse(request, "login.html", template_context(request))
 
 
 @app.get("/auth/xero/start")
@@ -201,6 +201,7 @@ def dashboard_page(request: Request, user: dict = Depends(require_user)):
         xero_connected = False
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         template_context(
             request,
@@ -219,6 +220,7 @@ async def trigger_sync(user: dict = Depends(require_user)):
 @app.get("/customers", response_class=HTMLResponse)
 def customers_page(request: Request, user: dict = Depends(require_user)):
     return templates.TemplateResponse(
+        request,
         "customers.html",
         template_context(request, customers=list_customers()),
     )
@@ -228,6 +230,7 @@ def customers_page(request: Request, user: dict = Depends(require_user)):
 def customer_page(customer_id: str, request: Request, user: dict = Depends(require_user)):
     detail = customer_detail(customer_id)
     return templates.TemplateResponse(
+        request,
         "customer_detail.html",
         template_context(request, **detail),
     )
@@ -237,6 +240,7 @@ def customer_page(customer_id: str, request: Request, user: dict = Depends(requi
 def invoice_page(invoice_id: str, request: Request, user: dict = Depends(require_user)):
     detail = invoice_detail(invoice_id)
     return templates.TemplateResponse(
+        request,
         "invoice_detail.html",
         template_context(request, **detail),
     )
@@ -273,7 +277,7 @@ def invoice_set_status(
 
 @app.get("/device", response_class=HTMLResponse)
 def device_page(request: Request, code: str | None = None):
-    return templates.TemplateResponse("device.html", template_context(request, verification_code=code, approved=False))
+    return templates.TemplateResponse(request, "device.html", template_context(request, verification_code=code, approved=False))
 
 
 @app.post("/device/approve")
@@ -284,7 +288,7 @@ def device_approve(verification_code: str = Form(...), user: dict = Depends(requ
 
 @app.get("/device/complete", response_class=HTMLResponse)
 def device_complete(request: Request, approved: int = 0):
-    return templates.TemplateResponse("device.html", template_context(request, verification_code=None, approved=bool(approved)))
+    return templates.TemplateResponse(request, "device.html", template_context(request, verification_code=None, approved=bool(approved)))
 
 
 @app.get("/api/device/start")
