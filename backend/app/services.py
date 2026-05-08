@@ -334,7 +334,7 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
     return payload
 
 
-def panel_payload() -> dict:
+def panel_payload(user: dict | None = None) -> dict:
     customers = []
     selected_invoice = None
 
@@ -374,12 +374,21 @@ def panel_payload() -> dict:
             audit_rows = cursor.fetchall()
         connection.commit()
 
+    xero_connected = False
+    if user and user.get("id"):
+        try:
+            get_xero_connection_for_user(user["id"])
+            xero_connected = True
+        except HTTPException:
+            xero_connected = False
+
     dashboard = dashboard_payload()
     return {
         "organisation": {
-            "name": "Xero organisation connected" if customers else "",
-            "status": "Connected" if customers else "Awaiting live connection",
+            "name": "Xero organisation connected" if xero_connected else "",
+            "status": "Connected" if xero_connected else "Awaiting live connection",
             "lastSync": f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync",
+            "xeroConnected": xero_connected,
         },
         "dashboard": {
             "totalReceivables": dashboard["total_receivables"],

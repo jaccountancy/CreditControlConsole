@@ -6,7 +6,8 @@ const emptyData = {
     organisation: {
         name: "",
         status: "Awaiting live connection",
-        lastSync: "Waiting for first sync"
+        lastSync: "Waiting for first sync",
+        xeroConnected: false
     },
     dashboard: {
         totalReceivables: 0,
@@ -254,14 +255,12 @@ function renderSummaryCounts() {
     const counts = {
         all: invoices.length,
         paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
-        outstanding: invoices.filter((invoice) => invoiceCategory(invoice) === "outstanding").length,
         overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
         court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
     };
 
     document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
     document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
-    document.getElementById("countOutstanding").textContent = counts.outstanding.toLocaleString("en-GB");
     document.getElementById("countOverdue").textContent = counts.overdue.toLocaleString("en-GB");
     document.getElementById("countCourt").textContent = counts.court.toLocaleString("en-GB");
 
@@ -465,13 +464,29 @@ function renderTimeline(targetId, items, empty) {
 
 function renderChrome() {
     document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
-    const connected = Boolean(state.organisation.name);
+    const connected = isXeroConnected();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
+    syncButtonIds.forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (!button) {
+            return;
+        }
+        button.disabled = !connected;
+        button.textContent = connected ? (buttonId === "primarySyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
+        button.title = connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
+        button.setAttribute("aria-disabled", String(!connected));
+    });
     const sidebarConnectButton = document.getElementById("sidebarConnectButton");
     if (sidebarConnectButton) {
         sidebarConnectButton.textContent = connected ? "Reconnect Xero" : "Login with Xero";
     }
+}
+
+const syncButtonIds = ["primarySyncButton", "sidebarSyncButton"];
+
+function isXeroConnected() {
+    return state.organisation.xeroConnected === true || Boolean(state.organisation.name);
 }
 
 function renderAll() {
@@ -546,6 +561,10 @@ function wireLoginButtons() {
 
 function wireSyncButtons() {
     const sync = async () => {
+        if (!isXeroConnected()) {
+            renderChrome();
+            return;
+        }
         state.organisation.lastSync = "Sync requested just now";
         renderChrome();
         persistState();

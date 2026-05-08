@@ -278,7 +278,7 @@ def api_dashboard(user: dict = Depends(require_api_user)):
 
 @app.get("/api/panel")
 def api_panel(user: dict = Depends(require_user)):
-    return panel_payload()
+    return panel_payload(user)
 
 
 @app.post("/api/panel/sync")
@@ -287,7 +287,7 @@ async def api_panel_sync(user: dict = Depends(require_user)):
     return {
         "status": "ok",
         "summary": sync_run["summary"],
-        "panel": panel_payload(),
+        "panel": panel_payload(user),
     }
 
 

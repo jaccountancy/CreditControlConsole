@@ -120,6 +120,22 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     border-color: var(--line);
     color: var(--ink);
 }
+.primary-button:disabled,
+.ghost-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+    box-shadow: none;
+    transform: none;
+}
+.primary-button:disabled {
+    color: #6f7f99;
+    background: linear-gradient(135deg, #e8edf6, #d9e1ef);
+}
+.ghost-button:disabled {
+    color: var(--muted);
+    background: rgba(248, 251, 255, 0.72);
+    border-color: var(--line);
+}
 .summary-bar {
     flex-wrap: wrap;
     margin-bottom: 20px;
@@ -562,13 +578,12 @@ h1, h2, h3 { letter-spacing: -0.03em; }
                     <span id="syncStamp">Waiting for first sync</span>
                 </div>
                 <a class="ghost-button action-link" id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
-                <button class="primary-button" id="primarySyncButton">Resync from Xero</button>
+                <button class="primary-button" id="primarySyncButton" type="button" disabled>Connect Xero to sync</button>
             </div>
         </header>
 
         <section class="summary-bar">
             <button class="summary-chip is-active" type="button" data-filter="all"><span class="summary-icon">▦</span><span class="summary-chip-content"><span class="summary-chip-label">All</span><span class="summary-chip-subtext">All invoices</span></span><span class="summary-chip-metrics"><strong id="countAll">0</strong><span class="summary-value" id="valueAll">£0</span></span></button>
-            <button class="summary-chip summary-outstanding" type="button" data-filter="outstanding"><span class="summary-icon">◷</span><span class="summary-chip-content"><span class="summary-chip-label">Outstanding</span><span class="summary-chip-subtext">Awaiting payment</span></span><span class="summary-chip-metrics"><strong id="countOutstanding">0</strong><span class="summary-value" id="valueOutstanding">£0</span></span></button>
             <button class="summary-chip summary-overdue" type="button" data-filter="overdue"><span class="summary-icon">⚠</span><span class="summary-chip-content"><span class="summary-chip-label">Overdue</span><span class="summary-chip-subtext">Action required</span></span><span class="summary-chip-metrics"><strong id="countOverdue">0</strong><span class="summary-value" id="valueOverdue">£0</span></span></button>
             <button class="summary-chip summary-query" type="button" data-filter="query"><span class="summary-icon">◌?</span><span class="summary-chip-content"><span class="summary-chip-label">Query</span><span class="summary-chip-subtext">Under review</span></span><span class="summary-chip-metrics"><strong id="countQuery">0</strong><span class="summary-value" id="valueQuery">£0</span></span></button>
             <button class="summary-chip summary-court" type="button" data-filter="court"><span class="summary-icon">⚖</span><span class="summary-chip-content"><span class="summary-chip-label">Legal</span><span class="summary-chip-subtext">Escalated cases</span></span><span class="summary-chip-metrics"><strong id="countCourt">0</strong><span class="summary-value" id="valueCourt">£0</span></span></button>
@@ -631,7 +646,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
                 </div>
                 <div class="detail-actions">
                     <div class="status-badge" id="invoiceStatusBadge">Awaiting data</div>
-                    <button class="ghost-button" id="sidebarSyncButton">Run sync</button>
+                    <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
                 </div>
             </div>
 
@@ -712,7 +727,7 @@ const STORAGE_KEY = "hymn-credit-control-ledger";
 const DEFAULT_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
-    organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync" },
+    organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync", xeroConnected: false },
     dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
     customers: [],
     audit: [],
@@ -920,7 +935,6 @@ function renderSummaryCounts() {
     const counts = {
         all: invoices.length,
         paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
-        outstanding: invoices.filter((invoice) => invoiceCategory(invoice) === "outstanding").length,
         query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").length,
         overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
         court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
@@ -929,7 +943,6 @@ function renderSummaryCounts() {
     const totals = {
         all: invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
-        outstanding: invoices.filter((invoice) => invoiceCategory(invoice) === "outstanding").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
@@ -937,14 +950,12 @@ function renderSummaryCounts() {
     };
     document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
     document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
-    document.getElementById("countOutstanding").textContent = counts.outstanding.toLocaleString("en-GB");
     document.getElementById("countQuery").textContent = counts.query.toLocaleString("en-GB");
     document.getElementById("countOverdue").textContent = counts.overdue.toLocaleString("en-GB");
     document.getElementById("countCourt").textContent = counts.court.toLocaleString("en-GB");
     document.getElementById("countBadDebt").textContent = counts.badDebt.toLocaleString("en-GB");
     document.getElementById("valueAll").textContent = formatCompactCurrency(totals.all);
     document.getElementById("valuePaid").textContent = formatCompactCurrency(totals.paid);
-    document.getElementById("valueOutstanding").textContent = formatCompactCurrency(totals.outstanding);
     document.getElementById("valueQuery").textContent = formatCompactCurrency(totals.query);
     document.getElementById("valueOverdue").textContent = formatCompactCurrency(totals.overdue);
     document.getElementById("valueCourt").textContent = formatCompactCurrency(totals.court);
@@ -1078,13 +1089,27 @@ function renderTimeline(targetId, items, empty) {
 
 function renderChrome() {
     document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
-    const connected = Boolean(state.organisation.name);
+    const connected = isXeroConnected();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
+    syncButtonIds.forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        button.disabled = !connected;
+        button.textContent = connected ? (buttonId === "primarySyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
+        button.title = connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
+        button.setAttribute("aria-disabled", String(!connected));
+    });
     const sidebarConnectButton = document.getElementById("sidebarConnectButton");
     if (sidebarConnectButton) {
         sidebarConnectButton.textContent = connected ? "Reconnect Xero" : "Login with Xero";
     }
+}
+
+const syncButtonIds = ["primarySyncButton", "sidebarSyncButton"];
+
+function isXeroConnected() {
+    return state.organisation.xeroConnected === true || Boolean(state.organisation.name);
 }
 
 function renderAll() {
@@ -1150,6 +1175,10 @@ function wireLoginButtons() {
 
 function wireSyncButtons() {
     const sync = async () => {
+        if (!isXeroConnected()) {
+            renderChrome();
+            return;
+        }
         state.organisation.lastSync = "Sync requested just now";
         renderChrome();
         persistState();
