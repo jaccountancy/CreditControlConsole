@@ -1,4 +1,6 @@
 import json
+import logging
+from html import escape
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
@@ -40,6 +42,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+logger = logging.getLogger(__name__)
 
 
 @app.on_event("startup")
@@ -55,6 +58,59 @@ def wants_json(request: Request) -> bool:
     accept = request.headers.get("accept", "")
     content_type = request.headers.get("content-type", "")
     return "application/json" in accept or "application/json" in content_type
+
+
+def xero_login_error_response(message: str, status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR) -> HTMLResponse:
+    safe_message = escape(message)
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Xero connection failed</title>
+            <style>
+                body {{
+                    margin: 0;
+                    min-height: 100vh;
+                    display: grid;
+                    place-items: center;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    background: #f5f8ff;
+                    color: #1e2f4d;
+                }}
+                main {{
+                    width: min(560px, calc(100vw - 40px));
+                    padding: 32px;
+                    border-radius: 20px;
+                    background: #fff;
+                    box-shadow: 0 18px 60px rgba(41, 79, 148, 0.14);
+                }}
+                h1 {{ margin: 0 0 12px; font-size: 28px; }}
+                p {{ margin: 0 0 22px; color: #65738e; line-height: 1.55; }}
+                a {{
+                    display: inline-flex;
+                    padding: 12px 18px;
+                    border-radius: 999px;
+                    color: #fff;
+                    background: #1d67f2;
+                    text-decoration: none;
+                    font-weight: 700;
+                }}
+            </style>
+        </head>
+        <body>
+            <main>
+                <h1>Xero connection failed</h1>
+                <p>{safe_message}</p>
+                <a href="/login">Back to login</a>
+            </main>
+        </body>
+        </html>
+        """,
+        status_code=status_code,
+    )
 
 
 @app.get("/health")
@@ -75,22 +131,36 @@ def auth_xero_start(redirect_to: str = "/"):
 
 @app.get("/auth/xero/callback")
 async def auth_xero_callback(request: Request, code: str, state: str):
-    state_row = consume_oauth_state(state)
-    token_payload = await exchange_code_for_tokens(code)
-    profile = await fetch_user_profile(token_payload["access_token"])
-    connections = await fetch_connections(token_payload["access_token"])
-    login = store_login(profile, token_payload, connections)
+    try:
+        state_row = consume_oauth_state(state)
+        token_payload = await exchange_code_for_tokens(code)
+        profile = await fetch_user_profile(token_payload["access_token"])
+        connections = await fetch_connections(token_payload["access_token"])
+        login = store_login(profile, token_payload, connections)
 
-    if state_row["device_code"]:
-        session_token = approve_device_code_by_state(state_row["device_code"], login["user"]["id"])
-        response = RedirectResponse("/device/complete?approved=1", status_code=status.HTTP_302_FOUND)
+        if state_row["device_code"]:
+            session_token = approve_device_code_by_state(state_row["device_code"], login["user"]["id"])
+            response = RedirectResponse("/device/complete?approved=1", status_code=status.HTTP_302_FOUND)
+            set_session_cookie(response, session_token)
+            return response
+
+        session_token = create_session(login["user"]["id"], "Web panel")
+        response = RedirectResponse(state_row["redirect_to"] or "/", status_code=status.HTTP_302_FOUND)
         set_session_cookie(response, session_token)
         return response
-
-    session_token = create_session(login["user"]["id"], "Web panel")
-    response = RedirectResponse(state_row["redirect_to"] or "/", status_code=status.HTTP_302_FOUND)
-    set_session_cookie(response, session_token)
-    return response
+    except HTTPException as exc:
+        logger.warning("Xero callback failed: %s", exc.detail)
+        detail = exc.detail
+        if isinstance(detail, dict):
+            message = str(detail.get("message") or detail)
+        else:
+            message = str(detail)
+        return xero_login_error_response(message, exc.status_code)
+    except Exception:
+        logger.exception("Unhandled Xero callback failure")
+        return xero_login_error_response(
+            "An unexpected server error occurred while completing the Xero connection. Check the Railway deploy logs for the full traceback.",
+        )
 
 
 def approve_device_code_by_state(device_code: str, user_id: str) -> str:

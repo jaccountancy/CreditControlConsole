@@ -32,6 +32,16 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
     )
 
 
+def _raise_xero_request_error(exc: httpx.RequestError, action: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail={
+            "message": f"Xero {action} could not be reached.",
+            "error": str(exc),
+        },
+    ) from exc
+
+
 def _iso_to_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -49,15 +59,18 @@ def _xero_date(value: str | None):
 async def exchange_code_for_tokens(code: str) -> dict:
     settings = get_settings()
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            TOKEN_URL,
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": settings.xero_redirect_uri,
-            },
-            auth=(settings.xero_client_id, settings.xero_client_secret),
-        )
+        try:
+            response = await client.post(
+                TOKEN_URL,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": settings.xero_redirect_uri,
+                },
+                auth=(settings.xero_client_id, settings.xero_client_secret),
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "token exchange")
         if response.is_error:
             _raise_xero_http_error(response, "token exchange")
         return response.json()
@@ -78,14 +91,17 @@ async def refresh_connection(connection_id: str) -> dict:
 
     settings = get_settings()
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            TOKEN_URL,
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": row["refresh_token"],
-            },
-            auth=(settings.xero_client_id, settings.xero_client_secret),
-        )
+        try:
+            response = await client.post(
+                TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": row["refresh_token"],
+                },
+                auth=(settings.xero_client_id, settings.xero_client_secret),
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "token refresh")
         if response.is_error:
             _raise_xero_http_error(response, "token refresh")
         payload = response.json()
@@ -119,10 +135,13 @@ async def refresh_connection(connection_id: str) -> dict:
 
 async def fetch_user_profile(access_token: str) -> dict:
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
+        try:
+            response = await client.get(
+                USERINFO_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "profile fetch")
         if response.is_error:
             _raise_xero_http_error(response, "profile fetch")
         return response.json()
@@ -130,10 +149,13 @@ async def fetch_user_profile(access_token: str) -> dict:
 
 async def fetch_connections(access_token: str) -> list[dict]:
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            CONNECTIONS_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
+        try:
+            response = await client.get(
+                CONNECTIONS_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "organisation fetch")
         if response.is_error:
             _raise_xero_http_error(response, "organisation fetch")
         return response.json()
@@ -142,6 +164,20 @@ async def fetch_connections(access_token: str) -> list[dict]:
 def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> dict:
     if not connections:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No Xero organisations linked.")
+
+    missing_token_fields = [
+        field
+        for field in ("access_token", "refresh_token", "expires_in")
+        if not token_payload.get(field)
+    ]
+    if missing_token_fields:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Xero token response was missing required fields.",
+                "missing": missing_token_fields,
+            },
+        )
 
     chosen = connections[0]
     tenant_id = chosen["tenantId"]
@@ -173,7 +209,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                 """
                 DELETE FROM xero_connections
                 WHERE user_id = %s
-                  AND tenant_id <> %s
+                   OR tenant_id = %s
                 """,
                 (user["id"], tenant_id),
             )
@@ -192,17 +228,6 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                     updated_at
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (tenant_id) DO UPDATE
-                SET xero_user_id = EXCLUDED.xero_user_id,
-                    user_id = EXCLUDED.user_id,
-                    tenant_id = EXCLUDED.tenant_id,
-                    tenant_name = EXCLUDED.tenant_name,
-                    tenant_type = EXCLUDED.tenant_type,
-                    access_token = EXCLUDED.access_token,
-                    refresh_token = EXCLUDED.refresh_token,
-                    expires_at = EXCLUDED.expires_at,
-                    scope = EXCLUDED.scope,
-                    updated_at = EXCLUDED.updated_at
                 RETURNING *
                 """,
                 (
@@ -228,15 +253,18 @@ async def xero_api_get(connection_row: dict, url: str, params: dict | None = Non
     connection_row = await refresh_connection(connection_row["id"])
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.get(
-            url,
-            params=params,
-            headers={
-                "Authorization": f'Bearer {connection_row["access_token"]}',
-                "xero-tenant-id": connection_row["tenant_id"],
-                "Accept": "application/json",
-            },
-        )
+        try:
+            response = await client.get(
+                url,
+                params=params,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                },
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "API request")
         if response.is_error:
             _raise_xero_http_error(response, "API request")
         return response.json()
