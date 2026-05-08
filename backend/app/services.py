@@ -375,9 +375,10 @@ def panel_payload(user: dict | None = None) -> dict:
         connection.commit()
 
     xero_connected = False
+    xero_connection = None
     if user and user.get("id"):
         try:
-            get_xero_connection_for_user(user["id"])
+            xero_connection = get_xero_connection_for_user(user["id"])
             xero_connected = True
         except HTTPException:
             xero_connected = False
@@ -385,7 +386,7 @@ def panel_payload(user: dict | None = None) -> dict:
     dashboard = dashboard_payload()
     return {
         "organisation": {
-            "name": "Xero organisation connected" if xero_connected else "",
+            "name": xero_connection.get("tenant_name", "Xero Organisation") if xero_connected and xero_connection else "",
             "status": "Connected" if xero_connected else "Awaiting live connection",
             "lastSync": f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync",
             "xeroConnected": xero_connected,

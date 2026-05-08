@@ -1,34 +1,26 @@
 const STORAGE_KEY = "hymn-credit-control-ledger";
 const DEFAULT_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
-
 const emptyData = {
-    organisation: {
-        name: "",
-        status: "Awaiting live connection",
-        lastSync: "Waiting for first sync",
-        xeroConnected: false
-    },
-    dashboard: {
-        totalReceivables: 0,
-        totalOverdue: 0,
-        openInvoices: 0,
-        accountsNeedingAction: 0,
-        potentialInterest: 0
-    },
+    organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync", xeroConnected: false },
+    dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
     customers: [],
     audit: [],
     selectedInvoice: null
 };
-
 const state = loadState();
 let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
+let selectedClientId = null;
+let activeView = "ledger";
 let searchTerm = "";
-let managerFilter = "all";
 let clientFilter = "all";
+let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
+
+const sortLabels = { priority: "Priority", due: "Due date", amount: "Amount due", client: "Client" };
+const filterLabels = { all: "All invoices", action: "Needs action", current: "Current only" };
 
 function normaliseAPI(config) {
     return {
@@ -57,17 +49,10 @@ function normaliseState(payload) {
 
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
-
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) {
-            return injected;
-        }
-
-        return normaliseState({
-            ...injected,
-            ...JSON.parse(stored),
-        });
+        if (!stored) return injected;
+        return normaliseState({ ...injected, ...JSON.parse(stored) });
     } catch {
         return injected;
     }
@@ -79,44 +64,41 @@ function persistState() {
 
 function replaceState(next) {
     const preservedInvoiceId = selectedInvoiceId;
+    const localClientNotes = new Map(state.customers.map((customer) => [customer.id, customer.clientNotes || []]));
     state.organisation = next.organisation;
     state.dashboard = next.dashboard;
-    state.customers = next.customers;
+    state.customers = next.customers.map((customer) => ({
+        ...customer,
+        clientNotes: customer.clientNotes || localClientNotes.get(customer.id) || []
+    }));
     state.audit = next.audit;
     state.selectedInvoice = next.selectedInvoice;
-
-    const invoice = findInvoiceById(preservedInvoiceId) || next.selectedInvoice || allInvoices()[0] || null;
+    const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
+    const invoice = findInvoiceById(preservedInvoiceId) || findInvoiceById(nextInvoiceId) || allInvoices()[0] || null;
     selectedInvoiceId = invoice?.id || null;
+    selectedClientId = invoice?.customerId || selectedClientId;
     persistState();
 }
 
 function endpointURL(template, params = {}) {
-    const path = Object.entries(params).reduce(
-        (accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)),
-        template
-    );
+    const path = Object.entries(params).reduce((accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)), template);
     return `${api.baseUrl}${path}`;
 }
 
 function loginURL() {
+    const loginEndpoint = endpointURL(api.endpoints.login);
+    const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
+    if (!isHostedPage) return loginEndpoint;
     const separator = api.endpoints.login.includes("?") ? "&" : "?";
-    return `${endpointURL(api.endpoints.login)}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
+    return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
 }
 
 async function requestJSON(template, options = {}, params = {}) {
     const response = await fetch(endpointURL(template, params), {
         ...options,
-        headers: {
-            "Content-Type": "application/json",
-            ...api.headers,
-            ...(options.headers || {})
-        }
+        headers: { "Content-Type": "application/json", ...api.headers, ...(options.headers || {}) }
     });
-
-    if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
     const contentType = response.headers.get("content-type") || "";
     return contentType.includes("application/json") ? response.json() : null;
 }
@@ -124,34 +106,52 @@ async function requestJSON(template, options = {}, params = {}) {
 async function hydrateFromAPI() {
     try {
         const payload = await requestJSON(api.endpoints.panel);
-        if (payload) {
-            replaceState(normaliseState(payload));
-        }
+        if (payload) replaceState(normaliseState(payload));
     } catch (error) {
         console.error("Unable to load panel data from API", error);
     }
 }
 
+function decorateInvoice(customer, invoice) {
+    return {
+        ...invoice,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerContact: customer.contact || "",
+        customerStatus: customer.status || "",
+        manager: customer.manager || "Unassigned",
+        description: invoice.description || invoice.invoiceNumber || "Xero invoice",
+        notesSummary: noteSnippet(invoice),
+    };
+}
+
 function allInvoices() {
-    return state.customers.flatMap((customer) =>
-        (customer.invoices || []).map((invoice) => ({
-            ...invoice,
-            customerId: customer.id,
-            customerName: customer.name,
-            customerContact: customer.contact || "",
-            customerStatus: customer.status || "",
-            manager: customer.manager || "Unassigned",
-            description: invoice.description || invoice.invoiceNumber || "Xero invoice",
-            notesSummary: noteSnippet(invoice),
-        }))
-    );
+    return state.customers.flatMap((customer) => (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)));
+}
+
+function findCustomerById(customerId) {
+    if (!customerId) return null;
+    return state.customers.find((customer) => customer.id === customerId) || null;
+}
+
+function findCustomerByInvoiceId(invoiceId) {
+    if (!invoiceId) return null;
+    return state.customers.find((customer) => (customer.invoices || []).some((invoice) => invoice.id === invoiceId)) || null;
+}
+
+function mutableInvoiceById(invoiceId) {
+    const customer = findCustomerByInvoiceId(invoiceId);
+    const invoice = customer ? (customer.invoices || []).find((item) => item.id === invoiceId) : null;
+    return invoice ? { customer, invoice } : null;
+}
+
+function clientInvoices(customer) {
+    return customer ? (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)) : [];
 }
 
 function findInvoiceById(invoiceId) {
-    if (!invoiceId) {
-        return null;
-    }
-    return allInvoices().find((invoice) => invoice.id === invoiceId) || null;
+    const match = mutableInvoiceById(invoiceId);
+    return match ? decorateInvoice(match.customer, match.invoice) : null;
 }
 
 function invoiceCategory(invoice) {
@@ -159,27 +159,17 @@ function invoiceCategory(invoice) {
     const amountDue = Number(invoice.amountDue || 0);
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
     const now = new Date();
-
-    if (amountDue <= 0 || control.includes("paid")) {
-        return "paid";
-    }
-    if (control.includes("court") || control.includes("legal")) {
-        return "court";
-    }
-    if (amountDue > 0 && dueDate && dueDate < now) {
-        return "overdue";
-    }
+    if (amountDue <= 0 || control.includes("paid")) return "paid";
+    if (control.includes("bad debt") || control.includes("bad-debt") || control.includes("bad_debt")) return "bad-debt";
+    if (control.includes("court") || control.includes("legal")) return "court";
+    if (control.includes("query") || control.includes("queried") || control.includes("dispute") || control.includes("disputed")) return "query";
+    if (amountDue > 0 && dueDate && dueDate < now) return "overdue";
     return "outstanding";
 }
 
 function invoiceStatusLabel(invoice) {
     const category = invoiceCategory(invoice);
-    return {
-        paid: "Paid",
-        outstanding: "Outstanding",
-        overdue: "Overdue",
-        court: "Court"
-    }[category];
+    return { paid: "Paid", outstanding: "Outstanding", query: "Query", overdue: "Overdue", court: "Legal", "bad-debt": "Bad debt" }[category];
 }
 
 function formatCurrency(value) {
@@ -192,38 +182,27 @@ function formatCurrency(value) {
 }
 
 function formatDate(value) {
-    if (!value) {
-        return "--";
-    }
+    if (!value) return "--";
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return value;
-    }
-    return new Intl.DateTimeFormat("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
-    }).format(date);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
 function noteSnippet(invoice) {
-    if (invoice.notes?.length) {
-        return invoice.notes[0].body || invoice.notes[0].title || "";
-    }
-    if (invoice.statuses?.length) {
-        return invoice.statuses[0].body || "";
-    }
+    if (invoice.notes?.length) return invoice.notes[0].body || invoice.notes[0].title || "";
+    if (invoice.statuses?.length) return invoice.statuses[0].body || "";
     return "";
 }
 
 function descriptionGlyph(invoice) {
     const category = invoiceCategory(invoice);
-    return {
-        paid: "✓",
-        outstanding: "◌",
-        overdue: "!",
-        court: "§"
-    }[category];
+    return { paid: "✓", outstanding: "◷", query: "◌?", overdue: "⚠", court: "⚖", "bad-debt": "✕" }[category];
+}
+
+function statusSelectValue(invoice) {
+    if (!invoice) return "Outstanding";
+    const value = invoice.controlStatus || invoiceStatusLabel(invoice) || "Outstanding";
+    return `${value}`.toLowerCase().includes("court") ? "Legal" : value;
 }
 
 function managerValues() {
@@ -243,11 +222,34 @@ function filteredInvoices() {
             invoice.controlStatus
         ].join(" ").toLowerCase();
         const matchesSearch = blob.includes(searchTerm.toLowerCase());
-        const matchesManager = managerFilter === "all" || invoice.manager === managerFilter;
-        const needsAction = invoiceCategory(invoice) === "overdue" || invoiceCategory(invoice) === "court" || invoiceCategory(invoice) === "outstanding";
+        const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(invoiceCategory(invoice));
         const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
-        return matchesFilter && matchesSearch && matchesManager && matchesClient;
-    });
+        return matchesFilter && matchesSearch && matchesClient;
+    }).sort(compareInvoices);
+}
+
+function compareInvoices(a, b) {
+    const categoryPriority = { overdue: 0, court: 1, query: 2, outstanding: 3, "bad-debt": 4, paid: 5 };
+    if (sortMode === "amount") return Number(b.amountDue || 0) - Number(a.amountDue || 0);
+    if (sortMode === "client") return `${a.customerName || ""}`.localeCompare(`${b.customerName || ""}`);
+    if (sortMode === "due") return dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
+    return (categoryPriority[invoiceCategory(a)] ?? 9) - (categoryPriority[invoiceCategory(b)] ?? 9)
+        || dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
+}
+
+function dateSortValue(value) {
+    if (!value) return Number.MAX_SAFE_INTEGER;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? Number.MAX_SAFE_INTEGER : date.getTime();
+}
+
+function formatCompactCurrency(value) {
+    const amount = Number(value || 0);
+    const absolute = Math.abs(amount);
+    const formatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: absolute >= 10000 ? 0 : 1 });
+    if (absolute >= 1000000) return `£${formatter.format(amount / 1000000)}M`;
+    if (absolute >= 1000) return `£${formatter.format(amount / 1000)}K`;
+    return formatCurrency(amount).replace(".00", "");
 }
 
 function renderSummaryCounts() {
@@ -255,31 +257,45 @@ function renderSummaryCounts() {
     const counts = {
         all: invoices.length,
         paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
+        query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").length,
         overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
         court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
+        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").length,
     };
-
+    const totals = {
+        all: invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
+        query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+    };
     document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
     document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
+    document.getElementById("countQuery").textContent = counts.query.toLocaleString("en-GB");
     document.getElementById("countOverdue").textContent = counts.overdue.toLocaleString("en-GB");
     document.getElementById("countCourt").textContent = counts.court.toLocaleString("en-GB");
-
+    document.getElementById("countBadDebt").textContent = counts.badDebt.toLocaleString("en-GB");
+    document.getElementById("valueAll").textContent = formatCompactCurrency(totals.all);
+    document.getElementById("valuePaid").textContent = formatCompactCurrency(totals.paid);
+    document.getElementById("valueQuery").textContent = formatCompactCurrency(totals.query);
+    document.getElementById("valueOverdue").textContent = formatCompactCurrency(totals.overdue);
+    document.getElementById("valueCourt").textContent = formatCompactCurrency(totals.court);
+    document.getElementById("valueBadDebt").textContent = formatCompactCurrency(totals.badDebt);
     document.querySelectorAll(".summary-chip").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.filter === selectedFilter);
     });
 }
 
-function renderManagerFilter() {
-    const select = document.getElementById("managerFilter");
-    const currentValue = managerFilter;
-    select.innerHTML = `<option value="all">All Managers</option>`;
-    managerValues().forEach((manager) => {
-        const option = document.createElement("option");
-        option.value = manager;
-        option.textContent = manager;
-        select.appendChild(option);
+function renderToolbarControls() {
+    document.getElementById("sortButton").textContent = `Sort: ${sortLabels[sortMode]}`;
+    document.getElementById("filterButton").textContent = `Filter: ${filterLabels[clientFilter]}`;
+    document.querySelectorAll("[data-sort-mode]").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.sortMode === sortMode);
     });
-    select.value = currentValue;
+    document.querySelectorAll("[data-filter-mode]").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.filterMode === clientFilter);
+    });
 }
 
 function renderInvoiceTable() {
@@ -287,23 +303,12 @@ function renderInvoiceTable() {
     const invoices = filteredInvoices();
     const pages = Math.max(1, Math.ceil(invoices.length / pageSize));
     currentPage = Math.min(currentPage, pages);
-
     const start = (currentPage - 1) * pageSize;
     const paged = invoices.slice(start, start + pageSize);
-
     tbody.innerHTML = "";
-
     if (!paged.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `
-            <td colspan="8">
-                <div class="empty-state">
-                    <p class="eyebrow">No invoices</p>
-                    <h4>No ledger rows match the current filters</h4>
-                    <p>Connect Xero and sync live data, or widen the search and filter settings.</p>
-                </div>
-            </td>
-        `;
+        row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
         tbody.appendChild(row);
     } else {
         paged.forEach((invoice) => {
@@ -311,66 +316,38 @@ function renderInvoiceTable() {
             const row = document.createElement("tr");
             row.className = invoice.id === selectedInvoiceId ? "is-selected" : "";
             row.innerHTML = `
-                <td>
-                    <div class="client-name">${invoice.customerName || "Unnamed client"}</div>
-                    <div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div>
-                </td>
-                <td>
-                    <div class="client-name">${invoice.invoiceNumber || "--"}</div>
-                    <div class="invoice-subline">${invoice.id || ""}</div>
-                </td>
-                <td>
-                    <div class="description-cell">
-                        <div class="description-icon">${descriptionGlyph(invoice)}</div>
-                        <div>
-                            <div class="description-title">${invoice.description || "Xero invoice"}</div>
-                            <div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div>
-                        </div>
-                    </div>
-                </td>
+                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
+                <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
+                <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
                 <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
-                <td>
-                    <div class="payment-cell">
-                        <div class="payment-status">
-                            <span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span>
-                            <span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span>
-                        </div>
-                        <div class="paid-date">${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div>
-                    </div>
-                </td>
+                <td><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
                 <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
                 <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
                 <td><button class="row-menu" type="button">⋮</button></td>
             `;
             row.addEventListener("click", () => {
                 selectedInvoiceId = invoice.id;
+                selectedClientId = invoice.customerId;
+                activeView = "client";
                 renderAll();
+                window.scrollTo({ top: 0, behavior: "smooth" });
             });
             tbody.appendChild(row);
         });
     }
-
     renderPagination(invoices.length, pages, start, paged.length);
 }
 
 function renderPagination(totalResults, totalPages, start, count) {
-    document.getElementById("resultsText").textContent = totalResults
-        ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} results`
-        : "Showing 0 results";
-
+    document.getElementById("resultsText").textContent = totalResults ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} results` : "Showing 0 results";
     document.getElementById("previousPageButton").disabled = currentPage <= 1;
     document.getElementById("nextPageButton").disabled = currentPage >= totalPages;
-
     const target = document.getElementById("pagePills");
     target.innerHTML = "";
-
     const pages = [];
     for (let page = 1; page <= totalPages; page += 1) {
-        if (page <= 3 || page > totalPages - 2 || Math.abs(page - currentPage) <= 1) {
-            pages.push(page);
-        }
+        if (page <= 3 || page > totalPages - 2 || Math.abs(page - currentPage) <= 1) pages.push(page);
     }
-
     [...new Set(pages)].forEach((page) => {
         const button = document.createElement("button");
         button.type = "button";
@@ -384,61 +361,110 @@ function renderPagination(totalResults, totalPages, start, count) {
     });
 }
 
-function renderDetailPanel() {
-    const invoice = findInvoiceById(selectedInvoiceId) || filteredInvoices()[0] || allInvoices()[0] || null;
-    selectedInvoiceId = invoice?.id || null;
+function renderClientScreen() {
+    const ledgerView = document.getElementById("ledgerView");
+    const clientScreen = document.getElementById("clientScreen");
+    ledgerView.hidden = activeView !== "ledger";
+    clientScreen.hidden = activeView !== "client";
+    if (activeView !== "client") return;
 
-    document.getElementById("invoiceTitle").textContent = invoice ? `${invoice.customerName} · ${invoice.invoiceNumber}` : "No invoice selected";
-    document.getElementById("invoiceMeta").textContent = invoice
-        ? `${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}`
-        : "Select a row above to inspect status, notes, promise to pay and late-payment guidance.";
-    document.getElementById("invoiceStatusBadge").textContent = invoice ? invoiceStatusLabel(invoice) : "Awaiting data";
-    document.getElementById("invoiceStatusBadge").className = `status-badge ${invoice ? invoiceCategory(invoice) : ""}`.trim();
+    const invoice = findInvoiceById(selectedInvoiceId);
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    const invoices = clientInvoices(client);
+    const selectedInvoice = invoice || invoices[0] || null;
+    selectedInvoiceId = selectedInvoice?.id || null;
+    selectedClientId = client?.id || selectedInvoice?.customerId || null;
 
-    const stats = document.getElementById("detailStats");
+    document.getElementById("clientTitle").textContent = client?.name || "No client selected";
+    document.getElementById("clientMeta").textContent = client
+        ? `${client.contact || "Xero contact"} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"} · ${client.manager || "Unassigned"}`
+        : "Select an invoice from the ledger to open the client workspace.";
+
+    const openInvoices = invoices.filter((item) => invoiceCategory(item) !== "paid");
+    const totalDue = invoices.reduce((sum, item) => sum + Number(item.amountDue || 0), 0);
+    const overdueCount = invoices.filter((item) => invoiceCategory(item) === "overdue").length;
+    document.getElementById("clientStatusBadge").textContent = client ? `${openInvoices.length} open` : "Awaiting data";
+    document.getElementById("clientStatusBadge").className = "status-badge";
+
+    const stats = document.getElementById("clientStats");
     stats.innerHTML = "";
-
-    const items = invoice ? [
-        ["Amount due", formatCurrency(invoice.amountDue || 0)],
-        ["Amount paid", formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))],
-        ["Overdue days", `${invoice.overdueDays || 0}`],
-        ["Promised date", invoice.promisedDate ? formatDate(invoice.promisedDate) : "--"],
-    ] : [];
-
-    items.forEach(([label, value]) => {
+    [
+        ["Total due", formatCurrency(totalDue)],
+        ["Open invoices", `${openInvoices.length}`],
+        ["Overdue", `${overdueCount}`],
+        ["Selected invoice", selectedInvoice?.invoiceNumber || "--"],
+    ].forEach(([label, value]) => {
         const card = document.createElement("article");
         card.className = "detail-stat";
         card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
         stats.appendChild(card);
     });
 
-    document.getElementById("interestInfoText").textContent = invoice
-        ? `If this went to court there would be £${Number(invoice.latePayment?.court_cost || invoice.latePayment?.courtCost || 35).toFixed(0)} in court costs and £${Number(invoice.latePayment?.interest || 0).toFixed(2)} in statutory interest so far.`
+    document.getElementById("interestInfoText").textContent = selectedInvoice
+        ? `For ${selectedInvoice.invoiceNumber || "this invoice"}, court costs would be £${Number(selectedInvoice.latePayment?.court_cost || selectedInvoice.latePayment?.courtCost || 35).toFixed(0)} and statutory interest so far is £${Number(selectedInvoice.latePayment?.interest || 0).toFixed(2)}.`
         : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
 
-    document.getElementById("statusSelect").value = invoice?.controlStatus || invoiceStatusLabel(invoice) || "Outstanding";
+    renderClientInvoicePicker(invoices);
+    renderClientInvoiceList(invoices);
+    renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
+    renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
+    renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+}
 
-    renderTimeline("statusTimeline", invoice?.statuses || [], {
-        eyebrow: "No status history",
-        title: "Status changes will appear here",
-        body: "Save a status change to build the credit-control history."
+function renderClientInvoicePicker(invoices) {
+    const select = document.getElementById("clientInvoiceSelect");
+    select.innerHTML = "";
+    invoices.forEach((invoice) => {
+        const option = document.createElement("option");
+        option.value = invoice.id;
+        option.textContent = `${invoice.invoiceNumber || invoice.id} · ${formatCurrency(invoice.amountDue || 0)} due`;
+        select.appendChild(option);
     });
-    renderTimeline("notesTimeline", invoice?.notes || [], {
-        eyebrow: "No notes",
-        title: "Internal notes will appear here",
-        body: "Use the note form to log calls, promises or chasing updates."
+    select.value = selectedInvoiceId || "";
+}
+
+function renderClientInvoiceList(invoices) {
+    const target = document.getElementById("clientInvoiceList");
+    target.innerHTML = "";
+    if (!invoices.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = "No invoices";
+        emptyState.querySelector("h4").textContent = "No Xero invoices for this client";
+        emptyState.querySelector("p:last-child").textContent = "Sync from Xero to populate the client ledger.";
+        target.appendChild(emptyState);
+        return;
+    }
+    invoices.forEach((invoice) => {
+        const button = document.createElement("button");
+        const category = invoiceCategory(invoice);
+        button.type = "button";
+        button.className = `client-invoice-row${invoice.id === selectedInvoiceId ? " is-selected" : ""}`;
+        button.innerHTML = `
+            <div>
+                <div class="client-name">${invoice.invoiceNumber || "Invoice"}</div>
+                <div class="invoice-subline">${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}</div>
+            </div>
+            <span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span>
+            <strong>${formatCurrency(invoice.amountDue || 0)}</strong>
+        `;
+        button.addEventListener("click", () => {
+            selectedInvoiceId = invoice.id;
+            renderClientScreen();
+        });
+        target.appendChild(button);
     });
-    renderTimeline("promiseTimeline", invoice?.promises || [], {
-        eyebrow: "No promises",
-        title: "Promise-to-pay entries will appear here",
-        body: "Record a commitment to track expected cash collection."
-    });
+}
+
+function clientStatusItems(invoices) {
+    return invoices.flatMap((invoice) => (invoice.statuses || []).map((item) => ({
+        ...item,
+        title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Status update"}`
+    })));
 }
 
 function renderTimeline(targetId, items, empty) {
     const target = document.getElementById(targetId);
     target.innerHTML = "";
-
     if (!items.length) {
         const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
         emptyState.querySelector(".eyebrow").textContent = empty.eyebrow;
@@ -447,31 +473,28 @@ function renderTimeline(targetId, items, empty) {
         target.appendChild(emptyState);
         return;
     }
-
     items.forEach((item) => {
         const row = document.createElement("article");
         row.className = "timeline-item";
-        row.innerHTML = `
-            <div class="timeline-head">
-                <span class="timeline-title">${item.title || "Update"}</span>
-                <span class="timeline-stamp">${item.stamp || ""}</span>
-            </div>
-            <div class="timeline-body">${item.body || ""}</div>
-        `;
+        row.innerHTML = `<div class="timeline-head"><span class="timeline-title">${item.title || "Update"}</span><span class="timeline-stamp">${item.stamp || ""}</span></div><div class="timeline-body">${item.body || ""}</div>`;
         target.appendChild(row);
     });
 }
 
 function renderChrome() {
     document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
+    const organisationName = state.organisation.name || "Xero organisation not connected";
+    const lastSync = state.organisation.lastSync || "Waiting for first sync";
+    const syncCopy = lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
+        ? lastSync
+        : `Last sync: ${lastSync}`;
+    document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
     const connected = isXeroConnected();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
     syncButtonIds.forEach((buttonId) => {
         const button = document.getElementById(buttonId);
-        if (!button) {
-            return;
-        }
+        if (!button) return;
         button.disabled = !connected;
         button.textContent = connected ? (buttonId === "primarySyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
         button.title = connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
@@ -492,9 +515,9 @@ function isXeroConnected() {
 function renderAll() {
     renderChrome();
     renderSummaryCounts();
-    renderManagerFilter();
+    renderToolbarControls();
     renderInvoiceTable();
-    renderDetailPanel();
+    renderClientScreen();
 }
 
 function wireFilters() {
@@ -505,57 +528,73 @@ function wireFilters() {
             renderAll();
         });
     });
-
     document.getElementById("ledgerSearch").addEventListener("input", (event) => {
         searchTerm = event.target.value;
         currentPage = 1;
         renderInvoiceTable();
     });
-
-    document.getElementById("managerFilter").addEventListener("change", (event) => {
-        managerFilter = event.target.value;
-        currentPage = 1;
-        renderInvoiceTable();
+    document.getElementById("sortButton").addEventListener("click", () => toggleToolbarMenu("sortMenu", "sortButton"));
+    document.getElementById("filterButton").addEventListener("click", () => toggleToolbarMenu("filterMenu", "filterButton"));
+    document.querySelectorAll("[data-sort-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+            sortMode = button.dataset.sortMode;
+            currentPage = 1;
+            closeToolbarMenus();
+            renderAll();
+        });
     });
-
-    document.getElementById("clientFilter").innerHTML = `
-        <option value="all">Active Clients</option>
-        <option value="action">Needs Action</option>
-        <option value="current">Current Only</option>
-    `;
-    document.getElementById("clientFilter").addEventListener("change", (event) => {
-        clientFilter = event.target.value;
-        currentPage = 1;
-        renderInvoiceTable();
+    document.querySelectorAll("[data-filter-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+            clientFilter = button.dataset.filterMode;
+            currentPage = 1;
+            closeToolbarMenus();
+            renderAll();
+        });
     });
-
-    document.getElementById("pageSizeSelect").addEventListener("change", (event) => {
-        pageSize = Number(event.target.value);
-        currentPage = 1;
-        renderInvoiceTable();
+    document.addEventListener("click", (event) => {
+        if (!event.target.closest(".toolbar-menu-wrap")) closeToolbarMenus();
     });
-
     document.getElementById("previousPageButton").addEventListener("click", () => {
         currentPage = Math.max(1, currentPage - 1);
         renderInvoiceTable();
     });
-
     document.getElementById("nextPageButton").addEventListener("click", () => {
         currentPage += 1;
         renderInvoiceTable();
     });
 }
 
+function toggleToolbarMenu(menuId, buttonId) {
+    const menu = document.getElementById(menuId);
+    const button = document.getElementById(buttonId);
+    const willOpen = menu.hidden;
+    closeToolbarMenus();
+    menu.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+}
+
+function closeToolbarMenus() {
+    ["sortMenu", "filterMenu"].forEach((menuId) => {
+        const menu = document.getElementById(menuId);
+        if (menu) menu.hidden = true;
+    });
+    ["sortButton", "filterButton"].forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (button) button.setAttribute("aria-expanded", "false");
+    });
+}
+
 function wireLoginButtons() {
-    const connect = () => {
+    const connect = (event) => {
+        event.preventDefault();
         const url = loginURL();
         if (!url) {
             window.alert("Unable to start the Xero login flow.");
             return;
         }
-        window.location.href = url;
+        console.info("Starting Xero login:", url);
+        window.location.assign(url);
     };
-
     document.getElementById("connectXeroButton").addEventListener("click", connect);
 }
 
@@ -568,7 +607,6 @@ function wireSyncButtons() {
         state.organisation.lastSync = "Sync requested just now";
         renderChrome();
         persistState();
-
         try {
             await requestJSON(api.endpoints.sync, { method: "POST" });
             await hydrateFromAPI();
@@ -577,100 +615,75 @@ function wireSyncButtons() {
             console.error("Unable to sync panel data", error);
         }
     };
-
     document.getElementById("primarySyncButton").addEventListener("click", sync);
     document.getElementById("sidebarSyncButton").addEventListener("click", sync);
 }
 
 function wireForms() {
-    document.getElementById("noteForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const invoice = findInvoiceById(selectedInvoiceId);
-        const body = document.getElementById("noteInput").value.trim();
-        if (!invoice || !body) {
-            return;
-        }
-
-        invoice.notes = [{ title: "Internal note", body, stamp: new Date().toISOString() }, ...(invoice.notes || [])];
-        document.getElementById("noteInput").value = "";
-        persistState();
-        renderDetailPanel();
-        renderInvoiceTable();
-
-        try {
-            await requestJSON(api.endpoints.note, {
-                method: "POST",
-                body: JSON.stringify({ body })
-            }, { invoiceId: invoice.id });
-            await hydrateFromAPI();
-            renderAll();
-        } catch (error) {
-            console.error("Unable to save note", error);
-        }
+    document.getElementById("backToLedgerButton").addEventListener("click", () => {
+        activeView = "ledger";
+        renderAll();
+    });
+    document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
+        selectedInvoiceId = event.target.value;
+        renderClientScreen();
     });
 
-    document.getElementById("promiseForm").addEventListener("submit", async (event) => {
+    document.getElementById("clientNoteForm").addEventListener("submit", (event) => {
         event.preventDefault();
-        const invoice = findInvoiceById(selectedInvoiceId);
-        const promisedAmount = document.getElementById("promiseAmount").value.trim();
-        const promisedDate = document.getElementById("promiseDate").value;
-        const note = document.getElementById("promiseNote").value.trim();
-        if (!invoice || !promisedAmount || !promisedDate) {
-            return;
-        }
-
-        invoice.promises = [{
-            title: `Promise for ${formatCurrency(promisedAmount)}`,
-            body: note,
-            stamp: promisedDate
-        }, ...(invoice.promises || [])];
-        invoice.promisedDate = promisedDate;
-        document.getElementById("promiseAmount").value = "";
-        document.getElementById("promiseDate").value = "";
-        document.getElementById("promiseNote").value = "";
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const body = document.getElementById("clientNoteInput").value.trim();
+        if (!client || !body) return;
+        client.clientNotes = [{ title: "Client note", body, stamp: new Date().toISOString() }, ...(client.clientNotes || [])];
+        document.getElementById("clientNoteInput").value = "";
         persistState();
-        renderDetailPanel();
-
-        try {
-            await requestJSON(api.endpoints.promise, {
-                method: "POST",
-                body: JSON.stringify({ promisedAmount, promisedDate, note })
-            }, { invoiceId: invoice.id });
-            await hydrateFromAPI();
-            renderAll();
-        } catch (error) {
-            console.error("Unable to save promise", error);
-        }
+        renderClientScreen();
     });
 
-    document.getElementById("statusForm").addEventListener("submit", async (event) => {
+    document.getElementById("invoiceNoteForm").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const invoice = findInvoiceById(selectedInvoiceId);
-        const statusValue = document.getElementById("statusSelect").value;
-        const note = document.getElementById("statusNote").value.trim();
-        if (!invoice) {
-            return;
-        }
-
-        invoice.controlStatus = statusValue;
-        invoice.statuses = [{
-            title: statusValue,
-            body: note,
-            stamp: new Date().toISOString()
-        }, ...(invoice.statuses || [])];
-        document.getElementById("statusNote").value = "";
+        const match = mutableInvoiceById(selectedInvoiceId);
+        const body = document.getElementById("invoiceNoteInput").value.trim();
+        if (!match || !body) return;
+        match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
+        document.getElementById("invoiceNoteInput").value = "";
         persistState();
         renderAll();
-
         try {
-            await requestJSON(api.endpoints.status, {
-                method: "POST",
-                body: JSON.stringify({ statusValue, note })
-            }, { invoiceId: invoice.id });
+            await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: match.invoice.id });
             await hydrateFromAPI();
             renderAll();
         } catch (error) {
-            console.error("Unable to save status", error);
+            console.error("Unable to save invoice note", error);
+        }
+    });
+
+    document.getElementById("bulkStatusForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const statusValue = document.getElementById("bulkStatusSelect").value;
+        const note = document.getElementById("bulkStatusNote").value.trim();
+        if (!client) return;
+        const invoiceIds = (client.invoices || [])
+            .filter((invoice) => invoiceCategory(decorateInvoice(client, invoice)) !== "paid")
+            .map((invoice) => invoice.id);
+        invoiceIds.forEach((invoiceId) => {
+            const match = mutableInvoiceById(invoiceId);
+            if (!match) return;
+            match.invoice.controlStatus = statusValue;
+            match.invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(match.invoice.statuses || [])];
+        });
+        document.getElementById("bulkStatusNote").value = "";
+        persistState();
+        renderAll();
+        try {
+            await Promise.allSettled(invoiceIds.map((invoiceId) =>
+                requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId })
+            ));
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save bulk status", error);
         }
     });
 }
@@ -683,5 +696,4 @@ async function init() {
     wireSyncButtons();
     wireForms();
 }
-
 init();

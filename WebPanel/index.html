@@ -15,6 +15,7 @@
             <div class="brand-lockup">
                 <div>
                     <h1>Credit Control Ledger</h1>
+                    <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                 </div>
             </div>
 
@@ -28,23 +29,14 @@
             </div>
         </header>
 
+        <section class="ledger-view" id="ledgerView">
         <section class="summary-bar">
-            <button class="summary-chip is-active" type="button" data-filter="all">
-                <span>All</span>
-                <strong id="countAll">0</strong>
-            </button>
-            <button class="summary-chip summary-paid" type="button" data-filter="paid">
-                <span>Paid</span>
-                <strong id="countPaid">0</strong>
-            </button>
-            <button class="summary-chip summary-overdue" type="button" data-filter="overdue">
-                <span>Overdue</span>
-                <strong id="countOverdue">0</strong>
-            </button>
-            <button class="summary-chip summary-court" type="button" data-filter="court">
-                <span>Court</span>
-                <strong id="countCourt">0</strong>
-            </button>
+            <button class="summary-chip is-active" type="button" data-filter="all"><span class="summary-icon">▦</span><span class="summary-chip-content"><span class="summary-chip-label">All</span><span class="summary-chip-subtext">All invoices</span></span><span class="summary-chip-metrics"><strong id="countAll">0</strong><span class="summary-value" id="valueAll">£0</span></span></button>
+            <button class="summary-chip summary-overdue" type="button" data-filter="overdue"><span class="summary-icon">⚠</span><span class="summary-chip-content"><span class="summary-chip-label">Overdue</span><span class="summary-chip-subtext">Action required</span></span><span class="summary-chip-metrics"><strong id="countOverdue">0</strong><span class="summary-value" id="valueOverdue">£0</span></span></button>
+            <button class="summary-chip summary-query" type="button" data-filter="query"><span class="summary-icon">◌?</span><span class="summary-chip-content"><span class="summary-chip-label">Query</span><span class="summary-chip-subtext">Under review</span></span><span class="summary-chip-metrics"><strong id="countQuery">0</strong><span class="summary-value" id="valueQuery">£0</span></span></button>
+            <button class="summary-chip summary-court" type="button" data-filter="court"><span class="summary-icon">⚖</span><span class="summary-chip-content"><span class="summary-chip-label">Legal</span><span class="summary-chip-subtext">Escalated cases</span></span><span class="summary-chip-metrics"><strong id="countCourt">0</strong><span class="summary-value" id="valueCourt">£0</span></span></button>
+            <button class="summary-chip summary-bad-debt" type="button" data-filter="bad-debt"><span class="summary-icon">✕</span><span class="summary-chip-content"><span class="summary-chip-label">Bad debt</span><span class="summary-chip-subtext">Written off</span></span><span class="summary-chip-metrics"><strong id="countBadDebt">0</strong><span class="summary-value" id="valueBadDebt">£0</span></span></button>
+            <button class="summary-chip summary-paid" type="button" data-filter="paid"><span class="summary-icon">✓</span><span class="summary-chip-content"><span class="summary-chip-label">Paid</span><span class="summary-chip-subtext">Settled invoices</span></span><span class="summary-chip-metrics"><strong id="countPaid">0</strong><span class="summary-value" id="valuePaid">£0</span></span></button>
         </section>
 
         <section class="toolbar-row">
@@ -54,18 +46,23 @@
             </label>
 
             <div class="toolbar-controls">
-                <select id="managerFilter">
-                    <option value="all">All Managers</option>
-                </select>
-                <select id="clientFilter">
-                    <option value="all">Active Clients</option>
-                </select>
-                <select id="pageSizeSelect">
-                    <option value="10">10 / page</option>
-                    <option value="25" selected>25 / page</option>
-                    <option value="50">50 / page</option>
-                </select>
-                <button class="ghost-button" type="button">Filters</button>
+                <div class="toolbar-menu-wrap">
+                    <button class="ghost-button toolbar-menu-button" id="sortButton" type="button" aria-expanded="false" aria-controls="sortMenu">Sort: Priority</button>
+                    <div class="toolbar-menu" id="sortMenu" hidden>
+                        <button type="button" data-sort-mode="priority">Priority</button>
+                        <button type="button" data-sort-mode="due">Due date</button>
+                        <button type="button" data-sort-mode="amount">Amount due</button>
+                        <button type="button" data-sort-mode="client">Client</button>
+                    </div>
+                </div>
+                <div class="toolbar-menu-wrap">
+                    <button class="ghost-button toolbar-menu-button" id="filterButton" type="button" aria-expanded="false" aria-controls="filterMenu">Filter: All invoices</button>
+                    <div class="toolbar-menu" id="filterMenu" hidden>
+                        <button type="button" data-filter-mode="all">All invoices</button>
+                        <button type="button" data-filter-mode="action">Needs action</button>
+                        <button type="button" data-filter-mode="current">Current only</button>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -97,43 +94,60 @@
                 <button class="ghost-button" id="nextPageButton" type="button">Next</button>
             </div>
         </footer>
+        </section>
 
-        <section class="detail-card">
+        <section class="client-screen detail-card" id="clientScreen" hidden>
             <div class="detail-hero">
                 <div>
-                    <p class="eyebrow">Selected invoice</p>
-                    <h2 id="invoiceTitle">No invoice selected</h2>
-                    <p class="detail-meta" id="invoiceMeta">Select a row above to inspect status, notes, promise to pay and late-payment guidance.</p>
+                    <button class="text-button" id="backToLedgerButton" type="button">Back to ledger</button>
+                    <p class="eyebrow">Credit control client</p>
+                    <h2 id="clientTitle">No client selected</h2>
+                    <p class="detail-meta" id="clientMeta">Select an invoice from the ledger to open the client workspace.</p>
                 </div>
                 <div class="detail-actions">
-                    <div class="status-badge" id="invoiceStatusBadge">Awaiting data</div>
+                    <div class="status-badge" id="clientStatusBadge">Awaiting data</div>
                     <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
                 </div>
             </div>
 
-            <div class="detail-stats" id="detailStats"></div>
+            <div class="detail-stats" id="clientStats"></div>
 
             <div class="court-callout">
                 <button class="info-button" type="button">i</button>
                 <p id="interestInfoText">Statutory interest and court-cost guidance will appear here for the selected invoice.</p>
             </div>
 
-            <div class="detail-grid">
+            <section class="detail-panel client-invoices-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Client invoices</p>
+                        <h3>Open ledger rows</h3>
+                    </div>
+                    <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
+                </div>
+                <div class="client-invoice-list" id="clientInvoiceList"></div>
+            </section>
+
+            <div class="detail-grid client-action-grid">
                 <section class="detail-panel">
                     <div class="panel-heading">
-                        <p class="eyebrow">Status</p>
-                        <h3>Update control status</h3>
+                        <div>
+                            <p class="eyebrow">Bulk status</p>
+                            <h3>Update client invoices</h3>
+                        </div>
                     </div>
-                    <form class="stack-form" id="statusForm">
-                        <select id="statusSelect">
+                    <form class="stack-form" id="bulkStatusForm">
+                        <select id="bulkStatusSelect">
                             <option value="Paid">Paid</option>
                             <option value="Outstanding">Outstanding</option>
+                            <option value="Query">Query</option>
                             <option value="Overdue">Overdue</option>
-                            <option value="Court">Court</option>
+                            <option value="Legal">Legal</option>
+                            <option value="Bad debt">Bad debt</option>
                             <option value="Promise Received">Promise Received</option>
                         </select>
-                        <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
-                        <button class="primary-button" type="submit">Save status</button>
+                        <textarea id="bulkStatusNote" rows="4" placeholder="Status context for this client"></textarea>
+                        <button class="primary-button" type="submit">Update open invoices</button>
                     </form>
                     <div class="mini-timeline" id="statusTimeline"></div>
                 </section>
@@ -143,25 +157,25 @@
                         <p class="eyebrow">Notes</p>
                         <h3>Internal notes</h3>
                     </div>
-                    <form class="stack-form" id="noteForm">
-                        <textarea id="noteInput" rows="5" placeholder="Capture call notes, chasing updates, or payment context"></textarea>
-                        <button class="primary-button" type="submit">Add note</button>
+                    <form class="stack-form" id="clientNoteForm">
+                        <textarea id="clientNoteInput" rows="5" placeholder="Capture client-level call notes, chasing updates, or payment context"></textarea>
+                        <button class="primary-button" type="submit">Add client note</button>
                     </form>
-                    <div class="mini-timeline" id="notesTimeline"></div>
+                    <div class="mini-timeline" id="clientNotesTimeline"></div>
                 </section>
 
                 <section class="detail-panel">
                     <div class="panel-heading">
-                        <p class="eyebrow">Promise to pay</p>
-                        <h3>Track commitments</h3>
+                        <div>
+                            <p class="eyebrow">Invoice note</p>
+                            <h3>Attach to invoice</h3>
+                        </div>
                     </div>
-                    <form class="stack-form" id="promiseForm">
-                        <input id="promiseAmount" placeholder="Promised amount">
-                        <input id="promiseDate" type="date">
-                        <textarea id="promiseNote" rows="4" placeholder="Payment promise context"></textarea>
-                        <button class="primary-button" type="submit">Record promise</button>
+                    <form class="stack-form" id="invoiceNoteForm">
+                        <textarea id="invoiceNoteInput" rows="5" placeholder="Note for the selected invoice"></textarea>
+                        <button class="primary-button" type="submit">Add invoice note</button>
                     </form>
-                    <div class="mini-timeline" id="promiseTimeline"></div>
+                    <div class="mini-timeline" id="invoiceNotesTimeline"></div>
                 </section>
             </div>
         </section>

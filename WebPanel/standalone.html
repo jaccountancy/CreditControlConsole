@@ -76,6 +76,11 @@ button { cursor: pointer; }
 }
 h1, h2, h3, h4, p { margin: 0; }
 h1, h2, h3 { letter-spacing: -0.03em; }
+.connection-meta {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
 .topbar-actions, .toolbar-controls, .detail-actions, .pagination, .summary-bar {
     display: flex;
     align-items: center;
@@ -119,6 +124,13 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     background: rgba(255, 255, 255, 0.72);
     border-color: var(--line);
     color: var(--ink);
+}
+.text-button {
+    border: 0;
+    background: transparent;
+    color: var(--blue);
+    padding: 0 0 12px;
+    font-weight: 800;
 }
 .primary-button:disabled,
 .ghost-button:disabled {
@@ -373,8 +385,36 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 }
 .search-wrap input { padding-left: 44px; }
 .toolbar-controls { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; align-items: center; }
-.toolbar-controls select, .toolbar-controls .ghost-button { width: auto; min-width: 0; white-space: nowrap; }
-.toolbar-controls select { min-width: 158px; }
+.toolbar-controls .ghost-button { width: auto; min-width: 0; white-space: nowrap; }
+.toolbar-menu-wrap { position: relative; }
+.toolbar-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 20;
+    min-width: 210px;
+    padding: 8px;
+    border-radius: 18px;
+    background: var(--surface-strong);
+    border: 1px solid var(--line);
+    box-shadow: 0 18px 40px rgba(30, 47, 77, 0.14);
+}
+.toolbar-menu[hidden] { display: none; }
+.toolbar-menu button {
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--ink);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 700;
+}
+.toolbar-menu button:hover,
+.toolbar-menu button.is-active {
+    background: var(--blue-soft);
+    color: var(--blue);
+}
 .ledger-card { border-radius: 28px; overflow: hidden; }
 .ledger-scroll { overflow: auto; }
 .invoice-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
@@ -451,6 +491,10 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     padding: 16px 6px 0;
     color: var(--muted);
 }
+.ledger-view[hidden],
+.client-screen[hidden] {
+    display: none;
+}
 .ledger-topbar, .summary-bar, .toolbar-row, .ledger-card, .ledger-footer, .detail-card {
     margin-left: auto;
     margin-right: auto;
@@ -524,6 +568,30 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     background: rgba(255, 255, 255, 0.72);
     border: 1px solid var(--line);
 }
+.client-invoices-panel { margin: 18px 0; }
+.client-invoice-list {
+    display: grid;
+    gap: 10px;
+    margin-top: 16px;
+}
+.client-invoice-row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(248, 251, 255, 0.82);
+    padding: 14px 16px;
+    text-align: left;
+    color: var(--ink);
+}
+.client-invoice-row.is-selected {
+    border-color: rgba(29, 103, 242, 0.35);
+    background: var(--blue-soft);
+}
+.client-action-grid { align-items: start; }
 .stack-form { display: grid; gap: 12px; margin-top: 16px; }
 .stack-form textarea { border-radius: 20px; resize: vertical; }
 .mini-timeline { display: grid; gap: 12px; margin-top: 18px; }
@@ -570,6 +638,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
             <div class="brand-lockup">
                 <div>
                     <h1>Credit Control Ledger</h1>
+                    <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                 </div>
             </div>
             <div class="topbar-actions">
@@ -582,6 +651,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
             </div>
         </header>
 
+        <section class="ledger-view" id="ledgerView">
         <section class="summary-bar">
             <button class="summary-chip is-active" type="button" data-filter="all"><span class="summary-icon">▦</span><span class="summary-chip-content"><span class="summary-chip-label">All</span><span class="summary-chip-subtext">All invoices</span></span><span class="summary-chip-metrics"><strong id="countAll">0</strong><span class="summary-value" id="valueAll">£0</span></span></button>
             <button class="summary-chip summary-overdue" type="button" data-filter="overdue"><span class="summary-icon">⚠</span><span class="summary-chip-content"><span class="summary-chip-label">Overdue</span><span class="summary-chip-subtext">Action required</span></span><span class="summary-chip-metrics"><strong id="countOverdue">0</strong><span class="summary-value" id="valueOverdue">£0</span></span></button>
@@ -597,14 +667,23 @@ h1, h2, h3 { letter-spacing: -0.03em; }
                 <input id="ledgerSearch" type="search" placeholder="Search client, invoice ref, description, notes...">
             </label>
             <div class="toolbar-controls">
-                <select id="managerFilter"><option value="all">All Managers</option></select>
-                <select id="clientFilter"><option value="all">Active Clients</option></select>
-                <select id="pageSizeSelect">
-                    <option value="10">10 / page</option>
-                    <option value="25" selected>25 / page</option>
-                    <option value="50">50 / page</option>
-                </select>
-                <button class="ghost-button" type="button">Filters</button>
+                <div class="toolbar-menu-wrap">
+                    <button class="ghost-button toolbar-menu-button" id="sortButton" type="button" aria-expanded="false" aria-controls="sortMenu">Sort: Priority</button>
+                    <div class="toolbar-menu" id="sortMenu" hidden>
+                        <button type="button" data-sort-mode="priority">Priority</button>
+                        <button type="button" data-sort-mode="due">Due date</button>
+                        <button type="button" data-sort-mode="amount">Amount due</button>
+                        <button type="button" data-sort-mode="client">Client</button>
+                    </div>
+                </div>
+                <div class="toolbar-menu-wrap">
+                    <button class="ghost-button toolbar-menu-button" id="filterButton" type="button" aria-expanded="false" aria-controls="filterMenu">Filter: All invoices</button>
+                    <div class="toolbar-menu" id="filterMenu" hidden>
+                        <button type="button" data-filter-mode="all">All invoices</button>
+                        <button type="button" data-filter-mode="action">Needs action</button>
+                        <button type="button" data-filter-mode="current">Current only</button>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -636,37 +715,50 @@ h1, h2, h3 { letter-spacing: -0.03em; }
                 <button class="ghost-button" id="nextPageButton" type="button">Next</button>
             </div>
         </footer>
+        </section>
 
-        <section class="detail-card">
+        <section class="client-screen detail-card" id="clientScreen" hidden>
             <div class="detail-hero">
                 <div>
-                    <p class="eyebrow">Selected invoice</p>
-                    <h2 id="invoiceTitle">No invoice selected</h2>
-                    <p class="detail-meta" id="invoiceMeta">Select a row above to inspect status, notes, promise to pay and late-payment guidance.</p>
+                    <button class="text-button" id="backToLedgerButton" type="button">Back to ledger</button>
+                    <p class="eyebrow">Credit control client</p>
+                    <h2 id="clientTitle">No client selected</h2>
+                    <p class="detail-meta" id="clientMeta">Select an invoice from the ledger to open the client workspace.</p>
                 </div>
                 <div class="detail-actions">
-                    <div class="status-badge" id="invoiceStatusBadge">Awaiting data</div>
+                    <div class="status-badge" id="clientStatusBadge">Awaiting data</div>
                     <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
                 </div>
             </div>
 
-            <div class="detail-stats" id="detailStats"></div>
+            <div class="detail-stats" id="clientStats"></div>
 
             <div class="court-callout">
                 <button class="info-button" type="button">i</button>
                 <p id="interestInfoText">Statutory interest and court-cost guidance will appear here for the selected invoice.</p>
             </div>
 
-            <div class="detail-grid">
+            <section class="detail-panel client-invoices-panel">
+                <div class="panel-heading">
+                    <div>
+                        <p class="eyebrow">Client invoices</p>
+                        <h3>Open ledger rows</h3>
+                    </div>
+                    <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
+                </div>
+                <div class="client-invoice-list" id="clientInvoiceList"></div>
+            </section>
+
+            <div class="detail-grid client-action-grid">
                 <section class="detail-panel">
                     <div class="panel-heading">
                         <div>
-                            <p class="eyebrow">Status</p>
-                            <h3>Update control status</h3>
+                            <p class="eyebrow">Bulk status</p>
+                            <h3>Update client invoices</h3>
                         </div>
                     </div>
-                    <form class="stack-form" id="statusForm">
-                        <select id="statusSelect">
+                    <form class="stack-form" id="bulkStatusForm">
+                        <select id="bulkStatusSelect">
                             <option value="Paid">Paid</option>
                             <option value="Outstanding">Outstanding</option>
                             <option value="Query">Query</option>
@@ -675,8 +767,8 @@ h1, h2, h3 { letter-spacing: -0.03em; }
                             <option value="Bad debt">Bad debt</option>
                             <option value="Promise Received">Promise Received</option>
                         </select>
-                        <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
-                        <button class="primary-button" type="submit">Save status</button>
+                        <textarea id="bulkStatusNote" rows="4" placeholder="Status context for this client"></textarea>
+                        <button class="primary-button" type="submit">Update open invoices</button>
                     </form>
                     <div class="mini-timeline" id="statusTimeline"></div>
                 </section>
@@ -688,27 +780,25 @@ h1, h2, h3 { letter-spacing: -0.03em; }
                             <h3>Internal notes</h3>
                         </div>
                     </div>
-                    <form class="stack-form" id="noteForm">
-                        <textarea id="noteInput" rows="5" placeholder="Capture call notes, chasing updates, or payment context"></textarea>
-                        <button class="primary-button" type="submit">Add note</button>
+                    <form class="stack-form" id="clientNoteForm">
+                        <textarea id="clientNoteInput" rows="5" placeholder="Capture client-level call notes, chasing updates, or payment context"></textarea>
+                        <button class="primary-button" type="submit">Add client note</button>
                     </form>
-                    <div class="mini-timeline" id="notesTimeline"></div>
+                    <div class="mini-timeline" id="clientNotesTimeline"></div>
                 </section>
 
                 <section class="detail-panel">
                     <div class="panel-heading">
                         <div>
-                            <p class="eyebrow">Promise to pay</p>
-                            <h3>Track commitments</h3>
+                            <p class="eyebrow">Invoice note</p>
+                            <h3>Attach to invoice</h3>
                         </div>
                     </div>
-                    <form class="stack-form" id="promiseForm">
-                        <input id="promiseAmount" placeholder="Promised amount">
-                        <input id="promiseDate" type="date">
-                        <textarea id="promiseNote" rows="4" placeholder="Payment promise context"></textarea>
-                        <button class="primary-button" type="submit">Record promise</button>
+                    <form class="stack-form" id="invoiceNoteForm">
+                        <textarea id="invoiceNoteInput" rows="5" placeholder="Note for the selected invoice"></textarea>
+                        <button class="primary-button" type="submit">Add invoice note</button>
                     </form>
-                    <div class="mini-timeline" id="promiseTimeline"></div>
+                    <div class="mini-timeline" id="invoiceNotesTimeline"></div>
                 </section>
             </div>
         </section>
@@ -736,11 +826,16 @@ const emptyData = {
 const state = loadState();
 let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
+let selectedClientId = null;
+let activeView = "ledger";
 let searchTerm = "";
-let managerFilter = "all";
 let clientFilter = "all";
+let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
+
+const sortLabels = { priority: "Priority", due: "Due date", amount: "Amount due", client: "Client" };
+const filterLabels = { all: "All invoices", action: "Needs action", current: "Current only" };
 
 function normaliseAPI(config) {
     return {
@@ -784,13 +879,19 @@ function persistState() {
 
 function replaceState(next) {
     const preservedInvoiceId = selectedInvoiceId;
+    const localClientNotes = new Map(state.customers.map((customer) => [customer.id, customer.clientNotes || []]));
     state.organisation = next.organisation;
     state.dashboard = next.dashboard;
-    state.customers = next.customers;
+    state.customers = next.customers.map((customer) => ({
+        ...customer,
+        clientNotes: customer.clientNotes || localClientNotes.get(customer.id) || []
+    }));
     state.audit = next.audit;
     state.selectedInvoice = next.selectedInvoice;
-    const invoice = findInvoiceById(preservedInvoiceId) || next.selectedInvoice || allInvoices()[0] || null;
+    const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
+    const invoice = findInvoiceById(preservedInvoiceId) || findInvoiceById(nextInvoiceId) || allInvoices()[0] || null;
     selectedInvoiceId = invoice?.id || null;
+    selectedClientId = invoice?.customerId || selectedClientId;
     persistState();
 }
 
@@ -826,24 +927,46 @@ async function hydrateFromAPI() {
     }
 }
 
+function decorateInvoice(customer, invoice) {
+    return {
+        ...invoice,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerContact: customer.contact || "",
+        customerStatus: customer.status || "",
+        manager: customer.manager || "Unassigned",
+        description: invoice.description || invoice.invoiceNumber || "Xero invoice",
+        notesSummary: noteSnippet(invoice),
+    };
+}
+
 function allInvoices() {
-    return state.customers.flatMap((customer) =>
-        (customer.invoices || []).map((invoice) => ({
-            ...invoice,
-            customerId: customer.id,
-            customerName: customer.name,
-            customerContact: customer.contact || "",
-            customerStatus: customer.status || "",
-            manager: customer.manager || "Unassigned",
-            description: invoice.description || invoice.invoiceNumber || "Xero invoice",
-            notesSummary: noteSnippet(invoice),
-        }))
-    );
+    return state.customers.flatMap((customer) => (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)));
+}
+
+function findCustomerById(customerId) {
+    if (!customerId) return null;
+    return state.customers.find((customer) => customer.id === customerId) || null;
+}
+
+function findCustomerByInvoiceId(invoiceId) {
+    if (!invoiceId) return null;
+    return state.customers.find((customer) => (customer.invoices || []).some((invoice) => invoice.id === invoiceId)) || null;
+}
+
+function mutableInvoiceById(invoiceId) {
+    const customer = findCustomerByInvoiceId(invoiceId);
+    const invoice = customer ? (customer.invoices || []).find((item) => item.id === invoiceId) : null;
+    return invoice ? { customer, invoice } : null;
+}
+
+function clientInvoices(customer) {
+    return customer ? (customer.invoices || []).map((invoice) => decorateInvoice(customer, invoice)) : [];
 }
 
 function findInvoiceById(invoiceId) {
-    if (!invoiceId) return null;
-    return allInvoices().find((invoice) => invoice.id === invoiceId) || null;
+    const match = mutableInvoiceById(invoiceId);
+    return match ? decorateInvoice(match.customer, match.invoice) : null;
 }
 
 function invoiceCategory(invoice) {
@@ -914,11 +1037,25 @@ function filteredInvoices() {
             invoice.controlStatus
         ].join(" ").toLowerCase();
         const matchesSearch = blob.includes(searchTerm.toLowerCase());
-        const matchesManager = managerFilter === "all" || invoice.manager === managerFilter;
         const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(invoiceCategory(invoice));
         const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
-        return matchesFilter && matchesSearch && matchesManager && matchesClient;
-    });
+        return matchesFilter && matchesSearch && matchesClient;
+    }).sort(compareInvoices);
+}
+
+function compareInvoices(a, b) {
+    const categoryPriority = { overdue: 0, court: 1, query: 2, outstanding: 3, "bad-debt": 4, paid: 5 };
+    if (sortMode === "amount") return Number(b.amountDue || 0) - Number(a.amountDue || 0);
+    if (sortMode === "client") return `${a.customerName || ""}`.localeCompare(`${b.customerName || ""}`);
+    if (sortMode === "due") return dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
+    return (categoryPriority[invoiceCategory(a)] ?? 9) - (categoryPriority[invoiceCategory(b)] ?? 9)
+        || dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
+}
+
+function dateSortValue(value) {
+    if (!value) return Number.MAX_SAFE_INTEGER;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? Number.MAX_SAFE_INTEGER : date.getTime();
 }
 
 function formatCompactCurrency(value) {
@@ -965,17 +1102,15 @@ function renderSummaryCounts() {
     });
 }
 
-function renderManagerFilter() {
-    const select = document.getElementById("managerFilter");
-    const currentValue = managerFilter;
-    select.innerHTML = `<option value="all">All Managers</option>`;
-    managerValues().forEach((manager) => {
-        const option = document.createElement("option");
-        option.value = manager;
-        option.textContent = manager;
-        select.appendChild(option);
+function renderToolbarControls() {
+    document.getElementById("sortButton").textContent = `Sort: ${sortLabels[sortMode]}`;
+    document.getElementById("filterButton").textContent = `Filter: ${filterLabels[clientFilter]}`;
+    document.querySelectorAll("[data-sort-mode]").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.sortMode === sortMode);
     });
-    select.value = currentValue;
+    document.querySelectorAll("[data-filter-mode]").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.filterMode === clientFilter);
+    });
 }
 
 function renderInvoiceTable() {
@@ -1007,7 +1142,10 @@ function renderInvoiceTable() {
             `;
             row.addEventListener("click", () => {
                 selectedInvoiceId = invoice.id;
+                selectedClientId = invoice.customerId;
+                activeView = "client";
                 renderAll();
+                window.scrollTo({ top: 0, behavior: "smooth" });
             });
             tbody.appendChild(row);
         });
@@ -1038,34 +1176,105 @@ function renderPagination(totalResults, totalPages, start, count) {
     });
 }
 
-function renderDetailPanel() {
-    const invoice = findInvoiceById(selectedInvoiceId) || filteredInvoices()[0] || allInvoices()[0] || null;
-    selectedInvoiceId = invoice?.id || null;
-    document.getElementById("invoiceTitle").textContent = invoice ? `${invoice.customerName} · ${invoice.invoiceNumber}` : "No invoice selected";
-    document.getElementById("invoiceMeta").textContent = invoice ? `${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}` : "Select a row above to inspect status, notes, promise to pay and late-payment guidance.";
-    document.getElementById("invoiceStatusBadge").textContent = invoice ? invoiceStatusLabel(invoice) : "Awaiting data";
-    document.getElementById("invoiceStatusBadge").className = `status-badge ${invoice ? invoiceCategory(invoice) : ""}`.trim();
-    const stats = document.getElementById("detailStats");
+function renderClientScreen() {
+    const ledgerView = document.getElementById("ledgerView");
+    const clientScreen = document.getElementById("clientScreen");
+    ledgerView.hidden = activeView !== "ledger";
+    clientScreen.hidden = activeView !== "client";
+    if (activeView !== "client") return;
+
+    const invoice = findInvoiceById(selectedInvoiceId);
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    const invoices = clientInvoices(client);
+    const selectedInvoice = invoice || invoices[0] || null;
+    selectedInvoiceId = selectedInvoice?.id || null;
+    selectedClientId = client?.id || selectedInvoice?.customerId || null;
+
+    document.getElementById("clientTitle").textContent = client?.name || "No client selected";
+    document.getElementById("clientMeta").textContent = client
+        ? `${client.contact || "Xero contact"} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"} · ${client.manager || "Unassigned"}`
+        : "Select an invoice from the ledger to open the client workspace.";
+
+    const openInvoices = invoices.filter((item) => invoiceCategory(item) !== "paid");
+    const totalDue = invoices.reduce((sum, item) => sum + Number(item.amountDue || 0), 0);
+    const overdueCount = invoices.filter((item) => invoiceCategory(item) === "overdue").length;
+    document.getElementById("clientStatusBadge").textContent = client ? `${openInvoices.length} open` : "Awaiting data";
+    document.getElementById("clientStatusBadge").className = "status-badge";
+
+    const stats = document.getElementById("clientStats");
     stats.innerHTML = "";
-    const items = invoice ? [
-        ["Amount due", formatCurrency(invoice.amountDue || 0)],
-        ["Amount paid", formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))],
-        ["Overdue days", `${invoice.overdueDays || 0}`],
-        ["Promised date", invoice.promisedDate ? formatDate(invoice.promisedDate) : "--"],
-    ] : [];
-    items.forEach(([label, value]) => {
+    [
+        ["Total due", formatCurrency(totalDue)],
+        ["Open invoices", `${openInvoices.length}`],
+        ["Overdue", `${overdueCount}`],
+        ["Selected invoice", selectedInvoice?.invoiceNumber || "--"],
+    ].forEach(([label, value]) => {
         const card = document.createElement("article");
         card.className = "detail-stat";
         card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
         stats.appendChild(card);
     });
-    document.getElementById("interestInfoText").textContent = invoice
-        ? `If this went to court there would be £${Number(invoice.latePayment?.court_cost || invoice.latePayment?.courtCost || 35).toFixed(0)} in court costs and £${Number(invoice.latePayment?.interest || 0).toFixed(2)} in statutory interest so far.`
+
+    document.getElementById("interestInfoText").textContent = selectedInvoice
+        ? `For ${selectedInvoice.invoiceNumber || "this invoice"}, court costs would be £${Number(selectedInvoice.latePayment?.court_cost || selectedInvoice.latePayment?.courtCost || 35).toFixed(0)} and statutory interest so far is £${Number(selectedInvoice.latePayment?.interest || 0).toFixed(2)}.`
         : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
-    document.getElementById("statusSelect").value = statusSelectValue(invoice);
-    renderTimeline("statusTimeline", invoice?.statuses || [], { eyebrow: "No status history", title: "Status changes will appear here", body: "Save a status change to build the credit-control history." });
-    renderTimeline("notesTimeline", invoice?.notes || [], { eyebrow: "No notes", title: "Internal notes will appear here", body: "Use the note form to log calls, promises or chasing updates." });
-    renderTimeline("promiseTimeline", invoice?.promises || [], { eyebrow: "No promises", title: "Promise-to-pay entries will appear here", body: "Record a commitment to track expected cash collection." });
+
+    renderClientInvoicePicker(invoices);
+    renderClientInvoiceList(invoices);
+    renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
+    renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
+    renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+}
+
+function renderClientInvoicePicker(invoices) {
+    const select = document.getElementById("clientInvoiceSelect");
+    select.innerHTML = "";
+    invoices.forEach((invoice) => {
+        const option = document.createElement("option");
+        option.value = invoice.id;
+        option.textContent = `${invoice.invoiceNumber || invoice.id} · ${formatCurrency(invoice.amountDue || 0)} due`;
+        select.appendChild(option);
+    });
+    select.value = selectedInvoiceId || "";
+}
+
+function renderClientInvoiceList(invoices) {
+    const target = document.getElementById("clientInvoiceList");
+    target.innerHTML = "";
+    if (!invoices.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = "No invoices";
+        emptyState.querySelector("h4").textContent = "No Xero invoices for this client";
+        emptyState.querySelector("p:last-child").textContent = "Sync from Xero to populate the client ledger.";
+        target.appendChild(emptyState);
+        return;
+    }
+    invoices.forEach((invoice) => {
+        const button = document.createElement("button");
+        const category = invoiceCategory(invoice);
+        button.type = "button";
+        button.className = `client-invoice-row${invoice.id === selectedInvoiceId ? " is-selected" : ""}`;
+        button.innerHTML = `
+            <div>
+                <div class="client-name">${invoice.invoiceNumber || "Invoice"}</div>
+                <div class="invoice-subline">${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}</div>
+            </div>
+            <span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span>
+            <strong>${formatCurrency(invoice.amountDue || 0)}</strong>
+        `;
+        button.addEventListener("click", () => {
+            selectedInvoiceId = invoice.id;
+            renderClientScreen();
+        });
+        target.appendChild(button);
+    });
+}
+
+function clientStatusItems(invoices) {
+    return invoices.flatMap((invoice) => (invoice.statuses || []).map((item) => ({
+        ...item,
+        title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Status update"}`
+    })));
 }
 
 function renderTimeline(targetId, items, empty) {
@@ -1089,6 +1298,12 @@ function renderTimeline(targetId, items, empty) {
 
 function renderChrome() {
     document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
+    const organisationName = state.organisation.name || "Xero organisation not connected";
+    const lastSync = state.organisation.lastSync || "Waiting for first sync";
+    const syncCopy = lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
+        ? lastSync
+        : `Last sync: ${lastSync}`;
+    document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
     const connected = isXeroConnected();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
@@ -1115,9 +1330,9 @@ function isXeroConnected() {
 function renderAll() {
     renderChrome();
     renderSummaryCounts();
-    renderManagerFilter();
+    renderToolbarControls();
     renderInvoiceTable();
-    renderDetailPanel();
+    renderClientScreen();
 }
 
 function wireFilters() {
@@ -1133,21 +1348,26 @@ function wireFilters() {
         currentPage = 1;
         renderInvoiceTable();
     });
-    document.getElementById("managerFilter").addEventListener("change", (event) => {
-        managerFilter = event.target.value;
-        currentPage = 1;
-        renderInvoiceTable();
+    document.getElementById("sortButton").addEventListener("click", () => toggleToolbarMenu("sortMenu", "sortButton"));
+    document.getElementById("filterButton").addEventListener("click", () => toggleToolbarMenu("filterMenu", "filterButton"));
+    document.querySelectorAll("[data-sort-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+            sortMode = button.dataset.sortMode;
+            currentPage = 1;
+            closeToolbarMenus();
+            renderAll();
+        });
     });
-    document.getElementById("clientFilter").innerHTML = `<option value="all">Active Clients</option><option value="action">Needs Action</option><option value="current">Current Only</option>`;
-    document.getElementById("clientFilter").addEventListener("change", (event) => {
-        clientFilter = event.target.value;
-        currentPage = 1;
-        renderInvoiceTable();
+    document.querySelectorAll("[data-filter-mode]").forEach((button) => {
+        button.addEventListener("click", () => {
+            clientFilter = button.dataset.filterMode;
+            currentPage = 1;
+            closeToolbarMenus();
+            renderAll();
+        });
     });
-    document.getElementById("pageSizeSelect").addEventListener("change", (event) => {
-        pageSize = Number(event.target.value);
-        currentPage = 1;
-        renderInvoiceTable();
+    document.addEventListener("click", (event) => {
+        if (!event.target.closest(".toolbar-menu-wrap")) closeToolbarMenus();
     });
     document.getElementById("previousPageButton").addEventListener("click", () => {
         currentPage = Math.max(1, currentPage - 1);
@@ -1156,6 +1376,26 @@ function wireFilters() {
     document.getElementById("nextPageButton").addEventListener("click", () => {
         currentPage += 1;
         renderInvoiceTable();
+    });
+}
+
+function toggleToolbarMenu(menuId, buttonId) {
+    const menu = document.getElementById(menuId);
+    const button = document.getElementById(buttonId);
+    const willOpen = menu.hidden;
+    closeToolbarMenus();
+    menu.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+}
+
+function closeToolbarMenus() {
+    ["sortMenu", "filterMenu"].forEach((menuId) => {
+        const menu = document.getElementById(menuId);
+        if (menu) menu.hidden = true;
+    });
+    ["sortButton", "filterButton"].forEach((buttonId) => {
+        const button = document.getElementById(buttonId);
+        if (button) button.setAttribute("aria-expanded", "false");
     });
 }
 
@@ -1195,65 +1435,70 @@ function wireSyncButtons() {
 }
 
 function wireForms() {
-    document.getElementById("noteForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const invoice = findInvoiceById(selectedInvoiceId);
-        const body = document.getElementById("noteInput").value.trim();
-        if (!invoice || !body) return;
-        invoice.notes = [{ title: "Internal note", body, stamp: new Date().toISOString() }, ...(invoice.notes || [])];
-        document.getElementById("noteInput").value = "";
-        persistState();
-        renderDetailPanel();
-        renderInvoiceTable();
-        try {
-            await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: invoice.id });
-            await hydrateFromAPI();
-            renderAll();
-        } catch (error) {
-            console.error("Unable to save note", error);
-        }
+    document.getElementById("backToLedgerButton").addEventListener("click", () => {
+        activeView = "ledger";
+        renderAll();
+    });
+    document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
+        selectedInvoiceId = event.target.value;
+        renderClientScreen();
     });
 
-    document.getElementById("promiseForm").addEventListener("submit", async (event) => {
+    document.getElementById("clientNoteForm").addEventListener("submit", (event) => {
         event.preventDefault();
-        const invoice = findInvoiceById(selectedInvoiceId);
-        const promisedAmount = document.getElementById("promiseAmount").value.trim();
-        const promisedDate = document.getElementById("promiseDate").value;
-        const note = document.getElementById("promiseNote").value.trim();
-        if (!invoice || !promisedAmount || !promisedDate) return;
-        invoice.promises = [{ title: `Promise for ${formatCurrency(promisedAmount)}`, body: note, stamp: promisedDate }, ...(invoice.promises || [])];
-        invoice.promisedDate = promisedDate;
-        document.getElementById("promiseAmount").value = "";
-        document.getElementById("promiseDate").value = "";
-        document.getElementById("promiseNote").value = "";
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const body = document.getElementById("clientNoteInput").value.trim();
+        if (!client || !body) return;
+        client.clientNotes = [{ title: "Client note", body, stamp: new Date().toISOString() }, ...(client.clientNotes || [])];
+        document.getElementById("clientNoteInput").value = "";
         persistState();
-        renderDetailPanel();
-        try {
-            await requestJSON(api.endpoints.promise, { method: "POST", body: JSON.stringify({ promisedAmount, promisedDate, note }) }, { invoiceId: invoice.id });
-            await hydrateFromAPI();
-            renderAll();
-        } catch (error) {
-            console.error("Unable to save promise", error);
-        }
+        renderClientScreen();
     });
 
-    document.getElementById("statusForm").addEventListener("submit", async (event) => {
+    document.getElementById("invoiceNoteForm").addEventListener("submit", async (event) => {
         event.preventDefault();
-        const invoice = findInvoiceById(selectedInvoiceId);
-        const statusValue = document.getElementById("statusSelect").value;
-        const note = document.getElementById("statusNote").value.trim();
-        if (!invoice) return;
-        invoice.controlStatus = statusValue;
-        invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(invoice.statuses || [])];
-        document.getElementById("statusNote").value = "";
+        const match = mutableInvoiceById(selectedInvoiceId);
+        const body = document.getElementById("invoiceNoteInput").value.trim();
+        if (!match || !body) return;
+        match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
+        document.getElementById("invoiceNoteInput").value = "";
         persistState();
         renderAll();
         try {
-            await requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId: invoice.id });
+            await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: match.invoice.id });
             await hydrateFromAPI();
             renderAll();
         } catch (error) {
-            console.error("Unable to save status", error);
+            console.error("Unable to save invoice note", error);
+        }
+    });
+
+    document.getElementById("bulkStatusForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const statusValue = document.getElementById("bulkStatusSelect").value;
+        const note = document.getElementById("bulkStatusNote").value.trim();
+        if (!client) return;
+        const invoiceIds = (client.invoices || [])
+            .filter((invoice) => invoiceCategory(decorateInvoice(client, invoice)) !== "paid")
+            .map((invoice) => invoice.id);
+        invoiceIds.forEach((invoiceId) => {
+            const match = mutableInvoiceById(invoiceId);
+            if (!match) return;
+            match.invoice.controlStatus = statusValue;
+            match.invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(match.invoice.statuses || [])];
+        });
+        document.getElementById("bulkStatusNote").value = "";
+        persistState();
+        renderAll();
+        try {
+            await Promise.allSettled(invoiceIds.map((invoiceId) =>
+                requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId })
+            ));
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save bulk status", error);
         }
     });
 }
