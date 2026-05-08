@@ -113,6 +113,58 @@ def xero_login_error_response(message: str, status_code: int = status.HTTP_500_I
     )
 
 
+def xero_login_success_response() -> HTMLResponse:
+    return HTMLResponse(
+        """
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Xero connected</title>
+            <style>
+                body {
+                    margin: 0;
+                    min-height: 100vh;
+                    display: grid;
+                    place-items: center;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                    background: #f5f8ff;
+                    color: #1e2f4d;
+                }
+                main {
+                    width: min(560px, calc(100vw - 40px));
+                    padding: 32px;
+                    border-radius: 20px;
+                    background: #fff;
+                    box-shadow: 0 18px 60px rgba(41, 79, 148, 0.14);
+                }
+                h1 { margin: 0 0 12px; font-size: 28px; }
+                p { margin: 0 0 22px; color: #65738e; line-height: 1.55; }
+                a {
+                    display: inline-flex;
+                    padding: 12px 18px;
+                    border-radius: 999px;
+                    color: #fff;
+                    background: #1d67f2;
+                    text-decoration: none;
+                    font-weight: 700;
+                }
+            </style>
+        </head>
+        <body>
+            <main>
+                <h1>Xero connected</h1>
+                <p>Your Xero organisation is connected. Return to the Credit Control Console and run sync.</p>
+                <a href="/">Open dashboard</a>
+            </main>
+        </body>
+        </html>
+        """,
+        status_code=status.HTTP_200_OK,
+    )
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "environment": get_settings().app_env}
@@ -124,9 +176,14 @@ def login_page(request: Request):
 
 
 @app.get("/auth/xero/start")
-def auth_xero_start(redirect_to: str = "/"):
+def auth_xero_start(redirect_to: str = "/auth/xero/connected"):
     state_token = start_oauth_state(redirect_to=redirect_to)
     return RedirectResponse(xero_authorize_url(state_token), status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/xero/connected", response_class=HTMLResponse)
+def auth_xero_connected():
+    return xero_login_success_response()
 
 
 @app.get("/auth/xero/callback")

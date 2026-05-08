@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -46,9 +47,15 @@ def _iso_to_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     if value.startswith("/Date("):
-        milliseconds = value.removeprefix("/Date(").split(")")[0]
+        match = re.search(r"/Date\((-?\d+)", value)
+        if match is None:
+            return None
+        milliseconds = match.group(1)
         return datetime.fromtimestamp(int(milliseconds) / 1000, tz=timezone.utc)
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _xero_date(value: str | None):
