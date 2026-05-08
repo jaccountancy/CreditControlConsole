@@ -6,247 +6,179 @@
     <title>Hymn Credit Control Panel</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="topbar">
-        <div class="topbar-brand">
-            <div class="brand-mark">H</div>
-            <div>
-                <p class="eyebrow">Hymn</p>
-                <strong>Credit Control</strong>
+    <main class="ledger-shell">
+        <header class="ledger-topbar">
+            <div class="brand-lockup">
+                <div>
+                    <h1>Credit Control Ledger</h1>
+                </div>
             </div>
-        </div>
 
-        <div class="topbar-meta">
-            <div class="sync-chip">
-                <span class="sync-dot"></span>
-                <span id="syncStamp">Waiting for first sync</span>
+            <div class="topbar-actions">
+                <div class="sync-indicator">
+                    <span class="sync-dot"></span>
+                    <span id="syncStamp">Waiting for first sync</span>
+                </div>
+                <a class="ghost-button action-link" id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
+                <button class="primary-button" id="primarySyncButton">Resync from Xero</button>
             </div>
-            <button class="ghost-button" id="connectXeroButton">Connect Xero</button>
-            <button class="secondary-button" id="primarySyncButton">Resync from Xero</button>
-        </div>
-    </div>
+        </header>
 
-    <div class="app-shell">
-        <aside class="sidebar">
-            <section class="sidebar-card hero-card">
-                <p class="eyebrow">Control Centre</p>
-                <h1>Credit operations in one place.</h1>
-                <p class="muted">Operational chasing, promises, audit trail and late-payment guidance, grouped by customer.</p>
-            </section>
+        <section class="summary-bar">
+            <button class="summary-chip is-active" type="button" data-filter="all">
+                <span>All</span>
+                <strong id="countAll">0</strong>
+            </button>
+            <button class="summary-chip summary-paid" type="button" data-filter="paid">
+                <span>Paid</span>
+                <strong id="countPaid">0</strong>
+            </button>
+            <button class="summary-chip summary-outstanding" type="button" data-filter="outstanding">
+                <span>Outstanding</span>
+                <strong id="countOutstanding">0</strong>
+            </button>
+            <button class="summary-chip summary-overdue" type="button" data-filter="overdue">
+                <span>Overdue</span>
+                <strong id="countOverdue">0</strong>
+            </button>
+            <button class="summary-chip summary-court" type="button" data-filter="court">
+                <span>Court</span>
+                <strong id="countCourt">0</strong>
+            </button>
+        </section>
 
-            <nav class="sidebar-nav">
-                <button class="nav-link is-active" data-view="dashboard">Dashboard</button>
-                <button class="nav-link" data-view="customers">Customers</button>
-                <button class="nav-link" data-view="invoice">Invoice Detail</button>
-                <button class="nav-link" data-view="activity">Audit Trail</button>
-            </nav>
+        <section class="toolbar-row">
+            <label class="search-wrap">
+                <span class="search-icon">⌕</span>
+                <input id="ledgerSearch" type="search" placeholder="Search client, invoice ref, description, notes...">
+            </label>
 
-            <section class="sidebar-card">
-                <p class="eyebrow">Live status</p>
-                <h2 id="organisationName">No organisation connected</h2>
-                <p class="muted" id="organisationStatus">Connect your real Xero data source and inject live payloads into the panel.</p>
-                <div class="sidebar-actions">
-                    <button class="ghost-button" id="sidebarConnectButton">Login with Xero</button>
+            <div class="toolbar-controls">
+                <select id="managerFilter">
+                    <option value="all">All Managers</option>
+                </select>
+                <select id="clientFilter">
+                    <option value="all">Active Clients</option>
+                </select>
+                <select id="pageSizeSelect">
+                    <option value="10">10 / page</option>
+                    <option value="25" selected>25 / page</option>
+                    <option value="50">50 / page</option>
+                </select>
+                <button class="ghost-button" type="button">Filters</button>
+            </div>
+        </section>
+
+        <section class="ledger-card">
+            <div class="ledger-scroll">
+                <table class="invoice-table">
+                    <thead>
+                        <tr>
+                            <th>Client</th>
+                            <th>Invoice Ref</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Paid</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="invoiceTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="ledger-footer">
+            <p id="resultsText">Showing 0 results</p>
+            <div class="pagination">
+                <button class="ghost-button" id="previousPageButton" type="button">Previous</button>
+                <div class="page-pills" id="pagePills"></div>
+                <button class="ghost-button" id="nextPageButton" type="button">Next</button>
+            </div>
+        </footer>
+
+        <section class="detail-card">
+            <div class="detail-hero">
+                <div>
+                    <p class="eyebrow">Selected invoice</p>
+                    <h2 id="invoiceTitle">No invoice selected</h2>
+                    <p class="detail-meta" id="invoiceMeta">Select a row above to inspect status, notes, promise to pay and late-payment guidance.</p>
+                </div>
+                <div class="detail-actions">
+                    <div class="status-badge" id="invoiceStatusBadge">Awaiting data</div>
                     <button class="ghost-button" id="sidebarSyncButton">Run sync</button>
                 </div>
-            </section>
-
-            <section class="sidebar-card">
-                <p class="eyebrow">Implementation note</p>
-                <p class="muted">This panel now ships empty by default. Feed live data into <code>window.HYMN_PANEL_DATA</code> or your own API layer.</p>
-            </section>
-        </aside>
-
-        <main class="workspace">
-            <header class="workspace-header">
-                <div>
-                    <p class="eyebrow" id="viewEyebrow">Live workflow</p>
-                    <h2 id="viewTitle">Credit Control Dashboard</h2>
-                    <p class="muted" id="viewSubtitle">Headline numbers, grouped customer risk, and operational actions without seeded demo content.</p>
-                </div>
-            </header>
-
-            <section class="view is-active" id="dashboardView">
-                <div class="metric-grid" id="metricGrid"></div>
-
-                <div class="dashboard-layout">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Priority accounts</p>
-                                <h3>Accounts requiring action</h3>
-                            </div>
-                        </div>
-                        <div id="priorityAccounts"></div>
-                    </section>
-
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Recent activity</p>
-                                <h3>Operational timeline</h3>
-                            </div>
-                        </div>
-                        <div class="timeline" id="dashboardTimeline"></div>
-                    </section>
-                </div>
-            </section>
-
-            <section class="view" id="customersView">
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Customer balances</p>
-                            <h3>Grouped by customer</h3>
-                        </div>
-                        <input class="search-input" id="customerSearch" placeholder="Search customer">
-                    </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Customer</th>
-                                    <th>Open invoices</th>
-                                    <th>Total due</th>
-                                    <th>Overdue</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="customerTableBody"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </section>
-
-            <section class="view" id="invoiceView">
-                <section class="panel invoice-summary">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Invoice workflow</p>
-                            <h3 id="invoiceTitle">Select a live invoice</h3>
-                            <p class="muted" id="invoiceMeta">Choose a customer or invoice once data is loaded.</p>
-                        </div>
-                        <div class="status-pill" id="invoiceStatusPill">Awaiting data</div>
-                    </div>
-
-                    <div class="mini-metric-grid" id="invoiceMetricGrid"></div>
-
-                    <div class="info-callout">
-                        <button class="info-button" type="button">i</button>
-                        <p id="interestInfoText">Late-payment interest and court-cost guidance will appear here once a real invoice is selected.</p>
-                    </div>
-                </section>
-
-                <div class="three-column">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Status</p>
-                                <h3>Update control status</h3>
-                            </div>
-                        </div>
-                        <form class="stack-form" id="statusForm">
-                            <label>
-                                <span>Status</span>
-                                <select id="statusSelect">
-                                    <option value="New">New</option>
-                                    <option value="Chased">Chased</option>
-                                    <option value="Promise Received">Promise Received</option>
-                                    <option value="Legal Review">Legal Review</option>
-                                    <option value="Paid">Paid</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>Note</span>
-                                <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
-                            </label>
-                            <button class="secondary-button" type="submit">Save status</button>
-                        </form>
-                        <div class="timeline compact" id="statusTimeline"></div>
-                    </section>
-
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Notes</p>
-                                <h3>Internal notes</h3>
-                            </div>
-                        </div>
-                        <form class="stack-form" id="noteForm">
-                            <label>
-                                <span>Add note</span>
-                                <textarea id="noteInput" rows="5" placeholder="Capture the latest conversation"></textarea>
-                            </label>
-                            <button class="secondary-button" type="submit">Add note</button>
-                        </form>
-                        <div class="timeline compact" id="notesTimeline"></div>
-                    </section>
-
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Promise to pay</p>
-                                <h3>Track commitments</h3>
-                            </div>
-                        </div>
-                        <form class="stack-form" id="promiseForm">
-                            <label>
-                                <span>Promised amount</span>
-                                <input id="promiseAmount" placeholder="0.00">
-                            </label>
-                            <label>
-                                <span>Promised date</span>
-                                <input id="promiseDate" type="date">
-                            </label>
-                            <label>
-                                <span>Note</span>
-                                <textarea id="promiseNote" rows="4" placeholder="Commitment context"></textarea>
-                            </label>
-                            <button class="secondary-button" type="submit">Record promise</button>
-                        </form>
-                        <div class="timeline compact" id="promiseTimeline"></div>
-                    </section>
-                </div>
-            </section>
-
-            <section class="view" id="activityView">
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Audit trail</p>
-                            <h3>Full history</h3>
-                        </div>
-                    </div>
-                    <div class="timeline" id="auditTimeline"></div>
-                </section>
-            </section>
-        </main>
-    </div>
-
-    <template id="timelineItemTemplate">
-        <article class="timeline-item">
-            <div class="timeline-marker"></div>
-            <div class="timeline-copy">
-                <div class="timeline-head">
-                    <strong></strong>
-                    <span></span>
-                </div>
-                <p></p>
             </div>
-        </article>
-    </template>
+
+            <div class="detail-stats" id="detailStats"></div>
+
+            <div class="court-callout">
+                <button class="info-button" type="button">i</button>
+                <p id="interestInfoText">Statutory interest and court-cost guidance will appear here for the selected invoice.</p>
+            </div>
+
+            <div class="detail-grid">
+                <section class="detail-panel">
+                    <div class="panel-heading">
+                        <p class="eyebrow">Status</p>
+                        <h3>Update control status</h3>
+                    </div>
+                    <form class="stack-form" id="statusForm">
+                        <select id="statusSelect">
+                            <option value="Paid">Paid</option>
+                            <option value="Outstanding">Outstanding</option>
+                            <option value="Overdue">Overdue</option>
+                            <option value="Court">Court</option>
+                            <option value="Promise Received">Promise Received</option>
+                        </select>
+                        <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
+                        <button class="primary-button" type="submit">Save status</button>
+                    </form>
+                    <div class="mini-timeline" id="statusTimeline"></div>
+                </section>
+
+                <section class="detail-panel">
+                    <div class="panel-heading">
+                        <p class="eyebrow">Notes</p>
+                        <h3>Internal notes</h3>
+                    </div>
+                    <form class="stack-form" id="noteForm">
+                        <textarea id="noteInput" rows="5" placeholder="Capture call notes, chasing updates, or payment context"></textarea>
+                        <button class="primary-button" type="submit">Add note</button>
+                    </form>
+                    <div class="mini-timeline" id="notesTimeline"></div>
+                </section>
+
+                <section class="detail-panel">
+                    <div class="panel-heading">
+                        <p class="eyebrow">Promise to pay</p>
+                        <h3>Track commitments</h3>
+                    </div>
+                    <form class="stack-form" id="promiseForm">
+                        <input id="promiseAmount" placeholder="Promised amount">
+                        <input id="promiseDate" type="date">
+                        <textarea id="promiseNote" rows="4" placeholder="Payment promise context"></textarea>
+                        <button class="primary-button" type="submit">Record promise</button>
+                    </form>
+                    <div class="mini-timeline" id="promiseTimeline"></div>
+                </section>
+            </div>
+        </section>
+    </main>
 
     <template id="emptyStateTemplate">
         <div class="empty-state">
             <p class="eyebrow"></p>
             <h4></h4>
-            <p class="muted"></p>
+            <p></p>
         </div>
     </template>
 
     <script src="app.js"></script>
 </body>
-</html>"}
+</html>

@@ -1,17 +1,19 @@
-const STORAGE_KEY = "hymn-credit-control-panel";
-const api = normaliseAPI(window.HYMN_PANEL_API || null);
+const STORAGE_KEY = "hymn-credit-control-ledger";
+const DEFAULT_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
+const api = normaliseAPI(window.HYMN_PANEL_API || {});
 
 const emptyData = {
     organisation: {
         name: "",
-        status: "Awaiting live connection"
+        status: "Awaiting live connection",
+        lastSync: "Waiting for first sync"
     },
     dashboard: {
-        totalReceivables: null,
-        totalOverdue: null,
-        openInvoices: null,
-        accountsNeedingAction: null,
-        potentialInterest: null
+        totalReceivables: 0,
+        totalOverdue: 0,
+        openInvoices: 0,
+        accountsNeedingAction: 0,
+        potentialInterest: 0
     },
     customers: [],
     audit: [],
@@ -19,50 +21,17 @@ const emptyData = {
 };
 
 const state = loadState();
-
-const views = {
-    dashboard: {
-        eyebrow: "Live workflow",
-        title: "Credit Control Dashboard",
-        subtitle: "Headline numbers, grouped customer risk, and operational actions without seeded demo content."
-    },
-    customers: {
-        eyebrow: "Customer balances",
-        title: "Grouped customer ledger",
-        subtitle: "A customer-first view of open invoices, overdue balances and control status."
-    },
-    invoice: {
-        eyebrow: "Invoice workflow",
-        title: "Invoice detail",
-        subtitle: "Notes, status changes, promises to pay and late-payment guidance for the selected invoice."
-    },
-    activity: {
-        eyebrow: "Audit trail",
-        title: "Full history",
-        subtitle: "A chronological record of syncs, notes, promises and status movement."
-    }
-};
-
-let currentCustomer = state.customers[0] || null;
-let currentInvoice = state.selectedInvoice || firstInvoice(currentCustomer);
-
-function normaliseState(payload) {
-    return {
-        organisation: payload.organisation || emptyData.organisation,
-        dashboard: payload.dashboard || emptyData.dashboard,
-        customers: Array.isArray(payload.customers) ? payload.customers : [],
-        audit: Array.isArray(payload.audit) ? payload.audit : [],
-        selectedInvoice: payload.selectedInvoice || null
-    };
-}
+let selectedFilter = "all";
+let selectedInvoiceId = state.selectedInvoice?.id || null;
+let searchTerm = "";
+let managerFilter = "all";
+let clientFilter = "all";
+let pageSize = 25;
+let currentPage = 1;
 
 function normaliseAPI(config) {
-    if (!config || !config.baseUrl) {
-        return null;
-    }
-
     return {
-        baseUrl: String(config.baseUrl).replace(/\/$/, ""),
+        baseUrl: config.baseUrl ? String(config.baseUrl).replace(/\/$/, "") : DEFAULT_API_BASE_URL,
         headers: config.headers || {},
         endpoints: {
             panel: config.endpoints?.panel || "/api/panel",
@@ -75,6 +44,16 @@ function normaliseAPI(config) {
     };
 }
 
+function normaliseState(payload) {
+    return {
+        organisation: payload.organisation || emptyData.organisation,
+        dashboard: payload.dashboard || emptyData.dashboard,
+        customers: Array.isArray(payload.customers) ? payload.customers : [],
+        audit: Array.isArray(payload.audit) ? payload.audit : [],
+        selectedInvoice: payload.selectedInvoice || null
+    };
+}
+
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
 
@@ -84,10 +63,9 @@ function loadState() {
             return injected;
         }
 
-        const parsed = JSON.parse(stored);
         return normaliseState({
             ...injected,
-            ...parsed,
+            ...JSON.parse(stored),
         });
     } catch {
         return injected;
@@ -99,21 +77,19 @@ function persistState() {
 }
 
 function replaceState(next) {
+    const preservedInvoiceId = selectedInvoiceId;
     state.organisation = next.organisation;
     state.dashboard = next.dashboard;
     state.customers = next.customers;
     state.audit = next.audit;
     state.selectedInvoice = next.selectedInvoice;
-    currentCustomer = state.customers[0] || null;
-    currentInvoice = state.selectedInvoice || firstInvoice(currentCustomer);
+
+    const invoice = findInvoiceById(preservedInvoiceId) || next.selectedInvoice || allInvoices()[0] || null;
+    selectedInvoiceId = invoice?.id || null;
     persistState();
 }
 
 function endpointURL(template, params = {}) {
-    if (!api) {
-        return "";
-    }
-
     const path = Object.entries(params).reduce(
         (accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)),
         template
@@ -122,19 +98,11 @@ function endpointURL(template, params = {}) {
 }
 
 function loginURL() {
-    if (!api) {
-        return "";
-    }
-
     const separator = api.endpoints.login.includes("?") ? "&" : "?";
     return `${endpointURL(api.endpoints.login)}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
 }
 
 async function requestJSON(template, options = {}, params = {}) {
-    if (!api) {
-        return null;
-    }
-
     const response = await fetch(endpointURL(template, params), {
         ...options,
         headers: {
@@ -153,10 +121,6 @@ async function requestJSON(template, options = {}, params = {}) {
 }
 
 async function hydrateFromAPI() {
-    if (!api) {
-        return;
-    }
-
     try {
         const payload = await requestJSON(api.endpoints.panel);
         if (payload) {
@@ -167,475 +131,538 @@ async function hydrateFromAPI() {
     }
 }
 
-function firstInvoice(customer) {
-    return customer && Array.isArray(customer.invoices) ? customer.invoices[0] || null : null;
+function allInvoices() {
+    return state.customers.flatMap((customer) =>
+        (customer.invoices || []).map((invoice) => ({
+            ...invoice,
+            customerId: customer.id,
+            customerName: customer.name,
+            customerContact: customer.contact || "",
+            customerStatus: customer.status || "",
+            manager: customer.manager || "Unassigned",
+            description: invoice.description || invoice.invoiceNumber || "Xero invoice",
+            notesSummary: noteSnippet(invoice),
+        }))
+    );
 }
 
-function formatCurrency(value, precise = false) {
-    if (value === null || value === undefined || value === "") {
-        return "--";
+function findInvoiceById(invoiceId) {
+    if (!invoiceId) {
+        return null;
     }
+    return allInvoices().find((invoice) => invoice.id === invoiceId) || null;
+}
 
+function invoiceCategory(invoice) {
+    const control = `${invoice.controlStatus || invoice.status || ""}`.toLowerCase();
+    const amountDue = Number(invoice.amountDue || 0);
+    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    const now = new Date();
+
+    if (amountDue <= 0 || control.includes("paid")) {
+        return "paid";
+    }
+    if (control.includes("court") || control.includes("legal")) {
+        return "court";
+    }
+    if (amountDue > 0 && dueDate && dueDate < now) {
+        return "overdue";
+    }
+    return "outstanding";
+}
+
+function invoiceStatusLabel(invoice) {
+    const category = invoiceCategory(invoice);
+    return {
+        paid: "Paid",
+        outstanding: "Outstanding",
+        overdue: "Overdue",
+        court: "Court"
+    }[category];
+}
+
+function formatCurrency(value) {
     return new Intl.NumberFormat("en-GB", {
         style: "currency",
         currency: "GBP",
-        minimumFractionDigits: precise ? 2 : 0,
-        maximumFractionDigits: precise ? 2 : 0
-    }).format(Number(value));
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(Number(value || 0));
 }
 
-function renderEmptyState(target, eyebrow, title, body) {
-    const template = document.getElementById("emptyStateTemplate");
-    const node = template.content.firstElementChild.cloneNode(true);
-    node.querySelector(".eyebrow").textContent = eyebrow;
-    node.querySelector("h4").textContent = title;
-    node.querySelector(".muted").textContent = body;
-    target.innerHTML = "";
-    target.appendChild(node);
-}
-
-function renderTimeline(items, target, emptyMessage) {
-    target.innerHTML = "";
-
-    if (!items.length) {
-        renderEmptyState(target, "No activity", emptyMessage.title, emptyMessage.body);
-        return;
+function formatDate(value) {
+    if (!value) {
+        return "--";
     }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+    return new Intl.DateTimeFormat("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+    }).format(date);
+}
 
-    const template = document.getElementById("timelineItemTemplate");
-    items.forEach((item) => {
-        const node = template.content.firstElementChild.cloneNode(true);
-        node.querySelector("strong").textContent = item.title || "Update";
-        node.querySelector("span").textContent = item.stamp || "";
-        node.querySelector("p").textContent = item.body || "";
-        target.appendChild(node);
+function noteSnippet(invoice) {
+    if (invoice.notes?.length) {
+        return invoice.notes[0].body || invoice.notes[0].title || "";
+    }
+    if (invoice.statuses?.length) {
+        return invoice.statuses[0].body || "";
+    }
+    return "";
+}
+
+function descriptionGlyph(invoice) {
+    const category = invoiceCategory(invoice);
+    return {
+        paid: "✓",
+        outstanding: "◌",
+        overdue: "!",
+        court: "§"
+    }[category];
+}
+
+function managerValues() {
+    return [...new Set(state.customers.map((customer) => customer.manager || "Unassigned"))];
+}
+
+function filteredInvoices() {
+    return allInvoices().filter((invoice) => {
+        const matchesFilter = selectedFilter === "all" || invoiceCategory(invoice) === selectedFilter;
+        const blob = [
+            invoice.customerName,
+            invoice.customerContact,
+            invoice.invoiceNumber,
+            invoice.description,
+            invoice.notesSummary,
+            invoice.status,
+            invoice.controlStatus
+        ].join(" ").toLowerCase();
+        const matchesSearch = blob.includes(searchTerm.toLowerCase());
+        const matchesManager = managerFilter === "all" || invoice.manager === managerFilter;
+        const needsAction = invoiceCategory(invoice) === "overdue" || invoiceCategory(invoice) === "court" || invoiceCategory(invoice) === "outstanding";
+        const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
+        return matchesFilter && matchesSearch && matchesManager && matchesClient;
     });
 }
 
-function renderMetrics() {
-    const metrics = [
-        ["Total receivables", formatCurrency(state.dashboard.totalReceivables), "Open receivables across the full ledger"],
-        ["Total overdue", formatCurrency(state.dashboard.totalOverdue), "Current overdue exposure"],
-        ["Open invoices", state.dashboard.openInvoices ?? "--", "Invoices not yet fully settled"],
-        ["Accounts needing action", state.dashboard.accountsNeedingAction ?? "--", "Customers currently requiring follow-up"],
-        ["Potential interest", formatCurrency(state.dashboard.potentialInterest, true), "Statutory late-payment estimate"],
-    ];
+function renderSummaryCounts() {
+    const invoices = allInvoices();
+    const counts = {
+        all: invoices.length,
+        paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
+        outstanding: invoices.filter((invoice) => invoiceCategory(invoice) === "outstanding").length,
+        overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
+        court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
+    };
 
-    const grid = document.getElementById("metricGrid");
-    grid.innerHTML = "";
+    document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
+    document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
+    document.getElementById("countOutstanding").textContent = counts.outstanding.toLocaleString("en-GB");
+    document.getElementById("countOverdue").textContent = counts.overdue.toLocaleString("en-GB");
+    document.getElementById("countCourt").textContent = counts.court.toLocaleString("en-GB");
 
-    metrics.forEach(([label, value, caption]) => {
-        const card = document.createElement("article");
-        card.className = "metric-card";
-        card.innerHTML = `<span>${label}</span><strong>${value}</strong><small>${caption}</small>`;
-        grid.appendChild(card);
+    document.querySelectorAll(".summary-chip").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.filter === selectedFilter);
     });
 }
 
-function renderPriorityAccounts() {
-    const target = document.getElementById("priorityAccounts");
-
-    if (!state.customers.length) {
-        renderEmptyState(
-            target,
-            "No accounts",
-            "No live customers loaded yet",
-            "Populate window.HYMN_PANEL_DATA.customers from your backend to show real action lists."
-        );
-        return;
-    }
-
-    target.innerHTML = "";
-    [...state.customers]
-        .sort((a, b) => Number(b.overdue || 0) - Number(a.overdue || 0))
-        .slice(0, 5)
-        .forEach((customer) => {
-            const row = document.createElement("article");
-            row.className = "timeline-item";
-            row.innerHTML = `
-                <div class="timeline-marker"></div>
-                <div class="timeline-copy">
-                    <div class="timeline-head">
-                        <strong>${customer.name || "Unnamed customer"}</strong>
-                        <span>${formatCurrency(customer.overdue)}</span>
-                    </div>
-                    <p>${customer.status || "Awaiting status"} · ${customer.openInvoices ?? 0} open invoices · ${formatCurrency(customer.totalDue)} total due</p>
-                </div>
-            `;
-            row.addEventListener("click", () => {
-                currentCustomer = customer;
-                currentInvoice = firstInvoice(customer);
-                renderInvoiceView();
-                activateView("invoice");
-            });
-            target.appendChild(row);
-        });
+function renderManagerFilter() {
+    const select = document.getElementById("managerFilter");
+    const currentValue = managerFilter;
+    select.innerHTML = `<option value="all">All Managers</option>`;
+    managerValues().forEach((manager) => {
+        const option = document.createElement("option");
+        option.value = manager;
+        option.textContent = manager;
+        select.appendChild(option);
+    });
+    select.value = currentValue;
 }
 
-function renderCustomersTable(searchTerm = "") {
-    const body = document.getElementById("customerTableBody");
-    body.innerHTML = "";
+function renderInvoiceTable() {
+    const tbody = document.getElementById("invoiceTableBody");
+    const invoices = filteredInvoices();
+    const pages = Math.max(1, Math.ceil(invoices.length / pageSize));
+    currentPage = Math.min(currentPage, pages);
 
-    const customers = state.customers.filter((customer) =>
-        (customer.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const start = (currentPage - 1) * pageSize;
+    const paged = invoices.slice(start, start + pageSize);
 
-    if (!customers.length) {
+    tbody.innerHTML = "";
+
+    if (!paged.length) {
         const row = document.createElement("tr");
         row.innerHTML = `
-            <td colspan="5">
+            <td colspan="8">
                 <div class="empty-state">
-                    <p class="eyebrow">No live rows</p>
-                    <h4>Customer data will appear here</h4>
-                    <p class="muted">Inject customers into window.HYMN_PANEL_DATA.customers or bind this table to your live API.</p>
+                    <p class="eyebrow">No invoices</p>
+                    <h4>No ledger rows match the current filters</h4>
+                    <p>Connect Xero and sync live data, or widen the search and filter settings.</p>
                 </div>
             </td>
         `;
-        body.appendChild(row);
-        return;
+        tbody.appendChild(row);
+    } else {
+        paged.forEach((invoice) => {
+            const category = invoiceCategory(invoice);
+            const row = document.createElement("tr");
+            row.className = invoice.id === selectedInvoiceId ? "is-selected" : "";
+            row.innerHTML = `
+                <td>
+                    <div class="client-name">${invoice.customerName || "Unnamed client"}</div>
+                    <div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div>
+                </td>
+                <td>
+                    <div class="client-name">${invoice.invoiceNumber || "--"}</div>
+                    <div class="invoice-subline">${invoice.id || ""}</div>
+                </td>
+                <td>
+                    <div class="description-cell">
+                        <div class="description-icon">${descriptionGlyph(invoice)}</div>
+                        <div>
+                            <div class="description-title">${invoice.description || "Xero invoice"}</div>
+                            <div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
+                <td>
+                    <div class="payment-cell">
+                        <div class="payment-status">
+                            <span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span>
+                            <span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span>
+                        </div>
+                        <div class="paid-date">${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div>
+                    </div>
+                </td>
+                <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
+                <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
+                <td><button class="row-menu" type="button">⋮</button></td>
+            `;
+            row.addEventListener("click", () => {
+                selectedInvoiceId = invoice.id;
+                renderAll();
+            });
+            tbody.appendChild(row);
+        });
     }
 
-    customers.forEach((customer) => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td><strong>${customer.name || "Unnamed customer"}</strong><br><span class="muted">${customer.contact || ""}</span></td>
-            <td>${customer.openInvoices ?? 0}</td>
-            <td>${formatCurrency(customer.totalDue)}</td>
-            <td>${formatCurrency(customer.overdue)}</td>
-            <td>${customer.status || "Awaiting status"}</td>
-        `;
-        row.addEventListener("click", () => {
-            currentCustomer = customer;
-            currentInvoice = firstInvoice(customer);
-            renderInvoiceView();
-            activateView("invoice");
+    renderPagination(invoices.length, pages, start, paged.length);
+}
+
+function renderPagination(totalResults, totalPages, start, count) {
+    document.getElementById("resultsText").textContent = totalResults
+        ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} results`
+        : "Showing 0 results";
+
+    document.getElementById("previousPageButton").disabled = currentPage <= 1;
+    document.getElementById("nextPageButton").disabled = currentPage >= totalPages;
+
+    const target = document.getElementById("pagePills");
+    target.innerHTML = "";
+
+    const pages = [];
+    for (let page = 1; page <= totalPages; page += 1) {
+        if (page <= 3 || page > totalPages - 2 || Math.abs(page - currentPage) <= 1) {
+            pages.push(page);
+        }
+    }
+
+    [...new Set(pages)].forEach((page) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `page-pill${page === currentPage ? " is-active" : ""}`;
+        button.textContent = String(page);
+        button.addEventListener("click", () => {
+            currentPage = page;
+            renderInvoiceTable();
         });
-        body.appendChild(row);
+        target.appendChild(button);
     });
 }
 
-function calculateInterest(invoice) {
-    if (!invoice || !invoice.amountDue || !invoice.dueDate) {
-        return null;
-    }
+function renderDetailPanel() {
+    const invoice = findInvoiceById(selectedInvoiceId) || filteredInvoices()[0] || allInvoices()[0] || null;
+    selectedInvoiceId = invoice?.id || null;
 
-    const overdueDays = Math.max(
-        0,
-        Math.floor((new Date() - new Date(invoice.dueDate)) / (1000 * 60 * 60 * 24))
-    );
-    return Math.round((Number(invoice.amountDue) * 0.08 * overdueDays / 365) * 100) / 100;
-}
+    document.getElementById("invoiceTitle").textContent = invoice ? `${invoice.customerName} · ${invoice.invoiceNumber}` : "No invoice selected";
+    document.getElementById("invoiceMeta").textContent = invoice
+        ? `${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}`
+        : "Select a row above to inspect status, notes, promise to pay and late-payment guidance.";
+    document.getElementById("invoiceStatusBadge").textContent = invoice ? invoiceStatusLabel(invoice) : "Awaiting data";
+    document.getElementById("invoiceStatusBadge").className = `status-badge ${invoice ? invoiceCategory(invoice) : ""}`.trim();
 
-function calculateCourtCost(invoice) {
-    if (!invoice || !invoice.amountDue) {
-        return null;
-    }
+    const stats = document.getElementById("detailStats");
+    stats.innerHTML = "";
 
-    const amount = Number(invoice.amountDue);
-    if (amount <= 300) return 35;
-    if (amount <= 500) return 50;
-    if (amount <= 1000) return 70;
-    if (amount <= 1500) return 80;
-    if (amount <= 3000) return 115;
-    if (amount <= 5000) return 205;
-    return 455;
-}
+    const items = invoice ? [
+        ["Amount due", formatCurrency(invoice.amountDue || 0)],
+        ["Amount paid", formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))],
+        ["Overdue days", `${invoice.overdueDays || 0}`],
+        ["Promised date", invoice.promisedDate ? formatDate(invoice.promisedDate) : "--"],
+    ] : [];
 
-function renderInvoiceView() {
-    const invoice = currentInvoice;
-    const metricGrid = document.getElementById("invoiceMetricGrid");
-    const title = document.getElementById("invoiceTitle");
-    const meta = document.getElementById("invoiceMeta");
-    const statusPill = document.getElementById("invoiceStatusPill");
-    const infoText = document.getElementById("interestInfoText");
-
-    if (!invoice) {
-        title.textContent = "Select a live invoice";
-        meta.textContent = "Choose a customer once live data is loaded.";
-        statusPill.textContent = "Awaiting data";
-        metricGrid.innerHTML = "";
-        [
-            ["Amount due", "--"],
-            ["Interest so far", "--"],
-            ["Court costs", "--"],
-            ["Promise date", "--"]
-        ].forEach(([label, value]) => {
-            const card = document.createElement("article");
-            card.className = "mini-metric";
-            card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-            metricGrid.appendChild(card);
-        });
-        infoText.textContent = "Late-payment interest and court-cost guidance will appear here once a real invoice is selected.";
-        renderTimeline([], document.getElementById("notesTimeline"), {
-            title: "No notes yet",
-            body: "Invoice notes will appear when a real invoice is selected."
-        });
-        renderTimeline([], document.getElementById("promiseTimeline"), {
-            title: "No promises yet",
-            body: "Payment promises will appear when a real invoice is selected."
-        });
-        renderTimeline([], document.getElementById("statusTimeline"), {
-            title: "No status history yet",
-            body: "Status changes will appear when a real invoice is selected."
-        });
-        return;
-    }
-
-    const interest = calculateInterest(invoice);
-    const courtCost = calculateCourtCost(invoice);
-    title.textContent = invoice.id || "Unnamed invoice";
-    meta.textContent = `${currentCustomer?.name || "Customer"} · Due ${invoice.dueDate || "Unknown due date"}`;
-    statusPill.textContent = invoice.status || "Awaiting status";
-    metricGrid.innerHTML = "";
-
-    [
-        ["Amount due", formatCurrency(invoice.amountDue)],
-        ["Interest so far", formatCurrency(interest, true)],
-        ["Court costs", formatCurrency(courtCost)],
-        ["Promise date", invoice.promiseDate || "--"]
-    ].forEach(([label, value]) => {
+    items.forEach(([label, value]) => {
         const card = document.createElement("article");
-        card.className = "mini-metric";
+        card.className = "detail-stat";
         card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-        metricGrid.appendChild(card);
+        stats.appendChild(card);
     });
 
-    infoText.textContent = `If this proceeded to court today, estimated court costs would be ${formatCurrency(courtCost)} and statutory interest accrued so far would be ${formatCurrency(interest, true)}.`;
+    document.getElementById("interestInfoText").textContent = invoice
+        ? `If this went to court there would be £${Number(invoice.latePayment?.court_cost || invoice.latePayment?.courtCost || 35).toFixed(0)} in court costs and £${Number(invoice.latePayment?.interest || 0).toFixed(2)} in statutory interest so far.`
+        : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
 
-    renderTimeline(invoice.notes || [], document.getElementById("notesTimeline"), {
-        title: "No notes yet",
-        body: "Add internal commentary when your workflow is live."
+    document.getElementById("statusSelect").value = invoice?.controlStatus || invoiceStatusLabel(invoice) || "Outstanding";
+
+    renderTimeline("statusTimeline", invoice?.statuses || [], {
+        eyebrow: "No status history",
+        title: "Status changes will appear here",
+        body: "Save a status change to build the credit-control history."
     });
-    renderTimeline(invoice.promises || [], document.getElementById("promiseTimeline"), {
-        title: "No promises yet",
-        body: "Promise-to-pay entries will appear here."
+    renderTimeline("notesTimeline", invoice?.notes || [], {
+        eyebrow: "No notes",
+        title: "Internal notes will appear here",
+        body: "Use the note form to log calls, promises or chasing updates."
     });
-    renderTimeline(invoice.statuses || [], document.getElementById("statusTimeline"), {
-        title: "No status history yet",
-        body: "Status updates will appear here."
+    renderTimeline("promiseTimeline", invoice?.promises || [], {
+        eyebrow: "No promises",
+        title: "Promise-to-pay entries will appear here",
+        body: "Record a commitment to track expected cash collection."
     });
 }
 
-function activateView(viewName) {
-    document.querySelectorAll(".view").forEach((view) => {
-        view.classList.toggle("is-active", view.id === `${viewName}View`);
-    });
-    document.querySelectorAll(".nav-link").forEach((button) => {
-        button.classList.toggle("is-active", button.dataset.view === viewName);
-    });
+function renderTimeline(targetId, items, empty) {
+    const target = document.getElementById(targetId);
+    target.innerHTML = "";
 
-    document.getElementById("viewEyebrow").textContent = views[viewName].eyebrow;
-    document.getElementById("viewTitle").textContent = views[viewName].title;
-    document.getElementById("viewSubtitle").textContent = views[viewName].subtitle;
+    if (!items.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = empty.eyebrow;
+        emptyState.querySelector("h4").textContent = empty.title;
+        emptyState.querySelector("p:last-child").textContent = empty.body;
+        target.appendChild(emptyState);
+        return;
+    }
+
+    items.forEach((item) => {
+        const row = document.createElement("article");
+        row.className = "timeline-item";
+        row.innerHTML = `
+            <div class="timeline-head">
+                <span class="timeline-title">${item.title || "Update"}</span>
+                <span class="timeline-stamp">${item.stamp || ""}</span>
+            </div>
+            <div class="timeline-body">${item.body || ""}</div>
+        `;
+        target.appendChild(row);
+    });
 }
 
-function wireForms() {
-    document.getElementById("noteForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!currentInvoice) return;
+function renderChrome() {
+    document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
+    const connected = Boolean(state.organisation.name);
+    const label = connected ? "Reconnect Xero" : "Connect Xero";
+    document.getElementById("connectXeroButton").textContent = label;
+    const sidebarConnectButton = document.getElementById("sidebarConnectButton");
+    if (sidebarConnectButton) {
+        sidebarConnectButton.textContent = connected ? "Reconnect Xero" : "Login with Xero";
+    }
+}
 
-        const input = document.getElementById("noteInput");
-        const value = input.value.trim();
-        if (!value) return;
+function renderAll() {
+    renderChrome();
+    renderSummaryCounts();
+    renderManagerFilter();
+    renderInvoiceTable();
+    renderDetailPanel();
+}
 
-        currentInvoice.notes = currentInvoice.notes || [];
-        currentInvoice.notes.unshift({
-            title: "Manual note",
-            stamp: "Just now",
-            body: value
+function wireFilters() {
+    document.querySelectorAll(".summary-chip").forEach((button) => {
+        button.addEventListener("click", () => {
+            selectedFilter = button.dataset.filter;
+            currentPage = 1;
+            renderAll();
         });
-        input.value = "";
-        persistState();
-        renderInvoiceView();
-
-        if (api) {
-            try {
-                await requestJSON(
-                    api.endpoints.note,
-                    {
-                        method: "POST",
-                        body: JSON.stringify({ body: value })
-                    },
-                    { invoiceId: currentInvoice.id }
-                );
-                await hydrateFromAPI();
-            } catch (error) {
-                console.error("Unable to save note to API", error);
-            }
-        }
     });
 
-    document.getElementById("promiseForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!currentInvoice) return;
-
-        const amount = document.getElementById("promiseAmount").value.trim();
-        const date = document.getElementById("promiseDate").value;
-        const note = document.getElementById("promiseNote").value.trim();
-        if (!amount || !date) return;
-
-        currentInvoice.promises = currentInvoice.promises || [];
-        currentInvoice.promiseDate = date;
-        currentInvoice.promises.unshift({
-            title: `Promise to pay ${formatCurrency(amount)}`,
-            stamp: `Due ${date}`,
-            body: note || "Promise recorded."
-        });
-        document.getElementById("promiseAmount").value = "";
-        document.getElementById("promiseDate").value = "";
-        document.getElementById("promiseNote").value = "";
-        persistState();
-        renderInvoiceView();
-
-        if (api) {
-            try {
-                await requestJSON(
-                    api.endpoints.promise,
-                    {
-                        method: "POST",
-                        body: JSON.stringify({
-                            promisedAmount: amount,
-                            promisedDate: date,
-                            note
-                        })
-                    },
-                    { invoiceId: currentInvoice.id }
-                );
-                await hydrateFromAPI();
-            } catch (error) {
-                console.error("Unable to save promise to API", error);
-            }
-        }
+    document.getElementById("ledgerSearch").addEventListener("input", (event) => {
+        searchTerm = event.target.value;
+        currentPage = 1;
+        renderInvoiceTable();
     });
 
-    document.getElementById("statusForm").addEventListener("submit", async (event) => {
-        event.preventDefault();
-        if (!currentInvoice) return;
-
-        const status = document.getElementById("statusSelect").value;
-        const note = document.getElementById("statusNote").value.trim();
-
-        currentInvoice.status = status;
-        currentInvoice.statuses = currentInvoice.statuses || [];
-        currentInvoice.statuses.unshift({
-            title: status,
-            stamp: "Just now",
-            body: note || "Status updated."
-        });
-        document.getElementById("statusNote").value = "";
-        persistState();
-        renderInvoiceView();
-
-        if (api) {
-            try {
-                await requestJSON(
-                    api.endpoints.status,
-                    {
-                        method: "POST",
-                        body: JSON.stringify({
-                            status,
-                            note
-                        })
-                    },
-                    { invoiceId: currentInvoice.id }
-                );
-                await hydrateFromAPI();
-            } catch (error) {
-                console.error("Unable to save status to API", error);
-            }
-        }
+    document.getElementById("managerFilter").addEventListener("change", (event) => {
+        managerFilter = event.target.value;
+        currentPage = 1;
+        renderInvoiceTable();
     });
-}
 
-function wireSearch() {
-    document.getElementById("customerSearch").addEventListener("input", (event) => {
-        renderCustomersTable(event.target.value);
+    document.getElementById("clientFilter").innerHTML = `
+        <option value="all">Active Clients</option>
+        <option value="action">Needs Action</option>
+        <option value="current">Current Only</option>
+    `;
+    document.getElementById("clientFilter").addEventListener("change", (event) => {
+        clientFilter = event.target.value;
+        currentPage = 1;
+        renderInvoiceTable();
     });
-}
 
-function wireNavigation() {
-    document.querySelectorAll(".nav-link").forEach((button) => {
-        button.addEventListener("click", () => activateView(button.dataset.view));
+    document.getElementById("pageSizeSelect").addEventListener("change", (event) => {
+        pageSize = Number(event.target.value);
+        currentPage = 1;
+        renderInvoiceTable();
     });
-}
 
-function wireSyncButtons() {
-    const syncHandler = async () => {
-        document.getElementById("syncStamp").textContent = "Sync requested";
-        state.organisation.lastSync = "Sync requested just now";
-        persistState();
+    document.getElementById("previousPageButton").addEventListener("click", () => {
+        currentPage = Math.max(1, currentPage - 1);
+        renderInvoiceTable();
+    });
 
-        if (api) {
-            try {
-                await requestJSON(api.endpoints.sync, { method: "POST" });
-                await hydrateFromAPI();
-                return;
-            } catch (error) {
-                console.error("Unable to trigger sync via API", error);
-            }
-        }
-
-        if (typeof window.HYMN_PANEL_RESYNC === "function") {
-            await window.HYMN_PANEL_RESYNC();
-        }
-    };
-
-    document.getElementById("primarySyncButton").addEventListener("click", syncHandler);
-    document.getElementById("sidebarSyncButton").addEventListener("click", syncHandler);
+    document.getElementById("nextPageButton").addEventListener("click", () => {
+        currentPage += 1;
+        renderInvoiceTable();
+    });
 }
 
 function wireLoginButtons() {
     const connect = () => {
         const url = loginURL();
         if (!url) {
-            alert("Set window.HYMN_PANEL_API.baseUrl to enable Xero login.");
+            window.alert("Unable to start the Xero login flow.");
             return;
         }
-
         window.location.href = url;
     };
 
     document.getElementById("connectXeroButton").addEventListener("click", connect);
-    document.getElementById("sidebarConnectButton").addEventListener("click", connect);
 }
 
-function renderChrome() {
-    document.getElementById("organisationName").textContent = state.organisation.name || "No organisation connected";
-    document.getElementById("organisationStatus").textContent = state.organisation.status || "Awaiting live connection";
-    if (state.organisation.lastSync) {
-        document.getElementById("syncStamp").textContent = state.organisation.lastSync;
-    }
+function wireSyncButtons() {
+    const sync = async () => {
+        state.organisation.lastSync = "Sync requested just now";
+        renderChrome();
+        persistState();
 
-    const connectButtons = [
-        document.getElementById("connectXeroButton"),
-        document.getElementById("sidebarConnectButton")
-    ];
-    const connected = Boolean(state.organisation.name);
-    connectButtons.forEach((button) => {
-        button.textContent = connected ? "Reconnect Xero" : "Connect Xero";
+        try {
+            await requestJSON(api.endpoints.sync, { method: "POST" });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to sync panel data", error);
+        }
+    };
+
+    document.getElementById("primarySyncButton").addEventListener("click", sync);
+    document.getElementById("sidebarSyncButton").addEventListener("click", sync);
+}
+
+function wireForms() {
+    document.getElementById("noteForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const invoice = findInvoiceById(selectedInvoiceId);
+        const body = document.getElementById("noteInput").value.trim();
+        if (!invoice || !body) {
+            return;
+        }
+
+        invoice.notes = [{ title: "Internal note", body, stamp: new Date().toISOString() }, ...(invoice.notes || [])];
+        document.getElementById("noteInput").value = "";
+        persistState();
+        renderDetailPanel();
+        renderInvoiceTable();
+
+        try {
+            await requestJSON(api.endpoints.note, {
+                method: "POST",
+                body: JSON.stringify({ body })
+            }, { invoiceId: invoice.id });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save note", error);
+        }
+    });
+
+    document.getElementById("promiseForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const invoice = findInvoiceById(selectedInvoiceId);
+        const promisedAmount = document.getElementById("promiseAmount").value.trim();
+        const promisedDate = document.getElementById("promiseDate").value;
+        const note = document.getElementById("promiseNote").value.trim();
+        if (!invoice || !promisedAmount || !promisedDate) {
+            return;
+        }
+
+        invoice.promises = [{
+            title: `Promise for ${formatCurrency(promisedAmount)}`,
+            body: note,
+            stamp: promisedDate
+        }, ...(invoice.promises || [])];
+        invoice.promisedDate = promisedDate;
+        document.getElementById("promiseAmount").value = "";
+        document.getElementById("promiseDate").value = "";
+        document.getElementById("promiseNote").value = "";
+        persistState();
+        renderDetailPanel();
+
+        try {
+            await requestJSON(api.endpoints.promise, {
+                method: "POST",
+                body: JSON.stringify({ promisedAmount, promisedDate, note })
+            }, { invoiceId: invoice.id });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save promise", error);
+        }
+    });
+
+    document.getElementById("statusForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const invoice = findInvoiceById(selectedInvoiceId);
+        const statusValue = document.getElementById("statusSelect").value;
+        const note = document.getElementById("statusNote").value.trim();
+        if (!invoice) {
+            return;
+        }
+
+        invoice.controlStatus = statusValue;
+        invoice.statuses = [{
+            title: statusValue,
+            body: note,
+            stamp: new Date().toISOString()
+        }, ...(invoice.statuses || [])];
+        document.getElementById("statusNote").value = "";
+        persistState();
+        renderAll();
+
+        try {
+            await requestJSON(api.endpoints.status, {
+                method: "POST",
+                body: JSON.stringify({ statusValue, note })
+            }, { invoiceId: invoice.id });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save status", error);
+        }
     });
 }
 
 async function init() {
     await hydrateFromAPI();
-    renderChrome();
-    renderMetrics();
-    renderPriorityAccounts();
-    renderCustomersTable();
-    renderInvoiceView();
-    renderTimeline(state.audit, document.getElementById("auditTimeline"), {
-        title: "No audit events yet",
-        body: "Live sync history and operational actions will appear here."
-    });
-    renderTimeline(state.audit.slice(0, 4), document.getElementById("dashboardTimeline"), {
-        title: "No recent activity yet",
-        body: "Once the workflow is live, the latest actions will appear here."
-    });
-    wireForms();
-    wireSearch();
-    wireNavigation();
-    wireSyncButtons();
+    renderAll();
+    wireFilters();
     wireLoginButtons();
+    wireSyncButtons();
+    wireForms();
 }
 
 init();

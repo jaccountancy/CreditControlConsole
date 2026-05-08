@@ -3,621 +3,567 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hymn Credit Control Panel</title>
+    <title>Credit Control</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!--
     Optional live-data injection example:
     <script>
-    window.HYMN_PANEL_DATA = {
-      organisation: {
-        name: "Your Organisation",
-        status: "Connected",
-        lastSync: "Last sync 2 minutes ago"
-      },
-      dashboard: {
-        totalReceivables: 120000,
-        totalOverdue: 35000,
-        openInvoices: 18,
-        accountsNeedingAction: 6,
-        potentialInterest: 412.55
-      },
-      customers: [],
-      audit: [],
-      selectedInvoice: null
-    };
     window.HYMN_PANEL_API = {
-      baseUrl: "https://your-api.example.com",
-      headers: {
-        Authorization: "Bearer your-token"
-      },
-      endpoints: {
-        login: "/auth/xero/start"
-      }
+      baseUrl: "https://creditcontrolconsole-production.up.railway.app"
     };
     </script>
     -->
     <style>
 :root {
-    --bg: #f7f3ec;
-    --panel: rgba(255, 251, 246, 0.94);
-    --panel-strong: #fffdf9;
-    --ink: #172126;
-    --muted: #6e7b80;
-    --line: rgba(23, 33, 38, 0.12);
-    --accent: #b35f2e;
-    --accent-deep: #8f4218;
-    --accent-soft: #f3dfd0;
-    --success: #2b7d63;
-    --danger: #c55252;
-    --night: #161a1d;
-    --shadow: 0 20px 60px rgba(23, 21, 18, 0.08);
+    --bg: #f5f8ff;
+    --surface: rgba(255, 255, 255, 0.88);
+    --surface-strong: #ffffff;
+    --surface-soft: #f8fbff;
+    --ink: #1e2f4d;
+    --muted: #8593ad;
+    --line: rgba(61, 85, 130, 0.11);
+    --blue: #1d67f2;
+    --blue-soft: #e9f1ff;
+    --green: #27b05f;
+    --green-soft: #e8f8ee;
+    --orange: #ff9f2f;
+    --orange-soft: #fff3df;
+    --red: #ff5353;
+    --red-soft: #ffe7e7;
+    --purple: #8d62ff;
+    --purple-soft: #eee8ff;
+    --shadow: 0 18px 60px rgba(41, 79, 148, 0.12);
 }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body {
     font-family: "Manrope", sans-serif;
     color: var(--ink);
     background:
-        radial-gradient(circle at top left, rgba(179, 95, 46, 0.16), transparent 26%),
-        radial-gradient(circle at bottom right, rgba(43, 125, 99, 0.10), transparent 24%),
-        linear-gradient(180deg, #fcfaf7 0%, var(--bg) 100%);
+        radial-gradient(circle at top center, rgba(29, 103, 242, 0.10), transparent 30%),
+        radial-gradient(circle at bottom left, rgba(141, 98, 255, 0.08), transparent 28%),
+        linear-gradient(180deg, #fdfefe 0%, var(--bg) 100%);
 }
 button, input, textarea, select { font: inherit; }
-.topbar {
-    position: sticky;
-    top: 0;
-    z-index: 3;
+button { cursor: pointer; }
+.ledger-shell { width: min(1360px, calc(100vw - 48px)); margin: 28px auto 48px; }
+.ledger-topbar, .ledger-card, .detail-card {
+    background: var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(14px);
+}
+.ledger-topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 16px;
-    padding: 18px 28px;
-    background: rgba(252, 250, 247, 0.92);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--line);
+    gap: 18px;
+    padding: 22px 26px;
+    border-radius: 28px;
+    margin-bottom: 18px;
 }
-.topbar-brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
-    display: grid;
-    place-items: center;
-    background: linear-gradient(135deg, var(--accent), #efbf97);
-    color: white;
-    font-family: "Fraunces", serif;
-    font-size: 1.7rem;
-    box-shadow: 0 14px 28px rgba(179, 95, 46, 0.25);
+.brand-lockup { display: flex; align-items: center; }
+.eyebrow {
+    margin: 0 0 4px;
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 800;
+    color: var(--muted);
 }
-.topbar-brand strong,
-.workspace-header h2,
-.sidebar h1,
-.panel h3,
-.sidebar h2,
-.empty-state h4 {
-    font-family: "Fraunces", serif;
-    margin: 0;
-    letter-spacing: -0.02em;
-}
-.topbar-meta { display: flex; align-items: center; gap: 14px; }
-.sync-chip {
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3 { letter-spacing: -0.03em; }
+.topbar-actions, .toolbar-controls, .detail-actions, .pagination, .summary-bar {
     display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.sync-indicator {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 10px 14px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid var(--line);
+    background: var(--surface-soft);
     color: var(--muted);
+    border: 1px solid var(--line);
 }
 .sync-dot {
     width: 10px;
     height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 5px rgba(39, 176, 95, 0.12);
+}
+.primary-button, .ghost-button, .summary-chip {
     border-radius: 999px;
-    background: var(--success);
-    box-shadow: 0 0 0 5px rgba(43, 125, 99, 0.12);
-}
-.app-shell {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 20px;
-    padding: 20px;
-}
-.sidebar { display: flex; flex-direction: column; gap: 16px; }
-.sidebar-card,
-.workspace-header,
-.panel,
-.metric-card {
-    border: 1px solid var(--line);
-    border-radius: 28px;
-    background: var(--panel);
-    box-shadow: var(--shadow);
-}
-.sidebar-card { padding: 22px; }
-.hero-card {
-    background:
-        linear-gradient(180deg, rgba(22, 26, 29, 0.96), rgba(26, 31, 35, 0.94)),
-        var(--night);
-    color: #f6f2eb;
-    min-height: 220px;
-}
-.hero-card .muted,
-.hero-card .eyebrow { color: rgba(246, 242, 235, 0.72); }
-.sidebar-nav { display: grid; gap: 8px; }
-.nav-link {
+    padding: 12px 18px;
     border: 1px solid transparent;
-    background: transparent;
-    border-radius: 18px;
-    padding: 14px 16px;
-    text-align: left;
-    color: var(--ink);
-    cursor: pointer;
     transition: 0.2s ease;
 }
-.nav-link:hover,
-.nav-link.is-active {
-    background: var(--panel-strong);
+.action-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+}
+.primary-button {
+    color: white;
+    background: linear-gradient(135deg, #1d67f2, #3b83ff);
+    box-shadow: 0 10px 24px rgba(29, 103, 242, 0.22);
+}
+.ghost-button {
+    background: rgba(255, 255, 255, 0.72);
     border-color: var(--line);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    color: var(--ink);
 }
-.workspace { display: grid; gap: 20px; }
-.workspace-header { padding: 28px 30px; }
-.view { display: none; }
-.view.is-active { display: grid; gap: 20px; }
-.metric-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
-}
-.metric-card { padding: 22px; }
-.metric-card span,
-.mini-metric span {
-    display: block;
+.summary-bar { flex-wrap: wrap; margin-bottom: 18px; justify-content: flex-start; }
+.summary-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.7);
+    border-color: var(--line);
     color: var(--muted);
-    margin-bottom: 10px;
 }
-.metric-card strong,
-.mini-metric strong {
-    display: block;
-    font-size: 1.95rem;
-    margin-bottom: 8px;
+
+.summary-chip-metrics {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
-.dashboard-layout {
+.summary-chip strong,
+.summary-chip .summary-value {
+    min-width: 34px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    color: inherit;
+    text-align: center;
+    font-weight: 800;
+    line-height: 1.15;
+}
+.summary-chip .summary-value {
+    min-width: 48px;
+    white-space: nowrap;
+}
+.summary-chip.is-active {
+    color: white;
+    background: linear-gradient(135deg, #1d67f2, #3b83ff);
+    box-shadow: 0 14px 28px rgba(29, 103, 242, 0.22);
+}
+.summary-chip.is-active strong,
+.summary-chip.is-active .summary-value { background: rgba(255, 255, 255, 0.22); color: white; }
+.summary-paid strong { color: var(--green); background: var(--green-soft); }
+.summary-outstanding strong { color: var(--orange); background: var(--orange-soft); }
+.summary-overdue strong { color: var(--red); background: var(--red-soft); }
+.summary-court strong { color: var(--purple); background: var(--purple-soft); }
+.summary-query strong { color: var(--purple); background: var(--purple-soft); }
+.summary-bad-debt strong { color: var(--ink); background: rgba(30, 47, 77, 0.10); }
+.toolbar-row {
     display: grid;
-    grid-template-columns: 1.1fr 0.9fr;
-    gap: 20px;
-}
-.panel { padding: 24px; }
-.panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 18px;
     margin-bottom: 18px;
 }
-.table-wrap { overflow: auto; }
-table { width: 100%; border-collapse: collapse; }
-th, td {
-    padding: 14px 8px;
+.search-wrap { position: relative; flex: 1; min-width: 0; }
+.search-icon {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+}
+.search-wrap input,
+.toolbar-controls select,
+.stack-form input,
+.stack-form textarea,
+.stack-form select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--ink);
+    padding: 13px 18px;
+}
+.search-wrap input { padding-left: 44px; }
+.toolbar-controls { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; align-items: center; }
+.toolbar-controls select, .toolbar-controls .ghost-button { width: auto; min-width: 0; white-space: nowrap; }
+.toolbar-controls select { min-width: 158px; }
+.ledger-card { border-radius: 28px; overflow: hidden; }
+.ledger-scroll { overflow: auto; }
+.invoice-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
+.invoice-table th, .invoice-table td {
+    padding: 16px 18px;
     border-bottom: 1px solid var(--line);
     text-align: left;
     vertical-align: top;
 }
-th {
-    color: var(--muted);
+.invoice-table th {
+    font-size: 0.76rem;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 800;
 }
-tbody tr { cursor: pointer; }
-tbody tr:hover { background: rgba(179, 95, 46, 0.04); }
-.invoice-summary { display: grid; gap: 18px; }
-.mini-metric-grid,
-.three-column { display: grid; gap: 16px; }
-.mini-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.mini-metric {
-    padding: 18px;
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    background: var(--panel-strong);
+.invoice-table tbody tr { transition: background 0.18s ease; }
+.invoice-table tbody tr:hover, .invoice-table tbody tr.is-selected { background: rgba(29, 103, 242, 0.05); }
+.client-name { font-weight: 800; margin-bottom: 4px; }
+.client-subline, .invoice-subline, .paid-date, .note-snippet, .detail-meta, .timeline-stamp {
+    color: var(--muted);
+    font-size: 0.92rem;
 }
-.three-column { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.stack-form { display: grid; gap: 12px; }
-.stack-form label span { display: block; margin-bottom: 6px; font-weight: 600; }
-.stack-form input,
-.stack-form textarea,
-.stack-form select,
-.search-input {
-    width: 100%;
-    padding: 12px 14px;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.88);
-    color: var(--ink);
-}
-.timeline { display: grid; gap: 14px; }
-.timeline.compact { margin-top: 18px; }
-.timeline-item {
+.description-cell { display: flex; gap: 14px; }
+.description-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
     display: grid;
-    grid-template-columns: 18px 1fr;
-    gap: 12px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--line);
+    place-items: center;
+    color: var(--blue);
+    background: var(--blue-soft);
+    font-size: 1.05rem;
+    flex: 0 0 auto;
 }
-.timeline-marker {
-    width: 12px;
-    height: 12px;
-    margin-top: 6px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, var(--accent), #efbf97);
+.description-title { font-weight: 700; margin-bottom: 4px; }
+.amount-cell, .paid-amount { font-weight: 800; }
+.payment-cell { display: grid; gap: 4px; }
+.payment-status { display: inline-flex; align-items: center; gap: 8px; }
+.payment-dot {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    font-size: 0.72rem;
+    font-weight: 900;
 }
-.timeline-head {
+.payment-dot.paid { color: var(--green); border: 2px solid rgba(39, 176, 95, 0.25); }
+.payment-dot.outstanding { color: var(--orange); border: 2px solid rgba(255, 159, 47, 0.28); }
+.payment-dot.query { color: var(--purple); border: 2px solid rgba(141, 98, 255, 0.28); }
+.payment-dot.overdue, .payment-dot.court, .payment-dot.bad-debt { color: var(--red); border: 2px solid rgba(255, 83, 83, 0.28); }
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+.status-pill.paid { color: var(--green); background: var(--green-soft); }
+.status-pill.outstanding { color: var(--orange); background: var(--orange-soft); }
+.status-pill.query { color: var(--purple); background: var(--purple-soft); }
+.status-pill.overdue { color: var(--red); background: var(--red-soft); }
+.status-pill.court { color: var(--purple); background: var(--purple-soft); }
+.status-pill.bad-debt { color: var(--ink); background: rgba(30, 47, 77, 0.10); }
+.row-menu { border: 0; background: transparent; color: var(--muted); font-size: 1.2rem; line-height: 1; }
+.ledger-footer {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 6px;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 6px 0;
+    color: var(--muted);
 }
-.timeline-head span { color: var(--muted); font-size: 0.9rem; }
-.timeline-copy p,
-.empty-state p { margin: 0; }
-.info-callout {
+.ledger-topbar, .summary-bar, .toolbar-row, .ledger-card, .ledger-footer, .detail-card {
+    margin-left: auto;
+    margin-right: auto;
+}
+.page-pills { display: flex; gap: 8px; }
+.page-pill {
+    min-width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.75);
+    color: var(--muted);
+}
+.page-pill.is-active { background: var(--blue); color: white; border-color: transparent; }
+.detail-card { margin-top: 22px; border-radius: 30px; padding: 24px; }
+.detail-hero, .panel-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+}
+.status-badge {
+    padding: 12px 14px;
+    border-radius: 999px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-weight: 700;
+}
+.detail-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin: 22px 0 18px;
+}
+.detail-stat {
+    padding: 18px;
+    border-radius: 22px;
+    background: var(--surface-soft);
+    border: 1px solid var(--line);
+}
+.detail-stat span { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 8px; }
+.detail-stat strong { font-size: 1.35rem; }
+.court-callout {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 12px;
-    align-items: start;
-    padding: 16px;
-    border-radius: 22px;
-    background: var(--accent-soft);
+    gap: 14px;
+    padding: 16px 18px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, #f7f6ff, #f0ecff);
+    color: #5a45a2;
+    margin-bottom: 18px;
 }
 .info-button {
     width: 34px;
     height: 34px;
+    border-radius: 50%;
     border: 0;
-    background: rgba(255, 255, 255, 0.8);
-    color: var(--accent-deep);
+    background: rgba(255, 255, 255, 0.92);
+    color: #6d52c2;
     font-weight: 800;
 }
-.status-pill {
-    padding: 10px 14px;
-    border-radius: 999px;
-    background: rgba(23, 33, 38, 0.08);
-    color: var(--muted);
-    font-weight: 700;
-}
-.secondary-button,
-.ghost-button {
-    border-radius: 999px;
-    padding: 11px 16px;
-    cursor: pointer;
-}
-.sidebar-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-}
-.secondary-button {
-    border: 0;
-    background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-    color: white;
-}
-.ghost-button {
-    border: 1px solid var(--line);
-    background: transparent;
-    color: inherit;
-}
-.eyebrow {
-    margin: 0 0 4px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    font-size: 0.72rem;
-    font-weight: 700;
-}
-.muted { color: var(--muted); }
-.empty-state {
+.detail-grid {
     display: grid;
-    gap: 8px;
-    place-items: start;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+.detail-panel {
+    padding: 20px;
+    border-radius: 26px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid var(--line);
+}
+.stack-form { display: grid; gap: 12px; margin-top: 16px; }
+.stack-form textarea { border-radius: 20px; resize: vertical; }
+.mini-timeline { display: grid; gap: 12px; margin-top: 18px; }
+.timeline-item {
+    padding: 14px;
+    border-radius: 18px;
+    background: rgba(248, 251, 255, 0.92);
+    border: 1px solid var(--line);
+}
+.timeline-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.timeline-title { font-weight: 700; }
+.timeline-body { color: var(--ink); font-size: 0.94rem; }
+.empty-state {
     padding: 28px;
-    border: 1px dashed var(--line);
     border-radius: 22px;
-    background: rgba(255, 255, 255, 0.45);
+    background: rgba(248, 251, 255, 0.92);
+    border: 1px dashed var(--line);
+    color: var(--muted);
 }
-.empty-state h4 { font-size: 1.35rem; }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (max-width: 1220px) {
-    .metric-grid,
-    .mini-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .three-column { grid-template-columns: 1fr; }
+    .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
+    .summary-bar, .toolbar-controls { justify-content: flex-start; }
+    .toolbar-row { grid-template-columns: 1fr; }
+    .toolbar-controls { flex-wrap: wrap; }
+    .detail-stats, .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 960px) {
-    .app-shell { grid-template-columns: 1fr; }
-    .dashboard-layout { grid-template-columns: 1fr; }
-    .topbar,
-    .workspace-header { flex-direction: column; align-items: flex-start; }
-}
-@media (max-width: 640px) {
-    .topbar,
-    .app-shell { padding: 16px; }
-    .metric-grid,
-    .mini-metric-grid { grid-template-columns: 1fr; }
+@media (max-width: 860px) {
+    .ledger-shell { width: calc(100vw - 24px); margin: 12px auto 30px; }
+    .summary-bar, .toolbar-controls, .topbar-actions, .pagination { flex-wrap: wrap; }
+    .detail-stats, .detail-grid { grid-template-columns: 1fr; }
+    .ledger-footer { flex-direction: column; align-items: flex-start; }
 }
     </style>
 </head>
 <body>
-    <div class="topbar">
-        <div class="topbar-brand">
-            <div class="brand-mark">H</div>
-            <div>
-                <p class="eyebrow">Hymn</p>
-                <strong>Credit Control</strong>
+    <main class="ledger-shell">
+        <header class="ledger-topbar">
+            <div class="brand-lockup">
+                <div>
+                    <h1>Credit Control Ledger</h1>
+                </div>
             </div>
-        </div>
-        <div class="topbar-meta">
-            <div class="sync-chip">
-                <span class="sync-dot"></span>
-                <span id="syncStamp">Waiting for first sync</span>
+            <div class="topbar-actions">
+                <div class="sync-indicator">
+                    <span class="sync-dot"></span>
+                    <span id="syncStamp">Waiting for first sync</span>
+                </div>
+                <a class="ghost-button action-link" id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
+                <button class="primary-button" id="primarySyncButton">Resync from Xero</button>
             </div>
-            <button class="ghost-button" id="connectXeroButton">Connect Xero</button>
-            <button class="secondary-button" id="primarySyncButton">Resync from Xero</button>
-        </div>
-    </div>
-    <div class="app-shell">
-        <aside class="sidebar">
-            <section class="sidebar-card hero-card">
-                <p class="eyebrow">Control Centre</p>
-                <h1>Credit operations in one place.</h1>
-                <p class="muted">Operational chasing, promises, audit trail and late-payment guidance, grouped by customer.</p>
-            </section>
-            <nav class="sidebar-nav">
-                <button class="nav-link is-active" data-view="dashboard">Dashboard</button>
-                <button class="nav-link" data-view="customers">Customers</button>
-                <button class="nav-link" data-view="invoice">Invoice Detail</button>
-                <button class="nav-link" data-view="activity">Audit Trail</button>
-            </nav>
-            <section class="sidebar-card">
-                <p class="eyebrow">Live status</p>
-                <h2 id="organisationName">No organisation connected</h2>
-                <p class="muted" id="organisationStatus">Connect your real Xero data source and inject live payloads into the panel.</p>
-                <div class="sidebar-actions">
-                    <button class="ghost-button" id="sidebarConnectButton">Login with Xero</button>
+        </header>
+
+        <section class="summary-bar">
+            <button class="summary-chip is-active" type="button" data-filter="all"><span>All</span><span class="summary-chip-metrics"><strong id="countAll">0</strong><span class="summary-value" id="valueAll">£0</span></span></button>
+            <button class="summary-chip summary-outstanding" type="button" data-filter="outstanding"><span>Outstanding</span><span class="summary-chip-metrics"><strong id="countOutstanding">0</strong><span class="summary-value" id="valueOutstanding">£0</span></span></button>
+            <button class="summary-chip summary-overdue" type="button" data-filter="overdue"><span>Overdue</span><span class="summary-chip-metrics"><strong id="countOverdue">0</strong><span class="summary-value" id="valueOverdue">£0</span></span></button>
+            <button class="summary-chip summary-query" type="button" data-filter="query"><span>Query</span><span class="summary-chip-metrics"><strong id="countQuery">0</strong><span class="summary-value" id="valueQuery">£0</span></span></button>
+            <button class="summary-chip summary-court" type="button" data-filter="court"><span>Court</span><span class="summary-chip-metrics"><strong id="countCourt">0</strong><span class="summary-value" id="valueCourt">£0</span></span></button>
+            <button class="summary-chip summary-bad-debt" type="button" data-filter="bad-debt"><span>Bad debt</span><span class="summary-chip-metrics"><strong id="countBadDebt">0</strong><span class="summary-value" id="valueBadDebt">£0</span></span></button>
+            <button class="summary-chip summary-paid" type="button" data-filter="paid"><span>Paid</span><span class="summary-chip-metrics"><strong id="countPaid">0</strong><span class="summary-value" id="valuePaid">£0</span></span></button>
+        </section>
+
+        <section class="toolbar-row">
+            <label class="search-wrap">
+                <span class="search-icon">⌕</span>
+                <input id="ledgerSearch" type="search" placeholder="Search client, invoice ref, description, notes...">
+            </label>
+            <div class="toolbar-controls">
+                <select id="managerFilter"><option value="all">All Managers</option></select>
+                <select id="clientFilter"><option value="all">Active Clients</option></select>
+                <select id="pageSizeSelect">
+                    <option value="10">10 / page</option>
+                    <option value="25" selected>25 / page</option>
+                    <option value="50">50 / page</option>
+                </select>
+                <button class="ghost-button" type="button">Filters</button>
+            </div>
+        </section>
+
+        <section class="ledger-card">
+            <div class="ledger-scroll">
+                <table class="invoice-table">
+                    <thead>
+                        <tr>
+                            <th>Client</th>
+                            <th>Invoice Ref</th>
+                            <th>Description</th>
+                            <th>Amount</th>
+                            <th>Paid</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="invoiceTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer class="ledger-footer">
+            <p id="resultsText">Showing 0 results</p>
+            <div class="pagination">
+                <button class="ghost-button" id="previousPageButton" type="button">Previous</button>
+                <div class="page-pills" id="pagePills"></div>
+                <button class="ghost-button" id="nextPageButton" type="button">Next</button>
+            </div>
+        </footer>
+
+        <section class="detail-card">
+            <div class="detail-hero">
+                <div>
+                    <p class="eyebrow">Selected invoice</p>
+                    <h2 id="invoiceTitle">No invoice selected</h2>
+                    <p class="detail-meta" id="invoiceMeta">Select a row above to inspect status, notes, promise to pay and late-payment guidance.</p>
+                </div>
+                <div class="detail-actions">
+                    <div class="status-badge" id="invoiceStatusBadge">Awaiting data</div>
                     <button class="ghost-button" id="sidebarSyncButton">Run sync</button>
                 </div>
-            </section>
-            <section class="sidebar-card">
-                <p class="eyebrow">Implementation note</p>
-                <p class="muted">This panel now ships empty by default. Feed live data into <code>window.HYMN_PANEL_DATA</code> or your own API layer.</p>
-            </section>
-        </aside>
-        <main class="workspace">
-            <header class="workspace-header">
-                <div>
-                    <p class="eyebrow" id="viewEyebrow">Live workflow</p>
-                    <h2 id="viewTitle">Credit Control Dashboard</h2>
-                    <p class="muted" id="viewSubtitle">Headline numbers, grouped customer risk, and operational actions without seeded demo content.</p>
-                </div>
-            </header>
-            <section class="view is-active" id="dashboardView">
-                <div class="metric-grid" id="metricGrid"></div>
-                <div class="dashboard-layout">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Priority accounts</p>
-                                <h3>Accounts requiring action</h3>
-                            </div>
-                        </div>
-                        <div id="priorityAccounts"></div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Recent activity</p>
-                                <h3>Operational timeline</h3>
-                            </div>
-                        </div>
-                        <div class="timeline" id="dashboardTimeline"></div>
-                    </section>
-                </div>
-            </section>
-            <section class="view" id="customersView">
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Customer balances</p>
-                            <h3>Grouped by customer</h3>
-                        </div>
-                        <input class="search-input" id="customerSearch" placeholder="Search customer">
-                    </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Customer</th>
-                                    <th>Open invoices</th>
-                                    <th>Total due</th>
-                                    <th>Overdue</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="customerTableBody"></tbody>
-                        </table>
-                    </div>
-                </section>
-            </section>
-            <section class="view" id="invoiceView">
-                <section class="panel invoice-summary">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Invoice workflow</p>
-                            <h3 id="invoiceTitle">Select a live invoice</h3>
-                            <p class="muted" id="invoiceMeta">Choose a customer or invoice once data is loaded.</p>
-                        </div>
-                        <div class="status-pill" id="invoiceStatusPill">Awaiting data</div>
-                    </div>
-                    <div class="mini-metric-grid" id="invoiceMetricGrid"></div>
-                    <div class="info-callout">
-                        <button class="info-button" type="button">i</button>
-                        <p id="interestInfoText">Late-payment interest and court-cost guidance will appear here once a real invoice is selected.</p>
-                    </div>
-                </section>
-                <div class="three-column">
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Status</p>
-                                <h3>Update control status</h3>
-                            </div>
-                        </div>
-                        <form class="stack-form" id="statusForm">
-                            <label>
-                                <span>Status</span>
-                                <select id="statusSelect">
-                                    <option value="New">New</option>
-                                    <option value="Chased">Chased</option>
-                                    <option value="Promise Received">Promise Received</option>
-                                    <option value="Legal Review">Legal Review</option>
-                                    <option value="Paid">Paid</option>
-                                </select>
-                            </label>
-                            <label>
-                                <span>Note</span>
-                                <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
-                            </label>
-                            <button class="secondary-button" type="submit">Save status</button>
-                        </form>
-                        <div class="timeline compact" id="statusTimeline"></div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Notes</p>
-                                <h3>Internal notes</h3>
-                            </div>
-                        </div>
-                        <form class="stack-form" id="noteForm">
-                            <label>
-                                <span>Add note</span>
-                                <textarea id="noteInput" rows="5" placeholder="Capture the latest conversation"></textarea>
-                            </label>
-                            <button class="secondary-button" type="submit">Add note</button>
-                        </form>
-                        <div class="timeline compact" id="notesTimeline"></div>
-                    </section>
-                    <section class="panel">
-                        <div class="panel-header">
-                            <div>
-                                <p class="eyebrow">Promise to pay</p>
-                                <h3>Track commitments</h3>
-                            </div>
-                        </div>
-                        <form class="stack-form" id="promiseForm">
-                            <label>
-                                <span>Promised amount</span>
-                                <input id="promiseAmount" placeholder="0.00">
-                            </label>
-                            <label>
-                                <span>Promised date</span>
-                                <input id="promiseDate" type="date">
-                            </label>
-                            <label>
-                                <span>Note</span>
-                                <textarea id="promiseNote" rows="4" placeholder="Commitment context"></textarea>
-                            </label>
-                            <button class="secondary-button" type="submit">Record promise</button>
-                        </form>
-                        <div class="timeline compact" id="promiseTimeline"></div>
-                    </section>
-                </div>
-            </section>
-            <section class="view" id="activityView">
-                <section class="panel">
-                    <div class="panel-header">
-                        <div>
-                            <p class="eyebrow">Audit trail</p>
-                            <h3>Full history</h3>
-                        </div>
-                    </div>
-                    <div class="timeline" id="auditTimeline"></div>
-                </section>
-            </section>
-        </main>
-    </div>
-    <template id="timelineItemTemplate">
-        <article class="timeline-item">
-            <div class="timeline-marker"></div>
-            <div class="timeline-copy">
-                <div class="timeline-head">
-                    <strong></strong>
-                    <span></span>
-                </div>
-                <p></p>
             </div>
-        </article>
-    </template>
+
+            <div class="detail-stats" id="detailStats"></div>
+
+            <div class="court-callout">
+                <button class="info-button" type="button">i</button>
+                <p id="interestInfoText">Statutory interest and court-cost guidance will appear here for the selected invoice.</p>
+            </div>
+
+            <div class="detail-grid">
+                <section class="detail-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Status</p>
+                            <h3>Update control status</h3>
+                        </div>
+                    </div>
+                    <form class="stack-form" id="statusForm">
+                        <select id="statusSelect">
+                            <option value="Paid">Paid</option>
+                            <option value="Outstanding">Outstanding</option>
+                            <option value="Query">Query</option>
+                            <option value="Overdue">Overdue</option>
+                            <option value="Court">Court</option>
+                            <option value="Bad debt">Bad debt</option>
+                            <option value="Promise Received">Promise Received</option>
+                        </select>
+                        <textarea id="statusNote" rows="4" placeholder="Add status context"></textarea>
+                        <button class="primary-button" type="submit">Save status</button>
+                    </form>
+                    <div class="mini-timeline" id="statusTimeline"></div>
+                </section>
+
+                <section class="detail-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Notes</p>
+                            <h3>Internal notes</h3>
+                        </div>
+                    </div>
+                    <form class="stack-form" id="noteForm">
+                        <textarea id="noteInput" rows="5" placeholder="Capture call notes, chasing updates, or payment context"></textarea>
+                        <button class="primary-button" type="submit">Add note</button>
+                    </form>
+                    <div class="mini-timeline" id="notesTimeline"></div>
+                </section>
+
+                <section class="detail-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Promise to pay</p>
+                            <h3>Track commitments</h3>
+                        </div>
+                    </div>
+                    <form class="stack-form" id="promiseForm">
+                        <input id="promiseAmount" placeholder="Promised amount">
+                        <input id="promiseDate" type="date">
+                        <textarea id="promiseNote" rows="4" placeholder="Payment promise context"></textarea>
+                        <button class="primary-button" type="submit">Record promise</button>
+                    </form>
+                    <div class="mini-timeline" id="promiseTimeline"></div>
+                </section>
+            </div>
+        </section>
+    </main>
+
     <template id="emptyStateTemplate">
         <div class="empty-state">
             <p class="eyebrow"></p>
             <h4></h4>
-            <p class="muted"></p>
+            <p></p>
         </div>
     </template>
+
     <script>
-const STORAGE_KEY = "hymn-credit-control-panel";
-const api = normaliseAPI(window.HYMN_PANEL_API || null);
+const STORAGE_KEY = "hymn-credit-control-ledger";
+const DEFAULT_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
+const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
-    organisation: { name: "", status: "Awaiting live connection" },
-    dashboard: {
-        totalReceivables: null,
-        totalOverdue: null,
-        openInvoices: null,
-        accountsNeedingAction: null,
-        potentialInterest: null
-    },
+    organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync" },
+    dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
     customers: [],
     audit: [],
     selectedInvoice: null
 };
 const state = loadState();
-const views = {
-    dashboard: {
-        eyebrow: "Live workflow",
-        title: "Credit Control Dashboard",
-        subtitle: "Headline numbers, grouped customer risk, and operational actions without seeded demo content."
-    },
-    customers: {
-        eyebrow: "Customer balances",
-        title: "Grouped customer ledger",
-        subtitle: "A customer-first view of open invoices, overdue balances and control status."
-    },
-    invoice: {
-        eyebrow: "Invoice workflow",
-        title: "Invoice detail",
-        subtitle: "Notes, status changes, promises to pay and late-payment guidance for the selected invoice."
-    },
-    activity: {
-        eyebrow: "Audit trail",
-        title: "Full history",
-        subtitle: "A chronological record of syncs, notes, promises and status movement."
-    }
-};
-let currentCustomer = state.customers[0] || null;
-let currentInvoice = state.selectedInvoice || firstInvoice(currentCustomer);
-function normaliseState(payload) {
-    return {
-        organisation: payload.organisation || emptyData.organisation,
-        dashboard: payload.dashboard || emptyData.dashboard,
-        customers: Array.isArray(payload.customers) ? payload.customers : [],
-        audit: Array.isArray(payload.audit) ? payload.audit : [],
-        selectedInvoice: payload.selectedInvoice || null
-    };
-}
+let selectedFilter = "all";
+let selectedInvoiceId = state.selectedInvoice?.id || null;
+let searchTerm = "";
+let managerFilter = "all";
+let clientFilter = "all";
+let pageSize = 25;
+let currentPage = 1;
+
 function normaliseAPI(config) {
-    if (!config || !config.baseUrl) return null;
     return {
-        baseUrl: String(config.baseUrl).replace(/\/$/, ""),
+        baseUrl: config.baseUrl ? String(config.baseUrl).replace(/\/$/, "") : DEFAULT_API_BASE_URL,
         headers: config.headers || {},
         endpoints: {
             panel: config.endpoints?.panel || "/api/panel",
@@ -629,59 +575,68 @@ function normaliseAPI(config) {
         }
     };
 }
+
+function normaliseState(payload) {
+    return {
+        organisation: payload.organisation || emptyData.organisation,
+        dashboard: payload.dashboard || emptyData.dashboard,
+        customers: Array.isArray(payload.customers) ? payload.customers : [],
+        audit: Array.isArray(payload.audit) ? payload.audit : [],
+        selectedInvoice: payload.selectedInvoice || null
+    };
+}
+
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (!stored) return injected;
-        const parsed = JSON.parse(stored);
-        return normaliseState({ ...injected, ...parsed });
+        return normaliseState({ ...injected, ...JSON.parse(stored) });
     } catch {
         return injected;
     }
 }
+
 function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
 function replaceState(next) {
+    const preservedInvoiceId = selectedInvoiceId;
     state.organisation = next.organisation;
     state.dashboard = next.dashboard;
     state.customers = next.customers;
     state.audit = next.audit;
     state.selectedInvoice = next.selectedInvoice;
-    currentCustomer = state.customers[0] || null;
-    currentInvoice = state.selectedInvoice || firstInvoice(currentCustomer);
+    const invoice = findInvoiceById(preservedInvoiceId) || next.selectedInvoice || allInvoices()[0] || null;
+    selectedInvoiceId = invoice?.id || null;
     persistState();
 }
+
 function endpointURL(template, params = {}) {
-    if (!api) return "";
-    const path = Object.entries(params).reduce(
-        (accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)),
-        template
-    );
+    const path = Object.entries(params).reduce((accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)), template);
     return `${api.baseUrl}${path}`;
 }
+
 function loginURL() {
-    if (!api) return "";
+    const loginEndpoint = endpointURL(api.endpoints.login);
+    const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
+    if (!isHostedPage) return loginEndpoint;
     const separator = api.endpoints.login.includes("?") ? "&" : "?";
-    return `${endpointURL(api.endpoints.login)}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
+    return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
 }
+
 async function requestJSON(template, options = {}, params = {}) {
-    if (!api) return null;
     const response = await fetch(endpointURL(template, params), {
         ...options,
-        headers: {
-            "Content-Type": "application/json",
-            ...api.headers,
-            ...(options.headers || {})
-        }
+        headers: { "Content-Type": "application/json", ...api.headers, ...(options.headers || {}) }
     });
     if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
     const contentType = response.headers.get("content-type") || "";
     return contentType.includes("application/json") ? response.json() : null;
 }
+
 async function hydrateFromAPI() {
-    if (!api) return;
     try {
         const payload = await requestJSON(api.endpoints.panel);
         if (payload) replaceState(normaliseState(payload));
@@ -689,372 +644,426 @@ async function hydrateFromAPI() {
         console.error("Unable to load panel data from API", error);
     }
 }
-function firstInvoice(customer) {
-    return customer && Array.isArray(customer.invoices) ? customer.invoices[0] || null : null;
+
+function allInvoices() {
+    return state.customers.flatMap((customer) =>
+        (customer.invoices || []).map((invoice) => ({
+            ...invoice,
+            customerId: customer.id,
+            customerName: customer.name,
+            customerContact: customer.contact || "",
+            customerStatus: customer.status || "",
+            manager: customer.manager || "Unassigned",
+            description: invoice.description || invoice.invoiceNumber || "Xero invoice",
+            notesSummary: noteSnippet(invoice),
+        }))
+    );
 }
-function formatCurrency(value, precise = false) {
-    if (value === null || value === undefined || value === "") return "--";
+
+function findInvoiceById(invoiceId) {
+    if (!invoiceId) return null;
+    return allInvoices().find((invoice) => invoice.id === invoiceId) || null;
+}
+
+function invoiceCategory(invoice) {
+    const control = `${invoice.controlStatus || invoice.status || ""}`.toLowerCase();
+    const amountDue = Number(invoice.amountDue || 0);
+    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    const now = new Date();
+    if (amountDue <= 0 || control.includes("paid")) return "paid";
+    if (control.includes("bad debt") || control.includes("bad-debt") || control.includes("bad_debt")) return "bad-debt";
+    if (control.includes("court") || control.includes("legal")) return "court";
+    if (control.includes("query") || control.includes("queried") || control.includes("dispute") || control.includes("disputed")) return "query";
+    if (amountDue > 0 && dueDate && dueDate < now) return "overdue";
+    return "outstanding";
+}
+
+function invoiceStatusLabel(invoice) {
+    const category = invoiceCategory(invoice);
+    return { paid: "Paid", outstanding: "Outstanding", query: "Query", overdue: "Overdue", court: "Court", "bad-debt": "Bad debt" }[category];
+}
+
+function formatCurrency(value) {
     return new Intl.NumberFormat("en-GB", {
         style: "currency",
         currency: "GBP",
-        minimumFractionDigits: precise ? 2 : 0,
-        maximumFractionDigits: precise ? 2 : 0
-    }).format(Number(value));
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(Number(value || 0));
 }
-function renderEmptyState(target, eyebrow, title, body) {
-    const template = document.getElementById("emptyStateTemplate");
-    const node = template.content.firstElementChild.cloneNode(true);
-    node.querySelector(".eyebrow").textContent = eyebrow;
-    node.querySelector("h4").textContent = title;
-    node.querySelector(".muted").textContent = body;
-    target.innerHTML = "";
-    target.appendChild(node);
+
+function formatDate(value) {
+    if (!value) return "--";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
-function renderTimeline(items, target, emptyMessage) {
-    target.innerHTML = "";
-    if (!items.length) {
-        renderEmptyState(target, "No activity", emptyMessage.title, emptyMessage.body);
-        return;
-    }
-    const template = document.getElementById("timelineItemTemplate");
-    items.forEach((item) => {
-        const node = template.content.firstElementChild.cloneNode(true);
-        node.querySelector("strong").textContent = item.title || "Update";
-        node.querySelector("span").textContent = item.stamp || "";
-        node.querySelector("p").textContent = item.body || "";
-        target.appendChild(node);
+
+function noteSnippet(invoice) {
+    if (invoice.notes?.length) return invoice.notes[0].body || invoice.notes[0].title || "";
+    if (invoice.statuses?.length) return invoice.statuses[0].body || "";
+    return "";
+}
+
+function descriptionGlyph(invoice) {
+    const category = invoiceCategory(invoice);
+    return { paid: "✓", outstanding: "◌", query: "?", overdue: "!", court: "§", "bad-debt": "×" }[category];
+}
+
+function managerValues() {
+    return [...new Set(state.customers.map((customer) => customer.manager || "Unassigned"))];
+}
+
+function filteredInvoices() {
+    return allInvoices().filter((invoice) => {
+        const matchesFilter = selectedFilter === "all" || invoiceCategory(invoice) === selectedFilter;
+        const blob = [
+            invoice.customerName,
+            invoice.customerContact,
+            invoice.invoiceNumber,
+            invoice.description,
+            invoice.notesSummary,
+            invoice.status,
+            invoice.controlStatus
+        ].join(" ").toLowerCase();
+        const matchesSearch = blob.includes(searchTerm.toLowerCase());
+        const matchesManager = managerFilter === "all" || invoice.manager === managerFilter;
+        const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(invoiceCategory(invoice));
+        const matchesClient = clientFilter === "all" || (clientFilter === "action" ? needsAction : !needsAction);
+        return matchesFilter && matchesSearch && matchesManager && matchesClient;
     });
 }
-function renderMetrics() {
-    const metrics = [
-        ["Total receivables", formatCurrency(state.dashboard.totalReceivables), "Open receivables across the full ledger"],
-        ["Total overdue", formatCurrency(state.dashboard.totalOverdue), "Current overdue exposure"],
-        ["Open invoices", state.dashboard.openInvoices ?? "--", "Invoices not yet fully settled"],
-        ["Accounts needing action", state.dashboard.accountsNeedingAction ?? "--", "Customers currently requiring follow-up"],
-        ["Potential interest", formatCurrency(state.dashboard.potentialInterest, true), "Statutory late-payment estimate"]
-    ];
-    const grid = document.getElementById("metricGrid");
-    grid.innerHTML = "";
-    metrics.forEach(([label, value, caption]) => {
-        const card = document.createElement("article");
-        card.className = "metric-card";
-        card.innerHTML = `<span>${label}</span><strong>${value}</strong><small>${caption}</small>`;
-        grid.appendChild(card);
+
+function formatCompactCurrency(value) {
+    const amount = Number(value || 0);
+    const absolute = Math.abs(amount);
+    const formatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: absolute >= 10000 ? 0 : 1 });
+    if (absolute >= 1000000) return `£${formatter.format(amount / 1000000)}M`;
+    if (absolute >= 1000) return `£${formatter.format(amount / 1000)}K`;
+    return formatCurrency(amount).replace(".00", "");
+}
+
+function renderSummaryCounts() {
+    const invoices = allInvoices();
+    const counts = {
+        all: invoices.length,
+        paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length,
+        outstanding: invoices.filter((invoice) => invoiceCategory(invoice) === "outstanding").length,
+        query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").length,
+        overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").length,
+        court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").length,
+        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").length,
+    };
+    const totals = {
+        all: invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
+        outstanding: invoices.filter((invoice) => invoiceCategory(invoice) === "outstanding").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+    };
+    document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
+    document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
+    document.getElementById("countOutstanding").textContent = counts.outstanding.toLocaleString("en-GB");
+    document.getElementById("countQuery").textContent = counts.query.toLocaleString("en-GB");
+    document.getElementById("countOverdue").textContent = counts.overdue.toLocaleString("en-GB");
+    document.getElementById("countCourt").textContent = counts.court.toLocaleString("en-GB");
+    document.getElementById("countBadDebt").textContent = counts.badDebt.toLocaleString("en-GB");
+    document.getElementById("valueAll").textContent = formatCompactCurrency(totals.all);
+    document.getElementById("valuePaid").textContent = formatCompactCurrency(totals.paid);
+    document.getElementById("valueOutstanding").textContent = formatCompactCurrency(totals.outstanding);
+    document.getElementById("valueQuery").textContent = formatCompactCurrency(totals.query);
+    document.getElementById("valueOverdue").textContent = formatCompactCurrency(totals.overdue);
+    document.getElementById("valueCourt").textContent = formatCompactCurrency(totals.court);
+    document.getElementById("valueBadDebt").textContent = formatCompactCurrency(totals.badDebt);
+    document.querySelectorAll(".summary-chip").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.filter === selectedFilter);
     });
 }
-function renderPriorityAccounts() {
-    const target = document.getElementById("priorityAccounts");
-    if (!state.customers.length) {
-        renderEmptyState(target, "No accounts", "No live customers loaded yet", "Populate window.HYMN_PANEL_DATA.customers from your backend to show real action lists.");
-        return;
-    }
-    target.innerHTML = "";
-    [...state.customers]
-        .sort((a, b) => Number(b.overdue || 0) - Number(a.overdue || 0))
-        .slice(0, 5)
-        .forEach((customer) => {
-            const row = document.createElement("article");
-            row.className = "timeline-item";
+
+function renderManagerFilter() {
+    const select = document.getElementById("managerFilter");
+    const currentValue = managerFilter;
+    select.innerHTML = `<option value="all">All Managers</option>`;
+    managerValues().forEach((manager) => {
+        const option = document.createElement("option");
+        option.value = manager;
+        option.textContent = manager;
+        select.appendChild(option);
+    });
+    select.value = currentValue;
+}
+
+function renderInvoiceTable() {
+    const tbody = document.getElementById("invoiceTableBody");
+    const invoices = filteredInvoices();
+    const pages = Math.max(1, Math.ceil(invoices.length / pageSize));
+    currentPage = Math.min(currentPage, pages);
+    const start = (currentPage - 1) * pageSize;
+    const paged = invoices.slice(start, start + pageSize);
+    tbody.innerHTML = "";
+    if (!paged.length) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+        tbody.appendChild(row);
+    } else {
+        paged.forEach((invoice) => {
+            const category = invoiceCategory(invoice);
+            const row = document.createElement("tr");
+            row.className = invoice.id === selectedInvoiceId ? "is-selected" : "";
             row.innerHTML = `
-                <div class="timeline-marker"></div>
-                <div class="timeline-copy">
-                    <div class="timeline-head">
-                        <strong>${customer.name || "Unnamed customer"}</strong>
-                        <span>${formatCurrency(customer.overdue)}</span>
-                    </div>
-                    <p>${customer.status || "Awaiting status"} · ${customer.openInvoices ?? 0} open invoices · ${formatCurrency(customer.totalDue)} total due</p>
-                </div>
+                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
+                <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
+                <td><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
+                <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
+                <td><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${category === "paid" ? "✓" : category === "court" ? "!" : "○"}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="paid-date">${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
+                <td><span class="status-pill ${category}">${invoiceStatusLabel(invoice)}</span></td>
+                <td><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
+                <td><button class="row-menu" type="button">⋮</button></td>
             `;
             row.addEventListener("click", () => {
-                currentCustomer = customer;
-                currentInvoice = firstInvoice(customer);
-                renderInvoiceView();
-                activateView("invoice");
+                selectedInvoiceId = invoice.id;
+                renderAll();
             });
-            target.appendChild(row);
+            tbody.appendChild(row);
         });
-}
-function renderCustomersTable(searchTerm = "") {
-    const body = document.getElementById("customerTableBody");
-    body.innerHTML = "";
-    const customers = state.customers.filter((customer) =>
-        (customer.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    if (!customers.length) {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td colspan="5">
-                <div class="empty-state">
-                    <p class="eyebrow">No live rows</p>
-                    <h4>Customer data will appear here</h4>
-                    <p class="muted">Inject customers into window.HYMN_PANEL_DATA.customers or bind this table to your live API.</p>
-                </div>
-            </td>
-        `;
-        body.appendChild(row);
-        return;
     }
-    customers.forEach((customer) => {
-        const row = document.createElement("tr");
-        row.innerHTML = `
-            <td><strong>${customer.name || "Unnamed customer"}</strong><br><span class="muted">${customer.contact || ""}</span></td>
-            <td>${customer.openInvoices ?? 0}</td>
-            <td>${formatCurrency(customer.totalDue)}</td>
-            <td>${formatCurrency(customer.overdue)}</td>
-            <td>${customer.status || "Awaiting status"}</td>
-        `;
-        row.addEventListener("click", () => {
-            currentCustomer = customer;
-            currentInvoice = firstInvoice(customer);
-            renderInvoiceView();
-            activateView("invoice");
+    renderPagination(invoices.length, pages, start, paged.length);
+}
+
+function renderPagination(totalResults, totalPages, start, count) {
+    document.getElementById("resultsText").textContent = totalResults ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} results` : "Showing 0 results";
+    document.getElementById("previousPageButton").disabled = currentPage <= 1;
+    document.getElementById("nextPageButton").disabled = currentPage >= totalPages;
+    const target = document.getElementById("pagePills");
+    target.innerHTML = "";
+    const pages = [];
+    for (let page = 1; page <= totalPages; page += 1) {
+        if (page <= 3 || page > totalPages - 2 || Math.abs(page - currentPage) <= 1) pages.push(page);
+    }
+    [...new Set(pages)].forEach((page) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `page-pill${page === currentPage ? " is-active" : ""}`;
+        button.textContent = String(page);
+        button.addEventListener("click", () => {
+            currentPage = page;
+            renderInvoiceTable();
         });
-        body.appendChild(row);
+        target.appendChild(button);
     });
 }
-function calculateInterest(invoice) {
-    if (!invoice || !invoice.amountDue || !invoice.dueDate) return null;
-    const overdueDays = Math.max(0, Math.floor((new Date() - new Date(invoice.dueDate)) / (1000 * 60 * 60 * 24)));
-    return Math.round((Number(invoice.amountDue) * 0.08 * overdueDays / 365) * 100) / 100;
-}
-function calculateCourtCost(invoice) {
-    if (!invoice || !invoice.amountDue) return null;
-    const amount = Number(invoice.amountDue);
-    if (amount <= 300) return 35;
-    if (amount <= 500) return 50;
-    if (amount <= 1000) return 70;
-    if (amount <= 1500) return 80;
-    if (amount <= 3000) return 115;
-    if (amount <= 5000) return 205;
-    return 455;
-}
-function renderInvoiceView() {
-    const invoice = currentInvoice;
-    const metricGrid = document.getElementById("invoiceMetricGrid");
-    const title = document.getElementById("invoiceTitle");
-    const meta = document.getElementById("invoiceMeta");
-    const statusPill = document.getElementById("invoiceStatusPill");
-    const infoText = document.getElementById("interestInfoText");
-    if (!invoice) {
-        title.textContent = "Select a live invoice";
-        meta.textContent = "Choose a customer once live data is loaded.";
-        statusPill.textContent = "Awaiting data";
-        metricGrid.innerHTML = "";
-        [["Amount due", "--"], ["Interest so far", "--"], ["Court costs", "--"], ["Promise date", "--"]].forEach(([label, value]) => {
-            const card = document.createElement("article");
-            card.className = "mini-metric";
-            card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-            metricGrid.appendChild(card);
-        });
-        infoText.textContent = "Late-payment interest and court-cost guidance will appear here once a real invoice is selected.";
-        renderTimeline([], document.getElementById("notesTimeline"), {
-            title: "No notes yet",
-            body: "Invoice notes will appear when a real invoice is selected."
-        });
-        renderTimeline([], document.getElementById("promiseTimeline"), {
-            title: "No promises yet",
-            body: "Payment promises will appear when a real invoice is selected."
-        });
-        renderTimeline([], document.getElementById("statusTimeline"), {
-            title: "No status history yet",
-            body: "Status changes will appear when a real invoice is selected."
-        });
-        return;
-    }
-    const interest = calculateInterest(invoice);
-    const courtCost = calculateCourtCost(invoice);
-    title.textContent = invoice.id || "Unnamed invoice";
-    meta.textContent = `${currentCustomer?.name || "Customer"} · Due ${invoice.dueDate || "Unknown due date"}`;
-    statusPill.textContent = invoice.status || "Awaiting status";
-    metricGrid.innerHTML = "";
-    [["Amount due", formatCurrency(invoice.amountDue)], ["Interest so far", formatCurrency(interest, true)], ["Court costs", formatCurrency(courtCost)], ["Promise date", invoice.promiseDate || "--"]].forEach(([label, value]) => {
+
+function renderDetailPanel() {
+    const invoice = findInvoiceById(selectedInvoiceId) || filteredInvoices()[0] || allInvoices()[0] || null;
+    selectedInvoiceId = invoice?.id || null;
+    document.getElementById("invoiceTitle").textContent = invoice ? `${invoice.customerName} · ${invoice.invoiceNumber}` : "No invoice selected";
+    document.getElementById("invoiceMeta").textContent = invoice ? `${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}` : "Select a row above to inspect status, notes, promise to pay and late-payment guidance.";
+    document.getElementById("invoiceStatusBadge").textContent = invoice ? invoiceStatusLabel(invoice) : "Awaiting data";
+    document.getElementById("invoiceStatusBadge").className = `status-badge ${invoice ? invoiceCategory(invoice) : ""}`.trim();
+    const stats = document.getElementById("detailStats");
+    stats.innerHTML = "";
+    const items = invoice ? [
+        ["Amount due", formatCurrency(invoice.amountDue || 0)],
+        ["Amount paid", formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))],
+        ["Overdue days", `${invoice.overdueDays || 0}`],
+        ["Promised date", invoice.promisedDate ? formatDate(invoice.promisedDate) : "--"],
+    ] : [];
+    items.forEach(([label, value]) => {
         const card = document.createElement("article");
-        card.className = "mini-metric";
+        card.className = "detail-stat";
         card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-        metricGrid.appendChild(card);
+        stats.appendChild(card);
     });
-    infoText.textContent = `If this proceeded to court today, estimated court costs would be ${formatCurrency(courtCost)} and statutory interest accrued so far would be ${formatCurrency(interest, true)}.`;
-    renderTimeline(invoice.notes || [], document.getElementById("notesTimeline"), {
-        title: "No notes yet",
-        body: "Add internal commentary when your workflow is live."
-    });
-    renderTimeline(invoice.promises || [], document.getElementById("promiseTimeline"), {
-        title: "No promises yet",
-        body: "Promise-to-pay entries will appear here."
-    });
-    renderTimeline(invoice.statuses || [], document.getElementById("statusTimeline"), {
-        title: "No status history yet",
-        body: "Status updates will appear here."
+    document.getElementById("interestInfoText").textContent = invoice
+        ? `If this went to court there would be £${Number(invoice.latePayment?.court_cost || invoice.latePayment?.courtCost || 35).toFixed(0)} in court costs and £${Number(invoice.latePayment?.interest || 0).toFixed(2)} in statutory interest so far.`
+        : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
+    document.getElementById("statusSelect").value = invoice?.controlStatus || invoiceStatusLabel(invoice) || "Outstanding";
+    renderTimeline("statusTimeline", invoice?.statuses || [], { eyebrow: "No status history", title: "Status changes will appear here", body: "Save a status change to build the credit-control history." });
+    renderTimeline("notesTimeline", invoice?.notes || [], { eyebrow: "No notes", title: "Internal notes will appear here", body: "Use the note form to log calls, promises or chasing updates." });
+    renderTimeline("promiseTimeline", invoice?.promises || [], { eyebrow: "No promises", title: "Promise-to-pay entries will appear here", body: "Record a commitment to track expected cash collection." });
+}
+
+function renderTimeline(targetId, items, empty) {
+    const target = document.getElementById(targetId);
+    target.innerHTML = "";
+    if (!items.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = empty.eyebrow;
+        emptyState.querySelector("h4").textContent = empty.title;
+        emptyState.querySelector("p:last-child").textContent = empty.body;
+        target.appendChild(emptyState);
+        return;
+    }
+    items.forEach((item) => {
+        const row = document.createElement("article");
+        row.className = "timeline-item";
+        row.innerHTML = `<div class="timeline-head"><span class="timeline-title">${item.title || "Update"}</span><span class="timeline-stamp">${item.stamp || ""}</span></div><div class="timeline-body">${item.body || ""}</div>`;
+        target.appendChild(row);
     });
 }
-function activateView(viewName) {
-    document.querySelectorAll(".view").forEach((view) => {
-        view.classList.toggle("is-active", view.id === `${viewName}View`);
-    });
-    document.querySelectorAll(".nav-link").forEach((button) => {
-        button.classList.toggle("is-active", button.dataset.view === viewName);
-    });
-    document.getElementById("viewEyebrow").textContent = views[viewName].eyebrow;
-    document.getElementById("viewTitle").textContent = views[viewName].title;
-    document.getElementById("viewSubtitle").textContent = views[viewName].subtitle;
+
+function renderChrome() {
+    document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
+    const connected = Boolean(state.organisation.name);
+    const label = connected ? "Reconnect Xero" : "Connect Xero";
+    document.getElementById("connectXeroButton").textContent = label;
+    const sidebarConnectButton = document.getElementById("sidebarConnectButton");
+    if (sidebarConnectButton) {
+        sidebarConnectButton.textContent = connected ? "Reconnect Xero" : "Login with Xero";
+    }
 }
+
+function renderAll() {
+    renderChrome();
+    renderSummaryCounts();
+    renderManagerFilter();
+    renderInvoiceTable();
+    renderDetailPanel();
+}
+
+function wireFilters() {
+    document.querySelectorAll(".summary-chip").forEach((button) => {
+        button.addEventListener("click", () => {
+            selectedFilter = button.dataset.filter;
+            currentPage = 1;
+            renderAll();
+        });
+    });
+    document.getElementById("ledgerSearch").addEventListener("input", (event) => {
+        searchTerm = event.target.value;
+        currentPage = 1;
+        renderInvoiceTable();
+    });
+    document.getElementById("managerFilter").addEventListener("change", (event) => {
+        managerFilter = event.target.value;
+        currentPage = 1;
+        renderInvoiceTable();
+    });
+    document.getElementById("clientFilter").innerHTML = `<option value="all">Active Clients</option><option value="action">Needs Action</option><option value="current">Current Only</option>`;
+    document.getElementById("clientFilter").addEventListener("change", (event) => {
+        clientFilter = event.target.value;
+        currentPage = 1;
+        renderInvoiceTable();
+    });
+    document.getElementById("pageSizeSelect").addEventListener("change", (event) => {
+        pageSize = Number(event.target.value);
+        currentPage = 1;
+        renderInvoiceTable();
+    });
+    document.getElementById("previousPageButton").addEventListener("click", () => {
+        currentPage = Math.max(1, currentPage - 1);
+        renderInvoiceTable();
+    });
+    document.getElementById("nextPageButton").addEventListener("click", () => {
+        currentPage += 1;
+        renderInvoiceTable();
+    });
+}
+
+function wireLoginButtons() {
+    const connect = (event) => {
+        event.preventDefault();
+        const url = loginURL();
+        if (!url) {
+            window.alert("Unable to start the Xero login flow.");
+            return;
+        }
+        console.info("Starting Xero login:", url);
+        window.location.assign(url);
+    };
+    document.getElementById("connectXeroButton").addEventListener("click", connect);
+}
+
+function wireSyncButtons() {
+    const sync = async () => {
+        state.organisation.lastSync = "Sync requested just now";
+        renderChrome();
+        persistState();
+        try {
+            await requestJSON(api.endpoints.sync, { method: "POST" });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to sync panel data", error);
+        }
+    };
+    document.getElementById("primarySyncButton").addEventListener("click", sync);
+    document.getElementById("sidebarSyncButton").addEventListener("click", sync);
+}
+
 function wireForms() {
     document.getElementById("noteForm").addEventListener("submit", async (event) => {
         event.preventDefault();
-        if (!currentInvoice) return;
-        const input = document.getElementById("noteInput");
-        const value = input.value.trim();
-        if (!value) return;
-        currentInvoice.notes = currentInvoice.notes || [];
-        currentInvoice.notes.unshift({ title: "Manual note", stamp: "Just now", body: value });
-        input.value = "";
+        const invoice = findInvoiceById(selectedInvoiceId);
+        const body = document.getElementById("noteInput").value.trim();
+        if (!invoice || !body) return;
+        invoice.notes = [{ title: "Internal note", body, stamp: new Date().toISOString() }, ...(invoice.notes || [])];
+        document.getElementById("noteInput").value = "";
         persistState();
-        renderInvoiceView();
-        if (api) {
-            try {
-                await requestJSON(api.endpoints.note, {
-                    method: "POST",
-                    body: JSON.stringify({ body: value })
-                }, { invoiceId: currentInvoice.id });
-                await hydrateFromAPI();
-            } catch (error) {
-                console.error("Unable to save note to API", error);
-            }
+        renderDetailPanel();
+        renderInvoiceTable();
+        try {
+            await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: invoice.id });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save note", error);
         }
     });
+
     document.getElementById("promiseForm").addEventListener("submit", async (event) => {
         event.preventDefault();
-        if (!currentInvoice) return;
-        const amount = document.getElementById("promiseAmount").value.trim();
-        const date = document.getElementById("promiseDate").value;
+        const invoice = findInvoiceById(selectedInvoiceId);
+        const promisedAmount = document.getElementById("promiseAmount").value.trim();
+        const promisedDate = document.getElementById("promiseDate").value;
         const note = document.getElementById("promiseNote").value.trim();
-        if (!amount || !date) return;
-        currentInvoice.promises = currentInvoice.promises || [];
-        currentInvoice.promiseDate = date;
-        currentInvoice.promises.unshift({
-            title: `Promise to pay ${formatCurrency(amount)}`,
-            stamp: `Due ${date}`,
-            body: note || "Promise recorded."
-        });
+        if (!invoice || !promisedAmount || !promisedDate) return;
+        invoice.promises = [{ title: `Promise for ${formatCurrency(promisedAmount)}`, body: note, stamp: promisedDate }, ...(invoice.promises || [])];
+        invoice.promisedDate = promisedDate;
         document.getElementById("promiseAmount").value = "";
         document.getElementById("promiseDate").value = "";
         document.getElementById("promiseNote").value = "";
         persistState();
-        renderInvoiceView();
-        if (api) {
-            try {
-                await requestJSON(api.endpoints.promise, {
-                    method: "POST",
-                    body: JSON.stringify({
-                        promisedAmount: amount,
-                        promisedDate: date,
-                        note
-                    })
-                }, { invoiceId: currentInvoice.id });
-                await hydrateFromAPI();
-            } catch (error) {
-                console.error("Unable to save promise to API", error);
-            }
+        renderDetailPanel();
+        try {
+            await requestJSON(api.endpoints.promise, { method: "POST", body: JSON.stringify({ promisedAmount, promisedDate, note }) }, { invoiceId: invoice.id });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save promise", error);
         }
     });
+
     document.getElementById("statusForm").addEventListener("submit", async (event) => {
         event.preventDefault();
-        if (!currentInvoice) return;
-        const status = document.getElementById("statusSelect").value;
+        const invoice = findInvoiceById(selectedInvoiceId);
+        const statusValue = document.getElementById("statusSelect").value;
         const note = document.getElementById("statusNote").value.trim();
-        currentInvoice.status = status;
-        currentInvoice.statuses = currentInvoice.statuses || [];
-        currentInvoice.statuses.unshift({ title: status, stamp: "Just now", body: note || "Status updated." });
+        if (!invoice) return;
+        invoice.controlStatus = statusValue;
+        invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(invoice.statuses || [])];
         document.getElementById("statusNote").value = "";
         persistState();
-        renderInvoiceView();
-        if (api) {
-            try {
-                await requestJSON(api.endpoints.status, {
-                    method: "POST",
-                    body: JSON.stringify({ status, note })
-                }, { invoiceId: currentInvoice.id });
-                await hydrateFromAPI();
-            } catch (error) {
-                console.error("Unable to save status to API", error);
-            }
+        renderAll();
+        try {
+            await requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId: invoice.id });
+            await hydrateFromAPI();
+            renderAll();
+        } catch (error) {
+            console.error("Unable to save status", error);
         }
     });
 }
-function wireSearch() {
-    document.getElementById("customerSearch").addEventListener("input", (event) => {
-        renderCustomersTable(event.target.value);
-    });
-}
-function wireNavigation() {
-    document.querySelectorAll(".nav-link").forEach((button) => {
-        button.addEventListener("click", () => activateView(button.dataset.view));
-    });
-}
-function wireSyncButtons() {
-    const syncHandler = async () => {
-        document.getElementById("syncStamp").textContent = "Sync requested";
-        state.organisation.lastSync = "Sync requested just now";
-        persistState();
-        if (api) {
-            try {
-                await requestJSON(api.endpoints.sync, { method: "POST" });
-                await hydrateFromAPI();
-                return;
-            } catch (error) {
-                console.error("Unable to trigger sync via API", error);
-            }
-        }
-        if (typeof window.HYMN_PANEL_RESYNC === "function") await window.HYMN_PANEL_RESYNC();
-    };
-    document.getElementById("primarySyncButton").addEventListener("click", syncHandler);
-    document.getElementById("sidebarSyncButton").addEventListener("click", syncHandler);
-}
-function wireLoginButtons() {
-    const connect = () => {
-        const url = loginURL();
-        if (!url) {
-            alert("Set window.HYMN_PANEL_API.baseUrl to enable Xero login.");
-            return;
-        }
-        window.location.href = url;
-    };
-    document.getElementById("connectXeroButton").addEventListener("click", connect);
-    document.getElementById("sidebarConnectButton").addEventListener("click", connect);
-}
-function renderChrome() {
-    document.getElementById("organisationName").textContent = state.organisation.name || "No organisation connected";
-    document.getElementById("organisationStatus").textContent = state.organisation.status || "Awaiting live connection";
-    if (state.organisation.lastSync) document.getElementById("syncStamp").textContent = state.organisation.lastSync;
-    const connectButtons = [
-        document.getElementById("connectXeroButton"),
-        document.getElementById("sidebarConnectButton")
-    ];
-    const connected = Boolean(state.organisation.name);
-    connectButtons.forEach((button) => {
-        button.textContent = connected ? "Reconnect Xero" : "Connect Xero";
-    });
-}
+
 async function init() {
     await hydrateFromAPI();
-    renderChrome();
-    renderMetrics();
-    renderPriorityAccounts();
-    renderCustomersTable();
-    renderInvoiceView();
-    renderTimeline(state.audit, document.getElementById("auditTimeline"), {
-        title: "No audit events yet",
-        body: "Live sync history and operational actions will appear here."
-    });
-    renderTimeline(state.audit.slice(0, 4), document.getElementById("dashboardTimeline"), {
-        title: "No recent activity yet",
-        body: "Once the workflow is live, the latest actions will appear here."
-    });
-    wireForms();
-    wireSearch();
-    wireNavigation();
-    wireSyncButtons();
+    renderAll();
+    wireFilters();
     wireLoginButtons();
+    wireSyncButtons();
+    wireForms();
 }
 init();
     </script>
