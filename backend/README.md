@@ -9,32 +9,28 @@ This backend now owns:
 - dashboard metrics for the macOS app
 - the full web-based credit control panel
 
-## Local run
-
-1. Create `.env` from `.env.example`
-2. Install dependencies:
-   `pip install -e .`
-3. Start the app:
-   `python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
-
 ## Railway
 
 Recommended Railway settings:
 
 - `Root Directory`: `backend`
 - `Build Command`: `pip install -e .`
-- `Start Command`: `pip install -e . && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- `Start Command`: `sh -c 'python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT}'`
 
 Required variables:
 
-- `BASE_URL`
+- `BASE_URL=https://creditcontrolconsole-production.up.railway.app`
 - `DATABASE_URL`
 - `APP_SECRET`
 - `WIDGET_TOKEN`
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
-- `XERO_REDIRECT_URI`
-- `XERO_SCOPES`
+- `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
+- `XERO_SCOPES=openid profile email offline_access accounting.invoices.read accounting.contacts.read`
+
+`PORT` is injected by Railway and should not be hard-coded.
+
+The backend intentionally rejects `localhost` and `127.0.0.1` connection values. Xero must also have the same Railway callback URL registered as an allowed redirect URI.
 
 ## Main routes
 
