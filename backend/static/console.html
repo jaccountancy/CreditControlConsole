@@ -841,6 +841,93 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     border-color: rgba(29, 103, 242, 0.28);
     color: var(--blue);
 }
+.sync-progress-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(245, 248, 255, 0.58);
+    backdrop-filter: blur(10px);
+}
+.sync-progress-overlay[hidden] {
+    display: none;
+}
+.sync-progress-card {
+    width: min(460px, 100%);
+    padding: 26px;
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    box-shadow: 0 24px 70px rgba(30, 47, 77, 0.20);
+}
+.sync-progress-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.sync-spinner {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 4px solid rgba(29, 103, 242, 0.14);
+    border-top-color: var(--blue);
+    animation: sync-spin 0.85s linear infinite;
+    flex: 0 0 auto;
+}
+.sync-progress-card h3 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+.sync-progress-card p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-weight: 700;
+}
+.sync-progress-track {
+    height: 10px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(30, 47, 77, 0.08);
+}
+.sync-progress-bar {
+    display: block;
+    height: 100%;
+    width: 42%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    animation: sync-progress 1.35s ease-in-out infinite;
+}
+.sync-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 800;
+}
+body.is-syncing .sync-indicator {
+    color: var(--blue);
+    border-color: rgba(29, 103, 242, 0.24);
+    background: rgba(233, 241, 255, 0.9);
+}
+body.is-syncing .sync-dot {
+    animation: sync-pulse 1s ease-in-out infinite;
+}
+@keyframes sync-spin {
+    to { transform: rotate(360deg); }
+}
+@keyframes sync-progress {
+    0% { transform: translateX(-110%); }
+    55%, 100% { transform: translateX(240%); }
+}
+@keyframes sync-pulse {
+    0%, 100% { transform: scale(0.85); opacity: 0.65; }
+    50% { transform: scale(1.1); opacity: 1; }
+}
 @media (max-width: 1220px) {
     .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
     .summary-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -862,6 +949,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     .detail-stats,
     .detail-grid { grid-template-columns: 1fr; }
     .ledger-footer { flex-direction: column; align-items: flex-start; }
+    .sync-progress-meta { flex-direction: column; gap: 6px; }
 }
 @media (max-width: 560px) {
     .summary-bar { grid-template-columns: 1fr; }
@@ -1128,6 +1216,25 @@ h1, h2, h3 { letter-spacing: -0.03em; }
         </div>
     </template>
 
+    <section class="sync-progress-overlay" id="syncProgressOverlay" aria-live="polite" aria-atomic="true" hidden>
+        <div class="sync-progress-card" role="status">
+            <div class="sync-progress-head">
+                <span class="sync-spinner" aria-hidden="true"></span>
+                <div>
+                    <h3>Please wait, pulling in data from Xero</h3>
+                    <p id="syncProgressDetail">This usually takes about 45-90 seconds.</p>
+                </div>
+            </div>
+            <div class="sync-progress-track" aria-hidden="true">
+                <span class="sync-progress-bar"></span>
+            </div>
+            <div class="sync-progress-meta">
+                <span id="syncElapsedLabel">Elapsed 0s</span>
+                <span id="syncEtaLabel">Estimated completion 45-90s</span>
+            </div>
+        </div>
+    </section>
+
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
     <script>
@@ -1154,6 +1261,9 @@ let clientFilter = "all";
 let sortMode = "priority";
 let pageSize = 25;
 let currentPage = 1;
+let isSyncing = false;
+let syncStartedAt = 0;
+let syncProgressTimer = null;
 let visibleColumns = {
     description: true,
     paid: true,
@@ -1767,10 +1877,13 @@ function renderTimeline(targetId, items, empty) {
 }
 
 function renderChrome() {
-    document.getElementById("syncStamp").textContent = state.organisation.lastSync || "Waiting for first sync";
+    document.body.classList.toggle("is-syncing", isSyncing);
+    document.getElementById("syncStamp").textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
     const organisationName = state.organisation.name || "Xero organisation not connected";
     const lastSync = state.organisation.lastSync || "Waiting for first sync";
-    const syncCopy = lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
+    const syncCopy = isSyncing
+        ? "Pulling in data from Xero"
+        : lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
         ? lastSync
         : `Last sync: ${lastSync}`;
     document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
@@ -1780,10 +1893,10 @@ function renderChrome() {
     syncButtonIds.forEach((buttonId) => {
         const button = document.getElementById(buttonId);
         if (!button) return;
-        button.disabled = !connected;
-        button.textContent = connected ? (buttonId === "primarySyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
-        button.title = connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
-        button.setAttribute("aria-disabled", String(!connected));
+        button.disabled = !connected || isSyncing;
+        button.textContent = isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "primarySyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
+        button.title = isSyncing ? "Please wait while Xero data is imported" : connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
+        button.setAttribute("aria-disabled", String(!connected || isSyncing));
     });
     const sidebarConnectButton = document.getElementById("sidebarConnectButton");
     if (sidebarConnectButton) {
@@ -1933,6 +2046,53 @@ function showToast(message, type = "info") {
     window.setTimeout(() => toast.remove(), 3600);
 }
 
+function formatSyncDuration(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return `${minutes}m ${remainder.toString().padStart(2, "0")}s`;
+}
+
+function updateSyncProgress() {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - syncStartedAt) / 1000));
+    const elapsedLabel = document.getElementById("syncElapsedLabel");
+    const etaLabel = document.getElementById("syncEtaLabel");
+    const detail = document.getElementById("syncProgressDetail");
+    if (elapsedLabel) elapsedLabel.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)}`;
+    if (etaLabel) {
+        etaLabel.textContent = elapsedSeconds < 45
+            ? "Estimated completion 45-90s"
+            : elapsedSeconds < 90
+            ? "Estimated completion soon"
+            : "Still working; larger Xero ledgers can take longer";
+    }
+    if (detail) {
+        detail.textContent = elapsedSeconds < 90
+            ? "Please keep this page open while invoices and contacts are imported."
+            : "Xero is still responding. Please keep this page open.";
+    }
+}
+
+function startSyncFeedback() {
+    isSyncing = true;
+    syncStartedAt = Date.now();
+    const overlay = document.getElementById("syncProgressOverlay");
+    if (overlay) overlay.hidden = false;
+    updateSyncProgress();
+    window.clearInterval(syncProgressTimer);
+    syncProgressTimer = window.setInterval(updateSyncProgress, 1000);
+    renderChrome();
+}
+
+function stopSyncFeedback() {
+    isSyncing = false;
+    window.clearInterval(syncProgressTimer);
+    syncProgressTimer = null;
+    const overlay = document.getElementById("syncProgressOverlay");
+    if (overlay) overlay.hidden = true;
+    renderChrome();
+}
+
 function wireBulkActions() {
     document.getElementById("bulkApplyStatusButton").addEventListener("click", () => {
         const statusValue = document.getElementById("bulkLedgerStatusSelect").value;
@@ -1995,14 +2155,12 @@ function wireLoginButtons() {
 
 function wireSyncButtons() {
     const sync = async () => {
-        if (!isXeroConnected()) {
+        if (!isXeroConnected() || isSyncing) {
             renderChrome();
             return;
         }
-        state.organisation.lastSync = "Sync requested just now";
-        showToast("Sync started", "info");
-        renderChrome();
-        persistState();
+        startSyncFeedback();
+        showToast("Please wait, pulling in data from Xero", "info");
         try {
             await requestJSON(api.endpoints.sync, { method: "POST" });
             await hydrateFromAPI();
@@ -2011,6 +2169,8 @@ function wireSyncButtons() {
         } catch (error) {
             console.error("Unable to sync panel data", error);
             showToast("Xero sync failed. Please try again.", "error");
+        } finally {
+            stopSyncFeedback();
         }
     };
     document.getElementById("primarySyncButton").addEventListener("click", sync);
