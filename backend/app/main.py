@@ -3,7 +3,7 @@ import logging
 from html import escape
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
+from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -36,7 +36,11 @@ from .services import (
     invoice_detail,
     list_customers,
     panel_payload,
+    get_sync_run,
+    request_sync_run,
     run_sync,
+    run_sync_job,
+    serialize_sync_run,
     update_control_status,
 )
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
@@ -286,7 +290,9 @@ def dashboard_page(request: Request, user: dict = Depends(require_user)):
 
 @app.post("/sync/run")
 async def trigger_sync(user: dict = Depends(require_user)):
-    await run_sync(user)
+    sync_run, started = request_sync_run(user)
+    if started:
+        await run_sync(user, str(sync_run["id"]))
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -429,13 +435,27 @@ def api_panel(user: dict = Depends(require_panel_user)):
 
 
 @app.post("/api/panel/sync")
-async def api_panel_sync(user: dict = Depends(require_panel_user)):
-    sync_run = await run_sync(user)
+async def api_panel_sync(background_tasks: BackgroundTasks, user: dict = Depends(require_panel_user)):
+    sync_run, started = request_sync_run(user)
+    if started:
+        background_tasks.add_task(run_sync_job, dict(user), str(sync_run["id"]))
     return {
-        "status": "ok",
-        "summary": sync_run["summary"],
-        "panel": panel_payload(user),
+        "status": "queued" if started else "running",
+        "started": started,
+        "syncRun": serialize_sync_run(sync_run),
     }
+
+
+@app.get("/api/panel/sync/{sync_run_id}")
+def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_user)):
+    sync_run = get_sync_run(user, sync_run_id)
+    payload = {
+        "status": sync_run["status"],
+        "syncRun": serialize_sync_run(sync_run),
+    }
+    if sync_run["status"] == "completed":
+        payload["panel"] = panel_payload(user)
+    return payload
 
 
 @app.post("/api/xero/disconnect")

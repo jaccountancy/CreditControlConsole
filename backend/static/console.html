@@ -1473,6 +1473,8 @@ let currentPage = 1;
 let isSyncing = false;
 let syncStartedAt = 0;
 let syncProgressTimer = null;
+let activeSyncRunId = null;
+let latestSyncRun = null;
 let hasAutoStartedInitialSync = false;
 let denseMode = false;
 let visibleColumns = {
@@ -1521,6 +1523,7 @@ function normaliseAPI(config) {
         endpoints: {
             panel: config.endpoints?.panel || "/api/panel",
             sync: config.endpoints?.sync || "/api/panel/sync",
+            syncStatus: config.endpoints?.syncStatus || "/api/panel/sync/:syncId",
             note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
@@ -2636,29 +2639,70 @@ function formatSyncDuration(seconds) {
     return `${minutes}m ${remainder.toString().padStart(2, "0")}s`;
 }
 
+function delay(milliseconds) {
+    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+function syncRunTimestamp(syncRun) {
+    const value = syncRun?.startedAt || syncRun?.createdAt;
+    if (!value) return 0;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function syncRunCountSummary(syncRun) {
+    if (!syncRun) return "";
+    const contactsTotal = Number(syncRun.contactsTotal || 0);
+    const invoicesTotal = Number(syncRun.invoicesTotal || 0);
+    const customersSynced = Number(syncRun.customersSynced || 0);
+    const invoicesSynced = Number(syncRun.invoicesSynced || 0);
+    const parts = [];
+    if (contactsTotal || customersSynced) {
+        parts.push(`${customersSynced.toLocaleString()}${contactsTotal ? `/${contactsTotal.toLocaleString()}` : ""} contacts`);
+    }
+    if (invoicesTotal || invoicesSynced) {
+        parts.push(`${invoicesSynced.toLocaleString()}${invoicesTotal ? `/${invoicesTotal.toLocaleString()}` : ""} invoices`);
+    }
+    return parts.join(", ");
+}
+
 function updateSyncProgress() {
+    const remoteStartedAt = syncRunTimestamp(latestSyncRun);
+    if (remoteStartedAt && (!syncStartedAt || remoteStartedAt < syncStartedAt)) syncStartedAt = remoteStartedAt;
     const elapsedSeconds = Math.max(0, Math.floor((Date.now() - syncStartedAt) / 1000));
     const elapsedLabel = document.getElementById("syncElapsedLabel");
     const etaLabel = document.getElementById("syncEtaLabel");
     const detail = document.getElementById("syncProgressDetail");
     if (elapsedLabel) elapsedLabel.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)}`;
     if (etaLabel) {
-        etaLabel.textContent = elapsedSeconds < 45
+        etaLabel.textContent = latestSyncRun?.status === "failed"
+            ? "Sync failed"
+            : latestSyncRun?.status === "completed"
+            ? "Sync complete"
+            : Number(latestSyncRun?.progress || 0) > 0
+            ? `${latestSyncRun.progress}% complete`
+            : elapsedSeconds < 45
             ? "Estimated completion 45-90s"
             : elapsedSeconds < 90
             ? "Estimated completion soon"
             : "Still working; larger Xero ledgers can take longer";
     }
     if (detail) {
-        detail.textContent = elapsedSeconds < 90
-            ? "Please keep this page open while invoices and contacts are imported."
-            : "Xero is still responding. Please keep this page open.";
+        const counts = syncRunCountSummary(latestSyncRun);
+        const step = latestSyncRun?.currentStep || latestSyncRun?.summary;
+        detail.textContent = latestSyncRun?.status === "failed"
+            ? latestSyncRun.errorMessage || "Xero sync failed. Please try again."
+            : [step, counts].filter(Boolean).join(". ") || (elapsedSeconds < 90
+                ? "Please keep this page open while invoices and contacts are imported."
+                : "Xero is still responding. Please keep this page open.");
     }
 }
 
-function startSyncFeedback() {
+function startSyncFeedback(syncRun = null) {
     isSyncing = true;
-    syncStartedAt = Date.now();
+    latestSyncRun = syncRun || latestSyncRun;
+    activeSyncRunId = syncRun?.id || activeSyncRunId;
+    syncStartedAt = syncRunTimestamp(syncRun) || Date.now();
     const overlay = document.getElementById("syncProgressOverlay");
     if (overlay) overlay.hidden = false;
     updateSyncProgress();
@@ -2669,6 +2713,8 @@ function startSyncFeedback() {
 
 function stopSyncFeedback() {
     isSyncing = false;
+    activeSyncRunId = null;
+    latestSyncRun = null;
     window.clearInterval(syncProgressTimer);
     syncProgressTimer = null;
     const overlay = document.getElementById("syncProgressOverlay");
@@ -2691,6 +2737,24 @@ function shouldAutoStartInitialSync() {
         && allInvoices().length === 0;
 }
 
+async function waitForSyncRun(syncRunId) {
+    while (activeSyncRunId === syncRunId) {
+        await delay(2500);
+        const payload = await requestJSON(api.endpoints.syncStatus, {}, { syncId: syncRunId });
+        const syncRun = payload?.syncRun || null;
+        if (syncRun) {
+            latestSyncRun = syncRun;
+            updateSyncProgress();
+            renderChrome();
+        }
+        if (syncRun?.status === "completed" || payload?.status === "completed") return payload;
+        if (syncRun?.status === "failed" || payload?.status === "failed") {
+            throw new Error(syncRun?.errorMessage || "Xero sync failed. Please try again.");
+        }
+    }
+    return null;
+}
+
 async function runXeroSync({ automatic = false } = {}) {
     if (!isXeroConnected() || isSyncing) {
         renderChrome();
@@ -2698,16 +2762,37 @@ async function runXeroSync({ automatic = false } = {}) {
     }
     if (automatic) hasAutoStartedInitialSync = true;
     startSyncFeedback();
-    showToast(automatic ? "Starting first sync from Xero" : "Please wait, pulling in data from Xero", "info");
+    showToast(automatic ? "Starting first sync from Xero" : "Starting Xero sync", "info");
     try {
         const payload = await requestJSON(api.endpoints.sync, { method: "POST" });
-        if (payload?.panel) {
+        const syncRun = payload?.syncRun || null;
+        if (syncRun?.id) {
+            activeSyncRunId = syncRun.id;
+            latestSyncRun = syncRun;
+            state.organisation.lastSync = syncRun.currentStep || "Sync requested just now";
+            persistState();
+            updateSyncProgress();
+            renderChrome();
+            if (payload.started === false) showToast("A Xero sync is already running", "info");
+
+            const completedPayload = await waitForSyncRun(syncRun.id);
+            if (!completedPayload) return;
+            if (completedPayload.panel) {
+                replaceState(normaliseState(completedPayload.panel));
+            } else {
+                await hydrateFromAPI();
+            }
+            renderAll();
+            showToast(completedPayload.syncRun?.summary || "Sync complete", "success");
+        } else if (payload?.panel) {
             replaceState(normaliseState(payload.panel));
+            renderAll();
+            showToast("Sync complete", "success");
         } else {
             await hydrateFromAPI();
+            renderAll();
+            showToast("Sync complete", "success");
         }
-        renderAll();
-        showToast("Sync complete", "success");
     } catch (error) {
         console.error("Unable to sync panel data", error);
         if (error instanceof AuthRequiredError) {
