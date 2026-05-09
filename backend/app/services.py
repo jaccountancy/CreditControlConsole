@@ -32,6 +32,31 @@ def get_xero_connection_for_user(user_id: str) -> dict:
     return row
 
 
+def disconnect_xero(user: dict) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM xero_connections
+                WHERE user_id = %s
+                RETURNING tenant_name
+                """,
+                (user["id"],),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+
+    if row:
+        record_audit_event(
+            "xero_connection",
+            str(user["id"]),
+            "xero.disconnected",
+            {"tenant_name": row.get("tenant_name")},
+            user["id"],
+        )
+    return {"disconnected": bool(row), "tenant_name": row.get("tenant_name") if row else None}
+
+
 async def run_sync(user: dict) -> dict:
     connection_row = get_xero_connection_for_user(user["id"])
     contacts, invoices = await fetch_contacts_and_invoices(connection_row)
@@ -237,10 +262,22 @@ def dashboard_payload() -> dict:
                 """
             )
             risks = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT completed_at
+                FROM sync_runs
+                WHERE provider = %s
+                  AND status = %s
+                ORDER BY completed_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+                """,
+                ("xero", "completed"),
+            )
+            latest_sync = cursor.fetchone()
         connection.commit()
 
     return {
-        "as_of": summary["as_of"],
+        "as_of": summary["as_of"] or (latest_sync or {}).get("completed_at"),
         "invoice_count": summary["invoice_count"] or 0,
         "total_receivables": float(summary["total_receivables"] or 0),
         "total_overdue": float(summary["total_overdue"] or 0),
@@ -287,6 +324,7 @@ def _serialize_timeline_items(rows: list[dict], title_key: str, body_key: str, s
 def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
     payload = {
         "id": invoice["id"],
+        "xeroInvoiceId": invoice.get("xero_invoice_id") or "",
         "invoiceNumber": invoice.get("invoice_number") or "",
         "status": invoice.get("status") or "",
         "controlStatus": invoice.get("control_status") or invoice.get("status") or "New",
@@ -351,7 +389,10 @@ def panel_payload(user: dict | None = None) -> dict:
         customers.append(
             {
                 "id": customer_row["id"],
+                "xeroContactId": customer_row.get("xero_contact_id") or "",
                 "name": customer_row.get("name") or "",
+                "email": customer_row.get("email") or "",
+                "phone": customer_row.get("phone") or "",
                 "contact": customer_row.get("email") or customer_row.get("phone") or "",
                 "status": customer_row.get("status") or ("Action needed" if _float(customer_row.get("overdue_amount")) > 0 else "Current"),
                 "openInvoices": open_invoices,
@@ -384,11 +425,14 @@ def panel_payload(user: dict | None = None) -> dict:
             xero_connected = False
 
     dashboard = dashboard_payload()
+    last_sync_label = f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync"
+    if not xero_connected and dashboard["as_of"]:
+        last_sync_label = "Xero disconnected"
     return {
         "organisation": {
             "name": xero_connection.get("tenant_name", "Xero Organisation") if xero_connected and xero_connection else "",
             "status": "Connected" if xero_connected else "Awaiting live connection",
-            "lastSync": f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync",
+            "lastSync": last_sync_label,
             "xeroConnected": xero_connected,
         },
         "dashboard": {

@@ -28,6 +28,7 @@ from .services import (
     add_promise,
     customer_detail,
     dashboard_payload,
+    disconnect_xero,
     get_xero_connection_for_user,
     invoice_detail,
     list_customers,
@@ -425,6 +426,11 @@ async def api_panel_sync(user: dict = Depends(require_user)):
         "summary": sync_run["summary"],
         "panel": panel_payload(user),
     }
+
+
+@app.post("/api/xero/disconnect")
+def api_xero_disconnect(user: dict = Depends(require_user)):
+    return {"status": "ok", **disconnect_xero(user)}
 
 
 @app.post("/api/invoices/{invoice_id}/notes")
