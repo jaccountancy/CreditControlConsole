@@ -237,7 +237,9 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     transform: translateY(-4px);
     transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.xero-action-menu button {
+.xero-action-menu button,
+.xero-action-menu a {
+    display: block;
     width: 100%;
     border: 0;
     border-radius: 10px;
@@ -246,8 +248,10 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     padding: 10px 12px;
     text-align: left;
     font-weight: 800;
+    text-decoration: none;
 }
-.xero-action-menu button:hover {
+.xero-action-menu button:hover,
+.xero-action-menu a:hover {
     background: var(--blue-soft);
     color: var(--blue);
 }
@@ -265,6 +269,11 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     transform: translateY(0);
 }
 .xero-action-menu[hidden] { display: none; }
+.topbar-menu-wrap .xero-action-menu {
+    right: 0;
+    left: auto;
+    min-width: 230px;
+}
 .stale-sync-warning {
     flex-basis: 100%;
     margin-top: 8px;
@@ -605,13 +614,13 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 .ledger-card { border-radius: 28px; overflow: hidden; position: relative; }
 .ledger-scroll { overflow: auto; }
 .sync-inline-banner {
-    flex: 1 1 320px;
+    flex: 1 1 440px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    width: min(420px, 100%);
-    max-width: 460px;
+    width: min(620px, 100%);
+    max-width: 640px;
     margin: 0 auto;
     padding: 12px 16px;
     border: 1px solid rgba(29, 103, 242, 0.22);
@@ -639,6 +648,27 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     animation: none;
     border-color: rgba(255, 83, 83, 0.18);
     border-top-color: var(--red);
+}
+.sync-inline-actions {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+.sync-inline-banner.is-error .sync-inline-actions { display: inline-flex; }
+.sync-inline-actions button {
+    border: 1px solid rgba(255, 83, 83, 0.25);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--red);
+    padding: 8px 11px;
+    font-size: 0.78rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+.sync-inline-actions button:hover {
+    background: white;
+    border-color: rgba(255, 83, 83, 0.42);
 }
 .sync-inline-copy {
     display: grid;
@@ -1317,17 +1347,22 @@ body.is-syncing .sync-dot {
                     <strong id="syncInlineTitle">Syncing data from Xero</strong>
                     <span id="syncInlineDetail">Preparing sync</span>
                 </div>
+                <div class="sync-inline-actions" aria-label="Sync failure actions">
+                    <button id="syncViewLogsButton" type="button">View logs</button>
+                    <button id="syncRetryButton" type="button">Try again</button>
+                </div>
             </div>
             <div class="topbar-actions">
-                <a class="ghost-button action-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
-                <div class="xero-connect-wrap" id="xeroConnectWrap">
-                    <a class="ghost-button action-link" id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
-                    <div class="xero-action-menu" id="xeroActionMenu" hidden>
-                        <button type="button" id="developerLogButton">Developer log</button>
+                <div class="xero-connect-wrap topbar-menu-wrap" id="topbarMenuWrap">
+                    <button class="primary-button" id="topbarMenuButton" type="button" aria-haspopup="true">Menu</button>
+                    <div class="xero-action-menu" id="xeroActionMenu">
+                        <button type="button" id="menuSyncButton">Resync from Xero</button>
+                        <button type="button" id="connectXeroButton">Connect Xero</button>
                         <button class="disconnect-xero-button" id="disconnectXeroButton" type="button">Disconnect Xero</button>
+                        <button type="button" id="developerLogButton">Developer log</button>
+                        <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                     </div>
                 </div>
-                <button class="primary-button" id="primarySyncButton" type="button" disabled>Connect Xero to sync</button>
             </div>
             <p class="stale-sync-warning" id="staleSyncWarning" hidden>Sync data may be stale. Run a fresh sync from Xero before chasing clients.</p>
         </header>
@@ -2647,8 +2682,10 @@ function renderChrome() {
     const connected = isXeroConnected();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
-    const xeroActionMenu = document.getElementById("xeroActionMenu");
-    if (xeroActionMenu) xeroActionMenu.hidden = !connected;
+    const disconnectButton = document.getElementById("disconnectXeroButton");
+    if (disconnectButton) disconnectButton.hidden = !connected;
+    const menuSyncButton = document.getElementById("menuSyncButton");
+    if (menuSyncButton) menuSyncButton.hidden = !connected;
     const staleWarning = document.getElementById("staleSyncWarning");
     const stale = isSyncStale();
     staleWarning.hidden = !stale;
@@ -2657,7 +2694,7 @@ function renderChrome() {
         const button = document.getElementById(buttonId);
         if (!button) return;
         button.disabled = !connected || isSyncing;
-        button.textContent = isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "primarySyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
+        button.textContent = isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "menuSyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
         button.title = isSyncing ? "Please wait while Xero data is imported" : connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
         button.setAttribute("aria-disabled", String(!connected || isSyncing));
     });
@@ -2667,7 +2704,7 @@ function renderChrome() {
     }
 }
 
-const syncButtonIds = ["primarySyncButton", "sidebarSyncButton"];
+const syncButtonIds = ["menuSyncButton", "sidebarSyncButton"];
 
 function isXeroConnected() {
     return state.organisation.xeroConnected === true || Boolean(state.organisation.name);
@@ -3214,8 +3251,10 @@ function wireLoginButtons() {
 }
 
 function wireSyncButtons() {
-    document.getElementById("primarySyncButton").addEventListener("click", () => runXeroSync());
+    document.getElementById("menuSyncButton").addEventListener("click", () => runXeroSync());
     document.getElementById("sidebarSyncButton").addEventListener("click", () => runXeroSync());
+    document.getElementById("syncRetryButton").addEventListener("click", () => runXeroSync());
+    document.getElementById("syncViewLogsButton").addEventListener("click", openDeveloperLog);
 }
 
 function wireSevenDayNoticeCard() {
