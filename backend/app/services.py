@@ -17,6 +17,29 @@ OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
 OUTSTANDING_READY_STEP = "Backfilling paid invoices"
 WORKING_DATA_STEPS = (OUTSTANDING_READY_STEP, "Fetching paid invoices from Xero", "Backfilling paid invoices")
+DEFAULT_SYNC_SCOPE = "outstanding_only"
+SYNC_SCOPE_OPTIONS = {
+    "outstanding_only": {
+        "label": "Outstanding invoices only",
+        "paid_page_limit": 0,
+        "summary": "Import outstanding invoices only.",
+    },
+    "outstanding_plus_500_paid": {
+        "label": "Outstanding + 500 paid invoices",
+        "paid_page_limit": 5,
+        "summary": "Import outstanding invoices and the next 500 paid invoices.",
+    },
+    "outstanding_plus_2500_paid": {
+        "label": "Outstanding + 2,500 paid invoices",
+        "paid_page_limit": 25,
+        "summary": "Import outstanding invoices and the next 2,500 paid invoices.",
+    },
+    "full_history": {
+        "label": "Full invoice history",
+        "paid_page_limit": None,
+        "summary": "Import outstanding invoices and all paid invoice history.",
+    },
+}
 
 
 def _json_default(value):
@@ -137,6 +160,20 @@ def _sync_error_payload(exc: Exception) -> dict:
     }
 
 
+def normalise_sync_options(options: dict | None = None) -> dict:
+    options = options or {}
+    invoice_scope = str(options.get("invoiceScope") or DEFAULT_SYNC_SCOPE)
+    if invoice_scope not in SYNC_SCOPE_OPTIONS:
+        invoice_scope = DEFAULT_SYNC_SCOPE
+    scope = SYNC_SCOPE_OPTIONS[invoice_scope]
+    return {
+        "invoice_scope": invoice_scope,
+        "label": scope["label"],
+        "paid_page_limit": scope["paid_page_limit"],
+        "summary": scope["summary"],
+    }
+
+
 def record_sync_start_failure(user: dict, exc: Exception) -> None:
     message = _sync_error_message(exc)
     try:
@@ -173,7 +210,8 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
     return row
 
 
-def request_sync_run(user: dict) -> tuple[dict, bool]:
+def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict, bool]:
+    sync_options = normalise_sync_options(sync_options)
     get_xero_connection_for_user(user["id"])
 
     with get_connection() as connection:
@@ -245,7 +283,7 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
                     user["id"],
                     "queued",
                     "Queued",
-                    "Xero sync queued.",
+                    f"Xero sync queued. {sync_options['summary']}",
                     0,
                     0,
                     0,
@@ -447,14 +485,15 @@ def _developer_log_message(row: dict) -> str:
     return str(payload or row.get("event_type") or "Log event")
 
 
-def run_sync_job(user: dict, sync_run_id: str) -> None:
+def run_sync_job(user: dict, sync_run_id: str, sync_options: dict | None = None) -> None:
     try:
-        asyncio.run(run_sync(user, sync_run_id))
+        asyncio.run(run_sync(user, sync_run_id, sync_options))
     except Exception:
         logger.exception("Background Xero sync failed")
 
 
-async def run_sync(user: dict, sync_run_id: str) -> dict:
+async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = None) -> dict:
+    sync_options = normalise_sync_options(sync_options)
     connection_row = get_xero_connection_for_user(user["id"])
     now = utcnow()
     _update_sync_run(
@@ -734,16 +773,39 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             user["id"],
         )
 
+        paid_page_limit = sync_options["paid_page_limit"]
+        if paid_page_limit == 0:
+            completed = _update_sync_run(
+                sync_run_id,
+                status="completed",
+                current_step="Outstanding sync complete",
+                summary=(
+                    f"Synced {len(contacts)} customers and {outstanding_synced} outstanding invoices. "
+                    "Paid invoice history was left for a later staged sync."
+                ),
+                customers_synced=len(contacts),
+                invoices_synced=synced_invoices,
+                fetched_count=len(contacts) + len(outstanding_invoices),
+                processed_count=len(contacts) + synced_invoices,
+                failed_count=0,
+                contacts_total=len(contacts),
+                invoices_total=len(outstanding_invoices),
+                completed_at=utcnow(),
+            )
+            record_audit_event("sync_run", str(completed["id"]), "sync.completed", {"summary": completed["summary"]}, user["id"])
+            return completed
+
         _update_sync_run(
             sync_run_id,
             current_step="Fetching paid invoices from Xero",
-            summary=f"Outstanding invoices are ready. Backfilling paid invoice history.",
+            summary=f"Outstanding invoices are ready. {sync_options['summary']}",
         )
         paid_invoices = await fetch_paginated_collection(
             connection_row,
             INVOICES_URL,
             "Invoices",
             params={"where": PAID_INVOICE_WHERE},
+            max_pages=paid_page_limit,
             on_page=paid_invoice_progress,
         )
         paid_synced = 0
@@ -866,7 +928,7 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                         0,
                         len(contacts),
                         len(outstanding_invoices) + len(paid_invoices),
-                        f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, and {paid_synced} paid invoices from Xero.",
+                        f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, and {paid_synced} paid invoices from Xero. Scope: {sync_options['label']}.",
                         utcnow(),
                         sync_run_id,
                     ),

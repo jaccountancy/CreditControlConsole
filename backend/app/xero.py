@@ -306,11 +306,14 @@ async def fetch_paginated_collection(
     url: str,
     collection_key: str,
     params: dict | None = None,
+    max_pages: int | None = None,
     on_page=None,
 ) -> list[dict]:
     records: list[dict] = []
     page = 1
     while True:
+        if max_pages is not None and page > max_pages:
+            return records
         payload = await xero_api_get(connection_row, url, params={**(params or {}), "page": page})
         batch = payload.get(collection_key, [])
         records.extend(batch)

@@ -37,6 +37,7 @@ from .services import (
     invoice_detail,
     list_customers,
     list_developer_logs,
+    normalise_sync_options,
     panel_payload,
     get_sync_run,
     record_sync_start_failure,
@@ -439,15 +440,21 @@ def api_panel(user: dict = Depends(require_panel_user)):
 
 
 @app.post("/api/panel/sync")
-async def api_panel_sync(user: dict = Depends(require_panel_user)):
+async def api_panel_sync(request: Request, user: dict = Depends(require_panel_user)):
     try:
-        sync_run, started = request_sync_run(user)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        sync_options = normalise_sync_options((body or {}).get("syncOptions") or body)
+        sync_run, started = request_sync_run(user, sync_options)
         if started:
-            threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+            threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"]), sync_options), daemon=True).start()
         return {
             "status": "queued" if started else "running",
             "started": started,
             "syncRun": serialize_sync_run(sync_run),
+            "syncOptions": sync_options,
         }
     except HTTPException as exc:
         record_sync_start_failure(user, exc)

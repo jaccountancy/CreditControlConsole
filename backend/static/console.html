@@ -277,7 +277,41 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 .topbar-menu-wrap .xero-action-menu {
     right: 0;
     left: auto;
-    min-width: 230px;
+    min-width: 320px;
+}
+.sync-settings-panel {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-soft);
+}
+.sync-settings-panel label {
+    display: grid;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+.sync-settings-panel select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: white;
+    color: var(--ink);
+    padding: 9px 10px;
+    font-weight: 800;
+    text-transform: none;
+}
+.sync-settings-status {
+    display: grid;
+    gap: 3px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1.35;
 }
 .stale-sync-warning {
     flex-basis: 100%;
@@ -1362,6 +1396,21 @@ body.is-syncing .sync-dot {
                     <button class="primary-button" id="topbarMenuButton" type="button" aria-haspopup="true">Menu</button>
                     <div class="xero-action-menu" id="xeroActionMenu">
                         <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
+                        <div class="sync-settings-panel" id="syncSettingsPanel">
+                            <label for="syncScopeSelect">
+                                Data filter
+                                <select id="syncScopeSelect">
+                                    <option value="outstanding_only">Outstanding invoices only</option>
+                                    <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
+                                    <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
+                                    <option value="full_history">Full invoice history</option>
+                                </select>
+                            </label>
+                            <div class="sync-settings-status" id="syncSettingsStatus">
+                                <span>Imported: no sync yet</span>
+                                <span>Remaining: choose a filter and run sync</span>
+                            </div>
+                        </div>
                         <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                         <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                         <button type="button" id="developerLogButton">Developer log</button>
@@ -1695,6 +1744,7 @@ body.is-syncing .sync-dot {
 
     <script>
 const STORAGE_KEY = "hymn-credit-control-ledger";
+const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
 const DEFAULT_API_BASE_URL = window.location.protocol === "file:"
     ? "https://creditcontrolconsole-production.up.railway.app"
     : window.location.origin;
@@ -1707,6 +1757,13 @@ const emptyData = {
     selectedInvoice: null
 };
 const state = loadState();
+const syncScopeLabels = {
+    outstanding_only: "Outstanding invoices only",
+    outstanding_plus_500_paid: "Outstanding + 500 paid invoices",
+    outstanding_plus_2500_paid: "Outstanding + 2,500 paid invoices",
+    full_history: "Full invoice history"
+};
+let syncSettings = loadSyncSettings();
 let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
 let selectedInvoiceIds = new Set();
@@ -1802,6 +1859,20 @@ function loadState() {
     } catch {
         return injected;
     }
+}
+
+function loadSyncSettings() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY) || "{}");
+        const invoiceScope = syncScopeLabels[stored.invoiceScope] ? stored.invoiceScope : "outstanding_only";
+        return { invoiceScope };
+    } catch {
+        return { invoiceScope: "outstanding_only" };
+    }
+}
+
+function persistSyncSettings() {
+    localStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify(syncSettings));
 }
 
 function persistState() {
@@ -2746,6 +2817,7 @@ function isXeroDisconnectedMessage(message) {
 
 function renderAll() {
     renderChrome();
+    renderSyncSettings();
     renderDashboardHero();
     renderSummaryCounts();
     renderToolbarControls();
@@ -3047,6 +3119,44 @@ function syncRunCountSummary(syncRun) {
     return parts.join(", ");
 }
 
+function currentSyncOptions() {
+    return { invoiceScope: syncSettings.invoiceScope };
+}
+
+function renderSyncSettings() {
+    const select = document.getElementById("syncScopeSelect");
+    if (select) select.value = syncSettings.invoiceScope;
+
+    const status = document.getElementById("syncSettingsStatus");
+    if (!status) return;
+
+    const invoices = allInvoices();
+    const openCount = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid").length;
+    const paidCount = invoices.filter((invoice) => invoiceCategory(invoice) === "paid").length;
+    const scopeLabel = syncScopeLabels[syncSettings.invoiceScope] || syncScopeLabels.outstanding_only;
+
+    if (latestSyncRun) {
+        const contactsTotal = Number(latestSyncRun.contactsTotal || 0);
+        const invoicesTotal = Number(latestSyncRun.invoicesTotal || 0);
+        const customersSynced = Number(latestSyncRun.customersSynced || 0);
+        const invoicesSynced = Number(latestSyncRun.invoicesSynced || 0);
+        const remainingContacts = Math.max(contactsTotal - customersSynced, 0);
+        const remainingInvoices = Math.max(invoicesTotal - invoicesSynced, 0);
+        status.innerHTML = `
+            <span>Filter: ${scopeLabel}</span>
+            <span>Imported: ${customersSynced.toLocaleString("en-GB")} contacts, ${invoicesSynced.toLocaleString("en-GB")} invoices</span>
+            <span>Remaining this stage: ${remainingContacts.toLocaleString("en-GB")} contacts, ${remainingInvoices.toLocaleString("en-GB")} invoices</span>
+        `;
+        return;
+    }
+
+    status.innerHTML = `
+        <span>Filter: ${scopeLabel}</span>
+        <span>Imported locally: ${openCount.toLocaleString("en-GB")} open, ${paidCount.toLocaleString("en-GB")} paid</span>
+        <span>Remaining: run the next stage when ready</span>
+    `;
+}
+
 function updateSyncProgress() {
     const remoteStartedAt = syncRunTimestamp(latestSyncRun);
     if (remoteStartedAt && (!syncStartedAt || remoteStartedAt < syncStartedAt)) syncStartedAt = remoteStartedAt;
@@ -3080,6 +3190,7 @@ function updateSyncProgress() {
         const inlineDetail = document.getElementById("syncInlineDetail");
         if (inlineDetail) inlineDetail.textContent = detailText;
     }
+    renderSyncSettings();
 }
 
 function clearSyncFailureBanner() {
@@ -3202,7 +3313,10 @@ async function runXeroSync({ automatic = false } = {}) {
     startSyncFeedback();
     showToast(automatic ? "Starting first sync from Xero" : "Starting Xero sync", "info");
     try {
-        const payload = await requestJSON(api.endpoints.sync, { method: "POST" });
+        const payload = await requestJSON(api.endpoints.sync, {
+            method: "POST",
+            body: JSON.stringify({ syncOptions: currentSyncOptions() })
+        });
         const syncRun = payload?.syncRun || null;
         if (syncRun?.id) {
             activeSyncRunId = syncRun.id;
@@ -3363,6 +3477,15 @@ function wireLoginButtons() {
 }
 
 function wireSyncButtons() {
+    const syncScopeSelect = document.getElementById("syncScopeSelect");
+    if (syncScopeSelect) {
+        syncScopeSelect.value = syncSettings.invoiceScope;
+        syncScopeSelect.addEventListener("change", () => {
+            syncSettings = { invoiceScope: syncScopeSelect.value };
+            persistSyncSettings();
+            renderSyncSettings();
+        });
+    }
     const menuSyncButton = document.getElementById("menuSyncButton");
     if (menuSyncButton) menuSyncButton.addEventListener("click", () => runXeroSync());
     const sidebarSyncButton = document.getElementById("sidebarSyncButton");
