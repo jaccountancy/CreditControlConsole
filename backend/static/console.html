@@ -3165,9 +3165,13 @@ async function waitForSyncRun(syncRunId) {
             updateSyncProgress();
             renderChrome();
         }
-        if (payload?.panel && !hasLoadedWorkingSyncPanel && syncRun?.status !== "completed") {
+        if ((payload?.panel || payload?.workingDataReady) && !hasLoadedWorkingSyncPanel && syncRun?.status !== "completed") {
             hasLoadedWorkingSyncPanel = true;
-            replaceState(normaliseState(payload.panel));
+            if (payload?.panel) {
+                replaceState(normaliseState(payload.panel));
+            } else {
+                await hydrateFromAPI();
+            }
             renderAll();
             showToast("Outstanding invoices are ready. Paid invoice history is still backfilling.", "success");
         }

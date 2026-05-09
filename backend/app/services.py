@@ -1067,16 +1067,54 @@ def panel_payload(user: dict | None = None) -> dict:
     customers = []
     selected_invoice = None
 
-    for customer_row in list_customers():
-        detail = customer_detail(customer_row["id"])
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM customers
+                ORDER BY overdue_amount DESC, total_due DESC, name ASC
+                """
+            )
+            customer_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT *
+                FROM invoices
+                ORDER BY due_date ASC NULLS LAST, invoice_number ASC
+                """
+            )
+            invoice_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT *
+                FROM audit_events
+                ORDER BY created_at DESC
+                LIMIT 30
+                """
+            )
+            audit_rows = cursor.fetchall()
+        connection.commit()
+
+    invoices_by_customer: dict[str, list[dict]] = {}
+    today = utcnow().date()
+    for invoice in invoice_rows:
+        due_date = invoice["due_date"]
+        overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
+        invoice["late_payment"] = _late_payment_breakdown(float(invoice["amount_due"]), overdue_days)
+        invoice["overdue_days"] = overdue_days
+        invoices_by_customer.setdefault(invoice["customer_id"], []).append(invoice)
+
+    for customer_row in customer_rows:
+        detail_invoices = invoices_by_customer.get(customer_row["id"], [])
         invoices = []
-        for invoice in detail["invoices"]:
-            invoice_payload = _serialize_invoice(invoice, invoice_detail(invoice["id"]))
+        for invoice in detail_invoices:
+            invoice_payload = _serialize_invoice(invoice)
             invoices.append(invoice_payload)
             if selected_invoice is None:
                 selected_invoice = invoice_payload
 
-        open_invoices = sum(1 for invoice in detail["invoices"] if _float(invoice.get("amount_due")) > 0)
+        open_invoices = sum(1 for invoice in detail_invoices if _float(invoice.get("amount_due")) > 0)
         customers.append(
             {
                 "id": customer_row["id"],
@@ -1092,19 +1130,6 @@ def panel_payload(user: dict | None = None) -> dict:
                 "invoices": invoices,
             }
         )
-
-    with get_connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT *
-                FROM audit_events
-                ORDER BY created_at DESC
-                LIMIT 30
-                """
-            )
-            audit_rows = cursor.fetchall()
-        connection.commit()
 
     xero_connected = False
     xero_connection = None

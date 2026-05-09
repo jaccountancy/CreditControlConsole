@@ -471,8 +471,9 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
     payload = {
         "status": sync_run["status"],
         "syncRun": serialize_sync_run(sync_run),
+        "workingDataReady": sync_run_has_working_data(sync_run),
     }
-    if sync_run["status"] == "completed" or sync_run_has_working_data(sync_run):
+    if sync_run["status"] == "completed":
         payload["panel"] = panel_payload(user)
     return payload
 
