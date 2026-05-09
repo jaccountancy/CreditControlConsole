@@ -1,9 +1,10 @@
 import json
 import logging
+import threading
 from html import escape
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Form, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -435,10 +436,10 @@ def api_panel(user: dict = Depends(require_panel_user)):
 
 
 @app.post("/api/panel/sync")
-async def api_panel_sync(background_tasks: BackgroundTasks, user: dict = Depends(require_panel_user)):
+async def api_panel_sync(user: dict = Depends(require_panel_user)):
     sync_run, started = request_sync_run(user)
     if started:
-        background_tasks.add_task(run_sync_job, dict(user), str(sync_run["id"]))
+        threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
     return {
         "status": "queued" if started else "running",
         "started": started,

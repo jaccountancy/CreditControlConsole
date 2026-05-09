@@ -564,8 +564,54 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     padding: 10px 14px;
     font-weight: 800;
 }
-.ledger-card { border-radius: 28px; overflow: hidden; }
+.ledger-card { border-radius: 28px; overflow: hidden; position: relative; }
 .ledger-scroll { overflow: auto; }
+.sync-inline-banner {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    z-index: 8;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(520px, calc(100% - 32px));
+    padding: 12px 16px;
+    border: 1px solid rgba(29, 103, 242, 0.22);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 16px 42px rgba(30, 47, 77, 0.16);
+    color: var(--ink);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.sync-inline-banner[hidden] { display: none; }
+.sync-inline-spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 3px solid rgba(29, 103, 242, 0.15);
+    border-top-color: var(--blue);
+    animation: sync-spin 0.85s linear infinite;
+    flex: 0 0 auto;
+}
+.sync-inline-copy {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+.sync-inline-copy strong {
+    font-size: 0.92rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+.sync-inline-copy span {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .invoice-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
 .invoice-table th, .invoice-table td {
     padding: 16px 18px;
@@ -1238,6 +1284,13 @@ body.is-syncing .sync-dot {
         </section>
 
         <section class="ledger-card">
+            <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
+                <span class="sync-inline-spinner" aria-hidden="true"></span>
+                <div class="sync-inline-copy">
+                    <strong>Syncing data from Xero</strong>
+                    <span id="syncInlineDetail">Preparing sync</span>
+                </div>
+            </div>
             <div class="ledger-scroll">
                 <table class="invoice-table">
                     <thead>
@@ -2690,11 +2743,14 @@ function updateSyncProgress() {
     if (detail) {
         const counts = syncRunCountSummary(latestSyncRun);
         const step = latestSyncRun?.currentStep || latestSyncRun?.summary;
-        detail.textContent = latestSyncRun?.status === "failed"
+        const detailText = latestSyncRun?.status === "failed"
             ? latestSyncRun.errorMessage || "Xero sync failed. Please try again."
             : [step, counts].filter(Boolean).join(". ") || (elapsedSeconds < 90
                 ? "Please keep this page open while invoices and contacts are imported."
                 : "Xero is still responding. Please keep this page open.");
+        detail.textContent = detailText;
+        const inlineDetail = document.getElementById("syncInlineDetail");
+        if (inlineDetail) inlineDetail.textContent = detailText;
     }
 }
 
@@ -2704,7 +2760,9 @@ function startSyncFeedback(syncRun = null) {
     activeSyncRunId = syncRun?.id || activeSyncRunId;
     syncStartedAt = syncRunTimestamp(syncRun) || Date.now();
     const overlay = document.getElementById("syncProgressOverlay");
-    if (overlay) overlay.hidden = false;
+    if (overlay) overlay.hidden = true;
+    const inlineBanner = document.getElementById("syncInlineBanner");
+    if (inlineBanner) inlineBanner.hidden = false;
     updateSyncProgress();
     window.clearInterval(syncProgressTimer);
     syncProgressTimer = window.setInterval(updateSyncProgress, 1000);
@@ -2719,6 +2777,8 @@ function stopSyncFeedback() {
     syncProgressTimer = null;
     const overlay = document.getElementById("syncProgressOverlay");
     if (overlay) overlay.hidden = true;
+    const inlineBanner = document.getElementById("syncInlineBanner");
+    if (inlineBanner) inlineBanner.hidden = true;
     renderChrome();
 }
 

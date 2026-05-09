@@ -7,7 +7,7 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 
 from .config import get_settings
-from .database import get_connection, utcnow
+from .database import ensure_schema, get_connection, utcnow
 from .xero import CONTACTS_URL, INVOICES_URL, fetch_paginated_collection, normalise_contact, normalise_invoice
 
 logger = logging.getLogger(__name__)
@@ -95,6 +95,7 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 
 
 def request_sync_run(user: dict) -> tuple[dict, bool]:
+    ensure_schema()
     get_xero_connection_for_user(user["id"])
 
     with get_connection() as connection:
@@ -134,6 +135,7 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
 
 
 def get_sync_run(user: dict, sync_run_id: str) -> dict:
+    ensure_schema()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -199,6 +201,7 @@ def run_sync_job(user: dict, sync_run_id: str) -> None:
 
 
 async def run_sync(user: dict, sync_run_id: str) -> dict:
+    ensure_schema()
     connection_row = get_xero_connection_for_user(user["id"])
     now = utcnow()
     _update_sync_run(
