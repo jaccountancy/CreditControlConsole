@@ -171,6 +171,22 @@ CREATE TABLE IF NOT EXISTS audit_events (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS developer_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    sync_run_id UUID REFERENCES sync_runs(id) ON DELETE SET NULL,
+    level TEXT NOT NULL DEFAULT 'info',
+    source TEXT NOT NULL DEFAULT 'backend',
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS developer_logs_created_idx ON developer_logs (created_at DESC);
+CREATE INDEX IF NOT EXISTS developer_logs_user_idx ON developer_logs (user_id);
+CREATE INDEX IF NOT EXISTS developer_logs_sync_run_idx ON developer_logs (sync_run_id);
 """
 
 

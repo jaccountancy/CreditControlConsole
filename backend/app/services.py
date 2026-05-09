@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 
 
+def _json_default(value):
+    if isinstance(value, (date, datetime, Decimal)):
+        return str(value)
+    return str(value)
+
+
 def record_audit_event(entity_type: str, entity_id: str, event_type: str, payload: dict, user_id: str | None) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -22,9 +28,43 @@ def record_audit_event(entity_type: str, entity_id: str, event_type: str, payloa
                 INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
                 VALUES (%s, %s, %s, %s::jsonb, %s)
                 """,
-                (entity_type, entity_id, event_type, json.dumps(payload), user_id),
+                (entity_type, entity_id, event_type, json.dumps(payload, default=_json_default), user_id),
             )
         connection.commit()
+
+
+def record_developer_log(
+    event_type: str,
+    message: str,
+    payload: dict | None = None,
+    user_id: str | None = None,
+    sync_run_id: str | None = None,
+    level: str = "info",
+    source: str = "backend",
+) -> None:
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO developer_logs (
+                        user_id, sync_run_id, level, source, event_type, message, payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                    """,
+                    (
+                        user_id,
+                        sync_run_id,
+                        level,
+                        source,
+                        event_type,
+                        message,
+                        json.dumps(payload or {}, default=_json_default),
+                    ),
+                )
+            connection.commit()
+    except Exception:
+        logger.exception("Unable to record developer log")
 
 
 def get_xero_connection_for_user(user_id: str) -> dict:
@@ -72,6 +112,19 @@ def _sync_error_message(exc: Exception) -> str:
     return str(exc) or exc.__class__.__name__
 
 
+def _sync_error_payload(exc: Exception) -> dict:
+    if isinstance(exc, HTTPException):
+        return {
+            "type": "HTTPException",
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+        }
+    return {
+        "type": exc.__class__.__name__,
+        "message": str(exc),
+    }
+
+
 def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
     if not fields:
         return None
@@ -116,6 +169,13 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
             active = cursor.fetchone()
             if active is not None:
                 connection.commit()
+                record_developer_log(
+                    "sync.reused",
+                    "Existing Xero sync is already active.",
+                    {"sync_run_id": str(active["id"]), "status": active.get("status")},
+                    user_id=user["id"],
+                    sync_run_id=str(active["id"]),
+                )
                 return active, False
 
             cursor.execute(
@@ -131,6 +191,13 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
             sync_run = cursor.fetchone()
         connection.commit()
 
+    record_developer_log(
+        "sync.queued",
+        "Xero sync queued from web panel.",
+        {"sync_run_id": str(sync_run["id"])},
+        user_id=user["id"],
+        sync_run_id=str(sync_run["id"]),
+    )
     return sync_run, True
 
 
@@ -193,6 +260,42 @@ def serialize_sync_run(sync_run: dict) -> dict:
     }
 
 
+def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
+    ensure_schema()
+    bounded_limit = max(1, min(int(limit or 120), 300))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT developer_logs.*, sync_runs.status AS sync_status
+                FROM developer_logs
+                LEFT JOIN sync_runs ON sync_runs.id = developer_logs.sync_run_id
+                WHERE developer_logs.user_id = %s
+                   OR developer_logs.user_id IS NULL
+                ORDER BY developer_logs.created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], bounded_limit),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+
+    return [
+        {
+            "id": str(row["id"]),
+            "level": row.get("level") or "info",
+            "source": row.get("source") or "backend",
+            "eventType": row.get("event_type") or "",
+            "message": row.get("message") or "",
+            "payload": row.get("payload") or {},
+            "createdAt": _iso(row.get("created_at")) or "",
+            "syncRunId": str(row["sync_run_id"]) if row.get("sync_run_id") else "",
+            "syncStatus": row.get("sync_status") or "",
+        }
+        for row in rows
+    ]
+
+
 def run_sync_job(user: dict, sync_run_id: str) -> None:
     try:
         asyncio.run(run_sync(user, sync_run_id))
@@ -212,6 +315,13 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
         started_at=now,
         error_message=None,
     )
+    record_developer_log(
+        "sync.started",
+        "Background Xero sync started.",
+        {"tenant_id": connection_row["tenant_id"], "tenant_name": connection_row.get("tenant_name")},
+        user_id=user["id"],
+        sync_run_id=sync_run_id,
+    )
 
     try:
         def contact_progress(_, total_records: int, __) -> None:
@@ -222,6 +332,13 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                 customers_synced=total_records,
                 contacts_total=total_records,
             )
+            record_developer_log(
+                "xero.contacts.page",
+                f"Fetched {total_records} contacts from Xero.",
+                {"records_so_far": total_records},
+                user_id=user["id"],
+                sync_run_id=sync_run_id,
+            )
 
         def invoice_progress(_, total_records: int, __) -> None:
             _update_sync_run(
@@ -231,12 +348,33 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                 invoices_synced=total_records,
                 invoices_total=total_records,
             )
+            record_developer_log(
+                "xero.invoices.page",
+                f"Fetched {total_records} invoices from Xero.",
+                {"records_so_far": total_records},
+                user_id=user["id"],
+                sync_run_id=sync_run_id,
+            )
 
+        record_developer_log(
+            "xero.contacts.fetch.started",
+            "Requesting contacts from Xero.",
+            {"url": CONTACTS_URL},
+            user_id=user["id"],
+            sync_run_id=sync_run_id,
+        )
         contacts = await fetch_paginated_collection(
             connection_row,
             CONTACTS_URL,
             "Contacts",
             on_page=contact_progress,
+        )
+        record_developer_log(
+            "xero.contacts.fetch.completed",
+            f"Fetched {len(contacts)} contacts from Xero.",
+            {"contacts": len(contacts)},
+            user_id=user["id"],
+            sync_run_id=sync_run_id,
         )
         _update_sync_run(
             sync_run_id,
@@ -245,12 +383,29 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             contacts_total=len(contacts),
             customers_synced=0,
         )
+        record_developer_log(
+            "xero.invoices.fetch.started",
+            "Requesting invoices from Xero.",
+            {
+                "url": INVOICES_URL,
+                "where": 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"',
+            },
+            user_id=user["id"],
+            sync_run_id=sync_run_id,
+        )
         invoices = await fetch_paginated_collection(
             connection_row,
             INVOICES_URL,
             "Invoices",
             params={"where": 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"'},
             on_page=invoice_progress,
+        )
+        record_developer_log(
+            "xero.invoices.fetch.completed",
+            f"Fetched {len(invoices)} invoices from Xero.",
+            {"invoices": len(invoices)},
+            user_id=user["id"],
+            sync_run_id=sync_run_id,
         )
         _update_sync_run(
             sync_run_id,
@@ -260,6 +415,13 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             invoices_total=len(invoices),
             customers_synced=0,
             invoices_synced=0,
+        )
+        record_developer_log(
+            "sync.import.started",
+            "Importing Xero contacts and invoices into the database.",
+            {"contacts": len(contacts), "invoices": len(invoices)},
+            user_id=user["id"],
+            sync_run_id=sync_run_id,
         )
 
         with get_connection() as connection:
@@ -291,6 +453,13 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                             current_step="Importing contacts",
                             summary=f"Imported {imported_contacts} of {len(contacts)} contacts.",
                             customers_synced=imported_contacts,
+                        )
+                        record_developer_log(
+                            "sync.contacts.import.progress",
+                            f"Imported {imported_contacts} contacts.",
+                            {"imported_contacts": imported_contacts, "contacts_total": len(contacts)},
+                            user_id=user["id"],
+                            sync_run_id=sync_run_id,
                         )
 
                 cursor.execute(
@@ -402,6 +571,13 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                             customers_synced=imported_contacts,
                             invoices_synced=synced_invoices,
                         )
+                        record_developer_log(
+                            "sync.invoices.import.progress",
+                            f"Imported {synced_invoices} invoices.",
+                            {"imported_invoices": synced_invoices, "invoices_total": len(invoices)},
+                            user_id=user["id"],
+                            sync_run_id=sync_run_id,
+                        )
 
                 for customer_id, totals in customer_totals.items():
                     cursor.execute(
@@ -445,9 +621,17 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             connection.commit()
 
         record_audit_event("sync_run", str(completed["id"]), "sync.completed", {"summary": completed["summary"]}, user["id"])
+        record_developer_log(
+            "sync.completed",
+            completed["summary"],
+            {"customers": len(contacts), "invoices": synced_invoices},
+            user_id=user["id"],
+            sync_run_id=sync_run_id,
+        )
         return completed
     except Exception as exc:
         message = _sync_error_message(exc)
+        error_payload = _sync_error_payload(exc)
         _update_sync_run(
             sync_run_id,
             status="failed",
@@ -458,6 +642,14 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
         )
         try:
             record_audit_event("sync_run", str(sync_run_id), "sync.failed", {"error": message}, user["id"])
+            record_developer_log(
+                "sync.failed",
+                message,
+                error_payload,
+                user_id=user["id"],
+                sync_run_id=sync_run_id,
+                level="error",
+            )
         except Exception:
             logger.exception("Unable to record failed sync audit event")
         raise

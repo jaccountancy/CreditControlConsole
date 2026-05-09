@@ -207,26 +207,52 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     position: relative;
     display: inline-flex;
 }
-.disconnect-xero-button {
+.xero-action-menu {
     position: absolute;
     top: calc(100% + 8px);
     left: 0;
     z-index: 30;
-    width: max-content;
+    display: grid;
+    gap: 6px;
+    min-width: 190px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface-strong);
+    box-shadow: 0 16px 36px rgba(30, 47, 77, 0.14);
     opacity: 0;
     pointer-events: none;
     transform: translateY(-4px);
-    color: var(--red);
-    border-color: rgba(255, 83, 83, 0.22);
-    box-shadow: 0 12px 30px rgba(30, 47, 77, 0.12);
+    transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.xero-connect-wrap:hover .disconnect-xero-button,
-.xero-connect-wrap:focus-within .disconnect-xero-button {
+.xero-action-menu button {
+    width: 100%;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--ink);
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 800;
+}
+.xero-action-menu button:hover {
+    background: var(--blue-soft);
+    color: var(--blue);
+}
+.xero-action-menu .disconnect-xero-button {
+    color: var(--red);
+}
+.xero-action-menu .disconnect-xero-button:hover {
+    background: var(--red-soft);
+    color: var(--red);
+}
+.xero-connect-wrap:hover .xero-action-menu,
+.xero-connect-wrap:focus-within .xero-action-menu {
     opacity: 1;
     pointer-events: auto;
     transform: translateY(0);
 }
-.disconnect-xero-button[hidden] { display: none; }
+.xero-action-menu[hidden] { display: none; }
 .stale-sync-warning {
     flex-basis: 100%;
     margin-top: 8px;
@@ -1012,6 +1038,92 @@ body.is-dense .note-snippet {
     border: 1px dashed var(--line);
     color: var(--muted);
 }
+.developer-log-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 95;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(245, 248, 255, 0.58);
+    backdrop-filter: blur(10px);
+}
+.developer-log-panel[hidden] { display: none; }
+.developer-log-card {
+    width: min(920px, 100%);
+    max-height: min(760px, calc(100vh - 48px));
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.78);
+    border-radius: 24px;
+    background: var(--surface-strong);
+    box-shadow: 0 24px 70px rgba(30, 47, 77, 0.20);
+}
+.developer-log-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--line);
+}
+.developer-log-head h3 { margin: 0; }
+.developer-log-head p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-weight: 700;
+}
+.developer-log-actions {
+    display: inline-flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.developer-log-list {
+    display: grid;
+    gap: 10px;
+    overflow: auto;
+    padding: 16px 24px 24px;
+}
+.developer-log-entry {
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface-soft);
+}
+.developer-log-entry.is-error {
+    border-color: rgba(255, 83, 83, 0.28);
+    background: var(--red-soft);
+}
+.developer-log-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+.developer-log-entry strong { font-size: 0.96rem; }
+.developer-log-entry p {
+    margin: 0;
+    color: var(--ink);
+    font-weight: 700;
+}
+.developer-log-entry pre {
+    max-height: 180px;
+    overflow: auto;
+    margin: 0;
+    padding: 10px;
+    border-radius: 10px;
+    background: rgba(30, 47, 77, 0.06);
+    color: #30415f;
+    font: 0.78rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    white-space: pre-wrap;
+}
 .toast-stack {
     position: fixed;
     right: 24px;
@@ -1182,7 +1294,10 @@ body.is-syncing .sync-dot {
                 <a class="ghost-button action-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                 <div class="xero-connect-wrap" id="xeroConnectWrap">
                     <a class="ghost-button action-link" id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
-                    <button class="ghost-button disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
+                    <div class="xero-action-menu" id="xeroActionMenu" hidden>
+                        <button type="button" id="developerLogButton">Developer log</button>
+                        <button class="disconnect-xero-button" id="disconnectXeroButton" type="button">Disconnect Xero</button>
+                    </div>
                 </div>
                 <button class="primary-button" id="primarySyncButton" type="button" disabled>Connect Xero to sync</button>
             </div>
@@ -1497,6 +1612,24 @@ body.is-syncing .sync-dot {
         </div>
     </section>
 
+    <section class="developer-log-panel" id="developerLogPanel" aria-modal="true" role="dialog" aria-labelledby="developerLogTitle" hidden>
+        <div class="developer-log-card">
+            <div class="developer-log-head">
+                <div>
+                    <h3 id="developerLogTitle">Developer log</h3>
+                    <p id="developerLogSummary">Recent Xero sync events and backend errors</p>
+                </div>
+                <div class="developer-log-actions">
+                    <button class="ghost-button" id="refreshDeveloperLogButton" type="button">Refresh</button>
+                    <button class="ghost-button" id="closeDeveloperLogButton" type="button">Close</button>
+                </div>
+            </div>
+            <div class="developer-log-list" id="developerLogList">
+                <div class="empty-state">Open the log after a failed sync to see the exact backend response.</div>
+            </div>
+        </div>
+    </section>
+
     <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
     <script>
@@ -1577,6 +1710,7 @@ function normaliseAPI(config) {
             panel: config.endpoints?.panel || "/api/panel",
             sync: config.endpoints?.sync || "/api/panel/sync",
             syncStatus: config.endpoints?.syncStatus || "/api/panel/sync/:syncId",
+            developerLogs: config.endpoints?.developerLogs || "/api/developer/logs",
             note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
@@ -2492,8 +2626,8 @@ function renderChrome() {
     const connected = isXeroConnected();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
-    const disconnectButton = document.getElementById("disconnectXeroButton");
-    disconnectButton.hidden = !connected;
+    const xeroActionMenu = document.getElementById("xeroActionMenu");
+    if (xeroActionMenu) xeroActionMenu.hidden = !connected;
     const staleWarning = document.getElementById("staleSyncWarning");
     const stale = isSyncStale();
     staleWarning.hidden = !stale;
@@ -2685,6 +2819,82 @@ function showToast(message, type = "info", action = null) {
     window.setTimeout(() => toast.remove(), 3600);
 }
 
+function formatDeveloperLogStamp(value) {
+    if (!value) return "Unknown time";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function renderDeveloperLogs(logs) {
+    const list = document.getElementById("developerLogList");
+    const summary = document.getElementById("developerLogSummary");
+    if (!list) return;
+    list.innerHTML = "";
+    if (summary) summary.textContent = `${logs.length} recent backend event${logs.length === 1 ? "" : "s"}`;
+    if (!logs.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "No developer log entries yet.";
+        list.appendChild(empty);
+        return;
+    }
+    logs.forEach((entry) => {
+        const article = document.createElement("article");
+        article.className = `developer-log-entry ${entry.level === "error" ? "is-error" : ""}`;
+
+        const meta = document.createElement("div");
+        meta.className = "developer-log-meta";
+        [formatDeveloperLogStamp(entry.createdAt), entry.level, entry.eventType, entry.syncStatus].filter(Boolean).forEach((value) => {
+            const span = document.createElement("span");
+            span.textContent = value;
+            meta.appendChild(span);
+        });
+
+        const title = document.createElement("strong");
+        title.textContent = entry.eventType || "Log event";
+
+        const message = document.createElement("p");
+        message.textContent = entry.message || "";
+
+        article.append(meta, title, message);
+        if (entry.payload && Object.keys(entry.payload).length) {
+            const payload = document.createElement("pre");
+            payload.textContent = JSON.stringify(entry.payload, null, 2);
+            article.appendChild(payload);
+        }
+        list.appendChild(article);
+    });
+}
+
+async function loadDeveloperLog() {
+    const summary = document.getElementById("developerLogSummary");
+    if (summary) summary.textContent = "Loading backend events...";
+    try {
+        const payload = await requestJSON(api.endpoints.developerLogs);
+        renderDeveloperLogs(Array.isArray(payload?.logs) ? payload.logs : []);
+    } catch (error) {
+        console.error("Unable to load developer log", error);
+        renderDeveloperLogs([{
+            level: "error",
+            eventType: "developer.log.load.failed",
+            message: error.message || "Unable to load developer log",
+            payload: {},
+            createdAt: new Date().toISOString()
+        }]);
+    }
+}
+
+function openDeveloperLog() {
+    const panel = document.getElementById("developerLogPanel");
+    if (panel) panel.hidden = false;
+    loadDeveloperLog();
+}
+
+function closeDeveloperLog() {
+    const panel = document.getElementById("developerLogPanel");
+    if (panel) panel.hidden = true;
+}
+
 function formatSyncDuration(seconds) {
     if (seconds < 60) return `${seconds}s`;
     const minutes = Math.floor(seconds / 60);
@@ -2858,7 +3068,10 @@ async function runXeroSync({ automatic = false } = {}) {
         if (error instanceof AuthRequiredError) {
             markAuthenticationRequired(error.message);
         } else {
-            showToast(error.message || "Xero sync failed. Please try again.", "error");
+            showToast(error.message || "Xero sync failed. Please try again.", "error", {
+                label: "Developer log",
+                onClick: openDeveloperLog
+            });
         }
     } finally {
         stopSyncFeedback();
@@ -2932,6 +3145,15 @@ function wireLoginButtons() {
         window.location.assign(url);
     };
     document.getElementById("connectXeroButton").addEventListener("click", connect);
+    document.getElementById("developerLogButton").addEventListener("click", (event) => {
+        event.preventDefault();
+        openDeveloperLog();
+    });
+    document.getElementById("refreshDeveloperLogButton").addEventListener("click", loadDeveloperLog);
+    document.getElementById("closeDeveloperLogButton").addEventListener("click", closeDeveloperLog);
+    document.getElementById("developerLogPanel").addEventListener("click", (event) => {
+        if (event.target.id === "developerLogPanel") closeDeveloperLog();
+    });
     document.getElementById("disconnectXeroButton").addEventListener("click", async (event) => {
         event.preventDefault();
         if (!window.confirm("Disconnect this Xero organisation from the console? Existing ledger rows will remain visible until the next sync.")) return;
