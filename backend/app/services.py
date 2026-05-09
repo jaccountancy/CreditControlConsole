@@ -253,9 +253,8 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT audit_events.*, sync_runs.status AS sync_status
+                SELECT audit_events.*
                 FROM audit_events
-                LEFT JOIN sync_runs ON sync_runs.id::text = audit_events.entity_id
                 WHERE (audit_events.user_id = %s OR audit_events.user_id IS NULL)
                   AND (
                       audit_events.entity_type = 'sync_run'
@@ -281,7 +280,7 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
             "payload": _safe_json(row.get("payload") or {}),
             "createdAt": _iso(row.get("created_at")) or "",
             "syncRunId": row.get("entity_id") if row.get("entity_type") == "sync_run" else "",
-            "syncStatus": row.get("sync_status") or "",
+            "syncStatus": "",
         }
         for row in rows
     ]
