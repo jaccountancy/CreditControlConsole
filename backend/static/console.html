@@ -1353,8 +1353,8 @@ body.is-syncing .sync-dot {
                     <span id="syncInlineDetail">Preparing sync</span>
                 </div>
                 <div class="sync-inline-actions" aria-label="Sync failure actions">
-                    <button id="syncViewLogsButton" type="button">View logs</button>
-                    <button id="syncRetryButton" type="button">Try again</button>
+                    <button id="syncViewLogsButton" type="button" onclick="openDeveloperLog()">View logs</button>
+                    <button id="syncRetryButton" type="button" onclick="runXeroSync()">Try again</button>
                 </div>
             </div>
             <div class="topbar-actions">
@@ -1722,6 +1722,7 @@ let syncStartedAt = 0;
 let syncProgressTimer = null;
 let activeSyncRunId = null;
 let latestSyncRun = null;
+let lastBrowserSyncLog = null;
 let hasAutoStartedInitialSync = false;
 let denseMode = false;
 let visibleColumns = {
@@ -1847,6 +1848,15 @@ function loginURL() {
 
 class AuthRequiredError extends Error {}
 
+class APIRequestError extends Error {
+    constructor(message, { statusCode = null, details = null } = {}) {
+        super(message);
+        this.name = "APIRequestError";
+        this.statusCode = statusCode;
+        this.details = details;
+    }
+}
+
 function responsePath(url) {
     try {
         return new URL(url).pathname;
@@ -1875,10 +1885,17 @@ async function requestJSON(template, options = {}, params = {}) {
     }
     if (!response.ok) {
         const detail = payload && typeof payload === "object" ? payload.detail : payload;
-        const message = typeof detail === "string"
+        const baseMessage = typeof detail === "string"
             ? detail
             : detail?.message || payload?.message || `API request failed with status ${response.status}`;
-        throw new Error(message);
+        const diagnostic = detail && typeof detail === "object"
+            ? [detail.error, detail.type].filter(Boolean).join(" ")
+            : "";
+        const messageText = String(baseMessage);
+        const message = diagnostic && !messageText.includes(diagnostic)
+            ? `${messageText} ${diagnostic}`
+            : messageText;
+        throw new APIRequestError(message, { statusCode: response.status, details: detail || payload });
     }
     return contentType.includes("application/json") ? payload : null;
 }
@@ -1894,6 +1911,7 @@ function markAuthenticationRequired(message) {
     selectedInvoiceId = null;
     selectedInvoiceIds.clear();
     persistState();
+    clearSyncFailureBanner();
     renderAll();
     showToast(message || "Sign in with Xero again before syncing.", "error", {
         label: "Connect Xero",
@@ -2685,6 +2703,7 @@ function renderChrome() {
         : `Last sync: ${lastSync}`;
     document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
     const connected = isXeroConnected();
+    if (!connected && !isSyncing) clearSyncFailureBanner();
     const label = connected ? "Reconnect Xero" : "Connect Xero";
     document.getElementById("connectXeroButton").textContent = label;
     const disconnectButton = document.getElementById("disconnectXeroButton");
@@ -2713,6 +2732,10 @@ const syncButtonIds = ["menuSyncButton", "sidebarSyncButton"];
 
 function isXeroConnected() {
     return state.organisation.xeroConnected === true || Boolean(state.organisation.name);
+}
+
+function isXeroDisconnectedMessage(message) {
+    return /not linked xero|not connected|connect xero/i.test(String(message || ""));
 }
 
 function renderAll() {
@@ -2888,12 +2911,38 @@ function formatDeveloperLogStamp(value) {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function browserSyncLogPayload(error) {
+    return {
+        message: error?.message || "",
+        statusCode: error?.statusCode || "",
+        details: error?.details || {}
+    };
+}
+
+function storeBrowserSyncFailure(error, message) {
+    lastBrowserSyncLog = {
+        id: "browser.sync.failed",
+        level: "error",
+        source: "browser",
+        eventType: "browser.sync.failed",
+        message,
+        payload: browserSyncLogPayload(error),
+        createdAt: new Date().toISOString(),
+        syncRunId: "",
+        syncStatus: ""
+    };
+}
+
+function mergeBrowserDeveloperLogs(logs) {
+    return lastBrowserSyncLog ? [lastBrowserSyncLog, ...logs] : logs;
+}
+
 function renderDeveloperLogs(logs) {
     const list = document.getElementById("developerLogList");
     const summary = document.getElementById("developerLogSummary");
     if (!list) return;
     list.innerHTML = "";
-    if (summary) summary.textContent = `${logs.length} recent backend event${logs.length === 1 ? "" : "s"}`;
+    if (summary) summary.textContent = `${logs.length} recent sync event${logs.length === 1 ? "" : "s"}`;
     if (!logs.length) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
@@ -2931,19 +2980,19 @@ function renderDeveloperLogs(logs) {
 
 async function loadDeveloperLog() {
     const summary = document.getElementById("developerLogSummary");
-    if (summary) summary.textContent = "Loading backend events...";
+    if (summary) summary.textContent = "Loading sync events...";
     try {
         const payload = await requestJSON(api.endpoints.developerLogs);
-        renderDeveloperLogs(Array.isArray(payload?.logs) ? payload.logs : []);
+        renderDeveloperLogs(mergeBrowserDeveloperLogs(Array.isArray(payload?.logs) ? payload.logs : []));
     } catch (error) {
         console.error("Unable to load developer log", error);
-        renderDeveloperLogs([{
+        renderDeveloperLogs(mergeBrowserDeveloperLogs([{
             level: "error",
             eventType: "developer.log.load.failed",
             message: error.message || "Unable to load developer log",
-            payload: {},
+            payload: browserSyncLogPayload(error),
             createdAt: new Date().toISOString()
-        }]);
+        }]));
     }
 }
 
@@ -3027,6 +3076,18 @@ function updateSyncProgress() {
     }
 }
 
+function clearSyncFailureBanner() {
+    const inlineBanner = document.getElementById("syncInlineBanner");
+    if (inlineBanner && !isSyncing) {
+        inlineBanner.hidden = true;
+        inlineBanner.classList.remove("is-error");
+    }
+    const inlineTitle = document.getElementById("syncInlineTitle");
+    if (inlineTitle) inlineTitle.textContent = "Syncing data from Xero";
+    const inlineDetail = document.getElementById("syncInlineDetail");
+    if (inlineDetail) inlineDetail.textContent = "Preparing sync";
+}
+
 function startSyncFeedback(syncRun = null) {
     isSyncing = true;
     latestSyncRun = syncRun || latestSyncRun;
@@ -3106,8 +3167,17 @@ async function waitForSyncRun(syncRunId) {
 }
 
 async function runXeroSync({ automatic = false } = {}) {
-    if (!isXeroConnected() || isSyncing) {
+    if (isSyncing) {
         renderChrome();
+        return;
+    }
+    if (!isXeroConnected()) {
+        clearSyncFailureBanner();
+        renderChrome();
+        showToast("Connect Xero before syncing.", "info", {
+            label: "Connect Xero",
+            onClick: () => window.location.assign(loginURL())
+        });
         return;
     }
     let keepFailureBanner = false;
@@ -3150,6 +3220,18 @@ async function runXeroSync({ automatic = false } = {}) {
             markAuthenticationRequired(error.message);
         } else {
             const message = error.message || "Xero sync failed. Please try again.";
+            storeBrowserSyncFailure(error, message);
+            if (isXeroDisconnectedMessage(message)) {
+                state.organisation = { ...emptyData.organisation, lastSync: "Waiting for first sync", xeroConnected: false };
+                persistState();
+                clearSyncFailureBanner();
+                renderAll();
+                showToast("Connect Xero before syncing.", "info", {
+                    label: "Connect Xero",
+                    onClick: () => window.location.assign(loginURL())
+                });
+                return;
+            }
             keepFailureBanner = true;
             showSyncFailure(message);
             showToast(message, "error", {
@@ -3250,8 +3332,10 @@ function wireLoginButtons() {
         try {
             await requestJSON(api.endpoints.disconnect, { method: "POST" });
             state.organisation = { ...emptyData.organisation, lastSync: "Xero disconnected" };
+            clearSyncFailureBanner();
             persistState();
             await hydrateFromAPI();
+            clearSyncFailureBanner();
             renderAll();
             showToast("Xero disconnected", "success");
         } catch (error) {
@@ -3267,9 +3351,9 @@ function wireSyncButtons() {
     const sidebarSyncButton = document.getElementById("sidebarSyncButton");
     if (sidebarSyncButton) sidebarSyncButton.addEventListener("click", () => runXeroSync());
     const syncRetryButton = document.getElementById("syncRetryButton");
-    if (syncRetryButton) syncRetryButton.addEventListener("click", () => runXeroSync());
+    if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
     const syncViewLogsButton = document.getElementById("syncViewLogsButton");
-    if (syncViewLogsButton) syncViewLogsButton.addEventListener("click", openDeveloperLog);
+    if (syncViewLogsButton && !syncViewLogsButton.onclick) syncViewLogsButton.addEventListener("click", openDeveloperLog);
 }
 
 function wireSevenDayNoticeCard() {

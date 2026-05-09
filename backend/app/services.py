@@ -110,6 +110,21 @@ def _sync_error_payload(exc: Exception) -> dict:
     }
 
 
+def record_sync_start_failure(user: dict, exc: Exception) -> None:
+    message = _sync_error_message(exc)
+    try:
+        ensure_schema()
+        record_audit_event(
+            "sync_run",
+            str(user.get("id") or "unknown"),
+            "sync.start.failed",
+            {"error": message, "detail": _sync_error_payload(exc)},
+            user.get("id"),
+        )
+    except Exception:
+        logger.exception("Unable to record sync start failure audit event")
+
+
 def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
     if not fields:
         return None
@@ -233,19 +248,25 @@ def serialize_sync_run(sync_run: dict) -> dict:
 
 def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     bounded_limit = max(1, min(int(limit or 120), 300))
+    logs: list[dict] = []
     try:
-        return _list_audit_developer_logs(user, bounded_limit)
+        ensure_schema()
+    except Exception as exc:
+        logger.exception("Unable to ensure schema before loading developer logs")
+        logs.append(_developer_log_error_entry("developer.log.schema.failed", exc))
+    try:
+        logs.extend(_list_audit_developer_logs(user, bounded_limit))
     except Exception as exc:
         logger.exception("Unable to load audit developer logs")
-        error_entry = _developer_log_error_entry("developer.log.query.failed", exc)
-        try:
-            return [error_entry, *_list_sync_run_developer_logs(user, bounded_limit)]
-        except Exception as fallback_exc:
-            logger.exception("Unable to load sync run fallback developer logs")
-            return [
-                error_entry,
-                _developer_log_error_entry("developer.log.fallback.failed", fallback_exc),
-            ]
+        logs.append(_developer_log_error_entry("developer.log.query.failed", exc))
+    try:
+        logs.extend(_list_sync_run_developer_logs(user, bounded_limit))
+    except Exception as exc:
+        logger.exception("Unable to load sync run developer logs")
+        logs.append(_developer_log_error_entry("developer.log.sync_runs.failed", exc))
+
+    logs.sort(key=lambda entry: entry.get("createdAt") or "", reverse=True)
+    return logs[:bounded_limit]
 
 
 def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:

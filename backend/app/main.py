@@ -39,6 +39,7 @@ from .services import (
     list_developer_logs,
     panel_payload,
     get_sync_run,
+    record_sync_start_failure,
     request_sync_run,
     run_sync,
     run_sync_job,
@@ -447,10 +448,12 @@ async def api_panel_sync(user: dict = Depends(require_panel_user)):
             "started": started,
             "syncRun": serialize_sync_run(sync_run),
         }
-    except HTTPException:
+    except HTTPException as exc:
+        record_sync_start_failure(user, exc)
         raise
     except Exception as exc:
         logger.exception("Unable to queue Xero panel sync")
+        record_sync_start_failure(user, exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
