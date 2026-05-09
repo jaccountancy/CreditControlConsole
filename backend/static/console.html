@@ -1361,9 +1361,9 @@ body.is-syncing .sync-dot {
                 <div class="xero-connect-wrap topbar-menu-wrap" id="topbarMenuWrap">
                     <button class="primary-button" id="topbarMenuButton" type="button" aria-haspopup="true">Menu</button>
                     <div class="xero-action-menu" id="xeroActionMenu">
-                        <button type="button" id="menuSyncButton">Resync from Xero</button>
-                        <button type="button" id="connectXeroButton">Connect Xero</button>
-                        <button class="disconnect-xero-button" id="disconnectXeroButton" type="button">Disconnect Xero</button>
+                        <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
+                        <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
+                        <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                         <button type="button" id="developerLogButton">Developer log</button>
                         <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                     </div>
@@ -3228,17 +3228,23 @@ function wireLoginButtons() {
         showToast("Opening Xero connection", "info");
         window.location.assign(url);
     };
-    document.getElementById("connectXeroButton").addEventListener("click", connect);
-    document.getElementById("developerLogButton").addEventListener("click", (event) => {
+    const connectButton = document.getElementById("connectXeroButton");
+    if (connectButton) connectButton.addEventListener("click", connect);
+    const developerLogButton = document.getElementById("developerLogButton");
+    if (developerLogButton) developerLogButton.addEventListener("click", (event) => {
         event.preventDefault();
         openDeveloperLog();
     });
-    document.getElementById("refreshDeveloperLogButton").addEventListener("click", loadDeveloperLog);
-    document.getElementById("closeDeveloperLogButton").addEventListener("click", closeDeveloperLog);
-    document.getElementById("developerLogPanel").addEventListener("click", (event) => {
+    const refreshDeveloperLogButton = document.getElementById("refreshDeveloperLogButton");
+    if (refreshDeveloperLogButton) refreshDeveloperLogButton.addEventListener("click", loadDeveloperLog);
+    const closeDeveloperLogButton = document.getElementById("closeDeveloperLogButton");
+    if (closeDeveloperLogButton) closeDeveloperLogButton.addEventListener("click", closeDeveloperLog);
+    const developerLogPanel = document.getElementById("developerLogPanel");
+    if (developerLogPanel) developerLogPanel.addEventListener("click", (event) => {
         if (event.target.id === "developerLogPanel") closeDeveloperLog();
     });
-    document.getElementById("disconnectXeroButton").addEventListener("click", async (event) => {
+    const disconnectXeroButton = document.getElementById("disconnectXeroButton");
+    if (disconnectXeroButton) disconnectXeroButton.addEventListener("click", async (event) => {
         event.preventDefault();
         if (!window.confirm("Disconnect this Xero organisation from the console? Existing ledger rows will remain visible until the next sync.")) return;
         try {
@@ -3256,10 +3262,14 @@ function wireLoginButtons() {
 }
 
 function wireSyncButtons() {
-    document.getElementById("menuSyncButton").addEventListener("click", () => runXeroSync());
-    document.getElementById("sidebarSyncButton").addEventListener("click", () => runXeroSync());
-    document.getElementById("syncRetryButton").addEventListener("click", () => runXeroSync());
-    document.getElementById("syncViewLogsButton").addEventListener("click", openDeveloperLog);
+    const menuSyncButton = document.getElementById("menuSyncButton");
+    if (menuSyncButton) menuSyncButton.addEventListener("click", () => runXeroSync());
+    const sidebarSyncButton = document.getElementById("sidebarSyncButton");
+    if (sidebarSyncButton) sidebarSyncButton.addEventListener("click", () => runXeroSync());
+    const syncRetryButton = document.getElementById("syncRetryButton");
+    if (syncRetryButton) syncRetryButton.addEventListener("click", () => runXeroSync());
+    const syncViewLogsButton = document.getElementById("syncViewLogsButton");
+    if (syncViewLogsButton) syncViewLogsButton.addEventListener("click", openDeveloperLog);
 }
 
 function wireSevenDayNoticeCard() {
@@ -3404,14 +3414,30 @@ function wireForms() {
 
 async function init() {
     await hydrateFromAPI();
-    renderAll();
-    wireFilters();
-    wireLoginButtons();
-    wireSyncButtons();
-    wireSevenDayNoticeCard();
-    wireForms();
-    wireBulkActions();
-    maybeAutoStartInitialSync();
+    try {
+        renderAll();
+    } catch (error) {
+        console.error("Unable to render console", error);
+    }
+    [
+        wireLoginButtons,
+        wireSyncButtons,
+        wireFilters,
+        wireSevenDayNoticeCard,
+        wireForms,
+        wireBulkActions,
+    ].forEach((wire) => {
+        try {
+            wire();
+        } catch (error) {
+            console.error(`Unable to initialise ${wire.name}`, error);
+        }
+    });
+    try {
+        maybeAutoStartInitialSync();
+    } catch (error) {
+        console.error("Unable to auto-start Xero sync", error);
+    }
 }
 init();
     </script>
