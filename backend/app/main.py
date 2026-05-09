@@ -44,6 +44,7 @@ from .services import (
     run_sync,
     run_sync_job,
     serialize_sync_run,
+    sync_run_has_working_data,
     update_control_status,
 )
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
@@ -471,7 +472,7 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
         "status": sync_run["status"],
         "syncRun": serialize_sync_run(sync_run),
     }
-    if sync_run["status"] == "completed":
+    if sync_run["status"] == "completed" or sync_run_has_working_data(sync_run):
         payload["panel"] = panel_payload(user)
     return payload
 

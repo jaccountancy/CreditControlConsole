@@ -13,6 +13,10 @@ from .xero import CONTACTS_URL, INVOICES_URL, fetch_paginated_collection, normal
 
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
+OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
+PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
+OUTSTANDING_READY_STEP = "Backfilling paid invoices"
+WORKING_DATA_STEPS = (OUTSTANDING_READY_STEP, "Fetching paid invoices from Xero", "Backfilling paid invoices")
 
 
 def _json_default(value):
@@ -316,6 +320,14 @@ def serialize_sync_run(sync_run: dict) -> dict:
     }
 
 
+def sync_run_has_working_data(sync_run: dict) -> bool:
+    return (
+        sync_run.get("status") in ACTIVE_SYNC_STATUSES
+        and sync_run.get("current_step") in WORKING_DATA_STEPS
+        and int(sync_run.get("invoices_synced") or 0) > 0
+    )
+
+
 def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     bounded_limit = max(1, min(int(limit or 120), 300))
     logs: list[dict] = []
@@ -464,13 +476,21 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                 contacts_total=total_records,
             )
 
-        def invoice_progress(_, total_records: int, __) -> None:
+        def outstanding_invoice_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
-                current_step="Fetching invoices from Xero",
-                summary=f"Fetched {total_records} invoices from Xero.",
+                current_step="Fetching outstanding invoices from Xero",
+                summary=f"Fetched {total_records} outstanding invoices from Xero.",
                 invoices_synced=total_records,
                 invoices_total=total_records,
+            )
+
+        def paid_invoice_progress(_, total_records: int, __) -> None:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Fetching paid invoices from Xero",
+                summary=f"Fetched {total_records} paid invoices from Xero.",
+                invoices_total=len(outstanding_invoices) + total_records,
             )
 
         contacts = await fetch_paginated_collection(
@@ -481,27 +501,27 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
         )
         _update_sync_run(
             sync_run_id,
-            current_step="Fetching invoices from Xero",
-            summary=f"Fetched {len(contacts)} contacts. Fetching invoices next.",
+            current_step="Fetching outstanding invoices from Xero",
+            summary=f"Fetched {len(contacts)} contacts. Fetching outstanding invoices first.",
             contacts_total=len(contacts),
-            customers_synced=0,
+            customers_synced=len(contacts),
         )
-        invoices = await fetch_paginated_collection(
+        outstanding_invoices = await fetch_paginated_collection(
             connection_row,
             INVOICES_URL,
             "Invoices",
-            params={"where": 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"'},
-            on_page=invoice_progress,
+            params={"where": OUTSTANDING_INVOICE_WHERE},
+            on_page=outstanding_invoice_progress,
         )
         _update_sync_run(
             sync_run_id,
-            current_step="Importing data",
-            summary=f"Importing {len(contacts)} contacts and {len(invoices)} invoices.",
+            current_step="Importing outstanding invoices",
+            summary=f"Importing {len(contacts)} contacts and {len(outstanding_invoices)} outstanding invoices.",
             contacts_total=len(contacts),
-            invoices_total=len(invoices),
+            invoices_total=len(outstanding_invoices),
             customers_synced=0,
             invoices_synced=0,
-            fetched_count=len(contacts) + len(invoices),
+            fetched_count=len(contacts) + len(outstanding_invoices),
             processed_count=0,
             failed_count=0,
         )
@@ -562,93 +582,102 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                 synced_invoices = 0
                 _update_sync_run(
                     sync_run_id,
-                    current_step="Importing invoices",
-                    summary=f"Imported {imported_contacts} contacts. Importing invoices.",
+                    current_step="Importing outstanding invoices",
+                    summary=f"Imported {imported_contacts} contacts. Importing outstanding invoices.",
                     customers_synced=imported_contacts,
                     invoices_synced=0,
                     processed_count=imported_contacts,
                 )
-                for raw_invoice in invoices:
-                    invoice = normalise_invoice(raw_invoice)
-                    if not invoice["xero_contact_id"]:
-                        continue
 
-                    customer_id = customer_lookup.get(invoice["xero_contact_id"])
-                    if customer_id is None:
-                        continue
+                def import_invoice_batch(raw_invoices: list[dict], phase_label: str, update_customer_totals: bool) -> int:
+                    nonlocal synced_invoices
+                    imported_batch = 0
+                    for raw_invoice in raw_invoices:
+                        invoice = normalise_invoice(raw_invoice)
+                        if not invoice["xero_contact_id"]:
+                            continue
 
-                    cursor.execute(
-                        """
-                        INSERT INTO invoices (
-                            customer_id, xero_invoice_id, invoice_number, status, due_date, invoice_date,
-                            currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
+                        customer_id = customer_lookup.get(invoice["xero_contact_id"])
+                        if customer_id is None:
+                            continue
+
+                        cursor.execute(
+                            """
+                            INSERT INTO invoices (
+                                customer_id, xero_invoice_id, invoice_number, status, due_date, invoice_date,
+                                currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
+                            )
+                            VALUES (
+                                %(customer_id)s, %(xero_invoice_id)s, %(invoice_number)s, %(status)s, %(due_date)s, %(invoice_date)s,
+                                %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
+                            )
+                            ON CONFLICT (xero_invoice_id) DO UPDATE
+                            SET customer_id = EXCLUDED.customer_id,
+                                invoice_number = EXCLUDED.invoice_number,
+                                status = EXCLUDED.status,
+                                due_date = EXCLUDED.due_date,
+                                invoice_date = EXCLUDED.invoice_date,
+                                currency_code = EXCLUDED.currency_code,
+                                total = EXCLUDED.total,
+                                amount_due = EXCLUDED.amount_due,
+                                amount_paid = EXCLUDED.amount_paid,
+                                xero_updated_at = EXCLUDED.xero_updated_at,
+                                synced_at = EXCLUDED.synced_at,
+                                updated_at = EXCLUDED.updated_at
+                            RETURNING id, control_status
+                            """,
+                            {
+                                **invoice,
+                                "customer_id": customer_id,
+                                "synced_at": now,
+                                "updated_at": now,
+                            },
                         )
-                        VALUES (
-                            %(customer_id)s, %(xero_invoice_id)s, %(invoice_number)s, %(status)s, %(due_date)s, %(invoice_date)s,
-                            %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
-                        )
-                        ON CONFLICT (xero_invoice_id) DO UPDATE
-                        SET customer_id = EXCLUDED.customer_id,
-                            invoice_number = EXCLUDED.invoice_number,
-                            status = EXCLUDED.status,
-                            due_date = EXCLUDED.due_date,
-                            invoice_date = EXCLUDED.invoice_date,
-                            currency_code = EXCLUDED.currency_code,
-                            total = EXCLUDED.total,
-                            amount_due = EXCLUDED.amount_due,
-                            amount_paid = EXCLUDED.amount_paid,
-                            xero_updated_at = EXCLUDED.xero_updated_at,
-                            synced_at = EXCLUDED.synced_at,
-                            updated_at = EXCLUDED.updated_at
-                        RETURNING id, control_status
-                        """,
-                        {
-                            **invoice,
-                            "customer_id": customer_id,
-                            "synced_at": now,
-                            "updated_at": now,
-                        },
-                    )
-                    stored = cursor.fetchone()
-                    synced_invoices += 1
+                        stored = cursor.fetchone()
+                        synced_invoices += 1
+                        imported_batch += 1
 
-                    cursor.execute(
-                        """
-                        INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
-                        SELECT %s, %s, %s, %s
-                        WHERE NOT EXISTS (
-                            SELECT 1 FROM invoice_status_history
-                            WHERE invoice_id = %s AND status = %s
+                        cursor.execute(
+                            """
+                            INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                            SELECT %s, %s, %s, %s
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM invoice_status_history
+                                WHERE invoice_id = %s AND status = %s
+                            )
+                            """,
+                            (
+                                stored["id"],
+                                invoice["status"],
+                                "Imported from Xero sync",
+                                user["id"],
+                                stored["id"],
+                                invoice["status"],
+                            ),
                         )
-                        """,
-                        (
-                            stored["id"],
-                            invoice["status"],
-                            "Imported from Xero sync",
-                            user["id"],
-                            stored["id"],
-                            invoice["status"],
-                        ),
-                    )
 
-                    totals = customer_totals.setdefault(
-                        customer_id,
-                        {"total_due": Decimal("0"), "overdue_amount": Decimal("0")},
-                    )
-                    amount_due = Decimal(str(invoice["amount_due"]))
-                    totals["total_due"] += amount_due
-                    if invoice["due_date"] and invoice["due_date"] < now.date() and amount_due > 0:
-                        totals["overdue_amount"] += amount_due
+                        if update_customer_totals:
+                            totals = customer_totals.setdefault(
+                                customer_id,
+                                {"total_due": Decimal("0"), "overdue_amount": Decimal("0")},
+                            )
+                            amount_due = Decimal(str(invoice["amount_due"]))
+                            totals["total_due"] += amount_due
+                            if invoice["due_date"] and invoice["due_date"] < now.date() and amount_due > 0:
+                                totals["overdue_amount"] += amount_due
 
-                    if synced_invoices % 100 == 0:
-                        _update_sync_run(
-                            sync_run_id,
-                            current_step="Importing invoices",
-                            summary=f"Imported {synced_invoices} of {len(invoices)} invoices.",
-                            customers_synced=imported_contacts,
-                            invoices_synced=synced_invoices,
-                            processed_count=imported_contacts + synced_invoices,
-                        )
+                        if synced_invoices % 100 == 0:
+                            _update_sync_run(
+                                sync_run_id,
+                                current_step=f"Importing {phase_label} invoices",
+                                summary=f"Imported {synced_invoices} invoices from Xero.",
+                                customers_synced=imported_contacts,
+                                invoices_synced=synced_invoices,
+                                processed_count=imported_contacts + synced_invoices,
+                            )
+                    return imported_batch
+
+                outstanding_synced = import_invoice_batch(outstanding_invoices, "outstanding", True)
 
                 for customer_id, totals in customer_totals.items():
                     cursor.execute(
@@ -680,16 +709,164 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                     RETURNING *
                     """,
                     (
+                        "running",
+                        OUTSTANDING_READY_STEP,
+                        len(contacts),
+                        synced_invoices,
+                        len(contacts) + len(outstanding_invoices),
+                        len(contacts) + synced_invoices,
+                        0,
+                        len(contacts),
+                        len(outstanding_invoices),
+                        f"Outstanding invoices ready: synced {outstanding_synced} outstanding invoices. Backfilling paid invoices.",
+                        None,
+                        sync_run_id,
+                    ),
+                )
+                outstanding_ready = cursor.fetchone()
+            connection.commit()
+
+        record_audit_event(
+            "sync_run",
+            str(outstanding_ready["id"]),
+            "sync.outstanding_ready",
+            {"summary": outstanding_ready["summary"]},
+            user["id"],
+        )
+
+        _update_sync_run(
+            sync_run_id,
+            current_step="Fetching paid invoices from Xero",
+            summary=f"Outstanding invoices are ready. Backfilling paid invoice history.",
+        )
+        paid_invoices = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"where": PAID_INVOICE_WHERE},
+            on_page=paid_invoice_progress,
+        )
+        paid_synced = 0
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, xero_contact_id FROM customers WHERE tenant_id = %s",
+                    (connection_row["tenant_id"],),
+                )
+                customer_lookup = {
+                    row["xero_contact_id"]: row["id"]
+                    for row in cursor.fetchall()
+                }
+
+                _update_sync_run(
+                    sync_run_id,
+                    current_step="Backfilling paid invoices",
+                    summary=f"Backfilling {len(paid_invoices)} paid invoices from Xero.",
+                    invoices_total=len(outstanding_invoices) + len(paid_invoices),
+                )
+                for raw_invoice in paid_invoices:
+                    invoice = normalise_invoice(raw_invoice)
+                    if not invoice["xero_contact_id"]:
+                        continue
+
+                    customer_id = customer_lookup.get(invoice["xero_contact_id"])
+                    if customer_id is None:
+                        continue
+
+                    cursor.execute(
+                        """
+                        INSERT INTO invoices (
+                            customer_id, xero_invoice_id, invoice_number, status, due_date, invoice_date,
+                            currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
+                        )
+                        VALUES (
+                            %(customer_id)s, %(xero_invoice_id)s, %(invoice_number)s, %(status)s, %(due_date)s, %(invoice_date)s,
+                            %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
+                        )
+                        ON CONFLICT (xero_invoice_id) DO UPDATE
+                        SET customer_id = EXCLUDED.customer_id,
+                            invoice_number = EXCLUDED.invoice_number,
+                            status = EXCLUDED.status,
+                            due_date = EXCLUDED.due_date,
+                            invoice_date = EXCLUDED.invoice_date,
+                            currency_code = EXCLUDED.currency_code,
+                            total = EXCLUDED.total,
+                            amount_due = EXCLUDED.amount_due,
+                            amount_paid = EXCLUDED.amount_paid,
+                            xero_updated_at = EXCLUDED.xero_updated_at,
+                            synced_at = EXCLUDED.synced_at,
+                            updated_at = EXCLUDED.updated_at
+                        RETURNING id
+                        """,
+                        {
+                            **invoice,
+                            "customer_id": customer_id,
+                            "synced_at": now,
+                            "updated_at": now,
+                        },
+                    )
+                    stored = cursor.fetchone()
+                    synced_invoices += 1
+                    paid_synced += 1
+
+                    cursor.execute(
+                        """
+                        INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                        SELECT %s, %s, %s, %s
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM invoice_status_history
+                            WHERE invoice_id = %s AND status = %s
+                        )
+                        """,
+                        (
+                            stored["id"],
+                            invoice["status"],
+                            "Imported from Xero paid invoice backfill",
+                            user["id"],
+                            stored["id"],
+                            invoice["status"],
+                        ),
+                    )
+
+                    if paid_synced % 100 == 0:
+                        _update_sync_run(
+                            sync_run_id,
+                            current_step="Backfilling paid invoices",
+                            summary=f"Backfilled {paid_synced} of {len(paid_invoices)} paid invoices.",
+                            customers_synced=len(contacts),
+                            invoices_synced=synced_invoices,
+                            processed_count=len(contacts) + synced_invoices,
+                        )
+
+                cursor.execute(
+                    """
+                    UPDATE sync_runs
+                    SET status = %s,
+                        current_step = %s,
+                        customers_synced = %s,
+                        invoices_synced = %s,
+                        fetched_count = %s,
+                        processed_count = %s,
+                        failed_count = %s,
+                        contacts_total = %s,
+                        invoices_total = %s,
+                        summary = %s,
+                        completed_at = %s
+                    WHERE id = %s
+                    RETURNING *
+                    """,
+                    (
                         "completed",
                         "Sync complete",
                         len(contacts),
                         synced_invoices,
-                        len(contacts) + len(invoices),
+                        len(contacts) + len(outstanding_invoices) + len(paid_invoices),
                         len(contacts) + synced_invoices,
                         0,
                         len(contacts),
-                        len(invoices),
-                        f"Synced {len(contacts)} customers and {synced_invoices} invoices from Xero.",
+                        len(outstanding_invoices) + len(paid_invoices),
+                        f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, and {paid_synced} paid invoices from Xero.",
                         utcnow(),
                         sync_run_id,
                     ),
