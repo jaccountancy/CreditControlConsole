@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 
 
+def _json_default(value):
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return str(value)
+
+
 def record_audit_event(entity_type: str, entity_id: str, event_type: str, payload: dict, user_id: str | None) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -22,7 +30,7 @@ def record_audit_event(entity_type: str, entity_id: str, event_type: str, payloa
                 INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
                 VALUES (%s, %s, %s, %s::jsonb, %s)
                 """,
-                (entity_type, entity_id, event_type, json.dumps(payload), user_id),
+                (entity_type, entity_id, event_type, json.dumps(payload, default=_json_default), user_id),
             )
         connection.commit()
 
@@ -70,6 +78,19 @@ def _sync_error_message(exc: Exception) -> str:
             return str(detail.get("message") or detail)
         return str(detail)
     return str(exc) or exc.__class__.__name__
+
+
+def _sync_error_payload(exc: Exception) -> dict:
+    if isinstance(exc, HTTPException):
+        return {
+            "type": "HTTPException",
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+        }
+    return {
+        "type": exc.__class__.__name__,
+        "message": str(exc),
+    }
 
 
 def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
@@ -191,6 +212,59 @@ def serialize_sync_run(sync_run: dict) -> dict:
         "completedAt": _iso(sync_run.get("completed_at")) or "",
         "isActive": sync_run.get("status") in ACTIVE_SYNC_STATUSES,
     }
+
+
+def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
+    bounded_limit = max(1, min(int(limit or 120), 300))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT audit_events.*, sync_runs.status AS sync_status
+                FROM audit_events
+                LEFT JOIN sync_runs ON sync_runs.id::text = audit_events.entity_id
+                WHERE (audit_events.user_id = %s OR audit_events.user_id IS NULL)
+                  AND (
+                      audit_events.entity_type = 'sync_run'
+                      OR audit_events.entity_type = 'xero_connection'
+                      OR audit_events.event_type LIKE 'sync.%%'
+                      OR audit_events.event_type LIKE 'xero.%%'
+                  )
+                ORDER BY audit_events.created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], bounded_limit),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+
+    return [
+        {
+            "id": str(row["id"]),
+            "level": "error" if str(row.get("event_type") or "").endswith("failed") else "info",
+            "source": "audit",
+            "eventType": row.get("event_type") or "",
+            "message": _developer_log_message(row),
+            "payload": row.get("payload") or {},
+            "createdAt": _iso(row.get("created_at")) or "",
+            "syncRunId": row.get("entity_id") if row.get("entity_type") == "sync_run" else "",
+            "syncStatus": row.get("sync_status") or "",
+        }
+        for row in rows
+    ]
+
+
+def _developer_log_message(row: dict) -> str:
+    payload = row.get("payload") or {}
+    if isinstance(payload, dict):
+        return str(
+            payload.get("summary")
+            or payload.get("error")
+            or payload.get("message")
+            or row.get("event_type")
+            or "Log event"
+        )
+    return str(payload or row.get("event_type") or "Log event")
 
 
 def run_sync_job(user: dict, sync_run_id: str) -> None:
@@ -457,7 +531,13 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             completed_at=utcnow(),
         )
         try:
-            record_audit_event("sync_run", str(sync_run_id), "sync.failed", {"error": message}, user["id"])
+            record_audit_event(
+                "sync_run",
+                str(sync_run_id),
+                "sync.failed",
+                {"error": message, "detail": _sync_error_payload(exc)},
+                user["id"],
+            )
         except Exception:
             logger.exception("Unable to record failed sync audit event")
         raise
