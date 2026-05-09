@@ -29,6 +29,17 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
     except ValueError:
         detail = response.text
 
+    if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": "Xero rate limit reached. Keep the imported data and run another staged sync later.",
+                "status_code": response.status_code,
+                "retry_after": response.headers.get("Retry-After", ""),
+                "response": detail,
+            },
+        )
+
     auth_header = response.headers.get("WWW-Authenticate", "")
     detail_text = str(detail)
     scope_error_text = f"{auth_header} {detail_text}".lower()
@@ -314,7 +325,15 @@ async def fetch_paginated_collection(
     while True:
         if max_pages is not None and page > max_pages:
             return records
-        payload = await xero_api_get(connection_row, url, params={**(params or {}), "page": page})
+        try:
+            payload = await xero_api_get(connection_row, url, params={**(params or {}), "page": page})
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            if records and detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS:
+                if on_page is not None:
+                    on_page(page, len(records), 0)
+                return records
+            raise
         batch = payload.get(collection_key, [])
         records.extend(batch)
         if on_page is not None:
