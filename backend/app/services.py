@@ -174,12 +174,38 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
             cursor.execute(
                 """
                 INSERT INTO sync_runs (
-                    provider, initiated_by_user_id, status, current_step, summary, created_at
+                    provider,
+                    initiated_by_user_id,
+                    status,
+                    current_step,
+                    summary,
+                    customers_synced,
+                    invoices_synced,
+                    fetched_count,
+                    processed_count,
+                    failed_count,
+                    contacts_total,
+                    invoices_total,
+                    created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                ("xero", user["id"], "queued", "Queued", "Xero sync queued.", utcnow()),
+                (
+                    "xero",
+                    user["id"],
+                    "queued",
+                    "Queued",
+                    "Xero sync queued.",
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    utcnow(),
+                ),
             )
             sync_run = cursor.fetchone()
         connection.commit()
@@ -437,6 +463,9 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             invoices_total=len(invoices),
             customers_synced=0,
             invoices_synced=0,
+            fetched_count=len(contacts) + len(invoices),
+            processed_count=0,
+            failed_count=0,
         )
 
         with get_connection() as connection:
@@ -468,6 +497,7 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                             current_step="Importing contacts",
                             summary=f"Imported {imported_contacts} of {len(contacts)} contacts.",
                             customers_synced=imported_contacts,
+                            processed_count=imported_contacts,
                         )
 
                 cursor.execute(
@@ -498,6 +528,7 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                     summary=f"Imported {imported_contacts} contacts. Importing invoices.",
                     customers_synced=imported_contacts,
                     invoices_synced=0,
+                    processed_count=imported_contacts,
                 )
                 for raw_invoice in invoices:
                     invoice = normalise_invoice(raw_invoice)
@@ -578,6 +609,7 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                             summary=f"Imported {synced_invoices} of {len(invoices)} invoices.",
                             customers_synced=imported_contacts,
                             invoices_synced=synced_invoices,
+                            processed_count=imported_contacts + synced_invoices,
                         )
 
                 for customer_id, totals in customer_totals.items():
@@ -599,6 +631,9 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                         current_step = %s,
                         customers_synced = %s,
                         invoices_synced = %s,
+                        fetched_count = %s,
+                        processed_count = %s,
+                        failed_count = %s,
                         contacts_total = %s,
                         invoices_total = %s,
                         summary = %s,
@@ -611,6 +646,9 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
                         "Sync complete",
                         len(contacts),
                         synced_invoices,
+                        len(contacts) + len(invoices),
+                        len(contacts) + synced_invoices,
+                        0,
                         len(contacts),
                         len(invoices),
                         f"Synced {len(contacts)} customers and {synced_invoices} invoices from Xero.",
@@ -631,6 +669,7 @@ async def run_sync(user: dict, sync_run_id: str) -> dict:
             current_step="Sync failed",
             summary="Xero sync failed.",
             error_message=message,
+            failed_count=1,
             completed_at=utcnow(),
         )
         try:

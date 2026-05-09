@@ -151,6 +151,9 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     status TEXT NOT NULL,
     customers_synced INTEGER NOT NULL DEFAULT 0,
     invoices_synced INTEGER NOT NULL DEFAULT 0,
+    fetched_count INTEGER NOT NULL DEFAULT 0,
+    processed_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
     summary TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ
@@ -161,6 +164,9 @@ ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS initiated_by_user_id UUID REFEREN
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS customers_synced INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS invoices_synced INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS fetched_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS processed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS failed_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS summary TEXT;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
@@ -169,6 +175,44 @@ ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS contacts_total INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS invoices_total INTEGER NOT NULL DEFAULT 0;
+UPDATE sync_runs
+SET customers_synced = COALESCE(customers_synced, 0),
+    invoices_synced = COALESCE(invoices_synced, 0),
+    fetched_count = COALESCE(fetched_count, 0),
+    processed_count = COALESCE(processed_count, 0),
+    failed_count = COALESCE(failed_count, 0),
+    contacts_total = COALESCE(contacts_total, 0),
+    invoices_total = COALESCE(invoices_total, 0);
+ALTER TABLE sync_runs ALTER COLUMN customers_synced SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN invoices_synced SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN fetched_count SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN processed_count SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN failed_count SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN contacts_total SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN invoices_total SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN customers_synced SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN invoices_synced SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN fetched_count SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN processed_count SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN failed_count SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN contacts_total SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN invoices_total SET NOT NULL;
+DO $$
+DECLARE
+    counter_column RECORD;
+BEGIN
+    FOR counter_column IN
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'sync_runs'
+          AND column_name LIKE '%\_count' ESCAPE '\'
+          AND data_type IN ('smallint', 'integer', 'bigint', 'numeric')
+    LOOP
+        EXECUTE format('UPDATE sync_runs SET %I = 0 WHERE %I IS NULL', counter_column.column_name, counter_column.column_name);
+        EXECUTE format('ALTER TABLE sync_runs ALTER COLUMN %I SET DEFAULT 0', counter_column.column_name);
+    END LOOP;
+END $$;
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
