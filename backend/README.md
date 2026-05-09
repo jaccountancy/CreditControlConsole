@@ -27,6 +27,7 @@ Required variables:
 - `XERO_CLIENT_SECRET`
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
 - `XERO_SCOPES=openid profile email offline_access accounting.transactions.read accounting.contacts.read`
+- `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 
 `PORT` is injected by Railway and should not be hard-coded.
 

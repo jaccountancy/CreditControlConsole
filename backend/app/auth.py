@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from urllib.parse import urlencode
 
@@ -9,6 +10,21 @@ from .security import create_session, hash_token, random_token
 
 
 COOKIE_NAME = "credit_control_session"
+
+
+def allowed_panel_origins() -> set[str]:
+    base_url = os.getenv("BASE_URL", "https://creditcontrolconsole-production.up.railway.app")
+    panel_allowed_origins = os.getenv(
+        "PANEL_ALLOWED_ORIGINS",
+        "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk",
+    )
+    origins = {base_url.rstrip("/")}
+    origins.update(
+        origin.strip().rstrip("/")
+        for origin in panel_allowed_origins.split(",")
+        if origin.strip()
+    )
+    return origins
 
 
 def current_user_from_request(request: Request) -> dict | None:
@@ -23,6 +39,20 @@ def require_user(request: Request) -> dict:
     user = current_user_from_request(request)
     if user is None:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    return user
+
+
+def require_panel_user(request: Request) -> dict:
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in allowed_panel_origins():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This panel origin is not allowed.")
+
+    user = current_user_from_request(request)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your session has expired. Sign in with Xero again before syncing.",
+        )
     return user
 
 
@@ -73,7 +103,7 @@ def set_session_cookie(response, token: str) -> None:
         COOKIE_NAME,
         token,
         httponly=True,
-        samesite="lax",
+        samesite="none" if settings.base_url.startswith("https://") else "lax",
         secure=settings.base_url.startswith("https://"),
         max_age=settings.session_ttl_days * 24 * 60 * 60,
     )

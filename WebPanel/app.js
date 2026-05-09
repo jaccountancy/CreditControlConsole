@@ -93,14 +93,56 @@ function loginURL() {
     return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
 }
 
+class AuthRequiredError extends Error {}
+
+function responsePath(url) {
+    try {
+        return new URL(url).pathname;
+    } catch {
+        return "";
+    }
+}
+
 async function requestJSON(template, options = {}, params = {}) {
     const response = await fetch(endpointURL(template, params), {
+        credentials: "include",
         ...options,
         headers: { "Content-Type": "application/json", ...api.headers, ...(options.headers || {}) }
     });
-    if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
     const contentType = response.headers.get("content-type") || "";
-    return contentType.includes("application/json") ? response.json() : null;
+    const payload = contentType.includes("application/json")
+        ? await response.json().catch(() => null)
+        : await response.text().catch(() => "");
+    const redirectedToLogin = response.redirected && responsePath(response.url) === "/login";
+    if (redirectedToLogin || response.status === 401 || response.status === 403) {
+        const detail = payload && typeof payload === "object" ? payload.detail : payload;
+        const message = typeof detail === "string"
+            ? detail
+            : detail?.message || "Your session has expired. Sign in with Xero again before syncing.";
+        throw new AuthRequiredError(message);
+    }
+    if (!response.ok) {
+        const detail = payload && typeof payload === "object" ? payload.detail : payload;
+        const message = typeof detail === "string"
+            ? detail
+            : detail?.message || payload?.message || `API request failed with status ${response.status}`;
+        throw new Error(message);
+    }
+    return contentType.includes("application/json") ? payload : null;
+}
+
+function markAuthenticationRequired(message) {
+    state.organisation = {
+        ...emptyData.organisation,
+        status: "Sign in required",
+        lastSync: "Sign in required",
+        xeroConnected: false
+    };
+    state.selectedInvoice = null;
+    selectedInvoiceId = null;
+    persistState();
+    renderAll();
+    console.warn(message || "Sign in with Xero again before syncing.");
 }
 
 async function hydrateFromAPI() {
@@ -108,6 +150,10 @@ async function hydrateFromAPI() {
         const payload = await requestJSON(api.endpoints.panel);
         if (payload) replaceState(normaliseState(payload));
     } catch (error) {
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+            return;
+        }
         console.error("Unable to load panel data from API", error);
     }
 }
@@ -608,11 +654,18 @@ function wireSyncButtons() {
         renderChrome();
         persistState();
         try {
-            await requestJSON(api.endpoints.sync, { method: "POST" });
-            await hydrateFromAPI();
+            const payload = await requestJSON(api.endpoints.sync, { method: "POST" });
+            if (payload?.panel) {
+                replaceState(normaliseState(payload.panel));
+            } else {
+                await hydrateFromAPI();
+            }
             renderAll();
         } catch (error) {
             console.error("Unable to sync panel data", error);
+            if (error instanceof AuthRequiredError) {
+                markAuthenticationRequired(error.message);
+            }
         }
     };
     document.getElementById("primarySyncButton").addEventListener("click", sync);

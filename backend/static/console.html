@@ -95,6 +95,15 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     border: 1px solid rgba(255, 255, 255, 0.75);
     box-shadow: 0 12px 32px rgba(30, 47, 77, 0.07);
 }
+.hero-summary-card.notice-card {
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+}
+.hero-summary-card.notice-card:focus-visible {
+    outline: 3px solid rgba(29, 103, 242, 0.28);
+    outline-offset: 3px;
+}
 .hero-summary-card span {
     display: block;
     margin-bottom: 8px;
@@ -681,6 +690,7 @@ body.is-dense .note-snippet {
 .payment-dot.paid { color: var(--green); border: 2px solid rgba(39, 176, 95, 0.25); }
 .payment-dot.outstanding { color: var(--orange); border: 2px solid rgba(255, 159, 47, 0.28); }
 .payment-dot.query { color: var(--purple); border: 2px solid rgba(141, 98, 255, 0.28); }
+.payment-dot.notice { color: #b08300; border: 2px solid rgba(255, 204, 77, 0.42); }
 .payment-dot.overdue, .payment-dot.court, .payment-dot.bad-debt { color: var(--red); border: 2px solid rgba(255, 83, 83, 0.28); }
 .status-pill {
     display: inline-flex;
@@ -696,6 +706,7 @@ body.is-dense .note-snippet {
 .status-pill.outstanding { color: #b96800; background: rgba(255, 159, 47, 0.16); }
 .status-pill.query { color: #007f9a; background: rgba(0, 166, 200, 0.13); }
 .status-pill.overdue { color: #d72638; background: rgba(255, 83, 83, 0.15); }
+.status-pill.notice { color: #6b4d00; background: rgba(255, 204, 77, 0.22); }
 .status-pill.court { color: var(--purple); background: var(--purple-soft); }
 .status-pill.bad-debt { color: var(--ink); background: rgba(30, 47, 77, 0.10); }
 .row-actions {
@@ -850,6 +861,11 @@ body.is-dense .note-snippet {
 }
 .detail-stat span { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 8px; }
 .detail-stat strong { font-size: 1.35rem; }
+.status-badge.notice {
+    color: #6b4d00;
+    background: rgba(255, 204, 77, 0.22);
+    border-color: rgba(255, 204, 77, 0.38);
+}
 .court-callout {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -1117,10 +1133,7 @@ body.is-syncing .sync-dot {
                 </div>
             </div>
             <div class="topbar-actions">
-                <div class="sync-indicator">
-                    <span class="sync-dot"></span>
-                    <span id="syncStamp">Waiting for first sync</span>
-                </div>
+                <a class="ghost-button action-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                 <div class="xero-connect-wrap" id="xeroConnectWrap">
                     <a class="ghost-button action-link" id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                     <button class="ghost-button disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
@@ -1142,10 +1155,10 @@ body.is-syncing .sync-dot {
                 <strong id="heroOverdueValue">£0</strong>
                 <p id="heroOverdueCount">0 overdue invoices</p>
             </article>
-            <article class="hero-summary-card">
-                <span>Clients needing action</span>
+            <article class="hero-summary-card notice-card" id="sevenDayNoticeCard" role="button" tabindex="0">
+                <span>7 Day Notices sent</span>
                 <strong id="heroClientsAction">0</strong>
-                <p>Outstanding, queried, overdue or escalated</p>
+                <p id="heroNoticesSummary">No active 7 day notices</p>
             </article>
             <article class="hero-summary-card">
                 <span>Latest sync</span>
@@ -1207,6 +1220,7 @@ body.is-syncing .sync-dot {
             <div class="bulk-action-summary" id="bulkActionSummary">0 invoices selected</div>
             <div class="bulk-action-controls">
                 <select id="bulkLedgerStatusSelect">
+                    <option value="7 Day Notice Sent">7 Day Notice Sent</option>
                     <option value="Chased">Mark as chased</option>
                     <option value="Paid">Paid</option>
                     <option value="Outstanding">Outstanding</option>
@@ -1314,6 +1328,7 @@ body.is-syncing .sync-dot {
                             </div>
                             <form class="stack-form" id="bulkStatusForm">
                                 <select id="bulkStatusSelect">
+                                    <option value="7 Day Notice Sent">7 Day Notice Sent</option>
                                     <option value="Paid">Paid</option>
                                     <option value="Outstanding">Outstanding</option>
                                     <option value="Query">Query</option>
@@ -1476,11 +1491,14 @@ const filterLabels = {
     over1000: "Over £1,000",
     under100: "Under £100"
 };
+const NOTICE_STATUS = "7 Day Notice Sent";
+const NOTICE_PERIOD_DAYS = 7;
 
 const iconPaths = {
     all: '<rect x="4" y="4" width="6" height="6"></rect><rect x="14" y="4" width="6" height="6"></rect><rect x="4" y="14" width="6" height="6"></rect><rect x="14" y="14" width="6" height="6"></rect>',
     outstanding: '<path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="8"></circle>',
     overdue: '<path d="M12 8v5"></path><path d="M12 17h.01"></path><path d="M10.2 4.6 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.8 4.6a2 2 0 0 0-3.6 0Z"></path>',
+    notice: '<rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M9 15h6"></path>',
     query: '<circle cx="12" cy="12" r="8"></circle><path d="M9.8 9a2.4 2.4 0 0 1 4.5 1.2c0 1.6-1.2 2.2-2.3 3"></path><path d="M12 17h.01"></path>',
     court: '<path d="M12 3v18"></path><path d="m5 7 7-4 7 4"></path><path d="M6 7l-3 6h6L6 7Z"></path><path d="m18 7-3 6h6l-3-6Z"></path><path d="M5 21h14"></path>',
     "bad-debt": '<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>',
@@ -1576,8 +1594,19 @@ function loginURL() {
     return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
 }
 
+class AuthRequiredError extends Error {}
+
+function responsePath(url) {
+    try {
+        return new URL(url).pathname;
+    } catch {
+        return "";
+    }
+}
+
 async function requestJSON(template, options = {}, params = {}) {
     const response = await fetch(endpointURL(template, params), {
+        credentials: "include",
         ...options,
         headers: { "Content-Type": "application/json", ...api.headers, ...(options.headers || {}) }
     });
@@ -1585,6 +1614,14 @@ async function requestJSON(template, options = {}, params = {}) {
     const payload = contentType.includes("application/json")
         ? await response.json().catch(() => null)
         : await response.text().catch(() => "");
+    const redirectedToLogin = response.redirected && responsePath(response.url) === "/login";
+    if (redirectedToLogin || response.status === 401 || response.status === 403) {
+        const detail = payload && typeof payload === "object" ? payload.detail : payload;
+        const message = typeof detail === "string"
+            ? detail
+            : detail?.message || "Your session has expired. Sign in with Xero again before syncing.";
+        throw new AuthRequiredError(message);
+    }
     if (!response.ok) {
         const detail = payload && typeof payload === "object" ? payload.detail : payload;
         const message = typeof detail === "string"
@@ -1595,11 +1632,33 @@ async function requestJSON(template, options = {}, params = {}) {
     return contentType.includes("application/json") ? payload : null;
 }
 
+function markAuthenticationRequired(message) {
+    state.organisation = {
+        ...emptyData.organisation,
+        status: "Sign in required",
+        lastSync: "Sign in required",
+        xeroConnected: false
+    };
+    state.selectedInvoice = null;
+    selectedInvoiceId = null;
+    selectedInvoiceIds.clear();
+    persistState();
+    renderAll();
+    showToast(message || "Sign in with Xero again before syncing.", "error", {
+        label: "Connect Xero",
+        onClick: () => window.location.assign(loginURL())
+    });
+}
+
 async function hydrateFromAPI() {
     try {
         const payload = await requestJSON(api.endpoints.panel);
         if (payload) replaceState(normaliseState(payload));
     } catch (error) {
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+            return;
+        }
         console.error("Unable to load panel data from API", error);
     }
 }
@@ -1650,12 +1709,84 @@ function selectedInvoices() {
     return allInvoices().filter((invoice) => selectedInvoiceIds.has(invoice.id));
 }
 
+function normaliseStatus(value) {
+    return `${value || ""}`.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function isSevenDayNoticeStatus(value) {
+    const status = normaliseStatus(value);
+    return status.includes("7 day notice") || status.includes("seven day notice");
+}
+
+function parseDateValue(value) {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function startOfDay(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function isSevenDayNoticeInvoice(invoice) {
+    return Number(invoice?.amountDue || 0) > 0 && isSevenDayNoticeStatus(invoice?.controlStatus || invoice?.status);
+}
+
+function sevenDayNoticeDate(invoice) {
+    if (!isSevenDayNoticeInvoice(invoice)) return null;
+    const noticeStatus = (invoice.statuses || []).find((item) => isSevenDayNoticeStatus(item.title));
+    return parseDateValue(noticeStatus?.stamp) || parseDateValue(invoice.lastChasedAt);
+}
+
+function sevenDayNoticeDaysLeft(invoice) {
+    const sentAt = sevenDayNoticeDate(invoice);
+    if (!sentAt) return NOTICE_PERIOD_DAYS;
+    const elapsedDays = Math.max(0, Math.floor((startOfDay(new Date()) - startOfDay(sentAt)) / (24 * 60 * 60 * 1000)));
+    return NOTICE_PERIOD_DAYS - elapsedDays;
+}
+
+function sevenDayNoticeCountdown(invoice) {
+    const daysLeft = sevenDayNoticeDaysLeft(invoice);
+    if (daysLeft > 1) return `${daysLeft} days left`;
+    if (daysLeft === 1) return "1 day left";
+    if (daysLeft === 0) return "due today";
+    return "notice period ended";
+}
+
+function sevenDayNoticeSortValue(invoice) {
+    const sentAt = sevenDayNoticeDate(invoice);
+    if (!sentAt) return Number.MAX_SAFE_INTEGER;
+    return sentAt.getTime() + NOTICE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function sevenDayNoticeSummaries() {
+    return state.customers
+        .map((customer) => {
+            const notices = clientInvoices(customer)
+                .filter(isSevenDayNoticeInvoice)
+                .sort((a, b) => sevenDayNoticeSortValue(a) - sevenDayNoticeSortValue(b));
+            if (!notices.length) return null;
+            const primaryNotice = notices[0];
+            return {
+                clientId: customer.id,
+                clientName: customer.name || "Client",
+                invoiceId: primaryNotice.id,
+                noticeCount: notices.length,
+                countdown: sevenDayNoticeCountdown(primaryNotice),
+                sortValue: sevenDayNoticeSortValue(primaryNotice),
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.sortValue - b.sortValue || a.clientName.localeCompare(b.clientName));
+}
+
 function invoiceCategory(invoice) {
     const control = `${invoice.controlStatus || invoice.status || ""}`.toLowerCase();
     const amountDue = Number(invoice.amountDue || 0);
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
     const now = new Date();
     if (amountDue <= 0 || control.includes("paid")) return "paid";
+    if (isSevenDayNoticeStatus(control)) return "notice";
     if (control.includes("bad debt") || control.includes("bad-debt") || control.includes("bad_debt")) return "bad-debt";
     if (control.includes("court") || control.includes("legal")) return "court";
     if (control.includes("query") || control.includes("queried") || control.includes("dispute") || control.includes("disputed")) return "query";
@@ -1665,7 +1796,7 @@ function invoiceCategory(invoice) {
 
 function invoiceStatusLabel(invoice) {
     const category = invoiceCategory(invoice);
-    return { paid: "Paid", outstanding: "Outstanding", query: "Query", overdue: "Overdue", court: "Legal", "bad-debt": "Bad debt" }[category];
+    return { paid: "Paid", outstanding: "Outstanding", query: "Query", overdue: "Overdue", notice: "7 Day Notice", court: "Legal", "bad-debt": "Bad debt" }[category];
 }
 
 function formatCurrency(value) {
@@ -1725,6 +1856,7 @@ function statusTooltip(category) {
         outstanding: "Open invoice that is not yet overdue.",
         query: "Invoice is under review or in dispute.",
         overdue: "Invoice is past the due date and needs action.",
+        notice: "Seven-day notice has been sent and is awaiting the next action.",
         court: "Escalated legal recovery case.",
         "bad-debt": "Written off or treated as bad debt."
     }[category] || "Credit control status.";
@@ -1732,7 +1864,8 @@ function statusTooltip(category) {
 
 function statusPill(invoice) {
     const category = invoiceCategory(invoice);
-    return `<span class="status-pill ${category}" title="${statusTooltip(category)}">${iconSVG(category)}${invoiceStatusLabel(invoice)}</span>`;
+    const detail = category === "notice" ? ` · ${sevenDayNoticeCountdown(invoice)}` : "";
+    return `<span class="status-pill ${category}" title="${statusTooltip(category)}${detail}">${iconSVG(category)}${invoiceStatusLabel(invoice)}${detail}</span>`;
 }
 
 function contactLink(client, type) {
@@ -1766,6 +1899,7 @@ function formatRelativeAge(date) {
 function statusSelectValue(invoice) {
     if (!invoice) return "Outstanding";
     const value = invoice.controlStatus || invoiceStatusLabel(invoice) || "Outstanding";
+    if (isSevenDayNoticeStatus(value)) return NOTICE_STATUS;
     return `${value}`.toLowerCase().includes("court") ? "Legal" : value;
 }
 
@@ -1786,7 +1920,7 @@ function filteredInvoices() {
             invoice.controlStatus
         ].join(" ").toLowerCase();
         const matchesSearch = blob.includes(searchTerm.toLowerCase());
-        const needsAction = ["outstanding", "query", "overdue", "court", "bad-debt"].includes(invoiceCategory(invoice));
+        const needsAction = ["outstanding", "query", "overdue", "notice", "court", "bad-debt"].includes(invoiceCategory(invoice));
         const matchesClient = clientFilter === "action" ? needsAction : clientFilter === "current" ? !needsAction : true;
         const amountDue = Number(invoice.amountDue || 0);
         const matchesAmount =
@@ -1799,7 +1933,7 @@ function filteredInvoices() {
 }
 
 function compareInvoices(a, b) {
-    const categoryPriority = { overdue: 0, court: 1, query: 2, outstanding: 3, "bad-debt": 4, paid: 5 };
+    const categoryPriority = { overdue: 0, notice: 1, court: 2, query: 3, outstanding: 4, "bad-debt": 5, paid: 6 };
     if (sortMode === "amount") return Number(b.amountDue || 0) - Number(a.amountDue || 0);
     if (sortMode === "client") return `${a.customerName || ""}`.localeCompare(`${b.customerName || ""}`);
     if (sortMode === "due") return dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
@@ -1826,18 +1960,14 @@ function dashboardTotals() {
     const invoices = allInvoices();
     const openInvoices = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
     const overdueInvoices = invoices.filter((invoice) => invoiceCategory(invoice) === "overdue");
-    const actionCategories = new Set(["outstanding", "query", "overdue", "court", "bad-debt"]);
-    const clientsNeedingAction = new Set(
-        invoices
-            .filter((invoice) => actionCategories.has(invoiceCategory(invoice)))
-            .map((invoice) => invoice.customerId)
-    );
+    const notices = sevenDayNoticeSummaries();
     return {
         openCount: openInvoices.length,
         totalOutstanding: openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         overdueCount: overdueInvoices.length,
         overdueValue: overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        clientsNeedingAction: clientsNeedingAction.size
+        clientsNeedingAction: notices.length,
+        sevenDayNotices: notices,
     };
 }
 
@@ -1848,8 +1978,31 @@ function renderDashboardHero() {
     document.getElementById("heroOverdueValue").textContent = formatCurrency(totals.overdueValue);
     document.getElementById("heroOverdueCount").textContent = `${totals.overdueCount.toLocaleString("en-GB")} overdue invoice${totals.overdueCount === 1 ? "" : "s"}`;
     document.getElementById("heroClientsAction").textContent = totals.clientsNeedingAction.toLocaleString("en-GB");
+    const noticeSummary = document.getElementById("heroNoticesSummary");
+    const noticeCard = document.getElementById("sevenDayNoticeCard");
+    const nextNotice = totals.sevenDayNotices[0];
+    noticeSummary.textContent = !nextNotice
+        ? "No active 7 day notices"
+        : totals.sevenDayNotices.length === 1
+        ? `${nextNotice.clientName}: ${nextNotice.countdown}`
+        : `${totals.sevenDayNotices.length} clients · next ${nextNotice.clientName}: ${nextNotice.countdown}`;
+    noticeCard.title = totals.sevenDayNotices.length
+        ? totals.sevenDayNotices.map((item) => `${item.clientName}: ${item.countdown}`).join("\n")
+        : "No active 7 day notices";
     document.getElementById("heroLatestSync").textContent = state.organisation.lastSync || "Waiting for first sync";
     document.getElementById("heroLatestSyncOrg").textContent = state.organisation.name || "Xero organisation not connected";
+}
+
+function openFirstSevenDayNoticeClient() {
+    const notice = sevenDayNoticeSummaries()[0];
+    if (!notice) {
+        showToast("No active 7 day notices", "info");
+        return;
+    }
+    selectedClientId = notice.clientId;
+    selectedInvoiceId = notice.invoiceId;
+    activeView = "client";
+    renderAll();
 }
 
 function renderSummaryCounts() {
@@ -2076,8 +2229,14 @@ function renderClientScreen() {
     const openInvoices = invoices.filter((item) => invoiceCategory(item) !== "paid");
     const totalDue = invoices.reduce((sum, item) => sum + Number(item.amountDue || 0), 0);
     const overdueCount = invoices.filter((item) => invoiceCategory(item) === "overdue").length;
-    document.getElementById("clientStatusBadge").textContent = client ? `${openInvoices.length} open` : "Awaiting data";
-    document.getElementById("clientStatusBadge").className = "status-badge";
+    const noticeInvoices = invoices.filter(isSevenDayNoticeInvoice).sort((a, b) => sevenDayNoticeSortValue(a) - sevenDayNoticeSortValue(b));
+    const clientStatusBadge = document.getElementById("clientStatusBadge");
+    clientStatusBadge.textContent = client
+        ? noticeInvoices.length
+        ? `7 day notice · ${sevenDayNoticeCountdown(noticeInvoices[0])}`
+        : `${openInvoices.length} open`
+        : "Awaiting data";
+    clientStatusBadge.className = `status-badge${noticeInvoices.length ? " notice" : ""}`;
 
     const stats = document.getElementById("clientStats");
     stats.innerHTML = "";
@@ -2085,7 +2244,7 @@ function renderClientScreen() {
         ["Total due", formatCurrency(totalDue)],
         ["Open invoices", `${openInvoices.length}`],
         ["Overdue", `${overdueCount}`],
-        ["Selected invoice", selectedInvoice?.invoiceNumber || "--"],
+        ["7 day notices", noticeInvoices.length ? `${noticeInvoices.length} · ${sevenDayNoticeCountdown(noticeInvoices[0])}` : "0"],
     ].forEach(([label, value]) => {
         const card = document.createElement("article");
         card.className = "detail-stat";
@@ -2264,7 +2423,8 @@ function renderTimeline(targetId, items, empty) {
 
 function renderChrome() {
     document.body.classList.toggle("is-syncing", isSyncing);
-    document.getElementById("syncStamp").textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
+    const syncStamp = document.getElementById("syncStamp");
+    if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
     const organisationName = state.organisation.name || "Xero organisation not connected";
     const lastSync = state.organisation.lastSync || "Waiting for first sync";
     const syncCopy = isSyncing
@@ -2540,13 +2700,21 @@ async function runXeroSync({ automatic = false } = {}) {
     startSyncFeedback();
     showToast(automatic ? "Starting first sync from Xero" : "Please wait, pulling in data from Xero", "info");
     try {
-        await requestJSON(api.endpoints.sync, { method: "POST" });
-        await hydrateFromAPI();
+        const payload = await requestJSON(api.endpoints.sync, { method: "POST" });
+        if (payload?.panel) {
+            replaceState(normaliseState(payload.panel));
+        } else {
+            await hydrateFromAPI();
+        }
         renderAll();
         showToast("Sync complete", "success");
     } catch (error) {
         console.error("Unable to sync panel data", error);
-        showToast(error.message || "Xero sync failed. Please try again.", "error");
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+        } else {
+            showToast(error.message || "Xero sync failed. Please try again.", "error");
+        }
     } finally {
         stopSyncFeedback();
     }
@@ -2561,11 +2729,13 @@ function wireBulkActions() {
     document.getElementById("bulkApplyStatusButton").addEventListener("click", () => {
         const statusValue = document.getElementById("bulkLedgerStatusSelect").value;
         if (!window.confirm(`Apply "${statusValue}" to ${selectedInvoiceIds.size} selected invoice${selectedInvoiceIds.size === 1 ? "" : "s"}?`)) return;
+        const stamp = new Date().toISOString();
         selectedInvoices().forEach((invoice) => {
             const match = mutableInvoiceById(invoice.id);
             if (!match) return;
             match.invoice.controlStatus = statusValue;
-            match.invoice.statuses = [{ title: statusValue, body: "Updated from ledger bulk actions", stamp: new Date().toISOString() }, ...(match.invoice.statuses || [])];
+            match.invoice.lastChasedAt = stamp;
+            match.invoice.statuses = [{ title: statusValue, body: "Updated from ledger bulk actions", stamp }, ...(match.invoice.statuses || [])];
         });
         persistState();
         renderAll();
@@ -2637,6 +2807,16 @@ function wireLoginButtons() {
 function wireSyncButtons() {
     document.getElementById("primarySyncButton").addEventListener("click", () => runXeroSync());
     document.getElementById("sidebarSyncButton").addEventListener("click", () => runXeroSync());
+}
+
+function wireSevenDayNoticeCard() {
+    const card = document.getElementById("sevenDayNoticeCard");
+    card.addEventListener("click", openFirstSevenDayNoticeClient);
+    card.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        openFirstSevenDayNoticeClient();
+    });
 }
 
 function wireForms() {
@@ -2742,11 +2922,13 @@ function wireForms() {
             .filter((invoice) => invoiceCategory(decorateInvoice(client, invoice)) !== "paid")
             .map((invoice) => invoice.id);
         if (!window.confirm(`Update ${invoiceIds.length} open invoice${invoiceIds.length === 1 ? "" : "s"} for ${client.name || "this client"} to "${statusValue}"?`)) return;
+        const stamp = new Date().toISOString();
         invoiceIds.forEach((invoiceId) => {
             const match = mutableInvoiceById(invoiceId);
             if (!match) return;
             match.invoice.controlStatus = statusValue;
-            match.invoice.statuses = [{ title: statusValue, body: note, stamp: new Date().toISOString() }, ...(match.invoice.statuses || [])];
+            match.invoice.lastChasedAt = stamp;
+            match.invoice.statuses = [{ title: statusValue, body: note, stamp }, ...(match.invoice.statuses || [])];
         });
         document.getElementById("bulkStatusNote").value = "";
         persistState();
@@ -2773,6 +2955,7 @@ async function init() {
     wireFilters();
     wireLoginButtons();
     wireSyncButtons();
+    wireSevenDayNoticeCard();
     wireForms();
     wireBulkActions();
     maybeAutoStartInitialSync();

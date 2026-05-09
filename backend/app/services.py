@@ -336,6 +336,7 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
         "amountPaid": _float(invoice.get("amount_paid")),
         "promisedDate": _iso(invoice.get("promised_date")),
         "promiseStatus": invoice.get("promise_status") or "",
+        "lastChasedAt": _iso(invoice.get("last_chased_at")),
         "overdueDays": invoice.get("overdue_days") or 0,
         "latePayment": invoice.get("late_payment") or {"interest": 0, "court_cost": 35},
     }

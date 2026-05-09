@@ -7,14 +7,17 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, statu
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 
 from .auth import (
+    allowed_panel_origins,
     approve_device_code,
     clear_session_cookie,
     consume_oauth_state,
     create_device_login,
     current_user_from_request,
     require_api_user,
+    require_panel_user,
     require_user,
     set_session_cookie,
     start_oauth_state,
@@ -42,6 +45,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Credit Control Backend", version="0.2.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=sorted(allowed_panel_origins()),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 logger = logging.getLogger(__name__)
 
@@ -414,12 +424,12 @@ def api_dashboard(user: dict = Depends(require_api_user)):
 
 
 @app.get("/api/panel")
-def api_panel(user: dict = Depends(require_user)):
+def api_panel(user: dict = Depends(require_panel_user)):
     return panel_payload(user)
 
 
 @app.post("/api/panel/sync")
-async def api_panel_sync(user: dict = Depends(require_user)):
+async def api_panel_sync(user: dict = Depends(require_panel_user)):
     sync_run = await run_sync(user)
     return {
         "status": "ok",
@@ -429,12 +439,12 @@ async def api_panel_sync(user: dict = Depends(require_user)):
 
 
 @app.post("/api/xero/disconnect")
-def api_xero_disconnect(user: dict = Depends(require_user)):
+def api_xero_disconnect(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **disconnect_xero(user)}
 
 
 @app.post("/api/invoices/{invoice_id}/notes")
-async def api_invoice_add_note(invoice_id: str, request: Request, user: dict = Depends(require_user)):
+async def api_invoice_add_note(invoice_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     body = str(payload.get("body", "")).strip()
     if not body:
@@ -447,7 +457,7 @@ async def api_invoice_add_note(invoice_id: str, request: Request, user: dict = D
 
 
 @app.post("/api/invoices/{invoice_id}/promises")
-async def api_invoice_add_promise(invoice_id: str, request: Request, user: dict = Depends(require_user)):
+async def api_invoice_add_promise(invoice_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     promised_amount = str(payload.get("promisedAmount", "")).strip()
     promised_date = str(payload.get("promisedDate", "")).strip()
@@ -462,7 +472,7 @@ async def api_invoice_add_promise(invoice_id: str, request: Request, user: dict 
 
 
 @app.post("/api/invoices/{invoice_id}/status")
-async def api_invoice_set_status(invoice_id: str, request: Request, user: dict = Depends(require_user)):
+async def api_invoice_set_status(invoice_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     status_value = str(payload.get("statusValue", "")).strip()
     note = str(payload.get("note", "")).strip()

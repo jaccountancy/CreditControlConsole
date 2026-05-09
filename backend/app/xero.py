@@ -12,6 +12,7 @@ CONNECTIONS_URL = "https://api.xero.com/connections"
 CONTACTS_URL = "https://api.xero.com/api.xro/2.0/Contacts"
 INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices"
 USERINFO_URL = "https://identity.xero.com/connect/userinfo"
+XERO_PAGE_SIZE = 100
 
 
 class XeroConfigurationError(RuntimeError):
@@ -277,10 +278,32 @@ async def xero_api_get(connection_row: dict, url: str, params: dict | None = Non
         return response.json()
 
 
+async def fetch_paginated_collection(
+    connection_row: dict,
+    url: str,
+    collection_key: str,
+    params: dict | None = None,
+) -> list[dict]:
+    records: list[dict] = []
+    page = 1
+    while True:
+        payload = await xero_api_get(connection_row, url, params={**(params or {}), "page": page})
+        batch = payload.get(collection_key, [])
+        records.extend(batch)
+        if len(batch) < XERO_PAGE_SIZE:
+            return records
+        page += 1
+
+
 async def fetch_contacts_and_invoices(connection_row: dict) -> tuple[list[dict], list[dict]]:
-    contacts_payload = await xero_api_get(connection_row, CONTACTS_URL)
-    invoices_payload = await xero_api_get(connection_row, INVOICES_URL, params={"where": 'Type=="ACCREC"'})
-    return contacts_payload.get("Contacts", []), invoices_payload.get("Invoices", [])
+    contacts = await fetch_paginated_collection(connection_row, CONTACTS_URL, "Contacts")
+    invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"where": 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"'},
+    )
+    return contacts, invoices
 
 
 def normalise_contact(contact: dict, tenant_id: str) -> dict:
