@@ -35,7 +35,6 @@ from .services import (
     disconnect_xero,
     get_xero_connection_for_user,
     invoice_detail,
-    list_developer_logs,
     list_customers,
     panel_payload,
     get_sync_run,
@@ -458,11 +457,6 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
     if sync_run["status"] == "completed":
         payload["panel"] = panel_payload(user)
     return payload
-
-
-@app.get("/api/developer/logs")
-def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depends(require_panel_user)):
-    return {"logs": list_developer_logs(user, limit)}
 
 
 @app.post("/api/xero/disconnect")
