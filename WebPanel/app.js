@@ -555,7 +555,7 @@ function renderChrome() {
 const syncButtonIds = ["primarySyncButton", "sidebarSyncButton"];
 
 function isXeroConnected() {
-    return state.organisation.xeroConnected === true || Boolean(state.organisation.name);
+    return state.organisation.xeroConnected === true;
 }
 
 function renderAll() {

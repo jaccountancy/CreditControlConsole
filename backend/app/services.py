@@ -75,6 +75,29 @@ def disconnect_xero(user: dict) -> dict:
                 (user["id"],),
             )
             row = cursor.fetchone()
+            cursor.execute(
+                """
+                UPDATE sync_runs
+                SET status = %s,
+                    current_step = %s,
+                    summary = %s,
+                    error_message = %s,
+                    failed_count = GREATEST(failed_count, 1),
+                    completed_at = %s
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND status IN ('queued', 'running')
+                """,
+                (
+                    "failed",
+                    "Sync stopped",
+                    "Xero was disconnected before the sync completed.",
+                    "Xero is disconnected. Reconnect Xero before syncing again.",
+                    utcnow(),
+                    "xero",
+                    user["id"],
+                ),
+            )
         connection.commit()
 
     if row:
@@ -151,6 +174,30 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE sync_runs
+                SET status = %s,
+                    current_step = %s,
+                    summary = %s,
+                    error_message = %s,
+                    failed_count = GREATEST(failed_count, 1),
+                    completed_at = %s
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND status IN ('queued', 'running')
+                  AND created_at < NOW() - INTERVAL '30 minutes'
+                """,
+                (
+                    "failed",
+                    "Sync timed out",
+                    "A previous Xero sync stopped responding.",
+                    "The previous Xero sync stopped responding. Start a fresh sync.",
+                    utcnow(),
+                    "xero",
+                    user["id"],
+                ),
+            )
             cursor.execute(
                 """
                 SELECT *
