@@ -8,7 +8,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 
 from .config import get_settings
-from .database import ensure_schema, get_connection, utcnow
+from .database import get_connection, utcnow
 from .xero import CONTACTS_URL, INVOICES_URL, fetch_paginated_collection, normalise_contact, normalise_invoice
 
 logger = logging.getLogger(__name__)
@@ -113,7 +113,6 @@ def _sync_error_payload(exc: Exception) -> dict:
 def record_sync_start_failure(user: dict, exc: Exception) -> None:
     message = _sync_error_message(exc)
     try:
-        ensure_schema()
         record_audit_event(
             "sync_run",
             str(user.get("id") or "unknown"),
@@ -148,7 +147,6 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 
 
 def request_sync_run(user: dict) -> tuple[dict, bool]:
-    ensure_schema()
     get_xero_connection_for_user(user["id"])
 
     with get_connection() as connection:
@@ -214,7 +212,6 @@ def request_sync_run(user: dict) -> tuple[dict, bool]:
 
 
 def get_sync_run(user: dict, sync_run_id: str) -> dict:
-    ensure_schema()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -275,11 +272,6 @@ def serialize_sync_run(sync_run: dict) -> dict:
 def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     bounded_limit = max(1, min(int(limit or 120), 300))
     logs: list[dict] = []
-    try:
-        ensure_schema()
-    except Exception as exc:
-        logger.exception("Unable to ensure schema before loading developer logs")
-        logs.append(_developer_log_error_entry("developer.log.schema.failed", exc))
     try:
         logs.extend(_list_audit_developer_logs(user, bounded_limit))
     except Exception as exc:
@@ -404,7 +396,6 @@ def run_sync_job(user: dict, sync_run_id: str) -> None:
 
 
 async def run_sync(user: dict, sync_run_id: str) -> dict:
-    ensure_schema()
     connection_row = get_xero_connection_for_user(user["id"])
     now = utcnow()
     _update_sync_run(
