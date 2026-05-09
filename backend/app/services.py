@@ -266,7 +266,7 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
                 ORDER BY audit_events.created_at DESC
                 LIMIT %s
                 """,
-                (user["id"], bounded_limit),
+                (user["id"], limit),
             )
             rows = cursor.fetchall()
         connection.commit()

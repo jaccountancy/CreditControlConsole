@@ -67,6 +67,10 @@ button { cursor: pointer; }
     margin-bottom: 18px;
 }
 .brand-lockup { display: flex; align-items: center; }
+.ledger-topbar .brand-lockup,
+.ledger-topbar .topbar-actions {
+    flex: 0 0 auto;
+}
 .eyebrow {
     margin: 0 0 4px;
     font-size: 0.72rem;
@@ -601,12 +605,14 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 .ledger-card { border-radius: 28px; overflow: hidden; position: relative; }
 .ledger-scroll { overflow: auto; }
 .sync-inline-banner {
+    flex: 1 1 320px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 12px;
-    width: min(640px, calc(100% - 32px));
-    margin: 16px auto;
+    width: min(420px, 100%);
+    max-width: 460px;
+    margin: 0 auto;
     padding: 12px 16px;
     border: 1px solid rgba(29, 103, 242, 0.22);
     border-radius: 999px;
@@ -1305,6 +1311,13 @@ body.is-syncing .sync-dot {
                     <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                 </div>
             </div>
+            <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
+                <span class="sync-inline-spinner" aria-hidden="true"></span>
+                <div class="sync-inline-copy">
+                    <strong id="syncInlineTitle">Syncing data from Xero</strong>
+                    <span id="syncInlineDetail">Preparing sync</span>
+                </div>
+            </div>
             <div class="topbar-actions">
                 <a class="ghost-button action-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                 <div class="xero-connect-wrap" id="xeroConnectWrap">
@@ -1414,13 +1427,6 @@ body.is-syncing .sync-dot {
         </section>
 
         <section class="ledger-card">
-            <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
-                <span class="sync-inline-spinner" aria-hidden="true"></span>
-                <div class="sync-inline-copy">
-                    <strong id="syncInlineTitle">Syncing data from Xero</strong>
-                    <span id="syncInlineDetail">Preparing sync</span>
-                </div>
-            </div>
             <div class="ledger-scroll">
                 <table class="invoice-table">
                     <thead>
