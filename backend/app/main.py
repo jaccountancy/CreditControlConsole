@@ -438,14 +438,27 @@ def api_panel(user: dict = Depends(require_panel_user)):
 
 @app.post("/api/panel/sync")
 async def api_panel_sync(user: dict = Depends(require_panel_user)):
-    sync_run, started = request_sync_run(user)
-    if started:
-        threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
-    return {
-        "status": "queued" if started else "running",
-        "started": started,
-        "syncRun": serialize_sync_run(sync_run),
-    }
+    try:
+        sync_run, started = request_sync_run(user)
+        if started:
+            threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+        return {
+            "status": "queued" if started else "running",
+            "started": started,
+            "syncRun": serialize_sync_run(sync_run),
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unable to queue Xero panel sync")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "Unable to start Xero sync.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+            },
+        ) from exc
 
 
 @app.get("/api/panel/sync/{sync_run_id}")

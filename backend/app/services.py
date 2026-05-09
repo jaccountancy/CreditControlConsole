@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from fastapi import HTTPException, status
 
@@ -19,7 +20,23 @@ def _json_default(value):
         return value.isoformat()
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, UUID):
+        return str(value)
     return str(value)
+
+
+def _safe_json(value):
+    if isinstance(value, dict):
+        return {str(key): _safe_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_safe_json(item) for item in value]
+    if isinstance(value, (date, datetime, Decimal, UUID)):
+        return _json_default(value)
+    try:
+        json.dumps(value)
+        return value
+    except TypeError:
+        return str(value)
 
 
 def record_audit_event(entity_type: str, entity_id: str, event_type: str, payload: dict, user_id: str | None) -> None:
@@ -216,6 +233,22 @@ def serialize_sync_run(sync_run: dict) -> dict:
 
 def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     bounded_limit = max(1, min(int(limit or 120), 300))
+    try:
+        return _list_audit_developer_logs(user, bounded_limit)
+    except Exception as exc:
+        logger.exception("Unable to load audit developer logs")
+        error_entry = _developer_log_error_entry("developer.log.query.failed", exc)
+        try:
+            return [error_entry, *_list_sync_run_developer_logs(user, bounded_limit)]
+        except Exception as fallback_exc:
+            logger.exception("Unable to load sync run fallback developer logs")
+            return [
+                error_entry,
+                _developer_log_error_entry("developer.log.fallback.failed", fallback_exc),
+            ]
+
+
+def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -245,13 +278,63 @@ def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
             "source": "audit",
             "eventType": row.get("event_type") or "",
             "message": _developer_log_message(row),
-            "payload": row.get("payload") or {},
+            "payload": _safe_json(row.get("payload") or {}),
             "createdAt": _iso(row.get("created_at")) or "",
             "syncRunId": row.get("entity_id") if row.get("entity_type") == "sync_run" else "",
             "syncStatus": row.get("sync_status") or "",
         }
         for row in rows
     ]
+
+
+def _list_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM sync_runs
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                ("xero", user["id"], limit),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+
+    logs = []
+    for row in rows:
+        status_value = row.get("status") or ""
+        logs.append(
+            {
+                "id": str(row["id"]),
+                "level": "error" if status_value == "failed" else "info",
+                "source": "sync_runs",
+                "eventType": f"sync.{status_value or 'unknown'}",
+                "message": row.get("error_message") or row.get("summary") or row.get("current_step") or "Sync run",
+                "payload": _safe_json(serialize_sync_run(row)),
+                "createdAt": _iso(row.get("created_at")) or "",
+                "syncRunId": str(row["id"]),
+                "syncStatus": status_value,
+            }
+        )
+    return logs
+
+
+def _developer_log_error_entry(event_type: str, exc: Exception) -> dict:
+    return {
+        "id": event_type,
+        "level": "error",
+        "source": "backend",
+        "eventType": event_type,
+        "message": str(exc) or exc.__class__.__name__,
+        "payload": {"type": exc.__class__.__name__},
+        "createdAt": utcnow().isoformat(),
+        "syncRunId": "",
+        "syncStatus": "",
+    }
 
 
 def _developer_log_message(row: dict) -> str:

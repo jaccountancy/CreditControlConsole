@@ -601,24 +601,25 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 .ledger-card { border-radius: 28px; overflow: hidden; position: relative; }
 .ledger-scroll { overflow: auto; }
 .sync-inline-banner {
-    position: absolute;
-    top: 18px;
-    left: 50%;
-    z-index: 8;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
-    max-width: min(520px, calc(100% - 32px));
+    width: min(640px, calc(100% - 32px));
+    margin: 16px auto;
     padding: 12px 16px;
     border: 1px solid rgba(29, 103, 242, 0.22);
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.96);
     box-shadow: 0 16px 42px rgba(30, 47, 77, 0.16);
     color: var(--ink);
-    transform: translateX(-50%);
-    pointer-events: none;
 }
 .sync-inline-banner[hidden] { display: none; }
+.sync-inline-banner.is-error {
+    border-color: rgba(255, 83, 83, 0.28);
+    background: var(--red-soft);
+    color: var(--red);
+}
 .sync-inline-spinner {
     width: 22px;
     height: 22px;
@@ -627,6 +628,11 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     border-top-color: var(--blue);
     animation: sync-spin 0.85s linear infinite;
     flex: 0 0 auto;
+}
+.sync-inline-banner.is-error .sync-inline-spinner {
+    animation: none;
+    border-color: rgba(255, 83, 83, 0.18);
+    border-top-color: var(--red);
 }
 .sync-inline-copy {
     display: grid;
@@ -646,6 +652,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
 .invoice-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
 .invoice-table th, .invoice-table td {
     padding: 16px 18px;
@@ -1410,7 +1417,7 @@ body.is-syncing .sync-dot {
             <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
                 <span class="sync-inline-spinner" aria-hidden="true"></span>
                 <div class="sync-inline-copy">
-                    <strong>Syncing data from Xero</strong>
+                    <strong id="syncInlineTitle">Syncing data from Xero</strong>
                     <span id="syncInlineDetail">Preparing sync</span>
                 </div>
             </div>
@@ -2980,14 +2987,31 @@ function startSyncFeedback(syncRun = null) {
     const overlay = document.getElementById("syncProgressOverlay");
     if (overlay) overlay.hidden = true;
     const inlineBanner = document.getElementById("syncInlineBanner");
-    if (inlineBanner) inlineBanner.hidden = false;
+    if (inlineBanner) {
+        inlineBanner.hidden = false;
+        inlineBanner.classList.remove("is-error");
+    }
+    const inlineTitle = document.getElementById("syncInlineTitle");
+    if (inlineTitle) inlineTitle.textContent = "Syncing data from Xero";
     updateSyncProgress();
     window.clearInterval(syncProgressTimer);
     syncProgressTimer = window.setInterval(updateSyncProgress, 1000);
     renderChrome();
 }
 
-function stopSyncFeedback() {
+function showSyncFailure(message) {
+    const inlineBanner = document.getElementById("syncInlineBanner");
+    if (inlineBanner) {
+        inlineBanner.hidden = false;
+        inlineBanner.classList.add("is-error");
+    }
+    const inlineTitle = document.getElementById("syncInlineTitle");
+    if (inlineTitle) inlineTitle.textContent = "Xero sync failed";
+    const inlineDetail = document.getElementById("syncInlineDetail");
+    if (inlineDetail) inlineDetail.textContent = message || "Open Developer log for the backend error.";
+}
+
+function stopSyncFeedback({ keepInlineBanner = false } = {}) {
     isSyncing = false;
     activeSyncRunId = null;
     latestSyncRun = null;
@@ -2996,7 +3020,7 @@ function stopSyncFeedback() {
     const overlay = document.getElementById("syncProgressOverlay");
     if (overlay) overlay.hidden = true;
     const inlineBanner = document.getElementById("syncInlineBanner");
-    if (inlineBanner) inlineBanner.hidden = true;
+    if (inlineBanner && !keepInlineBanner) inlineBanner.hidden = true;
     renderChrome();
 }
 
@@ -3038,6 +3062,7 @@ async function runXeroSync({ automatic = false } = {}) {
         renderChrome();
         return;
     }
+    let keepFailureBanner = false;
     if (automatic) hasAutoStartedInitialSync = true;
     startSyncFeedback();
     showToast(automatic ? "Starting first sync from Xero" : "Starting Xero sync", "info");
@@ -3076,13 +3101,16 @@ async function runXeroSync({ automatic = false } = {}) {
         if (error instanceof AuthRequiredError) {
             markAuthenticationRequired(error.message);
         } else {
-            showToast(error.message || "Xero sync failed. Please try again.", "error", {
+            const message = error.message || "Xero sync failed. Please try again.";
+            keepFailureBanner = true;
+            showSyncFailure(message);
+            showToast(message, "error", {
                 label: "Developer log",
                 onClick: openDeveloperLog
             });
         }
     } finally {
-        stopSyncFeedback();
+        stopSyncFeedback({ keepInlineBanner: keepFailureBanner });
     }
 }
 
