@@ -13,6 +13,10 @@ CONTACTS_URL = "https://api.xero.com/api.xro/2.0/Contacts"
 INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices"
 USERINFO_URL = "https://identity.xero.com/connect/userinfo"
 XERO_PAGE_SIZE = 100
+XERO_PERMISSION_MESSAGE = (
+    "Xero permissions need updating. Reconnect Xero to approve invoice and contact read access, "
+    "then run sync again."
+)
 
 
 class XeroConfigurationError(RuntimeError):
@@ -24,6 +28,25 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
         detail = response.json()
     except ValueError:
         detail = response.text
+
+    auth_header = response.headers.get("WWW-Authenticate", "")
+    detail_text = str(detail)
+    scope_error_text = f"{auth_header} {detail_text}".lower()
+    if response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN) and (
+        "insufficient_scope" in scope_error_text
+        or "insufficent_scope" in scope_error_text
+        or "insufficient scope" in scope_error_text
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "message": XERO_PERMISSION_MESSAGE,
+                "status_code": response.status_code,
+                "reconnect_required": True,
+                "response": detail,
+            },
+        )
+
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail={
