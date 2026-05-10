@@ -1482,6 +1482,7 @@ body.is-dense .note-snippet {
     margin: 22px 0 18px;
 }
 .detail-stat {
+    position: relative;
     padding: 18px;
     border-radius: 22px;
     background: var(--surface-soft);
@@ -1495,6 +1496,7 @@ body.is-dense .note-snippet {
     border-color: rgba(255, 204, 77, 0.38);
 }
 .court-callout {
+    position: relative;
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 14px;
@@ -1503,6 +1505,83 @@ body.is-dense .note-snippet {
     background: linear-gradient(180deg, #f7f6ff, #f0ecff);
     color: #5a45a2;
     margin-bottom: 18px;
+}
+.interest-tooltip-anchor {
+    outline: none;
+}
+.interest-calc-tooltip {
+    position: absolute;
+    z-index: 80;
+    left: 0;
+    top: calc(100% + 10px);
+    width: min(560px, calc(100vw - 48px));
+    max-height: 360px;
+    overflow: auto;
+    padding: 14px;
+    border: 1px solid rgba(141, 98, 255, 0.22);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 18px 48px rgba(30, 47, 77, 0.18);
+    color: var(--ink);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.detail-stat .interest-calc-tooltip {
+    width: min(520px, calc(100vw - 48px));
+}
+.interest-tooltip-anchor:hover .interest-calc-tooltip,
+.interest-tooltip-anchor:focus-within .interest-calc-tooltip {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+.interest-calc-tooltip h4 {
+    margin: 0 0 8px;
+    font-size: 0.96rem;
+}
+.interest-calc-tooltip p {
+    margin: 0 0 10px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 750;
+    line-height: 1.4;
+}
+.interest-calc-table {
+    display: grid;
+    gap: 6px;
+}
+.interest-calc-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) repeat(3, minmax(70px, auto));
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-top: 1px solid rgba(61, 85, 130, 0.08);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+.interest-calc-row:first-child {
+    border-top: 0;
+    color: var(--muted);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.interest-calc-summary {
+    display: grid;
+    gap: 5px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    font-size: 0.82rem;
+    font-weight: 850;
+}
+.interest-calc-summary div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
 }
 .interest-breakdown-panel {
     display: grid;
@@ -2593,9 +2672,10 @@ body.is-syncing .sync-dot {
                     <section class="client-section-pane" data-client-pane="overview">
                         <div class="client-status-banner" id="clientStateBanner">Select a client to see account status.</div>
                         <div class="detail-stats client-kpi-strip" id="clientStats"></div>
-                        <div class="court-callout">
+                        <div class="court-callout interest-tooltip-anchor" tabindex="0">
                             <button class="info-button" type="button">i</button>
                             <p id="interestInfoText">Account-level statutory interest and court-cost guidance will appear here for this client.</p>
+                            <div class="interest-calc-tooltip" id="interestInfoTooltip" role="tooltip"></div>
                         </div>
                         <section class="interest-breakdown-panel" id="interestBreakdownPanel"></section>
                         <section class="detail-panel next-action-panel">
@@ -4235,11 +4315,13 @@ function renderClientWorkspaceShell(client, invoices, openInvoices, totals, noti
         ["Total due", formatCurrency(totals.principal)],
         ["Open invoices", `${openInvoices.length}`],
         ["Max days overdue", `${totals.maxOverdueDays || 0}`, totals.maxOverdueDays > 0],
-        ["Interest accrued", formatCurrency(totals.interest)],
-    ].forEach(([label, value, urgent]) => {
+        ["Interest accrued", formatCurrency(totals.interest), false, "interest"],
+    ].forEach(([label, value, urgent, type]) => {
         const card = document.createElement("article");
-        card.className = `detail-stat${urgent ? " is-urgent" : ""}`;
-        card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+        const isInterest = type === "interest";
+        card.className = `detail-stat${urgent ? " is-urgent" : ""}${isInterest ? " interest-tooltip-anchor" : ""}`;
+        if (isInterest) card.tabIndex = 0;
+        card.innerHTML = `<span>${label}</span><strong>${value}</strong>${isInterest ? `<div class="interest-calc-tooltip" role="tooltip">${interestCalculationTooltipHTML(totals)}</div>` : ""}`;
         stats.appendChild(card);
     });
 
@@ -4374,8 +4456,9 @@ function renderClientScreen() {
     emailLink.innerHTML = `${iconSVG("email")}Email`;
 
     document.getElementById("interestInfoText").textContent = client
-        ? `For ${client.name || "this client"}, statutory interest is calculated across the whole overdue account balance, not whichever invoice is selected.`
+        ? `For ${client.name || "this client"}, statutory interest is calculated invoice by invoice using each invoice due date, then summed into the account claim guide.`
         : "Account-level statutory interest and court-cost guidance will appear here for this client.";
+    renderInterestInfoTooltip(accountInterest);
     renderInterestBreakdown(invoices);
 
     renderClientInvoicePicker(invoices);
@@ -4402,26 +4485,90 @@ function courtCostForAmount(amountDue) {
     return 455;
 }
 
+function invoiceInterestBreakdown(invoice) {
+    const principal = Number(invoice.amountDue || 0);
+    const overdueDays = Math.max(0, Number(invoice.overdueDays || 0));
+    const rawInterest = Number(invoice.latePayment?.interest);
+    const interest = Number.isFinite(rawInterest)
+        ? rawInterest
+        : Math.round((principal * 0.08 * overdueDays / 365) * 100) / 100;
+    const dailyInterest = overdueDays > 0 ? principal * 0.08 / 365 : 0;
+    return {
+        invoiceNumber: invoice.invoiceNumber || "Invoice",
+        dueDate: invoice.dueDate || "",
+        principal,
+        overdueDays,
+        interest,
+        dailyInterest,
+    };
+}
+
 function accountInterestTotals(invoices) {
     const openInvoices = (invoices || []).filter((invoice) => Number(invoice.amountDue || 0) > 0);
     const overdueInvoices = openInvoices.filter((invoice) => Number(invoice.overdueDays || 0) > 0);
+    const invoiceInterestRows = overdueInvoices.map(invoiceInterestBreakdown);
     const principal = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
     const overduePrincipal = overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
-    const interest = overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.latePayment?.interest || 0), 0);
-    const dailyInterest = overdueInvoices.reduce((sum, invoice) => {
-        const overdueDays = Number(invoice.overdueDays || 0);
-        return sum + (overdueDays > 0 ? Number(invoice.latePayment?.interest || 0) / overdueDays : 0);
-    }, 0);
+    const interest = invoiceInterestRows.reduce((sum, row) => sum + Number(row.interest || 0), 0);
+    const dailyInterest = invoiceInterestRows.reduce((sum, row) => sum + Number(row.dailyInterest || 0), 0);
     const maxOverdueDays = overdueInvoices.reduce((max, invoice) => Math.max(max, Number(invoice.overdueDays || 0)), 0);
+    const claimValue = overduePrincipal + interest;
+    const courtCost = courtCostForAmount(claimValue);
     return {
         principal,
         overduePrincipal,
         interest,
-        courtCost: courtCostForAmount(overduePrincipal),
+        claimValue,
+        courtCost,
+        claimTotal: claimValue + courtCost,
         dailyInterest,
         overdueInvoiceCount: overdueInvoices.length,
         maxOverdueDays,
+        invoiceInterestRows,
     };
+}
+
+function interestCalculationTooltipHTML(totals) {
+    const rows = totals.invoiceInterestRows || [];
+    if (!rows.length) {
+        return `
+            <h4>No overdue interest yet</h4>
+            <p>Interest appears once one or more open invoices are past their due date.</p>
+        `;
+    }
+    const rowHTML = rows.map((row) => `
+        <div class="interest-calc-row">
+            <strong>${escapeHTML(row.invoiceNumber)}</strong>
+            <span>${formatCurrency(row.principal)}</span>
+            <span>${Number(row.overdueDays || 0).toLocaleString("en-GB")} days</span>
+            <span>${formatCurrency(row.interest)}</span>
+        </div>
+    `).join("");
+    return `
+        <h4>Invoice-by-invoice interest calculation</h4>
+        <p>Formula: amount due x 8% x overdue days / 365. Each invoice uses its own due date, then the interest is summed for the account.</p>
+        <div class="interest-calc-table">
+            <div class="interest-calc-row">
+                <span>Invoice</span>
+                <span>Amount due</span>
+                <span>Overdue</span>
+                <span>Interest</span>
+            </div>
+            ${rowHTML}
+        </div>
+        <div class="interest-calc-summary">
+            <div><span>Overdue principal</span><strong>${formatCurrency(totals.overduePrincipal)}</strong></div>
+            <div><span>Total interest</span><strong>${formatCurrency(totals.interest)}</strong></div>
+            <div><span>Claim value before fee</span><strong>${formatCurrency(totals.claimValue)}</strong></div>
+            <div><span>Court-fee guide</span><strong>${formatCurrency(totals.courtCost)}</strong></div>
+            <div><span>Estimated claim total</span><strong>${formatCurrency(totals.claimTotal)}</strong></div>
+        </div>
+    `;
+}
+
+function renderInterestInfoTooltip(totals) {
+    const target = document.getElementById("interestInfoTooltip");
+    if (target) target.innerHTML = interestCalculationTooltipHTML(totals);
 }
 
 function renderInterestBreakdown(invoices) {
@@ -4435,14 +4582,18 @@ function renderInterestBreakdown(invoices) {
         ["Overdue invoices", `${totals.overdueInvoiceCount}`],
         ["Max days overdue", `${totals.maxOverdueDays}`],
         ["Interest accrued", formatCurrency(totals.interest)],
-        ["Court-cost guide", formatCurrency(totals.courtCost)],
+        ["Claim before fee", formatCurrency(totals.claimValue)],
+        ["Court-fee guide", formatCurrency(totals.courtCost)],
+        ["Estimated claim total", formatCurrency(totals.claimTotal)],
     ] : [
         ["Principal due", "--"],
         ["Overdue principal", "--"],
         ["Overdue invoices", "--"],
         ["Max days overdue", "--"],
         ["Interest accrued", "--"],
-        ["Court-cost guide", "--"],
+        ["Claim before fee", "--"],
+        ["Court-fee guide", "--"],
+        ["Estimated claim total", "--"],
     ];
     target.innerHTML = rows.map(([label, value]) => `<article class="interest-breakdown-card"><span>${label}</span><strong>${value}</strong></article>`).join("");
     if (hasAccount && totals.dailyInterest > 0) {
