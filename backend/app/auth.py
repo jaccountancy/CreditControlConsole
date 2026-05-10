@@ -10,20 +10,17 @@ from .security import create_session, hash_token, random_token
 
 
 COOKIE_NAME = "credit_control_session"
-REQUIRED_XERO_SCOPES = (
+REQUIRED_XERO_IDENTITY_SCOPES = (
     "openid",
     "profile",
     "email",
     "offline_access",
-    "accounting.invoices",
-    "accounting.contacts",
-    "accounting.transactions",
 )
 
 
 def xero_scope_string(configured_scopes: str) -> str:
     scopes = [scope for scope in configured_scopes.split() if scope]
-    for required_scope in REQUIRED_XERO_SCOPES:
+    for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
         if required_scope not in scopes:
             scopes.append(required_scope)
     for write_scope in ("accounting.invoices", "accounting.contacts", "accounting.transactions"):

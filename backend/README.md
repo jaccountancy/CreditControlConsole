@@ -26,12 +26,14 @@ Required variables:
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
-- `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.contacts accounting.transactions`
+- `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.contacts`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 
 `PORT` is injected by Railway and should not be hard-coded.
 
 The backend intentionally rejects `localhost` and `127.0.0.1` connection values. Xero must also have the same Railway callback URL registered as an allowed redirect URI.
+
+Xero apps created before 2 March 2026 may still use the older broad transaction scope until Xero's migration deadline. If your Xero app cannot request granular invoice scopes yet, set `XERO_SCOPES=openid profile email offline_access accounting.transactions accounting.contacts` instead.
 
 ## Main routes
 
