@@ -79,6 +79,9 @@ CREATE TABLE IF NOT EXISTS customers (
     email TEXT,
     phone TEXT,
     account_number TEXT,
+    primary_person TEXT,
+    contact_people JSONB NOT NULL DEFAULT '[]'::jsonb,
+    addresses JSONB NOT NULL DEFAULT '[]'::jsonb,
     status TEXT NOT NULL DEFAULT 'active',
     total_due NUMERIC(14, 2) NOT NULL DEFAULT 0,
     overdue_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
@@ -86,6 +89,10 @@ CREATE TABLE IF NOT EXISTS customers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS primary_person TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_people JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS addresses JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE INDEX IF NOT EXISTS customers_name_idx ON customers (name);
 
@@ -131,6 +138,16 @@ CREATE TABLE IF NOT EXISTS notes (
     body TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS customer_notes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    body TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS customer_notes_customer_idx ON customer_notes (customer_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS payment_promises (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

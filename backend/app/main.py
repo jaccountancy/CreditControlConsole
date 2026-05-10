@@ -28,6 +28,7 @@ from .config import get_settings
 from .database import ensure_schema, get_connection
 from .security import create_session
 from .services import (
+    add_customer_note,
     add_note,
     add_promise,
     customer_detail,
@@ -45,6 +46,8 @@ from .services import (
     run_sync,
     run_sync_job,
     serialize_sync_run,
+    sync_customer_note_to_xero,
+    sync_invoice_note_to_xero,
     sync_run_has_working_data,
     update_control_status,
 )
@@ -502,9 +505,28 @@ async def api_invoice_add_note(invoice_id: str, request: Request, user: dict = D
     if not body:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note body is required.")
     add_note(invoice_id, user, body)
+    xero_note = await sync_invoice_note_to_xero(invoice_id, user, body)
     return {
         "status": "ok",
+        "xeroNoteSynced": xero_note["synced"],
+        "xeroNoteError": xero_note.get("error", ""),
         "invoice": invoice_detail(invoice_id),
+    }
+
+
+@app.post("/api/customers/{customer_id}/notes")
+async def api_customer_add_note(customer_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    body = str(payload.get("body", "")).strip()
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note body is required.")
+    add_customer_note(customer_id, user, body)
+    xero_note = await sync_customer_note_to_xero(customer_id, user, body)
+    return {
+        "status": "ok",
+        "xeroNoteSynced": xero_note["synced"],
+        "xeroNoteError": xero_note.get("error", ""),
+        "panel": panel_payload(user),
     }
 
 

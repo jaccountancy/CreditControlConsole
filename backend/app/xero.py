@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 import httpx
 from fastapi import HTTPException, status
@@ -14,8 +15,8 @@ INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices"
 USERINFO_URL = "https://identity.xero.com/connect/userinfo"
 XERO_PAGE_SIZE = 100
 XERO_PERMISSION_MESSAGE = (
-    "Xero permissions need updating. Reconnect Xero to approve invoice and contact read access, "
-    "then run sync again."
+    "Xero permissions need updating. Reconnect Xero to approve invoice and contact access, "
+    "including note write-back, then try again."
 )
 
 
@@ -312,6 +313,39 @@ async def xero_api_get(connection_row: dict, url: str, params: dict | None = Non
         return response.json()
 
 
+async def create_history_record(connection_row: dict, resource: str, resource_id: str, details: str) -> dict:
+    resource_urls = {
+        "Contacts": CONTACTS_URL,
+        "Invoices": INVOICES_URL,
+    }
+    base_url = resource_urls.get(resource)
+    if base_url is None:
+        raise ValueError(f"Unsupported Xero history resource: {resource}")
+
+    connection_row = await refresh_connection(connection_row["id"])
+    note_body = details.strip()[:4000]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.put(
+                f"{base_url}/{resource_id}/History",
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"HistoryRecords": [{"Details": note_body}]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "history note creation")
+        if response.is_error:
+            _raise_xero_http_error(response, "history note creation")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def fetch_paginated_collection(
     connection_row: dict,
     url: str,
@@ -355,13 +389,73 @@ async def fetch_contacts_and_invoices(connection_row: dict) -> tuple[list[dict],
 
 
 def normalise_contact(contact: dict, tenant_id: str) -> dict:
+    contact_people = []
+    for person in contact.get("ContactPersons") or []:
+        full_name = " ".join(
+            part
+            for part in [person.get("FirstName"), person.get("LastName")]
+            if part
+        ).strip()
+        if not full_name and person.get("EmailAddress"):
+            full_name = person["EmailAddress"]
+        if not full_name:
+            continue
+        contact_people.append(
+            {
+                "name": full_name,
+                "email": person.get("EmailAddress") or "",
+                "includeInEmails": bool(person.get("IncludeInEmails")),
+            }
+        )
+
+    primary_person = " ".join(
+        part
+        for part in [contact.get("FirstName"), contact.get("LastName")]
+        if part
+    ).strip()
+    if not primary_person and contact_people:
+        primary_person = contact_people[0]["name"]
+
+    phone = ""
+    for phone_item in contact.get("Phones") or []:
+        phone_number = phone_item.get("PhoneNumber")
+        if phone_number:
+            area_code = phone_item.get("PhoneAreaCode")
+            country_code = phone_item.get("PhoneCountryCode")
+            phone = " ".join(part for part in [country_code, area_code, phone_number] if part)
+            break
+
+    addresses = []
+    for address in contact.get("Addresses") or []:
+        lines = [
+            address.get("AddressLine1"),
+            address.get("AddressLine2"),
+            address.get("AddressLine3"),
+            address.get("AddressLine4"),
+            address.get("City"),
+            address.get("Region"),
+            address.get("PostalCode"),
+            address.get("Country"),
+        ]
+        formatted = ", ".join(part for part in lines if part)
+        if formatted:
+            addresses.append(
+                {
+                    "type": address.get("AddressType") or "",
+                    "address": formatted,
+                }
+            )
+
     return {
         "tenant_id": tenant_id,
         "xero_contact_id": contact["ContactID"],
         "name": contact.get("Name", "Unknown"),
         "email": contact.get("EmailAddress"),
-        "phone": (contact.get("Phones") or [{}])[0].get("PhoneNumber"),
+        "phone": phone,
         "account_number": contact.get("AccountNumber"),
+        "primary_person": primary_person,
+        "contact_people": contact_people,
+        "addresses": addresses,
     }
 
 

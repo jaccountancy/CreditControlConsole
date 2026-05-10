@@ -10,6 +10,27 @@ from .security import create_session, hash_token, random_token
 
 
 COOKIE_NAME = "credit_control_session"
+REQUIRED_XERO_SCOPES = (
+    "openid",
+    "profile",
+    "email",
+    "offline_access",
+    "accounting.invoices",
+    "accounting.contacts",
+    "accounting.transactions",
+)
+
+
+def xero_scope_string(configured_scopes: str) -> str:
+    scopes = [scope for scope in configured_scopes.split() if scope]
+    for required_scope in REQUIRED_XERO_SCOPES:
+        if required_scope not in scopes:
+            scopes.append(required_scope)
+    for write_scope in ("accounting.invoices", "accounting.contacts", "accounting.transactions"):
+        read_scope = f"{write_scope}.read"
+        if write_scope in scopes and read_scope in scopes:
+            scopes.remove(read_scope)
+    return " ".join(scopes)
 
 
 def allowed_panel_origins() -> set[str]:
@@ -238,7 +259,7 @@ def xero_authorize_url(state_token: str) -> str:
             "response_type": "code",
             "client_id": settings.xero_client_id,
             "redirect_uri": settings.xero_redirect_uri,
-            "scope": settings.xero_scopes,
+            "scope": xero_scope_string(settings.xero_scopes),
             "state": state_token,
         }
     )

@@ -9,7 +9,14 @@ from fastapi import HTTPException, status
 
 from .config import get_settings
 from .database import get_connection, utcnow
-from .xero import CONTACTS_URL, INVOICES_URL, fetch_paginated_collection, normalise_contact, normalise_invoice
+from .xero import (
+    CONTACTS_URL,
+    INVOICES_URL,
+    create_history_record,
+    fetch_paginated_collection,
+    normalise_contact,
+    normalise_invoice,
+)
 
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
@@ -166,12 +173,39 @@ def normalise_sync_options(options: dict | None = None) -> dict:
     if invoice_scope not in SYNC_SCOPE_OPTIONS:
         invoice_scope = DEFAULT_SYNC_SCOPE
     scope = SYNC_SCOPE_OPTIONS[invoice_scope]
+    raw_years = options.get("invoiceYears") or options.get("invoice_years") or []
+    if not isinstance(raw_years, list):
+        raw_years = [raw_years]
+    current_year = utcnow().year
+    invoice_years = sorted(
+        {
+            int(year)
+            for year in raw_years
+            if str(year).isdigit() and 2000 <= int(year) <= current_year + 1
+        }
+    )
+    year_summary = "No invoice years selected." if not invoice_years else f"Years: {', '.join(str(year) for year in invoice_years)}."
     return {
         "invoice_scope": invoice_scope,
         "label": scope["label"],
         "paid_page_limit": scope["paid_page_limit"],
-        "summary": scope["summary"],
+        "invoice_years": invoice_years,
+        "year_label": "No years selected" if not invoice_years else ", ".join(str(year) for year in invoice_years),
+        "summary": f"{scope['summary']} {year_summary}",
     }
+
+
+def _xero_year_filter(invoice_years: list[int]) -> str:
+    clauses = [
+        f"(Date>=DateTime({year}, 1, 1)&&Date<DateTime({year + 1}, 1, 1))"
+        for year in invoice_years
+    ]
+    return f"({'||'.join(clauses)})" if clauses else ""
+
+
+def _with_invoice_year_filter(base_where: str, invoice_years: list[int]) -> str:
+    year_filter = _xero_year_filter(invoice_years)
+    return f"{base_where}&&{year_filter}" if year_filter else base_where
 
 
 def record_sync_start_failure(user: dict, exc: Exception) -> None:
@@ -212,6 +246,11 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 
 def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict, bool]:
     sync_options = normalise_sync_options(sync_options)
+    if not sync_options["invoice_years"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Choose at least one invoice year in Settings before importing from Xero.",
+        )
     get_xero_connection_for_user(user["id"])
 
     with get_connection() as connection:
@@ -549,7 +588,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             connection_row,
             INVOICES_URL,
             "Invoices",
-            params={"where": OUTSTANDING_INVOICE_WHERE},
+            params={"where": _with_invoice_year_filter(OUTSTANDING_INVOICE_WHERE, sync_options["invoice_years"])},
             on_page=outstanding_invoice_progress,
         )
         _update_sync_run(
@@ -574,18 +613,31 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     cursor.execute(
                         """
                         INSERT INTO customers (
-                            tenant_id, xero_contact_id, name, email, phone, account_number, last_sync_at, updated_at
+                            tenant_id, xero_contact_id, name, email, phone, account_number,
+                            primary_person, contact_people, addresses, last_sync_at, updated_at
                         )
-                        VALUES (%(tenant_id)s, %(xero_contact_id)s, %(name)s, %(email)s, %(phone)s, %(account_number)s, %(last_sync_at)s, %(updated_at)s)
+                        VALUES (
+                            %(tenant_id)s, %(xero_contact_id)s, %(name)s, %(email)s, %(phone)s, %(account_number)s,
+                            %(primary_person)s, %(contact_people_json)s::jsonb, %(addresses_json)s::jsonb, %(last_sync_at)s, %(updated_at)s
+                        )
                         ON CONFLICT (xero_contact_id) DO UPDATE
                         SET name = EXCLUDED.name,
                             email = EXCLUDED.email,
                             phone = EXCLUDED.phone,
                             account_number = EXCLUDED.account_number,
+                            primary_person = EXCLUDED.primary_person,
+                            contact_people = EXCLUDED.contact_people,
+                            addresses = EXCLUDED.addresses,
                             last_sync_at = EXCLUDED.last_sync_at,
                             updated_at = EXCLUDED.updated_at
                         """,
-                        {**contact, "last_sync_at": now, "updated_at": now},
+                        {
+                            **contact,
+                            "contact_people_json": json.dumps(contact.get("contact_people") or [], default=_json_default),
+                            "addresses_json": json.dumps(contact.get("addresses") or [], default=_json_default),
+                            "last_sync_at": now,
+                            "updated_at": now,
+                        },
                     )
                     imported_contacts += 1
                     if imported_contacts % 100 == 0:
@@ -804,7 +856,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             connection_row,
             INVOICES_URL,
             "Invoices",
-            params={"where": PAID_INVOICE_WHERE},
+            params={"where": _with_invoice_year_filter(PAID_INVOICE_WHERE, sync_options["invoice_years"])},
             max_pages=paid_page_limit,
             on_page=paid_invoice_progress,
         )
@@ -1116,6 +1168,8 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
         payload["audit"] = [
             {
                 "id": row.get("id"),
+                "entityType": row.get("entity_type") or "",
+                "entityId": row.get("entity_id") or "",
                 "title": row.get("event_type") or "Audit event",
                 "body": row.get("payload") if isinstance(row.get("payload"), str) else __import__("json").dumps(row.get("payload") or {}),
                 "stamp": _iso(row.get("created_at")) or "",
@@ -1156,9 +1210,22 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
             )
             audit_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT customer_notes.*, users.full_name
+                FROM customer_notes
+                LEFT JOIN users ON users.id = customer_notes.user_id
+                ORDER BY customer_notes.created_at DESC
+                """
+            )
+            customer_note_rows = cursor.fetchall()
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
+    notes_by_customer: dict[str, list[dict]] = {}
+    for note in customer_note_rows:
+        notes_by_customer.setdefault(note["customer_id"], []).append(note)
+
     today = utcnow().date()
     for invoice in invoice_rows:
         due_date = invoice["due_date"]
@@ -1184,11 +1251,16 @@ def panel_payload(user: dict | None = None) -> dict:
                 "name": customer_row.get("name") or "",
                 "email": customer_row.get("email") or "",
                 "phone": customer_row.get("phone") or "",
+                "accountNumber": customer_row.get("account_number") or "",
+                "primaryPerson": customer_row.get("primary_person") or "",
+                "contactPeople": customer_row.get("contact_people") or [],
+                "addresses": customer_row.get("addresses") or [],
                 "contact": customer_row.get("email") or customer_row.get("phone") or "",
                 "status": customer_row.get("status") or ("Action needed" if _float(customer_row.get("overdue_amount")) > 0 else "Current"),
                 "openInvoices": open_invoices,
                 "totalDue": _float(customer_row.get("total_due")),
                 "overdue": _float(customer_row.get("overdue_amount")),
+                "clientNotes": _serialize_timeline_items(notes_by_customer.get(customer_row["id"], []), "full_name", "body"),
                 "invoices": invoices,
             }
         )
@@ -1227,6 +1299,8 @@ def panel_payload(user: dict | None = None) -> dict:
         "audit": [
             {
                 "id": row.get("id"),
+                "entityType": row.get("entity_type") or "",
+                "entityId": row.get("entity_id") or "",
                 "title": row.get("event_type") or "Audit event",
                 "body": row.get("payload") if isinstance(row.get("payload"), str) else __import__("json").dumps(row.get("payload") or {}),
                 "stamp": _iso(row.get("created_at")) or "",
@@ -1350,6 +1424,111 @@ def add_note(invoice_id: str, user: dict, body: str) -> None:
             )
         connection.commit()
     record_audit_event("invoice", invoice_id, "note.added", {"body": body}, user["id"])
+
+
+def add_customer_note(customer_id: str, user: dict, body: str) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM customers WHERE id = %s", (customer_id,))
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
+            cursor.execute(
+                "INSERT INTO customer_notes (customer_id, user_id, body) VALUES (%s, %s, %s)",
+                (customer_id, user["id"], body),
+            )
+        connection.commit()
+    record_audit_event("customer", customer_id, "client.note.added", {"body": body}, user["id"])
+
+
+def _format_xero_note(user: dict, body: str) -> str:
+    author = user.get("full_name") or user.get("email") or "Credit Control Console user"
+    return f"Credit Control Console note from {author}: {body.strip()}"
+
+
+async def sync_invoice_note_to_xero(invoice_id: str, user: dict, body: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_invoice_id, invoice_number
+                FROM invoices
+                WHERE id = %s
+                """,
+                (invoice_id,),
+            )
+            invoice = cursor.fetchone()
+        connection.commit()
+
+    if invoice is None:
+        return {"synced": False, "error": "Invoice not found."}
+    if not invoice.get("xero_invoice_id"):
+        return {"synced": False, "error": "Invoice is not linked to a Xero invoice."}
+
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+        await create_history_record(connection_row, "Invoices", invoice["xero_invoice_id"], _format_xero_note(user, body))
+    except Exception as exc:
+        error = _sync_error_message(exc)
+        record_audit_event(
+            "invoice",
+            invoice_id,
+            "xero.note.failed",
+            {"error": error, "invoice_number": invoice.get("invoice_number"), "detail": _sync_error_payload(exc)},
+            user["id"],
+        )
+        return {"synced": False, "error": error}
+
+    record_audit_event(
+        "invoice",
+        invoice_id,
+        "xero.note.synced",
+        {"invoice_number": invoice.get("invoice_number"), "xero_invoice_id": invoice.get("xero_invoice_id")},
+        user["id"],
+    )
+    return {"synced": True, "error": ""}
+
+
+async def sync_customer_note_to_xero(customer_id: str, user: dict, body: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_contact_id, name
+                FROM customers
+                WHERE id = %s
+                """,
+                (customer_id,),
+            )
+            customer = cursor.fetchone()
+        connection.commit()
+
+    if customer is None:
+        return {"synced": False, "error": "Customer not found."}
+    if not customer.get("xero_contact_id"):
+        return {"synced": False, "error": "Customer is not linked to a Xero contact."}
+
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+        await create_history_record(connection_row, "Contacts", customer["xero_contact_id"], _format_xero_note(user, body))
+    except Exception as exc:
+        error = _sync_error_message(exc)
+        record_audit_event(
+            "customer",
+            customer_id,
+            "xero.client_note.failed",
+            {"error": error, "customer": customer.get("name"), "detail": _sync_error_payload(exc)},
+            user["id"],
+        )
+        return {"synced": False, "error": error}
+
+    record_audit_event(
+        "customer",
+        customer_id,
+        "xero.client_note.synced",
+        {"customer": customer.get("name"), "xero_contact_id": customer.get("xero_contact_id")},
+        user["id"],
+    )
+    return {"synced": True, "error": ""}
 
 
 def add_promise(invoice_id: str, user: dict, promised_amount: str, promised_date: str, note: str) -> None:

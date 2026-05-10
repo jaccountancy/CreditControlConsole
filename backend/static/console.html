@@ -330,12 +330,16 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 }
 .summary-chip {
     position: relative;
-    display: inline-flex;
-    align-items: center;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-areas:
+        "icon label"
+        "metrics metrics";
+    align-items: start;
     gap: 12px;
     width: 100%;
     min-width: 0;
-    min-height: 70px;
+    min-height: 86px;
     padding: 14px 16px 14px 20px;
     border-radius: 22px;
     background: rgba(255, 255, 255, 0.78);
@@ -391,6 +395,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     font-weight: 850;
     line-height: 1;
     opacity: 0.86;
+    grid-area: icon;
 }
 
 .summary-query .summary-icon {
@@ -402,6 +407,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 .description-icon svg,
 .status-pill svg,
 .payment-dot svg,
+.row-action-trigger svg,
 .row-action-button svg,
 .client-profile-action svg {
     width: 16px;
@@ -419,6 +425,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     align-items: flex-start;
     gap: 2px;
     min-width: 0;
+    grid-area: label;
 }
 
 .summary-chip-label {
@@ -434,7 +441,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     text-transform: uppercase;
     color: var(--muted);
     line-height: 1.1;
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .summary-chip.is-active .summary-chip-subtext {
@@ -442,10 +449,13 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 }
 
 .summary-chip-metrics {
-    margin-left: auto;
+    grid-area: metrics;
+    width: 100%;
+    margin-left: 0;
+    padding-left: 42px;
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    justify-content: space-between;
+    align-items: baseline;
     gap: 4px;
 }
 .summary-chip strong,
@@ -728,7 +738,15 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     white-space: nowrap;
 }
 .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
-.invoice-table { width: 100%; border-collapse: collapse; min-width: 1180px; }
+.invoice-table { width: 100%; border-collapse: collapse; min-width: 1120px; table-layout: fixed; }
+.invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
+.invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 22%; }
+.invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 15%; }
+.invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 18%; }
+.invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 10%; }
+.invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 14%; }
+.invoice-table th:nth-child(7), .invoice-table td:nth-child(7) { width: 17%; }
+.invoice-table th:nth-child(8), .invoice-table td:nth-child(8) { width: 54px; }
 .invoice-table th, .invoice-table td {
     padding: 16px 18px;
     border-bottom: 1px solid var(--line);
@@ -806,11 +824,18 @@ body.is-dense .note-snippet {
     display: none;
 }
 .client-name { font-weight: 800; margin-bottom: 4px; }
+.client-inline-status {
+    margin-top: 8px;
+}
+.client-inline-status .status-pill {
+    font-size: 0.76rem;
+    padding: 5px 8px;
+}
 .client-subline, .invoice-subline, .paid-date, .note-snippet, .detail-meta, .timeline-stamp {
     color: var(--muted);
     font-size: 0.92rem;
 }
-.description-cell { display: flex; gap: 14px; }
+.description-cell { display: block; }
 .description-icon {
     width: 38px;
     height: 38px;
@@ -871,15 +896,20 @@ body.is-dense .note-snippet {
 .status-pill.notice { color: #6b4d00; background: rgba(255, 204, 77, 0.22); }
 .status-pill.court { color: var(--purple); background: var(--purple-soft); }
 .status-pill.bad-debt { color: var(--ink); background: rgba(30, 47, 77, 0.10); }
+.actions-cell {
+    position: relative;
+    text-align: right;
+}
 .row-actions {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(3px);
-    transition: 0.16s ease;
+    justify-content: flex-end;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
 }
+.row-action-trigger,
 .row-action-button {
     width: 32px;
     height: 32px;
@@ -890,10 +920,40 @@ body.is-dense .note-snippet {
     background: rgba(255, 255, 255, 0.86);
     color: var(--ink);
 }
+.row-action-trigger {
+    background: var(--surface-soft);
+}
+.row-action-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    display: inline-flex;
+    gap: 6px;
+    padding: 7px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-strong);
+    box-shadow: 0 14px 34px rgba(30, 47, 77, 0.14);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: 0.16s ease;
+}
+.row-actions:hover .row-action-menu,
+.row-actions:focus-within .row-action-menu {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
 .row-action-button:hover {
     border-color: rgba(29, 103, 242, 0.26);
     color: var(--blue);
     transform: translateY(-1px);
+}
+.note-snippet {
+    line-height: 1.35;
+    white-space: normal;
 }
 .table-skeleton {
     height: 16px;
@@ -915,7 +975,8 @@ body.is-dense .note-snippet {
     color: var(--muted);
 }
 .ledger-view[hidden],
-.client-screen[hidden] {
+.client-screen[hidden],
+.settings-screen[hidden] {
     display: none;
 }
 .ledger-topbar, .summary-bar, .toolbar-row, .ledger-card, .ledger-footer, .detail-card {
@@ -933,6 +994,52 @@ body.is-dense .note-snippet {
 }
 .page-pill.is-active { background: var(--blue); color: white; border-color: transparent; }
 .detail-card { margin-top: 22px; border-radius: 30px; padding: 24px; }
+.settings-layout {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+}
+.settings-panel {
+    max-width: 760px;
+}
+.import-years-panel {
+    display: grid;
+    gap: 10px;
+}
+.settings-field-label {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.import-year-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+.import-year-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: white;
+    color: var(--ink);
+    font-weight: 850;
+}
+.import-year-grid input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--blue);
+}
+.settings-help {
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.45;
+}
 .detail-hero, .panel-heading {
     display: flex;
     justify-content: space-between;
@@ -981,6 +1088,66 @@ body.is-dense .note-snippet {
 .client-summary-card strong {
     display: block;
     line-height: 1.25;
+}
+.xero-contact-details {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+.xero-contact-card {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(248, 251, 255, 0.86);
+}
+.xero-contact-card span {
+    display: block;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.xero-contact-card strong,
+.xero-contact-card a {
+    display: block;
+    color: var(--ink);
+    font-size: inherit;
+    font-weight: 800;
+    line-height: 1.35;
+    text-decoration: none;
+    word-break: break-word;
+}
+.xero-contact-card a:hover {
+    color: var(--blue);
+}
+.xero-contact-card p {
+    margin: 0;
+}
+.xero-contact-people {
+    display: grid;
+    gap: 6px;
+}
+.xero-contact-person {
+    display: grid;
+    gap: 2px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(61, 85, 130, 0.09);
+}
+.xero-contact-person:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+.xero-contact-person small {
+    color: var(--muted);
+    font-weight: 700;
+    word-break: break-word;
 }
 .client-profile-actions {
     display: flex;
@@ -1081,6 +1248,52 @@ body.is-dense .note-snippet {
     border: 1px solid var(--line);
 }
 .client-invoices-panel { margin: 18px 0; }
+.account-file-panel {
+    display: grid;
+    gap: 18px;
+}
+.account-file-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.1fr) minmax(260px, 0.9fr);
+    gap: 18px;
+    align-items: start;
+}
+.account-file-section {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+}
+.account-notes-section,
+.history-section {
+    grid-row: span 2;
+}
+.section-heading h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+.legal-button {
+    white-space: normal;
+    text-align: center;
+}
+.compact-form {
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+}
+.history-timeline-grid {
+    display: grid;
+    gap: 18px;
+}
+.timeline-label {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 850;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.audit-history {
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
+}
 .client-invoice-list {
     display: grid;
     gap: 10px;
@@ -1169,6 +1382,43 @@ body.is-dense .note-snippet {
     gap: 8px;
     flex-wrap: wrap;
     justify-content: flex-end;
+}
+.developer-log-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(248, 251, 255, 0.86);
+}
+.developer-log-filter label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 850;
+}
+.developer-log-filter input {
+    min-height: 32px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 8px;
+    color: var(--ink);
+    background: white;
+    font-weight: 800;
+}
+.developer-log-filter button {
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 9px;
+    background: transparent;
+    color: var(--blue);
+    font-weight: 850;
+}
+.developer-log-filter button:hover {
+    background: var(--blue-soft);
 }
 .developer-log-list {
     display: grid;
@@ -1350,6 +1600,8 @@ body.is-syncing .sync-dot {
     .dashboard-hero,
     .client-workspace-layout,
     .interest-breakdown-panel,
+    .account-file-grid,
+    .import-year-grid,
     .detail-stats,
     .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -1361,6 +1613,8 @@ body.is-syncing .sync-dot {
     .dashboard-hero,
     .client-workspace-layout,
     .interest-breakdown-panel,
+    .account-file-grid,
+    .import-year-grid,
     .detail-stats,
     .detail-grid { grid-template-columns: 1fr; }
     .ledger-footer { flex-direction: column; align-items: flex-start; }
@@ -1395,22 +1649,8 @@ body.is-syncing .sync-dot {
                 <div class="xero-connect-wrap topbar-menu-wrap" id="topbarMenuWrap">
                     <button class="primary-button" id="topbarMenuButton" type="button" aria-haspopup="true">Menu</button>
                     <div class="xero-action-menu" id="xeroActionMenu">
+                        <button type="button" id="menuSettingsButton">Settings</button>
                         <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
-                        <div class="sync-settings-panel" id="syncSettingsPanel">
-                            <label for="syncScopeSelect">
-                                Data filter
-                                <select id="syncScopeSelect">
-                                    <option value="outstanding_only">Outstanding invoices only</option>
-                                    <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
-                                    <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
-                                    <option value="full_history">Full invoice history</option>
-                                </select>
-                            </label>
-                            <div class="sync-settings-status" id="syncSettingsStatus">
-                                <span>Imported: no sync yet</span>
-                                <span>Remaining: choose a filter and run sync</span>
-                            </div>
-                        </div>
                         <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                         <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                         <button type="button" id="developerLogButton">Developer log</button>
@@ -1484,7 +1724,6 @@ body.is-syncing .sync-dot {
                     <div class="toolbar-menu column-toggle-list" id="columnMenu" hidden>
                         <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
                         <label><input type="checkbox" data-column-toggle="paid" checked> Paid</label>
-                        <label><input type="checkbox" data-column-toggle="status" checked> Status</label>
                         <label><input type="checkbox" data-column-toggle="notes" checked> Notes</label>
                     </div>
                 </div>
@@ -1526,7 +1765,6 @@ body.is-syncing .sync-dot {
                             <th class="is-sticky" data-column="description">Description</th>
                             <th class="is-sticky">Amount</th>
                             <th class="is-sticky" data-column="paid">Paid</th>
-                            <th class="is-sticky" data-column="status">Status</th>
                             <th class="is-sticky" data-column="notes">Notes</th>
                             <th class="is-sticky"></th>
                         </tr>
@@ -1544,6 +1782,51 @@ body.is-syncing .sync-dot {
                 <button class="ghost-button" id="nextPageButton" type="button">Next</button>
             </div>
         </footer>
+        </section>
+
+        <section class="settings-screen detail-card" id="settingsScreen" hidden>
+            <div class="detail-hero">
+                <div>
+                    <button class="text-button" id="backFromSettingsButton" type="button">Back to ledger</button>
+                    <p class="eyebrow">Credit Control Console settings</p>
+                    <h2>Settings</h2>
+                    <p class="detail-meta">Choose exactly what Xero data to import before running the next sync.</p>
+                </div>
+                <div class="detail-actions">
+                    <button class="primary-button" id="settingsRunSyncButton" type="button">Run import</button>
+                </div>
+            </div>
+
+            <div class="settings-layout">
+                <section class="detail-panel settings-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Data import</p>
+                            <h3>Xero invoice import controls</h3>
+                        </div>
+                    </div>
+                    <div class="sync-settings-panel" id="syncSettingsPanel">
+                        <label for="syncScopeSelect">
+                            Data filter
+                            <select id="syncScopeSelect">
+                                <option value="outstanding_only">Outstanding invoices only</option>
+                                <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
+                                <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
+                                <option value="full_history">Full invoice history</option>
+                            </select>
+                        </label>
+                        <div class="import-years-panel">
+                            <div class="settings-field-label">Invoice years to import</div>
+                            <div class="import-year-grid" id="importYearOptions"></div>
+                            <p class="settings-help">No years are selected by default. Select 2026, or whichever years you want to import, before running a sync.</p>
+                        </div>
+                        <div class="sync-settings-status" id="syncSettingsStatus">
+                            <span>Imported: no sync yet</span>
+                            <span>Remaining: choose a filter and run sync</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </section>
 
         <section class="client-screen detail-card" id="clientScreen" hidden>
@@ -1564,24 +1847,25 @@ body.is-syncing .sync-dot {
                 <aside class="client-summary-panel">
                     <div class="detail-stats" id="clientStats"></div>
                     <div class="client-summary-card">
-                        <span>Selected invoice</span>
-                        <strong id="selectedInvoiceSummary">--</strong>
-                        <a id="selectedInvoiceXeroLink" class="invoice-xero-link" target="_blank" rel="noopener" hidden>Open invoice in Xero →</a>
-                    </div>
-                    <div class="client-summary-card">
-                        <span>Client contact</span>
+                        <span>Xero contact</span>
                         <strong id="clientContactSummary">--</strong>
+                        <div class="xero-contact-details" id="xeroContactDetails"></div>
                         <a id="selectedContactXeroLink" class="invoice-xero-link" target="_blank" rel="noopener" hidden>Open contact in Xero →</a>
                         <div class="client-profile-actions">
                             <a class="client-profile-action" id="clientCallLink" href="#" hidden>Call</a>
                             <a class="client-profile-action" id="clientEmailLink" href="#" hidden>Email</a>
                         </div>
                     </div>
+                    <div class="client-summary-card">
+                        <span>Selected invoice</span>
+                        <strong id="selectedInvoiceSummary">--</strong>
+                        <a id="selectedInvoiceXeroLink" class="invoice-xero-link" target="_blank" rel="noopener" hidden>Open invoice in Xero →</a>
+                    </div>
                 </aside>
                 <div class="client-main-panel">
                     <div class="court-callout">
                         <button class="info-button" type="button">i</button>
-                        <p id="interestInfoText">Statutory interest and court-cost guidance will appear here for the selected invoice.</p>
+                        <p id="interestInfoText">Account-level statutory interest and court-cost guidance will appear here for this client.</p>
                     </div>
                     <section class="interest-breakdown-panel" id="interestBreakdownPanel"></section>
 
@@ -1596,99 +1880,99 @@ body.is-syncing .sync-dot {
                         <div class="client-invoice-list" id="clientInvoiceList"></div>
                     </section>
 
-                    <div class="detail-grid client-action-grid">
-                        <section class="detail-panel">
-                            <div class="panel-heading">
-                                <div>
-                                    <p class="eyebrow">Bulk status</p>
-                                    <h3>Update client invoices</h3>
-                                </div>
-                            </div>
-                            <form class="stack-form" id="bulkStatusForm">
-                                <select id="bulkStatusSelect">
-                                    <option value="7 Day Notice Sent">7 Day Notice Sent</option>
-                                    <option value="Paid">Paid</option>
-                                    <option value="Outstanding">Outstanding</option>
-                                    <option value="Query">Query</option>
-                                    <option value="Overdue">Overdue</option>
-                                    <option value="Legal">Legal</option>
-                                    <option value="Bad debt">Bad debt</option>
-                                    <option value="Promise Received">Promise Received</option>
-                                </select>
-                                <textarea id="bulkStatusNote" rows="4" placeholder="Status context for this client"></textarea>
-                                <button class="primary-button" type="submit">Update open invoices</button>
-                            </form>
-                            <div class="mini-timeline" id="statusTimeline"></div>
-                        </section>
-
-                        <section class="detail-panel">
-                            <div class="panel-heading">
-                                <div>
-                                    <p class="eyebrow">Notes</p>
-                                    <h3>Internal notes</h3>
-                                </div>
-                            </div>
-                            <form class="stack-form" id="clientNoteForm">
-                                <textarea id="clientNoteInput" rows="5" placeholder="Capture client-level call notes, chasing updates, or payment context"></textarea>
-                                <button class="primary-button" type="submit">Add client note</button>
-                            </form>
-                            <div class="mini-timeline" id="clientNotesTimeline"></div>
-                        </section>
-
-                        <section class="detail-panel">
-                            <div class="panel-heading">
-                                <div>
-                                    <p class="eyebrow">Invoice note</p>
-                                    <h3>Attach to invoice</h3>
-                                </div>
-                            </div>
-                            <form class="stack-form" id="invoiceNoteForm">
-                                <textarea id="invoiceNoteInput" rows="5" placeholder="Note for the selected invoice"></textarea>
-                                <button class="primary-button" type="submit">Add invoice note</button>
-                            </form>
-                            <div class="mini-timeline" id="invoiceNotesTimeline"></div>
-                        </section>
-
-                        <section class="detail-panel">
-                            <div class="panel-heading">
-                                <div>
-                                    <p class="eyebrow">Payment plan</p>
-                                    <h3>Track commitments</h3>
-                                </div>
-                            </div>
-                            <form class="stack-form" id="paymentPlanForm">
-                                <input id="promiseAmountInput" type="number" min="0" step="0.01" placeholder="Promised amount">
-                                <input id="promiseDateInput" type="date">
-                                <textarea id="promiseNoteInput" rows="3" placeholder="Payment plan context"></textarea>
-                                <button class="primary-button" type="submit">Record payment plan</button>
-                            </form>
-                            <div class="mini-timeline" id="paymentPlanTimeline"></div>
-                        </section>
-
-                        <section class="detail-panel">
-                            <div class="panel-heading">
-                                <div>
-                                    <p class="eyebrow">Attachments</p>
-                                    <h3>Proof and correspondence</h3>
-                                </div>
-                            </div>
-                            <form class="stack-form" id="attachmentForm">
-                                <input id="attachmentInput" type="file" multiple>
-                                <textarea id="attachmentNoteInput" rows="3" placeholder="Attachment context"></textarea>
-                                <button class="primary-button" type="submit">Add attachment record</button>
-                            </form>
-                            <div class="mini-timeline" id="attachmentTimeline"></div>
-                        </section>
-                    </div>
-
-                    <section class="audit-trail-panel">
+                    <section class="detail-panel account-file-panel">
                         <div class="panel-heading">
                             <div>
-                                <p class="eyebrow">Audit trail</p>
-                                <h3>Recent activity</h3>
+                                <p class="eyebrow">Client file</p>
+                                <h3>Account actions, notes and history</h3>
                             </div>
+                            <button class="ghost-button legal-button" id="markClientLegalButton" type="button">Move all open invoices to Legal</button>
                         </div>
-                        <div class="mini-timeline" id="auditTrailTimeline"></div>
+                        <div class="account-file-grid">
+                            <section class="account-file-section account-notes-section">
+                                <div class="section-heading">
+                                    <p class="eyebrow">Client notes</p>
+                                    <h4>Account-level notes</h4>
+                                </div>
+                                <form class="stack-form" id="clientNoteForm">
+                                    <textarea id="clientNoteInput" rows="6" placeholder="Capture client-level call notes, contact names, chasing updates, payment context, or legal context"></textarea>
+                                    <button class="primary-button" type="submit">Add client note</button>
+                                </form>
+                                <div class="mini-timeline" id="clientNotesTimeline"></div>
+                            </section>
+
+                            <section class="account-file-section">
+                                <div class="section-heading">
+                                    <p class="eyebrow">Bulk status</p>
+                                    <h4>Update all open invoices</h4>
+                                </div>
+                                <form class="stack-form" id="bulkStatusForm">
+                                    <select id="bulkStatusSelect">
+                                        <option value="7 Day Notice Sent">7 Day Notice Sent</option>
+                                        <option value="Paid">Paid</option>
+                                        <option value="Outstanding">Outstanding</option>
+                                        <option value="Query">Query</option>
+                                        <option value="Overdue">Overdue</option>
+                                        <option value="Legal">Legal</option>
+                                        <option value="Bad debt">Bad debt</option>
+                                        <option value="Promise Received">Promise Received</option>
+                                    </select>
+                                    <textarea id="bulkStatusNote" rows="4" placeholder="Status context for this client"></textarea>
+                                    <button class="primary-button" type="submit">Update open invoices</button>
+                                </form>
+                            </section>
+
+                            <section class="account-file-section invoice-tools-section">
+                                <div class="section-heading">
+                                    <p class="eyebrow">Selected invoice</p>
+                                    <h4>Invoice-specific actions</h4>
+                                </div>
+                                <form class="stack-form" id="invoiceNoteForm">
+                                    <textarea id="invoiceNoteInput" rows="4" placeholder="Note for the selected invoice"></textarea>
+                                    <button class="primary-button" type="submit">Add invoice note</button>
+                                </form>
+                                <form class="stack-form compact-form" id="paymentPlanForm">
+                                    <input id="promiseAmountInput" type="number" min="0" step="0.01" placeholder="Promised amount">
+                                    <input id="promiseDateInput" type="date">
+                                    <textarea id="promiseNoteInput" rows="3" placeholder="Payment plan context"></textarea>
+                                    <button class="primary-button" type="submit">Record payment plan</button>
+                                </form>
+                                <form class="stack-form compact-form" id="attachmentForm">
+                                    <input id="attachmentInput" type="file" multiple>
+                                    <textarea id="attachmentNoteInput" rows="3" placeholder="Attachment context"></textarea>
+                                    <button class="primary-button" type="submit">Add attachment record</button>
+                                </form>
+                            </section>
+
+                            <section class="account-file-section history-section">
+                                <div class="section-heading">
+                                    <p class="eyebrow">History</p>
+                                    <h4>Status, notes and audit</h4>
+                                </div>
+                                <div class="history-timeline-grid">
+                                    <div>
+                                        <p class="timeline-label">Status history</p>
+                                        <div class="mini-timeline" id="statusTimeline"></div>
+                                    </div>
+                                    <div>
+                                        <p class="timeline-label">Invoice notes</p>
+                                        <div class="mini-timeline" id="invoiceNotesTimeline"></div>
+                                    </div>
+                                    <div>
+                                        <p class="timeline-label">Payment plans</p>
+                                        <div class="mini-timeline" id="paymentPlanTimeline"></div>
+                                    </div>
+                                    <div>
+                                        <p class="timeline-label">Attachments</p>
+                                        <div class="mini-timeline" id="attachmentTimeline"></div>
+                                    </div>
+                                    <div class="audit-history">
+                                        <p class="timeline-label">Audit trail</p>
+                                        <div class="mini-timeline" id="auditTrailTimeline"></div>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
                     </section>
                 </div>
             </div>
@@ -1730,6 +2014,15 @@ body.is-syncing .sync-dot {
                     <p id="developerLogSummary">Recent Xero sync events and backend errors</p>
                 </div>
                 <div class="developer-log-actions">
+                    <div class="developer-log-filter">
+                        <label for="developerLogDateFilter">
+                            Date
+                            <input id="developerLogDateFilter" type="date">
+                        </label>
+                        <button id="developerLogTodayButton" type="button">Today</button>
+                        <button id="developerLogClearDateButton" type="button">Clear</button>
+                    </div>
+                    <button class="ghost-button" id="copyDeveloperLogButton" type="button">Copy logs</button>
                     <button class="ghost-button" id="refreshDeveloperLogButton" type="button">Refresh</button>
                     <button class="ghost-button" id="closeDeveloperLogButton" type="button">Close</button>
                 </div>
@@ -1780,13 +2073,14 @@ let syncProgressTimer = null;
 let activeSyncRunId = null;
 let latestSyncRun = null;
 let lastBrowserSyncLog = null;
+let developerLogEntries = [];
+let developerLogDateFilter = "";
 let hasAutoStartedInitialSync = false;
 let hasLoadedWorkingSyncPanel = false;
 let denseMode = false;
 let visibleColumns = {
     description: true,
     paid: true,
-    status: true,
     notes: true
 };
 
@@ -1832,6 +2126,7 @@ function normaliseAPI(config) {
             syncStatus: config.endpoints?.syncStatus || "/api/panel/sync/:syncId",
             developerLogs: config.endpoints?.developerLogs || "/api/developer/logs",
             note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
+            customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
             disconnect: config.endpoints?.disconnect || "/api/xero/disconnect",
@@ -1865,9 +2160,12 @@ function loadSyncSettings() {
     try {
         const stored = JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY) || "{}");
         const invoiceScope = syncScopeLabels[stored.invoiceScope] ? stored.invoiceScope : "outstanding_only";
-        return { invoiceScope };
+        const invoiceYears = Array.isArray(stored.invoiceYears)
+            ? [...new Set(stored.invoiceYears.map((year) => Number(year)).filter((year) => Number.isInteger(year)))].sort((a, b) => a - b)
+            : [];
+        return { invoiceScope, invoiceYears };
     } catch {
-        return { invoiceScope: "outstanding_only" };
+        return { invoiceScope: "outstanding_only", invoiceYears: [] };
     }
 }
 
@@ -1887,7 +2185,7 @@ function replaceState(next) {
     state.dashboard = next.dashboard;
     state.customers = next.customers.map((customer) => ({
         ...customer,
-        clientNotes: customer.clientNotes || localClientNotes.get(customer.id) || [],
+        clientNotes: customer.clientNotes?.length ? customer.clientNotes : localClientNotes.get(customer.id) || [],
         invoices: (customer.invoices || []).map((invoice) => ({
             ...invoice,
             attachments: invoice.attachments || localInvoiceExtras.get(invoice.id)?.attachments || [],
@@ -2012,7 +2310,7 @@ function decorateInvoice(customer, invoice) {
         customerContact: customer.contact || "",
         customerStatus: customer.status || "",
         manager: customer.manager || "Unassigned",
-        description: invoice.description || invoice.invoiceNumber || "Xero invoice",
+        description: invoice.description || "Xero invoice",
         notesSummary: noteSnippet(invoice),
     };
 }
@@ -2189,6 +2487,60 @@ function contactXeroURL(client) {
     return contactId
         ? `https://go.xero.com/Contacts/View/${encodeURIComponent(contactId)}`
         : "#";
+}
+
+function renderXeroContactDetails(client) {
+    const target = document.getElementById("xeroContactDetails");
+    if (!target) return;
+    target.innerHTML = "";
+    if (!client) return;
+
+    const addCard = (label, value, options = {}) => {
+        if (!value) return;
+        const card = document.createElement("div");
+        card.className = "xero-contact-card";
+        const heading = document.createElement("span");
+        heading.textContent = label;
+        const body = options.href ? document.createElement("a") : document.createElement("strong");
+        body.textContent = value;
+        if (options.href) body.href = options.href;
+        card.append(heading, body);
+        target.appendChild(card);
+    };
+
+    addCard("Telephone", client.phone, client.phone ? { href: `tel:${client.phone.replace(/\s+/g, "")}` } : {});
+    addCard("Email", client.email, client.email ? { href: `mailto:${client.email}` } : {});
+    addCard("Account number", client.accountNumber);
+
+    const addresses = Array.isArray(client.addresses) ? client.addresses.filter((address) => address?.address) : [];
+    if (addresses.length) {
+        addCard("Address", addresses[0].address);
+    }
+
+    const people = Array.isArray(client.contactPeople) ? client.contactPeople.filter((person) => person?.name || person?.email) : [];
+    if (people.length) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "xero-contact-card";
+        const heading = document.createElement("strong");
+        heading.textContent = "Contact people";
+        const list = document.createElement("div");
+        list.className = "xero-contact-people";
+        people.slice(0, 5).forEach((person) => {
+            const item = document.createElement("div");
+            item.className = "xero-contact-person";
+            const name = document.createElement("strong");
+            name.textContent = person.name || "Unnamed contact";
+            item.appendChild(name);
+            if (person.email) {
+                const email = document.createElement("small");
+                email.textContent = person.email;
+                item.appendChild(email);
+            }
+            list.appendChild(item);
+        });
+        wrapper.append(heading, list);
+        target.appendChild(wrapper);
+    }
 }
 
 function statusTooltip(category) {
@@ -2468,12 +2820,12 @@ function renderInvoiceTable() {
     if (isSyncing && !paged.length) {
         for (let index = 0; index < 5; index += 1) {
             const row = document.createElement("tr");
-            row.innerHTML = `<td colspan="9"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
+            row.innerHTML = `<td colspan="8"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
             tbody.appendChild(row);
         }
     } else if (!paged.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="9"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+        row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
         tbody.appendChild(row);
     } else {
         paged.forEach((invoice) => {
@@ -2483,19 +2835,21 @@ function renderInvoiceTable() {
             row.className = `${invoice.id === selectedInvoiceId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
                 <td class="select-cell"><input class="invoice-select" type="checkbox" aria-label="Select invoice ${invoice.invoiceNumber || invoice.id}" ${selectedInvoiceIds.has(invoice.id) ? "checked" : ""}></td>
-                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div></td>
+                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div><div class="client-inline-status">${statusPill(invoice)}</div></td>
                 <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
-                <td data-column="description"><div class="description-cell"><div class="description-icon">${descriptionGlyph(invoice)}</div><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">${invoice.customerStatus || "Live Xero contact"}</div></div></div></td>
+                <td data-column="description"><div class="description-cell"><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">Due ${formatDate(invoice.dueDate)}</div></div></div></td>
                 <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
                 <td data-column="paid"><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${iconSVG(category)}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="paid-date">${progress}% paid · ${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
-                <td data-column="status">${statusPill(invoice)}</td>
                 <td data-column="notes"><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
-                <td><div class="row-actions" aria-label="Invoice quick actions">
-                    <button class="row-action-button" type="button" data-row-action="call" title="Call client">${iconSVG("call")}</button>
-                    <button class="row-action-button" type="button" data-row-action="email" title="Email client">${iconSVG("email")}</button>
-                    <button class="row-action-button" type="button" data-row-action="note" title="Add note">${iconSVG("note")}</button>
-                    <button class="row-action-button" type="button" data-row-action="status" title="Update status">${iconSVG("status")}</button>
-                    <button class="row-action-button" type="button" data-row-action="xero" title="Open invoice in Xero">${iconSVG("xero")}</button>
+                <td class="actions-cell"><div class="row-actions" aria-label="Invoice quick actions">
+                    <button class="row-action-trigger" type="button" title="Quick actions">${iconSVG("status")}</button>
+                    <div class="row-action-menu">
+                        <button class="row-action-button" type="button" data-row-action="call" title="Call client">${iconSVG("call")}</button>
+                        <button class="row-action-button" type="button" data-row-action="email" title="Email client">${iconSVG("email")}</button>
+                        <button class="row-action-button" type="button" data-row-action="note" title="Add note">${iconSVG("note")}</button>
+                        <button class="row-action-button" type="button" data-row-action="status" title="Update status">${iconSVG("status")}</button>
+                        <button class="row-action-button" type="button" data-row-action="xero" title="Open invoice in Xero">${iconSVG("xero")}</button>
+                    </div>
                 </div></td>
             `;
             row.querySelector(".invoice-select").addEventListener("click", (event) => {
@@ -2513,6 +2867,9 @@ function renderInvoiceTable() {
                     event.stopPropagation();
                     handleRowAction(button.dataset.rowAction, invoice);
                 });
+            });
+            row.querySelector(".row-action-trigger")?.addEventListener("click", (event) => {
+                event.stopPropagation();
             });
             row.addEventListener("click", () => {
                 selectedInvoiceId = invoice.id;
@@ -2556,8 +2913,10 @@ function renderPagination(totalResults, totalPages, start, count) {
 function renderClientScreen() {
     const ledgerView = document.getElementById("ledgerView");
     const clientScreen = document.getElementById("clientScreen");
+    const settingsScreen = document.getElementById("settingsScreen");
     ledgerView.hidden = activeView !== "ledger";
     clientScreen.hidden = activeView !== "client";
+    if (settingsScreen) settingsScreen.hidden = activeView !== "settings";
     if (activeView !== "client") return;
 
     const invoice = findInvoiceById(selectedInvoiceId);
@@ -2568,13 +2927,15 @@ function renderClientScreen() {
     selectedClientId = client?.id || selectedInvoice?.customerId || null;
 
     document.getElementById("clientTitle").textContent = client?.name || "No client selected";
+    const contactLabel = client?.primaryPerson || client?.contact || client?.email || client?.phone || "Xero contact";
     document.getElementById("clientMeta").textContent = client
-        ? `${client.contact || "Xero contact"} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"} · ${client.manager || "Unassigned"}`
+        ? `${contactLabel} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"} · ${client.manager || "Unassigned"}`
         : "Select an invoice from the ledger to open the client workspace.";
 
     const openInvoices = invoices.filter((item) => invoiceCategory(item) !== "paid");
-    const totalDue = invoices.reduce((sum, item) => sum + Number(item.amountDue || 0), 0);
-    const overdueCount = invoices.filter((item) => invoiceCategory(item) === "overdue").length;
+    const accountInterest = accountInterestTotals(invoices);
+    const totalDue = accountInterest.principal;
+    const overdueCount = accountInterest.overdueInvoiceCount;
     const noticeInvoices = invoices.filter(isSevenDayNoticeInvoice).sort((a, b) => sevenDayNoticeSortValue(a) - sevenDayNoticeSortValue(b));
     const clientStatusBadge = document.getElementById("clientStatusBadge");
     clientStatusBadge.textContent = client
@@ -2601,7 +2962,10 @@ function renderClientScreen() {
     document.getElementById("selectedInvoiceSummary").textContent = selectedInvoice
         ? `${selectedInvoice.invoiceNumber || "Invoice"} · ${formatCurrency(selectedInvoice.amountDue || 0)} due`
         : "--";
-    document.getElementById("clientContactSummary").textContent = client?.contact || "No contact details";
+    document.getElementById("clientContactSummary").textContent = client
+        ? client.primaryPerson || client.contact || client.email || client.phone || client.name || "No contact details"
+        : "No contact details";
+    renderXeroContactDetails(client);
     const xeroLink = document.getElementById("selectedInvoiceXeroLink");
     const xeroUrl = invoiceXeroURL(selectedInvoice);
     xeroLink.href = xeroUrl;
@@ -2621,10 +2985,10 @@ function renderClientScreen() {
     emailLink.hidden = emailHref === "#";
     emailLink.innerHTML = `${iconSVG("email")}Email`;
 
-    document.getElementById("interestInfoText").textContent = selectedInvoice
-        ? `For ${selectedInvoice.invoiceNumber || "this invoice"}, court costs would be £${Number(selectedInvoice.latePayment?.court_cost || selectedInvoice.latePayment?.courtCost || 35).toFixed(0)} and statutory interest so far is £${Number(selectedInvoice.latePayment?.interest || 0).toFixed(2)}.`
-        : "Statutory interest and court-cost guidance will appear here for the selected invoice.";
-    renderInterestBreakdown(selectedInvoice);
+    document.getElementById("interestInfoText").textContent = client
+        ? `For ${client.name || "this client"}, statutory interest is calculated across the whole overdue account balance, not whichever invoice is selected.`
+        : "Account-level statutory interest and court-cost guidance will appear here for this client.";
+    renderInterestBreakdown(invoices);
 
     renderClientInvoicePicker(invoices);
     renderClientInvoiceList(invoices);
@@ -2633,31 +2997,66 @@ function renderClientScreen() {
     renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
     renderTimeline("paymentPlanTimeline", selectedInvoice?.promises || [], { eyebrow: "No payment plans", title: "Payment commitments will appear here", body: "Record promised amounts, dates and context against this invoice." });
     renderTimeline("attachmentTimeline", selectedInvoice?.attachments || [], { eyebrow: "No attachments", title: "Proof and correspondence will appear here", body: "Add attachment records for remittances, emails or supporting correspondence." });
-    renderTimeline("auditTrailTimeline", auditTrailItems(client, selectedInvoice), { eyebrow: "No audit activity", title: "Audit trail will appear here", body: "Sync, note, and status activity will be shown here for review." });
+    renderTimeline("auditTrailTimeline", auditTrailItems(client, invoices), { eyebrow: "No audit activity", title: "Audit trail will appear here", body: "Sync, note, and status activity will be shown here for review." });
 }
 
-function renderInterestBreakdown(invoice) {
+function courtCostForAmount(amountDue) {
+    const amount = Number(amountDue || 0);
+    if (amount <= 0) return 0;
+    if (amount <= 300) return 35;
+    if (amount <= 500) return 50;
+    if (amount <= 1000) return 70;
+    if (amount <= 1500) return 80;
+    if (amount <= 3000) return 115;
+    if (amount <= 5000) return 205;
+    return 455;
+}
+
+function accountInterestTotals(invoices) {
+    const openInvoices = (invoices || []).filter((invoice) => Number(invoice.amountDue || 0) > 0);
+    const overdueInvoices = openInvoices.filter((invoice) => Number(invoice.overdueDays || 0) > 0);
+    const principal = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+    const overduePrincipal = overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+    const interest = overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.latePayment?.interest || 0), 0);
+    const dailyInterest = overdueInvoices.reduce((sum, invoice) => {
+        const overdueDays = Number(invoice.overdueDays || 0);
+        return sum + (overdueDays > 0 ? Number(invoice.latePayment?.interest || 0) / overdueDays : 0);
+    }, 0);
+    const maxOverdueDays = overdueInvoices.reduce((max, invoice) => Math.max(max, Number(invoice.overdueDays || 0)), 0);
+    return {
+        principal,
+        overduePrincipal,
+        interest,
+        courtCost: courtCostForAmount(overduePrincipal),
+        dailyInterest,
+        overdueInvoiceCount: overdueInvoices.length,
+        maxOverdueDays,
+    };
+}
+
+function renderInterestBreakdown(invoices) {
     const target = document.getElementById("interestBreakdownPanel");
     if (!target) return;
-    const amountDue = Number(invoice?.amountDue || 0);
-    const overdueDays = Number(invoice?.overdueDays || 0);
-    const interest = Number(invoice?.latePayment?.interest || 0);
-    const courtCost = Number(invoice?.latePayment?.court_cost || invoice?.latePayment?.courtCost || 35);
-    const dailyInterest = overdueDays > 0 ? interest / overdueDays : 0;
-    const rows = invoice ? [
-        ["Principal due", formatCurrency(amountDue)],
-        ["Days overdue", `${overdueDays}`],
-        ["Interest accrued", formatCurrency(interest)],
-        ["Court-cost guide", formatCurrency(courtCost)],
+    const totals = accountInterestTotals(invoices || []);
+    const hasAccount = (invoices || []).length > 0;
+    const rows = hasAccount ? [
+        ["Principal due", formatCurrency(totals.principal)],
+        ["Overdue principal", formatCurrency(totals.overduePrincipal)],
+        ["Overdue invoices", `${totals.overdueInvoiceCount}`],
+        ["Max days overdue", `${totals.maxOverdueDays}`],
+        ["Interest accrued", formatCurrency(totals.interest)],
+        ["Court-cost guide", formatCurrency(totals.courtCost)],
     ] : [
         ["Principal due", "--"],
-        ["Days overdue", "--"],
+        ["Overdue principal", "--"],
+        ["Overdue invoices", "--"],
+        ["Max days overdue", "--"],
         ["Interest accrued", "--"],
         ["Court-cost guide", "--"],
     ];
     target.innerHTML = rows.map(([label, value]) => `<article class="interest-breakdown-card"><span>${label}</span><strong>${value}</strong></article>`).join("");
-    if (invoice && dailyInterest > 0) {
-        target.insertAdjacentHTML("beforeend", `<article class="interest-breakdown-card"><span>Daily interest</span><strong>${formatCurrency(dailyInterest)}</strong></article>`);
+    if (hasAccount && totals.dailyInterest > 0) {
+        target.insertAdjacentHTML("beforeend", `<article class="interest-breakdown-card"><span>Daily interest</span><strong>${formatCurrency(totals.dailyInterest)}</strong></article>`);
     }
 }
 
@@ -2712,15 +3111,16 @@ function clientStatusItems(invoices) {
     })));
 }
 
-function auditTrailItems(client, selectedInvoice) {
+function auditTrailItems(client, invoices) {
     const clientId = client?.id;
-    const invoiceId = selectedInvoice?.id;
+    const invoiceIds = new Set((invoices || []).map((invoice) => invoice.id));
     const fromState = (state.audit || [])
         .filter((item) => {
-            if (!clientId && !invoiceId) return true;
+            if (!clientId && !invoiceIds.size) return true;
             return item.customerId === clientId
                 || item.clientId === clientId
-                || item.invoiceId === invoiceId;
+                || invoiceIds.has(item.invoiceId)
+                || invoiceIds.has(item.entityId);
         })
         .map((item) => ({
             title: item.title || item.action || "Audit activity",
@@ -2731,17 +3131,19 @@ function auditTrailItems(client, selectedInvoice) {
     (client?.clientNotes || []).forEach((item) => {
         generated.push({ title: item.title || "Client note", body: item.body || "", stamp: item.stamp || "" });
     });
-    (selectedInvoice?.notes || []).forEach((item) => {
-        generated.push({ title: item.title || "Invoice note", body: item.body || "", stamp: item.stamp || "" });
-    });
-    (selectedInvoice?.statuses || []).forEach((item) => {
-        generated.push({ title: item.title || "Status update", body: item.body || "", stamp: item.stamp || "" });
-    });
-    (selectedInvoice?.promises || []).forEach((item) => {
-        generated.push({ title: item.title || "Payment plan", body: item.body || "", stamp: item.stamp || "" });
-    });
-    (selectedInvoice?.attachments || []).forEach((item) => {
-        generated.push({ title: item.title || "Attachment", body: item.body || "", stamp: item.stamp || "" });
+    (invoices || []).forEach((invoice) => {
+        (invoice.notes || []).forEach((item) => {
+            generated.push({ title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Invoice note"}`, body: item.body || "", stamp: item.stamp || "" });
+        });
+        (invoice.statuses || []).forEach((item) => {
+            generated.push({ title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Status update"}`, body: item.body || "", stamp: item.stamp || "" });
+        });
+        (invoice.promises || []).forEach((item) => {
+            generated.push({ title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Payment plan"}`, body: item.body || "", stamp: item.stamp || "" });
+        });
+        (invoice.attachments || []).forEach((item) => {
+            generated.push({ title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Attachment"}`, body: item.body || "", stamp: item.stamp || "" });
+        });
     });
     return [...fromState, ...generated]
         .sort((a, b) => dateSortValue(b.stamp) - dateSortValue(a.stamp))
@@ -2795,7 +3197,7 @@ function renderChrome() {
         const button = document.getElementById(buttonId);
         if (!button) return;
         button.disabled = !connected || isSyncing;
-        button.textContent = isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "menuSyncButton" ? "Resync from Xero" : "Run sync") : "Connect Xero to sync";
+        button.textContent = isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "menuSyncButton" ? "Resync from Xero" : "Run import") : "Connect Xero to sync";
         button.title = isSyncing ? "Please wait while Xero data is imported" : connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
         button.setAttribute("aria-disabled", String(!connected || isSyncing));
     });
@@ -2805,7 +3207,7 @@ function renderChrome() {
     }
 }
 
-const syncButtonIds = ["menuSyncButton", "sidebarSyncButton"];
+const syncButtonIds = ["menuSyncButton", "sidebarSyncButton", "settingsRunSyncButton"];
 
 function isXeroConnected() {
     return state.organisation.xeroConnected === true;
@@ -3015,20 +3417,39 @@ function mergeBrowserDeveloperLogs(logs) {
     return lastBrowserSyncLog ? [lastBrowserSyncLog, ...logs] : logs;
 }
 
-function renderDeveloperLogs(logs) {
+function localDateKey(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function developerLogVisibleEntries() {
+    if (!developerLogDateFilter) return developerLogEntries;
+    return developerLogEntries.filter((entry) => localDateKey(entry.createdAt) === developerLogDateFilter);
+}
+
+function renderDeveloperLogs(logs = developerLogEntries) {
+    developerLogEntries = Array.isArray(logs) ? logs : [];
+    const visibleLogs = developerLogVisibleEntries();
     const list = document.getElementById("developerLogList");
     const summary = document.getElementById("developerLogSummary");
     if (!list) return;
     list.innerHTML = "";
-    if (summary) summary.textContent = `${logs.length} recent sync event${logs.length === 1 ? "" : "s"}`;
-    if (!logs.length) {
+    if (summary) {
+        const suffix = developerLogDateFilter ? ` for ${developerLogDateFilter}` : "";
+        summary.textContent = `${visibleLogs.length} of ${developerLogEntries.length} recent sync event${developerLogEntries.length === 1 ? "" : "s"}${suffix}`;
+    }
+    if (!visibleLogs.length) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
-        empty.textContent = "No developer log entries yet.";
+        empty.textContent = developerLogDateFilter ? "No developer log entries for the selected date." : "No developer log entries yet.";
         list.appendChild(empty);
         return;
     }
-    logs.forEach((entry) => {
+    visibleLogs.forEach((entry) => {
         const article = document.createElement("article");
         article.className = `developer-log-entry ${entry.level === "error" ? "is-error" : ""}`;
 
@@ -3054,6 +3475,45 @@ function renderDeveloperLogs(logs) {
         }
         list.appendChild(article);
     });
+}
+
+function developerLogCopyText() {
+    return developerLogVisibleEntries().map((entry) => {
+        const lines = [
+            `[${formatDeveloperLogStamp(entry.createdAt)}] ${entry.level || ""} ${entry.eventType || ""} ${entry.syncStatus || ""}`.trim(),
+            entry.message || "",
+        ];
+        if (entry.payload && Object.keys(entry.payload).length) {
+            lines.push(JSON.stringify(entry.payload, null, 2));
+        }
+        return lines.filter(Boolean).join("\n");
+    }).join("\n\n---\n\n");
+}
+
+async function copyDeveloperLogs() {
+    const text = developerLogCopyText();
+    if (!text) {
+        showToast("No developer logs to copy", "info");
+        return;
+    }
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            textarea.style.left = "-9999px";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            textarea.remove();
+        }
+        showToast("Developer logs copied", "success");
+    } catch (error) {
+        console.error("Unable to copy developer logs", error);
+        showToast("Unable to copy developer logs", "error");
+    }
 }
 
 async function loadDeveloperLog() {
@@ -3120,12 +3580,45 @@ function syncRunCountSummary(syncRun) {
 }
 
 function currentSyncOptions() {
-    return { invoiceScope: syncSettings.invoiceScope };
+    return { invoiceScope: syncSettings.invoiceScope, invoiceYears: syncSettings.invoiceYears || [] };
+}
+
+function availableImportYears() {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 8 }, (_, index) => currentYear - index);
+}
+
+function selectedYearLabel() {
+    const years = syncSettings.invoiceYears || [];
+    return years.length ? years.join(", ") : "No years selected";
 }
 
 function renderSyncSettings() {
     const select = document.getElementById("syncScopeSelect");
     if (select) select.value = syncSettings.invoiceScope;
+
+    const importYearOptions = document.getElementById("importYearOptions");
+    if (importYearOptions) {
+        const selectedYears = new Set(syncSettings.invoiceYears || []);
+        importYearOptions.innerHTML = availableImportYears().map((year) => `
+            <label>
+                <input type="checkbox" value="${year}" ${selectedYears.has(year) ? "checked" : ""}>
+                ${year}
+            </label>
+        `).join("");
+        importYearOptions.querySelectorAll("input").forEach((input) => {
+            input.addEventListener("change", () => {
+                syncSettings = {
+                    ...syncSettings,
+                    invoiceYears: [...importYearOptions.querySelectorAll("input:checked")]
+                        .map((item) => Number(item.value))
+                        .sort((a, b) => a - b)
+                };
+                persistSyncSettings();
+                renderSyncSettings();
+            });
+        });
+    }
 
     const status = document.getElementById("syncSettingsStatus");
     if (!status) return;
@@ -3144,6 +3637,7 @@ function renderSyncSettings() {
         const remainingInvoices = Math.max(invoicesTotal - invoicesSynced, 0);
         status.innerHTML = `
             <span>Filter: ${scopeLabel}</span>
+            <span>Years: ${selectedYearLabel()}</span>
             <span>Imported: ${customersSynced.toLocaleString("en-GB")} contacts, ${invoicesSynced.toLocaleString("en-GB")} invoices</span>
             <span>Remaining this stage: ${remainingContacts.toLocaleString("en-GB")} contacts, ${remainingInvoices.toLocaleString("en-GB")} invoices</span>
         `;
@@ -3152,8 +3646,9 @@ function renderSyncSettings() {
 
     status.innerHTML = `
         <span>Filter: ${scopeLabel}</span>
+        <span>Years: ${selectedYearLabel()}</span>
         <span>Imported locally: ${openCount.toLocaleString("en-GB")} open, ${paidCount.toLocaleString("en-GB")} paid</span>
-        <span>Remaining: run the next stage when ready</span>
+        <span>Remaining: ${syncSettings.invoiceYears?.length ? "run the next stage when ready" : "select at least one year before importing"}</span>
     `;
 }
 
@@ -3262,6 +3757,7 @@ function shouldAutoStartInitialSync() {
     return isXeroConnected()
         && !isSyncing
         && !hasAutoStartedInitialSync
+        && Boolean(syncSettings.invoiceYears?.length)
         && !hasCompletedSync()
         && allInvoices().length === 0;
 }
@@ -3306,6 +3802,12 @@ async function runXeroSync({ automatic = false } = {}) {
             label: "Connect Xero",
             onClick: () => window.location.assign(loginURL())
         });
+        return;
+    }
+    if (!syncSettings.invoiceYears?.length) {
+        activeView = "settings";
+        renderAll();
+        showToast("Select at least one invoice year before importing from Xero.", "info");
         return;
     }
     let keepFailureBanner = false;
@@ -3450,6 +3952,25 @@ function wireLoginButtons() {
     });
     const refreshDeveloperLogButton = document.getElementById("refreshDeveloperLogButton");
     if (refreshDeveloperLogButton) refreshDeveloperLogButton.addEventListener("click", loadDeveloperLog);
+    const copyDeveloperLogButton = document.getElementById("copyDeveloperLogButton");
+    if (copyDeveloperLogButton) copyDeveloperLogButton.addEventListener("click", copyDeveloperLogs);
+    const developerLogDateInput = document.getElementById("developerLogDateFilter");
+    if (developerLogDateInput) developerLogDateInput.addEventListener("change", () => {
+        developerLogDateFilter = developerLogDateInput.value;
+        renderDeveloperLogs();
+    });
+    const developerLogTodayButton = document.getElementById("developerLogTodayButton");
+    if (developerLogTodayButton) developerLogTodayButton.addEventListener("click", () => {
+        developerLogDateFilter = localDateKey();
+        if (developerLogDateInput) developerLogDateInput.value = developerLogDateFilter;
+        renderDeveloperLogs();
+    });
+    const developerLogClearDateButton = document.getElementById("developerLogClearDateButton");
+    if (developerLogClearDateButton) developerLogClearDateButton.addEventListener("click", () => {
+        developerLogDateFilter = "";
+        if (developerLogDateInput) developerLogDateInput.value = "";
+        renderDeveloperLogs();
+    });
     const closeDeveloperLogButton = document.getElementById("closeDeveloperLogButton");
     if (closeDeveloperLogButton) closeDeveloperLogButton.addEventListener("click", closeDeveloperLog);
     const developerLogPanel = document.getElementById("developerLogPanel");
@@ -3481,13 +4002,20 @@ function wireSyncButtons() {
     if (syncScopeSelect) {
         syncScopeSelect.value = syncSettings.invoiceScope;
         syncScopeSelect.addEventListener("change", () => {
-            syncSettings = { invoiceScope: syncScopeSelect.value };
+            syncSettings = { ...syncSettings, invoiceScope: syncScopeSelect.value };
             persistSyncSettings();
             renderSyncSettings();
         });
     }
+    const menuSettingsButton = document.getElementById("menuSettingsButton");
+    if (menuSettingsButton) menuSettingsButton.addEventListener("click", () => {
+        activeView = "settings";
+        renderAll();
+    });
     const menuSyncButton = document.getElementById("menuSyncButton");
     if (menuSyncButton) menuSyncButton.addEventListener("click", () => runXeroSync());
+    const settingsRunSyncButton = document.getElementById("settingsRunSyncButton");
+    if (settingsRunSyncButton) settingsRunSyncButton.addEventListener("click", () => runXeroSync());
     const sidebarSyncButton = document.getElementById("sidebarSyncButton");
     if (sidebarSyncButton) sidebarSyncButton.addEventListener("click", () => runXeroSync());
     const syncRetryButton = document.getElementById("syncRetryButton");
@@ -3506,8 +4034,53 @@ function wireSevenDayNoticeCard() {
     });
 }
 
+async function applyClientStatus(client, statusValue, note = "", options = {}) {
+    if (!client) return false;
+    const invoiceIds = (client.invoices || [])
+        .filter((invoice) => invoiceCategory(decorateInvoice(client, invoice)) !== "paid")
+        .map((invoice) => invoice.id);
+    if (!invoiceIds.length) {
+        showToast("No open invoices to update for this client", "info");
+        return false;
+    }
+    const confirmText = options.confirmText
+        || `Update ${invoiceIds.length} open invoice${invoiceIds.length === 1 ? "" : "s"} for ${client.name || "this client"} to "${statusValue}"?`;
+    if (!options.skipConfirm && !window.confirm(confirmText)) return false;
+
+    const stamp = new Date().toISOString();
+    invoiceIds.forEach((invoiceId) => {
+        const match = mutableInvoiceById(invoiceId);
+        if (!match) return;
+        match.invoice.controlStatus = statusValue;
+        match.invoice.lastChasedAt = stamp;
+        match.invoice.statuses = [{ title: statusValue, body: note, stamp }, ...(match.invoice.statuses || [])];
+    });
+    persistState();
+    renderAll();
+    showToast(options.localMessage || "Client invoice statuses updated", "success");
+
+    try {
+        const results = await Promise.allSettled(invoiceIds.map((invoiceId) =>
+            requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId })
+        ));
+        if (results.some((result) => result.status === "rejected")) throw new Error("One or more status updates failed");
+        await hydrateFromAPI();
+        renderAll();
+        showToast(options.syncedMessage || "Bulk status synced", "success");
+        return true;
+    } catch (error) {
+        console.error("Unable to save bulk status", error);
+        showToast("Unable to sync bulk status", "error");
+        return false;
+    }
+}
+
 function wireForms() {
     document.getElementById("backToLedgerButton").addEventListener("click", () => {
+        activeView = "ledger";
+        renderAll();
+    });
+    document.getElementById("backFromSettingsButton").addEventListener("click", () => {
         activeView = "ledger";
         renderAll();
     });
@@ -3516,7 +4089,7 @@ function wireForms() {
         renderClientScreen();
     });
 
-    document.getElementById("clientNoteForm").addEventListener("submit", (event) => {
+    document.getElementById("clientNoteForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
         const body = document.getElementById("clientNoteInput").value.trim();
@@ -3525,7 +4098,21 @@ function wireForms() {
         document.getElementById("clientNoteInput").value = "";
         persistState();
         renderClientScreen();
-        showToast("Client note saved", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+        showToast("Client note saved locally", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+        try {
+            const payload = await requestJSON(api.endpoints.customerNote, { method: "POST", body: JSON.stringify({ body }) }, { customerId: client.id });
+            if (payload?.panel) replaceState(normaliseState(payload.panel));
+            else await hydrateFromAPI();
+            renderAll();
+            if (payload?.xeroNoteSynced) {
+                showToast("Client note saved and added to Xero", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+            } else {
+                showToast(`Client note saved locally. Xero note was not added: ${payload?.xeroNoteError || "Reconnect Xero and try again."}`, "error");
+            }
+        } catch (error) {
+            console.error("Unable to save client note", error);
+            showToast("Unable to sync client note", "error");
+        }
     });
 
     document.getElementById("invoiceNoteForm").addEventListener("submit", async (event) => {
@@ -3539,10 +4126,14 @@ function wireForms() {
         renderAll();
         showToast("Invoice note saved locally", "success", { label: "View audit trail", onClick: scrollAuditTrail });
         try {
-            await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: match.invoice.id });
+            const payload = await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: match.invoice.id });
             await hydrateFromAPI();
             renderAll();
-            showToast("Invoice note synced", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+            if (payload?.xeroNoteSynced) {
+                showToast("Invoice note saved and added to Xero", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+            } else {
+                showToast(`Invoice note saved locally. Xero note was not added: ${payload?.xeroNoteError || "Reconnect Xero and try again."}`, "error");
+            }
         } catch (error) {
             console.error("Unable to save invoice note", error);
             showToast("Unable to sync invoice note", "error");
@@ -3604,35 +4195,19 @@ function wireForms() {
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
         const statusValue = document.getElementById("bulkStatusSelect").value;
         const note = document.getElementById("bulkStatusNote").value.trim();
-        if (!client) return;
-        const invoiceIds = (client.invoices || [])
-            .filter((invoice) => invoiceCategory(decorateInvoice(client, invoice)) !== "paid")
-            .map((invoice) => invoice.id);
-        if (!window.confirm(`Update ${invoiceIds.length} open invoice${invoiceIds.length === 1 ? "" : "s"} for ${client.name || "this client"} to "${statusValue}"?`)) return;
-        const stamp = new Date().toISOString();
-        invoiceIds.forEach((invoiceId) => {
-            const match = mutableInvoiceById(invoiceId);
-            if (!match) return;
-            match.invoice.controlStatus = statusValue;
-            match.invoice.lastChasedAt = stamp;
-            match.invoice.statuses = [{ title: statusValue, body: note, stamp }, ...(match.invoice.statuses || [])];
-        });
-        document.getElementById("bulkStatusNote").value = "";
-        persistState();
-        renderAll();
-        showToast("Client invoice statuses updated", "success");
-        try {
-            const results = await Promise.allSettled(invoiceIds.map((invoiceId) =>
-                requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId })
-            ));
-            if (results.some((result) => result.status === "rejected")) throw new Error("One or more status updates failed");
-            await hydrateFromAPI();
-            renderAll();
-            showToast("Bulk status synced", "success");
-        } catch (error) {
-            console.error("Unable to save bulk status", error);
-            showToast("Unable to sync bulk status", "error");
+        if (await applyClientStatus(client, statusValue, note)) {
+            document.getElementById("bulkStatusNote").value = "";
         }
+    });
+
+    document.getElementById("markClientLegalButton").addEventListener("click", async () => {
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const note = "Moved all open invoices to Legal from the client file.";
+        await applyClientStatus(client, "Legal", note, {
+            confirmText: `Move every open invoice for ${client?.name || "this client"} into Legal?`,
+            localMessage: "Open invoices moved to Legal",
+            syncedMessage: "Legal status synced",
+        });
     });
 }
 
