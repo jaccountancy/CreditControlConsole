@@ -1494,6 +1494,42 @@ body.is-dense .note-snippet {
     font: 0.78rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     white-space: pre-wrap;
 }
+.help-card {
+    width: min(980px, 100%);
+}
+.help-content {
+    display: grid;
+    gap: 18px;
+    overflow: auto;
+    padding: 20px 24px 26px;
+}
+.help-section {
+    display: grid;
+    gap: 8px;
+    padding: 0 0 18px;
+    border-bottom: 1px solid var(--line);
+}
+.help-section:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+.help-section h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+.help-section p,
+.help-section li {
+    margin: 0;
+    color: #42536f;
+    font-size: 0.94rem;
+    font-weight: 700;
+    line-height: 1.55;
+}
+.help-section ul,
+.help-section ol {
+    margin: 0;
+    padding-left: 20px;
+}
 .toast-stack {
     position: fixed;
     right: 24px;
@@ -1679,6 +1715,7 @@ body.is-syncing .sync-dot {
                 <div class="xero-connect-wrap topbar-menu-wrap" id="topbarMenuWrap">
                     <button class="primary-button" id="topbarMenuButton" type="button" aria-haspopup="true">Menu</button>
                     <div class="xero-action-menu" id="xeroActionMenu">
+                        <button type="button" id="helpButton">Help</button>
                         <button type="button" id="menuSettingsButton">Settings</button>
                         <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
                         <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
@@ -2096,6 +2133,68 @@ body.is-syncing .sync-dot {
             </div>
             <div class="developer-log-list" id="developerLogList">
                 <div class="empty-state">Open the log after a failed sync to see the exact backend response.</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="developer-log-panel" id="helpPanel" aria-modal="true" role="dialog" aria-labelledby="helpTitle" hidden>
+        <div class="developer-log-card help-card">
+            <div class="developer-log-head">
+                <div>
+                    <h3 id="helpTitle">Help</h3>
+                    <p>How the Credit Control Console works from first sync through daily chasing.</p>
+                </div>
+                <div class="developer-log-actions">
+                    <button class="ghost-button" id="closeHelpButton" type="button">Close</button>
+                </div>
+            </div>
+            <div class="help-content">
+                <section class="help-section">
+                    <h4>What this console does</h4>
+                    <p>The console connects to Xero, imports sales invoices and contacts, then organises them into a credit-control ledger. It groups invoices by client, shows outstanding balances, highlights overdue accounts, tracks local credit-control notes, and lets you push notes back into Xero so the account history is visible outside this tool too.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Where things are</h4>
+                    <p>The Menu contains Help, Settings, Resync from Xero, Connect or Disconnect Xero, Developer log, and Back to Jenius. The top of the ledger shows totals and status chips. The toolbar controls search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                </section>
+                <section class="help-section">
+                    <h4>First sync</h4>
+                    <ol>
+                        <li>Open Menu, then Settings.</li>
+                        <li>Choose the invoice years you want to import. No years are selected by default so you stay in control of the data volume.</li>
+                        <li>Choose the data filter. Outstanding invoices only is fastest. Full invoice history imports the biggest dataset.</li>
+                        <li>Run import. The first sync has to build the local ledger from scratch, so it can take longer while contacts, outstanding invoices, and any selected paid invoice history are pulled from Xero.</li>
+                    </ol>
+                </section>
+                <section class="help-section">
+                    <h4>Resyncs after the first import</h4>
+                    <p>Later syncs are designed to be quicker. Once the selected years already exist locally, the backend asks Xero for records changed since the last successful sync, with a small overlap window so changes made during the previous sync are not missed. It still performs a fuller fetch if you add a new invoice year or expand the history scope, because those older invoices may not exist locally yet.</p>
+                    <p>The resync also fetches changed sales invoices broadly enough to catch status changes, for example an invoice moving from outstanding to paid, then recalculates client totals so the ledger stays current.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Behind the scenes</h4>
+                    <p>This screen is the embedded web console. It talks to the backend API, which stores the local ledger, sync settings, notes, audit entries, and Xero connection details. Xero remains the source for invoice and contact data, while the console adds the credit-control workflow on top: statuses, notes, letter generation, filters, and sync logs.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Ledger and client screens</h4>
+                    <p>The main ledger is the working list. Use the status chips, search, sort, filter, columns, dense table, export, and row actions to find invoices and open a client. Selecting a row opens the client screen, where you can review contact details, open invoices, interest guidance, invoice notes, client notes, status history, payment plans, attachments, and audit activity.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Letter templates and generated letters</h4>
+                    <p>Open Menu, then Settings, to create and edit letter templates. Templates can use fields such as {{client_name}}, {{contact_name}}, {{total_due}}, {{invoice_list}}, {{today}}, and selected invoice fields. On the client screen, choose a template in the Letters section and generate it. The generated letter is shown for review, can be copied, and is automatically saved as a client note.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Xero note write-back</h4>
+                    <p>When you add a client note, invoice note, or generated letter note, the console first saves it locally so the audit trail updates immediately. It then uses the connected Xero account to add a history note to the matching Xero contact or invoice. If Xero is disconnected or rejects the note, the local note remains and the app shows an error so you can reconnect or retry.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Settings, logs, and troubleshooting</h4>
+                    <p>Settings controls invoice import scope, import years, and letter templates. Developer log shows recent sync runs and backend/Xero errors, which is useful if a sync fails or Xero returns a permission, rate limit, or authentication message. If Xero is disconnected, use Connect Xero from the menu before syncing again.</p>
+                </section>
+                <section class="help-section">
+                    <h4>Leaving the console</h4>
+                    <p>Open Menu, then Back to Jenius, to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
+                </section>
             </div>
         </div>
     </section>
@@ -3894,6 +3993,16 @@ function closeDeveloperLog() {
     if (panel) panel.hidden = true;
 }
 
+function openHelpPanel() {
+    const panel = document.getElementById("helpPanel");
+    if (panel) panel.hidden = false;
+}
+
+function closeHelpPanel() {
+    const panel = document.getElementById("helpPanel");
+    if (panel) panel.hidden = true;
+}
+
 function formatSyncDuration(seconds) {
     if (seconds < 60) return `${seconds}s`;
     const minutes = Math.floor(seconds / 60);
@@ -4302,6 +4411,11 @@ function wireLoginButtons() {
     };
     const connectButton = document.getElementById("connectXeroButton");
     if (connectButton) connectButton.addEventListener("click", connect);
+    const helpButton = document.getElementById("helpButton");
+    if (helpButton) helpButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        openHelpPanel();
+    });
     const developerLogButton = document.getElementById("developerLogButton");
     if (developerLogButton) developerLogButton.addEventListener("click", (event) => {
         event.preventDefault();
@@ -4333,6 +4447,12 @@ function wireLoginButtons() {
     const developerLogPanel = document.getElementById("developerLogPanel");
     if (developerLogPanel) developerLogPanel.addEventListener("click", (event) => {
         if (event.target.id === "developerLogPanel") closeDeveloperLog();
+    });
+    const closeHelpButton = document.getElementById("closeHelpButton");
+    if (closeHelpButton) closeHelpButton.addEventListener("click", closeHelpPanel);
+    const helpPanel = document.getElementById("helpPanel");
+    if (helpPanel) helpPanel.addEventListener("click", (event) => {
+        if (event.target.id === "helpPanel") closeHelpPanel();
     });
     const disconnectXeroButton = document.getElementById("disconnectXeroButton");
     if (disconnectXeroButton) disconnectXeroButton.addEventListener("click", async (event) => {
