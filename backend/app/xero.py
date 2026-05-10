@@ -1,5 +1,6 @@
 import re
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from uuid import uuid4
 
 import httpx
@@ -292,24 +293,43 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
     return {"user": user, "connection": xero_connection}
 
 
-async def xero_api_get(connection_row: dict, url: str, params: dict | None = None) -> dict:
+def _modified_since_header_value(modified_since: datetime | None) -> str | None:
+    if modified_since is None:
+        return None
+    if modified_since.tzinfo is None:
+        modified_since = modified_since.replace(tzinfo=timezone.utc)
+    return format_datetime(modified_since.astimezone(timezone.utc), usegmt=True)
+
+
+async def xero_api_get(
+    connection_row: dict,
+    url: str,
+    params: dict | None = None,
+    modified_since: datetime | None = None,
+) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    headers = {
+        "Authorization": f'Bearer {connection_row["access_token"]}',
+        "xero-tenant-id": connection_row["tenant_id"],
+        "Accept": "application/json",
+    }
+    modified_since_header = _modified_since_header_value(modified_since)
+    if modified_since_header:
+        headers["If-Modified-Since"] = modified_since_header
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             response = await client.get(
                 url,
                 params=params,
-                headers={
-                    "Authorization": f'Bearer {connection_row["access_token"]}',
-                    "xero-tenant-id": connection_row["tenant_id"],
-                    "Accept": "application/json",
-                },
+                headers=headers,
             )
         except httpx.RequestError as exc:
             _raise_xero_request_error(exc, "API request")
         if response.is_error:
             _raise_xero_http_error(response, "API request")
+        if response.status_code == status.HTTP_304_NOT_MODIFIED or not response.content:
+            return {}
         return response.json()
 
 
@@ -353,6 +373,7 @@ async def fetch_paginated_collection(
     params: dict | None = None,
     max_pages: int | None = None,
     on_page=None,
+    modified_since: datetime | None = None,
 ) -> list[dict]:
     records: list[dict] = []
     page = 1
@@ -360,7 +381,12 @@ async def fetch_paginated_collection(
         if max_pages is not None and page > max_pages:
             return records
         try:
-            payload = await xero_api_get(connection_row, url, params={**(params or {}), "page": page})
+            payload = await xero_api_get(
+                connection_row,
+                url,
+                params={**(params or {}), "page": page},
+                modified_since=modified_since,
+            )
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if records and detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS:

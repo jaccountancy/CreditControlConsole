@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -20,11 +20,13 @@ from .xero import (
 
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
+ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
 OUTSTANDING_READY_STEP = "Backfilling paid invoices"
 WORKING_DATA_STEPS = (OUTSTANDING_READY_STEP, "Fetching paid invoices from Xero", "Backfilling paid invoices")
 DEFAULT_SYNC_SCOPE = "outstanding_only"
+INCREMENTAL_SYNC_OVERLAP = timedelta(minutes=5)
 SYNC_SCOPE_OPTIONS = {
     "outstanding_only": {
         "label": "Outstanding invoices only",
@@ -47,6 +49,7 @@ SYNC_SCOPE_OPTIONS = {
         "summary": "Import outstanding invoices and all paid invoice history.",
     },
 }
+SYNC_SCOPE_RANK = {scope: index for index, scope in enumerate(SYNC_SCOPE_OPTIONS)}
 
 
 def _json_default(value):
@@ -206,6 +209,124 @@ def _xero_year_filter(invoice_years: list[int]) -> str:
 def _with_invoice_year_filter(base_where: str, invoice_years: list[int]) -> str:
     year_filter = _xero_year_filter(invoice_years)
     return f"{base_where}&&{year_filter}" if year_filter else base_where
+
+
+def _latest_completed_sync_started_at(user_id: str) -> datetime | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COALESCE(started_at, created_at, completed_at) AS sync_started_at
+                FROM sync_runs
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND status = %s
+                  AND completed_at IS NOT NULL
+                ORDER BY completed_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                ("xero", user_id, "completed"),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+
+    return row["sync_started_at"] if row and row.get("sync_started_at") else None
+
+
+def _incremental_modified_since(user_id: str) -> datetime | None:
+    latest_started_at = _latest_completed_sync_started_at(user_id)
+    if latest_started_at is None:
+        return None
+    return latest_started_at - INCREMENTAL_SYNC_OVERLAP
+
+
+def _local_invoice_years_cover(tenant_id: str, invoice_years: list[int]) -> bool:
+    if not invoice_years:
+        return False
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT EXTRACT(YEAR FROM invoices.invoice_date)::INT AS invoice_year
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE customers.tenant_id = %s
+                  AND invoices.invoice_date IS NOT NULL
+                """,
+                (tenant_id,),
+            )
+            imported_years = {row["invoice_year"] for row in cursor.fetchall() if row.get("invoice_year")}
+        connection.commit()
+    return set(invoice_years).issubset(imported_years)
+
+
+def _sync_scope_from_summary(summary: str) -> str | None:
+    summary = summary.lower()
+    for scope, option in SYNC_SCOPE_OPTIONS.items():
+        if option["label"].lower() in summary:
+            return scope
+    if "outstanding sync complete" in summary or "outstanding invoices only" in summary:
+        return "outstanding_only"
+    return None
+
+
+def _completed_sync_covers_scope(user_id: str, invoice_scope: str) -> bool:
+    requested_rank = SYNC_SCOPE_RANK.get(invoice_scope, 0)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT summary, current_step
+                FROM sync_runs
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND status = %s
+                  AND completed_at IS NOT NULL
+                ORDER BY completed_at DESC, created_at DESC
+                LIMIT 20
+                """,
+                ("xero", user_id, "completed"),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+
+    for row in rows:
+        completed_scope = _sync_scope_from_summary(" ".join([row.get("summary") or "", row.get("current_step") or ""]))
+        if completed_scope is not None and SYNC_SCOPE_RANK.get(completed_scope, 0) >= requested_rank:
+            return True
+    return False
+
+
+def _refresh_customer_totals(cursor, tenant_id: str, updated_at: datetime) -> None:
+    cursor.execute(
+        """
+        UPDATE customers
+        SET total_due = 0,
+            overdue_amount = 0,
+            updated_at = %s
+        WHERE tenant_id = %s
+        """,
+        (updated_at, tenant_id),
+    )
+    cursor.execute(
+        """
+        UPDATE customers
+        SET total_due = totals.total_due,
+            overdue_amount = totals.overdue_amount,
+            updated_at = %s
+        FROM (
+            SELECT invoices.customer_id,
+                   COALESCE(SUM(invoices.amount_due), 0) AS total_due,
+                   COALESCE(SUM(CASE WHEN invoices.due_date < CURRENT_DATE AND invoices.amount_due > 0 THEN invoices.amount_due ELSE 0 END), 0) AS overdue_amount
+            FROM invoices
+            JOIN customers AS invoice_customers ON invoice_customers.id = invoices.customer_id
+            WHERE invoice_customers.tenant_id = %s
+            GROUP BY invoices.customer_id
+        ) AS totals
+        WHERE customers.id = totals.customer_id
+        """,
+        (updated_at, tenant_id),
+    )
 
 
 def record_sync_start_failure(user: dict, exc: Exception) -> None:
@@ -535,11 +656,38 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     sync_options = normalise_sync_options(sync_options)
     connection_row = get_xero_connection_for_user(user["id"])
     now = utcnow()
+    candidate_modified_since = _incremental_modified_since(user["id"])
+    years_are_already_imported = (
+        _local_invoice_years_cover(connection_row["tenant_id"], sync_options["invoice_years"])
+        if candidate_modified_since is not None
+        else False
+    )
+    modified_since = candidate_modified_since if years_are_already_imported else None
+    is_incremental_sync = modified_since is not None
+    scope_already_imported = (
+        _completed_sync_covers_scope(user["id"], sync_options["invoice_scope"])
+        if is_incremental_sync
+        else False
+    )
+    needs_paid_backfill = sync_options["paid_page_limit"] != 0 and not scope_already_imported
+    contact_fetch_label = "changed contacts" if is_incremental_sync else "contacts"
+    invoice_fetch_label = "changed invoices" if is_incremental_sync else "outstanding invoices"
+    invoice_fetch_step = f"Fetching {invoice_fetch_label} from Xero"
+    invoice_where = _with_invoice_year_filter(
+        ACCREC_INVOICE_WHERE if is_incremental_sync else OUTSTANDING_INVOICE_WHERE,
+        sync_options["invoice_years"],
+    )
+    if is_incremental_sync:
+        sync_mode_summary = f"Incremental sync from {modified_since.isoformat()}."
+    elif candidate_modified_since is not None:
+        sync_mode_summary = "Full sync for newly selected invoice years."
+    else:
+        sync_mode_summary = "First full sync for the selected scope."
     _update_sync_run(
         sync_run_id,
         status="running",
         current_step="Starting Xero sync",
-        summary="Connecting to Xero.",
+        summary=f"Connecting to Xero. {sync_mode_summary}",
         started_at=now,
         error_message=None,
     )
@@ -548,8 +696,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         def contact_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
-                current_step="Fetching contacts from Xero",
-                summary=f"Fetched {total_records} contacts from Xero.",
+                current_step=f"Fetching {contact_fetch_label} from Xero",
+                summary=f"Fetched {total_records} {contact_fetch_label} from Xero.",
                 customers_synced=total_records,
                 contacts_total=total_records,
             )
@@ -557,8 +705,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         def outstanding_invoice_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
-                current_step="Fetching outstanding invoices from Xero",
-                summary=f"Fetched {total_records} outstanding invoices from Xero.",
+                current_step=invoice_fetch_step,
+                summary=f"Fetched {total_records} {invoice_fetch_label} from Xero.",
                 invoices_synced=total_records,
                 invoices_total=total_records,
             )
@@ -576,11 +724,12 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             CONTACTS_URL,
             "Contacts",
             on_page=contact_progress,
+            modified_since=modified_since,
         )
         _update_sync_run(
             sync_run_id,
-            current_step="Fetching outstanding invoices from Xero",
-            summary=f"Fetched {len(contacts)} contacts. Fetching outstanding invoices first.",
+            current_step=invoice_fetch_step,
+            summary=f"Fetched {len(contacts)} {contact_fetch_label}. Fetching {invoice_fetch_label}.",
             contacts_total=len(contacts),
             customers_synced=len(contacts),
         )
@@ -588,13 +737,14 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             connection_row,
             INVOICES_URL,
             "Invoices",
-            params={"where": _with_invoice_year_filter(OUTSTANDING_INVOICE_WHERE, sync_options["invoice_years"])},
+            params={"where": invoice_where},
             on_page=outstanding_invoice_progress,
+            modified_since=modified_since,
         )
         _update_sync_run(
             sync_run_id,
-            current_step="Importing outstanding invoices",
-            summary=f"Importing {len(contacts)} contacts and {len(outstanding_invoices)} outstanding invoices.",
+            current_step=f"Importing {invoice_fetch_label}",
+            summary=f"Importing {len(contacts)} {contact_fetch_label} and {len(outstanding_invoices)} {invoice_fetch_label}.",
             contacts_total=len(contacts),
             invoices_total=len(outstanding_invoices),
             customers_synced=0,
@@ -673,8 +823,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 synced_invoices = 0
                 _update_sync_run(
                     sync_run_id,
-                    current_step="Importing outstanding invoices",
-                    summary=f"Imported {imported_contacts} contacts. Importing outstanding invoices.",
+                    current_step=f"Importing {invoice_fetch_label}",
+                    summary=f"Imported {imported_contacts} {contact_fetch_label}. Importing {invoice_fetch_label}.",
                     customers_synced=imported_contacts,
                     invoices_synced=0,
                     processed_count=imported_contacts,
@@ -768,7 +918,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             )
                     return imported_batch
 
-                outstanding_synced = import_invoice_batch(outstanding_invoices, "outstanding", True)
+                outstanding_synced = import_invoice_batch(outstanding_invoices, invoice_fetch_label, True)
 
                 for customer_id, totals in customer_totals.items():
                     cursor.execute(
@@ -782,6 +932,23 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         (totals["total_due"], totals["overdue_amount"], now, customer_id),
                     )
 
+                _refresh_customer_totals(cursor, connection_row["tenant_id"], now)
+                ready_step = "Finalising incremental sync" if is_incremental_sync and not needs_paid_backfill else OUTSTANDING_READY_STEP
+                if is_incremental_sync and needs_paid_backfill:
+                    ready_summary = (
+                        f"Incremental changes ready: synced {imported_contacts} changed contacts and "
+                        f"{outstanding_synced} changed invoices. Backfilling {sync_options['label'].lower()}."
+                    )
+                elif is_incremental_sync:
+                    ready_summary = (
+                        f"Incremental changes ready: synced {imported_contacts} changed contacts and "
+                        f"{outstanding_synced} changed invoices."
+                    )
+                else:
+                    ready_summary = (
+                        f"Outstanding invoices ready: synced {outstanding_synced} outstanding invoices. "
+                        "Backfilling paid invoices."
+                    )
                 cursor.execute(
                     """
                     UPDATE sync_runs
@@ -801,7 +968,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     """,
                     (
                         "running",
-                        OUTSTANDING_READY_STEP,
+                        ready_step,
                         len(contacts),
                         synced_invoices,
                         len(contacts) + len(outstanding_invoices),
@@ -809,7 +976,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         0,
                         len(contacts),
                         len(outstanding_invoices),
-                        f"Outstanding invoices ready: synced {outstanding_synced} outstanding invoices. Backfilling paid invoices.",
+                        ready_summary,
                         None,
                         sync_run_id,
                     ),
@@ -820,10 +987,32 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         record_audit_event(
             "sync_run",
             str(outstanding_ready["id"]),
-            "sync.outstanding_ready",
+            "sync.incremental_ready" if is_incremental_sync else "sync.outstanding_ready",
             {"summary": outstanding_ready["summary"]},
             user["id"],
         )
+
+        if is_incremental_sync and not needs_paid_backfill:
+            completed = _update_sync_run(
+                sync_run_id,
+                status="completed",
+                current_step="Incremental sync complete",
+                summary=(
+                    f"Incremental sync complete: refreshed changes since {modified_since.isoformat()}. "
+                    f"Synced {imported_contacts} changed contacts and {outstanding_synced} changed invoices. "
+                    f"Scope: {sync_options['label']}."
+                ),
+                customers_synced=len(contacts),
+                invoices_synced=synced_invoices,
+                fetched_count=len(contacts) + len(outstanding_invoices),
+                processed_count=len(contacts) + synced_invoices,
+                failed_count=0,
+                contacts_total=len(contacts),
+                invoices_total=len(outstanding_invoices),
+                completed_at=utcnow(),
+            )
+            record_audit_event("sync_run", str(completed["id"]), "sync.completed", {"summary": completed["summary"]}, user["id"])
+            return completed
 
         paid_page_limit = sync_options["paid_page_limit"]
         if paid_page_limit == 0:
@@ -850,7 +1039,11 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         _update_sync_run(
             sync_run_id,
             current_step="Fetching paid invoices from Xero",
-            summary=f"Outstanding invoices are ready. {sync_options['summary']}",
+            summary=(
+                f"Changed invoices are ready. Backfilling {sync_options['label'].lower()}."
+                if is_incremental_sync
+                else f"Outstanding invoices are ready. {sync_options['summary']}"
+            ),
         )
         paid_invoices = await fetch_paginated_collection(
             connection_row,
@@ -953,6 +1146,14 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             processed_count=len(contacts) + synced_invoices,
                         )
 
+                _refresh_customer_totals(cursor, connection_row["tenant_id"], now)
+                completion_summary = (
+                    f"Incremental sync complete: refreshed {len(contacts)} changed contacts, "
+                    f"{outstanding_synced} changed invoices, and backfilled {paid_synced} paid invoices. "
+                    f"Scope: {sync_options['label']}."
+                    if is_incremental_sync
+                    else f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, and {paid_synced} paid invoices from Xero. Scope: {sync_options['label']}."
+                )
                 cursor.execute(
                     """
                     UPDATE sync_runs
@@ -980,7 +1181,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         0,
                         len(contacts),
                         len(outstanding_invoices) + len(paid_invoices),
-                        f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, and {paid_synced} paid invoices from Xero. Scope: {sync_options['label']}.",
+                        completion_summary,
                         utcnow(),
                         sync_run_id,
                     ),

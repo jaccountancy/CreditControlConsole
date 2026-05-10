@@ -1040,6 +1040,36 @@ body.is-dense .note-snippet {
     font-weight: 700;
     line-height: 1.45;
 }
+.settings-template-controls,
+.letter-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+.settings-template-controls select,
+.letter-action-row button {
+    flex: 1 1 180px;
+}
+.settings-template-controls select {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: white;
+    color: var(--ink);
+    padding: 12px 14px;
+    font-weight: 800;
+}
+.letter-template-fields {
+    margin-top: 14px;
+}
+.letter-preview {
+    min-height: 220px;
+    white-space: pre-wrap;
+}
+.letter-tools-section {
+    grid-column: 1 / -1;
+}
 .detail-hero, .panel-heading {
     display: flex;
     justify-content: space-between;
@@ -1826,6 +1856,28 @@ body.is-syncing .sync-dot {
                         </div>
                     </div>
                 </section>
+
+                <section class="detail-panel settings-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Letters</p>
+                            <h3>Letter templates</h3>
+                        </div>
+                    </div>
+                    <div class="settings-template-controls">
+                        <select id="letterTemplateSettingsSelect" aria-label="Letter template"></select>
+                        <button class="ghost-button" id="newLetterTemplateButton" type="button">New template</button>
+                    </div>
+                    <form class="stack-form letter-template-fields" id="letterTemplateForm">
+                        <input id="letterTemplateNameInput" type="text" placeholder="Template name">
+                        <textarea id="letterTemplateBodyInput" rows="12" placeholder="Letter body"></textarea>
+                        <p class="settings-help">Available fields: {{client_name}}, {{contact_name}}, {{total_due}}, {{overdue_amount}}, {{open_invoice_count}}, {{invoice_list}}, {{today}}, {{selected_invoice_ref}}, {{selected_invoice_amount_due}}, {{selected_invoice_due}}.</p>
+                        <div class="letter-action-row">
+                            <button class="primary-button" type="submit">Save template</button>
+                            <button class="ghost-button" id="deleteLetterTemplateButton" type="button">Delete template</button>
+                        </div>
+                    </form>
+                </section>
             </div>
         </section>
 
@@ -1899,6 +1951,21 @@ body.is-syncing .sync-dot {
                                     <button class="primary-button" type="submit">Add client note</button>
                                 </form>
                                 <div class="mini-timeline" id="clientNotesTimeline"></div>
+                            </section>
+
+                            <section class="account-file-section letter-tools-section">
+                                <div class="section-heading">
+                                    <p class="eyebrow">Letters</p>
+                                    <h4>Generate client correspondence</h4>
+                                </div>
+                                <form class="stack-form" id="clientLetterForm">
+                                    <select id="clientLetterTemplateSelect" aria-label="Letter template"></select>
+                                    <button class="primary-button" type="submit">Generate letter and add note</button>
+                                    <textarea class="letter-preview" id="generatedLetterOutput" rows="10" readonly placeholder="Generated letter preview"></textarea>
+                                    <div class="letter-action-row">
+                                        <button class="ghost-button" id="copyGeneratedLetterButton" type="button">Copy letter</button>
+                                    </div>
+                                </form>
                             </section>
 
                             <section class="account-file-section">
@@ -2038,6 +2105,7 @@ body.is-syncing .sync-dot {
     <script>
 const STORAGE_KEY = "hymn-credit-control-ledger";
 const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
+const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
 const DEFAULT_API_BASE_URL = window.location.protocol === "file:"
     ? "https://creditcontrolconsole-production.up.railway.app"
     : window.location.origin;
@@ -2056,7 +2124,63 @@ const syncScopeLabels = {
     outstanding_plus_2500_paid: "Outstanding + 2,500 paid invoices",
     full_history: "Full invoice history"
 };
+const defaultLetterTemplates = [
+    {
+        id: "payment-reminder",
+        name: "Payment reminder",
+        body: `{{today}}
+
+Dear {{contact_name}},
+
+Re: {{client_name}} outstanding account
+
+Our records show an outstanding balance of {{total_due}} across {{open_invoice_count}} open invoice(s).
+
+{{invoice_list}}
+
+Please arrange payment or contact us with an update.
+
+Kind regards,
+J Accountancy`
+    },
+    {
+        id: "seven-day-notice",
+        name: "7 day notice",
+        body: `{{today}}
+
+Dear {{contact_name}},
+
+Re: Final request for payment - {{client_name}}
+
+The outstanding balance of {{total_due}} is now overdue. Unless payment is received within 7 days, the account may be escalated for recovery.
+
+{{invoice_list}}
+
+Kind regards,
+J Accountancy`
+    },
+    {
+        id: "query-follow-up",
+        name: "Query follow-up",
+        body: `{{today}}
+
+Dear {{contact_name}},
+
+Re: Invoice query follow-up for {{client_name}}
+
+We are following up on the outstanding account balance of {{total_due}}. Please confirm the current position and any information needed to resolve the query.
+
+{{invoice_list}}
+
+Kind regards,
+J Accountancy`
+    }
+];
 let syncSettings = loadSyncSettings();
+let letterTemplates = loadLetterTemplates();
+let selectedLetterTemplateId = letterTemplates[0]?.id || "";
+let lastGeneratedLetter = "";
+let lastGeneratedLetterClientId = "";
 let selectedFilter = "all";
 let selectedInvoiceId = state.selectedInvoice?.id || null;
 let selectedInvoiceIds = new Set();
@@ -2171,6 +2295,30 @@ function loadSyncSettings() {
 
 function persistSyncSettings() {
     localStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify(syncSettings));
+}
+
+function normaliseLetterTemplate(template, fallback = {}) {
+    return {
+        id: String(template?.id || fallback.id || `letter-${Date.now()}`),
+        name: String(template?.name || fallback.name || "Untitled letter"),
+        body: String(template?.body || fallback.body || "")
+    };
+}
+
+function loadLetterTemplates() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(LETTER_TEMPLATES_KEY) || "[]");
+        const templates = Array.isArray(stored)
+            ? stored.map((template, index) => normaliseLetterTemplate(template, defaultLetterTemplates[index])).filter((template) => template.name && template.body)
+            : [];
+        return templates.length ? templates : defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
+    } catch {
+        return defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
+    }
+}
+
+function persistLetterTemplates() {
+    localStorage.setItem(LETTER_TEMPLATES_KEY, JSON.stringify(letterTemplates));
 }
 
 function persistState() {
@@ -2459,6 +2607,205 @@ function paymentPercent(invoice) {
     if (total <= 0) return 0;
     const paid = Math.max(0, total - Number(invoice.amountDue || 0));
     return Math.min(100, Math.round((paid / total) * 100));
+}
+
+function setLetterTemplateSelect(select, selectedId) {
+    if (!select) return;
+    select.innerHTML = "";
+    letterTemplates.forEach((template) => {
+        const option = document.createElement("option");
+        option.value = template.id;
+        option.textContent = template.name;
+        option.selected = template.id === selectedId;
+        select.appendChild(option);
+    });
+}
+
+function currentLetterTemplate() {
+    return letterTemplates.find((template) => template.id === selectedLetterTemplateId) || letterTemplates[0] || null;
+}
+
+function fillLetterTemplateForm(template) {
+    const nameInput = document.getElementById("letterTemplateNameInput");
+    const bodyInput = document.getElementById("letterTemplateBodyInput");
+    if (nameInput) nameInput.value = template?.name || "";
+    if (bodyInput) bodyInput.value = template?.body || "";
+}
+
+function renderLetterTemplateSettings() {
+    if (!letterTemplates.length) {
+        letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
+        selectedLetterTemplateId = letterTemplates[0]?.id || "";
+    }
+    if (!letterTemplates.some((template) => template.id === selectedLetterTemplateId)) {
+        selectedLetterTemplateId = letterTemplates[0]?.id || "";
+    }
+    setLetterTemplateSelect(document.getElementById("letterTemplateSettingsSelect"), selectedLetterTemplateId);
+    const form = document.getElementById("letterTemplateForm");
+    if (!form?.contains(document.activeElement)) fillLetterTemplateForm(currentLetterTemplate());
+}
+
+function createNewLetterTemplate() {
+    const template = {
+        id: `letter-${Date.now()}`,
+        name: "New letter template",
+        body: "Dear {{contact_name}},\n\nRe: {{client_name}}\n\n{{invoice_list}}\n\nKind regards,\nJ Accountancy"
+    };
+    letterTemplates = [template, ...letterTemplates];
+    selectedLetterTemplateId = template.id;
+    persistLetterTemplates();
+    renderLetterTemplateSettings();
+    document.getElementById("letterTemplateNameInput")?.focus();
+}
+
+function saveSelectedLetterTemplate() {
+    const name = document.getElementById("letterTemplateNameInput")?.value.trim() || "";
+    const body = document.getElementById("letterTemplateBodyInput")?.value.trim() || "";
+    if (!name || !body) {
+        showToast("Template name and body are required", "error");
+        return;
+    }
+    const templateId = selectedLetterTemplateId || `letter-${Date.now()}`;
+    const nextTemplate = { id: templateId, name, body };
+    const index = letterTemplates.findIndex((template) => template.id === templateId);
+    letterTemplates = index >= 0
+        ? letterTemplates.map((template) => template.id === templateId ? nextTemplate : template)
+        : [nextTemplate, ...letterTemplates];
+    selectedLetterTemplateId = templateId;
+    persistLetterTemplates();
+    renderAll();
+    showToast("Letter template saved", "success");
+}
+
+function deleteSelectedLetterTemplate() {
+    if (letterTemplates.length <= 1) {
+        showToast("Keep at least one letter template", "info");
+        return;
+    }
+    const template = currentLetterTemplate();
+    if (!template || !window.confirm(`Delete "${template.name}"?`)) return;
+    letterTemplates = letterTemplates.filter((item) => item.id !== template.id);
+    selectedLetterTemplateId = letterTemplates[0]?.id || "";
+    persistLetterTemplates();
+    renderAll();
+    showToast("Letter template deleted", "success");
+}
+
+function letterInvoiceList(invoices) {
+    const openInvoices = (invoices || []).filter((invoice) => invoiceCategory(invoice) !== "paid");
+    if (!openInvoices.length) return "No open invoices are currently showing on the account.";
+    return openInvoices.map((invoice) => {
+        const dueDate = formatDate(invoice.dueDate);
+        return `- ${invoice.invoiceNumber || "Invoice"}: ${formatCurrency(invoice.amountDue || 0)} due ${dueDate}`;
+    }).join("\n");
+}
+
+function letterTemplateContext(client, selectedInvoice, invoices) {
+    const openInvoices = (invoices || []).filter((invoice) => invoiceCategory(invoice) !== "paid");
+    return {
+        client_name: client?.name || "Client",
+        contact_name: client?.primaryPerson || client?.name || "there",
+        total_due: formatCurrency(client?.totalDue || openInvoices.reduce((total, invoice) => total + Number(invoice.amountDue || 0), 0)),
+        overdue_amount: formatCurrency(client?.overdue || 0),
+        open_invoice_count: String(openInvoices.length),
+        invoice_list: letterInvoiceList(invoices),
+        today: formatDate(new Date().toISOString()),
+        organisation_name: state.organisation.name || "J Accountancy",
+        selected_invoice_ref: selectedInvoice?.invoiceNumber || "",
+        selected_invoice_amount_due: selectedInvoice ? formatCurrency(selectedInvoice.amountDue || 0) : "",
+        selected_invoice_due: selectedInvoice ? formatDate(selectedInvoice.dueDate) : ""
+    };
+}
+
+function applyLetterTemplate(template, context) {
+    return String(template?.body || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => context[key] ?? "");
+}
+
+function renderClientLetterTools(client, selectedInvoice, invoices) {
+    if (!letterTemplates.length) return;
+    if (!letterTemplates.some((template) => template.id === selectedLetterTemplateId)) {
+        selectedLetterTemplateId = letterTemplates[0]?.id || "";
+    }
+    setLetterTemplateSelect(document.getElementById("clientLetterTemplateSelect"), selectedLetterTemplateId);
+    const output = document.getElementById("generatedLetterOutput");
+    if (output) output.value = client?.id === lastGeneratedLetterClientId ? lastGeneratedLetter : "";
+    const form = document.getElementById("clientLetterForm");
+    if (form) form.dataset.ready = client ? "true" : "false";
+}
+
+function generatedLetterNote(template, letter) {
+    return `Letter generated: ${template.name}\n\n${letter}`;
+}
+
+async function saveClientNoteAndSync(client, body, options = {}) {
+    if (!client || !body) return false;
+    client.clientNotes = [{ title: options.title || "Client note", body, stamp: new Date().toISOString() }, ...(client.clientNotes || [])];
+    persistState();
+    renderClientScreen();
+    showToast(options.localMessage || "Client note saved locally", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+    try {
+        const payload = await requestJSON(api.endpoints.customerNote, { method: "POST", body: JSON.stringify({ body }) }, { customerId: client.id });
+        if (payload?.panel) replaceState(normaliseState(payload.panel));
+        else await hydrateFromAPI();
+        renderAll();
+        if (payload?.xeroNoteSynced) {
+            showToast(options.syncedMessage || "Client note saved and added to Xero", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+        } else {
+            showToast(`Client note saved locally. Xero note was not added: ${payload?.xeroNoteError || "Reconnect Xero and try again."}`, "error");
+        }
+        return true;
+    } catch (error) {
+        console.error("Unable to sync client note", error);
+        showToast(options.errorMessage || "Unable to sync client note", "error");
+        return false;
+    }
+}
+
+async function generateClientLetter() {
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    const selectedInvoice = findInvoiceById(selectedInvoiceId);
+    const template = currentLetterTemplate();
+    if (!client || !template) {
+        showToast("Select a client and letter template first", "error");
+        return;
+    }
+    const letter = applyLetterTemplate(template, letterTemplateContext(client, selectedInvoice, clientInvoices(client)));
+    lastGeneratedLetter = letter;
+    lastGeneratedLetterClientId = client.id;
+    const output = document.getElementById("generatedLetterOutput");
+    if (output) output.value = letter;
+    await saveClientNoteAndSync(client, generatedLetterNote(template, letter), {
+        title: "Generated letter",
+        localMessage: "Letter generated and saved locally",
+        syncedMessage: "Letter generated and added to Xero",
+        errorMessage: "Letter generated, but the note could not be synced"
+    });
+}
+
+async function copyGeneratedLetter() {
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    if (!lastGeneratedLetter || client?.id !== lastGeneratedLetterClientId) {
+        showToast("Generate a letter first", "info");
+        return;
+    }
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(lastGeneratedLetter);
+        } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = lastGeneratedLetter;
+            textarea.style.position = "fixed";
+            textarea.style.left = "-9999px";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            textarea.remove();
+        }
+        showToast("Letter copied", "success");
+    } catch (error) {
+        console.error("Unable to copy letter", error);
+        showToast("Unable to copy letter", "error");
+    }
 }
 
 function noteSnippet(invoice) {
@@ -2966,6 +3313,7 @@ function renderClientScreen() {
         ? client.primaryPerson || client.contact || client.email || client.phone || client.name || "No contact details"
         : "No contact details";
     renderXeroContactDetails(client);
+    renderClientLetterTools(client, selectedInvoice, invoices);
     const xeroLink = document.getElementById("selectedInvoiceXeroLink");
     const xeroUrl = invoiceXeroURL(selectedInvoice);
     xeroLink.href = xeroUrl;
@@ -3220,6 +3568,7 @@ function isXeroDisconnectedMessage(message) {
 function renderAll() {
     renderChrome();
     renderSyncSettings();
+    renderLetterTemplateSettings();
     renderDashboardHero();
     renderSummaryCounts();
     renderToolbarControls();
@@ -3790,6 +4139,15 @@ async function waitForSyncRun(syncRunId) {
     return null;
 }
 
+function openSettingsScreen() {
+    activeView = "settings";
+    closeToolbarMenus();
+    renderAll();
+    document.getElementById("menuSettingsButton")?.blur();
+    document.getElementById("topbarMenuButton")?.blur();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 async function runXeroSync({ automatic = false } = {}) {
     if (isSyncing) {
         renderChrome();
@@ -3805,8 +4163,7 @@ async function runXeroSync({ automatic = false } = {}) {
         return;
     }
     if (!syncSettings.invoiceYears?.length) {
-        activeView = "settings";
-        renderAll();
+        openSettingsScreen();
         showToast("Select at least one invoice year before importing from Xero.", "info");
         return;
     }
@@ -4008,10 +4365,21 @@ function wireSyncButtons() {
         });
     }
     const menuSettingsButton = document.getElementById("menuSettingsButton");
-    if (menuSettingsButton) menuSettingsButton.addEventListener("click", () => {
-        activeView = "settings";
+    if (menuSettingsButton) menuSettingsButton.addEventListener("click", openSettingsScreen);
+    const letterTemplateSettingsSelect = document.getElementById("letterTemplateSettingsSelect");
+    if (letterTemplateSettingsSelect) letterTemplateSettingsSelect.addEventListener("change", () => {
+        selectedLetterTemplateId = letterTemplateSettingsSelect.value;
         renderAll();
     });
+    const newLetterTemplateButton = document.getElementById("newLetterTemplateButton");
+    if (newLetterTemplateButton) newLetterTemplateButton.addEventListener("click", createNewLetterTemplate);
+    const letterTemplateForm = document.getElementById("letterTemplateForm");
+    if (letterTemplateForm) letterTemplateForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        saveSelectedLetterTemplate();
+    });
+    const deleteLetterTemplateButton = document.getElementById("deleteLetterTemplateButton");
+    if (deleteLetterTemplateButton) deleteLetterTemplateButton.addEventListener("click", deleteSelectedLetterTemplate);
     const menuSyncButton = document.getElementById("menuSyncButton");
     if (menuSyncButton) menuSyncButton.addEventListener("click", () => runXeroSync());
     const settingsRunSyncButton = document.getElementById("settingsRunSyncButton");
@@ -4088,31 +4456,23 @@ function wireForms() {
         selectedInvoiceId = event.target.value;
         renderClientScreen();
     });
+    document.getElementById("clientLetterTemplateSelect").addEventListener("change", (event) => {
+        selectedLetterTemplateId = event.target.value;
+        renderClientScreen();
+    });
+    document.getElementById("clientLetterForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await generateClientLetter();
+    });
+    document.getElementById("copyGeneratedLetterButton").addEventListener("click", copyGeneratedLetter);
 
     document.getElementById("clientNoteForm").addEventListener("submit", async (event) => {
         event.preventDefault();
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
         const body = document.getElementById("clientNoteInput").value.trim();
         if (!client || !body) return;
-        client.clientNotes = [{ title: "Client note", body, stamp: new Date().toISOString() }, ...(client.clientNotes || [])];
         document.getElementById("clientNoteInput").value = "";
-        persistState();
-        renderClientScreen();
-        showToast("Client note saved locally", "success", { label: "View audit trail", onClick: scrollAuditTrail });
-        try {
-            const payload = await requestJSON(api.endpoints.customerNote, { method: "POST", body: JSON.stringify({ body }) }, { customerId: client.id });
-            if (payload?.panel) replaceState(normaliseState(payload.panel));
-            else await hydrateFromAPI();
-            renderAll();
-            if (payload?.xeroNoteSynced) {
-                showToast("Client note saved and added to Xero", "success", { label: "View audit trail", onClick: scrollAuditTrail });
-            } else {
-                showToast(`Client note saved locally. Xero note was not added: ${payload?.xeroNoteError || "Reconnect Xero and try again."}`, "error");
-            }
-        } catch (error) {
-            console.error("Unable to save client note", error);
-            showToast("Unable to sync client note", "error");
-        }
+        await saveClientNoteAndSync(client, body);
     });
 
     document.getElementById("invoiceNoteForm").addEventListener("submit", async (event) => {
@@ -4212,7 +4572,6 @@ function wireForms() {
 }
 
 async function init() {
-    await hydrateFromAPI();
     try {
         renderAll();
     } catch (error) {
@@ -4232,6 +4591,12 @@ async function init() {
             console.error(`Unable to initialise ${wire.name}`, error);
         }
     });
+    await hydrateFromAPI();
+    try {
+        renderAll();
+    } catch (error) {
+        console.error("Unable to render console after loading API data", error);
+    }
     try {
         maybeAutoStartInitialSync();
     } catch (error) {
