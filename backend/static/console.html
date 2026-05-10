@@ -1020,10 +1020,19 @@ body.is-dense .note-snippet {
     transition: 0.16s ease;
 }
 .row-actions:hover .row-action-menu,
-.row-actions:focus-within .row-action-menu {
+.row-actions:focus-within .row-action-menu,
+.row-actions.is-open .row-action-menu {
     opacity: 1;
     pointer-events: auto;
     transform: translateY(0);
+}
+.row-actions::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 100%;
+    width: 190px;
+    height: 12px;
 }
 .row-action-button:hover {
     border-color: rgba(29, 103, 242, 0.26);
@@ -1081,6 +1090,21 @@ body.is-dense .note-snippet {
 }
 .settings-panel {
     max-width: 760px;
+}
+.danger-panel {
+    border-color: rgba(255, 83, 83, 0.22);
+    background: rgba(255, 247, 247, 0.82);
+}
+.danger-panel h3 {
+    color: var(--red);
+}
+.danger-button {
+    border-color: rgba(255, 83, 83, 0.32);
+    color: var(--red);
+    background: #fff;
+}
+.danger-button:hover {
+    background: var(--red-soft);
 }
 .ai-inline-banner {
     border-color: rgba(31, 143, 110, 0.24);
@@ -2426,6 +2450,17 @@ body.is-syncing .sync-dot {
                     </div>
                 </section>
 
+                <section class="detail-panel settings-panel danger-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Factory reset</p>
+                            <h3>Clear local console data</h3>
+                        </div>
+                        <button class="ghost-button danger-button" id="factoryResetButton" type="button">Factory reset</button>
+                    </div>
+                    <p class="settings-help">This clears imported ledger rows, local credit-control workflow data, sync history and browser settings. Xero stays connected so you can choose fresh import settings and resync from scratch.</p>
+                </section>
+
                 <section class="detail-panel settings-panel">
                     <div class="panel-heading">
                         <div>
@@ -3047,6 +3082,7 @@ function normaliseAPI(config) {
             paymentPlan: config.endpoints?.paymentPlan || "/api/customers/:customerId/payment-plans",
             insights: config.endpoints?.insights || "/api/insights",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
+            factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
             disconnect: config.endpoints?.disconnect || "/api/xero/disconnect",
             login: config.endpoints?.login || "/auth/xero/start"
         }
@@ -3252,7 +3288,7 @@ function decorateInvoice(customer, invoice) {
         customerContact: customer.contact || "",
         customerStatus: customer.status || "",
         manager: customer.manager || "Unassigned",
-        description: invoice.description || "Xero invoice",
+        description: invoice.description || "",
         notesSummary: noteSnippet(invoice),
     };
 }
@@ -3403,6 +3439,24 @@ function addMonthsISO(months) {
     date.setMonth(date.getMonth() + Number(months || 0));
     if (date.getDate() < day) date.setDate(0);
     return date.toISOString().slice(0, 10);
+}
+
+function invoiceLineDescriptions(invoice) {
+    const lines = Array.isArray(invoice?.lineItems) ? invoice.lineItems : [];
+    const descriptions = lines
+        .map((item) => String(item?.description || item?.Description || "").trim())
+        .filter(Boolean);
+    if (descriptions.length) return descriptions;
+    return String(invoice?.description || "")
+        .split(/\n+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function invoiceLineSummary(invoice) {
+    const descriptions = invoiceLineDescriptions(invoice);
+    if (!descriptions.length) return "No Xero line description synced yet";
+    return descriptions.slice(0, 3).join(" · ");
 }
 
 function paymentPercent(invoice) {
@@ -3759,6 +3813,7 @@ function filteredInvoices() {
             invoice.customerContact,
             invoice.invoiceNumber,
             invoice.description,
+            invoiceLineSummary(invoice),
             invoice.notesSummary,
             invoice.status,
             invoice.controlStatus
@@ -3948,6 +4003,7 @@ function openClientWorkspace(invoice, focusId, section = "overview") {
 }
 
 function handleRowAction(action, invoice) {
+    closeRowActionMenus();
     const client = findCustomerById(invoice.customerId);
     if (action === "call") {
         const href = contactLink(client, "call");
@@ -3968,6 +4024,12 @@ function handleRowAction(action, invoice) {
         if (url === "#") return showToast("No Xero invoice link available", "error");
         window.open(url, "_blank", "noopener");
     }
+}
+
+function closeRowActionMenus(except = null) {
+    document.querySelectorAll(".row-actions.is-open").forEach((menu) => {
+        if (menu !== except) menu.classList.remove("is-open");
+    });
 }
 
 function renderInvoiceTable() {
@@ -3992,13 +4054,14 @@ function renderInvoiceTable() {
         paged.forEach((invoice) => {
             const category = invoiceCategory(invoice);
             const progress = paymentPercent(invoice);
+            const lineSummary = invoiceLineSummary(invoice);
             const row = document.createElement("tr");
             row.className = `${invoice.id === selectedInvoiceId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
                 <td class="select-cell"><input class="invoice-select" type="checkbox" aria-label="Select invoice ${invoice.invoiceNumber || invoice.id}" ${selectedInvoiceIds.has(invoice.id) ? "checked" : ""}></td>
                 <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div><div class="client-inline-status">${statusPill(invoice)}</div></td>
-                <td><div class="client-name">${invoice.invoiceNumber || "--"}</div><div class="invoice-subline">${invoice.id || ""}</div></td>
-                <td data-column="description"><div class="description-cell"><div><div class="description-title">${invoice.description || "Xero invoice"}</div><div class="invoice-subline">Due ${formatDate(invoice.dueDate)}</div></div></div></td>
+                <td><div class="client-name">${escapeHTML(invoice.invoiceNumber || "--")}</div><div class="invoice-subline">Invoice date ${formatDate(invoice.invoiceDate)}</div></td>
+                <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(lineSummary)}</div><div class="invoice-subline">Due ${formatDate(invoice.dueDate)}</div></div></div></td>
                 <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
                 <td data-column="paid"><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${iconSVG(category)}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="paid-date">${progress}% paid · ${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
                 <td data-column="notes"><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
@@ -4026,11 +4089,16 @@ function renderInvoiceTable() {
             row.querySelectorAll("[data-row-action]").forEach((button) => {
                 button.addEventListener("click", (event) => {
                     event.stopPropagation();
+                    closeRowActionMenus();
                     handleRowAction(button.dataset.rowAction, invoice);
                 });
             });
             row.querySelector(".row-action-trigger")?.addEventListener("click", (event) => {
                 event.stopPropagation();
+                const menu = event.currentTarget.closest(".row-actions");
+                const willOpen = !menu?.classList.contains("is-open");
+                closeRowActionMenus(menu);
+                menu?.classList.toggle("is-open", willOpen);
             });
             row.addEventListener("click", () => {
                 selectedInvoiceId = invoice.id;
@@ -4217,7 +4285,7 @@ function renderSelectedInvoiceDetail(invoice) {
         ["Status", invoiceStatusLabel(invoice)],
         ["Due date", formatDate(invoice.dueDate)],
         ["Days overdue", `${Math.max(0, Number(invoice.overdueDays || 0))}`],
-        ["Description", invoice.description || "Xero invoice"],
+        ["Description", invoiceLineSummary(invoice)],
     ].forEach(([label, value]) => {
         const card = document.createElement("article");
         const heading = document.createElement("span");
@@ -4430,14 +4498,14 @@ function renderClientInvoiceList(invoices) {
     invoices.forEach((invoice) => {
         const button = document.createElement("button");
         const category = invoiceCategory(invoice);
-        const description = invoice.description || "No invoice description supplied by Xero.";
+        const description = invoiceLineSummary(invoice);
         button.type = "button";
         button.className = `client-invoice-row${invoice.id === selectedInvoiceId ? " is-selected" : ""}`;
         button.title = description;
         button.innerHTML = `
             <div>
                 <div class="client-name">${invoice.invoiceNumber || "Invoice"}</div>
-                <div class="invoice-subline">${invoice.description || "Xero invoice"} · due ${formatDate(invoice.dueDate)}</div>
+                <div class="invoice-subline">${escapeHTML(description)} · due ${formatDate(invoice.dueDate)}</div>
             </div>
             ${statusPill(invoice)}
             <strong>${formatCurrency(invoice.amountDue || 0)}</strong>
@@ -4970,6 +5038,7 @@ function wireFilters() {
     });
     document.addEventListener("click", (event) => {
         if (!event.target.closest(".toolbar-menu-wrap")) closeToolbarMenus();
+        if (!event.target.closest(".row-actions")) closeRowActionMenus();
     });
     document.getElementById("previousPageButton").addEventListener("click", () => {
         currentPage = Math.max(1, currentPage - 1);
@@ -5055,7 +5124,7 @@ function exportInvoices(invoices, filename) {
         invoice.customerName || "",
         invoice.customerContact || "",
         invoice.invoiceNumber || invoice.id || "",
-        invoice.description || "",
+        invoiceLineSummary(invoice),
         Number(invoice.total || 0).toFixed(2),
         Number(invoice.amountDue || 0).toFixed(2),
         Number((invoice.total || 0) - (invoice.amountDue || 0)).toFixed(2),
@@ -5528,6 +5597,45 @@ function openSettingsScreen() {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function clearLocalConsoleState(panel = null) {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SYNC_SETTINGS_KEY);
+    localStorage.removeItem(LETTER_TEMPLATES_KEY);
+    syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
+    letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
+    selectedLetterTemplateId = letterTemplates[0]?.id || "";
+    selectedFilter = "all";
+    selectedInvoiceId = null;
+    selectedInvoiceIds = new Set();
+    selectedClientId = null;
+    currentPage = 1;
+    latestSyncRun = null;
+    insightsData = null;
+    state.organisation = panel?.organisation || emptyData.organisation;
+    state.dashboard = panel?.dashboard || emptyData.dashboard;
+    state.customers = Array.isArray(panel?.customers) ? panel.customers : [];
+    state.audit = Array.isArray(panel?.audit) ? panel.audit : [];
+    state.selectedInvoice = panel?.selectedInvoice || null;
+    persistState();
+    persistSyncSettings();
+    persistLetterTemplates();
+}
+
+async function factoryResetConsole() {
+    const confirmed = window.confirm("Factory reset the Credit Control Console? This clears imported ledger data, workflow notes, statuses, payment plans, sync history and browser settings. Xero will remain connected so you can resync from scratch.");
+    if (!confirmed) return;
+    try {
+        const payload = await requestJSON(api.endpoints.factoryReset, { method: "POST", body: JSON.stringify({}) });
+        clearLocalConsoleState(payload?.panel || null);
+        activeView = "settings";
+        renderAll();
+        showToast("Factory reset complete. Choose import settings and run a fresh Xero sync.", "success");
+    } catch (error) {
+        console.error("Unable to factory reset console", error);
+        showToast("Unable to complete factory reset", "error");
+    }
+}
+
 async function runXeroSync({ automatic = false } = {}) {
     if (isSyncing) {
         renderChrome();
@@ -5774,6 +5882,8 @@ function wireSyncButtons() {
     if (menuInsightsButton) menuInsightsButton.addEventListener("click", openInsightsScreen);
     const refreshInsightsButton = document.getElementById("refreshInsightsButton");
     if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => loadInsights(true));
+    const factoryResetButton = document.getElementById("factoryResetButton");
+    if (factoryResetButton) factoryResetButton.addEventListener("click", factoryResetConsole);
     const letterTemplateSettingsSelect = document.getElementById("letterTemplateSettingsSelect");
     if (letterTemplateSettingsSelect) letterTemplateSettingsSelect.addEventListener("change", () => {
         selectedLetterTemplateId = letterTemplateSettingsSelect.value;

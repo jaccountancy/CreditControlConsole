@@ -151,6 +151,46 @@ def disconnect_xero(user: dict) -> dict:
     return {"disconnected": bool(row), "tenant_name": row.get("tenant_name") if row else None}
 
 
+def factory_reset_console(user: dict) -> dict:
+    tenant_id = None
+    try:
+        tenant_id = get_xero_connection_for_user(user["id"]).get("tenant_id")
+    except HTTPException:
+        tenant_id = None
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if tenant_id:
+                cursor.execute("DELETE FROM customers WHERE tenant_id = %s", (tenant_id,))
+            else:
+                cursor.execute("DELETE FROM customers")
+            customers_deleted = cursor.rowcount
+            cursor.execute(
+                "DELETE FROM sync_runs WHERE provider = %s AND initiated_by_user_id = %s",
+                ("xero", user["id"]),
+            )
+            sync_runs_deleted = cursor.rowcount
+            cursor.execute("DELETE FROM audit_events")
+        connection.commit()
+
+    record_audit_event(
+        "console",
+        str(user["id"]),
+        "factory_reset.completed",
+        {
+            "tenant_id": tenant_id,
+            "customers_deleted": customers_deleted,
+            "sync_runs_deleted": sync_runs_deleted,
+        },
+        user["id"],
+    )
+    return {
+        "tenantId": tenant_id,
+        "customersDeleted": customers_deleted,
+        "syncRunsDeleted": sync_runs_deleted,
+    }
+
+
 def _sync_error_message(exc: Exception) -> str:
     if isinstance(exc, HTTPException):
         detail = exc.detail
@@ -855,11 +895,11 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             """
                             INSERT INTO invoices (
                                 customer_id, xero_invoice_id, invoice_number, status, due_date, invoice_date,
-                                currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
+                                description, line_items, currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
                             )
                             VALUES (
                                 %(customer_id)s, %(xero_invoice_id)s, %(invoice_number)s, %(status)s, %(due_date)s, %(invoice_date)s,
-                                %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
+                                %(description)s, %(line_items_json)s::jsonb, %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
                             )
                             ON CONFLICT (xero_invoice_id) DO UPDATE
                             SET customer_id = EXCLUDED.customer_id,
@@ -867,6 +907,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                                 status = EXCLUDED.status,
                                 due_date = EXCLUDED.due_date,
                                 invoice_date = EXCLUDED.invoice_date,
+                                description = EXCLUDED.description,
+                                line_items = EXCLUDED.line_items,
                                 currency_code = EXCLUDED.currency_code,
                                 total = EXCLUDED.total,
                                 amount_due = EXCLUDED.amount_due,
@@ -878,6 +920,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             """,
                             {
                                 **invoice,
+                                "line_items_json": json.dumps(invoice.get("line_items") or [], default=_json_default),
                                 "customer_id": customer_id,
                                 "synced_at": now,
                                 "updated_at": now,
@@ -1094,11 +1137,11 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         """
                         INSERT INTO invoices (
                             customer_id, xero_invoice_id, invoice_number, status, due_date, invoice_date,
-                            currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
+                            description, line_items, currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
                         )
                         VALUES (
                             %(customer_id)s, %(xero_invoice_id)s, %(invoice_number)s, %(status)s, %(due_date)s, %(invoice_date)s,
-                            %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
+                            %(description)s, %(line_items_json)s::jsonb, %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
                         )
                         ON CONFLICT (xero_invoice_id) DO UPDATE
                         SET customer_id = EXCLUDED.customer_id,
@@ -1106,6 +1149,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             status = EXCLUDED.status,
                             due_date = EXCLUDED.due_date,
                             invoice_date = EXCLUDED.invoice_date,
+                            description = EXCLUDED.description,
+                            line_items = EXCLUDED.line_items,
                             currency_code = EXCLUDED.currency_code,
                             total = EXCLUDED.total,
                             amount_due = EXCLUDED.amount_due,
@@ -1117,6 +1162,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         """,
                         {
                             **invoice,
+                            "line_items_json": json.dumps(invoice.get("line_items") or [], default=_json_default),
                             "customer_id": customer_id,
                             "synced_at": now,
                             "updated_at": now,
@@ -1344,6 +1390,8 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
         "controlStatus": invoice.get("control_status") or invoice.get("status") or "New",
         "dueDate": _iso(invoice.get("due_date")),
         "invoiceDate": _iso(invoice.get("invoice_date")),
+        "description": invoice.get("description") or "",
+        "lineItems": invoice.get("line_items") or [],
         "currencyCode": invoice.get("currency_code") or "GBP",
         "total": _float(invoice.get("total")),
         "amountDue": _float(invoice.get("amount_due")),

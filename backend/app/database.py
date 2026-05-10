@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     status TEXT NOT NULL,
     due_date DATE,
     invoice_date DATE,
+    description TEXT,
+    line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
     currency_code TEXT,
     total NUMERIC(14, 2) NOT NULL DEFAULT 0,
     amount_due NUMERIC(14, 2) NOT NULL DEFAULT 0,
@@ -121,6 +123,8 @@ CREATE TABLE IF NOT EXISTS invoices (
 
 CREATE INDEX IF NOT EXISTS invoices_customer_idx ON invoices (customer_id);
 CREATE INDEX IF NOT EXISTS invoices_due_date_idx ON invoices (due_date);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS line_items JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS invoice_status_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

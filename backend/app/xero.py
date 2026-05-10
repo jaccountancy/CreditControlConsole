@@ -485,7 +485,27 @@ def normalise_contact(contact: dict, tenant_id: str) -> dict:
     }
 
 
+def _normalise_invoice_line_items(invoice: dict) -> tuple[str, list[dict]]:
+    line_items = []
+    descriptions = []
+    for item in invoice.get("LineItems") or []:
+        description = str(item.get("Description") or item.get("Item", {}).get("Name") or "").strip()
+        if description:
+            descriptions.append(description)
+        line_items.append(
+            {
+                "description": description,
+                "quantity": item.get("Quantity"),
+                "unitAmount": item.get("UnitAmount"),
+                "lineAmount": item.get("LineAmount"),
+                "accountCode": item.get("AccountCode"),
+            }
+        )
+    return "\n".join(descriptions), line_items
+
+
 def normalise_invoice(invoice: dict) -> dict:
+    description, line_items = _normalise_invoice_line_items(invoice)
     return {
         "xero_invoice_id": invoice["InvoiceID"],
         "xero_contact_id": invoice.get("Contact", {}).get("ContactID"),
@@ -493,6 +513,8 @@ def normalise_invoice(invoice: dict) -> dict:
         "status": invoice.get("Status", "UNKNOWN"),
         "due_date": _xero_date(invoice.get("DueDateString") or invoice.get("DueDate")),
         "invoice_date": _xero_date(invoice.get("DateString") or invoice.get("Date")),
+        "description": description,
+        "line_items": line_items,
         "currency_code": invoice.get("CurrencyCode"),
         "total": invoice.get("Total", 0),
         "amount_due": invoice.get("AmountDue", 0),

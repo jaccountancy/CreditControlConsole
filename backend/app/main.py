@@ -35,6 +35,7 @@ from .services import (
     customer_detail,
     dashboard_payload,
     disconnect_xero,
+    factory_reset_console,
     get_xero_connection_for_user,
     insights_payload,
     invoice_detail,
@@ -503,6 +504,12 @@ def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depen
 @app.post("/api/xero/disconnect")
 def api_xero_disconnect(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **disconnect_xero(user)}
+
+
+@app.post("/api/panel/factory-reset")
+def api_panel_factory_reset(user: dict = Depends(require_panel_user)):
+    reset = factory_reset_console(user)
+    return {"status": "ok", "reset": reset, "panel": panel_payload(user)}
 
 
 @app.post("/api/invoices/{invoice_id}/notes")
