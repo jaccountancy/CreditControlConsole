@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     device_code_ttl_minutes: int = 10
     session_ttl_days: int = 30
     statutory_interest_rate: float = 0.08
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
 
     model_config = SettingsConfigDict(
         env_file=".env",

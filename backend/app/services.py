@@ -1,10 +1,13 @@
 import asyncio
 import json
 import logging
+from calendar import monthrange
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+import httpx
 from fastapi import HTTPException, status
 
 from .config import get_settings
@@ -662,7 +665,11 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         if candidate_modified_since is not None
         else False
     )
-    modified_since = candidate_modified_since if years_are_already_imported else None
+    force_full_history_refresh = (
+        sync_options["invoice_scope"] == "full_history"
+        or sync_options["paid_page_limit"] is None
+    )
+    modified_since = None if force_full_history_refresh else candidate_modified_since if years_are_already_imported else None
     is_incremental_sync = modified_since is not None
     scope_already_imported = (
         _completed_sync_covers_scope(user["id"], sync_options["invoice_scope"])
@@ -679,6 +686,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     )
     if is_incremental_sync:
         sync_mode_summary = f"Incremental sync from {modified_since.isoformat()}."
+    elif force_full_history_refresh:
+        sync_mode_summary = "Full history refresh requested; fetching the selected years without incremental filters."
     elif candidate_modified_since is not None:
         sync_mode_summary = "Full sync for newly selected invoice years."
     else:
@@ -1420,12 +1429,59 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
             )
             customer_note_rows = cursor.fetchall()
+            invoice_ids = [row["id"] for row in invoice_rows]
+            note_rows = []
+            promise_rows = []
+            status_rows = []
+            if invoice_ids:
+                cursor.execute(
+                    """
+                    SELECT notes.*, users.full_name
+                    FROM notes
+                    LEFT JOIN users ON users.id = notes.user_id
+                    WHERE notes.invoice_id = ANY(%s)
+                    ORDER BY notes.created_at DESC
+                    """,
+                    (invoice_ids,),
+                )
+                note_rows = cursor.fetchall()
+                cursor.execute(
+                    """
+                    SELECT payment_promises.*, users.full_name
+                    FROM payment_promises
+                    LEFT JOIN users ON users.id = payment_promises.created_by_user_id
+                    WHERE payment_promises.invoice_id = ANY(%s)
+                    ORDER BY payment_promises.created_at DESC
+                    """,
+                    (invoice_ids,),
+                )
+                promise_rows = cursor.fetchall()
+                cursor.execute(
+                    """
+                    SELECT invoice_status_history.*, users.full_name
+                    FROM invoice_status_history
+                    LEFT JOIN users ON users.id = invoice_status_history.changed_by_user_id
+                    WHERE invoice_status_history.invoice_id = ANY(%s)
+                    ORDER BY invoice_status_history.created_at DESC
+                    """,
+                    (invoice_ids,),
+                )
+                status_rows = cursor.fetchall()
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
     notes_by_customer: dict[str, list[dict]] = {}
+    notes_by_invoice: dict[str, list[dict]] = defaultdict(list)
+    promises_by_invoice: dict[str, list[dict]] = defaultdict(list)
+    statuses_by_invoice: dict[str, list[dict]] = defaultdict(list)
     for note in customer_note_rows:
         notes_by_customer.setdefault(note["customer_id"], []).append(note)
+    for note in note_rows:
+        notes_by_invoice[note["invoice_id"]].append(note)
+    for promise in promise_rows:
+        promises_by_invoice[promise["invoice_id"]].append(promise)
+    for status_row in status_rows:
+        statuses_by_invoice[status_row["invoice_id"]].append(status_row)
 
     today = utcnow().date()
     for invoice in invoice_rows:
@@ -1439,7 +1495,15 @@ def panel_payload(user: dict | None = None) -> dict:
         detail_invoices = invoices_by_customer.get(customer_row["id"], [])
         invoices = []
         for invoice in detail_invoices:
-            invoice_payload = _serialize_invoice(invoice)
+            invoice_payload = _serialize_invoice(
+                invoice,
+                {
+                    "notes": notes_by_invoice.get(invoice["id"], []),
+                    "promises": promises_by_invoice.get(invoice["id"], []),
+                    "statuses": statuses_by_invoice.get(invoice["id"], []),
+                    "audit": [],
+                },
+            )
             invoices.append(invoice_payload)
             if selected_invoice is None:
                 selected_invoice = invoice_payload
@@ -1732,6 +1796,393 @@ async def sync_customer_note_to_xero(customer_id: str, user: dict, body: str) ->
     return {"synced": True, "error": ""}
 
 
+def _parse_iso_date(value) -> date | None:
+    if isinstance(value, date):
+        return value
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def is_seven_day_notice_status(value: str) -> bool:
+    control = str(value or "").lower()
+    return (
+        "7 day notice" in control
+        or "7-day notice" in control
+        or "seven day notice" in control
+        or ("notice" in control and "sent" in control)
+    )
+
+
+def _analytics_category(invoice: dict) -> str:
+    control = f"{invoice.get('controlStatus') or invoice.get('status') or ''}".lower()
+    amount_due = _float(invoice.get("amountDue"))
+    due_date = _parse_iso_date(invoice.get("dueDate"))
+    today = utcnow().date()
+    if amount_due <= 0 or "paid" in control:
+        return "paid"
+    if "payment plan" in control or invoice.get("promiseStatus") == "open" or invoice.get("promises"):
+        return "payment_plan"
+    if is_seven_day_notice_status(control):
+        return "seven_day_notice"
+    if "bad debt" in control or "bad-debt" in control or "bad_debt" in control:
+        return "bad_debt"
+    if "court" in control or "legal" in control:
+        return "legal"
+    if "query" in control or "queried" in control or "dispute" in control or "disputed" in control:
+        return "query"
+    if due_date and due_date < today:
+        return "overdue"
+    return "outstanding"
+
+
+def _month_key(value: date) -> str:
+    return f"{value.year:04d}-{value.month:02d}"
+
+
+def _month_label(value: date) -> str:
+    return value.strftime("%b %Y")
+
+
+def _month_start(value: date) -> date:
+    return date(value.year, value.month, 1)
+
+
+def _previous_month(value: date) -> date:
+    if value.month == 1:
+        return date(value.year - 1, 12, 1)
+    return date(value.year, value.month - 1, 1)
+
+
+def _last_months(count: int = 12) -> list[date]:
+    current = _month_start(utcnow().date())
+    months = [current]
+    for _ in range(count - 1):
+        current = _previous_month(current)
+        months.append(current)
+    return list(reversed(months))
+
+
+def _build_insights_analytics(user: dict) -> dict:
+    panel = panel_payload(user)
+    today = utcnow().date()
+    invoices = []
+    for customer in panel["customers"]:
+        for invoice in customer.get("invoices", []):
+            category = _analytics_category(invoice)
+            amount_due = _float(invoice.get("amountDue"))
+            total = _float(invoice.get("total")) or amount_due
+            amount_paid = _float(invoice.get("amountPaid")) or max(total - amount_due, 0)
+            due_date = _parse_iso_date(invoice.get("dueDate"))
+            invoice_date = _parse_iso_date(invoice.get("invoiceDate")) or due_date
+            overdue_days = max((today - due_date).days, 0) if due_date else 0
+            invoices.append(
+                {
+                    "id": str(invoice.get("id") or ""),
+                    "customerId": str(customer.get("id") or ""),
+                    "customerName": customer.get("name") or "Client",
+                    "invoiceNumber": invoice.get("invoiceNumber") or "",
+                    "category": category,
+                    "total": total,
+                    "amountDue": amount_due,
+                    "amountPaid": amount_paid,
+                    "dueDate": due_date.isoformat() if due_date else "",
+                    "invoiceDate": invoice_date.isoformat() if invoice_date else "",
+                    "overdueDays": overdue_days,
+                }
+            )
+
+    open_invoices = [invoice for invoice in invoices if invoice["category"] != "paid"]
+    overdue_invoices = [invoice for invoice in open_invoices if invoice["overdueDays"] > 0]
+    status_order = ["outstanding", "overdue", "seven_day_notice", "payment_plan", "query", "legal", "bad_debt", "paid"]
+    status_counts = []
+    for category in status_order:
+        matching = [invoice for invoice in invoices if invoice["category"] == category]
+        status_counts.append(
+            {
+                "category": category,
+                "label": category.replace("_", " ").title(),
+                "count": len(matching),
+                "value": round(sum(invoice["amountDue"] if category != "paid" else invoice["total"] for invoice in matching), 2),
+            }
+        )
+
+    customer_rollups = []
+    for customer in panel["customers"]:
+        customer_invoices = [invoice for invoice in invoices if invoice["customerId"] == str(customer.get("id"))]
+        customer_open = [invoice for invoice in customer_invoices if invoice["category"] != "paid"]
+        customer_overdue = [invoice for invoice in customer_open if invoice["overdueDays"] > 0]
+        if not customer_invoices:
+            continue
+        customer_rollups.append(
+            {
+                "id": str(customer.get("id") or ""),
+                "name": customer.get("name") or "Client",
+                "totalDue": round(sum(invoice["amountDue"] for invoice in customer_open), 2),
+                "overdue": round(sum(invoice["amountDue"] for invoice in customer_overdue), 2),
+                "openInvoices": len(customer_open),
+                "maxDaysOverdue": max((invoice["overdueDays"] for invoice in customer_overdue), default=0),
+                "statusMix": {
+                    category: sum(1 for invoice in customer_invoices if invoice["category"] == category)
+                    for category in status_order
+                },
+            }
+        )
+    top_customers = sorted(customer_rollups, key=lambda item: (item["totalDue"], item["maxDaysOverdue"]), reverse=True)[:10]
+
+    month_rows = {month: {"month": _month_key(month), "label": _month_label(month), "invoiced": 0.0, "paid": 0.0, "outstanding": 0.0} for month in _last_months(12)}
+    month_lookup = {_month_key(month): month for month in month_rows}
+    for invoice in invoices:
+        invoice_date = _parse_iso_date(invoice["invoiceDate"])
+        if not invoice_date:
+            continue
+        key = _month_key(_month_start(invoice_date))
+        month = month_lookup.get(key)
+        if not month:
+            continue
+        month_rows[month]["invoiced"] += invoice["total"]
+        month_rows[month]["paid"] += invoice["amountPaid"]
+        month_rows[month]["outstanding"] += invoice["amountDue"]
+    monthly = [
+        {
+            **row,
+            "invoiced": round(row["invoiced"], 2),
+            "paid": round(row["paid"], 2),
+            "outstanding": round(row["outstanding"], 2),
+        }
+        for _, row in sorted(month_rows.items())
+    ]
+
+    ageing_buckets = [
+        ("Current", lambda days: days <= 0),
+        ("1-30", lambda days: 1 <= days <= 30),
+        ("31-60", lambda days: 31 <= days <= 60),
+        ("61-90", lambda days: 61 <= days <= 90),
+        ("90+", lambda days: days > 90),
+    ]
+    ageing = []
+    for label, predicate in ageing_buckets:
+        matching = [invoice for invoice in open_invoices if predicate(invoice["overdueDays"])]
+        ageing.append({"label": label, "count": len(matching), "value": round(sum(invoice["amountDue"] for invoice in matching), 2)})
+
+    totals = {
+        "invoiceCount": len(invoices),
+        "openInvoiceCount": len(open_invoices),
+        "customerCount": len(panel["customers"]),
+        "totalInvoiced": round(sum(invoice["total"] for invoice in invoices), 2),
+        "totalOutstanding": round(sum(invoice["amountDue"] for invoice in open_invoices), 2),
+        "totalPaid": round(sum(invoice["amountPaid"] for invoice in invoices), 2),
+        "totalOverdue": round(sum(invoice["amountDue"] for invoice in overdue_invoices), 2),
+        "paymentPlanValue": round(sum(invoice["amountDue"] for invoice in invoices if invoice["category"] == "payment_plan"), 2),
+        "legalValue": round(sum(invoice["amountDue"] for invoice in invoices if invoice["category"] == "legal"), 2),
+        "sevenDayNoticeValue": round(sum(invoice["amountDue"] for invoice in invoices if invoice["category"] == "seven_day_notice"), 2),
+        "maxDaysOverdue": max((invoice["overdueDays"] for invoice in overdue_invoices), default=0),
+    }
+
+    return {
+        "generatedAt": utcnow().isoformat(),
+        "organisation": panel.get("organisation", {}),
+        "totals": totals,
+        "topCustomers": top_customers,
+        "monthly": monthly,
+        "ageing": ageing,
+        "statusCounts": status_counts,
+        "riskInvoices": sorted(overdue_invoices, key=lambda item: (item["amountDue"], item["overdueDays"]), reverse=True)[:12],
+    }
+
+
+OPENAI_INSIGHTS_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "priorityActions", "risks", "opportunities", "narrative"],
+    "properties": {
+        "summary": {"type": "string"},
+        "priorityActions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "reason", "impact", "urgency"],
+                "properties": {
+                    "title": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "impact": {"type": "string"},
+                    "urgency": {"type": "string", "enum": ["high", "medium", "low"]},
+                },
+            },
+        },
+        "risks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "detail", "value"],
+                "properties": {
+                    "title": {"type": "string"},
+                    "detail": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+            },
+        },
+        "opportunities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "detail", "value"],
+                "properties": {
+                    "title": {"type": "string"},
+                    "detail": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+            },
+        },
+        "narrative": {"type": "string"},
+    },
+}
+
+
+def _fallback_ai_insights(analytics: dict, status_value: str = "local") -> dict:
+    totals = analytics["totals"]
+    top_customer = analytics["topCustomers"][0] if analytics["topCustomers"] else None
+    actions = []
+    if top_customer and top_customer["totalDue"] > 0:
+        actions.append(
+            {
+                "title": f"Prioritise {top_customer['name']}",
+                "reason": f"They owe £{top_customer['totalDue']:,.2f} across {top_customer['openInvoices']} open invoice(s).",
+                "impact": "Largest current balance concentration.",
+                "urgency": "high" if top_customer["maxDaysOverdue"] >= 90 else "medium",
+            }
+        )
+    if totals["sevenDayNoticeValue"] > 0:
+        actions.append(
+            {
+                "title": "Review active 7 day notices",
+                "reason": f"£{totals['sevenDayNoticeValue']:,.2f} is currently in the notice countdown workflow.",
+                "impact": "Keeps escalation decisions visible before deadlines expire.",
+                "urgency": "high",
+            }
+        )
+    if totals["paymentPlanValue"] > 0:
+        actions.append(
+            {
+                "title": "Monitor payment plan performance",
+                "reason": f"£{totals['paymentPlanValue']:,.2f} is committed to payment plans.",
+                "impact": "Missed plan payments can be chased without manually checking every client.",
+                "urgency": "medium",
+            }
+        )
+    return {
+        "status": status_value,
+        "summary": f"{totals['openInvoiceCount']} open invoices total £{totals['totalOutstanding']:,.2f}, with £{totals['totalOverdue']:,.2f} overdue.",
+        "priorityActions": actions[:5],
+        "risks": [
+            {
+                "title": "Maximum overdue age",
+                "detail": f"The oldest overdue balance is {totals['maxDaysOverdue']} days overdue.",
+                "value": f"{totals['maxDaysOverdue']} days",
+            },
+            {
+                "title": "Legal exposure",
+                "detail": "Invoices already marked Legal should be checked before additional reminders are sent.",
+                "value": f"£{totals['legalValue']:,.2f}",
+            },
+        ],
+        "opportunities": [
+            {
+                "title": "Payment plan coverage",
+                "detail": "Accounts with active plans can be separated from normal overdue chasing.",
+                "value": f"£{totals['paymentPlanValue']:,.2f}",
+            }
+        ],
+        "narrative": "These insights are calculated locally from the synced Xero data.",
+    }
+
+
+def _extract_response_text(payload: dict) -> str:
+    if payload.get("output_text"):
+        return str(payload["output_text"])
+    parts = []
+    for item in payload.get("output", []) or []:
+        for content in item.get("content", []) or []:
+            text = content.get("text") if isinstance(content, dict) else None
+            if text:
+                parts.append(str(text))
+    return "\n".join(parts).strip()
+
+
+async def _generate_openai_insights(analytics: dict) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return _fallback_ai_insights(analytics, "disabled")
+
+    compact_analytics = {
+        "totals": analytics["totals"],
+        "topCustomers": analytics["topCustomers"][:8],
+        "ageing": analytics["ageing"],
+        "statusCounts": analytics["statusCounts"],
+        "monthly": analytics["monthly"],
+        "riskInvoices": analytics["riskInvoices"][:8],
+    }
+    request_body = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You are Jenius AI, an operational credit-control analyst. "
+                            "Return concise JSON only. Focus on collection priority, overdue risk, payment plans, "
+                            "legal escalation, and month-on-month movement. Do not invent figures not present in the input."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": json.dumps(compact_analytics, default=_json_default)}],
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "credit_control_insights",
+                "schema": OPENAI_INSIGHTS_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 1800,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=45) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+                json=request_body,
+            )
+            response.raise_for_status()
+        text = _extract_response_text(response.json())
+        parsed = json.loads(text) if text else {}
+        return {"status": "ready", **parsed}
+    except Exception as exc:
+        logger.exception("OpenAI insights generation failed")
+        fallback = _fallback_ai_insights(analytics, "error")
+        fallback["error"] = str(exc) or exc.__class__.__name__
+        return fallback
+
+
+async def insights_payload(user: dict) -> dict:
+    analytics = _build_insights_analytics(user)
+    ai = await _generate_openai_insights(analytics)
+    return {"status": "ok", "analytics": analytics, "ai": ai}
+
+
 def add_promise(invoice_id: str, user: dict, promised_amount: str, promised_date: str, note: str) -> None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -1747,10 +2198,18 @@ def add_promise(invoice_id: str, user: dict, promised_amount: str, promised_date
                 UPDATE invoices
                 SET promised_date = %s,
                     promise_status = %s,
+                    control_status = %s,
                     updated_at = %s
                 WHERE id = %s
                 """,
-                (promised_date, "open", utcnow(), invoice_id),
+                (promised_date, "open", "Payment Plan", utcnow(), invoice_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (invoice_id, "Payment Plan", note or "Payment promise recorded.", user["id"]),
             )
         connection.commit()
     record_audit_event(
@@ -1760,6 +2219,141 @@ def add_promise(invoice_id: str, user: dict, promised_amount: str, promised_date
         {"promised_amount": promised_amount, "promised_date": promised_date, "note": note},
         user["id"],
     )
+
+
+def _add_months(value: date, months: int) -> date:
+    month_index = value.month - 1 + max(months, 0)
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def create_payment_plan(customer_id: str, user: dict, invoice_ids: list[str], duration_months: int, note: str = "") -> dict:
+    try:
+        unique_invoice_ids = list(dict.fromkeys(UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id in payment plan.") from exc
+    clean_invoice_ids = [str(invoice_id) for invoice_id in unique_invoice_ids]
+    if not clean_invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one invoice is required.")
+    if duration_months < 1 or duration_months > 60:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment plan duration must be between 1 and 60 months.")
+
+    now = utcnow()
+    promised_date = _add_months(now.date(), duration_months)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id, name FROM customers WHERE id = %s", (customer_id,))
+            customer = cursor.fetchone()
+            if customer is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found.")
+
+            cursor.execute(
+                """
+                SELECT id, invoice_number, amount_due
+                FROM invoices
+                WHERE customer_id = %s
+                  AND id = ANY(%s)
+                  AND amount_due > 0
+                ORDER BY due_date ASC NULLS LAST, invoice_number ASC
+                """,
+                (customer_id, unique_invoice_ids),
+            )
+            invoices = cursor.fetchall()
+            if len(invoices) != len(unique_invoice_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Payment plans can only include open invoices for the selected customer.",
+                )
+
+            total_amount = sum(_float(invoice.get("amount_due")) for invoice in invoices)
+            invoice_refs = ", ".join(invoice.get("invoice_number") or str(invoice["id"]) for invoice in invoices)
+            auto_note = (
+                note.strip()
+                or f"Payment plan created for {duration_months} months covering {len(invoices)} invoice(s): {invoice_refs}."
+            )
+            per_invoice_note = (
+                f"{auto_note}\n\n"
+                f"Plan total: £{total_amount:,.2f}. Expected completion: {promised_date.isoformat()}."
+            )
+
+            for invoice in invoices:
+                cursor.execute(
+                    """
+                    INSERT INTO payment_promises (invoice_id, promised_amount, promised_date, note, created_by_user_id)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (invoice["id"], invoice["amount_due"], promised_date, per_invoice_note, user["id"]),
+                )
+                cursor.execute(
+                    """
+                    UPDATE invoices
+                    SET promised_date = %s,
+                        promise_status = %s,
+                        control_status = %s,
+                        notes_summary = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (promised_date, "open", "Payment Plan", auto_note[:200], now, invoice["id"]),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (invoice["id"], "Payment Plan", per_invoice_note, user["id"]),
+                )
+            cursor.execute(
+                "INSERT INTO customer_notes (customer_id, user_id, body) VALUES (%s, %s, %s)",
+                (customer_id, user["id"], per_invoice_note),
+            )
+            tenant_id = None
+            cursor.execute("SELECT tenant_id FROM customers WHERE id = %s", (customer_id,))
+            tenant_row = cursor.fetchone()
+            if tenant_row:
+                tenant_id = tenant_row["tenant_id"]
+            if tenant_id:
+                _refresh_customer_totals(cursor, tenant_id, now)
+        connection.commit()
+
+    for invoice in invoices:
+        record_audit_event(
+            "invoice",
+            str(invoice["id"]),
+            "payment_plan.created",
+            {
+                "customer_id": customer_id,
+                "duration_months": duration_months,
+                "promised_date": promised_date.isoformat(),
+                "invoice_count": len(invoices),
+                "total_amount": total_amount,
+                "note": auto_note,
+            },
+            user["id"],
+        )
+    record_audit_event(
+        "customer",
+        customer_id,
+        "payment_plan.created",
+        {
+            "duration_months": duration_months,
+            "promised_date": promised_date.isoformat(),
+            "invoice_ids": clean_invoice_ids,
+            "total_amount": total_amount,
+            "note": auto_note,
+        },
+        user["id"],
+    )
+    return {
+        "customerId": customer_id,
+        "invoiceIds": clean_invoice_ids,
+        "durationMonths": duration_months,
+        "promisedDate": promised_date.isoformat(),
+        "totalAmount": total_amount,
+        "note": auto_note,
+    }
 
 
 def update_control_status(invoice_id: str, user: dict, status_value: str, note: str) -> None:

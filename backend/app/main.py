@@ -31,10 +31,12 @@ from .services import (
     add_customer_note,
     add_note,
     add_promise,
+    create_payment_plan,
     customer_detail,
     dashboard_payload,
     disconnect_xero,
     get_xero_connection_for_user,
+    insights_payload,
     invoice_detail,
     list_customers,
     list_developer_logs,
@@ -442,6 +444,11 @@ def api_panel(user: dict = Depends(require_panel_user)):
     return panel_payload(user)
 
 
+@app.get("/api/insights")
+async def api_insights(user: dict = Depends(require_panel_user)):
+    return await insights_payload(user)
+
+
 @app.post("/api/panel/sync")
 async def api_panel_sync(request: Request, user: dict = Depends(require_panel_user)):
     try:
@@ -542,6 +549,23 @@ async def api_invoice_add_promise(invoice_id: str, request: Request, user: dict 
     return {
         "status": "ok",
         "invoice": invoice_detail(invoice_id),
+    }
+
+
+@app.post("/api/customers/{customer_id}/payment-plans")
+async def api_customer_create_payment_plan(customer_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    invoice_ids = payload.get("invoiceIds") or []
+    try:
+        duration_months = int(payload.get("durationMonths") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment plan duration is required.") from exc
+    note = str(payload.get("note", "")).strip()
+    plan = create_payment_plan(customer_id, user, invoice_ids, duration_months, note)
+    return {
+        "status": "ok",
+        "paymentPlan": plan,
+        "panel": panel_payload(user),
     }
 
 
