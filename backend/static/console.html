@@ -292,7 +292,8 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     color: var(--red);
 }
 .xero-connect-wrap:hover .xero-action-menu,
-.xero-connect-wrap:focus-within .xero-action-menu {
+.xero-connect-wrap:focus-within .xero-action-menu,
+.xero-connect-wrap.is-open .xero-action-menu {
     opacity: 1;
     pointer-events: auto;
     transform: translateY(0);
@@ -4597,6 +4598,18 @@ function isXeroDisconnectedMessage(message) {
     return /not linked xero|not connected|connect xero/i.test(String(message || ""));
 }
 
+function setTopbarMenuOpen(isOpen) {
+    const menuWrap = document.getElementById("topbarMenuWrap");
+    const menuButton = document.getElementById("topbarMenuButton");
+    if (menuWrap) menuWrap.classList.toggle("is-open", Boolean(isOpen));
+    if (menuButton) menuButton.setAttribute("aria-expanded", String(Boolean(isOpen)));
+}
+
+function closeTopbarMenu() {
+    setTopbarMenuOpen(false);
+    document.getElementById("topbarMenuButton")?.blur();
+}
+
 function escapeHTML(value) {
     return String(value ?? "").replace(/[&<>"']/g, (character) => ({
         "&": "&amp;",
@@ -4754,6 +4767,7 @@ async function loadInsights(force = false) {
 function openInsightsScreen() {
     activeView = "insights";
     activeInsightsSection = activeInsightsSection || "overview";
+    closeTopbarMenu();
     renderAll();
     loadInsights();
 }
@@ -5240,6 +5254,7 @@ async function loadDeveloperLog() {
 function openDeveloperLog() {
     const panel = document.getElementById("developerLogPanel");
     if (panel) panel.hidden = false;
+    closeTopbarMenu();
     loadDeveloperLog();
 }
 
@@ -5251,6 +5266,7 @@ function closeDeveloperLog() {
 function openHelpPanel() {
     const panel = document.getElementById("helpPanel");
     if (panel) panel.hidden = false;
+    closeTopbarMenu();
 }
 
 function closeHelpPanel() {
@@ -5506,9 +5522,9 @@ async function waitForSyncRun(syncRunId) {
 function openSettingsScreen() {
     activeView = "settings";
     closeToolbarMenus();
+    closeTopbarMenu();
     renderAll();
     document.getElementById("menuSettingsButton")?.blur();
-    document.getElementById("topbarMenuButton")?.blur();
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -5653,8 +5669,21 @@ function wireBulkActions() {
 }
 
 function wireLoginButtons() {
+    const topbarMenuButton = document.getElementById("topbarMenuButton");
+    if (topbarMenuButton) {
+        topbarMenuButton.setAttribute("aria-expanded", "false");
+        topbarMenuButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            const menuWrap = document.getElementById("topbarMenuWrap");
+            setTopbarMenuOpen(!menuWrap?.classList.contains("is-open"));
+        });
+    }
+    document.addEventListener("click", (event) => {
+        if (!event.target.closest("#topbarMenuWrap")) closeTopbarMenu();
+    });
     const connect = (event) => {
         event.preventDefault();
+        closeTopbarMenu();
         const url = loginURL();
         if (!url) {
             window.alert("Unable to start the Xero login flow.");
