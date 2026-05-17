@@ -585,6 +585,15 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     position: relative;
     min-width: 0;
 }
+.summary-chip-wrap::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    z-index: 19;
+    height: 16px;
+}
 .summary-chip-dropdown {
     position: absolute;
     z-index: 20;
@@ -737,6 +746,15 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     padding: 10px 14px;
     font-weight: 800;
 }
+.bulk-action-controls button.danger-button {
+    border-color: rgba(255, 83, 83, 0.26);
+    background: var(--red-soft);
+    color: #bb2f2f;
+}
+.bulk-action-controls button:disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+}
 .ledger-card { border-radius: 28px; overflow: hidden; position: relative; }
 .ledger-scroll { overflow: auto; }
 .sync-inline-banner {
@@ -815,15 +833,14 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     white-space: nowrap;
 }
 .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
-.invoice-table { width: 100%; border-collapse: collapse; min-width: 1120px; table-layout: fixed; }
+.invoice-table { width: 100%; border-collapse: collapse; min-width: 1040px; table-layout: fixed; }
 .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
-.invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 22%; }
+.invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 23%; }
 .invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 15%; }
-.invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 18%; }
-.invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 10%; }
-.invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 14%; }
-.invoice-table th:nth-child(7), .invoice-table td:nth-child(7) { width: 17%; }
-.invoice-table th:nth-child(8), .invoice-table td:nth-child(8) { width: 54px; }
+.invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 24%; }
+.invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 17%; }
+.invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 16%; }
+.invoice-table th:nth-child(7), .invoice-table td:nth-child(7) { width: 54px; }
 .invoice-table th, .invoice-table td {
     padding: 16px 18px;
     border-bottom: 1px solid var(--line);
@@ -926,6 +943,68 @@ body.is-dense .note-snippet {
 }
 .description-title { font-weight: 700; margin-bottom: 4px; }
 .amount-cell, .paid-amount { font-weight: 800; }
+.amount-cell {
+    position: relative;
+}
+.amount-value {
+    display: block;
+    margin-bottom: 8px;
+}
+.amount-full-tooltip {
+    position: absolute;
+    left: 16px;
+    top: 6px;
+    z-index: 18;
+    display: grid;
+    gap: 7px;
+    width: 280px;
+    max-width: calc(100vw - 48px);
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-strong);
+    box-shadow: 0 12px 28px rgba(30, 47, 77, 0.14);
+    color: var(--ink);
+    font-size: 0.78rem;
+    font-weight: 750;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-8px);
+    transition: 0.16s ease;
+}
+.amount-cell:hover .amount-full-tooltip,
+.amount-cell:focus-within .amount-full-tooltip {
+    opacity: 1;
+    transform: translateY(-100%);
+}
+.amount-tooltip-title {
+    font-weight: 850;
+}
+.amount-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: var(--muted);
+    white-space: nowrap;
+}
+.amount-tooltip-row strong {
+    color: var(--ink);
+}
+.amount-tooltip-row.is-balance {
+    margin-top: 2px;
+    padding-top: 7px;
+    border-top: 1px solid var(--line);
+    color: var(--ink);
+}
+.amount-progress .payment-progress {
+    width: min(132px, 100%);
+    margin-top: 0;
+}
+.amount-progress .payment-status {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 850;
+}
 .payment-cell { display: grid; gap: 4px; }
 .payment-status { display: inline-flex; align-items: center; gap: 8px; }
 .payment-progress {
@@ -1005,7 +1084,7 @@ body.is-dense .note-snippet {
 .row-action-menu {
     position: absolute;
     right: 0;
-    top: calc(100% + 6px);
+    top: calc(100% + 2px);
     z-index: 20;
     display: inline-flex;
     gap: 6px;
@@ -1032,7 +1111,7 @@ body.is-dense .note-snippet {
     right: 0;
     top: 100%;
     width: 190px;
-    height: 12px;
+    height: 22px;
 }
 .row-action-button:hover {
     border-color: rgba(29, 103, 242, 0.26);
@@ -1065,7 +1144,8 @@ body.is-dense .note-snippet {
 .ledger-view[hidden],
 .client-screen[hidden],
 .settings-screen[hidden],
-.insights-screen[hidden] {
+.insights-screen[hidden],
+.late-charges-screen[hidden] {
     display: none;
 }
 .ledger-topbar, .summary-bar, .toolbar-row, .ledger-card, .ledger-footer, .detail-card {
@@ -1625,6 +1705,188 @@ body.is-dense .note-snippet {
     background: rgba(255, 255, 255, 0.72);
     border: 1px solid var(--line);
 }
+.late-charge-list {
+    display: grid;
+    gap: 10px;
+}
+.late-charge-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto auto;
+    gap: 14px;
+    align-items: center;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.74);
+}
+.late-charge-row.is-raised {
+    opacity: 0.68;
+}
+.late-charge-main strong,
+.late-charge-main span {
+    display: block;
+}
+.late-charge-main span,
+.late-charge-status {
+    color: var(--muted);
+    font-size: 0.86rem;
+    font-weight: 750;
+}
+.late-charge-amount {
+    font-weight: 900;
+}
+.late-charge-summary {
+    margin: 0 0 18px;
+    color: var(--muted);
+    font-weight: 750;
+}
+.payment-plan-preview {
+    padding: 12px 14px;
+    border: 1px solid rgba(29, 103, 242, 0.16);
+    border-radius: 14px;
+    background: var(--blue-soft);
+    color: var(--ink);
+    font-weight: 850;
+}
+.payments-made-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.payments-made-summary article,
+.payment-made-row {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.74);
+}
+.payments-made-summary article {
+    padding: 14px;
+}
+.payments-made-summary span,
+.payment-made-row span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.payments-made-summary strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 1.05rem;
+}
+.payment-made-list {
+    display: grid;
+    gap: 10px;
+}
+.payment-made-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 14px 16px;
+}
+.payment-made-row strong {
+    display: block;
+}
+.outstanding-transactions-panel {
+    margin-top: 18px;
+}
+.xero-transaction-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+}
+.xero-transaction-summary article {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.78);
+    padding: 14px;
+}
+.xero-transaction-summary article.is-highlighted,
+.xero-credit-row.is-highlighted {
+    border-color: rgba(222, 128, 18, 0.34);
+    background: rgba(255, 247, 226, 0.94);
+}
+.xero-transaction-summary span,
+.xero-transaction-row span,
+.xero-credit-row span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.xero-transaction-summary strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 1.05rem;
+}
+.xero-transaction-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+    gap: 18px;
+    align-items: start;
+}
+.compact-heading {
+    margin-bottom: 10px;
+}
+.xero-transaction-list,
+.xero-credit-list {
+    display: grid;
+    gap: 12px;
+}
+.xero-transaction-row,
+.xero-credit-row {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.78);
+    padding: 14px 16px;
+}
+.xero-transaction-head,
+.xero-credit-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+}
+.xero-transaction-head strong,
+.xero-credit-head strong {
+    display: block;
+}
+.xero-line-items {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+}
+.xero-line-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+}
+.allocation-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 0.35fr) auto;
+    gap: 8px;
+    margin-top: 12px;
+}
+.allocation-form select,
+.allocation-form input {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.94);
+    padding: 10px 12px;
+    color: var(--ink);
+    font: inherit;
+    font-weight: 750;
+    min-width: 0;
+}
+.allocation-form button {
+    white-space: nowrap;
+}
 .client-invoices-panel { margin: 18px 0; }
 .account-file-panel {
     display: grid;
@@ -1680,7 +1942,7 @@ body.is-dense .note-snippet {
 .client-invoice-row {
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 14px;
     border: 1px solid var(--line);
@@ -1689,6 +1951,12 @@ body.is-dense .note-snippet {
     padding: 14px 16px;
     text-align: left;
     color: var(--ink);
+    cursor: pointer;
+}
+.client-invoice-row input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--blue);
 }
 .client-invoice-row.is-selected {
     border-color: rgba(29, 103, 242, 0.35);
@@ -1753,6 +2021,24 @@ body.is-dense .note-snippet {
 .client-hero {
     margin-bottom: 18px;
 }
+.client-hero .text-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    padding: 10px 16px;
+    border: 1px solid rgba(29, 103, 242, 0.34);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--blue);
+    box-shadow: 0 10px 22px rgba(29, 103, 242, 0.10);
+}
+.client-hero .detail-actions {
+    align-items: flex-start;
+}
+.client-action-menu-wrap .xero-action-menu {
+    min-width: 250px;
+}
 .client-sidebar {
     position: sticky;
     top: 18px;
@@ -1815,26 +2101,33 @@ body.is-dense .note-snippet {
     justify-content: center;
 }
 .client-section-nav {
-    display: grid;
-    gap: 6px;
-    padding: 8px;
+    position: sticky;
+    top: 12px;
+    z-index: 12;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px;
+    margin-bottom: 14px;
     border-radius: 18px;
-    background: rgba(255, 255, 255, 0.58);
+    background: rgba(255, 255, 255, 0.86);
     border: 1px solid var(--line);
+    backdrop-filter: blur(12px);
 }
 .client-section-nav button {
-    width: 100%;
+    flex: 0 0 auto;
     min-height: 40px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     border: 0;
-    border-radius: 12px;
+    border-radius: 999px;
     background: transparent;
     color: #40506b;
-    padding: 10px 12px;
-    text-align: left;
+    padding: 10px 14px;
+    text-align: center;
     font-weight: 850;
+    white-space: nowrap;
 }
 .client-section-nav button:hover,
 .client-section-nav button.is-active {
@@ -1855,6 +2148,36 @@ body.is-dense .note-snippet {
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.86);
     backdrop-filter: blur(12px);
+}
+.client-notes-table {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+}
+.client-note-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 0.28fr) minmax(0, 1fr);
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(248, 251, 255, 0.86);
+}
+.client-note-row strong {
+    display: block;
+    font-size: 0.9rem;
+}
+.client-note-row span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 750;
+}
+.client-invoice-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 .client-section-pane {
     display: grid;
@@ -2269,6 +2592,7 @@ body.is-syncing .sync-dot {
     .client-workspace-layout,
     .interest-breakdown-panel,
     .account-file-grid,
+    .xero-transaction-grid,
     .import-year-grid,
     .detail-stats,
     .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2286,6 +2610,8 @@ body.is-syncing .sync-dot {
     .invoice-workspace-split,
     .interest-breakdown-panel,
     .account-file-grid,
+    .xero-transaction-summary,
+    .xero-transaction-grid,
     .import-year-grid,
     .detail-stats,
     .client-sidebar-metrics,
@@ -2304,6 +2630,8 @@ body.is-syncing .sync-dot {
 }
 @media (max-width: 560px) {
     .summary-bar { grid-template-columns: 1fr; }
+    .payments-made-summary,
+    .allocation-form { grid-template-columns: 1fr; }
 }
     </style>
 </head>
@@ -2345,6 +2673,7 @@ body.is-syncing .sync-dot {
                         <button type="button" id="helpButton">Help</button>
                         <button type="button" id="menuSettingsButton">Settings</button>
                         <button type="button" id="menuInsightsButton">Insights</button>
+                        <button type="button" id="menuLateChargesButton">Late Payment Charges</button>
                         <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
                         <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                         <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
@@ -2359,22 +2688,22 @@ body.is-syncing .sync-dot {
         <section class="ledger-view" id="ledgerView">
         <section class="dashboard-hero hero-summary-grid" id="dashboardHero">
             <article class="hero-summary-card">
-                <span>Total invoiced (ever)</span>
+                <span>Invoiced </span>
                 <strong id="heroTotalInvoiced">£0</strong>
                 <p id="heroTotalInvoicedCount">0 invoices synced</p>
             </article>
             <article class="hero-summary-card">
-                <span>Total outstanding (as of now)</span>
+                <span>Outstanding </span>
                 <strong id="heroTotalOutstanding">£0</strong>
                 <p id="heroOpenInvoices">0 open invoices</p>
             </article>
             <article class="hero-summary-card">
-                <span>Total paid invoices</span>
+                <span>Paid</span>
                 <strong id="heroPaidInvoices">0</strong>
                 <p id="heroPaidInvoicesValue">£0 paid value</p>
             </article>
             <article class="hero-summary-card notice-card" id="sevenDayNoticeCard" role="button" tabindex="0">
-                <span>7 Day Notices sent</span>
+                <span>7 Day Notices Sent</span>
                 <strong id="heroClientsAction">0</strong>
                 <p id="heroNoticesSummary">No active 7 day notices</p>
             </article>
@@ -2424,7 +2753,6 @@ body.is-syncing .sync-dot {
                     <button class="ghost-button toolbar-menu-button" id="columnButton" type="button" aria-expanded="false" aria-controls="columnMenu">Columns</button>
                     <div class="toolbar-menu column-toggle-list" id="columnMenu" hidden>
                         <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
-                        <label><input type="checkbox" data-column-toggle="paid" checked> Paid</label>
                         <label><input type="checkbox" data-column-toggle="notes" checked> Notes</label>
                     </div>
                 </div>
@@ -2451,6 +2779,7 @@ body.is-syncing .sync-dot {
                 <button id="bulkApplyStatusButton" type="button">Apply status</button>
                 <button id="bulkAddNoteButton" type="button">Add note</button>
                 <button id="bulkAssignManagerButton" type="button">Assign manager</button>
+                <button class="danger-button" id="bulkWriteOffButton" type="button">Write off</button>
                 <button id="bulkExportButton" type="button">Export selected</button>
                 <button id="bulkClearSelectionButton" type="button">Clear</button>
             </div>
@@ -2465,8 +2794,7 @@ body.is-syncing .sync-dot {
                             <th class="is-sticky">Client</th>
                             <th class="is-sticky">Invoice Ref</th>
                             <th class="is-sticky" data-column="description">Description</th>
-                            <th class="is-sticky">Amount</th>
-                            <th class="is-sticky" data-column="paid">Paid</th>
+                            <th class="is-sticky">Amount Due</th>
                             <th class="is-sticky" data-column="notes">Notes</th>
                             <th class="is-sticky"></th>
                         </tr>
@@ -2511,16 +2839,16 @@ body.is-syncing .sync-dot {
                         <label for="syncScopeSelect">
                             Data filter
                             <select id="syncScopeSelect">
-                                <option value="outstanding_only">Outstanding invoices only</option>
-                                <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
-                                <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
                                 <option value="full_history">Full invoice history</option>
+                                <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
+                                <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
+                                <option value="outstanding_only">Outstanding invoices only</option>
                             </select>
                         </label>
                         <div class="import-years-panel">
                             <div class="settings-field-label">Invoice years to import</div>
                             <div class="import-year-grid" id="importYearOptions"></div>
-                            <p class="settings-help">No years are selected by default. Select every year you want to import before running a sync.</p>
+                            <p class="settings-help">Leave every year unticked to import all available Xero invoice years, or tick specific years to limit the import.</p>
                         </div>
                         <div class="sync-settings-status" id="syncSettingsStatus">
                             <span>Imported: no sync yet</span>
@@ -2564,6 +2892,24 @@ body.is-syncing .sync-dot {
             </div>
         </section>
 
+        <section class="late-charges-screen detail-card" id="lateChargesScreen" hidden>
+            <div class="detail-hero">
+                <div>
+                    <button class="text-button" id="backFromLateChargesButton" type="button">Back to ledger</button>
+                    <p class="eyebrow">Overdue invoice workflow</p>
+                    <h2>Late Payment Charges</h2>
+                    <p class="detail-meta">Invoices more than 14 days overdue. Select eligible rows to raise one Xero invoice per charge.</p>
+                </div>
+                <div class="detail-actions">
+                    <button class="primary-button" id="raiseLateChargesButton" type="button">Raise selected charges</button>
+                </div>
+            </div>
+            <section class="detail-panel">
+                <p class="late-charge-summary" id="lateChargesSummary">No eligible invoices loaded.</p>
+                <div class="late-charge-list" id="lateChargesList"></div>
+            </section>
+        </section>
+
         <section class="insights-screen detail-card" id="insightsScreen" hidden>
             <div class="detail-hero insights-hero">
                 <div>
@@ -2602,11 +2948,18 @@ body.is-syncing .sync-dot {
                     <button class="text-button" id="backToLedgerButton" type="button">Back to ledger</button>
                     <p class="eyebrow">Credit control client</p>
                     <h2 id="clientTitle">No client selected</h2>
-                    <p class="detail-meta" id="clientMeta">Select an invoice from the ledger to open the client workspace.</p>
                 </div>
                 <div class="detail-actions">
-                    <div class="status-badge" id="clientStatusBadge">Awaiting data</div>
-                    <button class="ghost-button" id="sidebarSyncButton" type="button" disabled>Connect Xero to sync</button>
+                    <div class="xero-connect-wrap client-action-menu-wrap" id="clientActionMenuWrap">
+                        <button class="primary-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Menu</button>
+                        <div class="xero-action-menu" id="clientActionMenu">
+                            <button type="button" data-client-action="reminder">Send reminder</button>
+                            <button type="button" data-client-action="payment">Record payment</button>
+                            <button type="button" data-client-action="note">Add note</button>
+                            <button type="button" data-client-action="legal">Escalate account</button>
+                            <button type="button" id="clientRunImportButton">Run import</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -2640,34 +2993,25 @@ body.is-syncing .sync-dot {
                             <a class="client-profile-action" id="clientEmailLink" href="#" hidden>Email</a>
                             <a class="client-profile-action" id="selectedContactXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
                         </div>
-                    </section>
-
-                    <nav class="client-section-nav" aria-label="Client sections">
-                        <button type="button" class="is-active" data-client-section="overview">Overview</button>
-                        <button type="button" data-client-section="invoices">Invoices</button>
-                        <button type="button" data-client-section="notes">Notes</button>
-                        <button type="button" data-client-section="payment-plans">Payment Plans</button>
-                        <button type="button" data-client-section="letters">Letters</button>
-                        <button type="button" data-client-section="attachments">Attachments</button>
-                        <button type="button" data-client-section="history">History</button>
-                        <button type="button" data-client-section="legal">Legal Escalation</button>
-                        <button type="button" data-client-section="settings">Settings</button>
-                    </nav>
-
-                    <section class="client-summary-card client-contact-card">
-                        <span>Xero contact</span>
-                        <strong id="clientContactSummary">--</strong>
+                        <div class="xero-contact-details">
+                            <span>Xero contact</span>
+                            <strong id="clientContactSummary">--</strong>
+                        </div>
                         <div class="xero-contact-details" id="xeroContactDetails"></div>
                     </section>
                 </aside>
 
                 <div class="client-main-panel">
-                    <div class="client-action-bar" aria-label="Client quick actions">
-                        <button class="ghost-button" type="button" data-client-action="reminder">Send reminder</button>
-                        <button class="ghost-button" type="button" data-client-action="payment">Record payment</button>
-                        <button class="ghost-button" type="button" data-client-action="note">Add note</button>
-                        <button class="primary-button" type="button" data-client-action="legal">Escalate account</button>
-                    </div>
+                    <nav class="client-section-nav" aria-label="Client sections">
+                        <button type="button" class="is-active" data-client-section="overview">Overview</button>
+                        <button type="button" data-client-section="invoices">Invoices</button>
+                        <button type="button" data-client-section="payments">Payments & Credits</button>
+                        <button type="button" data-client-section="notes">Notes</button>
+                        <button type="button" data-client-section="payment-plans">Payment Plans</button>
+                        <button type="button" data-client-section="letters">Letters</button>
+                        <button type="button" data-client-section="legal">Legal Escalation</button>
+                        <button type="button" data-client-section="settings">Settings</button>
+                    </nav>
 
                     <section class="client-section-pane" data-client-pane="overview">
                         <div class="client-status-banner" id="clientStateBanner">Select a client to see account status.</div>
@@ -2698,7 +3042,10 @@ body.is-syncing .sync-dot {
                                         <p class="eyebrow">Client invoices</p>
                                         <h3>Open ledger rows</h3>
                                     </div>
-                                    <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
+                                    <div class="client-invoice-bulk-actions">
+                                        <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
+                                        <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
+                                    </div>
                                 </div>
                                 <div class="client-invoice-list" id="clientInvoiceList"></div>
                             </section>
@@ -2713,40 +3060,68 @@ body.is-syncing .sync-dot {
                                 </div>
                                 <div class="selected-invoice-detail" id="selectedInvoiceDetail"></div>
                                 <div class="selected-invoice-actions">
-                                    <button class="ghost-button" type="button" data-client-action="note">Add note</button>
+                                    <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
                                     <button class="ghost-button" type="button" data-client-action="payment">Record payment</button>
                                     <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
                                 </div>
+                                <form class="stack-form" id="invoiceNoteForm">
+                                    <textarea id="invoiceNoteInput" rows="4" placeholder="Note for the selected invoice"></textarea>
+                                    <button class="primary-button" type="submit">Add invoice note</button>
+                                </form>
+                                <div class="mini-timeline" id="selectedInvoiceNotesList"></div>
                             </section>
                         </div>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="notes" hidden>
-                        <div class="account-file-grid">
-                            <section class="detail-panel account-file-section account-notes-section">
-                                <div class="section-heading">
-                                    <p class="eyebrow">Client notes</p>
-                                    <h4>Account-level notes</h4>
+                    <section class="client-section-pane" data-client-pane="payments" hidden>
+                        <section class="detail-panel">
+                            <div class="section-heading">
+                                <p class="eyebrow">Payments made</p>
+                                <h4>Xero payments for this contact</h4>
+                            </div>
+                            <div class="payments-made-summary" id="paymentsMadeSummary"></div>
+                            <div class="payment-made-list" id="paymentsMadeList"></div>
+                        </section>
+                        <section class="detail-panel outstanding-transactions-panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <p class="eyebrow">Outstanding transactions</p>
+                                    <h3>Xero invoices, credits and overpayments</h3>
                                 </div>
-                                <form class="stack-form" id="clientNoteForm">
-                                    <textarea id="clientNoteInput" rows="6" placeholder="Capture client-level call notes, contact names, chasing updates, payment context, or legal context"></textarea>
-                                    <button class="primary-button" type="submit">Add client note</button>
-                                </form>
-                                <div class="mini-timeline" id="clientNotesTimeline"></div>
-                            </section>
+                                <button class="ghost-button" id="refreshTransactionsButton" type="button">Refresh from Xero</button>
+                            </div>
+                            <div class="xero-transaction-summary" id="outstandingTransactionsSummary"></div>
+                            <div class="xero-transaction-grid">
+                                <section>
+                                    <div class="section-heading compact-heading">
+                                        <p class="eyebrow">Open invoice lines</p>
+                                        <h4>Outstanding transaction lines</h4>
+                                    </div>
+                                    <div class="xero-transaction-list" id="outstandingTransactionList"></div>
+                                </section>
+                                <section>
+                                    <div class="section-heading compact-heading">
+                                        <p class="eyebrow">Unallocated balances</p>
+                                        <h4>Credits to apply</h4>
+                                    </div>
+                                    <div class="xero-credit-list" id="unallocatedCreditList"></div>
+                                </section>
+                            </div>
+                        </section>
+                    </section>
 
-                            <section class="detail-panel account-file-section">
-                                <div class="section-heading">
-                                    <p class="eyebrow">Invoice notes</p>
-                                    <h4>Selected invoice notes</h4>
-                                </div>
-                                <form class="stack-form" id="invoiceNoteForm">
-                                    <textarea id="invoiceNoteInput" rows="5" placeholder="Note for the selected invoice"></textarea>
-                                    <button class="primary-button" type="submit">Add invoice note</button>
-                                </form>
-                                <div class="mini-timeline" id="invoiceNotesTimeline"></div>
-                            </section>
-                        </div>
+                    <section class="client-section-pane" data-client-pane="notes" hidden>
+                        <section class="detail-panel account-file-section account-notes-section">
+                            <div class="section-heading">
+                                <p class="eyebrow">Client notes</p>
+                                <h4>Account-level notes</h4>
+                            </div>
+                            <form class="stack-form" id="clientNoteForm">
+                                <textarea id="clientNoteInput" rows="5" placeholder="Capture client-level call notes, contact names, chasing updates, payment context, or legal context"></textarea>
+                                <button class="primary-button" type="submit">Add client note</button>
+                            </form>
+                            <div class="client-notes-table" id="clientNotesTable"></div>
+                        </section>
                     </section>
 
                     <section class="client-section-pane" data-client-pane="payment-plans" hidden>
@@ -2765,6 +3140,7 @@ body.is-syncing .sync-dot {
                                     <option value="custom">Custom duration</option>
                                 </select>
                                 <input id="paymentPlanCustomMonthsInput" type="number" min="1" max="60" step="1" placeholder="Custom months" hidden>
+                                <div class="payment-plan-preview" id="paymentPlanQuote">Select invoices to calculate the monthly payment.</div>
                                 <textarea id="promiseNoteInput" rows="4" placeholder="Payment plan context"></textarea>
                                 <button class="primary-button" type="submit">Create payment plan</button>
                             </form>
@@ -2786,40 +3162,6 @@ body.is-syncing .sync-dot {
                                     <button class="ghost-button" id="copyGeneratedLetterButton" type="button">Copy letter</button>
                                 </div>
                             </form>
-                        </section>
-                    </section>
-
-                    <section class="client-section-pane" data-client-pane="attachments" hidden>
-                        <section class="detail-panel">
-                            <div class="section-heading">
-                                <p class="eyebrow">Attachments</p>
-                                <h4>Proof and correspondence</h4>
-                            </div>
-                            <form class="stack-form" id="attachmentForm">
-                                <input id="attachmentInput" type="file" multiple>
-                                <textarea id="attachmentNoteInput" rows="4" placeholder="Attachment context"></textarea>
-                                <button class="primary-button" type="submit">Add attachment record</button>
-                            </form>
-                            <div class="mini-timeline" id="attachmentTimeline"></div>
-                        </section>
-                    </section>
-
-                    <section class="client-section-pane" data-client-pane="history" hidden>
-                        <section class="detail-panel history-section">
-                            <div class="section-heading">
-                                <p class="eyebrow">Activity timeline</p>
-                                <h4>Calls, notes, letters, status changes, plans and files</h4>
-                            </div>
-                            <div class="history-timeline-grid">
-                                <div>
-                                    <p class="timeline-label">Unified activity</p>
-                                    <div class="mini-timeline" id="activityTimeline"></div>
-                                </div>
-                                <div class="audit-history">
-                                    <p class="timeline-label">Audit trail</p>
-                                    <div class="mini-timeline" id="auditTrailTimeline"></div>
-                                </div>
-                            </div>
                         </section>
                     </section>
 
@@ -2849,6 +3191,18 @@ body.is-syncing .sync-dot {
                             </form>
                             <div class="mini-timeline" id="statusTimeline"></div>
                         </section>
+                        <section class="detail-panel">
+                            <div class="section-heading">
+                                <p class="eyebrow">Attachments</p>
+                                <h4>Proof and correspondence</h4>
+                            </div>
+                            <form class="stack-form" id="attachmentForm">
+                                <input id="attachmentInput" type="file" multiple>
+                                <textarea id="attachmentNoteInput" rows="4" placeholder="Attachment context"></textarea>
+                                <button class="primary-button" type="submit">Add attachment record</button>
+                            </form>
+                            <div class="mini-timeline" id="attachmentTimeline"></div>
+                        </section>
                     </section>
 
                     <section class="client-section-pane" data-client-pane="settings" hidden>
@@ -2877,6 +3231,22 @@ body.is-syncing .sync-dot {
                                     <span>Queue</span>
                                     <strong id="clientQueueStatus">Credit control</strong>
                                 </article>
+                            </div>
+                        </section>
+                        <section class="detail-panel history-section">
+                            <div class="section-heading">
+                                <p class="eyebrow">Activity timeline</p>
+                                <h4>Calls, notes, letters, status changes, plans and files</h4>
+                            </div>
+                            <div class="history-timeline-grid">
+                                <div>
+                                    <p class="timeline-label">Unified activity</p>
+                                    <div class="mini-timeline" id="activityTimeline"></div>
+                                </div>
+                                <div class="audit-history">
+                                    <p class="timeline-label">Audit trail</p>
+                                    <div class="mini-timeline" id="auditTrailTimeline"></div>
+                                </div>
                             </div>
                         </section>
                     </section>
@@ -2909,6 +3279,26 @@ body.is-syncing .sync-dot {
                 <span id="syncElapsedLabel">Elapsed 0s</span>
                 <span id="syncEtaLabel">Estimated completion 45-90s</span>
             </div>
+        </div>
+    </section>
+
+    <section class="developer-log-panel" id="quickNotePanel" aria-modal="true" role="dialog" aria-labelledby="quickNoteTitle" hidden>
+        <div class="developer-log-card">
+            <form class="stack-form" id="quickNoteForm">
+                <div class="developer-log-head">
+                    <div>
+                        <h3 id="quickNoteTitle">Add invoice note</h3>
+                        <p id="quickNoteSummary">Save a note against the selected invoice without leaving the ledger.</p>
+                    </div>
+                    <div class="developer-log-actions">
+                        <button class="ghost-button" id="closeQuickNoteButton" type="button">Close</button>
+                        <button class="primary-button" type="submit">Save note</button>
+                    </div>
+                </div>
+                <div style="padding: 24px;">
+                    <textarea id="quickNoteInput" rows="7" placeholder="Add chasing update, payment context, call note or next action"></textarea>
+                </div>
+            </form>
         </div>
     </section>
 
@@ -3107,9 +3497,14 @@ let activeInsightsSection = "overview";
 let hasAutoStartedInitialSync = false;
 let hasLoadedWorkingSyncPanel = false;
 let denseMode = false;
+let quickNoteInvoiceId = null;
+let lastPaymentPlanAutoNote = "";
+let selectedClientInvoiceIds = new Set();
+let selectedLateChargeInvoiceIds = new Set();
+const customerTransactionCache = new Map();
+const customerTransactionLoading = new Set();
 let visibleColumns = {
     description: true,
-    paid: true,
     notes: true
 };
 
@@ -3122,7 +3517,7 @@ const filterLabels = {
     over1000: "Over £1,000",
     under100: "Under £100"
 };
-const clientSections = new Set(["overview", "invoices", "notes", "payment-plans", "letters", "attachments", "history", "legal", "settings"]);
+const clientSections = new Set(["overview", "invoices", "payments", "notes", "payment-plans", "letters", "legal", "settings"]);
 const NOTICE_STATUS = "7 Day Notice Sent";
 const NOTICE_PERIOD_DAYS = 7;
 
@@ -3158,8 +3553,12 @@ function normaliseAPI(config) {
             developerLogs: config.endpoints?.developerLogs || "/api/developer/logs",
             note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
             customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
+            customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
+            allocation: config.endpoints?.allocation || "/api/customers/:customerId/allocations",
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             paymentPlan: config.endpoints?.paymentPlan || "/api/customers/:customerId/payment-plans",
+            latePaymentCharges: config.endpoints?.latePaymentCharges || "/api/late-payment-charges",
+            writeOffs: config.endpoints?.writeOffs || "/api/write-offs",
             insights: config.endpoints?.insights || "/api/insights",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
             factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -3193,13 +3592,16 @@ function loadState() {
 function loadSyncSettings() {
     try {
         const stored = JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY) || "{}");
-        const invoiceScope = syncScopeLabels[stored.invoiceScope] ? stored.invoiceScope : "outstanding_only";
+        const invoiceScope = syncScopeLabels[stored.invoiceScope] ? stored.invoiceScope : "full_history";
         const invoiceYears = Array.isArray(stored.invoiceYears)
             ? [...new Set(stored.invoiceYears.map((year) => Number(year)).filter((year) => Number.isInteger(year)))].sort((a, b) => a - b)
             : [];
+        if ((!stored.invoiceScope || stored.invoiceScope === "outstanding_only") && !invoiceYears.length) {
+            return { invoiceScope: "full_history", invoiceYears: [] };
+        }
         return { invoiceScope, invoiceYears };
     } catch {
-        return { invoiceScope: "outstanding_only", invoiceYears: [] };
+        return { invoiceScope: "full_history", invoiceYears: [] };
     }
 }
 
@@ -3406,6 +3808,25 @@ function selectedInvoices() {
     return allInvoices().filter((invoice) => selectedInvoiceIds.has(invoice.id));
 }
 
+function invoiceWriteOffRaised(invoice) {
+    return Boolean(invoice?.badDebtWriteOffAt || invoice?.badDebtCreditNoteId || invoice?.badDebtCreditNoteNumber);
+}
+
+function writeOffAmount(invoice) {
+    return Number(invoice?.badDebtCreditNoteAmount || 0) || Number(invoice?.amountDue || 0);
+}
+
+function invoicePaidAmount(invoice) {
+    if (invoiceCategory(invoice) === "bad-debt") return Number(invoice?.amountPaid || 0);
+    const paid = Number(invoice?.amountPaid);
+    if (Number.isFinite(paid) && paid > 0) return paid;
+    return Math.max(Number(invoice?.total || 0) - Number(invoice?.amountDue || 0), 0);
+}
+
+function isWriteOffCandidate(invoice) {
+    return Number(invoice?.amountDue || 0) > 0 && invoiceCategory(invoice) !== "paid" && !invoiceWriteOffRaised(invoice);
+}
+
 function normaliseStatus(value) {
     return `${value || ""}`.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -3482,10 +3903,10 @@ function invoiceCategory(invoice) {
     const amountDue = Number(invoice.amountDue || 0);
     const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
     const now = new Date();
+    if (control.includes("bad debt") || control.includes("bad-debt") || control.includes("bad_debt")) return "bad-debt";
     if (amountDue <= 0 || control.includes("paid")) return "paid";
     if (isSevenDayNoticeStatus(control)) return "notice";
     if (control.includes("payment plan") || invoice.promiseStatus === "open" || (invoice.promises || []).length) return "payment-plan";
-    if (control.includes("bad debt") || control.includes("bad-debt") || control.includes("bad_debt")) return "bad-debt";
     if (control.includes("court") || control.includes("legal")) return "court";
     if (control.includes("query") || control.includes("queried") || control.includes("dispute") || control.includes("disputed")) return "query";
     if (amountDue > 0 && dueDate && dueDate < now) return "overdue";
@@ -3539,11 +3960,33 @@ function invoiceLineSummary(invoice) {
     return descriptions.slice(0, 3).join(" · ");
 }
 
+function invoiceAmountBreakdown(invoice) {
+    const amountDue = Math.max(0, Number(invoice?.amountDue || 0));
+    const amountPaid = Math.max(0, Number(invoice?.amountPaid || 0));
+    const totalAmount = Math.max(Number(invoice?.total || 0), amountDue + amountPaid, amountDue);
+    const paymentsApplied = Math.min(totalAmount, amountPaid || Math.max(0, totalAmount - amountDue));
+    return { totalAmount, paymentsApplied, amountDue };
+}
+
+function amountDueTooltipHTML(invoice) {
+    const { totalAmount, paymentsApplied, amountDue } = invoiceAmountBreakdown(invoice);
+    return `
+        <span class="amount-tooltip-title">Amount due breakdown</span>
+        <span class="amount-tooltip-row"><span>Total invoice value</span><strong>${formatCurrency(totalAmount)}</strong></span>
+        <span class="amount-tooltip-row"><span>Payments applied</span><strong>${formatCurrency(paymentsApplied)}</strong></span>
+        <span class="amount-tooltip-row is-balance"><span>Balance remaining</span><strong>${formatCurrency(amountDue)}</strong></span>
+    `;
+}
+
+function amountDueTooltipLabel(invoice) {
+    const { totalAmount, paymentsApplied, amountDue } = invoiceAmountBreakdown(invoice);
+    return `Total invoice value ${formatCurrency(totalAmount)}, payments applied ${formatCurrency(paymentsApplied)}, balance remaining ${formatCurrency(amountDue)}`;
+}
+
 function paymentPercent(invoice) {
-    const total = Number(invoice.total || 0);
-    if (total <= 0) return 0;
-    const paid = Math.max(0, total - Number(invoice.amountDue || 0));
-    return Math.min(100, Math.round((paid / total) * 100));
+    const { totalAmount, paymentsApplied } = invoiceAmountBreakdown(invoice);
+    if (totalAmount <= 0) return 0;
+    return Math.min(100, Math.round((paymentsApplied / totalAmount) * 100));
 }
 
 function setLetterTemplateSelect(select, selectedId) {
@@ -3947,7 +4390,7 @@ function dashboardTotals() {
         openCount: openInvoices.length,
         totalOutstanding: openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         paidCount: paidInvoices.length,
-        paidValue: invoices.reduce((sum, invoice) => sum + Number(invoice.amountPaid || Math.max(Number(invoice.total || 0) - Number(invoice.amountDue || 0), 0)), 0),
+        paidValue: invoices.reduce((sum, invoice) => sum + invoicePaidAmount(invoice), 0),
         overdueCount: overdueInvoices.length,
         overdueValue: overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         clientsNeedingAction: notices.length,
@@ -4008,7 +4451,7 @@ function renderSummaryCounts() {
         query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         court: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").reduce((sum, invoice) => sum + writeOffAmount(invoice), 0),
     };
     document.getElementById("countAll").textContent = counts.all.toLocaleString("en-GB");
     document.getElementById("countPaid").textContent = counts.paid.toLocaleString("en-GB");
@@ -4054,6 +4497,16 @@ function renderBulkActionToolbar() {
     const toolbar = document.getElementById("bulkActionToolbar");
     toolbar.hidden = selectedInvoiceIds.size === 0;
     document.getElementById("bulkActionSummary").textContent = `${selectedInvoiceIds.size.toLocaleString("en-GB")} invoice${selectedInvoiceIds.size === 1 ? "" : "s"} selected`;
+    const writeOffButton = document.getElementById("bulkWriteOffButton");
+    if (writeOffButton) {
+        const candidates = selectedInvoices().filter(isWriteOffCandidate);
+        writeOffButton.disabled = !candidates.length || !isXeroConnected();
+        writeOffButton.title = !isXeroConnected()
+            ? "Connect Xero before writing off invoices."
+            : candidates.length
+                ? `${candidates.length.toLocaleString("en-GB")} selected invoice${candidates.length === 1 ? "" : "s"} can be written off.`
+                : "Selected invoices are paid, already written off, or not outstanding.";
+    }
 }
 
 function updateSelectAllState() {
@@ -4082,6 +4535,47 @@ function openClientWorkspace(invoice, focusId, section = "overview") {
     if (focusId) window.setTimeout(() => document.getElementById(focusId)?.focus(), 350);
 }
 
+function openQuickNotePanel(invoice) {
+    quickNoteInvoiceId = invoice?.id || null;
+    const panel = document.getElementById("quickNotePanel");
+    const input = document.getElementById("quickNoteInput");
+    const summary = document.getElementById("quickNoteSummary");
+    if (!panel || !input) return;
+    input.value = "";
+    if (summary) summary.textContent = `${invoice?.customerName || "Client"} · ${invoice?.invoiceNumber || "Invoice"} · ${formatCurrency(invoice?.amountDue || 0)} due`;
+    panel.hidden = false;
+    window.setTimeout(() => input.focus(), 80);
+}
+
+function closeQuickNotePanel() {
+    quickNoteInvoiceId = null;
+    const panel = document.getElementById("quickNotePanel");
+    if (panel) panel.hidden = true;
+}
+
+async function saveQuickInvoiceNote() {
+    const match = mutableInvoiceById(quickNoteInvoiceId);
+    const input = document.getElementById("quickNoteInput");
+    const body = input?.value.trim() || "";
+    if (!match || !body) return;
+    match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
+    match.invoice.notesSummary = body.slice(0, 200);
+    closeQuickNotePanel();
+    persistState();
+    renderAll();
+    showToast("Invoice note saved locally", "success");
+    try {
+        const payload = await requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body }) }, { invoiceId: match.invoice.id });
+        if (payload?.panel) replaceState(normaliseState(payload.panel));
+        else await hydrateFromAPI();
+        renderAll();
+        showToast(payload?.xeroNoteSynced ? "Invoice note saved and added to Xero" : "Invoice note saved locally", payload?.xeroNoteSynced ? "success" : "info");
+    } catch (error) {
+        console.error("Unable to sync quick note", error);
+        showToast("Unable to sync invoice note", "error");
+    }
+}
+
 function handleRowAction(action, invoice) {
     closeRowActionMenus();
     const client = findCustomerById(invoice.customerId);
@@ -4097,7 +4591,7 @@ function handleRowAction(action, invoice) {
         window.location.href = href;
         return;
     }
-    if (action === "note") return openClientWorkspace(invoice, "invoiceNoteInput", "notes");
+    if (action === "note") return openQuickNotePanel(invoice);
     if (action === "status") return openClientWorkspace(invoice, "bulkStatusSelect", "legal");
     if (action === "xero") {
         const url = invoiceXeroURL(invoice);
@@ -4123,27 +4617,32 @@ function renderInvoiceTable() {
     if (isSyncing && !paged.length) {
         for (let index = 0; index < 5; index += 1) {
             const row = document.createElement("tr");
-            row.innerHTML = `<td colspan="8"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
+            row.innerHTML = `<td colspan="7"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
             tbody.appendChild(row);
         }
     } else if (!paged.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="8"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+        row.innerHTML = `<td colspan="7"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
         tbody.appendChild(row);
     } else {
         paged.forEach((invoice) => {
             const category = invoiceCategory(invoice);
             const progress = paymentPercent(invoice);
             const lineSummary = invoiceLineSummary(invoice);
+            const amountBreakdown = invoiceAmountBreakdown(invoice);
+            const amountDue = amountBreakdown.amountDue;
+            const amountTitle = amountDueTooltipLabel(invoice);
+            const progressHTML = amountBreakdown.paymentsApplied > 0 && amountDue > 0 && progress > 0 && progress < 100
+                ? `<div class="payment-cell amount-progress"><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="payment-status">${progress}% paid</div></div>`
+                : "";
             const row = document.createElement("tr");
             row.className = `${invoice.id === selectedInvoiceId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
                 <td class="select-cell"><input class="invoice-select" type="checkbox" aria-label="Select invoice ${invoice.invoiceNumber || invoice.id}" ${selectedInvoiceIds.has(invoice.id) ? "checked" : ""}></td>
                 <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div><div class="client-inline-status">${statusPill(invoice)}</div></td>
-                <td><div class="client-name">${escapeHTML(invoice.invoiceNumber || "--")}</div><div class="invoice-subline">Invoice date ${formatDate(invoice.invoiceDate)}</div></td>
+                <td><div class="client-name">${escapeHTML(invoice.invoiceNumber || "--")}</div><div class="invoice-subline">${formatDate(invoice.invoiceDate)}</div></td>
                 <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(lineSummary)}</div><div class="invoice-subline">Due ${formatDate(invoice.dueDate)}</div></div></div></td>
-                <td class="amount-cell">${formatCurrency(invoice.total || invoice.amountDue || 0)}</td>
-                <td data-column="paid"><div class="payment-cell"><div class="payment-status"><span class="payment-dot ${category}">${iconSVG(category)}</span><span class="paid-amount">${formatCurrency((invoice.total || 0) - (invoice.amountDue || 0))}</span></div><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="paid-date">${progress}% paid · ${category === "paid" ? formatDate(invoice.invoiceDate || invoice.dueDate) : category === "overdue" ? "Payment overdue" : formatDate(invoice.promisedDate || invoice.dueDate)}</div></div></td>
+                <td class="amount-cell" tabindex="0" aria-label="${escapeHTML(amountTitle)}"><div class="amount-full-tooltip" role="tooltip">${amountDueTooltipHTML(invoice)}</div><strong class="amount-value">${formatCurrency(amountDue)}</strong>${progressHTML}</td>
                 <td data-column="notes"><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
                 <td class="actions-cell"><div class="row-actions" aria-label="Invoice quick actions">
                     <button class="row-action-trigger" type="button" title="Quick actions">${iconSVG("status")}</button>
@@ -4233,13 +4732,7 @@ function clientInitials(client) {
 
 function renderTopbarClientContext(client = null) {
     const context = document.getElementById("topbarClientContext");
-    const button = document.getElementById("topbarClientButton");
-    if (!context || !button) return;
-    const visibleClient = activeView === "client"
-        ? client || findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId)
-        : null;
-    context.hidden = !visibleClient;
-    if (visibleClient) button.textContent = visibleClient.name || "Selected client";
+    if (context) context.hidden = true;
 }
 
 function renderClientSectionVisibility() {
@@ -4384,10 +4877,12 @@ function renderClientScreen() {
     const clientScreen = document.getElementById("clientScreen");
     const settingsScreen = document.getElementById("settingsScreen");
     const insightsScreen = document.getElementById("insightsScreen");
+    const lateChargesScreen = document.getElementById("lateChargesScreen");
     ledgerView.hidden = activeView !== "ledger";
     clientScreen.hidden = activeView !== "client";
     if (settingsScreen) settingsScreen.hidden = activeView !== "settings";
     if (insightsScreen) insightsScreen.hidden = activeView !== "insights";
+    if (lateChargesScreen) lateChargesScreen.hidden = activeView !== "late-charges";
     if (activeView !== "client") return;
 
     if (!clientSections.has(activeClientSection)) activeClientSection = "overview";
@@ -4404,20 +4899,6 @@ function renderClientScreen() {
     const hasLegal = invoices.some((item) => invoiceCategory(item) === "court");
 
     document.getElementById("clientTitle").textContent = client?.name || "No client selected";
-    const contactLabel = client?.primaryPerson || client?.contact || client?.email || client?.phone || "Xero contact";
-    document.getElementById("clientMeta").textContent = client
-        ? `${contactLabel} · ${invoices.length} invoice${invoices.length === 1 ? "" : "s"} · ${client.manager || "Unassigned"}`
-        : "Select an invoice from the ledger to open the client workspace.";
-
-    const clientStatusBadge = document.getElementById("clientStatusBadge");
-    clientStatusBadge.textContent = client
-        ? noticeInvoices.length
-        ? `7 day notice · ${sevenDayNoticeCountdown(noticeInvoices[0])}`
-        : hasLegal
-        ? "Legal escalation"
-        : `${openInvoices.length} open`
-        : "Awaiting data";
-    clientStatusBadge.className = `status-badge${noticeInvoices.length ? " notice" : ""}`;
 
     renderTopbarClientContext(client);
     renderClientWorkspaceShell(client, invoices, openInvoices, accountInterest, noticeInvoices, hasLegal);
@@ -4463,10 +4944,14 @@ function renderClientScreen() {
 
     renderClientInvoicePicker(invoices);
     renderPaymentPlanInvoiceOptions(invoices);
+    renderPaymentsMade(client);
+    renderOutstandingTransactions(client, invoices);
+    ensureCustomerTransactions(client);
+    updatePaymentPlanPreview();
     renderClientInvoiceList(invoices);
     renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
-    renderTimeline("clientNotesTimeline", client?.clientNotes || [], { eyebrow: "No client notes", title: "Client notes will appear here", body: "Add notes for account-level calls, chasing updates and context." });
-    renderTimeline("invoiceNotesTimeline", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Invoice notes will appear here", body: "Select an invoice above, then add a note attached to that invoice." });
+    renderClientNotesTable(client?.clientNotes || []);
+    renderTimeline("selectedInvoiceNotesList", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Selected invoice notes will appear here", body: "Add invoice-level notes from this invoice workspace." });
     renderTimeline("paymentPlanTimeline", selectedInvoice?.promises || [], { eyebrow: "No payment plans", title: "Payment commitments will appear here", body: "Record promised amounts, dates and context against this invoice." });
     renderTimeline("attachmentTimeline", selectedInvoice?.attachments || [], { eyebrow: "No attachments", title: "Proof and correspondence will appear here", body: "Add attachment records for remittances, emails or supporting correspondence." });
     renderTimeline("auditTrailTimeline", auditTrailItems(client, invoices), { eyebrow: "No audit activity", title: "Audit trail will appear here", body: "Sync, note, and status activity will be shown here for review." });
@@ -4635,25 +5120,378 @@ function renderPaymentPlanInvoiceOptions(invoices) {
     });
 }
 
+function paymentPlanDurationMonths() {
+    const durationSelect = document.getElementById("paymentPlanDurationSelect");
+    const customMonthsInput = document.getElementById("paymentPlanCustomMonthsInput");
+    if (!durationSelect) return 0;
+    return durationSelect.value === "custom"
+        ? Number(customMonthsInput?.value || 0)
+        : Number(durationSelect.value || 0);
+}
+
+function selectedPaymentPlanInvoices() {
+    return [...document.querySelectorAll("[data-payment-plan-invoice]:checked")]
+        .map((input) => mutableInvoiceById(input.value))
+        .filter(Boolean);
+}
+
+function paymentPlanAutoNote(planTotal, durationMonths, monthlyAmount, invoiceCount) {
+    return `Payment plan created for ${durationMonths} month${durationMonths === 1 ? "" : "s"} covering ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}. Plan total ${formatCurrency(planTotal)}. Monthly payment ${formatCurrency(monthlyAmount)}.`;
+}
+
+function updatePaymentPlanPreview() {
+    const quote = document.getElementById("paymentPlanQuote");
+    const noteInput = document.getElementById("promiseNoteInput");
+    if (!quote || !noteInput) return;
+    const durationMonths = paymentPlanDurationMonths();
+    const selectedInvoices = selectedPaymentPlanInvoices();
+    const planTotal = selectedInvoices.reduce((sum, match) => sum + Number(match.invoice.amountDue || 0), 0);
+    if (!selectedInvoices.length || !durationMonths) {
+        quote.textContent = "Select invoices and duration to calculate the monthly payment.";
+        if (!noteInput.value || noteInput.value === lastPaymentPlanAutoNote) noteInput.value = "";
+        lastPaymentPlanAutoNote = "";
+        return;
+    }
+    const monthlyAmount = Math.round((planTotal / durationMonths) * 100) / 100;
+    const autoNote = paymentPlanAutoNote(planTotal, durationMonths, monthlyAmount, selectedInvoices.length);
+    quote.textContent = `${formatCurrency(planTotal)} over ${durationMonths} month${durationMonths === 1 ? "" : "s"} = ${formatCurrency(monthlyAmount)} per month.`;
+    if (!noteInput.value || noteInput.value === lastPaymentPlanAutoNote) noteInput.value = autoNote;
+    lastPaymentPlanAutoNote = autoNote;
+}
+
+function renderPaymentsMade(client) {
+    const summary = document.getElementById("paymentsMadeSummary");
+    const list = document.getElementById("paymentsMadeList");
+    if (!summary || !list) return;
+    const payments = [...(client?.payments || [])].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+    const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const lastPayment = payments[0] || null;
+    summary.innerHTML = [
+        ["Payments", payments.length.toLocaleString("en-GB")],
+        ["Total received", formatCurrency(totalPaid)],
+        ["Last payment", lastPayment ? `${formatCurrency(lastPayment.amount)} · ${formatDate(lastPayment.date)}` : "--"],
+    ].map(([label, value]) => `<article><span>${label}</span><strong>${value}</strong></article>`).join("");
+
+    list.innerHTML = "";
+    if (!payments.length) {
+        const empty = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        empty.querySelector(".eyebrow").textContent = "No payments synced";
+        empty.querySelector("h4").textContent = "No Xero payments found for this contact";
+        empty.querySelector("p:last-child").textContent = "Run a fresh Xero sync to pull payment records into this tab.";
+        list.appendChild(empty);
+        return;
+    }
+    payments.forEach((payment) => {
+        const row = document.createElement("article");
+        row.className = "payment-made-row";
+        row.innerHTML = `
+            <div>
+                <strong>${escapeHTML(payment.invoiceNumber || "Payment")}</strong>
+                <span>${formatDate(payment.date)}${payment.reference ? ` · ${escapeHTML(payment.reference)}` : ""}${payment.accountName ? ` · ${escapeHTML(payment.accountName)}` : ""}</span>
+                <span>${escapeHTML(payment.status || "Payment synced from Xero")}</span>
+            </div>
+            <strong>${formatCurrency(payment.amount || 0)}</strong>
+        `;
+        list.appendChild(row);
+    });
+}
+
+function formatXeroCurrency(value, currencyCode = "GBP") {
+    const code = String(currencyCode || "GBP").toUpperCase();
+    try {
+        return new Intl.NumberFormat("en-GB", {
+            style: "currency",
+            currency: code,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(Number(value || 0));
+    } catch {
+        return `${code} ${Number(value || 0).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+}
+
+function cachedCustomerTransactions(client) {
+    return client?.id ? customerTransactionCache.get(String(client.id)) : null;
+}
+
+function fallbackOutstandingTransactions(invoices) {
+    return (invoices || [])
+        .filter((invoice) => Number(invoice.amountDue || 0) > 0)
+        .map((invoice) => ({
+            id: invoice.id || "",
+            xeroInvoiceId: invoice.xeroInvoiceId || "",
+            invoiceNumber: invoice.invoiceNumber || "Invoice",
+            status: invoice.status || invoice.controlStatus || "Outstanding",
+            dueDate: invoice.dueDate,
+            invoiceDate: invoice.invoiceDate,
+            description: invoice.description || "",
+            lineItems: invoice.lineItems || [],
+            currencyCode: invoice.currencyCode || "GBP",
+            total: invoice.total || 0,
+            amountDue: invoice.amountDue || 0,
+            amountPaid: invoice.amountPaid || 0
+        }));
+}
+
+async function ensureCustomerTransactions(client, force = false) {
+    if (!client?.id || !client.xeroContactId || !state.organisation?.xeroConnected) return;
+    const key = String(client.id);
+    if (!force && customerTransactionCache.has(key)) return;
+    if (customerTransactionLoading.has(key)) return;
+    customerTransactionLoading.add(key);
+    if (force) customerTransactionCache.delete(key);
+    renderOutstandingTransactions(client, clientInvoices(client));
+    try {
+        const payload = await requestJSON(api.endpoints.customerTransactions, {}, { customerId: client.id });
+        customerTransactionCache.set(key, payload);
+    } catch (error) {
+        console.error("Unable to load Xero transactions", error);
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+        } else {
+            customerTransactionCache.set(key, { error: error.message || "Unable to load Xero transactions." });
+            showToast(error.message || "Unable to load Xero transactions", "error");
+        }
+    } finally {
+        customerTransactionLoading.delete(key);
+        if (activeView === "client" && selectedClientId === client.id) renderClientScreen();
+    }
+}
+
+function refreshCustomerTransactions() {
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    if (!client) return showToast("Select a client first", "info");
+    customerTransactionCache.delete(String(client.id));
+    ensureCustomerTransactions(client, true);
+}
+
+function xeroLineAmount(line) {
+    const direct = Number(line?.lineAmount ?? line?.LineAmount);
+    if (Number.isFinite(direct)) return direct;
+    const quantity = Number(line?.quantity ?? line?.Quantity ?? 0);
+    const unitAmount = Number(line?.unitAmount ?? line?.UnitAmount ?? 0);
+    return quantity * unitAmount;
+}
+
+function creditSourceLabel(source) {
+    return source?.sourceType === "overpayment" ? "Overpayment" : "Credit note";
+}
+
+function renderTransactionEmpty(target, eyebrow, title, body) {
+    target.innerHTML = "";
+    const empty = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+    empty.querySelector(".eyebrow").textContent = eyebrow;
+    empty.querySelector("h4").textContent = title;
+    empty.querySelector("p:last-child").textContent = body;
+    target.appendChild(empty);
+}
+
+function renderOutstandingTransactions(client, fallbackInvoices = []) {
+    const summary = document.getElementById("outstandingTransactionsSummary");
+    const invoiceList = document.getElementById("outstandingTransactionList");
+    const creditList = document.getElementById("unallocatedCreditList");
+    const refreshButton = document.getElementById("refreshTransactionsButton");
+    if (!summary || !invoiceList || !creditList) return;
+
+    if (refreshButton) refreshButton.disabled = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
+    if (!client) {
+        summary.innerHTML = "";
+        renderTransactionEmpty(invoiceList, "No client", "Select a client", "Outstanding Xero transaction lines will appear here.");
+        renderTransactionEmpty(creditList, "No client", "Select a client", "Unallocated credits and overpayments will appear here.");
+        return;
+    }
+    if (!state.organisation?.xeroConnected) {
+        summary.innerHTML = `<article><span>Xero</span><strong>Disconnected</strong></article>`;
+        renderTransactionEmpty(invoiceList, "Xero disconnected", "Connect Xero to load live transactions", "Live invoice lines need an active Xero connection.");
+        renderTransactionEmpty(creditList, "Xero disconnected", "Connect Xero to find credits", "Unallocated credit checks run directly against Xero.");
+        return;
+    }
+    if (!client.xeroContactId) {
+        summary.innerHTML = `<article><span>Xero contact</span><strong>Missing</strong></article>`;
+        renderTransactionEmpty(invoiceList, "No Xero contact", "This client is not linked to a Xero contact", "Run a fresh import or open the matching Xero contact.");
+        renderTransactionEmpty(creditList, "No Xero contact", "Credits cannot be checked", "Credit allocations require a Xero contact id.");
+        return;
+    }
+
+    const cached = cachedCustomerTransactions(client);
+    const isLoading = customerTransactionLoading.has(String(client.id));
+    if (cached?.error) {
+        summary.innerHTML = `<article class="is-highlighted"><span>Xero transactions</span><strong>Unable to load</strong></article>`;
+        renderTransactionEmpty(invoiceList, "Xero error", "Unable to load outstanding transactions", cached.error);
+        renderTransactionEmpty(creditList, "Xero error", "Unable to load credits", cached.error);
+        return;
+    }
+
+    const outstandingInvoices = Array.isArray(cached?.outstandingInvoices)
+        ? cached.outstandingInvoices
+        : fallbackOutstandingTransactions(fallbackInvoices);
+    const unallocatedCredits = Array.isArray(cached?.unallocatedCredits) ? cached.unallocatedCredits : [];
+    const overpayments = Array.isArray(cached?.overpayments) ? cached.overpayments : [];
+    const creditSources = [...unallocatedCredits, ...overpayments];
+    const currencyCode = outstandingInvoices[0]?.currencyCode || creditSources[0]?.currencyCode || "GBP";
+    const outstandingTotal = cached?.summary?.outstandingTotal ?? outstandingInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+    const lineCount = cached?.summary?.outstandingLineCount ?? outstandingInvoices.reduce((sum, invoice) => sum + Math.max((invoice.lineItems || []).length, 1), 0);
+    const creditTotal = cached?.summary?.unallocatedCreditTotal ?? creditSources.reduce((sum, source) => sum + Number(source.remainingCredit || 0), 0);
+    summary.innerHTML = [
+        ["Outstanding", formatXeroCurrency(outstandingTotal, currencyCode), false],
+        ["Invoice lines", Number(lineCount || 0).toLocaleString("en-GB"), false],
+        ["Unallocated credits", formatXeroCurrency(creditTotal, currencyCode), creditTotal > 0],
+        ["Overpayments", Number(overpayments.length || 0).toLocaleString("en-GB"), overpayments.length > 0],
+    ].map(([label, value, highlighted]) => `<article${highlighted ? " class=\"is-highlighted\"" : ""}><span>${label}</span><strong>${value}</strong></article>`).join("");
+
+    invoiceList.innerHTML = "";
+    if (!outstandingInvoices.length) {
+        renderTransactionEmpty(
+            invoiceList,
+            isLoading ? "Loading Xero" : "No outstanding invoices",
+            isLoading ? "Loading outstanding invoice lines" : "No outstanding Xero invoices found",
+            isLoading ? "Fetching live transaction lines for this Xero contact." : "This contact has no open Xero invoice balance."
+        );
+    } else {
+        outstandingInvoices.forEach((invoice) => {
+            const row = document.createElement("article");
+            row.className = "xero-transaction-row";
+            const lines = (invoice.lineItems || []).length
+                ? invoice.lineItems
+                : [{ description: invoice.description || "Outstanding invoice balance", lineAmount: invoice.amountDue }];
+            row.innerHTML = `
+                <div class="xero-transaction-head">
+                    <div>
+                        <strong>${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong>
+                        <span>${escapeHTML(invoice.status || "Outstanding")} · due ${formatDate(invoice.dueDate)}</span>
+                    </div>
+                    <strong>${formatXeroCurrency(invoice.amountDue || 0, invoice.currencyCode)}</strong>
+                </div>
+                <div class="xero-line-items">
+                    ${lines.map((line) => `
+                        <div class="xero-line-item">
+                            <span>${escapeHTML(line.description || line.Description || "Invoice line")}</span>
+                            <strong>${formatXeroCurrency(xeroLineAmount(line), invoice.currencyCode)}</strong>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+            invoiceList.appendChild(row);
+        });
+    }
+
+    creditList.innerHTML = "";
+    if (!creditSources.length) {
+        renderTransactionEmpty(
+            creditList,
+            isLoading ? "Loading Xero" : "No unallocated credits",
+            isLoading ? "Checking credit notes and overpayments" : "No unallocated credits found",
+            isLoading ? "Fetching live credit balances for this Xero contact." : "This contact has no authorised credit note or overpayment balance available to allocate."
+        );
+        return;
+    }
+
+    const eligibleInvoices = outstandingInvoices.filter((invoice) => invoice.xeroInvoiceId && Number(invoice.amountDue || 0) > 0);
+    creditSources.forEach((source) => {
+        const row = document.createElement("article");
+        row.className = "xero-credit-row is-highlighted";
+        const defaultInvoice = eligibleInvoices[0] || null;
+        const defaultAmount = defaultInvoice ? Math.min(Number(source.remainingCredit || 0), Number(defaultInvoice.amountDue || 0)) : Number(source.remainingCredit || 0);
+        row.innerHTML = `
+            <div class="xero-credit-head">
+                <div>
+                    <strong>${creditSourceLabel(source)} ${escapeHTML(source.number || source.id)}</strong>
+                    <span>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</span>
+                </div>
+                <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
+            </div>
+            <form class="allocation-form">
+                <select name="invoiceId" aria-label="Invoice to allocate to" ${eligibleInvoices.length ? "" : "disabled"}>
+                    ${eligibleInvoices.map((invoice) => `
+                        <option value="${escapeHTML(invoice.xeroInvoiceId)}">
+                            ${escapeHTML(invoice.invoiceNumber || "Invoice")} · ${formatXeroCurrency(invoice.amountDue || 0, invoice.currencyCode)}
+                        </option>
+                    `).join("")}
+                </select>
+                <input name="amount" type="number" min="0.01" max="${Number(source.remainingCredit || 0).toFixed(2)}" step="0.01" value="${defaultAmount.toFixed(2)}" aria-label="Amount to allocate" ${eligibleInvoices.length ? "" : "disabled"}>
+                <button class="primary-button" type="submit" ${eligibleInvoices.length ? "" : "disabled"}>Allocate</button>
+            </form>
+        `;
+        row.querySelector(".allocation-form")?.addEventListener("submit", (event) => {
+            event.preventDefault();
+            allocateCustomerCredit(event.currentTarget, source);
+        });
+        creditList.appendChild(row);
+    });
+}
+
+async function allocateCustomerCredit(form, source) {
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    if (!client) return showToast("Select a client first", "error");
+    const formData = new FormData(form);
+    const invoiceId = String(formData.get("invoiceId") || "").trim();
+    const amount = Number(formData.get("amount") || 0);
+    if (!invoiceId) return showToast("Select an invoice to allocate to", "error");
+    if (!Number.isFinite(amount) || amount <= 0) return showToast("Enter an allocation amount", "error");
+    const confirmed = window.confirm(`Allocate ${formatXeroCurrency(amount, source.currencyCode)} from ${creditSourceLabel(source).toLowerCase()} ${source.number || source.id} in Xero?`);
+    if (!confirmed) return;
+
+    const button = form.querySelector("button");
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Allocating";
+    }
+    try {
+        const payload = await requestJSON(
+            api.endpoints.allocation,
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    sourceType: source.sourceType,
+                    sourceId: source.id,
+                    invoiceId,
+                    amount
+                })
+            },
+            { customerId: client.id }
+        );
+        if (payload?.transactions) customerTransactionCache.set(String(client.id), payload.transactions);
+        if (payload?.panel) replaceState(normaliseState(payload.panel));
+        else await hydrateFromAPI();
+        showToast("Allocation pushed through to Xero", "success");
+        renderAll();
+    } catch (error) {
+        console.error("Unable to allocate credit", error);
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+        } else {
+            showToast(error.message || "Unable to allocate credit in Xero", "error");
+        }
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = "Allocate";
+        }
+    }
+}
+
 function renderClientInvoiceList(invoices) {
     const target = document.getElementById("clientInvoiceList");
     target.innerHTML = "";
+    const validIds = new Set((invoices || []).map((invoice) => invoice.id));
+    selectedClientInvoiceIds = new Set([...selectedClientInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
     if (!invoices.length) {
         const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
         emptyState.querySelector(".eyebrow").textContent = "No invoices";
         emptyState.querySelector("h4").textContent = "No Xero invoices for this client";
         emptyState.querySelector("p:last-child").textContent = "Sync from Xero to populate the client ledger.";
         target.appendChild(emptyState);
+        updateClientInvoiceBulkNoteButton();
         return;
     }
     invoices.forEach((invoice) => {
-        const button = document.createElement("button");
+        const row = document.createElement("article");
         const category = invoiceCategory(invoice);
         const description = invoiceLineSummary(invoice);
-        button.type = "button";
-        button.className = `client-invoice-row${invoice.id === selectedInvoiceId ? " is-selected" : ""}`;
-        button.title = description;
-        button.innerHTML = `
+        row.className = `client-invoice-row${invoice.id === selectedInvoiceId ? " is-selected" : ""}`;
+        row.title = description;
+        row.innerHTML = `
+            <input class="client-invoice-note-select" type="checkbox" aria-label="Select invoice ${escapeHTML(invoice.invoiceNumber || invoice.id)} for note" ${selectedClientInvoiceIds.has(invoice.id) ? "checked" : ""}>
             <div>
                 <div class="client-name">${invoice.invoiceNumber || "Invoice"}</div>
                 <div class="invoice-subline">${escapeHTML(description)} · due ${formatDate(invoice.dueDate)}</div>
@@ -4664,13 +5502,164 @@ function renderClientInvoiceList(invoices) {
         const tooltip = document.createElement("div");
         tooltip.className = "invoice-hover-description";
         tooltip.textContent = description;
-        button.appendChild(tooltip);
-        button.addEventListener("click", () => {
+        row.appendChild(tooltip);
+        row.querySelector(".client-invoice-note-select").addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (event.target.checked) selectedClientInvoiceIds.add(invoice.id);
+            else selectedClientInvoiceIds.delete(invoice.id);
+            updateClientInvoiceBulkNoteButton();
+        });
+        row.addEventListener("click", () => {
             selectedInvoiceId = invoice.id;
             renderClientScreen();
         });
-        target.appendChild(button);
+        target.appendChild(row);
     });
+    updateClientInvoiceBulkNoteButton();
+}
+
+function updateClientInvoiceBulkNoteButton() {
+    const button = document.getElementById("clientBulkInvoiceNoteButton");
+    if (!button) return;
+    const count = selectedClientInvoiceIds.size;
+    button.disabled = count === 0;
+    button.textContent = count ? `Add note to ${count} selected` : "Add note to selected";
+}
+
+async function addNoteToSelectedClientInvoices() {
+    const invoiceIds = [...selectedClientInvoiceIds];
+    if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
+    const body = window.prompt(`Add the same invoice note to ${invoiceIds.length} selected invoice${invoiceIds.length === 1 ? "" : "s"}`);
+    if (!body?.trim()) return;
+    const stamp = new Date().toISOString();
+    invoiceIds.forEach((invoiceId) => {
+        const match = mutableInvoiceById(invoiceId);
+        if (!match) return;
+        match.invoice.notes = [{ title: "Bulk invoice note", body: body.trim(), stamp }, ...(match.invoice.notes || [])];
+        match.invoice.notesSummary = body.trim().slice(0, 200);
+    });
+    persistState();
+    renderAll();
+    showToast("Invoice notes saved locally", "success");
+    try {
+        const results = await Promise.allSettled(invoiceIds.map((invoiceId) =>
+            requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body: body.trim() }) }, { invoiceId })
+        ));
+        if (results.some((result) => result.status === "rejected")) throw new Error("One or more invoice notes failed to sync");
+        await hydrateFromAPI();
+        selectedClientInvoiceIds.clear();
+        renderAll();
+        showToast("Invoice notes synced", "success");
+    } catch (error) {
+        console.error("Unable to sync selected invoice notes", error);
+        showToast("Unable to sync one or more invoice notes", "error");
+    }
+}
+
+function latePaymentChargeRaised(invoice) {
+    return Boolean(invoice?.latePaymentChargeRaisedAt || invoice?.latePaymentChargeInvoiceId || invoice?.latePaymentChargeInvoiceNumber);
+}
+
+function latePaymentChargeAmount(invoice) {
+    const amount = Number(invoice?.latePayment?.interest || 0);
+    if (amount > 0) return amount;
+    const amountDue = Number(invoice?.amountDue || 0);
+    const overdueDays = Math.max(0, Number(invoice?.overdueDays || 0));
+    return Math.round(amountDue * 0.08 * overdueDays / 365 * 100) / 100;
+}
+
+function latePaymentChargeCandidates() {
+    return allInvoices()
+        .filter((invoice) => Number(invoice.amountDue || 0) > 0 && Number(invoice.overdueDays || 0) > 14)
+        .sort((a, b) => Number(b.overdueDays || 0) - Number(a.overdueDays || 0) || Number(b.amountDue || 0) - Number(a.amountDue || 0));
+}
+
+function openLateChargesScreen() {
+    activeView = "late-charges";
+    closeTopbarMenu();
+    renderAll();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderLateChargesScreen() {
+    const screen = document.getElementById("lateChargesScreen");
+    const target = document.getElementById("lateChargesList");
+    const summary = document.getElementById("lateChargesSummary");
+    const raiseButton = document.getElementById("raiseLateChargesButton");
+    if (!screen || !target || !summary || !raiseButton) return;
+
+    const invoices = latePaymentChargeCandidates();
+    const validIds = new Set(invoices.filter((invoice) => !latePaymentChargeRaised(invoice)).map((invoice) => invoice.id));
+    selectedLateChargeInvoiceIds = new Set([...selectedLateChargeInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
+    const eligibleCount = validIds.size;
+    const selectedCount = selectedLateChargeInvoiceIds.size;
+    summary.textContent = invoices.length
+        ? `${invoices.length.toLocaleString("en-GB")} invoice${invoices.length === 1 ? "" : "s"} are more than 14 days overdue. ${eligibleCount.toLocaleString("en-GB")} can still have a charge raised.`
+        : "No invoices are currently more than 14 days overdue.";
+    raiseButton.disabled = selectedCount === 0 || !isXeroConnected();
+    raiseButton.textContent = selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges";
+
+    target.innerHTML = "";
+    if (!invoices.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = "No late charges";
+        emptyState.querySelector("h4").textContent = "No invoices are more than 14 days overdue";
+        emptyState.querySelector("p:last-child").textContent = "This screen will populate when open invoices cross the 14 day overdue threshold.";
+        target.appendChild(emptyState);
+        return;
+    }
+
+    invoices.forEach((invoice) => {
+        const raised = latePaymentChargeRaised(invoice);
+        const chargeAmount = latePaymentChargeAmount(invoice);
+        const row = document.createElement("label");
+        row.className = `late-charge-row${raised ? " is-raised" : ""}`;
+        row.innerHTML = `
+            <input type="checkbox" value="${invoice.id}" ${selectedLateChargeInvoiceIds.has(invoice.id) ? "checked" : ""} ${raised ? "disabled" : ""}>
+            <span class="late-charge-main">
+                <strong>${escapeHTML(invoice.customerName || "Unnamed client")} · ${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong>
+                <span>Invoice date ${formatDate(invoice.invoiceDate)} · due ${formatDate(invoice.dueDate)} · ${Number(invoice.overdueDays || 0).toLocaleString("en-GB")} days overdue</span>
+            </span>
+            <span class="late-charge-amount">${formatCurrency(chargeAmount)}</span>
+            <span class="late-charge-status">${raised ? `Raised${invoice.latePaymentChargeInvoiceNumber ? ` · ${escapeHTML(invoice.latePaymentChargeInvoiceNumber)}` : ""}` : "Ready"}</span>
+        `;
+        row.querySelector("input").addEventListener("change", (event) => {
+            if (event.target.checked) selectedLateChargeInvoiceIds.add(invoice.id);
+            else selectedLateChargeInvoiceIds.delete(invoice.id);
+            renderLateChargesScreen();
+        });
+        target.appendChild(row);
+    });
+}
+
+async function raiseLatePaymentCharges() {
+    const invoiceIds = [...selectedLateChargeInvoiceIds];
+    if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
+    if (!isXeroConnected()) return showToast("Connect Xero before raising late payment charges", "error");
+    if (!window.confirm(`Raise ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} in Xero?`)) return;
+
+    const button = document.getElementById("raiseLateChargesButton");
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Raising charges...";
+    }
+    try {
+        const payload = await requestJSON(api.endpoints.latePaymentCharges, {
+            method: "POST",
+            body: JSON.stringify({ invoiceIds })
+        });
+        if (payload?.panel) replaceState(normaliseState(payload.panel));
+        else await hydrateFromAPI();
+        selectedLateChargeInvoiceIds.clear();
+        renderAll();
+        const createdCount = Number(payload?.created?.length || 0);
+        const skippedCount = Number(payload?.skipped?.length || 0);
+        showToast(`${createdCount} late payment charge${createdCount === 1 ? "" : "s"} raised${skippedCount ? `, ${skippedCount} skipped` : ""}`, "success");
+    } catch (error) {
+        console.error("Unable to raise late payment charges", error);
+        showToast(error.message || "Unable to raise late payment charges", "error");
+        renderLateChargesScreen();
+    }
 }
 
 function clientStatusItems(invoices) {
@@ -4768,8 +5757,37 @@ function renderTimeline(targetId, items, empty) {
     });
 }
 
+function renderClientNotesTable(notes) {
+    const target = document.getElementById("clientNotesTable");
+    if (!target) return;
+    target.innerHTML = "";
+    if (!notes.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = "No client notes";
+        emptyState.querySelector("h4").textContent = "Client notes will appear here";
+        emptyState.querySelector("p:last-child").textContent = "Add account-level calls, chasing updates and payment context.";
+        target.appendChild(emptyState);
+        return;
+    }
+    notes.forEach((note) => {
+        const row = document.createElement("article");
+        row.className = "client-note-row";
+        row.innerHTML = `
+            <div>
+                <strong>${escapeHTML(note.title || "Client note")}</strong>
+                <span>${escapeHTML(note.stamp ? formatDate(note.stamp) : "")}</span>
+            </div>
+            <div>${escapeHTML(note.body || "")}</div>
+        `;
+        target.appendChild(row);
+    });
+}
+
 function renderChrome() {
     document.body.classList.toggle("is-syncing", isSyncing);
+    const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
+    const heading = document.querySelector(".brand-lockup h1");
+    if (heading) heading.textContent = topbarClient?.name || "Credit Control Ledger";
     const syncStamp = document.getElementById("syncStamp");
     if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
     const organisationName = state.organisation.name || "Xero organisation not connected";
@@ -4807,7 +5825,7 @@ function renderChrome() {
     renderTopbarClientContext();
 }
 
-const syncButtonIds = ["menuSyncButton", "sidebarSyncButton", "settingsRunSyncButton"];
+const syncButtonIds = ["menuSyncButton", "settingsRunSyncButton", "clientRunImportButton"];
 
 function isXeroConnected() {
     return state.organisation.xeroConnected === true;
@@ -4881,7 +5899,7 @@ function localInsightsPayload(status = "local") {
         customerCount: state.customers.length,
         totalInvoiced: invoices.reduce((sum, invoice) => sum + Number(invoice.total || (Number(invoice.amountDue || 0) + Number(invoice.amountPaid || 0)) || 0), 0),
         totalOutstanding: openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-        totalPaid: invoices.reduce((sum, invoice) => sum + Number(invoice.amountPaid || Math.max(Number(invoice.total || 0) - Number(invoice.amountDue || 0), 0)), 0),
+        totalPaid: invoices.reduce((sum, invoice) => sum + invoicePaidAmount(invoice), 0),
         totalOverdue: overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         paymentPlanValue: invoices.filter((invoice) => invoiceCategory(invoice) === "payment-plan").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         legalValue: invoices.filter((invoice) => invoiceCategory(invoice) === "court").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
@@ -4921,7 +5939,7 @@ function localInsightsPayload(status = "local") {
                     category: key,
                     label: statusLabels[key],
                     count: matches.length,
-                    value: matches.reduce((sum, invoice) => sum + Number(key === "paid" ? invoice.total || 0 : invoice.amountDue || 0), 0)
+                    value: matches.reduce((sum, invoice) => sum + Number(key === "paid" ? invoice.total || 0 : key === "bad-debt" ? writeOffAmount(invoice) : invoice.amountDue || 0), 0)
                 };
             }),
             riskInvoices: overdueInvoices.sort((a, b) => Number(b.amountDue || 0) - Number(a.amountDue || 0)).slice(0, 12)
@@ -5110,6 +6128,7 @@ function renderAll() {
     renderBulkActionToolbar();
     applyColumnVisibility();
     renderInsightsScreen();
+    renderLateChargesScreen();
     renderClientScreen();
 }
 
@@ -5233,20 +6252,42 @@ function handleClientQuickAction(action) {
         reminder: ["letters", "clientLetterTemplateSelect"],
         payment: ["payment-plans", "paymentPlanDurationSelect"],
         note: ["notes", "clientNoteInput"],
+        "invoice-note": ["invoices", "invoiceNoteInput"],
         legal: ["legal", "bulkStatusSelect"],
-        attachment: ["attachments", "attachmentInput"],
+        attachment: ["legal", "attachmentInput"],
     };
     const target = actions[action];
     if (target) activateClientSection(target[0], target[1]);
 }
 
 function wireClientWorkspace() {
+    const clientActionMenuButton = document.getElementById("clientActionMenuButton");
+    if (clientActionMenuButton) {
+        clientActionMenuButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            const wrap = document.getElementById("clientActionMenuWrap");
+            const isOpen = !wrap?.classList.contains("is-open");
+            wrap?.classList.toggle("is-open", isOpen);
+            clientActionMenuButton.setAttribute("aria-expanded", String(isOpen));
+        });
+    }
+    document.addEventListener("click", (event) => {
+        if (event.target.closest("#clientActionMenuWrap")) return;
+        document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
+        document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
+    });
     document.querySelectorAll("[data-client-section]").forEach((button) => {
         button.addEventListener("click", () => activateClientSection(button.dataset.clientSection));
     });
     document.querySelectorAll("[data-client-action]").forEach((button) => {
-        button.addEventListener("click", () => handleClientQuickAction(button.dataset.clientAction));
+        button.addEventListener("click", () => {
+            document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
+            document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
+            handleClientQuickAction(button.dataset.clientAction);
+        });
     });
+    document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
+    document.getElementById("refreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
     document.getElementById("topbarClientButton")?.addEventListener("click", () => {
         if (!selectedClientId && !selectedInvoiceId) return;
         activeView = "client";
@@ -5296,7 +6337,7 @@ function exportInvoices(invoices, filename) {
 }
 
 function scrollAuditTrail() {
-    if (activeView === "client") activateClientSection("history");
+    if (activeView === "client") activateClientSection("settings");
     const target = document.getElementById("auditTrailTimeline");
     if (target) window.setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
 }
@@ -5539,7 +6580,7 @@ function availableImportYears() {
 
 function selectedYearLabel() {
     const years = syncSettings.invoiceYears || [];
-    return years.length ? years.join(", ") : "No years selected";
+    return years.length ? years.join(", ") : "All available years";
 }
 
 function renderSyncSettings() {
@@ -5597,7 +6638,7 @@ function renderSyncSettings() {
         <span>Filter: ${scopeLabel}</span>
         <span>Years: ${selectedYearLabel()}</span>
         <span>Imported locally: ${openCount.toLocaleString("en-GB")} open, ${paidCount.toLocaleString("en-GB")} paid</span>
-        <span>Remaining: ${syncSettings.invoiceYears?.length ? "run the next stage when ready" : "select at least one year before importing"}</span>
+        <span>Remaining: run the next stage when ready</span>
     `;
 }
 
@@ -5706,7 +6747,6 @@ function shouldAutoStartInitialSync() {
     return isXeroConnected()
         && !isSyncing
         && !hasAutoStartedInitialSync
-        && Boolean(syncSettings.invoiceYears?.length)
         && !hasCompletedSync()
         && allInvoices().length === 0;
 }
@@ -5752,7 +6792,7 @@ function clearLocalConsoleState(panel = null) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SYNC_SETTINGS_KEY);
     localStorage.removeItem(LETTER_TEMPLATES_KEY);
-    syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
+    syncSettings = { invoiceScope: "full_history", invoiceYears: [] };
     letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
     selectedLetterTemplateId = letterTemplates[0]?.id || "";
     selectedFilter = "all";
@@ -5799,11 +6839,6 @@ async function runXeroSync({ automatic = false } = {}) {
             label: "Connect Xero",
             onClick: () => window.location.assign(loginURL())
         });
-        return;
-    }
-    if (!syncSettings.invoiceYears?.length) {
-        openSettingsScreen();
-        showToast("Select at least one invoice year before importing from Xero.", "info");
         return;
     }
     let keepFailureBanner = false;
@@ -5878,6 +6913,66 @@ function maybeAutoStartInitialSync() {
     window.setTimeout(() => runXeroSync({ automatic: true }), 450);
 }
 
+async function writeOffSelectedInvoices() {
+    if (!isXeroConnected()) {
+        showToast("Connect Xero before writing off invoices.", "info", {
+            label: "Connect Xero",
+            onClick: () => window.location.assign(loginURL())
+        });
+        return;
+    }
+    const candidates = selectedInvoices().filter(isWriteOffCandidate);
+    if (!candidates.length) {
+        showToast("No selected outstanding invoices can be written off.", "info");
+        return;
+    }
+    const total = candidates.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+    const preview = candidates.slice(0, 5).map((invoice) => invoice.invoiceNumber || invoice.id).join(", ");
+    const remainder = candidates.length > 5 ? ` and ${(candidates.length - 5).toLocaleString("en-GB")} more` : "";
+    const confirmed = window.confirm(
+        `Write off ${candidates.length.toLocaleString("en-GB")} invoice${candidates.length === 1 ? "" : "s"} totalling ${formatCurrency(total)}?\n\n` +
+        `This will raise Xero credit notes to account code 402 and allocate them to: ${preview}${remainder}.`
+    );
+    if (!confirmed) return;
+
+    const button = document.getElementById("bulkWriteOffButton");
+    const originalText = button ? button.textContent : "";
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Writing off...";
+    }
+    try {
+        const payload = await requestJSON(api.endpoints.writeOffs, {
+            method: "POST",
+            body: JSON.stringify({ invoiceIds: candidates.map((invoice) => invoice.id) })
+        });
+        if (payload?.panel) replaceState(normaliseState(payload.panel));
+        else await hydrateFromAPI();
+        selectedInvoiceIds.clear();
+        renderAll();
+        const createdCount = Number(payload?.created?.length || 0);
+        const skippedCount = Number(payload?.skipped?.length || 0);
+        const contactNoteFailures = (payload?.created || []).filter((item) => !item.contactNoteSynced).length;
+        const message = `${createdCount.toLocaleString("en-GB")} invoice${createdCount === 1 ? "" : "s"} written off${skippedCount ? `, ${skippedCount.toLocaleString("en-GB")} skipped` : ""}.`;
+        showToast(message, contactNoteFailures ? "info" : "success", { label: "View audit trail", onClick: scrollAuditTrail });
+        if (contactNoteFailures) {
+            showToast(`${contactNoteFailures.toLocaleString("en-GB")} Xero contact note${contactNoteFailures === 1 ? "" : "s"} could not be added.`, "error");
+        }
+    } catch (error) {
+        console.error("Unable to write off selected invoices", error);
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+        } else {
+            showToast(`Unable to write off invoices: ${error.message || "Xero request failed."}`, "error");
+        }
+    } finally {
+        if (button) {
+            button.textContent = originalText;
+        }
+        renderBulkActionToolbar();
+    }
+}
+
 function wireBulkActions() {
     document.getElementById("bulkApplyStatusButton").addEventListener("click", () => {
         const statusValue = document.getElementById("bulkLedgerStatusSelect").value;
@@ -5918,6 +7013,7 @@ function wireBulkActions() {
         renderAll();
         showToast("Manager assigned", "success");
     });
+    document.getElementById("bulkWriteOffButton").addEventListener("click", writeOffSelectedInvoices);
     document.getElementById("bulkExportButton").addEventListener("click", () => {
         exportInvoices(selectedInvoices(), "credit-control-selected.csv");
     });
@@ -6031,6 +7127,10 @@ function wireSyncButtons() {
     if (menuSettingsButton) menuSettingsButton.addEventListener("click", openSettingsScreen);
     const menuInsightsButton = document.getElementById("menuInsightsButton");
     if (menuInsightsButton) menuInsightsButton.addEventListener("click", openInsightsScreen);
+    const menuLateChargesButton = document.getElementById("menuLateChargesButton");
+    if (menuLateChargesButton) menuLateChargesButton.addEventListener("click", openLateChargesScreen);
+    const raiseLateChargesButton = document.getElementById("raiseLateChargesButton");
+    if (raiseLateChargesButton) raiseLateChargesButton.addEventListener("click", raiseLatePaymentCharges);
     const refreshInsightsButton = document.getElementById("refreshInsightsButton");
     if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => loadInsights(true));
     const factoryResetButton = document.getElementById("factoryResetButton");
@@ -6051,10 +7151,13 @@ function wireSyncButtons() {
     if (deleteLetterTemplateButton) deleteLetterTemplateButton.addEventListener("click", deleteSelectedLetterTemplate);
     const menuSyncButton = document.getElementById("menuSyncButton");
     if (menuSyncButton) menuSyncButton.addEventListener("click", () => runXeroSync());
+    const clientRunImportButton = document.getElementById("clientRunImportButton");
+    if (clientRunImportButton) clientRunImportButton.addEventListener("click", () => {
+        document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
+        runXeroSync();
+    });
     const settingsRunSyncButton = document.getElementById("settingsRunSyncButton");
     if (settingsRunSyncButton) settingsRunSyncButton.addEventListener("click", () => runXeroSync());
-    const sidebarSyncButton = document.getElementById("sidebarSyncButton");
-    if (sidebarSyncButton) sidebarSyncButton.addEventListener("click", () => runXeroSync());
     const syncRetryButton = document.getElementById("syncRetryButton");
     if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
     const syncViewLogsButton = document.getElementById("syncViewLogsButton");
@@ -6125,6 +7228,18 @@ function wireForms() {
         activeView = "ledger";
         renderAll();
     });
+    document.getElementById("backFromLateChargesButton").addEventListener("click", () => {
+        activeView = "ledger";
+        renderAll();
+    });
+    document.getElementById("closeQuickNoteButton").addEventListener("click", closeQuickNotePanel);
+    document.getElementById("quickNotePanel").addEventListener("click", (event) => {
+        if (event.target.id === "quickNotePanel") closeQuickNotePanel();
+    });
+    document.getElementById("quickNoteForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveQuickInvoiceNote();
+    });
     document.querySelectorAll("[data-insight-section]").forEach((button) => {
         button.addEventListener("click", () => {
             activeInsightsSection = button.dataset.insightSection || "overview";
@@ -6187,6 +7302,11 @@ function wireForms() {
         customMonthsInput.hidden = !isCustom;
         customMonthsInput.disabled = !isCustom;
         if (isCustom) customMonthsInput.focus();
+        updatePaymentPlanPreview();
+    });
+    customMonthsInput.addEventListener("input", updatePaymentPlanPreview);
+    document.addEventListener("change", (event) => {
+        if (event.target?.matches?.("[data-payment-plan-invoice]")) updatePaymentPlanPreview();
     });
     document.getElementById("paymentPlanForm").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -6195,6 +7315,7 @@ function wireForms() {
         const durationMonths = durationSelect.value === "custom"
             ? Number(customMonthsInput.value || 0)
             : Number(durationSelect.value || 0);
+        updatePaymentPlanPreview();
         const note = document.getElementById("promiseNoteInput").value.trim();
         if (!client || !selectedIds.length) return showToast("Select at least one invoice for the payment plan", "error");
         if (!durationMonths || durationMonths < 1 || durationMonths > 60) return showToast("Choose a payment plan duration between 1 and 60 months", "error");
@@ -6202,7 +7323,8 @@ function wireForms() {
         const promisedDate = addMonthsISO(durationMonths);
         const selectedInvoices = selectedIds.map((invoiceId) => mutableInvoiceById(invoiceId)).filter(Boolean);
         const planTotal = selectedInvoices.reduce((sum, match) => sum + Number(match.invoice.amountDue || 0), 0);
-        const autoNote = note || `Payment plan created for ${durationMonths} months covering ${selectedInvoices.length} invoice${selectedInvoices.length === 1 ? "" : "s"}.`;
+        const monthlyAmount = Math.round((planTotal / durationMonths) * 100) / 100;
+        const autoNote = note || paymentPlanAutoNote(planTotal, durationMonths, monthlyAmount, selectedInvoices.length);
         selectedInvoices.forEach((match) => {
             match.invoice.controlStatus = "Payment Plan";
             match.invoice.promiseStatus = "open";
@@ -6210,7 +7332,7 @@ function wireForms() {
             match.invoice.notesSummary = autoNote;
             match.invoice.promises = [{
                 title: `Payment plan · ${durationMonths} months`,
-                body: `${autoNote} Plan total ${formatCurrency(planTotal)}. Expected completion ${formatDate(promisedDate)}.`,
+                body: `${autoNote} Duration ${durationMonths} month${durationMonths === 1 ? "" : "s"}. Monthly payment ${formatCurrency(monthlyAmount)}. Expected completion ${formatDate(promisedDate)}.`,
                 stamp: promisedDate,
                 status: "open"
             }, ...(match.invoice.promises || [])];

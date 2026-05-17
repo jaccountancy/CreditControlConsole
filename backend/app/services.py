@@ -1,9 +1,10 @@
 import asyncio
 import json
 import logging
+import re
 from calendar import monthrange
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -14,11 +15,20 @@ from .config import get_settings
 from .database import get_connection, utcnow
 from .xero import (
     CONTACTS_URL,
+    CREDIT_NOTES_URL,
     INVOICES_URL,
+    OVERPAYMENTS_URL,
+    PAYMENTS_URL,
+    allocate_credit_note,
+    allocate_overpayment,
+    create_credit_note,
     create_history_record,
+    create_sales_invoice,
     fetch_paginated_collection,
     normalise_contact,
     normalise_invoice,
+    normalise_payment,
+    xero_api_get,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,7 +38,7 @@ OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
 OUTSTANDING_READY_STEP = "Backfilling paid invoices"
 WORKING_DATA_STEPS = (OUTSTANDING_READY_STEP, "Fetching paid invoices from Xero", "Backfilling paid invoices")
-DEFAULT_SYNC_SCOPE = "outstanding_only"
+DEFAULT_SYNC_SCOPE = "full_history"
 INCREMENTAL_SYNC_OVERLAP = timedelta(minutes=5)
 SYNC_SCOPE_OPTIONS = {
     "outstanding_only": {
@@ -230,7 +240,7 @@ def normalise_sync_options(options: dict | None = None) -> dict:
             if str(year).isdigit() and 2000 <= int(year) <= current_year + 1
         }
     )
-    year_summary = "No invoice years selected." if not invoice_years else f"Years: {', '.join(str(year) for year in invoice_years)}."
+    year_summary = "Years: all available invoice years." if not invoice_years else f"Years: {', '.join(str(year) for year in invoice_years)}."
     return {
         "invoice_scope": invoice_scope,
         "label": scope["label"],
@@ -372,6 +382,96 @@ def _refresh_customer_totals(cursor, tenant_id: str, updated_at: datetime) -> No
     )
 
 
+async def _sync_xero_payments(connection_row: dict, now: datetime, modified_since: datetime | None = None, on_page=None) -> int:
+    raw_payments = await fetch_paginated_collection(
+        connection_row,
+        PAYMENTS_URL,
+        "Payments",
+        on_page=on_page,
+        modified_since=modified_since,
+    )
+    if not raw_payments:
+        return 0
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, xero_contact_id FROM customers WHERE tenant_id = %s",
+                (connection_row["tenant_id"],),
+            )
+            customer_lookup = {
+                row["xero_contact_id"]: row["id"]
+                for row in cursor.fetchall()
+                if row.get("xero_contact_id")
+            }
+            cursor.execute(
+                """
+                SELECT invoices.id, invoices.xero_invoice_id, invoices.customer_id
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE customers.tenant_id = %s
+                """,
+                (connection_row["tenant_id"],),
+            )
+            invoice_lookup = {
+                row["xero_invoice_id"]: {"id": row["id"], "customer_id": row["customer_id"]}
+                for row in cursor.fetchall()
+                if row.get("xero_invoice_id")
+            }
+
+            synced = 0
+            for raw_payment in raw_payments:
+                payment = normalise_payment(raw_payment)
+                if not payment.get("xero_payment_id"):
+                    continue
+                if payment.get("invoice_type") and payment.get("invoice_type") != "ACCREC":
+                    continue
+                invoice_match = invoice_lookup.get(payment.get("xero_invoice_id"))
+                customer_id = customer_lookup.get(payment.get("xero_contact_id")) or (invoice_match or {}).get("customer_id")
+                if customer_id is None:
+                    continue
+                cursor.execute(
+                    """
+                    INSERT INTO payments (
+                        tenant_id, customer_id, invoice_id, xero_payment_id, xero_invoice_id,
+                        invoice_number, payment_date, amount, currency_code, reference,
+                        status, account_name, raw, synced_at, updated_at
+                    )
+                    VALUES (
+                        %(tenant_id)s, %(customer_id)s, %(invoice_id)s, %(xero_payment_id)s, %(xero_invoice_id)s,
+                        %(invoice_number)s, %(payment_date)s, %(amount)s, %(currency_code)s, %(reference)s,
+                        %(status)s, %(account_name)s, %(raw_json)s::jsonb, %(synced_at)s, %(updated_at)s
+                    )
+                    ON CONFLICT (xero_payment_id) DO UPDATE
+                    SET customer_id = EXCLUDED.customer_id,
+                        invoice_id = EXCLUDED.invoice_id,
+                        xero_invoice_id = EXCLUDED.xero_invoice_id,
+                        invoice_number = EXCLUDED.invoice_number,
+                        payment_date = EXCLUDED.payment_date,
+                        amount = EXCLUDED.amount,
+                        currency_code = EXCLUDED.currency_code,
+                        reference = EXCLUDED.reference,
+                        status = EXCLUDED.status,
+                        account_name = EXCLUDED.account_name,
+                        raw = EXCLUDED.raw,
+                        synced_at = EXCLUDED.synced_at,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    {
+                        **payment,
+                        "tenant_id": connection_row["tenant_id"],
+                        "customer_id": customer_id,
+                        "invoice_id": (invoice_match or {}).get("id"),
+                        "raw_json": json.dumps(payment.get("raw") or {}, default=_json_default),
+                        "synced_at": now,
+                        "updated_at": now,
+                    },
+                )
+                synced += 1
+        connection.commit()
+    return synced
+
+
 def record_sync_start_failure(user: dict, exc: Exception) -> None:
     message = _sync_error_message(exc)
     try:
@@ -410,11 +510,6 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 
 def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict, bool]:
     sync_options = normalise_sync_options(sync_options)
-    if not sync_options["invoice_years"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Choose at least one invoice year in Settings before importing from Xero.",
-        )
     get_xero_connection_for_user(user["id"])
 
     with get_connection() as connection:
@@ -768,6 +863,37 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 invoices_total=len(outstanding_invoices) + total_records,
             )
 
+        def payment_progress(_, total_records: int, __) -> None:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Fetching payments from Xero",
+                summary=f"Fetched {total_records} Xero payments.",
+            )
+
+        async def sync_payments_step() -> int:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Fetching payments from Xero",
+                summary="Pulling payments made against Xero invoices.",
+            )
+            try:
+                return await _sync_xero_payments(
+                    connection_row,
+                    utcnow(),
+                    modified_since=modified_since if is_incremental_sync else None,
+                    on_page=payment_progress,
+                )
+            except Exception as exc:
+                logger.exception("Unable to sync Xero payments")
+                record_audit_event(
+                    "sync_run",
+                    str(sync_run_id),
+                    "sync.payments.failed",
+                    {"error": _sync_error_message(exc), "detail": _sync_error_payload(exc)},
+                    user["id"],
+                )
+                return 0
+
         contacts = await fetch_paginated_collection(
             connection_row,
             CONTACTS_URL,
@@ -1043,6 +1169,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             {"summary": outstanding_ready["summary"]},
             user["id"],
         )
+        payments_synced = await sync_payments_step()
 
         if is_incremental_sync and not needs_paid_backfill:
             completed = _update_sync_run(
@@ -1052,12 +1179,12 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 summary=(
                     f"Incremental sync complete: refreshed changes since {modified_since.isoformat()}. "
                     f"Synced {imported_contacts} changed contacts and {outstanding_synced} changed invoices. "
-                    f"Scope: {sync_options['label']}."
+                    f"Pulled through {payments_synced} payments. Scope: {sync_options['label']}."
                 ),
                 customers_synced=len(contacts),
                 invoices_synced=synced_invoices,
-                fetched_count=len(contacts) + len(outstanding_invoices),
-                processed_count=len(contacts) + synced_invoices,
+                fetched_count=len(contacts) + len(outstanding_invoices) + payments_synced,
+                processed_count=len(contacts) + synced_invoices + payments_synced,
                 failed_count=0,
                 contacts_total=len(contacts),
                 invoices_total=len(outstanding_invoices),
@@ -1074,12 +1201,12 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 current_step="Outstanding sync complete",
                 summary=(
                     f"Synced {len(contacts)} customers and {outstanding_synced} outstanding invoices. "
-                    "Paid invoice history was left for a later staged sync."
+                    f"Pulled through {payments_synced} payments. Paid invoice history was left for a later staged sync."
                 ),
                 customers_synced=len(contacts),
                 invoices_synced=synced_invoices,
-                fetched_count=len(contacts) + len(outstanding_invoices),
-                processed_count=len(contacts) + synced_invoices,
+                fetched_count=len(contacts) + len(outstanding_invoices) + payments_synced,
+                processed_count=len(contacts) + synced_invoices + payments_synced,
                 failed_count=0,
                 contacts_total=len(contacts),
                 invoices_total=len(outstanding_invoices),
@@ -1205,9 +1332,9 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 completion_summary = (
                     f"Incremental sync complete: refreshed {len(contacts)} changed contacts, "
                     f"{outstanding_synced} changed invoices, and backfilled {paid_synced} paid invoices. "
-                    f"Scope: {sync_options['label']}."
+                    f"Pulled through {payments_synced} payments. Scope: {sync_options['label']}."
                     if is_incremental_sync
-                    else f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, and {paid_synced} paid invoices from Xero. Scope: {sync_options['label']}."
+                    else f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, {paid_synced} paid invoices, and {payments_synced} payments from Xero. Scope: {sync_options['label']}."
                 )
                 cursor.execute(
                     """
@@ -1231,8 +1358,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         "Sync complete",
                         len(contacts),
                         synced_invoices,
-                        len(contacts) + len(outstanding_invoices) + len(paid_invoices),
-                        len(contacts) + synced_invoices,
+                        len(contacts) + len(outstanding_invoices) + len(paid_invoices) + payments_synced,
+                        len(contacts) + synced_invoices + payments_synced,
                         0,
                         len(contacts),
                         len(outstanding_invoices) + len(paid_invoices),
@@ -1401,6 +1528,14 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
         "lastChasedAt": _iso(invoice.get("last_chased_at")),
         "overdueDays": invoice.get("overdue_days") or 0,
         "latePayment": invoice.get("late_payment") or {"interest": 0, "court_cost": 35},
+        "latePaymentChargeRaisedAt": _iso(invoice.get("late_payment_charge_raised_at")),
+        "latePaymentChargeInvoiceId": invoice.get("late_payment_charge_invoice_id") or "",
+        "latePaymentChargeInvoiceNumber": invoice.get("late_payment_charge_invoice_number") or "",
+        "latePaymentChargeAmount": _float(invoice.get("late_payment_charge_amount")),
+        "badDebtWriteOffAt": _iso(invoice.get("bad_debt_write_off_at")),
+        "badDebtCreditNoteId": invoice.get("bad_debt_credit_note_id") or "",
+        "badDebtCreditNoteNumber": invoice.get("bad_debt_credit_note_number") or "",
+        "badDebtCreditNoteAmount": _float(invoice.get("bad_debt_credit_note_amount")),
     }
     if detail:
         payload["notes"] = _serialize_timeline_items(detail["notes"], "full_name", "body")
@@ -1435,6 +1570,22 @@ def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
             for row in detail["audit"]
         ]
     return payload
+
+
+def _serialize_payment(payment: dict) -> dict:
+    return {
+        "id": payment.get("id"),
+        "xeroPaymentId": payment.get("xero_payment_id") or "",
+        "invoiceId": payment.get("invoice_id") or "",
+        "xeroInvoiceId": payment.get("xero_invoice_id") or "",
+        "invoiceNumber": payment.get("invoice_number") or "",
+        "date": _iso(payment.get("payment_date")),
+        "amount": _float(payment.get("amount")),
+        "currencyCode": payment.get("currency_code") or "GBP",
+        "reference": payment.get("reference") or "",
+        "status": payment.get("status") or "",
+        "accountName": payment.get("account_name") or "",
+    }
 
 
 def panel_payload(user: dict | None = None) -> dict:
@@ -1481,6 +1632,7 @@ def panel_payload(user: dict | None = None) -> dict:
             note_rows = []
             promise_rows = []
             status_rows = []
+            payment_rows = []
             if invoice_ids:
                 cursor.execute(
                     """
@@ -1515,6 +1667,14 @@ def panel_payload(user: dict | None = None) -> dict:
                     (invoice_ids,),
                 )
                 status_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT *
+                FROM payments
+                ORDER BY payment_date DESC NULLS LAST, created_at DESC
+                """
+            )
+            payment_rows = cursor.fetchall()
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
@@ -1522,6 +1682,7 @@ def panel_payload(user: dict | None = None) -> dict:
     notes_by_invoice: dict[str, list[dict]] = defaultdict(list)
     promises_by_invoice: dict[str, list[dict]] = defaultdict(list)
     statuses_by_invoice: dict[str, list[dict]] = defaultdict(list)
+    payments_by_customer: dict[str, list[dict]] = defaultdict(list)
     for note in customer_note_rows:
         notes_by_customer.setdefault(note["customer_id"], []).append(note)
     for note in note_rows:
@@ -1530,6 +1691,9 @@ def panel_payload(user: dict | None = None) -> dict:
         promises_by_invoice[promise["invoice_id"]].append(promise)
     for status_row in status_rows:
         statuses_by_invoice[status_row["invoice_id"]].append(status_row)
+    for payment in payment_rows:
+        if payment.get("customer_id"):
+            payments_by_customer[payment["customer_id"]].append(payment)
 
     today = utcnow().date()
     for invoice in invoice_rows:
@@ -1574,6 +1738,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 "totalDue": _float(customer_row.get("total_due")),
                 "overdue": _float(customer_row.get("overdue_amount")),
                 "clientNotes": _serialize_timeline_items(notes_by_customer.get(customer_row["id"], []), "full_name", "body"),
+                "payments": [_serialize_payment(payment) for payment in payments_by_customer.get(customer_row["id"], [])],
                 "invoices": invoices,
             }
         )
@@ -1621,6 +1786,450 @@ def panel_payload(user: dict | None = None) -> dict:
             for row in audit_rows
         ],
         "selectedInvoice": selected_invoice,
+    }
+
+
+def _money(value) -> Decimal:
+    try:
+        return Decimal(str(value if value is not None else 0)).quantize(Decimal("0.01"))
+    except Exception:
+        return Decimal("0.00")
+
+
+def _xero_payload_date(value) -> str:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if not value:
+        return ""
+    text = str(value)
+    match = re.match(r"/Date\((-?\d+)", text)
+    if match:
+        return datetime.fromtimestamp(int(match.group(1)) / 1000, tz=timezone.utc).date().isoformat()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return text[:10] if len(text) >= 10 else text
+
+
+def _xero_contact_where(contact_id: str) -> str:
+    return f'Contact.ContactID==Guid("{contact_id}")'
+
+
+def _xero_transaction_contact_id(payload: dict) -> str:
+    contact = payload.get("Contact") or {}
+    return str(contact.get("ContactID") or payload.get("ContactID") or "").lower()
+
+
+def _xero_line_items(line_items: list[dict] | None) -> list[dict]:
+    items = []
+    for item in line_items or []:
+        description = str(item.get("Description") or item.get("Item", {}).get("Name") or "").strip()
+        items.append(
+            {
+                "description": description,
+                "quantity": item.get("Quantity"),
+                "unitAmount": item.get("UnitAmount"),
+                "lineAmount": item.get("LineAmount"),
+                "accountCode": item.get("AccountCode"),
+                "taxType": item.get("TaxType"),
+            }
+        )
+    return items
+
+
+def _xero_allocations(allocations: list[dict] | None) -> list[dict]:
+    items = []
+    for allocation in allocations or []:
+        invoice = allocation.get("Invoice") or {}
+        items.append(
+            {
+                "id": allocation.get("AllocationID") or allocation.get("ID") or "",
+                "invoiceId": invoice.get("InvoiceID") or "",
+                "invoiceNumber": invoice.get("InvoiceNumber") or "",
+                "date": _xero_payload_date(allocation.get("DateString") or allocation.get("Date")),
+                "amount": _float(allocation.get("Amount")),
+            }
+        )
+    return items
+
+
+def _remaining_credit(source: dict) -> Decimal:
+    for key in ("RemainingCredit", "AmountDue"):
+        if source.get(key) is not None:
+            return _money(source.get(key))
+    total = _money(source.get("Total"))
+    allocated = sum(_money(item.get("Amount")) for item in source.get("Allocations") or [])
+    payments = sum(_money(item.get("Amount")) for item in source.get("Payments") or [])
+    return max(Decimal("0.00"), total - allocated - payments)
+
+
+def _serialize_credit_note_transaction(credit_note: dict) -> dict:
+    remaining = _remaining_credit(credit_note)
+    total = _money(credit_note.get("Total"))
+    return {
+        "sourceType": "creditNote",
+        "id": credit_note.get("CreditNoteID") or credit_note.get("ID") or "",
+        "number": credit_note.get("CreditNoteNumber") or "",
+        "reference": credit_note.get("Reference") or "",
+        "date": _xero_payload_date(credit_note.get("DateString") or credit_note.get("Date")),
+        "status": credit_note.get("Status") or "",
+        "type": credit_note.get("Type") or "",
+        "currencyCode": credit_note.get("CurrencyCode") or "GBP",
+        "total": float(total),
+        "remainingCredit": float(remaining),
+        "appliedAmount": float(max(Decimal("0.00"), total - remaining)),
+        "lineItems": _xero_line_items(credit_note.get("LineItems")),
+        "allocations": _xero_allocations(credit_note.get("Allocations")),
+        "contactId": _xero_transaction_contact_id(credit_note),
+    }
+
+
+def _serialize_overpayment_transaction(overpayment: dict) -> dict:
+    remaining = _remaining_credit(overpayment)
+    total = _money(overpayment.get("Total"))
+    return {
+        "sourceType": "overpayment",
+        "id": overpayment.get("OverpaymentID") or overpayment.get("ID") or "",
+        "number": overpayment.get("OverpaymentNumber") or overpayment.get("Reference") or overpayment.get("OverpaymentID") or "",
+        "reference": overpayment.get("Reference") or "",
+        "date": _xero_payload_date(overpayment.get("DateString") or overpayment.get("Date")),
+        "status": overpayment.get("Status") or "",
+        "type": overpayment.get("Type") or "",
+        "currencyCode": overpayment.get("CurrencyCode") or "GBP",
+        "total": float(total),
+        "remainingCredit": float(remaining),
+        "appliedAmount": float(max(Decimal("0.00"), total - remaining)),
+        "lineItems": _xero_line_items(overpayment.get("LineItems")),
+        "allocations": _xero_allocations(overpayment.get("Allocations")),
+        "contactId": _xero_transaction_contact_id(overpayment),
+    }
+
+
+def _serialize_xero_invoice_transaction(invoice: dict, local_lookup: dict[str, dict]) -> dict:
+    normalised = normalise_invoice(invoice)
+    local = local_lookup.get(normalised["xero_invoice_id"], {})
+    return {
+        "id": str(local.get("id") or ""),
+        "xeroInvoiceId": normalised["xero_invoice_id"],
+        "invoiceNumber": normalised["invoice_number"],
+        "status": normalised["status"],
+        "dueDate": _iso(normalised["due_date"]),
+        "invoiceDate": _iso(normalised["invoice_date"]),
+        "description": normalised["description"],
+        "lineItems": normalised["line_items"],
+        "currencyCode": normalised["currency_code"] or "GBP",
+        "total": _float(normalised["total"]),
+        "amountDue": _float(normalised["amount_due"]),
+        "amountPaid": _float(normalised["amount_paid"]),
+        "contactId": str(normalised.get("xero_contact_id") or "").lower(),
+    }
+
+
+def _validate_customer_xero_access(customer_id: str, user: dict) -> tuple[dict, dict]:
+    try:
+        parsed_customer_id = UUID(str(customer_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid customer id.") from exc
+
+    connection_row = get_xero_connection_for_user(user["id"])
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM customers WHERE id = %s AND tenant_id = %s",
+                (parsed_customer_id, connection_row["tenant_id"]),
+            )
+            customer = cursor.fetchone()
+        connection.commit()
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found for this Xero organisation.")
+    if not customer.get("xero_contact_id"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Customer is not linked to a Xero contact.")
+    return customer, connection_row
+
+
+def _local_invoice_lookup(customer_id: str) -> dict[str, dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_invoice_id, invoice_number, amount_due
+                FROM invoices
+                WHERE customer_id = %s
+                  AND xero_invoice_id IS NOT NULL
+                """,
+                (customer_id,),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+    return {row["xero_invoice_id"]: row for row in rows if row.get("xero_invoice_id")}
+
+
+async def _fetch_contact_invoices(connection_row: dict, contact_id: str) -> list[dict]:
+    params = {
+        "ContactIDs": contact_id,
+        "where": OUTSTANDING_INVOICE_WHERE,
+        "order": "DueDate ASC",
+    }
+    try:
+        return await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params=params)
+    except HTTPException:
+        records = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"where": f"{OUTSTANDING_INVOICE_WHERE}&&{_xero_contact_where(contact_id)}", "order": "DueDate ASC"},
+        )
+        return [record for record in records if _xero_transaction_contact_id(record) == contact_id.lower()]
+
+
+async def _fetch_contact_credit_sources(
+    connection_row: dict,
+    url: str,
+    collection_key: str,
+    contact_id: str,
+    where: str,
+    fallback_where: str,
+    serializer,
+) -> list[dict]:
+    try:
+        records = await fetch_paginated_collection(connection_row, url, collection_key, params={"where": where, "order": "Date DESC"})
+    except HTTPException:
+        records = await fetch_paginated_collection(connection_row, url, collection_key, params={"where": fallback_where, "order": "Date DESC"})
+
+    contact_id_lower = contact_id.lower()
+    items = []
+    for record in records:
+        if _xero_transaction_contact_id(record) != contact_id_lower:
+            continue
+        if url == OVERPAYMENTS_URL:
+            overpayment_type = str(record.get("Type") or "").upper()
+            if overpayment_type and "RECEIVE" not in overpayment_type:
+                continue
+        item = serializer(record)
+        if _money(item.get("remainingCredit")) > 0:
+            items.append(item)
+    return items
+
+
+async def _customer_xero_transactions_payload(customer: dict, connection_row: dict) -> dict:
+    contact_id = customer["xero_contact_id"]
+    local_lookup = _local_invoice_lookup(customer["id"])
+    raw_invoices = await _fetch_contact_invoices(connection_row, contact_id)
+    outstanding_invoices = []
+    for raw_invoice in raw_invoices:
+        invoice = _serialize_xero_invoice_transaction(raw_invoice, local_lookup)
+        if invoice["contactId"] and invoice["contactId"] != contact_id.lower():
+            continue
+        if _money(invoice["amountDue"]) > 0:
+            outstanding_invoices.append(invoice)
+
+    credit_where = f'{_xero_contact_where(contact_id)}&&Type=="ACCRECCREDIT"&&Status=="AUTHORISED"'
+    unallocated_credits = await _fetch_contact_credit_sources(
+        connection_row,
+        CREDIT_NOTES_URL,
+        "CreditNotes",
+        contact_id,
+        credit_where,
+        'Type=="ACCRECCREDIT"&&Status=="AUTHORISED"',
+        _serialize_credit_note_transaction,
+    )
+    overpayment_where = f'{_xero_contact_where(contact_id)}&&Status=="AUTHORISED"'
+    overpayments = await _fetch_contact_credit_sources(
+        connection_row,
+        OVERPAYMENTS_URL,
+        "Overpayments",
+        contact_id,
+        overpayment_where,
+        'Status=="AUTHORISED"',
+        _serialize_overpayment_transaction,
+    )
+
+    outstanding_total = sum(_money(invoice.get("amountDue")) for invoice in outstanding_invoices)
+    credit_total = sum(_money(item.get("remainingCredit")) for item in [*unallocated_credits, *overpayments])
+    line_count = sum(len(invoice.get("lineItems") or []) for invoice in outstanding_invoices)
+    return {
+        "customerId": str(customer["id"]),
+        "xeroContactId": contact_id,
+        "fetchedAt": utcnow().isoformat(),
+        "outstandingInvoices": outstanding_invoices,
+        "unallocatedCredits": unallocated_credits,
+        "overpayments": overpayments,
+        "summary": {
+            "outstandingTotal": float(outstanding_total),
+            "outstandingInvoiceCount": len(outstanding_invoices),
+            "outstandingLineCount": line_count,
+            "unallocatedCreditTotal": float(credit_total),
+            "unallocatedCreditCount": len(unallocated_credits) + len(overpayments),
+            "overpaymentCount": len(overpayments),
+        },
+    }
+
+
+async def customer_xero_transactions(customer_id: str, user: dict) -> dict:
+    customer, connection_row = _validate_customer_xero_access(customer_id, user)
+    return await _customer_xero_transactions_payload(customer, connection_row)
+
+
+async def _refresh_local_invoice_from_xero(
+    connection_row: dict,
+    customer_id: str,
+    xero_invoice_id: str,
+    user_id: str,
+    status_note: str,
+) -> str:
+    payload = await xero_api_get(connection_row, f"{INVOICES_URL}/{xero_invoice_id}")
+    raw_invoice = ((payload or {}).get("Invoices") or [{}])[0]
+    if not raw_invoice.get("InvoiceID"):
+        return ""
+    invoice = normalise_invoice(raw_invoice)
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO invoices (
+                    customer_id, xero_invoice_id, invoice_number, status, due_date, invoice_date,
+                    description, line_items, currency_code, total, amount_due, amount_paid, xero_updated_at, synced_at, updated_at
+                )
+                VALUES (
+                    %(customer_id)s, %(xero_invoice_id)s, %(invoice_number)s, %(status)s, %(due_date)s, %(invoice_date)s,
+                    %(description)s, %(line_items_json)s::jsonb, %(currency_code)s, %(total)s, %(amount_due)s, %(amount_paid)s, %(xero_updated_at)s, %(synced_at)s, %(updated_at)s
+                )
+                ON CONFLICT (xero_invoice_id) DO UPDATE
+                SET customer_id = EXCLUDED.customer_id,
+                    invoice_number = EXCLUDED.invoice_number,
+                    status = EXCLUDED.status,
+                    due_date = EXCLUDED.due_date,
+                    invoice_date = EXCLUDED.invoice_date,
+                    description = EXCLUDED.description,
+                    line_items = EXCLUDED.line_items,
+                    currency_code = EXCLUDED.currency_code,
+                    total = EXCLUDED.total,
+                    amount_due = EXCLUDED.amount_due,
+                    amount_paid = EXCLUDED.amount_paid,
+                    xero_updated_at = EXCLUDED.xero_updated_at,
+                    synced_at = EXCLUDED.synced_at,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id
+                """,
+                {
+                    **invoice,
+                    "line_items_json": json.dumps(invoice.get("line_items") or [], default=_json_default),
+                    "customer_id": customer_id,
+                    "synced_at": now,
+                    "updated_at": now,
+                },
+            )
+            stored = cursor.fetchone()
+            if stored:
+                cursor.execute(
+                    """
+                    INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (stored["id"], "Credit allocated", status_note, user_id),
+                )
+            _refresh_customer_totals(cursor, connection_row["tenant_id"], now)
+        connection.commit()
+    return str(stored["id"]) if stored else ""
+
+
+async def allocate_customer_credit(user: dict, customer_id: str, payload: dict) -> dict:
+    customer, connection_row = _validate_customer_xero_access(customer_id, user)
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Allocation payload is required.")
+
+    source_type_input = str(payload.get("sourceType") or "").strip()
+    source_type = {
+        "creditNote": "creditNote",
+        "credit_note": "creditNote",
+        "credit-note": "creditNote",
+        "overpayment": "overpayment",
+    }.get(source_type_input)
+    source_id = str(payload.get("sourceId") or "").strip()
+    xero_invoice_id = str(payload.get("invoiceId") or payload.get("xeroInvoiceId") or "").strip()
+    amount = _money(payload.get("amount"))
+    if source_type is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a credit note or overpayment to allocate.")
+    if not source_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Allocation source id is required.")
+    if not xero_invoice_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice id is required.")
+    if amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Allocation amount must be greater than zero.")
+
+    transactions = await _customer_xero_transactions_payload(customer, connection_row)
+    invoice = next((item for item in transactions["outstandingInvoices"] if item.get("xeroInvoiceId") == xero_invoice_id), None)
+    sources = transactions["unallocatedCredits"] if source_type == "creditNote" else transactions["overpayments"]
+    source = next((item for item in sources if item.get("id") == source_id), None)
+    if invoice is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected invoice is not outstanding for this Xero contact.")
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected credit source is not available for this Xero contact.")
+
+    remaining_credit = _money(source.get("remainingCredit"))
+    amount_due = _money(invoice.get("amountDue"))
+    maximum = min(remaining_credit, amount_due)
+    if amount > maximum:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Allocation exceeds the available amount. Maximum allocation is {maximum:.2f}.",
+        )
+
+    today = utcnow().date()
+    allocation_payload = {
+        "Invoice": {"InvoiceID": xero_invoice_id},
+        "Amount": float(amount),
+        "Date": today.isoformat(),
+    }
+    if source_type == "creditNote":
+        allocation_response = await allocate_credit_note(connection_row, source_id, allocation_payload)
+        source_label = f"credit note {source.get('number') or source_id}"
+    else:
+        allocation_response = await allocate_overpayment(connection_row, source_id, allocation_payload)
+        source_label = f"overpayment {source.get('number') or source_id}"
+
+    invoice_number = invoice.get("invoiceNumber") or xero_invoice_id
+    status_note = f"Allocated {source_label} to invoice {invoice_number} for {source.get('currencyCode') or invoice.get('currencyCode') or 'GBP'} {amount:,.2f}."
+    local_invoice_id = await _refresh_local_invoice_from_xero(
+        connection_row,
+        customer["id"],
+        xero_invoice_id,
+        user["id"],
+        status_note,
+    )
+    record_audit_event(
+        "customer",
+        str(customer["id"]),
+        "xero.allocation.created",
+        {
+            "customer_name": customer.get("name"),
+            "source_type": source_type,
+            "source_id": source_id,
+            "source_number": source.get("number"),
+            "invoice_id": xero_invoice_id,
+            "local_invoice_id": local_invoice_id or invoice.get("id"),
+            "invoice_number": invoice_number,
+            "amount": float(amount),
+            "currency_code": source.get("currencyCode") or invoice.get("currencyCode") or "GBP",
+            "allocation": allocation_response,
+        },
+        user["id"],
+    )
+    refreshed_transactions = await _customer_xero_transactions_payload(customer, connection_row)
+    return {
+        "status": "ok",
+        "allocation": {
+            "sourceType": source_type,
+            "sourceId": source_id,
+            "invoiceId": xero_invoice_id,
+            "amount": float(amount),
+            "date": today.isoformat(),
+        },
+        "transactions": refreshed_transactions,
+        "panel": panel_payload(user),
     }
 
 
@@ -2277,6 +2886,386 @@ def _add_months(value: date, months: int) -> date:
     return date(year, month, day)
 
 
+def _ordinal_day(value: date) -> str:
+    if 10 <= value.day % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(value.day % 10, "th")
+    return f"{value.day}{suffix}"
+
+
+def _invoice_date_description(value: date | None) -> str:
+    if value is None:
+        return "unknown date"
+    return f"{_ordinal_day(value)} {value.strftime('%B')} {value.year}"
+
+
+async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dict:
+    try:
+        unique_invoice_ids = list(dict.fromkeys(UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id in late payment charge selection.") from exc
+    if not unique_invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+
+    today = utcnow().date()
+    now = utcnow()
+    settings = get_settings()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT invoices.id,
+                       invoices.xero_invoice_id,
+                       invoices.invoice_number,
+                       invoices.invoice_date,
+                       invoices.due_date,
+                       invoices.amount_due,
+                       invoices.late_payment_charge_raised_at,
+                       customers.id AS customer_id,
+                       customers.name AS customer_name,
+                       customers.xero_contact_id
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE invoices.id = ANY(%s)
+                ORDER BY invoices.due_date ASC NULLS LAST, invoices.invoice_number ASC
+                """,
+                (unique_invoice_ids,),
+            )
+            invoices = cursor.fetchall()
+        connection.commit()
+
+    if len(invoices) != len(unique_invoice_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more selected invoices could not be found.")
+
+    chargeable = []
+    skipped = []
+    for invoice in invoices:
+        due_date = invoice.get("due_date")
+        overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
+        amount_due = _float(invoice.get("amount_due"))
+        if amount_due <= 0:
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice is not outstanding."})
+            continue
+        if overdue_days <= 14:
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice is not more than 14 days overdue."})
+            continue
+        if invoice.get("late_payment_charge_raised_at"):
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Late payment charge already raised."})
+            continue
+        if not invoice.get("xero_contact_id"):
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Customer is not linked to a Xero contact."})
+            continue
+        charge_amount = Decimal(str(_late_payment_breakdown(amount_due, overdue_days).get("interest") or 0)).quantize(Decimal("0.01"))
+        if charge_amount <= 0:
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Calculated late payment charge is zero."})
+            continue
+        chargeable.append((invoice, overdue_days, charge_amount))
+
+    if not chargeable:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected invoices are eligible for late payment charges.")
+
+    connection_row = get_xero_connection_for_user(user["id"])
+    created = []
+    for invoice, overdue_days, charge_amount in chargeable:
+        description = (
+            f"Late payment charge in respect of invoice {invoice.get('invoice_number') or invoice['id']} "
+            f"dated {_invoice_date_description(invoice.get('invoice_date'))}"
+        )
+        invoice_payload = {
+            "Type": "ACCREC",
+            "Contact": {"ContactID": invoice["xero_contact_id"]},
+            "Date": today.isoformat(),
+            "DueDate": today.isoformat(),
+            "LineAmountTypes": "NoTax",
+            "Status": "AUTHORISED",
+            "LineItems": [
+                {
+                    "Description": description,
+                    "Quantity": 1,
+                    "UnitAmount": float(charge_amount),
+                    "AccountCode": settings.late_payment_charge_account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+        }
+        xero_response = await create_sales_invoice(connection_row, invoice_payload)
+        created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
+        created_invoice_id = created_invoice.get("InvoiceID") or ""
+        created_invoice_number = created_invoice.get("InvoiceNumber") or ""
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE invoices
+                    SET late_payment_charge_raised_at = %s,
+                        late_payment_charge_invoice_id = %s,
+                        late_payment_charge_invoice_number = %s,
+                        late_payment_charge_amount = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (now, created_invoice_id, created_invoice_number, charge_amount, now, invoice["id"]),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        invoice["id"],
+                        "Late Payment Charge Raised",
+                        f"{description}. Charge amount: £{float(charge_amount):,.2f}.",
+                        user["id"],
+                    ),
+                )
+            connection.commit()
+
+        record_audit_event(
+            "invoice",
+            str(invoice["id"]),
+            "late_payment_charge.raised",
+            {
+                "invoice_number": invoice.get("invoice_number"),
+                "customer_id": str(invoice.get("customer_id")),
+                "customer_name": invoice.get("customer_name"),
+                "overdue_days": overdue_days,
+                "amount": float(charge_amount),
+                "created_invoice_id": created_invoice_id,
+                "created_invoice_number": created_invoice_number,
+                "description": description,
+            },
+            user["id"],
+        )
+        created.append(
+            {
+                "invoiceId": str(invoice["id"]),
+                "chargeAmount": float(charge_amount),
+                "createdInvoiceId": created_invoice_id,
+                "createdInvoiceNumber": created_invoice_number,
+                "description": description,
+            }
+        )
+
+    return {"created": created, "skipped": skipped}
+
+
+async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict:
+    try:
+        unique_invoice_ids = list(dict.fromkeys(UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id in write-off selection.") from exc
+    if not unique_invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+
+    today = utcnow().date()
+    settings = get_settings()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT invoices.id,
+                       invoices.xero_invoice_id,
+                       invoices.invoice_number,
+                       invoices.invoice_date,
+                       invoices.due_date,
+                       invoices.amount_due,
+                       invoices.total,
+                       invoices.currency_code,
+                       invoices.bad_debt_write_off_at,
+                       invoices.bad_debt_credit_note_id,
+                       customers.id AS customer_id,
+                       customers.name AS customer_name,
+                       customers.xero_contact_id
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE invoices.id = ANY(%s)
+                ORDER BY invoices.due_date ASC NULLS LAST, invoices.invoice_number ASC
+                """,
+                (unique_invoice_ids,),
+            )
+            invoices = cursor.fetchall()
+        connection.commit()
+
+    if len(invoices) != len(unique_invoice_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more selected invoices could not be found.")
+
+    writable = []
+    skipped = []
+    for invoice in invoices:
+        amount_due = Decimal(str(_float(invoice.get("amount_due")))).quantize(Decimal("0.01"))
+        if amount_due <= 0:
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice is not outstanding."})
+            continue
+        if invoice.get("bad_debt_write_off_at") or invoice.get("bad_debt_credit_note_id"):
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice has already been written off."})
+            continue
+        if not invoice.get("xero_invoice_id"):
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice is not linked to a Xero invoice."})
+            continue
+        if not invoice.get("xero_contact_id"):
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Customer is not linked to a Xero contact."})
+            continue
+        writable.append((invoice, amount_due))
+
+    if not writable:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected invoices are eligible for write-off.")
+
+    connection_row = get_xero_connection_for_user(user["id"])
+    account_code = settings.bad_debt_write_off_account_code
+    created = []
+    for invoice, amount_due in writable:
+        now = utcnow()
+        invoice_number = invoice.get("invoice_number") or str(invoice["id"])
+        currency_code = invoice.get("currency_code") or "GBP"
+        amount_label = f"{currency_code} {amount_due:,.2f}"
+        description = (
+            f"Bad debt write off for invoice {invoice_number} dated {_invoice_date_description(invoice.get('invoice_date'))}. "
+            f"The outstanding balance of {amount_label} has been assessed as irrecoverable. "
+            f"Raised via jeNIUS AI Credit Control Console to account code {account_code} "
+            "Irrecoverable Receivables / Bad Debt Write Off and allocated directly against the original invoice."
+        )
+        credit_note_payload = {
+            "Type": "ACCRECCREDIT",
+            "Contact": {"ContactID": invoice["xero_contact_id"]},
+            "Date": today.isoformat(),
+            "LineAmountTypes": "NoTax",
+            "Status": "AUTHORISED",
+            "Reference": f"Bad debt write off {invoice_number}",
+            "LineItems": [
+                {
+                    "Description": description,
+                    "Quantity": 1,
+                    "UnitAmount": float(amount_due),
+                    "AccountCode": account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+        }
+        if currency_code:
+            credit_note_payload["CurrencyCode"] = currency_code
+
+        xero_response = await create_credit_note(connection_row, credit_note_payload)
+        created_credit_note = ((xero_response or {}).get("CreditNotes") or [{}])[0]
+        credit_note_id = created_credit_note.get("CreditNoteID") or created_credit_note.get("ID") or ""
+        credit_note_number = created_credit_note.get("CreditNoteNumber") or ""
+        if not credit_note_id:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Xero created the credit note but did not return a credit note id.")
+
+        allocation_payload = {
+            "Invoice": {"InvoiceID": invoice["xero_invoice_id"]},
+            "Amount": float(amount_due),
+            "Date": today.isoformat(),
+        }
+        allocation_response = await allocate_credit_note(connection_row, credit_note_id, allocation_payload)
+
+        contact_note = (
+            f"via jeNIUS AI WE HAVE WRITTEN OFF INVOICE '{invoice_number}'. "
+            f"Credit note {credit_note_number or credit_note_id} was raised for {amount_label} to account code {account_code} "
+            "Irrecoverable Receivables / Bad Debt Write Off and allocated to the invoice. "
+            "Reason: outstanding balance assessed as irrecoverable bad debt."
+        )
+        contact_note_synced = True
+        contact_note_error = ""
+        try:
+            await create_history_record(connection_row, "Contacts", invoice["xero_contact_id"], contact_note)
+        except Exception as exc:
+            contact_note_synced = False
+            contact_note_error = _sync_error_message(exc)
+
+        status_note = (
+            f"Invoice written off via Xero credit note {credit_note_number or credit_note_id}. "
+            f"Amount: {amount_label}. Account code: {account_code} Irrecoverable Receivables / Bad Debt Write Off."
+        )
+        if not contact_note_synced:
+            status_note = f"{status_note} Xero contact note was not added: {contact_note_error}"
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE invoices
+                    SET amount_due = 0,
+                        control_status = %s,
+                        notes_summary = %s,
+                        bad_debt_write_off_at = %s,
+                        bad_debt_credit_note_id = %s,
+                        bad_debt_credit_note_number = %s,
+                        bad_debt_credit_note_amount = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        "Bad debt",
+                        contact_note[:200],
+                        now,
+                        credit_note_id,
+                        credit_note_number,
+                        amount_due,
+                        now,
+                        invoice["id"],
+                    ),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO invoice_status_history (invoice_id, status, note, changed_by_user_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (invoice["id"], "Bad debt", status_note, user["id"]),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO notes (invoice_id, user_id, body)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (invoice["id"], user["id"], contact_note),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO customer_notes (customer_id, user_id, body)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (invoice["customer_id"], user["id"], contact_note),
+                )
+                _refresh_customer_totals(cursor, connection_row["tenant_id"], now)
+            connection.commit()
+
+        record_audit_event(
+            "invoice",
+            str(invoice["id"]),
+            "bad_debt.write_off",
+            {
+                "invoice_number": invoice_number,
+                "customer_id": str(invoice.get("customer_id")),
+                "customer_name": invoice.get("customer_name"),
+                "amount": float(amount_due),
+                "currency_code": currency_code,
+                "account_code": account_code,
+                "credit_note_id": credit_note_id,
+                "credit_note_number": credit_note_number,
+                "allocation": allocation_response,
+                "contact_note_synced": contact_note_synced,
+                "contact_note_error": contact_note_error,
+                "description": description,
+            },
+            user["id"],
+        )
+        created.append(
+            {
+                "invoiceId": str(invoice["id"]),
+                "writeOffAmount": float(amount_due),
+                "creditNoteId": credit_note_id,
+                "creditNoteNumber": credit_note_number,
+                "contactNoteSynced": contact_note_synced,
+                "contactNoteError": contact_note_error,
+                "description": description,
+            }
+        )
+
+    return {"created": created, "skipped": skipped}
+
+
 def create_payment_plan(customer_id: str, user: dict, invoice_ids: list[str], duration_months: int, note: str = "") -> dict:
     try:
         unique_invoice_ids = list(dict.fromkeys(UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()))
@@ -2316,13 +3305,18 @@ def create_payment_plan(customer_id: str, user: dict, invoice_ids: list[str], du
                 )
 
             total_amount = sum(_float(invoice.get("amount_due")) for invoice in invoices)
+            monthly_amount = round(total_amount / duration_months, 2)
             invoice_refs = ", ".join(invoice.get("invoice_number") or str(invoice["id"]) for invoice in invoices)
             auto_note = (
                 note.strip()
-                or f"Payment plan created for {duration_months} months covering {len(invoices)} invoice(s): {invoice_refs}."
+                or (
+                    f"Payment plan created for {duration_months} months covering {len(invoices)} invoice(s): {invoice_refs}. "
+                    f"Plan total: £{total_amount:,.2f}. Monthly payment: £{monthly_amount:,.2f}."
+                )
             )
             per_invoice_note = (
                 f"{auto_note}\n\n"
+                f"Duration: {duration_months} months. Monthly payment: £{monthly_amount:,.2f}. "
                 f"Plan total: £{total_amount:,.2f}. Expected completion: {promised_date.isoformat()}."
             )
 
@@ -2400,6 +3394,7 @@ def create_payment_plan(customer_id: str, user: dict, invoice_ids: list[str], du
         "durationMonths": duration_months,
         "promisedDate": promised_date.isoformat(),
         "totalAmount": total_amount,
+        "monthlyAmount": monthly_amount,
         "note": auto_note,
     }
 

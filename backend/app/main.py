@@ -31,8 +31,12 @@ from .services import (
     add_customer_note,
     add_note,
     add_promise,
+    allocate_customer_credit,
+    create_bad_debt_write_offs,
+    create_late_payment_charges,
     create_payment_plan,
     customer_detail,
+    customer_xero_transactions,
     dashboard_payload,
     disconnect_xero,
     factory_reset_console,
@@ -510,6 +514,31 @@ def api_xero_disconnect(user: dict = Depends(require_panel_user)):
 def api_panel_factory_reset(user: dict = Depends(require_panel_user)):
     reset = factory_reset_console(user)
     return {"status": "ok", "reset": reset, "panel": panel_payload(user)}
+
+
+@app.post("/api/late-payment-charges")
+async def api_late_payment_charges(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    charges = await create_late_payment_charges(user, payload.get("invoiceIds") or [])
+    return {"status": "ok", **charges, "panel": panel_payload(user)}
+
+
+@app.post("/api/write-offs")
+async def api_write_offs(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    write_offs = await create_bad_debt_write_offs(user, payload.get("invoiceIds") or [])
+    return {"status": "ok", **write_offs, "panel": panel_payload(user)}
+
+
+@app.get("/api/customers/{customer_id}/xero-transactions")
+async def api_customer_xero_transactions(customer_id: str, user: dict = Depends(require_panel_user)):
+    return await customer_xero_transactions(customer_id, user)
+
+
+@app.post("/api/customers/{customer_id}/allocations")
+async def api_customer_allocate_credit(customer_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return await allocate_customer_credit(user, customer_id, payload)
 
 
 @app.post("/api/invoices/{invoice_id}/notes")

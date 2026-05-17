@@ -1,3 +1,4 @@
+import asyncio
 import re
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -13,11 +14,17 @@ TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 CONTACTS_URL = "https://api.xero.com/api.xro/2.0/Contacts"
 INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices"
+CREDIT_NOTES_URL = "https://api.xero.com/api.xro/2.0/CreditNotes"
+OVERPAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Overpayments"
+PAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Payments"
 USERINFO_URL = "https://identity.xero.com/connect/userinfo"
 XERO_PAGE_SIZE = 100
+XERO_PAGE_DELAY_SECONDS = 1.05
+XERO_RATE_LIMIT_RETRIES = 3
+XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
 XERO_PERMISSION_MESSAGE = (
-    "Xero permissions need updating. Reconnect Xero to approve invoice and contact access, "
-    "including note write-back, then try again."
+    "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
+    "and contact note write-back access, then try again."
 )
 
 
@@ -366,6 +373,102 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
         return response.json()
 
 
+async def create_sales_invoice(connection_row: dict, invoice_payload: dict) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.post(
+                INVOICES_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"Invoices": [invoice_payload]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "invoice creation")
+        if response.is_error:
+            _raise_xero_http_error(response, "invoice creation")
+        if not response.content:
+            return {}
+        return response.json()
+
+
+async def create_credit_note(connection_row: dict, credit_note_payload: dict) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.post(
+                CREDIT_NOTES_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"CreditNotes": [credit_note_payload]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "credit note creation")
+        if response.is_error:
+            _raise_xero_http_error(response, "credit note creation")
+        if not response.content:
+            return {}
+        return response.json()
+
+
+async def allocate_credit_note(connection_row: dict, credit_note_id: str, allocation_payload: dict) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.put(
+                f"{CREDIT_NOTES_URL}/{credit_note_id}/Allocations",
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"Allocations": [allocation_payload]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "credit note allocation")
+        if response.is_error:
+            _raise_xero_http_error(response, "credit note allocation")
+        if not response.content:
+            return {}
+        return response.json()
+
+
+async def allocate_overpayment(connection_row: dict, overpayment_id: str, allocation_payload: dict) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.put(
+                f"{OVERPAYMENTS_URL}/{overpayment_id}/Allocations",
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"Allocations": [allocation_payload]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "overpayment allocation")
+        if response.is_error:
+            _raise_xero_http_error(response, "overpayment allocation")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def fetch_paginated_collection(
     connection_row: dict,
     url: str,
@@ -377,6 +480,7 @@ async def fetch_paginated_collection(
 ) -> list[dict]:
     records: list[dict] = []
     page = 1
+    rate_limit_retries = 0
     while True:
         if max_pages is not None and page > max_pages:
             return records
@@ -389,11 +493,19 @@ async def fetch_paginated_collection(
             )
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
-            if records and detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS:
+            if detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS and rate_limit_retries < XERO_RATE_LIMIT_RETRIES:
+                rate_limit_retries += 1
                 if on_page is not None:
                     on_page(page, len(records), 0)
-                return records
+                retry_after = detail.get("retry_after")
+                try:
+                    delay_seconds = int(retry_after)
+                except (TypeError, ValueError):
+                    delay_seconds = XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS
+                await asyncio.sleep(max(delay_seconds, XERO_PAGE_DELAY_SECONDS))
+                continue
             raise
+        rate_limit_retries = 0
         batch = payload.get(collection_key, [])
         records.extend(batch)
         if on_page is not None:
@@ -401,6 +513,7 @@ async def fetch_paginated_collection(
         if len(batch) < XERO_PAGE_SIZE:
             return records
         page += 1
+        await asyncio.sleep(XERO_PAGE_DELAY_SECONDS)
 
 
 async def fetch_contacts_and_invoices(connection_row: dict) -> tuple[list[dict], list[dict]]:
@@ -520,4 +633,24 @@ def normalise_invoice(invoice: dict) -> dict:
         "amount_due": invoice.get("AmountDue", 0),
         "amount_paid": invoice.get("AmountPaid", 0),
         "xero_updated_at": _iso_to_datetime(invoice.get("UpdatedDateUTC")),
+    }
+
+
+def normalise_payment(payment: dict) -> dict:
+    invoice = payment.get("Invoice") or {}
+    contact = invoice.get("Contact") or payment.get("Contact") or {}
+    account = payment.get("Account") or {}
+    return {
+        "xero_payment_id": payment.get("PaymentID"),
+        "xero_contact_id": contact.get("ContactID"),
+        "xero_invoice_id": invoice.get("InvoiceID"),
+        "invoice_number": invoice.get("InvoiceNumber") or "",
+        "invoice_type": invoice.get("Type") or "",
+        "payment_date": _xero_date(payment.get("DateString") or payment.get("Date")),
+        "amount": payment.get("Amount", 0),
+        "currency_code": payment.get("CurrencyCode") or invoice.get("CurrencyCode"),
+        "reference": payment.get("Reference") or "",
+        "status": payment.get("Status") or "",
+        "account_name": account.get("Name") or account.get("Code") or "",
+        "raw": payment,
     }
