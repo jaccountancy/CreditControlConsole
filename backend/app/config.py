@@ -14,12 +14,14 @@ class Settings(BaseSettings):
     xero_client_id: str
     xero_client_secret: str
     xero_redirect_uri: str
-    xero_scopes: str = "openid profile email offline_access accounting.invoices accounting.contacts"
+    xero_scopes: str = "openid profile email offline_access accounting.transactions accounting.contacts"
     panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk"
     xero_state_ttl_seconds: int = 900
     device_code_ttl_minutes: int = 10
     session_ttl_days: int = 30
     statutory_interest_rate: float = 0.08
+    late_payment_charge_account_code: str = "200"
+    bad_debt_write_off_account_code: str = "402"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
 

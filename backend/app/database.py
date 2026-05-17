@@ -115,6 +115,14 @@ CREATE TABLE IF NOT EXISTS invoices (
     control_status TEXT NOT NULL DEFAULT 'new',
     last_chased_at TIMESTAMPTZ,
     notes_summary TEXT,
+    late_payment_charge_raised_at TIMESTAMPTZ,
+    late_payment_charge_invoice_id TEXT,
+    late_payment_charge_invoice_number TEXT,
+    late_payment_charge_amount NUMERIC(14, 2),
+    bad_debt_write_off_at TIMESTAMPTZ,
+    bad_debt_credit_note_id TEXT,
+    bad_debt_credit_note_number TEXT,
+    bad_debt_credit_note_amount NUMERIC(14, 2),
     xero_updated_at TIMESTAMPTZ,
     synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -125,6 +133,14 @@ CREATE INDEX IF NOT EXISTS invoices_customer_idx ON invoices (customer_id);
 CREATE INDEX IF NOT EXISTS invoices_due_date_idx ON invoices (due_date);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS line_items JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS late_payment_charge_raised_at TIMESTAMPTZ;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS late_payment_charge_invoice_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS late_payment_charge_invoice_number TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS late_payment_charge_amount NUMERIC(14, 2);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_write_off_at TIMESTAMPTZ;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_id TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_number TEXT;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_amount NUMERIC(14, 2);
 
 CREATE TABLE IF NOT EXISTS invoice_status_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -164,6 +180,30 @@ CREATE TABLE IF NOT EXISTS payment_promises (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     resolved_at TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT NOT NULL,
+    customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+    invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
+    xero_payment_id TEXT NOT NULL UNIQUE,
+    xero_invoice_id TEXT,
+    invoice_number TEXT,
+    payment_date DATE,
+    amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    currency_code TEXT,
+    reference TEXT,
+    status TEXT,
+    account_name TEXT,
+    raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS payments_customer_idx ON payments (customer_id);
+CREATE INDEX IF NOT EXISTS payments_invoice_idx ON payments (invoice_id);
+CREATE INDEX IF NOT EXISTS payments_date_idx ON payments (payment_date);
 
 CREATE TABLE IF NOT EXISTS sync_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
