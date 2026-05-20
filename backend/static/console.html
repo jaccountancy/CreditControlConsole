@@ -115,7 +115,7 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 }
 .dashboard-hero {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 14px;
     margin-bottom: 20px;
 }
@@ -126,6 +126,9 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     border: 1px solid rgba(255, 255, 255, 0.75);
     box-shadow: 0 12px 32px rgba(30, 47, 77, 0.07);
 }
+button.hero-summary-card {
+    color: inherit;
+}
 .hero-summary-card.notice-card {
     width: 100%;
     text-align: left;
@@ -134,6 +137,12 @@ h1, h2, h3 { letter-spacing: -0.03em; }
 .hero-summary-card.notice-card:focus-visible {
     outline: 3px solid rgba(29, 103, 242, 0.28);
     outline-offset: 3px;
+}
+.hero-summary-card.late-charge-review-card {
+    border-color: rgba(255, 83, 83, 0.24);
+}
+.hero-summary-card.late-charge-review-card strong {
+    color: var(--red);
 }
 .hero-summary-card span {
     display: block;
@@ -234,6 +243,11 @@ h1, h2, h3 { letter-spacing: -0.03em; }
     color: var(--muted);
     background: rgba(248, 251, 255, 0.72);
     border-color: var(--line);
+}
+.ghost-button.is-attention {
+    border-color: rgba(255, 83, 83, 0.28);
+    background: var(--red-soft);
+    color: var(--red);
 }
 .xero-connect-wrap {
     position: relative;
@@ -952,9 +966,9 @@ body.is-dense .note-snippet {
 }
 .amount-full-tooltip {
     position: absolute;
-    left: 16px;
-    top: 6px;
-    z-index: 18;
+    left: 50%;
+    top: calc(100% + 8px);
+    z-index: 60;
     display: grid;
     gap: 7px;
     width: 280px;
@@ -969,13 +983,13 @@ body.is-dense .note-snippet {
     font-weight: 750;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-8px);
+    transform: translate(-50%, -4px);
     transition: 0.16s ease;
 }
 .amount-cell:hover .amount-full-tooltip,
 .amount-cell:focus-within .amount-full-tooltip {
     opacity: 1;
-    transform: translateY(-100%);
+    transform: translate(-50%, 0);
 }
 .amount-tooltip-title {
     font-weight: 850;
@@ -1721,6 +1735,9 @@ body.is-dense .note-snippet {
 }
 .late-charge-row.is-raised {
     opacity: 0.68;
+}
+.late-charge-row.is-ineligible {
+    opacity: 0.62;
 }
 .late-charge-main strong,
 .late-charge-main span {
@@ -2697,6 +2714,11 @@ body.is-syncing .sync-dot {
                 <strong id="heroTotalOutstanding">£0</strong>
                 <p id="heroOpenInvoices">0 open invoices</p>
             </article>
+            <button class="hero-summary-card notice-card late-charge-review-card" id="lateChargeReviewCard" type="button">
+                <span>Late Charges Due</span>
+                <strong id="heroLateChargeCount">0</strong>
+                <p id="heroLateChargeSummary">No charges need review</p>
+            </button>
             <article class="hero-summary-card">
                 <span>Paid</span>
                 <strong id="heroPaidInvoices">0</strong>
@@ -2757,6 +2779,7 @@ body.is-syncing .sync-dot {
                     </div>
                 </div>
                 <button class="ghost-button" id="denseModeButton" type="button" aria-pressed="false">Dense table</button>
+                <button class="ghost-button" id="reviewLateChargesButton" type="button">Review late charges</button>
                 <button class="ghost-button" id="clearFiltersButton" type="button">Clear filters</button>
                 <button class="ghost-button" id="exportFilteredButton" type="button">Export CSV</button>
             </div>
@@ -2897,10 +2920,11 @@ body.is-syncing .sync-dot {
                 <div>
                     <button class="text-button" id="backFromLateChargesButton" type="button">Back to ledger</button>
                     <p class="eyebrow">Overdue invoice workflow</p>
-                    <h2>Late Payment Charges</h2>
-                    <p class="detail-meta">Invoices more than 14 days overdue. Select eligible rows to raise one Xero invoice per charge.</p>
+                    <h2>Review Late Payment Charges</h2>
+                    <p class="detail-meta">Invoices more than 14 days overdue and not already charged. Review the rows, then raise one Xero invoice per selected charge.</p>
                 </div>
                 <div class="detail-actions">
+                    <button class="ghost-button" id="selectAllLateChargesButton" type="button">Select all eligible</button>
                     <button class="primary-button" id="raiseLateChargesButton" type="button">Raise selected charges</button>
                 </div>
             </div>
@@ -3372,6 +3396,10 @@ body.is-syncing .sync-dot {
                     <p>The main ledger is the working list. Use the status chips, search, sort, filter, columns, dense table, export, and row actions to find invoices and open a client. Selecting a row opens the client screen, where you can review contact details, open invoices, interest guidance, invoice notes, client notes, status history, payment plans, attachments, and audit activity.</p>
                 </section>
                 <section class="help-section">
+                    <h4>Late payment charge review</h4>
+                    <p>The dashboard card and toolbar button open the late payment charge queue. It lists invoices more than 14 days overdue, shows which ones are ready, already charged, or blocked by missing Xero contact data, and raises the selected charges back into Xero after review.</p>
+                </section>
+                <section class="help-section">
                     <h4>Letter templates and generated letters</h4>
                     <p>Open Menu, then Settings, to create and edit letter templates. Templates can use fields such as {{client_name}}, {{contact_name}}, {{total_due}}, {{invoice_list}}, {{today}}, and selected invoice fields. On the client screen, choose a template in the Letters section and generate it. The generated letter is shown for review, can be copied, and is automatically saved as a client note.</p>
                 </section>
@@ -3768,6 +3796,7 @@ function decorateInvoice(customer, invoice) {
         customerId: customer.id,
         customerName: customer.name,
         customerContact: customer.contact || "",
+        customerXeroContactId: customer.xeroContactId || "",
         customerStatus: customer.status || "",
         manager: customer.manager || "Unassigned",
         description: invoice.description || "",
@@ -4383,6 +4412,7 @@ function dashboardTotals() {
     const openInvoices = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
     const paidInvoices = invoices.filter((invoice) => invoiceCategory(invoice) === "paid");
     const overdueInvoices = invoices.filter((invoice) => invoiceCategory(invoice) === "overdue");
+    const lateChargeStats = latePaymentChargeReviewStats();
     const notices = sevenDayNoticeSummaries();
     return {
         invoiceCount: invoices.length,
@@ -4394,6 +4424,9 @@ function dashboardTotals() {
         overdueCount: overdueInvoices.length,
         overdueValue: overdueInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         clientsNeedingAction: notices.length,
+        lateChargeCount: lateChargeStats.eligibleCount,
+        lateChargeAmount: lateChargeStats.eligibleAmount,
+        lateChargeReviewCount: lateChargeStats.candidateCount,
         sevenDayNotices: notices,
     };
 }
@@ -4404,6 +4437,12 @@ function renderDashboardHero() {
     document.getElementById("heroTotalInvoicedCount").textContent = `${totals.invoiceCount.toLocaleString("en-GB")} invoice${totals.invoiceCount === 1 ? "" : "s"} synced`;
     document.getElementById("heroTotalOutstanding").textContent = formatCurrency(totals.totalOutstanding);
     document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"}`;
+    document.getElementById("heroLateChargeCount").textContent = totals.lateChargeCount.toLocaleString("en-GB");
+    document.getElementById("heroLateChargeSummary").textContent = totals.lateChargeCount
+        ? `${formatCurrency(totals.lateChargeAmount)} to review`
+        : totals.lateChargeReviewCount
+        ? "No eligible charges right now"
+        : "No charges need review";
     document.getElementById("heroPaidInvoices").textContent = totals.paidCount.toLocaleString("en-GB");
     document.getElementById("heroPaidInvoicesValue").textContent = `${formatCurrency(totals.paidValue)} paid value`;
     document.getElementById("heroClientsAction").textContent = totals.clientsNeedingAction.toLocaleString("en-GB");
@@ -4418,6 +4457,12 @@ function renderDashboardHero() {
     noticeCard.title = totals.sevenDayNotices.length
         ? totals.sevenDayNotices.map((item) => `${item.clientName}: ${item.countdown}`).join("\n")
         : "No active 7 day notices";
+    const lateChargeCard = document.getElementById("lateChargeReviewCard");
+    if (lateChargeCard) {
+        lateChargeCard.title = totals.lateChargeCount
+            ? `Review ${totals.lateChargeCount.toLocaleString("en-GB")} overdue invoice${totals.lateChargeCount === 1 ? "" : "s"} before raising late payment charges.`
+            : "Open the late payment charge review queue.";
+    }
 }
 
 function openFirstSevenDayNoticeClient() {
@@ -5568,10 +5613,39 @@ function latePaymentChargeAmount(invoice) {
     return Math.round(amountDue * 0.08 * overdueDays / 365 * 100) / 100;
 }
 
+function latePaymentChargeBlockReason(invoice) {
+    if (Number(invoice?.amountDue || 0) <= 0) return "Invoice is not outstanding";
+    if (Number(invoice?.overdueDays || 0) <= 14) return "Not more than 14 days overdue";
+    if (latePaymentChargeRaised(invoice)) {
+        return invoice?.latePaymentChargeInvoiceNumber
+            ? `Raised ${invoice.latePaymentChargeInvoiceNumber}`
+            : "Charge already raised";
+    }
+    if (!invoice?.customerXeroContactId) return "Missing Xero contact";
+    if (latePaymentChargeAmount(invoice) <= 0) return "Calculated charge is zero";
+    return "";
+}
+
+function isLatePaymentChargeEligible(invoice) {
+    return !latePaymentChargeBlockReason(invoice);
+}
+
 function latePaymentChargeCandidates() {
     return allInvoices()
         .filter((invoice) => Number(invoice.amountDue || 0) > 0 && Number(invoice.overdueDays || 0) > 14)
         .sort((a, b) => Number(b.overdueDays || 0) - Number(a.overdueDays || 0) || Number(b.amountDue || 0) - Number(a.amountDue || 0));
+}
+
+function latePaymentChargeReviewStats() {
+    const candidates = latePaymentChargeCandidates();
+    const eligible = candidates.filter(isLatePaymentChargeEligible);
+    return {
+        candidates,
+        eligible,
+        candidateCount: candidates.length,
+        eligibleCount: eligible.length,
+        eligibleAmount: eligible.reduce((sum, invoice) => sum + latePaymentChargeAmount(invoice), 0),
+    };
 }
 
 function openLateChargesScreen() {
@@ -5588,16 +5662,22 @@ function renderLateChargesScreen() {
     const raiseButton = document.getElementById("raiseLateChargesButton");
     if (!screen || !target || !summary || !raiseButton) return;
 
-    const invoices = latePaymentChargeCandidates();
-    const validIds = new Set(invoices.filter((invoice) => !latePaymentChargeRaised(invoice)).map((invoice) => invoice.id));
+    const stats = latePaymentChargeReviewStats();
+    const invoices = stats.candidates;
+    const validIds = new Set(stats.eligible.map((invoice) => invoice.id));
     selectedLateChargeInvoiceIds = new Set([...selectedLateChargeInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
-    const eligibleCount = validIds.size;
+    const eligibleCount = stats.eligibleCount;
     const selectedCount = selectedLateChargeInvoiceIds.size;
     summary.textContent = invoices.length
-        ? `${invoices.length.toLocaleString("en-GB")} invoice${invoices.length === 1 ? "" : "s"} are more than 14 days overdue. ${eligibleCount.toLocaleString("en-GB")} can still have a charge raised.`
+        ? `${invoices.length.toLocaleString("en-GB")} invoice${invoices.length === 1 ? "" : "s"} are more than 14 days overdue. ${eligibleCount.toLocaleString("en-GB")} can still have a charge raised, totalling ${formatCurrency(stats.eligibleAmount)}.`
         : "No invoices are currently more than 14 days overdue.";
     raiseButton.disabled = selectedCount === 0 || !isXeroConnected();
     raiseButton.textContent = selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges";
+    const selectAllButton = document.getElementById("selectAllLateChargesButton");
+    if (selectAllButton) {
+        selectAllButton.disabled = eligibleCount === 0;
+        selectAllButton.textContent = eligibleCount ? `Select all ${eligibleCount.toLocaleString("en-GB")} eligible` : "No eligible charges";
+    }
 
     target.innerHTML = "";
     if (!invoices.length) {
@@ -5610,18 +5690,19 @@ function renderLateChargesScreen() {
     }
 
     invoices.forEach((invoice) => {
-        const raised = latePaymentChargeRaised(invoice);
+        const blockReason = latePaymentChargeBlockReason(invoice);
+        const eligible = !blockReason;
         const chargeAmount = latePaymentChargeAmount(invoice);
         const row = document.createElement("label");
-        row.className = `late-charge-row${raised ? " is-raised" : ""}`;
+        row.className = `late-charge-row${latePaymentChargeRaised(invoice) ? " is-raised" : ""}${eligible ? "" : " is-ineligible"}`;
         row.innerHTML = `
-            <input type="checkbox" value="${invoice.id}" ${selectedLateChargeInvoiceIds.has(invoice.id) ? "checked" : ""} ${raised ? "disabled" : ""}>
+            <input type="checkbox" value="${invoice.id}" ${selectedLateChargeInvoiceIds.has(invoice.id) ? "checked" : ""} ${eligible ? "" : "disabled"}>
             <span class="late-charge-main">
                 <strong>${escapeHTML(invoice.customerName || "Unnamed client")} · ${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong>
-                <span>Invoice date ${formatDate(invoice.invoiceDate)} · due ${formatDate(invoice.dueDate)} · ${Number(invoice.overdueDays || 0).toLocaleString("en-GB")} days overdue</span>
+                <span>${formatCurrency(invoice.amountDue || 0)} outstanding · due ${formatDate(invoice.dueDate)} · ${Number(invoice.overdueDays || 0).toLocaleString("en-GB")} days overdue</span>
             </span>
             <span class="late-charge-amount">${formatCurrency(chargeAmount)}</span>
-            <span class="late-charge-status">${raised ? `Raised${invoice.latePaymentChargeInvoiceNumber ? ` · ${escapeHTML(invoice.latePaymentChargeInvoiceNumber)}` : ""}` : "Ready"}</span>
+            <span class="late-charge-status">${eligible ? "Ready" : escapeHTML(blockReason)}</span>
         `;
         row.querySelector("input").addEventListener("change", (event) => {
             if (event.target.checked) selectedLateChargeInvoiceIds.add(invoice.id);
@@ -5630,6 +5711,22 @@ function renderLateChargesScreen() {
         });
         target.appendChild(row);
     });
+}
+
+function selectAllEligibleLatePaymentCharges() {
+    const stats = latePaymentChargeReviewStats();
+    selectedLateChargeInvoiceIds = new Set(stats.eligible.map((invoice) => invoice.id));
+    renderLateChargesScreen();
+}
+
+function showLatePaymentChargeReviewPrompt() {
+    const stats = latePaymentChargeReviewStats();
+    if (!stats.eligibleCount) return;
+    showToast(
+        `${stats.eligibleCount.toLocaleString("en-GB")} overdue invoice${stats.eligibleCount === 1 ? "" : "s"} need late payment charge review`,
+        "info",
+        { label: "Review", onClick: openLateChargesScreen }
+    );
 }
 
 async function raiseLatePaymentCharges() {
@@ -5654,7 +5751,14 @@ async function raiseLatePaymentCharges() {
         renderAll();
         const createdCount = Number(payload?.created?.length || 0);
         const skippedCount = Number(payload?.skipped?.length || 0);
-        showToast(`${createdCount} late payment charge${createdCount === 1 ? "" : "s"} raised${skippedCount ? `, ${skippedCount} skipped` : ""}`, "success");
+        const historyNoteFailures = (payload?.created || []).filter((item) => item.historyNoteSynced === false).length;
+        showToast(
+            `${createdCount} late payment charge${createdCount === 1 ? "" : "s"} raised${skippedCount ? `, ${skippedCount} skipped` : ""}`,
+            historyNoteFailures ? "info" : "success"
+        );
+        if (historyNoteFailures) {
+            showToast(`${historyNoteFailures.toLocaleString("en-GB")} original invoice history note${historyNoteFailures === 1 ? "" : "s"} could not be added in Xero.`, "error");
+        }
     } catch (error) {
         console.error("Unable to raise late payment charges", error);
         showToast(error.message || "Unable to raise late payment charges", "error");
@@ -5806,6 +5910,20 @@ function renderChrome() {
     if (disconnectButton) disconnectButton.hidden = !connected;
     const menuSyncButton = document.getElementById("menuSyncButton");
     if (menuSyncButton) menuSyncButton.hidden = !connected;
+    const lateChargeStats = latePaymentChargeReviewStats();
+    const lateChargeLabel = lateChargeStats.eligibleCount
+        ? `Review late charges (${lateChargeStats.eligibleCount.toLocaleString("en-GB")})`
+        : "Review late charges";
+    const reviewLateChargesButton = document.getElementById("reviewLateChargesButton");
+    if (reviewLateChargesButton) {
+        reviewLateChargesButton.textContent = lateChargeLabel;
+        reviewLateChargesButton.classList.toggle("is-attention", lateChargeStats.eligibleCount > 0);
+        reviewLateChargesButton.title = lateChargeStats.eligibleCount
+            ? `${lateChargeStats.eligibleCount.toLocaleString("en-GB")} invoice${lateChargeStats.eligibleCount === 1 ? "" : "s"} can be reviewed for late payment charges.`
+            : "Open the late payment charge review queue.";
+    }
+    const menuLateChargesButton = document.getElementById("menuLateChargesButton");
+    if (menuLateChargesButton) menuLateChargesButton.textContent = lateChargeLabel;
     const staleWarning = document.getElementById("staleSyncWarning");
     const stale = isSyncStale();
     staleWarning.hidden = !stale;
@@ -6869,14 +6987,17 @@ async function runXeroSync({ automatic = false } = {}) {
             }
             renderAll();
             showToast(completedPayload.syncRun?.summary || "Sync complete", "success");
+            showLatePaymentChargeReviewPrompt();
         } else if (payload?.panel) {
             replaceState(normaliseState(payload.panel));
             renderAll();
             showToast("Sync complete", "success");
+            showLatePaymentChargeReviewPrompt();
         } else {
             await hydrateFromAPI();
             renderAll();
             showToast("Sync complete", "success");
+            showLatePaymentChargeReviewPrompt();
         }
     } catch (error) {
         console.error("Unable to sync panel data", error);
@@ -7129,6 +7250,12 @@ function wireSyncButtons() {
     if (menuInsightsButton) menuInsightsButton.addEventListener("click", openInsightsScreen);
     const menuLateChargesButton = document.getElementById("menuLateChargesButton");
     if (menuLateChargesButton) menuLateChargesButton.addEventListener("click", openLateChargesScreen);
+    const reviewLateChargesButton = document.getElementById("reviewLateChargesButton");
+    if (reviewLateChargesButton) reviewLateChargesButton.addEventListener("click", openLateChargesScreen);
+    const lateChargeReviewCard = document.getElementById("lateChargeReviewCard");
+    if (lateChargeReviewCard) lateChargeReviewCard.addEventListener("click", openLateChargesScreen);
+    const selectAllLateChargesButton = document.getElementById("selectAllLateChargesButton");
+    if (selectAllLateChargesButton) selectAllLateChargesButton.addEventListener("click", selectAllEligibleLatePaymentCharges);
     const raiseLateChargesButton = document.getElementById("raiseLateChargesButton");
     if (raiseLateChargesButton) raiseLateChargesButton.addEventListener("click", raiseLatePaymentCharges);
     const refreshInsightsButton = document.getElementById("refreshInsightsButton");

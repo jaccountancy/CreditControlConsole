@@ -373,7 +373,7 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
         return response.json()
 
 
-async def create_sales_invoice(connection_row: dict, invoice_payload: dict) -> dict:
+async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idempotency_key: str | None = None) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
@@ -384,7 +384,7 @@ async def create_sales_invoice(connection_row: dict, invoice_payload: dict) -> d
                     "xero-tenant-id": connection_row["tenant_id"],
                     "Accept": "application/json",
                     "Content-Type": "application/json",
-                    "Idempotency-Key": str(uuid4()),
+                    "Idempotency-Key": idempotency_key or str(uuid4()),
                 },
                 json={"Invoices": [invoice_payload]},
             )

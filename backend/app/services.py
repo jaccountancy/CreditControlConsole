@@ -2900,6 +2900,16 @@ def _invoice_date_description(value: date | None) -> str:
     return f"{_ordinal_day(value)} {value.strftime('%B')} {value.year}"
 
 
+def _late_payment_charge_description(invoice: dict, overdue_days: int) -> str:
+    invoice_number = invoice.get("invoice_number") or str(invoice["id"])
+    return (
+        f"Late payment charge for overdue invoice {invoice_number}. "
+        f"Original invoice date: {_invoice_date_description(invoice.get('invoice_date'))}. "
+        f"Original due date: {_invoice_date_description(invoice.get('due_date'))}. "
+        f"Invoice was {overdue_days} days overdue at the charge date."
+    )
+
+
 async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dict:
     try:
         unique_invoice_ids = list(dict.fromkeys(UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()))
@@ -2909,7 +2919,6 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
 
     today = utcnow().date()
-    now = utcnow()
     settings = get_settings()
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -2968,34 +2977,94 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
     connection_row = get_xero_connection_for_user(user["id"])
     created = []
     for invoice, overdue_days, charge_amount in chargeable:
-        description = (
-            f"Late payment charge in respect of invoice {invoice.get('invoice_number') or invoice['id']} "
-            f"dated {_invoice_date_description(invoice.get('invoice_date'))}"
-        )
-        invoice_payload = {
-            "Type": "ACCREC",
-            "Contact": {"ContactID": invoice["xero_contact_id"]},
-            "Date": today.isoformat(),
-            "DueDate": today.isoformat(),
-            "LineAmountTypes": "NoTax",
-            "Status": "AUTHORISED",
-            "LineItems": [
-                {
-                    "Description": description,
-                    "Quantity": 1,
-                    "UnitAmount": float(charge_amount),
-                    "AccountCode": settings.late_payment_charge_account_code,
-                    "TaxType": "NONE",
-                }
-            ],
-        }
-        xero_response = await create_sales_invoice(connection_row, invoice_payload)
-        created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
-        created_invoice_id = created_invoice.get("InvoiceID") or ""
-        created_invoice_number = created_invoice.get("InvoiceNumber") or ""
-
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT invoices.id,
+                           invoices.xero_invoice_id,
+                           invoices.invoice_number,
+                           invoices.invoice_date,
+                           invoices.due_date,
+                           invoices.amount_due,
+                           invoices.late_payment_charge_raised_at,
+                           customers.id AS customer_id,
+                           customers.name AS customer_name,
+                           customers.xero_contact_id
+                    FROM invoices
+                    JOIN customers ON customers.id = invoices.customer_id
+                    WHERE invoices.id = %s
+                    FOR UPDATE
+                    """,
+                    (invoice["id"],),
+                )
+                locked_invoice = cursor.fetchone()
+                if locked_invoice is None:
+                    skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice could not be found."})
+                    connection.commit()
+                    continue
+
+                due_date = locked_invoice.get("due_date")
+                overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
+                amount_due = _float(locked_invoice.get("amount_due"))
+                if amount_due <= 0:
+                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Invoice is not outstanding."})
+                    connection.commit()
+                    continue
+                if overdue_days <= 14:
+                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Invoice is not more than 14 days overdue."})
+                    connection.commit()
+                    continue
+                if locked_invoice.get("late_payment_charge_raised_at"):
+                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Late payment charge already raised."})
+                    connection.commit()
+                    continue
+                if not locked_invoice.get("xero_contact_id"):
+                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Customer is not linked to a Xero contact."})
+                    connection.commit()
+                    continue
+
+                charge_amount = Decimal(str(_late_payment_breakdown(amount_due, overdue_days).get("interest") or 0)).quantize(Decimal("0.01"))
+                if charge_amount <= 0:
+                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Calculated late payment charge is zero."})
+                    connection.commit()
+                    continue
+
+                invoice = locked_invoice
+                description = _late_payment_charge_description(invoice, overdue_days)
+                invoice_payload = {
+                    "Type": "ACCREC",
+                    "Contact": {"ContactID": invoice["xero_contact_id"]},
+                    "Date": today.isoformat(),
+                    "DueDate": today.isoformat(),
+                    "Reference": f"Late charge for {invoice.get('invoice_number') or invoice['id']}",
+                    "LineAmountTypes": "NoTax",
+                    "Status": "AUTHORISED",
+                    "LineItems": [
+                        {
+                            "Description": description,
+                            "Quantity": 1,
+                            "UnitAmount": float(charge_amount),
+                            "AccountCode": settings.late_payment_charge_account_code,
+                            "TaxType": "NONE",
+                        }
+                    ],
+                }
+                xero_response = await create_sales_invoice(
+                    connection_row,
+                    invoice_payload,
+                    idempotency_key=f"late-payment-charge-{invoice['id']}",
+                )
+                created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
+                created_invoice_id = created_invoice.get("InvoiceID") or ""
+                created_invoice_number = created_invoice.get("InvoiceNumber") or ""
+                now = utcnow()
+                history_note = (
+                    f"Late payment charge raised on {_invoice_date_description(today)} for invoice "
+                    f"{invoice.get('invoice_number') or invoice['id']}, originally due "
+                    f"{_invoice_date_description(invoice.get('due_date'))}. Charge amount: £{float(charge_amount):,.2f}. "
+                    f"Xero charge invoice: {created_invoice_number or created_invoice_id or 'created'}."
+                )
                 cursor.execute(
                     """
                     UPDATE invoices
@@ -3016,11 +3085,21 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                     (
                         invoice["id"],
                         "Late Payment Charge Raised",
-                        f"{description}. Charge amount: £{float(charge_amount):,.2f}.",
+                        history_note,
                         user["id"],
                     ),
                 )
             connection.commit()
+
+        history_note_synced = False
+        history_note_error = ""
+        if invoice.get("xero_invoice_id"):
+            try:
+                await create_history_record(connection_row, "Invoices", invoice["xero_invoice_id"], history_note)
+                history_note_synced = True
+            except Exception as exc:
+                history_note_error = _sync_error_message(exc)
+                logger.exception("Unable to add late payment charge history note to Xero invoice %s", invoice.get("invoice_number") or invoice["id"])
 
         record_audit_event(
             "invoice",
@@ -3035,6 +3114,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                 "created_invoice_id": created_invoice_id,
                 "created_invoice_number": created_invoice_number,
                 "description": description,
+                "history_note_synced": history_note_synced,
+                "history_note_error": history_note_error,
             },
             user["id"],
         )
@@ -3045,6 +3126,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                 "createdInvoiceId": created_invoice_id,
                 "createdInvoiceNumber": created_invoice_number,
                 "description": description,
+                "historyNoteSynced": history_note_synced,
+                "historyNoteError": history_note_error,
             }
         )
 
