@@ -32,6 +32,43 @@ class XeroConfigurationError(RuntimeError):
     pass
 
 
+def _xero_validation_summary(detail) -> str:
+    messages: list[str] = []
+    ignored_messages = {"a validation exception occurred"}
+
+    def add_message(value) -> None:
+        if value is None:
+            return
+        text = str(value).strip()
+        if not text or text.lower() in ignored_messages or text in messages:
+            return
+        messages.append(text)
+
+    def collect(value) -> None:
+        if isinstance(value, dict):
+            for key in ("Message", "Detail", "Error"):
+                add_message(value.get(key))
+            for validation_error in value.get("ValidationErrors") or []:
+                collect(validation_error)
+            for element in value.get("Elements") or []:
+                collect(element)
+            for key in ("Invoices", "CreditNotes", "Overpayments", "Payments", "Contacts"):
+                children = value.get(key) or []
+                if isinstance(children, dict):
+                    collect(children)
+                else:
+                    for child in children:
+                        collect(child)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+
+    collect(detail)
+    if not messages:
+        return ""
+    return " ".join(messages[:4])
+
+
 def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
     try:
         detail = response.json()
@@ -67,10 +104,15 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
             },
         )
 
+    message = f"Xero {action} failed."
+    validation_summary = _xero_validation_summary(detail)
+    if validation_summary:
+        message = f"{message} {validation_summary}"
+
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail={
-            "message": f"Xero {action} failed.",
+            "message": message,
             "status_code": response.status_code,
             "response": detail,
         },

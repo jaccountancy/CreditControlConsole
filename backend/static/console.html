@@ -3453,6 +3453,11 @@ body.is-syncing .sync-dot {
 
     <script>
 const STORAGE_KEY = "hymn-credit-control-ledger";
+const TOAST_DURATION_MS = 7000;
+const ERROR_TOAST_DURATION_MS = 9000;
+const ACTION_TOAST_DURATION_MS = 9000;
+const TOPBAR_NOTICE_DURATION_MS = 9000;
+const XERO_CONNECTED_NOTICE_DURATION_MS = 9000;
 const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
 const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
 const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
@@ -5985,12 +5990,24 @@ async function raiseLatePaymentCharges() {
         selectedLateChargeInvoiceIds.clear();
         renderAll();
         const createdCount = Number(payload?.created?.length || 0);
-        const skippedCount = Number(payload?.skipped?.length || 0);
+        const skipped = payload?.skipped || [];
+        const skippedCount = Number(skipped.length || 0);
         const historyNoteFailures = (payload?.created || []).filter((item) => item.historyNoteSynced === false).length;
-        showToast(
-            `${createdCount} late payment charge${createdCount === 1 ? "" : "s"} raised${skippedCount ? `, ${skippedCount} skipped` : ""}`,
-            historyNoteFailures ? "info" : "success"
-        );
+        const skippedReasons = [...new Set(skipped.map((item) => item.reason).filter(Boolean))];
+        if (!createdCount && skippedCount) {
+            showToast(
+                `No late payment charges were raised: ${skippedReasons[0] || "selected invoices were skipped."}`,
+                "error"
+            );
+        } else {
+            showToast(
+                `${createdCount} late payment charge${createdCount === 1 ? "" : "s"} raised${skippedCount ? `, ${skippedCount} skipped` : ""}`,
+                historyNoteFailures ? "info" : "success"
+            );
+        }
+        if (createdCount && skippedReasons.length) {
+            showToast(`Skipped ${skippedCount.toLocaleString("en-GB")} invoice${skippedCount === 1 ? "" : "s"}: ${skippedReasons.slice(0, 2).join("; ")}`, "info");
+        }
         if (historyNoteFailures) {
             showToast(`${historyNoteFailures.toLocaleString("en-GB")} original invoice history note${historyNoteFailures === 1 ? "" : "s"} could not be added in Xero.`, "error");
         }
@@ -6699,7 +6716,7 @@ function scrollAuditTrail() {
     if (target) window.setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
 }
 
-function showToast(message, type = "info", action = null) {
+function showToast(message, type = "info", action = null, duration = null) {
     const stack = document.getElementById("toastStack");
     if (!stack) return;
     const toast = document.createElement("div");
@@ -6717,7 +6734,15 @@ function showToast(message, type = "info", action = null) {
         toast.appendChild(link);
     }
     stack.appendChild(toast);
-    window.setTimeout(() => toast.remove(), 3600);
+    const requestedDuration = Number(duration);
+    const durationMs = Number.isFinite(requestedDuration) && requestedDuration > 0
+        ? requestedDuration
+        : action
+            ? ACTION_TOAST_DURATION_MS
+            : type === "error"
+                ? ERROR_TOAST_DURATION_MS
+                : TOAST_DURATION_MS;
+    window.setTimeout(() => toast.remove(), durationMs);
 }
 
 function formatDeveloperLogStamp(value) {
@@ -7040,7 +7065,7 @@ function clearTopbarNoticeTimer() {
     topbarNoticeTimer = null;
 }
 
-function showTopbarNotice(title, detail, variant = "success", duration = 6500) {
+function showTopbarNotice(title, detail, variant = "success", duration = TOPBAR_NOTICE_DURATION_MS) {
     clearTopbarNoticeTimer();
     const inlineBanner = document.getElementById("syncInlineBanner");
     if (inlineBanner) {
@@ -7835,11 +7860,11 @@ async function init() {
             "Yay - Xero is now connected",
             "Starting first Xero sync in a moment.",
             "success",
-            2800
+            XERO_CONNECTED_NOTICE_DURATION_MS
         );
     }
     try {
-        maybeAutoStartInitialSync(returnedFromXeroConnection ? 3000 : 450);
+        maybeAutoStartInitialSync(returnedFromXeroConnection ? XERO_CONNECTED_NOTICE_DURATION_MS : 450);
     } catch (error) {
         console.error("Unable to auto-start Xero sync", error);
     }

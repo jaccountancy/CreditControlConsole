@@ -28,13 +28,14 @@ Required variables:
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
 - `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
+- `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=200`
 - `BAD_DEBT_WRITE_OFF_ACCOUNT_CODE=402`
 
 `PORT` is injected by Railway and should not be hard-coded.
 
 The backend intentionally rejects `localhost` and `127.0.0.1` connection values. Xero must also have the same Railway callback URL registered as an allowed redirect URI.
 
-The late-charge, allocation, and write-off workflows create and allocate Xero invoices, credit notes, and overpayments, so the Xero connection needs the `accounting.invoices`, `accounting.payments`, `accounting.contacts`, and `accounting.settings.read` scopes. Reconnect Xero once after changing scopes so the refreshed token includes those permissions.
+The late-charge, allocation, and write-off workflows create and allocate Xero invoices, credit notes, and overpayments, so the Xero connection needs the `accounting.invoices`, `accounting.payments`, `accounting.contacts`, and `accounting.settings.read` scopes. `LATE_PAYMENT_CHARGE_ACCOUNT_CODE` should be a Xero revenue account that can be used on sales invoice line items. Reconnect Xero once after changing scopes so the refreshed token includes those permissions.
 
 ## Main routes
 

@@ -3200,6 +3200,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                        invoices.invoice_date,
                        invoices.due_date,
                        invoices.amount_due,
+                       invoices.currency_code,
                        invoices.late_payment_charge_raised_at,
                        customers.id AS customer_id,
                        customers.name AS customer_name,
@@ -3257,6 +3258,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                            invoices.invoice_date,
                            invoices.due_date,
                            invoices.amount_due,
+                           invoices.currency_code,
                            invoices.late_payment_charge_raised_at,
                            customers.id AS customer_id,
                            customers.name AS customer_name,
@@ -3301,6 +3303,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                     continue
 
                 invoice = locked_invoice
+                currency_code = invoice.get("currency_code") or "GBP"
                 description = _late_payment_charge_description(invoice, overdue_days)
                 invoice_payload = {
                     "Type": "ACCREC",
@@ -3320,14 +3323,46 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                         }
                     ],
                 }
-                xero_response = await create_sales_invoice(
-                    connection_row,
-                    invoice_payload,
-                    idempotency_key=f"late-payment-charge-{invoice['id']}",
-                )
-                created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
-                created_invoice_id = created_invoice.get("InvoiceID") or ""
-                created_invoice_number = created_invoice.get("InvoiceNumber") or ""
+                if currency_code:
+                    invoice_payload["CurrencyCode"] = currency_code
+
+                try:
+                    xero_response = await create_sales_invoice(
+                        connection_row,
+                        invoice_payload,
+                        idempotency_key=f"late-payment-charge-{invoice['id']}",
+                    )
+                    created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
+                    created_invoice_id = created_invoice.get("InvoiceID") or created_invoice.get("ID") or ""
+                    created_invoice_number = created_invoice.get("InvoiceNumber") or ""
+                    if not created_invoice_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Xero created the late payment charge but did not return an invoice id.",
+                        )
+                except Exception as exc:
+                    error = _sync_error_message(exc)
+                    skipped.append({"invoiceId": str(invoice["id"]), "reason": error})
+                    connection.commit()
+                    record_audit_event(
+                        "invoice",
+                        str(invoice["id"]),
+                        "late_payment_charge.failed",
+                        {
+                            "invoice_number": invoice.get("invoice_number"),
+                            "customer_id": str(invoice.get("customer_id")),
+                            "customer_name": invoice.get("customer_name"),
+                            "overdue_days": overdue_days,
+                            "amount": float(charge_amount),
+                            "currency_code": currency_code,
+                            "account_code": settings.late_payment_charge_account_code,
+                            "error": error,
+                            "detail": _sync_error_payload(exc),
+                        },
+                        user["id"],
+                    )
+                    continue
+
                 now = utcnow()
                 history_note = (
                     f"Late payment charge raised on {_invoice_date_description(today)} for invoice "
@@ -3342,10 +3377,11 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                         late_payment_charge_invoice_id = %s,
                         late_payment_charge_invoice_number = %s,
                         late_payment_charge_amount = %s,
+                        notes_summary = %s,
                         updated_at = %s
                     WHERE id = %s
                     """,
-                    (now, created_invoice_id, created_invoice_number, charge_amount, now, invoice["id"]),
+                    (now, created_invoice_id, created_invoice_number, charge_amount, history_note[:200], now, invoice["id"]),
                 )
                 cursor.execute(
                     """
@@ -3358,6 +3394,13 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                         history_note,
                         user["id"],
                     ),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO notes (invoice_id, user_id, body)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (invoice["id"], user["id"], history_note),
                 )
             connection.commit()
 
@@ -3381,6 +3424,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
                 "customer_name": invoice.get("customer_name"),
                 "overdue_days": overdue_days,
                 "amount": float(charge_amount),
+                "currency_code": currency_code,
+                "account_code": settings.late_payment_charge_account_code,
                 "created_invoice_id": created_invoice_id,
                 "created_invoice_number": created_invoice_number,
                 "description": description,
@@ -3393,6 +3438,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str]) -> dic
             {
                 "invoiceId": str(invoice["id"]),
                 "chargeAmount": float(charge_amount),
+                "currencyCode": currency_code,
+                "accountCode": settings.late_payment_charge_account_code,
                 "createdInvoiceId": created_invoice_id,
                 "createdInvoiceNumber": created_invoice_number,
                 "description": description,
