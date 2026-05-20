@@ -17,18 +17,29 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "offline_access",
 )
 REQUIRED_XERO_ACCOUNTING_SCOPES = (
-    "accounting.transactions",
+    "accounting.invoices",
+    "accounting.payments",
     "accounting.contacts",
     "accounting.settings.read",
 )
+LEGACY_XERO_SCOPE_REPLACEMENTS = {
+    "accounting.transactions": ("accounting.invoices", "accounting.payments"),
+    "accounting.transactions.read": ("accounting.invoices.read", "accounting.payments.read"),
+}
 
 
 def xero_scope_string(configured_scopes: str) -> str:
-    scopes = [scope for scope in configured_scopes.split() if scope]
+    scopes = []
+    for configured_scope in configured_scopes.split():
+        for scope in LEGACY_XERO_SCOPE_REPLACEMENTS.get(configured_scope, (configured_scope,)):
+            if scope and scope not in scopes:
+                scopes.append(scope)
+
     for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *REQUIRED_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:
             scopes.append(required_scope)
-    for write_scope in ("accounting.invoices", "accounting.contacts", "accounting.transactions"):
+
+    for write_scope in ("accounting.invoices", "accounting.payments", "accounting.contacts", "accounting.settings"):
         read_scope = f"{write_scope}.read"
         if write_scope in scopes and read_scope in scopes:
             scopes.remove(read_scope)
