@@ -16,11 +16,16 @@ REQUIRED_XERO_IDENTITY_SCOPES = (
     "email",
     "offline_access",
 )
+REQUIRED_XERO_ACCOUNTING_SCOPES = (
+    "accounting.transactions",
+    "accounting.contacts",
+    "accounting.settings.read",
+)
 
 
 def xero_scope_string(configured_scopes: str) -> str:
     scopes = [scope for scope in configured_scopes.split() if scope]
-    for required_scope in REQUIRED_XERO_IDENTITY_SCOPES:
+    for required_scope in (*REQUIRED_XERO_IDENTITY_SCOPES, *REQUIRED_XERO_ACCOUNTING_SCOPES):
         if required_scope not in scopes:
             scopes.append(required_scope)
     for write_scope in ("accounting.invoices", "accounting.contacts", "accounting.transactions"):
@@ -46,7 +51,7 @@ def allowed_panel_origins() -> set[str]:
 
 
 def current_user_from_request(request: Request) -> dict | None:
-    token = request.cookies.get(COOKIE_NAME)
+    token = session_token_from_request(request)
     if not token:
         return None
 
@@ -89,7 +94,21 @@ def require_api_user(request: Request) -> dict:
     return user
 
 
+def session_token_from_request(request: Request) -> str:
+    cookie_token = request.cookies.get(COOKIE_NAME)
+    if cookie_token:
+        return cookie_token
+
+    authorization = request.headers.get("Authorization", "")
+    if authorization.startswith("Bearer "):
+        return authorization.removeprefix("Bearer ").strip()
+    return ""
+
+
 def user_for_session_token(token: str) -> dict | None:
+    settings = get_settings()
+    now = utcnow()
+    expires_at = now + timedelta(days=settings.session_ttl_days)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -107,8 +126,13 @@ def user_for_session_token(token: str) -> dict | None:
                 return None
 
             cursor.execute(
-                "UPDATE sessions SET last_seen_at = %s WHERE id = %s",
-                (utcnow(), row["session_id"]),
+                """
+                UPDATE sessions
+                SET last_seen_at = %s,
+                    expires_at = %s
+                WHERE id = %s
+                """,
+                (now, expires_at, row["session_id"]),
             )
         connection.commit()
 

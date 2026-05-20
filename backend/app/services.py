@@ -36,6 +36,9 @@ ACTIVE_SYNC_STATUSES = ("queued", "running")
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
+RECEIVABLE_CREDIT_NOTE_WHERE = 'Type=="ACCRECCREDIT"&&Status=="AUTHORISED"'
+RECEIVABLE_CREDIT_NOTE_INCREMENTAL_WHERE = 'Type=="ACCRECCREDIT"'
+AUTHORISED_CREDIT_STATUS = "AUTHORISED"
 OUTSTANDING_READY_STEP = "Backfilling paid invoices"
 WORKING_DATA_STEPS = (OUTSTANDING_READY_STEP, "Fetching paid invoices from Xero", "Backfilling paid invoices")
 DEFAULT_SYNC_SCOPE = "full_history"
@@ -363,22 +366,41 @@ def _refresh_customer_totals(cursor, tenant_id: str, updated_at: datetime) -> No
     )
     cursor.execute(
         """
-        UPDATE customers
-        SET total_due = totals.total_due,
-            overdue_amount = totals.overdue_amount,
-            updated_at = %s
-        FROM (
+        WITH invoice_totals AS (
             SELECT invoices.customer_id,
-                   COALESCE(SUM(invoices.amount_due), 0) AS total_due,
+                   COALESCE(SUM(invoices.amount_due), 0) AS gross_total_due,
                    COALESCE(SUM(CASE WHEN invoices.due_date < CURRENT_DATE AND invoices.amount_due > 0 THEN invoices.amount_due ELSE 0 END), 0) AS overdue_amount
             FROM invoices
             JOIN customers AS invoice_customers ON invoice_customers.id = invoices.customer_id
             WHERE invoice_customers.tenant_id = %s
             GROUP BY invoices.customer_id
-        ) AS totals
+        ),
+        credit_totals AS (
+            SELECT customer_credits.customer_id,
+                   COALESCE(SUM(customer_credits.remaining_credit), 0) AS credit_balance
+            FROM customer_credits
+            JOIN customers AS credit_customers ON credit_customers.id = customer_credits.customer_id
+            WHERE credit_customers.tenant_id = %s
+              AND customer_credits.remaining_credit > 0
+            GROUP BY customer_credits.customer_id
+        ),
+        totals AS (
+            SELECT invoice_totals.customer_id,
+                   invoice_totals.gross_total_due,
+                   invoice_totals.overdue_amount,
+                   COALESCE(credit_totals.credit_balance, 0) AS credit_balance,
+                   GREATEST(invoice_totals.gross_total_due - COALESCE(credit_totals.credit_balance, 0), 0) AS net_total_due
+            FROM invoice_totals
+            LEFT JOIN credit_totals ON credit_totals.customer_id = invoice_totals.customer_id
+        )
+        UPDATE customers
+        SET total_due = totals.net_total_due,
+            overdue_amount = LEAST(totals.overdue_amount, totals.net_total_due),
+            updated_at = %s
+        FROM totals
         WHERE customers.id = totals.customer_id
         """,
-        (updated_at, tenant_id),
+        (tenant_id, tenant_id, updated_at),
     )
 
 
@@ -470,6 +492,175 @@ async def _sync_xero_payments(connection_row: dict, now: datetime, modified_sinc
                 synced += 1
         connection.commit()
     return synced
+
+
+def _credit_source_storage_type(source_type: str) -> str:
+    return {
+        "creditNote": "credit_note",
+        "credit_note": "credit_note",
+        "credit-note": "credit_note",
+        "overpayment": "overpayment",
+    }.get(str(source_type or ""), "")
+
+
+def _credit_source_is_active(source_type: str, source: dict) -> bool:
+    status_value = str(source.get("status") or "").upper()
+    transaction_type = str(source.get("type") or "").upper()
+    if status_value != AUTHORISED_CREDIT_STATUS:
+        return False
+    if source_type == "credit_note" and transaction_type and transaction_type != "ACCRECCREDIT":
+        return False
+    if source_type == "overpayment" and transaction_type and "RECEIVE" not in transaction_type:
+        return False
+    return _money(source.get("remainingCredit")) > 0
+
+
+def _upsert_customer_credit_source(cursor, tenant_id: str, customer_id: str, source_type: str, source: dict, now: datetime) -> bool:
+    storage_type = _credit_source_storage_type(source_type)
+    source_id = str(source.get("id") or "").strip()
+    if not storage_type or not source_id:
+        return False
+
+    if not _credit_source_is_active(storage_type, source):
+        cursor.execute(
+            """
+            DELETE FROM customer_credits
+            WHERE tenant_id = %s
+              AND source_type = %s
+              AND xero_credit_id = %s
+            """,
+            (tenant_id, storage_type, source_id),
+        )
+        return False
+
+    cursor.execute(
+        """
+        INSERT INTO customer_credits (
+            tenant_id, customer_id, source_type, xero_credit_id, number, reference,
+            status, transaction_type, credit_date, currency_code, total,
+            remaining_credit, applied_amount, line_items, allocations, synced_at, updated_at
+        )
+        VALUES (
+            %(tenant_id)s, %(customer_id)s, %(source_type)s, %(xero_credit_id)s, %(number)s, %(reference)s,
+            %(status)s, %(transaction_type)s, %(credit_date)s, %(currency_code)s, %(total)s,
+            %(remaining_credit)s, %(applied_amount)s, %(line_items_json)s::jsonb, %(allocations_json)s::jsonb, %(synced_at)s, %(updated_at)s
+        )
+        ON CONFLICT (source_type, xero_credit_id) DO UPDATE
+        SET tenant_id = EXCLUDED.tenant_id,
+            customer_id = EXCLUDED.customer_id,
+            number = EXCLUDED.number,
+            reference = EXCLUDED.reference,
+            status = EXCLUDED.status,
+            transaction_type = EXCLUDED.transaction_type,
+            credit_date = EXCLUDED.credit_date,
+            currency_code = EXCLUDED.currency_code,
+            total = EXCLUDED.total,
+            remaining_credit = EXCLUDED.remaining_credit,
+            applied_amount = EXCLUDED.applied_amount,
+            line_items = EXCLUDED.line_items,
+            allocations = EXCLUDED.allocations,
+            synced_at = EXCLUDED.synced_at,
+            updated_at = EXCLUDED.updated_at
+        """,
+        {
+            "tenant_id": tenant_id,
+            "customer_id": customer_id,
+            "source_type": storage_type,
+            "xero_credit_id": source_id,
+            "number": source.get("number") or "",
+            "reference": source.get("reference") or "",
+            "status": source.get("status") or "",
+            "transaction_type": source.get("type") or "",
+            "credit_date": _parse_iso_date(source.get("date")),
+            "currency_code": source.get("currencyCode") or "GBP",
+            "total": _money(source.get("total")),
+            "remaining_credit": _money(source.get("remainingCredit")),
+            "applied_amount": _money(source.get("appliedAmount")),
+            "line_items_json": json.dumps(source.get("lineItems") or [], default=_json_default),
+            "allocations_json": json.dumps(source.get("allocations") or [], default=_json_default),
+            "synced_at": now,
+            "updated_at": now,
+        },
+    )
+    return True
+
+
+def _replace_customer_credit_sources(cursor, tenant_id: str, customer_id: str, credit_sources: list[dict], now: datetime) -> int:
+    cursor.execute(
+        """
+        DELETE FROM customer_credits
+        WHERE tenant_id = %s
+          AND customer_id = %s
+        """,
+        (tenant_id, customer_id),
+    )
+    stored = 0
+    for source in credit_sources:
+        stored += int(_upsert_customer_credit_source(cursor, tenant_id, customer_id, source.get("sourceType"), source, now))
+    _refresh_customer_totals(cursor, tenant_id, now)
+    return stored
+
+
+async def _sync_xero_customer_credits(
+    connection_row: dict,
+    now: datetime,
+    modified_since: datetime | None = None,
+    on_credit_note_page=None,
+    on_overpayment_page=None,
+) -> int:
+    credit_note_where = RECEIVABLE_CREDIT_NOTE_INCREMENTAL_WHERE if modified_since else RECEIVABLE_CREDIT_NOTE_WHERE
+    raw_credit_notes = await fetch_paginated_collection(
+        connection_row,
+        CREDIT_NOTES_URL,
+        "CreditNotes",
+        params={"where": credit_note_where},
+        modified_since=modified_since,
+        on_page=on_credit_note_page,
+    )
+    raw_overpayments = await fetch_paginated_collection(
+        connection_row,
+        OVERPAYMENTS_URL,
+        "Overpayments",
+        params=None if modified_since else {"where": f'Status=="{AUTHORISED_CREDIT_STATUS}"'},
+        modified_since=modified_since,
+        on_page=on_overpayment_page,
+    )
+
+    if modified_since is not None and not raw_credit_notes and not raw_overpayments:
+        return 0
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, xero_contact_id FROM customers WHERE tenant_id = %s",
+                (connection_row["tenant_id"],),
+            )
+            customer_lookup = {
+                str(row["xero_contact_id"]).lower(): row["id"]
+                for row in cursor.fetchall()
+                if row.get("xero_contact_id")
+            }
+            if modified_since is None:
+                cursor.execute("DELETE FROM customer_credits WHERE tenant_id = %s", (connection_row["tenant_id"],))
+
+            stored = 0
+            for raw_credit_note in raw_credit_notes:
+                source = _serialize_credit_note_transaction(raw_credit_note)
+                customer_id = customer_lookup.get(source.get("contactId"))
+                if customer_id is None:
+                    continue
+                stored += int(_upsert_customer_credit_source(cursor, connection_row["tenant_id"], customer_id, "credit_note", source, now))
+
+            for raw_overpayment in raw_overpayments:
+                source = _serialize_overpayment_transaction(raw_overpayment)
+                customer_id = customer_lookup.get(source.get("contactId"))
+                if customer_id is None:
+                    continue
+                stored += int(_upsert_customer_credit_source(cursor, connection_row["tenant_id"], customer_id, "overpayment", source, now))
+
+            _refresh_customer_totals(cursor, connection_row["tenant_id"], now)
+        connection.commit()
+    return stored
 
 
 def record_sync_start_failure(user: dict, exc: Exception) -> None:
@@ -870,6 +1061,20 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 summary=f"Fetched {total_records} Xero payments.",
             )
 
+        def credit_note_progress(_, total_records: int, __) -> None:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Fetching credit notes from Xero",
+                summary=f"Fetched {total_records} Xero credit notes.",
+            )
+
+        def overpayment_progress(_, total_records: int, __) -> None:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Fetching overpayments from Xero",
+                summary=f"Fetched {total_records} Xero overpayments.",
+            )
+
         async def sync_payments_step() -> int:
             _update_sync_run(
                 sync_run_id,
@@ -893,6 +1098,20 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     user["id"],
                 )
                 return 0
+
+        async def sync_credit_sources_step() -> int:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Fetching customer credits from Xero",
+                summary="Pulling credit notes and overpayments that reduce debtor balances.",
+            )
+            return await _sync_xero_customer_credits(
+                connection_row,
+                utcnow(),
+                modified_since=modified_since if is_incremental_sync else None,
+                on_credit_note_page=credit_note_progress,
+                on_overpayment_page=overpayment_progress,
+            )
 
         contacts = await fetch_paginated_collection(
             connection_row,
@@ -1170,6 +1389,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             user["id"],
         )
         payments_synced = await sync_payments_step()
+        credit_sources_synced = await sync_credit_sources_step()
 
         if is_incremental_sync and not needs_paid_backfill:
             completed = _update_sync_run(
@@ -1179,12 +1399,12 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 summary=(
                     f"Incremental sync complete: refreshed changes since {modified_since.isoformat()}. "
                     f"Synced {imported_contacts} changed contacts and {outstanding_synced} changed invoices. "
-                    f"Pulled through {payments_synced} payments. Scope: {sync_options['label']}."
+                    f"Pulled through {payments_synced} payments and {credit_sources_synced} customer credits. Scope: {sync_options['label']}."
                 ),
                 customers_synced=len(contacts),
                 invoices_synced=synced_invoices,
-                fetched_count=len(contacts) + len(outstanding_invoices) + payments_synced,
-                processed_count=len(contacts) + synced_invoices + payments_synced,
+                fetched_count=len(contacts) + len(outstanding_invoices) + payments_synced + credit_sources_synced,
+                processed_count=len(contacts) + synced_invoices + payments_synced + credit_sources_synced,
                 failed_count=0,
                 contacts_total=len(contacts),
                 invoices_total=len(outstanding_invoices),
@@ -1201,12 +1421,12 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 current_step="Outstanding sync complete",
                 summary=(
                     f"Synced {len(contacts)} customers and {outstanding_synced} outstanding invoices. "
-                    f"Pulled through {payments_synced} payments. Paid invoice history was left for a later staged sync."
+                    f"Pulled through {payments_synced} payments and {credit_sources_synced} customer credits. Paid invoice history was left for a later staged sync."
                 ),
                 customers_synced=len(contacts),
                 invoices_synced=synced_invoices,
-                fetched_count=len(contacts) + len(outstanding_invoices) + payments_synced,
-                processed_count=len(contacts) + synced_invoices + payments_synced,
+                fetched_count=len(contacts) + len(outstanding_invoices) + payments_synced + credit_sources_synced,
+                processed_count=len(contacts) + synced_invoices + payments_synced + credit_sources_synced,
                 failed_count=0,
                 contacts_total=len(contacts),
                 invoices_total=len(outstanding_invoices),
@@ -1332,9 +1552,9 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 completion_summary = (
                     f"Incremental sync complete: refreshed {len(contacts)} changed contacts, "
                     f"{outstanding_synced} changed invoices, and backfilled {paid_synced} paid invoices. "
-                    f"Pulled through {payments_synced} payments. Scope: {sync_options['label']}."
+                    f"Pulled through {payments_synced} payments and {credit_sources_synced} customer credits. Scope: {sync_options['label']}."
                     if is_incremental_sync
-                    else f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, {paid_synced} paid invoices, and {payments_synced} payments from Xero. Scope: {sync_options['label']}."
+                    else f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, {paid_synced} paid invoices, {payments_synced} payments, and {credit_sources_synced} customer credits from Xero. Scope: {sync_options['label']}."
                 )
                 cursor.execute(
                     """
@@ -1358,8 +1578,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         "Sync complete",
                         len(contacts),
                         synced_invoices,
-                        len(contacts) + len(outstanding_invoices) + len(paid_invoices) + payments_synced,
-                        len(contacts) + synced_invoices + payments_synced,
+                        len(contacts) + len(outstanding_invoices) + len(paid_invoices) + payments_synced + credit_sources_synced,
+                        len(contacts) + synced_invoices + payments_synced + credit_sources_synced,
                         0,
                         len(contacts),
                         len(outstanding_invoices) + len(paid_invoices),
@@ -1427,24 +1647,41 @@ def dashboard_payload() -> dict:
                 SELECT
                     MAX(synced_at) AS as_of,
                     COUNT(*) FILTER (WHERE amount_due > 0) AS invoice_count,
-                    COALESCE(SUM(amount_due), 0) AS total_receivables,
-                    COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE THEN amount_due ELSE 0 END), 0) AS total_overdue,
                     COALESCE(SUM(CASE WHEN due_date >= CURRENT_DATE - INTERVAL '30 days' AND due_date < CURRENT_DATE THEN amount_due ELSE 0 END), 0) AS overdue_1_30,
                     COALESCE(SUM(CASE WHEN due_date >= CURRENT_DATE - INTERVAL '60 days' AND due_date < CURRENT_DATE - INTERVAL '30 days' THEN amount_due ELSE 0 END), 0) AS overdue_31_60,
                     COALESCE(SUM(CASE WHEN due_date >= CURRENT_DATE - INTERVAL '90 days' AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN amount_due ELSE 0 END), 0) AS overdue_61_90,
-                    COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE - INTERVAL '90 days' THEN amount_due ELSE 0 END), 0) AS overdue_90_plus,
-                    COUNT(DISTINCT CASE WHEN due_date < CURRENT_DATE AND amount_due > 0 THEN customer_id END) AS accounts_needing_action
+                    COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE - INTERVAL '90 days' THEN amount_due ELSE 0 END), 0) AS overdue_90_plus
                 FROM invoices
                 """
             )
             summary = cursor.fetchone()
             cursor.execute(
                 """
-                SELECT customers.name, invoices.amount_due, invoices.due_date
-                FROM invoices
-                JOIN customers ON customers.id = invoices.customer_id
-                WHERE invoices.amount_due > 0
-                ORDER BY invoices.amount_due DESC, invoices.due_date ASC NULLS LAST
+                SELECT
+                    COALESCE(SUM(total_due), 0) AS total_receivables,
+                    COALESCE(SUM(overdue_amount), 0) AS total_overdue,
+                    COALESCE(SUM(credits.credit_balance), 0) AS credit_balance,
+                    COUNT(*) FILTER (WHERE overdue_amount > 0) AS accounts_needing_action
+                FROM customers
+                LEFT JOIN (
+                    SELECT customer_id, COALESCE(SUM(remaining_credit), 0) AS credit_balance
+                    FROM customer_credits
+                    WHERE remaining_credit > 0
+                    GROUP BY customer_id
+                ) AS credits ON credits.customer_id = customers.id
+                """
+            )
+            customer_summary = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT customers.name,
+                       customers.total_due AS amount_due,
+                       MIN(invoices.due_date) FILTER (WHERE invoices.amount_due > 0) AS due_date
+                FROM customers
+                LEFT JOIN invoices ON invoices.customer_id = customers.id
+                WHERE customers.total_due > 0
+                GROUP BY customers.id, customers.name, customers.total_due
+                ORDER BY customers.total_due DESC, due_date ASC NULLS LAST
                 LIMIT 5
                 """
             )
@@ -1466,13 +1703,14 @@ def dashboard_payload() -> dict:
     return {
         "as_of": summary["as_of"] or (latest_sync or {}).get("completed_at"),
         "invoice_count": summary["invoice_count"] or 0,
-        "total_receivables": float(summary["total_receivables"] or 0),
-        "total_overdue": float(summary["total_overdue"] or 0),
+        "total_receivables": float(customer_summary["total_receivables"] or 0),
+        "total_overdue": float(customer_summary["total_overdue"] or 0),
+        "credit_balance": float(customer_summary["credit_balance"] or 0),
         "overdue_1_30": float(summary["overdue_1_30"] or 0),
         "overdue_31_60": float(summary["overdue_31_60"] or 0),
         "overdue_61_90": float(summary["overdue_61_90"] or 0),
         "overdue_90_plus": float(summary["overdue_90_plus"] or 0),
-        "accounts_needing_action": summary["accounts_needing_action"] or 0,
+        "accounts_needing_action": customer_summary["accounts_needing_action"] or 0,
         "top_risk_accounts": [
             {
                 "name": row["name"],
@@ -1633,6 +1871,7 @@ def panel_payload(user: dict | None = None) -> dict:
             promise_rows = []
             status_rows = []
             payment_rows = []
+            credit_total_rows = []
             if invoice_ids:
                 cursor.execute(
                     """
@@ -1675,6 +1914,17 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
             )
             payment_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT customer_id,
+                       COALESCE(SUM(remaining_credit), 0) AS credit_balance,
+                       COUNT(*) AS credit_count
+                FROM customer_credits
+                WHERE remaining_credit > 0
+                GROUP BY customer_id
+                """
+            )
+            credit_total_rows = cursor.fetchall()
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
@@ -1683,6 +1933,7 @@ def panel_payload(user: dict | None = None) -> dict:
     promises_by_invoice: dict[str, list[dict]] = defaultdict(list)
     statuses_by_invoice: dict[str, list[dict]] = defaultdict(list)
     payments_by_customer: dict[str, list[dict]] = defaultdict(list)
+    credit_totals_by_customer = {row["customer_id"]: row for row in credit_total_rows}
     for note in customer_note_rows:
         notes_by_customer.setdefault(note["customer_id"], []).append(note)
     for note in note_rows:
@@ -1721,6 +1972,9 @@ def panel_payload(user: dict | None = None) -> dict:
                 selected_invoice = invoice_payload
 
         open_invoices = sum(1 for invoice in detail_invoices if _float(invoice.get("amount_due")) > 0)
+        gross_total_due = sum(_float(invoice.get("amount_due")) for invoice in detail_invoices)
+        credit_totals = credit_totals_by_customer.get(customer_row["id"], {})
+        credit_balance = _float(credit_totals.get("credit_balance"))
         customers.append(
             {
                 "id": customer_row["id"],
@@ -1992,6 +2246,7 @@ async def _fetch_contact_credit_sources(
     where: str,
     fallback_where: str,
     serializer,
+    include_allocated: bool = False,
 ) -> list[dict]:
     try:
         records = await fetch_paginated_collection(connection_row, url, collection_key, params={"where": where, "order": "Date DESC"})
@@ -2008,7 +2263,9 @@ async def _fetch_contact_credit_sources(
             if overpayment_type and "RECEIVE" not in overpayment_type:
                 continue
         item = serializer(record)
-        if _money(item.get("remainingCredit")) > 0:
+        has_remaining_credit = _money(item.get("remainingCredit")) > 0
+        has_allocated_credit = _money(item.get("appliedAmount")) > 0 or bool(item.get("allocations"))
+        if has_remaining_credit or (include_allocated and has_allocated_credit):
             items.append(item)
     return items
 
@@ -2026,7 +2283,7 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
             outstanding_invoices.append(invoice)
 
     credit_where = f'{_xero_contact_where(contact_id)}&&Type=="ACCRECCREDIT"&&Status=="AUTHORISED"'
-    unallocated_credits = await _fetch_contact_credit_sources(
+    credit_notes = await _fetch_contact_credit_sources(
         connection_row,
         CREDIT_NOTES_URL,
         "CreditNotes",
@@ -2034,6 +2291,7 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
         credit_where,
         'Type=="ACCRECCREDIT"&&Status=="AUTHORISED"',
         _serialize_credit_note_transaction,
+        include_allocated=True,
     )
     overpayment_where = f'{_xero_contact_where(contact_id)}&&Status=="AUTHORISED"'
     overpayments = await _fetch_contact_credit_sources(
@@ -2044,10 +2302,19 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
         overpayment_where,
         'Status=="AUTHORISED"',
         _serialize_overpayment_transaction,
+        include_allocated=True,
     )
 
+    unallocated_credits = [item for item in credit_notes if _money(item.get("remainingCredit")) > 0]
+    unallocated_overpayments = [item for item in overpayments if _money(item.get("remainingCredit")) > 0]
+    allocated_credit_sources = [
+        item
+        for item in [*credit_notes, *overpayments]
+        if _money(item.get("appliedAmount")) > 0 or item.get("allocations")
+    ]
     outstanding_total = sum(_money(invoice.get("amountDue")) for invoice in outstanding_invoices)
-    credit_total = sum(_money(item.get("remainingCredit")) for item in [*unallocated_credits, *overpayments])
+    credit_total = sum(_money(item.get("remainingCredit")) for item in [*unallocated_credits, *unallocated_overpayments])
+    allocated_credit_total = sum(_money(item.get("appliedAmount")) for item in allocated_credit_sources)
     line_count = sum(len(invoice.get("lineItems") or []) for invoice in outstanding_invoices)
     return {
         "customerId": str(customer["id"]),
@@ -2055,14 +2322,17 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
         "fetchedAt": utcnow().isoformat(),
         "outstandingInvoices": outstanding_invoices,
         "unallocatedCredits": unallocated_credits,
-        "overpayments": overpayments,
+        "overpayments": unallocated_overpayments,
+        "allocatedCredits": allocated_credit_sources,
         "summary": {
             "outstandingTotal": float(outstanding_total),
             "outstandingInvoiceCount": len(outstanding_invoices),
             "outstandingLineCount": line_count,
             "unallocatedCreditTotal": float(credit_total),
-            "unallocatedCreditCount": len(unallocated_credits) + len(overpayments),
-            "overpaymentCount": len(overpayments),
+            "unallocatedCreditCount": len(unallocated_credits) + len(unallocated_overpayments),
+            "overpaymentCount": len(unallocated_overpayments),
+            "allocatedCreditTotal": float(allocated_credit_total),
+            "allocatedCreditCount": len(allocated_credit_sources),
         },
     }
 

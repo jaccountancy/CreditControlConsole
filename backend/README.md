@@ -26,7 +26,7 @@ Required variables:
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
-- `XERO_SCOPES=openid profile email offline_access accounting.transactions accounting.contacts`
+- `XERO_SCOPES=openid profile email offline_access accounting.transactions accounting.contacts accounting.settings.read`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 - `BAD_DEBT_WRITE_OFF_ACCOUNT_CODE=402`
 
@@ -34,7 +34,7 @@ Required variables:
 
 The backend intentionally rejects `localhost` and `127.0.0.1` connection values. Xero must also have the same Railway callback URL registered as an allowed redirect URI.
 
-The write-off workflow creates and allocates credit notes, so the Xero connection needs the `accounting.transactions` scope. Reconnect Xero after changing scopes so the refreshed token includes that permission.
+The late-charge, allocation, and write-off workflows create and allocate Xero transactions, so the Xero connection needs the `accounting.transactions`, `accounting.contacts`, and `accounting.settings.read` scopes. Reconnect Xero once after changing scopes so the refreshed token includes those permissions.
 
 ## Main routes
 

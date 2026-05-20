@@ -205,6 +205,33 @@ CREATE INDEX IF NOT EXISTS payments_customer_idx ON payments (customer_id);
 CREATE INDEX IF NOT EXISTS payments_invoice_idx ON payments (invoice_id);
 CREATE INDEX IF NOT EXISTS payments_date_idx ON payments (payment_date);
 
+CREATE TABLE IF NOT EXISTS customer_credits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT NOT NULL,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL,
+    xero_credit_id TEXT NOT NULL,
+    number TEXT,
+    reference TEXT,
+    status TEXT,
+    transaction_type TEXT,
+    credit_date DATE,
+    currency_code TEXT,
+    total NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    remaining_credit NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    applied_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    line_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+    allocations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (source_type, xero_credit_id)
+);
+
+CREATE INDEX IF NOT EXISTS customer_credits_tenant_idx ON customer_credits (tenant_id);
+CREATE INDEX IF NOT EXISTS customer_credits_customer_idx ON customer_credits (customer_id);
+CREATE INDEX IF NOT EXISTS customer_credits_remaining_idx ON customer_credits (remaining_credit);
+
 CREATE TABLE IF NOT EXISTS sync_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider TEXT NOT NULL,

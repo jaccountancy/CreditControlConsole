@@ -793,6 +793,11 @@ button.hero-summary-card {
     background: var(--red-soft);
     color: var(--red);
 }
+.sync-inline-banner.is-success {
+    border-color: rgba(39, 176, 95, 0.26);
+    background: var(--green-soft);
+    color: #168246;
+}
 .sync-inline-spinner {
     width: 22px;
     height: 22px;
@@ -806,6 +811,22 @@ button.hero-summary-card {
     animation: none;
     border-color: rgba(255, 83, 83, 0.18);
     border-top-color: var(--red);
+}
+.sync-inline-banner.is-success .sync-inline-spinner {
+    display: grid;
+    place-items: center;
+    animation: none;
+    border: 0;
+    background: var(--green);
+}
+.sync-inline-banner.is-success .sync-inline-spinner::after {
+    content: "";
+    width: 6px;
+    height: 10px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    margin-top: -2px;
 }
 .sync-inline-actions {
     display: none;
@@ -847,6 +868,7 @@ button.hero-summary-card {
     white-space: nowrap;
 }
 .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
+.sync-inline-banner.is-success .sync-inline-copy span { color: #168246; }
 .invoice-table { width: 100%; border-collapse: collapse; min-width: 1040px; table-layout: fixed; }
 .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
 .invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 23%; }
@@ -1810,7 +1832,7 @@ body.is-dense .note-snippet {
 }
 .xero-transaction-summary {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 12px;
     margin: 16px 0;
 }
@@ -1840,7 +1862,7 @@ body.is-dense .note-snippet {
 }
 .xero-transaction-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+    grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.85fr) minmax(240px, 0.85fr);
     gap: 18px;
     align-items: start;
 }
@@ -2668,7 +2690,7 @@ body.is-syncing .sync-dot {
             <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
                 <span class="sync-inline-spinner" aria-hidden="true"></span>
                 <div class="sync-inline-copy">
-                    <strong id="syncInlineTitle">Syncing data from Xero</strong>
+                    <strong id="syncInlineTitle">Xero syncing</strong>
                     <span id="syncInlineDetail">Preparing sync</span>
                 </div>
                 <div class="sync-inline-actions" aria-label="Sync failure actions">
@@ -3066,10 +3088,11 @@ body.is-syncing .sync-dot {
                                         <p class="eyebrow">Client invoices</p>
                                         <h3>Open ledger rows</h3>
                                     </div>
-                                    <div class="client-invoice-bulk-actions">
-                                        <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
-                                        <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
-                                    </div>
+                                <div class="client-invoice-bulk-actions">
+                                    <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
+                                    <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
+                                    <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
+                                </div>
                                 </div>
                                 <div class="client-invoice-list" id="clientInvoiceList"></div>
                             </section>
@@ -3129,6 +3152,13 @@ body.is-syncing .sync-dot {
                                         <h4>Credits to apply</h4>
                                     </div>
                                     <div class="xero-credit-list" id="unallocatedCreditList"></div>
+                                </section>
+                                <section>
+                                    <div class="section-heading compact-heading">
+                                        <p class="eyebrow">Allocated balances</p>
+                                        <h4>Credits already allocated</h4>
+                                    </div>
+                                    <div class="xero-credit-list" id="allocatedCreditList"></div>
                                 </section>
                             </div>
                         </section>
@@ -3371,7 +3401,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Where things are</h4>
-                    <p>The Menu contains Help, Settings, Resync from Xero, Connect or Disconnect Xero, Developer log, and Back to Jenius. The top of the ledger shows totals and status chips. The toolbar controls search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                    <p>The Menu contains Help, Settings, Resync from Xero when connected, Connect Xero when disconnected, Disconnect Xero, Developer log, and Back to Jenius. The top of the ledger shows totals and status chips. The toolbar controls search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                 </section>
                 <section class="help-section">
                     <h4>First sync</h4>
@@ -3423,6 +3453,7 @@ body.is-syncing .sync-dot {
 
     <script>
 const STORAGE_KEY = "hymn-credit-control-ledger";
+const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
 const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
 const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
 const DEFAULT_API_BASE_URL = window.location.protocol === "file:"
@@ -3437,6 +3468,7 @@ const emptyData = {
     selectedInvoice: null
 };
 const state = loadState();
+let panelSessionToken = loadPanelSessionToken();
 const syncScopeLabels = {
     outstanding_only: "Outstanding invoices only",
     outstanding_plus_500_paid: "Outstanding + 500 paid invoices",
@@ -3517,6 +3549,7 @@ let syncProgressTimer = null;
 let activeSyncRunId = null;
 let latestSyncRun = null;
 let lastBrowserSyncLog = null;
+let topbarNoticeTimer = null;
 let developerLogEntries = [];
 let developerLogDateFilter = "";
 let insightsData = null;
@@ -3617,6 +3650,35 @@ function loadState() {
     }
 }
 
+function loadPanelSessionToken() {
+    try {
+        return localStorage.getItem(SESSION_TOKEN_KEY) || "";
+    } catch {
+        return "";
+    }
+}
+
+function storePanelSessionToken(token) {
+    panelSessionToken = String(token || "").trim();
+    try {
+        if (panelSessionToken) localStorage.setItem(SESSION_TOKEN_KEY, panelSessionToken);
+        else localStorage.removeItem(SESSION_TOKEN_KEY);
+    } catch {
+        // Browser storage can be blocked in embedded contexts; the cookie path still applies.
+    }
+}
+
+function clearPanelSessionToken() {
+    storePanelSessionToken("");
+}
+
+function panelAuthHeaders() {
+    const configuredHeaders = api.headers || {};
+    const hasConfiguredAuth = Object.keys(configuredHeaders).some((key) => key.toLowerCase() === "authorization");
+    if (!panelSessionToken || hasConfiguredAuth) return {};
+    return { Authorization: `Bearer ${panelSessionToken}` };
+}
+
 function loadSyncSettings() {
     try {
         const stored = JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY) || "{}");
@@ -3701,7 +3763,43 @@ function loginURL() {
     const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
     if (!isHostedPage) return loginEndpoint;
     const separator = api.endpoints.login.includes("?") ? "&" : "?";
-    return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(window.location.href)}`;
+    return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(xeroConnectionReturnURL())}`;
+}
+
+function xeroConnectionReturnURL() {
+    try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("xero", "connected");
+        return url.toString();
+    } catch {
+        return window.location.href;
+    }
+}
+
+function consumeXeroConnectionReturn() {
+    const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
+    if (!isHostedPage) return false;
+    try {
+        const url = new URL(window.location.href);
+        const hashLooksParametric = url.hash.includes("=");
+        const hashParams = hashLooksParametric ? new URLSearchParams(url.hash.slice(1)) : new URLSearchParams();
+        const connected = url.searchParams.get("xero") === "connected" || hashParams.get("xero") === "connected";
+        const sessionToken = url.searchParams.get("panel_session") || hashParams.get("panel_session") || "";
+        if (!connected && !sessionToken) return false;
+        if (sessionToken) storePanelSessionToken(sessionToken);
+        url.searchParams.delete("xero");
+        url.searchParams.delete("panel_session");
+        if (hashLooksParametric) {
+            hashParams.delete("xero");
+            hashParams.delete("panel_session");
+            const nextHash = hashParams.toString();
+            url.hash = nextHash ? `#${nextHash}` : "";
+        }
+        window.history.replaceState(window.history.state, document.title, url.toString());
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 class AuthRequiredError extends Error {}
@@ -3727,7 +3825,7 @@ async function requestJSON(template, options = {}, params = {}) {
     const response = await fetch(endpointURL(template, params), {
         credentials: "include",
         ...options,
-        headers: { "Content-Type": "application/json", ...api.headers, ...(options.headers || {}) }
+        headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(options.headers || {}) }
     });
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json")
@@ -3759,6 +3857,7 @@ async function requestJSON(template, options = {}, params = {}) {
 }
 
 function markAuthenticationRequired(message) {
+    clearPanelSessionToken();
     state.organisation = {
         ...emptyData.organisation,
         status: "Sign in required",
@@ -4401,10 +4500,14 @@ function dateSortValue(value) {
 function formatCompactCurrency(value) {
     const amount = Number(value || 0);
     const absolute = Math.abs(amount);
-    const formatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: absolute >= 10000 ? 0 : 1 });
-    if (absolute >= 1000000) return `£${formatter.format(amount / 1000000)}M`;
-    if (absolute >= 1000) return `£${formatter.format(amount / 1000)}K`;
-    return formatCurrency(amount).replace(".00", "");
+    const sign = amount < 0 ? "-" : "";
+    const compactDecimal = (raw) => new Intl.NumberFormat("en-GB", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1
+    }).format(Math.trunc(raw * 10) / 10);
+    if (absolute >= 1000000) return `${sign}£${compactDecimal(absolute / 1000000)}M`;
+    if (absolute >= 1000) return `${sign}£${Math.trunc(absolute / 1000).toLocaleString("en-GB")}K`;
+    return `${sign}${formatCurrency(absolute).replace(".00", "")}`;
 }
 
 function dashboardTotals() {
@@ -4433,9 +4536,9 @@ function dashboardTotals() {
 
 function renderDashboardHero() {
     const totals = dashboardTotals();
-    document.getElementById("heroTotalInvoiced").textContent = formatCurrency(totals.totalInvoiced);
+    document.getElementById("heroTotalInvoiced").textContent = formatCompactCurrency(totals.totalInvoiced);
     document.getElementById("heroTotalInvoicedCount").textContent = `${totals.invoiceCount.toLocaleString("en-GB")} invoice${totals.invoiceCount === 1 ? "" : "s"} synced`;
-    document.getElementById("heroTotalOutstanding").textContent = formatCurrency(totals.totalOutstanding);
+    document.getElementById("heroTotalOutstanding").textContent = formatCompactCurrency(totals.totalOutstanding);
     document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"}`;
     document.getElementById("heroLateChargeCount").textContent = totals.lateChargeCount.toLocaleString("en-GB");
     document.getElementById("heroLateChargeSummary").textContent = totals.lateChargeCount
@@ -5331,30 +5434,59 @@ function renderTransactionEmpty(target, eyebrow, title, body) {
     target.appendChild(empty);
 }
 
+function creditAllocationSummaryHTML(source) {
+    const allocations = Array.isArray(source?.allocations) ? source.allocations : [];
+    const currencyCode = source?.currencyCode || "GBP";
+    if (!allocations.length) {
+        return `
+            <div class="xero-line-items">
+                <div class="xero-line-item">
+                    <span>Applied amount</span>
+                    <strong>${formatXeroCurrency(source?.appliedAmount || 0, currencyCode)}</strong>
+                </div>
+            </div>
+        `;
+    }
+    return `
+        <div class="xero-line-items">
+            ${allocations.map((allocation) => `
+                <div class="xero-line-item">
+                    <span>${escapeHTML(allocation.invoiceNumber || allocation.invoiceId || "Invoice allocation")} · ${formatDate(allocation.date)}</span>
+                    <strong>${formatXeroCurrency(allocation.amount || 0, currencyCode)}</strong>
+                </div>
+            `).join("")}
+        </div>
+    `;
+}
+
 function renderOutstandingTransactions(client, fallbackInvoices = []) {
     const summary = document.getElementById("outstandingTransactionsSummary");
     const invoiceList = document.getElementById("outstandingTransactionList");
     const creditList = document.getElementById("unallocatedCreditList");
+    const allocatedList = document.getElementById("allocatedCreditList");
     const refreshButton = document.getElementById("refreshTransactionsButton");
-    if (!summary || !invoiceList || !creditList) return;
+    if (!summary || !invoiceList || !creditList || !allocatedList) return;
 
     if (refreshButton) refreshButton.disabled = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
     if (!client) {
         summary.innerHTML = "";
         renderTransactionEmpty(invoiceList, "No client", "Select a client", "Outstanding Xero transaction lines will appear here.");
         renderTransactionEmpty(creditList, "No client", "Select a client", "Unallocated credits and overpayments will appear here.");
+        renderTransactionEmpty(allocatedList, "No client", "Select a client", "Allocated credit activity will appear here.");
         return;
     }
     if (!state.organisation?.xeroConnected) {
         summary.innerHTML = `<article><span>Xero</span><strong>Disconnected</strong></article>`;
         renderTransactionEmpty(invoiceList, "Xero disconnected", "Connect Xero to load live transactions", "Live invoice lines need an active Xero connection.");
         renderTransactionEmpty(creditList, "Xero disconnected", "Connect Xero to find credits", "Unallocated credit checks run directly against Xero.");
+        renderTransactionEmpty(allocatedList, "Xero disconnected", "Connect Xero to show allocations", "Allocated credit checks run directly against Xero.");
         return;
     }
     if (!client.xeroContactId) {
         summary.innerHTML = `<article><span>Xero contact</span><strong>Missing</strong></article>`;
         renderTransactionEmpty(invoiceList, "No Xero contact", "This client is not linked to a Xero contact", "Run a fresh import or open the matching Xero contact.");
         renderTransactionEmpty(creditList, "No Xero contact", "Credits cannot be checked", "Credit allocations require a Xero contact id.");
+        renderTransactionEmpty(allocatedList, "No Xero contact", "Allocated credits cannot be checked", "Credit allocations require a Xero contact id.");
         return;
     }
 
@@ -5364,6 +5496,7 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
         summary.innerHTML = `<article class="is-highlighted"><span>Xero transactions</span><strong>Unable to load</strong></article>`;
         renderTransactionEmpty(invoiceList, "Xero error", "Unable to load outstanding transactions", cached.error);
         renderTransactionEmpty(creditList, "Xero error", "Unable to load credits", cached.error);
+        renderTransactionEmpty(allocatedList, "Xero error", "Unable to load allocated credits", cached.error);
         return;
     }
 
@@ -5372,15 +5505,18 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
         : fallbackOutstandingTransactions(fallbackInvoices);
     const unallocatedCredits = Array.isArray(cached?.unallocatedCredits) ? cached.unallocatedCredits : [];
     const overpayments = Array.isArray(cached?.overpayments) ? cached.overpayments : [];
+    const allocatedCredits = Array.isArray(cached?.allocatedCredits) ? cached.allocatedCredits : [];
     const creditSources = [...unallocatedCredits, ...overpayments];
-    const currencyCode = outstandingInvoices[0]?.currencyCode || creditSources[0]?.currencyCode || "GBP";
+    const currencyCode = outstandingInvoices[0]?.currencyCode || creditSources[0]?.currencyCode || allocatedCredits[0]?.currencyCode || "GBP";
     const outstandingTotal = cached?.summary?.outstandingTotal ?? outstandingInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
     const lineCount = cached?.summary?.outstandingLineCount ?? outstandingInvoices.reduce((sum, invoice) => sum + Math.max((invoice.lineItems || []).length, 1), 0);
     const creditTotal = cached?.summary?.unallocatedCreditTotal ?? creditSources.reduce((sum, source) => sum + Number(source.remainingCredit || 0), 0);
+    const allocatedTotal = cached?.summary?.allocatedCreditTotal ?? allocatedCredits.reduce((sum, source) => sum + Number(source.appliedAmount || 0), 0);
     summary.innerHTML = [
         ["Outstanding", formatXeroCurrency(outstandingTotal, currencyCode), false],
         ["Invoice lines", Number(lineCount || 0).toLocaleString("en-GB"), false],
         ["Unallocated credits", formatXeroCurrency(creditTotal, currencyCode), creditTotal > 0],
+        ["Allocated credits", formatXeroCurrency(allocatedTotal, currencyCode), allocatedTotal > 0],
         ["Overpayments", Number(overpayments.length || 0).toLocaleString("en-GB"), overpayments.length > 0],
     ].map(([label, value, highlighted]) => `<article${highlighted ? " class=\"is-highlighted\"" : ""}><span>${label}</span><strong>${value}</strong></article>`).join("");
 
@@ -5428,41 +5564,72 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
             isLoading ? "Checking credit notes and overpayments" : "No unallocated credits found",
             isLoading ? "Fetching live credit balances for this Xero contact." : "This contact has no authorised credit note or overpayment balance available to allocate."
         );
-        return;
+    } else {
+        const eligibleInvoices = outstandingInvoices.filter((invoice) => invoice.xeroInvoiceId && Number(invoice.amountDue || 0) > 0);
+        creditSources.forEach((source) => {
+            const row = document.createElement("article");
+            row.className = "xero-credit-row is-highlighted";
+            const defaultInvoice = eligibleInvoices[0] || null;
+            const defaultAmount = defaultInvoice ? Math.min(Number(source.remainingCredit || 0), Number(defaultInvoice.amountDue || 0)) : Number(source.remainingCredit || 0);
+            row.innerHTML = `
+                <div class="xero-credit-head">
+                    <div>
+                        <strong>${creditSourceLabel(source)} ${escapeHTML(source.number || source.id)}</strong>
+                        <span>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</span>
+                    </div>
+                    <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
+                </div>
+                <form class="allocation-form">
+                    <select name="invoiceId" aria-label="Invoice to allocate to" ${eligibleInvoices.length ? "" : "disabled"}>
+                        ${eligibleInvoices.map((invoice) => `
+                            <option value="${escapeHTML(invoice.xeroInvoiceId)}">
+                                ${escapeHTML(invoice.invoiceNumber || "Invoice")} · ${formatXeroCurrency(invoice.amountDue || 0, invoice.currencyCode)}
+                            </option>
+                        `).join("")}
+                    </select>
+                    <input name="amount" type="number" min="0.01" max="${Number(source.remainingCredit || 0).toFixed(2)}" step="0.01" value="${defaultAmount.toFixed(2)}" aria-label="Amount to allocate" ${eligibleInvoices.length ? "" : "disabled"}>
+                    <button class="primary-button" type="submit" ${eligibleInvoices.length ? "" : "disabled"}>Allocate</button>
+                </form>
+            `;
+            row.querySelector(".allocation-form")?.addEventListener("submit", (event) => {
+                event.preventDefault();
+                allocateCustomerCredit(event.currentTarget, source);
+            });
+            creditList.appendChild(row);
+        });
     }
 
-    const eligibleInvoices = outstandingInvoices.filter((invoice) => invoice.xeroInvoiceId && Number(invoice.amountDue || 0) > 0);
-    creditSources.forEach((source) => {
-        const row = document.createElement("article");
-        row.className = "xero-credit-row is-highlighted";
-        const defaultInvoice = eligibleInvoices[0] || null;
-        const defaultAmount = defaultInvoice ? Math.min(Number(source.remainingCredit || 0), Number(defaultInvoice.amountDue || 0)) : Number(source.remainingCredit || 0);
-        row.innerHTML = `
-            <div class="xero-credit-head">
-                <div>
-                    <strong>${creditSourceLabel(source)} ${escapeHTML(source.number || source.id)}</strong>
-                    <span>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</span>
+    allocatedList.innerHTML = "";
+    if (!allocatedCredits.length) {
+        renderTransactionEmpty(
+            allocatedList,
+            isLoading ? "Loading Xero" : "No allocated credits",
+            isLoading ? "Checking applied credits" : "No allocated credits found",
+            isLoading ? "Fetching live allocation history for this Xero contact." : "Credits already applied to invoices will appear here after refresh."
+        );
+    } else {
+        allocatedCredits.forEach((source) => {
+            const row = document.createElement("article");
+            row.className = "xero-credit-row";
+            row.innerHTML = `
+                <div class="xero-credit-head">
+                    <div>
+                        <strong>${creditSourceLabel(source)} ${escapeHTML(source.number || source.id)}</strong>
+                        <span>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</span>
+                    </div>
+                    <strong>${formatXeroCurrency(source.appliedAmount || 0, source.currencyCode)}</strong>
                 </div>
-                <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
-            </div>
-            <form class="allocation-form">
-                <select name="invoiceId" aria-label="Invoice to allocate to" ${eligibleInvoices.length ? "" : "disabled"}>
-                    ${eligibleInvoices.map((invoice) => `
-                        <option value="${escapeHTML(invoice.xeroInvoiceId)}">
-                            ${escapeHTML(invoice.invoiceNumber || "Invoice")} · ${formatXeroCurrency(invoice.amountDue || 0, invoice.currencyCode)}
-                        </option>
-                    `).join("")}
-                </select>
-                <input name="amount" type="number" min="0.01" max="${Number(source.remainingCredit || 0).toFixed(2)}" step="0.01" value="${defaultAmount.toFixed(2)}" aria-label="Amount to allocate" ${eligibleInvoices.length ? "" : "disabled"}>
-                <button class="primary-button" type="submit" ${eligibleInvoices.length ? "" : "disabled"}>Allocate</button>
-            </form>
-        `;
-        row.querySelector(".allocation-form")?.addEventListener("submit", (event) => {
-            event.preventDefault();
-            allocateCustomerCredit(event.currentTarget, source);
+                ${creditAllocationSummaryHTML(source)}
+                <div class="xero-line-items">
+                    <div class="xero-line-item">
+                        <span>Remaining balance</span>
+                        <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
+                    </div>
+                </div>
+            `;
+            allocatedList.appendChild(row);
         });
-        creditList.appendChild(row);
-    });
+    }
 }
 
 async function allocateCustomerCredit(form, source) {
@@ -5565,10 +5732,18 @@ function renderClientInvoiceList(invoices) {
 
 function updateClientInvoiceBulkNoteButton() {
     const button = document.getElementById("clientBulkInvoiceNoteButton");
-    if (!button) return;
+    const writeOffButton = document.getElementById("clientBulkWriteOffButton");
     const count = selectedClientInvoiceIds.size;
-    button.disabled = count === 0;
-    button.textContent = count ? `Add note to ${count} selected` : "Add note to selected";
+    if (button) {
+        button.disabled = count === 0;
+        button.textContent = count ? `Add note to ${count} selected` : "Add note to selected";
+    }
+    if (writeOffButton) {
+        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+        const candidates = clientInvoices(client).filter((invoice) => selectedClientInvoiceIds.has(invoice.id) && isWriteOffCandidate(invoice));
+        writeOffButton.disabled = candidates.length === 0;
+        writeOffButton.textContent = candidates.length ? `Write off ${candidates.length} selected` : "Write off selected";
+    }
 }
 
 async function addNoteToSelectedClientInvoices() {
@@ -5598,6 +5773,66 @@ async function addNoteToSelectedClientInvoices() {
     } catch (error) {
         console.error("Unable to sync selected invoice notes", error);
         showToast("Unable to sync one or more invoice notes", "error");
+    }
+}
+
+async function writeOffSelectedClientInvoices() {
+    if (!isXeroConnected()) {
+        showToast("Connect Xero before writing off invoices.", "info", {
+            label: "Connect Xero",
+            onClick: () => window.location.assign(loginURL())
+        });
+        return;
+    }
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    const candidates = clientInvoices(client).filter((invoice) => selectedClientInvoiceIds.has(invoice.id) && isWriteOffCandidate(invoice));
+    if (!candidates.length) {
+        showToast("No selected outstanding invoices can be written off.", "info");
+        return;
+    }
+    const total = candidates.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+    const preview = candidates.slice(0, 5).map((invoice) => invoice.invoiceNumber || invoice.id).join(", ");
+    const remainder = candidates.length > 5 ? ` and ${(candidates.length - 5).toLocaleString("en-GB")} more` : "";
+    const confirmed = window.confirm(
+        `Write off ${candidates.length.toLocaleString("en-GB")} invoice${candidates.length === 1 ? "" : "s"} for ${client?.name || "this client"} totalling ${formatCurrency(total)}?\n\n` +
+        `This will raise Xero credit notes to account code 402 and allocate them to: ${preview}${remainder}.`
+    );
+    if (!confirmed) return;
+
+    const button = document.getElementById("clientBulkWriteOffButton");
+    const originalText = button ? button.textContent : "";
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Writing off...";
+    }
+    try {
+        const payload = await requestJSON(api.endpoints.writeOffs, {
+            method: "POST",
+            body: JSON.stringify({ invoiceIds: candidates.map((invoice) => invoice.id) })
+        });
+        if (payload?.panel) replaceState(normaliseState(payload.panel));
+        else await hydrateFromAPI();
+        if (client?.id) customerTransactionCache.delete(String(client.id));
+        selectedClientInvoiceIds.clear();
+        renderAll();
+        const createdCount = Number(payload?.created?.length || 0);
+        const skippedCount = Number(payload?.skipped?.length || 0);
+        const contactNoteFailures = (payload?.created || []).filter((item) => !item.contactNoteSynced).length;
+        const message = `${createdCount.toLocaleString("en-GB")} invoice${createdCount === 1 ? "" : "s"} written off${skippedCount ? `, ${skippedCount.toLocaleString("en-GB")} skipped` : ""}.`;
+        showToast(message, contactNoteFailures ? "info" : "success", { label: "View audit trail", onClick: scrollAuditTrail });
+        if (contactNoteFailures) {
+            showToast(`${contactNoteFailures.toLocaleString("en-GB")} Xero contact note${contactNoteFailures === 1 ? "" : "s"} could not be added.`, "error");
+        }
+    } catch (error) {
+        console.error("Unable to write off selected client invoices", error);
+        if (error instanceof AuthRequiredError) {
+            markAuthenticationRequired(error.message);
+        } else {
+            showToast(`Unable to write off invoices: ${error.message || "Xero request failed."}`, "error");
+        }
+    } finally {
+        if (button) button.textContent = originalText;
+        updateClientInvoiceBulkNoteButton();
     }
 }
 
@@ -5904,8 +6139,11 @@ function renderChrome() {
     document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
     const connected = isXeroConnected();
     if (!connected && !isSyncing) clearSyncFailureBanner();
-    const label = connected ? "Reconnect Xero" : "Connect Xero";
-    document.getElementById("connectXeroButton").textContent = label;
+    const connectButton = document.getElementById("connectXeroButton");
+    if (connectButton) {
+        connectButton.hidden = connected;
+        connectButton.textContent = "Connect Xero";
+    }
     const disconnectButton = document.getElementById("disconnectXeroButton");
     if (disconnectButton) disconnectButton.hidden = !connected;
     const menuSyncButton = document.getElementById("menuSyncButton");
@@ -5938,7 +6176,7 @@ function renderChrome() {
     });
     const sidebarConnectButton = document.getElementById("sidebarConnectButton");
     if (sidebarConnectButton) {
-        sidebarConnectButton.textContent = connected ? "Reconnect Xero" : "Login with Xero";
+        sidebarConnectButton.textContent = connected ? "Resync Xero" : "Login with Xero";
     }
     renderTopbarClientContext();
 }
@@ -6405,6 +6643,7 @@ function wireClientWorkspace() {
         });
     });
     document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
+    document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
     document.getElementById("refreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
     document.getElementById("topbarClientButton")?.addEventListener("click", () => {
         if (!selectedClientId && !selectedInvoiceId) return;
@@ -6796,19 +7035,47 @@ function updateSyncProgress() {
     renderSyncSettings();
 }
 
+function clearTopbarNoticeTimer() {
+    window.clearTimeout(topbarNoticeTimer);
+    topbarNoticeTimer = null;
+}
+
+function showTopbarNotice(title, detail, variant = "success", duration = 6500) {
+    clearTopbarNoticeTimer();
+    const inlineBanner = document.getElementById("syncInlineBanner");
+    if (inlineBanner) {
+        inlineBanner.hidden = false;
+        inlineBanner.classList.remove("is-error", "is-success");
+        if (variant === "success") inlineBanner.classList.add("is-success");
+    }
+    const inlineTitle = document.getElementById("syncInlineTitle");
+    if (inlineTitle) inlineTitle.textContent = title;
+    const inlineDetail = document.getElementById("syncInlineDetail");
+    if (inlineDetail) inlineDetail.textContent = detail;
+    topbarNoticeTimer = window.setTimeout(() => {
+        if (!isSyncing && inlineBanner?.classList.contains("is-success")) {
+            inlineBanner.hidden = true;
+            inlineBanner.classList.remove("is-success");
+            clearSyncFailureBanner();
+        }
+    }, duration);
+}
+
 function clearSyncFailureBanner() {
+    clearTopbarNoticeTimer();
     const inlineBanner = document.getElementById("syncInlineBanner");
     if (inlineBanner && !isSyncing) {
         inlineBanner.hidden = true;
-        inlineBanner.classList.remove("is-error");
+        inlineBanner.classList.remove("is-error", "is-success");
     }
     const inlineTitle = document.getElementById("syncInlineTitle");
-    if (inlineTitle) inlineTitle.textContent = "Syncing data from Xero";
+    if (inlineTitle) inlineTitle.textContent = "Xero syncing";
     const inlineDetail = document.getElementById("syncInlineDetail");
     if (inlineDetail) inlineDetail.textContent = "Preparing sync";
 }
 
 function startSyncFeedback(syncRun = null) {
+    clearTopbarNoticeTimer();
     isSyncing = true;
     latestSyncRun = syncRun || latestSyncRun;
     activeSyncRunId = syncRun?.id || activeSyncRunId;
@@ -6819,10 +7086,10 @@ function startSyncFeedback(syncRun = null) {
     const inlineBanner = document.getElementById("syncInlineBanner");
     if (inlineBanner) {
         inlineBanner.hidden = false;
-        inlineBanner.classList.remove("is-error");
+        inlineBanner.classList.remove("is-error", "is-success");
     }
     const inlineTitle = document.getElementById("syncInlineTitle");
-    if (inlineTitle) inlineTitle.textContent = "Syncing data from Xero";
+    if (inlineTitle) inlineTitle.textContent = "Xero syncing";
     updateSyncProgress();
     window.clearInterval(syncProgressTimer);
     syncProgressTimer = window.setInterval(updateSyncProgress, 1000);
@@ -6830,9 +7097,11 @@ function startSyncFeedback(syncRun = null) {
 }
 
 function showSyncFailure(message) {
+    clearTopbarNoticeTimer();
     const inlineBanner = document.getElementById("syncInlineBanner");
     if (inlineBanner) {
         inlineBanner.hidden = false;
+        inlineBanner.classList.remove("is-success");
         inlineBanner.classList.add("is-error");
     }
     const inlineTitle = document.getElementById("syncInlineTitle");
@@ -6850,7 +7119,10 @@ function stopSyncFeedback({ keepInlineBanner = false } = {}) {
     const overlay = document.getElementById("syncProgressOverlay");
     if (overlay) overlay.hidden = true;
     const inlineBanner = document.getElementById("syncInlineBanner");
-    if (inlineBanner && !keepInlineBanner) inlineBanner.hidden = true;
+    if (inlineBanner && !keepInlineBanner) {
+        inlineBanner.hidden = true;
+        inlineBanner.classList.remove("is-error", "is-success");
+    }
     renderChrome();
 }
 
@@ -6962,7 +7234,7 @@ async function runXeroSync({ automatic = false } = {}) {
     let keepFailureBanner = false;
     if (automatic) hasAutoStartedInitialSync = true;
     startSyncFeedback();
-    showToast(automatic ? "Starting first sync from Xero" : "Starting Xero sync", "info");
+    showToast(automatic ? "Xero syncing" : "Starting Xero sync", "info");
     try {
         const payload = await requestJSON(api.endpoints.sync, {
             method: "POST",
@@ -7029,9 +7301,9 @@ async function runXeroSync({ automatic = false } = {}) {
     }
 }
 
-function maybeAutoStartInitialSync() {
+function maybeAutoStartInitialSync(delayMs = 450) {
     if (!shouldAutoStartInitialSync()) return;
-    window.setTimeout(() => runXeroSync({ automatic: true }), 450);
+    window.setTimeout(() => runXeroSync({ automatic: true }), delayMs);
 }
 
 async function writeOffSelectedInvoices() {
@@ -7531,6 +7803,7 @@ function wireForms() {
 }
 
 async function init() {
+    const returnedFromXeroConnection = consumeXeroConnectionReturn();
     try {
         renderAll();
     } catch (error) {
@@ -7557,8 +7830,16 @@ async function init() {
     } catch (error) {
         console.error("Unable to render console after loading API data", error);
     }
+    if (returnedFromXeroConnection) {
+        showTopbarNotice(
+            "Yay - Xero is now connected",
+            "Starting first Xero sync in a moment.",
+            "success",
+            2800
+        );
+    }
     try {
-        maybeAutoStartInitialSync();
+        maybeAutoStartInitialSync(returnedFromXeroConnection ? 3000 : 450);
     } catch (error) {
         console.error("Unable to auto-start Xero sync", error);
     }

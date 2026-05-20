@@ -292,10 +292,14 @@ function dateSortValue(value) {
 function formatCompactCurrency(value) {
     const amount = Number(value || 0);
     const absolute = Math.abs(amount);
-    const formatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: absolute >= 10000 ? 0 : 1 });
-    if (absolute >= 1000000) return `£${formatter.format(amount / 1000000)}M`;
-    if (absolute >= 1000) return `£${formatter.format(amount / 1000)}K`;
-    return formatCurrency(amount).replace(".00", "");
+    const sign = amount < 0 ? "-" : "";
+    const compactDecimal = (raw) => new Intl.NumberFormat("en-GB", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 1
+    }).format(Math.trunc(raw * 10) / 10);
+    if (absolute >= 1000000) return `${sign}£${compactDecimal(absolute / 1000000)}M`;
+    if (absolute >= 1000) return `${sign}£${Math.trunc(absolute / 1000).toLocaleString("en-GB")}K`;
+    return `${sign}${formatCurrency(absolute).replace(".00", "")}`;
 }
 
 function renderSummaryCounts() {

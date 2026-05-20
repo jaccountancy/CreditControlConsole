@@ -3,6 +3,7 @@ import logging
 import threading
 from html import escape
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -143,56 +144,27 @@ def xero_login_error_response(message: str, status_code: int = status.HTTP_500_I
     )
 
 
-def xero_login_success_response() -> HTMLResponse:
-    return HTMLResponse(
-        """
-        <!doctype html>
-        <html lang="en">
-        <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Xero connected</title>
-            <style>
-                body {
-                    margin: 0;
-                    min-height: 100vh;
-                    display: grid;
-                    place-items: center;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-                    background: #f5f8ff;
-                    color: #1e2f4d;
-                }
-                main {
-                    width: min(560px, calc(100vw - 40px));
-                    padding: 32px;
-                    border-radius: 20px;
-                    background: #fff;
-                    box-shadow: 0 18px 60px rgba(41, 79, 148, 0.14);
-                }
-                h1 { margin: 0 0 12px; font-size: 28px; }
-                p { margin: 0 0 22px; color: #65738e; line-height: 1.55; }
-                a {
-                    display: inline-flex;
-                    padding: 12px 18px;
-                    border-radius: 999px;
-                    color: #fff;
-                    background: #1d67f2;
-                    text-decoration: none;
-                    font-weight: 700;
-                }
-            </style>
-        </head>
-        <body>
-            <main>
-                <h1>Xero connected</h1>
-                <p>Your Xero organisation is connected. Return to the Credit Control Console and run sync.</p>
-                <a href="/">Open dashboard</a>
-            </main>
-        </body>
-        </html>
-        """,
-        status_code=status.HTTP_200_OK,
-    )
+def add_query_params(url: str, params: dict[str, str]) -> str:
+    parts = urlsplit(url or "/")
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query.update(params)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path or "/", urlencode(query), parts.fragment))
+
+
+def add_fragment_params(url: str, params: dict[str, str]) -> str:
+    parts = urlsplit(url or "/")
+    fragment = dict(parse_qsl(parts.fragment, keep_blank_values=True))
+    fragment.update(params)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path or "/", parts.query, urlencode(fragment)))
+
+
+def normalise_oauth_redirect(url: str | None) -> str:
+    candidate = url or "/"
+    parts = urlsplit(candidate)
+    if not parts.scheme and not parts.netloc:
+        return candidate
+    origin = f"{parts.scheme}://{parts.netloc}".rstrip("/")
+    return candidate if origin in allowed_panel_origins() else "/"
 
 
 @app.get("/health")
@@ -202,18 +174,26 @@ def health() -> dict:
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
+    user = current_user_from_request(request)
+    if user and user.get("id"):
+        try:
+            get_xero_connection_for_user(user["id"])
+            return RedirectResponse(add_query_params("/", {"xero": "connected"}), status_code=status.HTTP_302_FOUND)
+        except HTTPException:
+            pass
     return templates.TemplateResponse(request, "login.html", template_context(request))
 
 
 @app.get("/auth/xero/start")
-def auth_xero_start(redirect_to: str = "/auth/xero/connected"):
+def auth_xero_start(redirect_to: str = "/"):
+    redirect_to = normalise_oauth_redirect(redirect_to)
     state_token = start_oauth_state(redirect_to=redirect_to)
     return RedirectResponse(xero_authorize_url(state_token), status_code=status.HTTP_302_FOUND)
 
 
-@app.get("/auth/xero/connected", response_class=HTMLResponse)
+@app.get("/auth/xero/connected")
 def auth_xero_connected():
-    return xero_login_success_response()
+    return RedirectResponse(add_query_params("/", {"xero": "connected"}), status_code=status.HTTP_302_FOUND)
 
 
 @app.get("/auth/xero/callback")
@@ -232,7 +212,10 @@ async def auth_xero_callback(request: Request, code: str, state: str):
             return response
 
         session_token = create_session(login["user"]["id"], "Web panel")
-        response = RedirectResponse(state_row["redirect_to"] or "/", status_code=status.HTTP_302_FOUND)
+        redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
+        redirect_to = add_query_params(redirect_to, {"xero": "connected"})
+        redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
+        response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
         set_session_cookie(response, session_token)
         return response
     except HTTPException as exc:
