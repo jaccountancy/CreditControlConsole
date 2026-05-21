@@ -68,35 +68,86 @@ button { cursor: pointer; }
     border-radius: 28px;
     margin-bottom: 18px;
 }
-.brand-lockup { display: flex; align-items: center; }
+.brand-lockup { display: flex; align-items: center; min-width: 0; }
 .ledger-topbar .brand-lockup,
 .ledger-topbar .topbar-actions {
     flex: 0 0 auto;
 }
 .topbar-client-context {
-    min-width: 0;
-    display: inline-flex;
+    flex: 1 1 540px;
+    min-width: 280px;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    color: var(--muted);
-    font-weight: 850;
+    justify-content: flex-end;
+    gap: 12px;
 }
 .topbar-client-context[hidden] { display: none; }
-.topbar-client-context button {
-    max-width: 320px;
+.topbar-back-button,
+.topbar-contact-strip {
+    border: 1px solid var(--line);
+    background: rgba(248, 251, 255, 0.82);
+    color: var(--ink);
+}
+.topbar-back-button {
+    min-height: 42px;
+    border-radius: 999px;
+    padding: 10px 15px;
+    color: var(--blue);
+    font-weight: 900;
+}
+.topbar-contact-strip {
+    min-width: min(100%, 360px);
+    max-width: 620px;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 14px;
+    padding: 8px 12px;
+    text-align: left;
+}
+.topbar-client-avatar {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    border-radius: 10px;
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+.topbar-contact-copy {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+.topbar-contact-copy strong,
+.topbar-contact-copy small {
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface-soft);
-    color: var(--ink);
-    padding: 10px 14px;
+}
+.topbar-contact-copy strong {
+    font-size: 0.96rem;
     font-weight: 900;
 }
-.topbar-client-context button:hover {
+.topbar-contact-copy small {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+.topbar-back-button:hover,
+.topbar-contact-strip:hover {
     border-color: rgba(29, 103, 242, 0.28);
     color: var(--blue);
+}
+.topbar-client-action-wrap .ghost-button {
+    min-height: 42px;
+    background: #ffffff;
 }
 .eyebrow {
     margin: 0 0 4px;
@@ -954,6 +1005,100 @@ body.is-dense .note-snippet {
     display: none;
 }
 .client-name { font-weight: 800; margin-bottom: 4px; }
+.client-group-anchor {
+    position: relative;
+    min-width: 0;
+}
+.client-group-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.client-group-counts span,
+.client-credit-flag {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 5px 8px;
+    background: rgba(30, 47, 77, 0.06);
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 850;
+}
+.client-credit-flag.has-credit {
+    background: rgba(255, 159, 47, 0.14);
+    color: #a35a00;
+}
+.client-credit-flag.is-loading {
+    background: var(--blue-soft);
+    color: var(--blue);
+}
+.client-ledger-hover {
+    position: absolute;
+    z-index: 90;
+    left: 0;
+    top: calc(100% + 10px);
+    width: min(540px, calc(100vw - 72px));
+    max-height: 420px;
+    overflow: auto;
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 20px 54px rgba(30, 47, 77, 0.18);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: 0.16s ease;
+}
+.client-group-row:hover .client-ledger-hover,
+.client-group-row:focus-within .client-ledger-hover {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+.client-hover-section {
+    display: grid;
+    gap: 7px;
+}
+.client-hover-section > span {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.client-hover-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(61, 85, 130, 0.08);
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.client-hover-row:first-of-type {
+    border-top: 0;
+}
+.client-hover-row small,
+.client-hover-empty {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 750;
+    line-height: 1.35;
+}
+.client-hover-footnote {
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
 .client-inline-status {
     margin-top: 8px;
 }
@@ -1153,6 +1298,20 @@ body.is-dense .note-snippet {
     border-color: rgba(29, 103, 242, 0.26);
     color: var(--blue);
     transform: translateY(-1px);
+}
+.table-open-button {
+    min-height: 34px;
+    padding: 8px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--ink);
+    font-size: 0.82rem;
+    font-weight: 850;
+}
+.table-open-button:hover {
+    border-color: rgba(29, 103, 242, 0.26);
+    color: var(--blue);
 }
 .note-snippet {
     line-height: 1.35;
@@ -1467,8 +1626,8 @@ body.is-dense .note-snippet {
 }
 .client-workspace-layout {
     display: grid;
-    grid-template-columns: minmax(280px, 0.36fr) minmax(0, 1fr);
-    gap: 18px;
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+    gap: 14px;
     align-items: start;
 }
 .client-summary-panel,
@@ -1483,7 +1642,7 @@ body.is-dense .note-snippet {
 .client-summary-card,
 .audit-trail-panel {
     padding: 18px;
-    border-radius: 22px;
+    border-radius: 8px;
     background: rgba(255, 255, 255, 0.72);
     border: 1px solid var(--line);
 }
@@ -2091,8 +2250,11 @@ body.is-dense .note-snippet {
     border: 1px dashed var(--line);
     color: var(--muted);
 }
+.client-screen.detail-card {
+    padding: 18px;
+}
 .client-hero {
-    margin-bottom: 18px;
+    display: none;
 }
 .client-hero .text-button {
     display: inline-flex;
@@ -2118,14 +2280,15 @@ body.is-dense .note-snippet {
 }
 .client-overview-card {
     display: grid;
-    gap: 12px;
+    gap: 13px;
+    background: rgba(255, 255, 255, 0.9);
 }
 .client-avatar {
-    width: 48px;
-    height: 48px;
+    width: 42px;
+    height: 42px;
     display: grid;
     place-items: center;
-    border-radius: 16px;
+    border-radius: 8px;
     background: var(--blue-soft);
     color: var(--blue);
     font-weight: 900;
@@ -2149,7 +2312,7 @@ body.is-dense .note-snippet {
 .assignment-grid article {
     min-width: 0;
     padding: 12px;
-    border-radius: 14px;
+    border-radius: 6px;
     background: var(--surface-soft);
     border: 1px solid var(--line);
 }
@@ -2174,38 +2337,43 @@ body.is-dense .note-snippet {
     justify-content: center;
 }
 .client-section-nav {
-    position: sticky;
-    top: 12px;
+    position: relative;
+    top: auto;
     z-index: 12;
     display: flex;
-    gap: 8px;
+    gap: 0;
     overflow-x: auto;
-    padding: 10px;
+    padding: 0 2px;
     margin-bottom: 14px;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.86);
-    border: 1px solid var(--line);
-    backdrop-filter: blur(12px);
+    border-radius: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: none;
 }
 .client-section-nav button {
     flex: 0 0 auto;
-    min-height: 40px;
+    min-height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     border: 0;
-    border-radius: 999px;
+    border-radius: 0;
     background: transparent;
     color: #40506b;
-    padding: 10px 14px;
+    padding: 12px 16px;
     text-align: center;
     font-weight: 850;
     white-space: nowrap;
 }
-.client-section-nav button:hover,
+.client-section-nav button:hover {
+    color: var(--blue);
+    background: rgba(233, 241, 255, 0.58);
+}
 .client-section-nav button.is-active {
     color: var(--blue);
-    background: var(--blue-soft);
+    background: transparent;
+    box-shadow: inset 0 -3px 0 var(--blue);
 }
 .client-action-bar {
     position: sticky;
@@ -2707,7 +2875,7 @@ body.is-syncing .sync-dot {
     .late-charge-controls {
         flex-wrap: wrap;
     }
-    .topbar-client-context button {
+    .topbar-contact-strip {
         max-width: calc(100vw - 64px);
     }
     .ledger-footer { flex-direction: column; align-items: flex-start; }
@@ -2730,8 +2898,24 @@ body.is-syncing .sync-dot {
                 </div>
             </div>
             <div class="topbar-client-context" id="topbarClientContext" hidden>
-                <span aria-hidden="true">&gt;</span>
-                <button id="topbarClientButton" type="button">No client selected</button>
+                <button class="topbar-back-button" id="topbarBackToLedgerButton" type="button">Back to ledger</button>
+                <button class="topbar-contact-strip" id="topbarClientButton" type="button">
+                    <span class="topbar-client-avatar" id="topbarClientAvatar">--</span>
+                    <span class="topbar-contact-copy">
+                        <strong id="topbarContactName">No client selected</strong>
+                        <small id="topbarContactMeta">Client account</small>
+                    </span>
+                </button>
+                <div class="xero-connect-wrap client-action-menu-wrap topbar-client-action-wrap" id="clientActionMenuWrap">
+                    <button class="ghost-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Actions</button>
+                    <div class="xero-action-menu" id="clientActionMenu">
+                        <button type="button" data-client-action="reminder">Send reminder</button>
+                        <button type="button" data-client-action="payment">Record payment</button>
+                        <button type="button" data-client-action="note">Add note</button>
+                        <button type="button" data-client-action="legal">Escalate account</button>
+                        <button type="button" id="clientRunImportButton">Run import</button>
+                    </div>
+                </div>
             </div>
             <div class="sync-inline-banner" id="syncInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
                 <span class="sync-inline-spinner" aria-hidden="true"></span>
@@ -2881,13 +3065,13 @@ body.is-syncing .sync-dot {
                 <table class="invoice-table">
                     <thead>
                         <tr>
-                            <th class="is-sticky select-cell"><input id="selectAllInvoices" type="checkbox" aria-label="Select all visible invoices"></th>
+                            <th class="is-sticky select-cell"><input id="selectAllInvoices" type="checkbox" aria-label="Select all invoices for visible clients"></th>
                             <th class="is-sticky">Client</th>
-                            <th class="is-sticky">Invoice Ref</th>
-                            <th class="is-sticky" data-column="description">Description</th>
+                            <th class="is-sticky">Invoices</th>
+                            <th class="is-sticky" data-column="description">Oldest Item</th>
                             <th class="is-sticky">Amount Due</th>
-                            <th class="is-sticky" data-column="notes">Notes</th>
-                            <th class="is-sticky"></th>
+                            <th class="is-sticky" data-column="notes">Credits</th>
+                            <th class="is-sticky">Open</th>
                         </tr>
                     </thead>
                     <tbody id="invoiceTableBody"></tbody>
@@ -3042,23 +3226,11 @@ body.is-syncing .sync-dot {
         </section>
 
         <section class="client-screen detail-card" id="clientScreen" data-active-section="overview" hidden>
-            <div class="detail-hero client-hero">
+            <div class="detail-hero client-hero" hidden>
                 <div>
                     <button class="text-button" id="backToLedgerButton" type="button">Back to ledger</button>
                     <p class="eyebrow">Credit control client</p>
                     <h2 id="clientTitle">No client selected</h2>
-                </div>
-                <div class="detail-actions">
-                    <div class="xero-connect-wrap client-action-menu-wrap" id="clientActionMenuWrap">
-                        <button class="primary-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Menu</button>
-                        <div class="xero-action-menu" id="clientActionMenu">
-                            <button type="button" data-client-action="reminder">Send reminder</button>
-                            <button type="button" data-client-action="payment">Record payment</button>
-                            <button type="button" data-client-action="note">Add note</button>
-                            <button type="button" data-client-action="legal">Escalate account</button>
-                            <button type="button" id="clientRunImportButton">Run import</button>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -4583,12 +4755,127 @@ function filteredInvoices() {
     }).sort(compareInvoices);
 }
 
-function compareInvoices(a, b) {
+function invoicePriorityValue(invoice) {
     const categoryPriority = { overdue: 0, notice: 1, "payment-plan": 2, court: 3, query: 4, outstanding: 5, "bad-debt": 6, paid: 7 };
+    return categoryPriority[invoiceCategory(invoice)] ?? 9;
+}
+
+function clientCreditSources(client) {
+    const cached = cachedCustomerTransactions(client);
+    if (!cached || cached.error) return [];
+    const unallocatedCredits = Array.isArray(cached.unallocatedCredits) ? cached.unallocatedCredits : [];
+    const overpayments = Array.isArray(cached.overpayments) ? cached.overpayments : [];
+    return [...unallocatedCredits, ...overpayments];
+}
+
+function clientCreditState(client) {
+    if (!client) return { status: "missing", label: "No client selected", sources: [], total: 0 };
+    const key = String(client.id || "");
+    if (customerTransactionLoading.has(key)) return { status: "loading", label: "Checking Xero credits", sources: [], total: 0 };
+    if (!state.organisation?.xeroConnected) return { status: "disabled", label: "Connect Xero to check credits", sources: [], total: 0 };
+    if (!client.xeroContactId) return { status: "missing", label: "No Xero contact link", sources: [], total: 0 };
+    const cached = cachedCustomerTransactions(client);
+    if (cached?.error) return { status: "error", label: "Unable to load credits", sources: [], total: 0 };
+    if (!cached) return { status: "pending", label: "Hover to check credits", sources: [], total: 0 };
+    const sources = clientCreditSources(client);
+    const total = sources.reduce((sum, source) => sum + Number(source.remainingCredit || 0), 0);
+    const currencyCode = sources[0]?.currencyCode || "GBP";
+    return sources.length
+        ? { status: "ready", label: `${formatXeroCurrency(total, currencyCode)} unallocated`, sources, total }
+        : { status: "empty", label: "No unallocated credits", sources: [], total: 0 };
+}
+
+function filteredClientGroups() {
+    const grouped = new Map();
+    filteredInvoices().forEach((invoice) => {
+        const key = invoice.customerId || invoice.customerName || "unknown-client";
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                id: key,
+                client: findCustomerById(invoice.customerId),
+                invoices: [],
+            });
+        }
+        grouped.get(key).invoices.push(invoice);
+    });
+    return [...grouped.values()].map((group) => {
+        const invoices = group.invoices.sort(compareInvoices);
+        const openInvoices = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
+        const overdueInvoices = invoices.filter((invoice) => Number(invoice.overdueDays || 0) > 0 || invoiceCategory(invoice) === "overdue");
+        const priorityInvoice = invoices.reduce((best, invoice) => {
+            if (!best) return invoice;
+            const priorityDiff = invoicePriorityValue(invoice) - invoicePriorityValue(best);
+            return priorityDiff < 0 || (priorityDiff === 0 && dateSortValue(invoice.dueDate) < dateSortValue(best.dueDate)) ? invoice : best;
+        }, null);
+        const oldestOpenInvoice = openInvoices.reduce((oldest, invoice) => {
+            if (!oldest) return invoice;
+            return dateSortValue(invoice.dueDate) < dateSortValue(oldest.dueDate) ? invoice : oldest;
+        }, null);
+        const amountDue = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+        return {
+            ...group,
+            invoices,
+            openInvoices,
+            overdueInvoices,
+            priorityInvoice: priorityInvoice || invoices[0] || null,
+            oldestOpenInvoice: oldestOpenInvoice || invoices[0] || null,
+            amountDue,
+            invoiceCount: invoices.length,
+            openCount: openInvoices.length,
+            overdueCount: overdueInvoices.length,
+            maxOverdueDays: overdueInvoices.reduce((max, invoice) => Math.max(max, Number(invoice.overdueDays || 0)), 0),
+            oldestDueSort: dateSortValue((oldestOpenInvoice || invoices[0] || {}).dueDate),
+        };
+    }).sort(compareClientGroups);
+}
+
+function compareClientGroups(a, b) {
+    if (sortMode === "amount") return b.amountDue - a.amountDue;
+    if (sortMode === "client") return `${a.client?.name || a.priorityInvoice?.customerName || ""}`.localeCompare(`${b.client?.name || b.priorityInvoice?.customerName || ""}`);
+    if (sortMode === "due") return a.oldestDueSort - b.oldestDueSort;
+    return invoicePriorityValue(a.priorityInvoice) - invoicePriorityValue(b.priorityInvoice)
+        || b.amountDue - a.amountDue
+        || a.oldestDueSort - b.oldestDueSort;
+}
+
+function clientGroupHoverHTML(group) {
+    const invoiceRows = group.openInvoices.length
+        ? group.openInvoices.map((invoice) => `
+            <div class="client-hover-row">
+                <span><strong>${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong><small>${escapeHTML(invoiceLineSummary(invoice))} · due ${formatDate(invoice.dueDate)}</small></span>
+                <strong>${formatCurrency(invoice.amountDue || 0)}</strong>
+            </div>
+        `).join("")
+        : `<p class="client-hover-empty">No open invoices in the current filter.</p>`;
+    const creditState = clientCreditState(group.client);
+    const creditRows = creditState.sources.length
+        ? creditState.sources.map((source) => `
+            <div class="client-hover-row">
+                <span><strong>${escapeHTML(creditSourceLabel(source))} ${escapeHTML(source.number || source.id || "")}</strong><small>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</small></span>
+                <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
+            </div>
+        `).join("")
+        : `<p class="client-hover-empty">${escapeHTML(creditState.label)}.</p>`;
+    return `
+        <div class="client-ledger-hover" role="tooltip">
+            <div class="client-hover-section">
+                <span>Open invoices</span>
+                ${invoiceRows}
+            </div>
+            <div class="client-hover-section">
+                <span>Unallocated credits and overpayments</span>
+                ${creditRows}
+            </div>
+            <p class="client-hover-footnote">Open the client screen to allocate credits, write notes, send letters, or change workflow status.</p>
+        </div>
+    `;
+}
+
+function compareInvoices(a, b) {
     if (sortMode === "amount") return Number(b.amountDue || 0) - Number(a.amountDue || 0);
     if (sortMode === "client") return `${a.customerName || ""}`.localeCompare(`${b.customerName || ""}`);
     if (sortMode === "due") return dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
-    return (categoryPriority[invoiceCategory(a)] ?? 9) - (categoryPriority[invoiceCategory(b)] ?? 9)
+    return invoicePriorityValue(a) - invoicePriorityValue(b)
         || dateSortValue(a.dueDate) - dateSortValue(b.dueDate);
 }
 
@@ -4760,7 +5047,9 @@ function renderBulkActionToolbar() {
 
 function updateSelectAllState() {
     const selectAll = document.getElementById("selectAllInvoices");
-    const visibleIds = filteredInvoices().slice((currentPage - 1) * pageSize, currentPage * pageSize).map((invoice) => invoice.id);
+    const visibleIds = filteredClientGroups()
+        .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+        .flatMap((group) => group.invoices.map((invoice) => invoice.id));
     const selectedVisible = visibleIds.filter((invoiceId) => selectedInvoiceIds.has(invoiceId));
     selectAll.checked = Boolean(visibleIds.length) && selectedVisible.length === visibleIds.length;
     selectAll.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
@@ -4855,13 +5144,19 @@ function closeRowActionMenus(except = null) {
     });
 }
 
+function openClientGroup(group, section = "overview") {
+    const invoice = group?.priorityInvoice || group?.invoices?.[0] || null;
+    if (!invoice) return;
+    openClientWorkspace(invoice, "", section);
+}
+
 function renderInvoiceTable() {
     const tbody = document.getElementById("invoiceTableBody");
-    const invoices = filteredInvoices();
-    const pages = Math.max(1, Math.ceil(invoices.length / pageSize));
+    const groups = filteredClientGroups();
+    const pages = Math.max(1, Math.ceil(groups.length / pageSize));
     currentPage = Math.min(currentPage, pages);
     const start = (currentPage - 1) * pageSize;
-    const paged = invoices.slice(start, start + pageSize);
+    const paged = groups.slice(start, start + pageSize);
     tbody.innerHTML = "";
     if (isSyncing && !paged.length) {
         for (let index = 0; index < 5; index += 1) {
@@ -4874,79 +5169,80 @@ function renderInvoiceTable() {
         row.innerHTML = `<td colspan="7"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
         tbody.appendChild(row);
     } else {
-        paged.forEach((invoice) => {
+        paged.forEach((group) => {
+            const invoice = group.priorityInvoice;
             const category = invoiceCategory(invoice);
-            const progress = paymentPercent(invoice);
-            const lineSummary = invoiceLineSummary(invoice);
-            const amountBreakdown = invoiceAmountBreakdown(invoice);
-            const amountDue = amountBreakdown.amountDue;
-            const amountTitle = amountDueTooltipLabel(invoice);
-            const progressHTML = amountBreakdown.paymentsApplied > 0 && amountDue > 0 && progress > 0 && progress < 100
-                ? `<div class="payment-cell amount-progress"><div class="payment-progress" aria-label="${progress}% paid"><span style="width: ${progress}%"></span></div><div class="payment-status">${progress}% paid</div></div>`
-                : "";
+            const oldestInvoice = group.oldestOpenInvoice || invoice;
+            const selectedCount = group.invoices.filter((item) => selectedInvoiceIds.has(item.id)).length;
+            const isGroupSelected = Boolean(group.invoices.length) && selectedCount === group.invoices.length;
+            const isGroupPartial = selectedCount > 0 && selectedCount < group.invoices.length;
+            const creditState = clientCreditState(group.client);
+            const creditClass = creditState.status === "ready" ? "has-credit" : creditState.status === "loading" ? "is-loading" : "";
+            const clientName = group.client?.name || invoice?.customerName || "Unnamed client";
+            const clientContact = group.client?.primaryPerson || group.client?.email || group.client?.phone || invoice?.customerContact || group.id;
+            const invoiceLabel = group.openCount
+                ? `${group.openCount.toLocaleString("en-GB")} open of ${group.invoiceCount.toLocaleString("en-GB")}`
+                : `${group.invoiceCount.toLocaleString("en-GB")} invoice${group.invoiceCount === 1 ? "" : "s"}`;
             const row = document.createElement("tr");
-            row.className = `${invoice.id === selectedInvoiceId ? "is-selected" : ""} row-${category}`.trim();
+            row.className = `client-group-row ${group.id === selectedClientId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
-                <td class="select-cell"><input class="invoice-select" type="checkbox" aria-label="Select invoice ${invoice.invoiceNumber || invoice.id}" ${selectedInvoiceIds.has(invoice.id) ? "checked" : ""}></td>
-                <td><div class="client-name">${invoice.customerName || "Unnamed client"}</div><div class="client-subline">${invoice.customerContact || invoice.customerId || ""}</div><div class="client-inline-status">${statusPill(invoice)}</div></td>
-                <td><div class="client-name">${escapeHTML(invoice.invoiceNumber || "--")}</div><div class="invoice-subline">${formatDate(invoice.invoiceDate)}</div></td>
-                <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(lineSummary)}</div><div class="invoice-subline">Due ${formatDate(invoice.dueDate)}</div></div></div></td>
-                <td class="amount-cell" tabindex="0" aria-label="${escapeHTML(amountTitle)}"><div class="amount-full-tooltip" role="tooltip">${amountDueTooltipHTML(invoice)}</div><strong class="amount-value">${formatCurrency(amountDue)}</strong>${progressHTML}</td>
-                <td data-column="notes"><div class="note-snippet">${invoice.notesSummary || "No notes yet."}</div></td>
-                <td class="actions-cell"><div class="row-actions" aria-label="Invoice quick actions">
-                    <button class="row-action-trigger" type="button" title="Quick actions">${iconSVG("status")}</button>
-                    <div class="row-action-menu">
-                        <button class="row-action-button" type="button" data-row-action="call" title="Call client">${iconSVG("call")}</button>
-                        <button class="row-action-button" type="button" data-row-action="email" title="Email client">${iconSVG("email")}</button>
-                        <button class="row-action-button" type="button" data-row-action="note" title="Add note">${iconSVG("note")}</button>
-                        <button class="row-action-button" type="button" data-row-action="status" title="Update status">${iconSVG("status")}</button>
-                        <button class="row-action-button" type="button" data-row-action="xero" title="Open invoice in Xero">${iconSVG("xero")}</button>
+                <td class="select-cell"><input class="client-select" type="checkbox" aria-label="Select invoices for ${escapeHTML(clientName)}" ${isGroupSelected ? "checked" : ""}></td>
+                <td>
+                    <div class="client-group-anchor">
+                        <div class="client-name">${escapeHTML(clientName)}</div>
+                        <div class="client-subline">${escapeHTML(clientContact || "")}</div>
+                        <div class="client-inline-status">${statusPill(invoice)}</div>
+                        ${clientGroupHoverHTML(group)}
                     </div>
-                </div></td>
+                </td>
+                <td>
+                    <div class="client-name">${invoiceLabel}</div>
+                    <div class="invoice-subline">${group.overdueCount.toLocaleString("en-GB")} overdue · max ${group.maxOverdueDays.toLocaleString("en-GB")} days</div>
+                    <div class="client-group-counts"><span>${group.invoiceCount.toLocaleString("en-GB")} synced</span><span>${group.openCount.toLocaleString("en-GB")} open</span></div>
+                </td>
+                <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(invoiceLineSummary(oldestInvoice))}</div><div class="invoice-subline">${escapeHTML(oldestInvoice?.invoiceNumber || "Invoice")} · due ${formatDate(oldestInvoice?.dueDate)}</div></div></div></td>
+                <td class="amount-cell" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong><div class="payment-status">${group.openCount.toLocaleString("en-GB")} open invoice${group.openCount === 1 ? "" : "s"}</div></td>
+                <td data-column="notes"><span class="client-credit-flag ${creditClass}">${escapeHTML(creditState.label)}</span><div class="note-snippet">${escapeHTML(invoice?.notesSummary || "Open client screen for account notes.")}</div></td>
+                <td class="actions-cell"><button class="table-open-button" type="button" data-open-client>Open</button></td>
             `;
-            row.querySelector(".invoice-select").addEventListener("click", (event) => {
+            const checkbox = row.querySelector(".client-select");
+            checkbox.indeterminate = isGroupPartial;
+            checkbox.addEventListener("click", (event) => {
                 event.stopPropagation();
-                if (event.target.checked) {
-                    selectedInvoiceIds.add(invoice.id);
-                } else {
-                    selectedInvoiceIds.delete(invoice.id);
-                }
+                group.invoices.forEach((item) => {
+                    if (event.target.checked) selectedInvoiceIds.add(item.id);
+                    else selectedInvoiceIds.delete(item.id);
+                });
                 renderBulkActionToolbar();
                 updateSelectAllState();
             });
-            row.querySelectorAll("[data-row-action]").forEach((button) => {
-                button.addEventListener("click", (event) => {
-                    event.stopPropagation();
-                    closeRowActionMenus();
-                    handleRowAction(button.dataset.rowAction, invoice);
-                });
-            });
-            row.querySelector(".row-action-trigger")?.addEventListener("click", (event) => {
+            row.querySelector("[data-open-client]")?.addEventListener("click", (event) => {
                 event.stopPropagation();
-                const menu = event.currentTarget.closest(".row-actions");
-                const willOpen = !menu?.classList.contains("is-open");
-                closeRowActionMenus(menu);
-                menu?.classList.toggle("is-open", willOpen);
+                openClientGroup(group);
             });
-            row.addEventListener("click", () => {
-                selectedInvoiceId = invoice.id;
-                selectedClientId = invoice.customerId;
-                activeView = "client";
-                activeClientSection = "overview";
-                renderAll();
-                window.scrollTo({ top: 0, behavior: "smooth" });
+            row.addEventListener("mouseenter", () => {
+                if (group.client && !cachedCustomerTransactions(group.client) && !customerTransactionLoading.has(String(group.client.id))) {
+                    const flag = row.querySelector(".client-credit-flag");
+                    if (flag) {
+                        flag.textContent = "Checking Xero credits";
+                        flag.classList.add("is-loading");
+                    }
+                    ensureCustomerTransactions(group.client, false, { silent: true });
+                }
             });
+            row.addEventListener("click", () => openClientGroup(group));
             tbody.appendChild(row);
         });
     }
-    renderPagination(invoices.length, pages, start, paged.length);
+    renderPagination(groups.length, pages, start, paged.length, "client");
     applyColumnVisibility();
     updateSelectAllState();
     renderBulkActionToolbar();
 }
 
-function renderPagination(totalResults, totalPages, start, count) {
-    document.getElementById("resultsText").textContent = totalResults ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} results` : "Showing 0 results";
+function renderPagination(totalResults, totalPages, start, count, label = "result") {
+    const plural = totalResults === 1 ? label : `${label}s`;
+    document.getElementById("resultsText").textContent = totalResults ? `Showing ${start + 1} to ${start + count} of ${totalResults.toLocaleString("en-GB")} ${plural}` : `Showing 0 ${plural}`;
     document.getElementById("previousPageButton").disabled = currentPage <= 1;
     document.getElementById("nextPageButton").disabled = currentPage >= totalPages;
     const target = document.getElementById("pagePills");
@@ -4979,9 +5275,46 @@ function clientInitials(client) {
     return initials || "--";
 }
 
+function clientAddressLine(client) {
+    const addresses = Array.isArray(client?.addresses) ? client.addresses.filter((address) => address?.address) : [];
+    return addresses[0]?.address || "";
+}
+
+function clientTopbarMeta(client) {
+    if (!client) return "Client account";
+    const account = client.accountNumber ? `# ${client.accountNumber}` : "";
+    const parts = [
+        client.email,
+        client.phone,
+        account,
+        clientAddressLine(client),
+    ].filter(Boolean);
+    return parts.join(" · ") || "Client account";
+}
+
 function renderTopbarClientContext(client = null) {
     const context = document.getElementById("topbarClientContext");
-    if (context) context.hidden = true;
+    const topbarClient = activeView === "client"
+        ? client || findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId)
+        : null;
+    if (!context) return;
+    context.hidden = !topbarClient;
+    document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
+    document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
+    if (!topbarClient) return;
+    const name = topbarClient.name || "Client";
+    const meta = clientTopbarMeta(topbarClient);
+    const avatar = document.getElementById("topbarClientAvatar");
+    const contactName = document.getElementById("topbarContactName");
+    const contactMeta = document.getElementById("topbarContactMeta");
+    const button = document.getElementById("topbarClientButton");
+    if (avatar) avatar.textContent = clientInitials(topbarClient);
+    if (contactName) contactName.textContent = topbarClient.primaryPerson || name;
+    if (contactMeta) contactMeta.textContent = meta;
+    if (button) {
+        button.title = `${name}${meta ? ` · ${meta}` : ""}`;
+        button.setAttribute("aria-label", `Open ${name} client workspace`);
+    }
 }
 
 function renderClientSectionVisibility() {
@@ -5482,7 +5815,7 @@ function fallbackOutstandingTransactions(invoices) {
         }));
 }
 
-async function ensureCustomerTransactions(client, force = false) {
+async function ensureCustomerTransactions(client, force = false, options = {}) {
     if (!client?.id || !client.xeroContactId || !state.organisation?.xeroConnected) return;
     const key = String(client.id);
     if (!force && customerTransactionCache.has(key)) return;
@@ -5499,11 +5832,12 @@ async function ensureCustomerTransactions(client, force = false) {
             markAuthenticationRequired(error.message);
         } else {
             customerTransactionCache.set(key, { error: error.message || "Unable to load Xero transactions." });
-            showToast(error.message || "Unable to load Xero transactions", "error");
+            if (!options.silent) showToast(error.message || "Unable to load Xero transactions", "error");
         }
     } finally {
         customerTransactionLoading.delete(key);
         if (activeView === "client" && selectedClientId === client.id) renderClientScreen();
+        else if (activeView === "ledger") renderInvoiceTable();
     }
 }
 
@@ -6745,7 +7079,9 @@ function wireFilters() {
         exportInvoices(filteredInvoices(), "credit-control-filtered.csv");
     });
     document.getElementById("selectAllInvoices").addEventListener("change", (event) => {
-        const visibleInvoices = filteredInvoices().slice((currentPage - 1) * pageSize, currentPage * pageSize);
+        const visibleInvoices = filteredClientGroups()
+            .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+            .flatMap((group) => group.invoices);
         visibleInvoices.forEach((invoice) => {
             if (event.target.checked) {
                 selectedInvoiceIds.add(invoice.id);
@@ -7819,10 +8155,12 @@ async function applyClientStatus(client, statusValue, note = "", options = {}) {
 }
 
 function wireForms() {
-    document.getElementById("backToLedgerButton").addEventListener("click", () => {
+    const returnToLedger = () => {
         activeView = "ledger";
         renderAll();
-    });
+    };
+    document.getElementById("backToLedgerButton")?.addEventListener("click", returnToLedger);
+    document.getElementById("topbarBackToLedgerButton")?.addEventListener("click", returnToLedger);
     document.getElementById("backFromSettingsButton").addEventListener("click", () => {
         activeView = "ledger";
         renderAll();
