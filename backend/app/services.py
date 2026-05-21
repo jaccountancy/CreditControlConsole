@@ -726,7 +726,7 @@ def _mark_stale_sync_runs(user_id: str) -> None:
                 WHERE provider = %s
                   AND initiated_by_user_id = %s
                   AND status IN ('queued', 'running')
-                  AND created_at < %s
+                  AND COALESCE(heartbeat_at, started_at, created_at) < %s
                 """,
                 (
                     "failed",
@@ -745,6 +745,7 @@ def _mark_stale_sync_runs(user_id: str) -> None:
 def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
     if not fields:
         return None
+    fields.setdefault("heartbeat_at", utcnow())
 
     assignments = ", ".join(f"{field} = %s" for field in fields)
     values = [*fields.values(), sync_run_id]
@@ -804,9 +805,10 @@ def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict
                     failed_count,
                     contacts_total,
                     invoices_total,
+                    heartbeat_at,
                     created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
@@ -822,6 +824,7 @@ def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict
                     0,
                     0,
                     0,
+                    utcnow(),
                     utcnow(),
                 ),
             )
@@ -885,6 +888,7 @@ def serialize_sync_run(sync_run: dict) -> dict:
         "progress": progress,
         "createdAt": _iso(sync_run.get("created_at")) or "",
         "startedAt": _iso(sync_run.get("started_at")) or "",
+        "heartbeatAt": _iso(sync_run.get("heartbeat_at")) or "",
         "completedAt": _iso(sync_run.get("completed_at")) or "",
         "isActive": sync_run.get("status") in ACTIVE_SYNC_STATUSES,
     }

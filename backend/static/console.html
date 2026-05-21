@@ -7900,10 +7900,33 @@ function shouldAutoStartInitialSync() {
         && allInvoices().length === 0;
 }
 
+function isTransientSyncPollError(error) {
+    return error instanceof TypeError || [502, 503, 504].includes(Number(error?.statusCode || 0));
+}
+
 async function waitForSyncRun(syncRunId) {
+    let transientPollFailures = 0;
     while (activeSyncRunId === syncRunId) {
         await delay(2500);
-        const payload = await requestJSON(api.endpoints.syncStatus, {}, { syncId: syncRunId });
+        let payload;
+        try {
+            payload = await requestJSON(api.endpoints.syncStatus, {}, { syncId: syncRunId });
+            transientPollFailures = 0;
+        } catch (error) {
+            if (isTransientSyncPollError(error) && transientPollFailures < 20) {
+                transientPollFailures += 1;
+                latestSyncRun = latestSyncRun
+                    ? {
+                        ...latestSyncRun,
+                        summary: "Waiting for the backend to respond; Xero sync may still be running."
+                    }
+                    : latestSyncRun;
+                updateSyncProgress();
+                renderChrome();
+                continue;
+            }
+            throw error;
+        }
         const syncRun = payload?.syncRun || null;
         if (syncRun) {
             latestSyncRun = syncRun;

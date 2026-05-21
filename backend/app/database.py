@@ -261,6 +261,7 @@ ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS current_step TEXT;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS contacts_total INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS invoices_total INTEGER NOT NULL DEFAULT 0;
 UPDATE sync_runs
@@ -269,6 +270,7 @@ SET customers_synced = COALESCE(customers_synced, 0),
     fetched_count = COALESCE(fetched_count, 0),
     processed_count = COALESCE(processed_count, 0),
     failed_count = COALESCE(failed_count, 0),
+    heartbeat_at = COALESCE(heartbeat_at, started_at, created_at),
     contacts_total = COALESCE(contacts_total, 0),
     invoices_total = COALESCE(invoices_total, 0);
 ALTER TABLE sync_runs ALTER COLUMN customers_synced SET DEFAULT 0;
