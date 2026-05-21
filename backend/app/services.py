@@ -33,6 +33,7 @@ from .xero import (
 
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
+SYNC_STALE_AFTER = timedelta(minutes=30)
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
@@ -407,7 +408,13 @@ def _refresh_customer_totals(cursor, tenant_id: str, updated_at: datetime) -> No
     )
 
 
-async def _sync_xero_payments(connection_row: dict, now: datetime, modified_since: datetime | None = None, on_page=None) -> int:
+async def _sync_xero_payments(
+    connection_row: dict,
+    now: datetime,
+    modified_since: datetime | None = None,
+    on_page=None,
+    on_store=None,
+) -> int:
     raw_payments = await fetch_paginated_collection(
         connection_row,
         PAYMENTS_URL,
@@ -417,6 +424,10 @@ async def _sync_xero_payments(connection_row: dict, now: datetime, modified_sinc
     )
     if not raw_payments:
         return 0
+
+    total_payments = len(raw_payments)
+    if on_store is not None:
+        on_store(0, total_payments, 0)
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -445,15 +456,23 @@ async def _sync_xero_payments(connection_row: dict, now: datetime, modified_sinc
             }
 
             synced = 0
+            processed = 0
             for raw_payment in raw_payments:
+                processed += 1
                 payment = normalise_payment(raw_payment)
                 if not payment.get("xero_payment_id"):
+                    if on_store is not None and (processed % 100 == 0 or processed == total_payments):
+                        on_store(processed, total_payments, synced)
                     continue
                 if payment.get("invoice_type") and payment.get("invoice_type") != "ACCREC":
+                    if on_store is not None and (processed % 100 == 0 or processed == total_payments):
+                        on_store(processed, total_payments, synced)
                     continue
                 invoice_match = invoice_lookup.get(payment.get("xero_invoice_id"))
                 customer_id = customer_lookup.get(payment.get("xero_contact_id")) or (invoice_match or {}).get("customer_id")
                 if customer_id is None:
+                    if on_store is not None and (processed % 100 == 0 or processed == total_payments):
+                        on_store(processed, total_payments, synced)
                     continue
                 cursor.execute(
                     """
@@ -493,6 +512,8 @@ async def _sync_xero_payments(connection_row: dict, now: datetime, modified_sinc
                     },
                 )
                 synced += 1
+                if on_store is not None and (processed % 100 == 0 or processed == total_payments):
+                    on_store(processed, total_payments, synced)
         connection.commit()
     return synced
 
@@ -680,6 +701,38 @@ def record_sync_start_failure(user: dict, exc: Exception) -> None:
         logger.exception("Unable to record sync start failure audit event")
 
 
+def _mark_stale_sync_runs(user_id: str) -> None:
+    stale_before = utcnow() - SYNC_STALE_AFTER
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE sync_runs
+                SET status = %s,
+                    current_step = %s,
+                    summary = %s,
+                    error_message = %s,
+                    failed_count = GREATEST(failed_count, 1),
+                    completed_at = %s
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND status IN ('queued', 'running')
+                  AND created_at < %s
+                """,
+                (
+                    "failed",
+                    "Sync timed out",
+                    "A previous Xero sync stopped responding.",
+                    "The previous Xero sync stopped responding. Start a fresh sync.",
+                    utcnow(),
+                    "xero",
+                    user_id,
+                    stale_before,
+                ),
+            )
+        connection.commit()
+
+
 def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
     if not fields:
         return None
@@ -705,33 +758,10 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict, bool]:
     sync_options = normalise_sync_options(sync_options)
     get_xero_connection_for_user(user["id"])
+    _mark_stale_sync_runs(user["id"])
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE sync_runs
-                SET status = %s,
-                    current_step = %s,
-                    summary = %s,
-                    error_message = %s,
-                    failed_count = GREATEST(failed_count, 1),
-                    completed_at = %s
-                WHERE provider = %s
-                  AND initiated_by_user_id = %s
-                  AND status IN ('queued', 'running')
-                  AND created_at < NOW() - INTERVAL '30 minutes'
-                """,
-                (
-                    "failed",
-                    "Sync timed out",
-                    "A previous Xero sync stopped responding.",
-                    "The previous Xero sync stopped responding. Start a fresh sync.",
-                    utcnow(),
-                    "xero",
-                    user["id"],
-                ),
-            )
             cursor.execute(
                 """
                 SELECT *
@@ -793,6 +823,7 @@ def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict
 
 
 def get_sync_run(user: dict, sync_run_id: str) -> dict:
+    _mark_stale_sync_runs(user["id"])
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1064,6 +1095,16 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 summary=f"Fetched {total_records} Xero payments.",
             )
 
+        def payment_store_progress(processed_records: int, total_records: int, stored_records: int) -> None:
+            _update_sync_run(
+                sync_run_id,
+                current_step="Importing payments from Xero",
+                summary=(
+                    f"Processed {processed_records} of {total_records} Xero payments; "
+                    f"stored {stored_records} matching customer payments."
+                ),
+            )
+
         def credit_note_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
@@ -1085,12 +1126,19 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 summary="Pulling payments made against Xero invoices.",
             )
             try:
-                return await _sync_xero_payments(
+                payments_synced = await _sync_xero_payments(
                     connection_row,
                     utcnow(),
                     modified_since=modified_since if is_incremental_sync else None,
                     on_page=payment_progress,
+                    on_store=payment_store_progress,
                 )
+                _update_sync_run(
+                    sync_run_id,
+                    current_step="Payments imported from Xero",
+                    summary=f"Stored {payments_synced} Xero payments. Checking customer credits.",
+                )
+                return payments_synced
             except Exception as exc:
                 logger.exception("Unable to sync Xero payments")
                 record_audit_event(
