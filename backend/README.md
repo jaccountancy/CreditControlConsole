@@ -28,7 +28,7 @@ Required variables:
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
 - `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
-- `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=200`
+- `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
 - `LATE_PAYMENT_CHARGE_TAX_TYPE=OUTPUT2`
 - `BAD_DEBT_WRITE_OFF_ACCOUNT_CODE=402`
 

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     device_code_ttl_minutes: int = 10
     session_ttl_days: int = 30
     statutory_interest_rate: float = 0.08
-    late_payment_charge_account_code: str = "200"
+    late_payment_charge_account_code: str = "1222"
     late_payment_charge_tax_type: str = "OUTPUT2"
     bad_debt_write_off_account_code: str = "402"
     openai_api_key: str | None = None
