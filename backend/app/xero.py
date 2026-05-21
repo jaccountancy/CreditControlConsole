@@ -79,7 +79,7 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
-                "message": "Xero rate limit reached. Keep the imported data and run another staged sync later.",
+                "message": f"Xero API quota reached while trying to complete {action}. Wait for Xero's limit to reset, then try again.",
                 "status_code": response.status_code,
                 "retry_after": response.headers.get("Retry-After", ""),
                 "response": detail,

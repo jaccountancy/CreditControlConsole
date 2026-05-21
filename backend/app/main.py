@@ -502,7 +502,11 @@ def api_panel_factory_reset(user: dict = Depends(require_panel_user)):
 @app.post("/api/late-payment-charges")
 async def api_late_payment_charges(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
-    charges = await create_late_payment_charges(user, payload.get("invoiceIds") or [])
+    charges = await create_late_payment_charges(
+        user,
+        payload.get("invoiceIds") or [],
+        payload.get("chargeSelections") or payload.get("charges") or [],
+    )
     return {"status": "ok", **charges, "panel": panel_payload(user)}
 
 

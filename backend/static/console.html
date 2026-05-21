@@ -1745,9 +1745,42 @@ body.is-dense .note-snippet {
     display: grid;
     gap: 10px;
 }
+.late-charge-bulk-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.late-charge-bulk-control,
+.late-charge-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+.late-charge-bulk-control {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.late-charge-bulk-control select,
+.late-charge-select {
+    min-height: 42px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--ink);
+    padding: 0 36px 0 14px;
+    font-weight: 850;
+}
+.late-charge-select {
+    min-width: 142px;
+}
 .late-charge-row {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) auto auto;
+    grid-template-columns: 28px minmax(0, 1fr) auto auto auto;
     gap: 14px;
     align-items: center;
     padding: 14px 16px;
@@ -1773,6 +1806,7 @@ body.is-dense .note-snippet {
 }
 .late-charge-amount {
     font-weight: 900;
+    white-space: nowrap;
 }
 .late-charge-summary {
     margin: 0 0 18px;
@@ -2661,6 +2695,18 @@ body.is-syncing .sync-dot {
     .client-action-bar {
         position: static;
     }
+    .late-charge-row {
+        grid-template-columns: 28px minmax(0, 1fr);
+        align-items: start;
+    }
+    .late-charge-controls,
+    .late-charge-amount,
+    .late-charge-status {
+        grid-column: 2;
+    }
+    .late-charge-controls {
+        flex-wrap: wrap;
+    }
     .topbar-client-context button {
         max-width: calc(100vw - 64px);
     }
@@ -2951,6 +2997,13 @@ body.is-syncing .sync-dot {
                 </div>
             </div>
             <section class="detail-panel">
+                <div class="late-charge-bulk-toolbar">
+                    <label class="late-charge-bulk-control">
+                        Bulk charge
+                        <select id="bulkLateChargeAmountSelect"></select>
+                    </label>
+                    <button class="ghost-button" id="applyBulkLateChargeButton" type="button">Apply to selected</button>
+                </div>
                 <p class="late-charge-summary" id="lateChargesSummary">No eligible invoices loaded.</p>
                 <div class="late-charge-list" id="lateChargesList"></div>
             </section>
@@ -3480,6 +3533,13 @@ const syncScopeLabels = {
     outstanding_plus_2500_paid: "Outstanding + 2,500 paid invoices",
     full_history: "Full invoice history"
 };
+const LATE_PAYMENT_CHARGE_VAT_RATE = 0.2;
+const LATE_PAYMENT_CHARGE_OPTIONS = [
+    { baseAmount: 20, label: "£20 + VAT" },
+    { baseAmount: 30, label: "£30 + VAT" },
+    { baseAmount: 50, label: "£50 + VAT" }
+];
+const DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT = LATE_PAYMENT_CHARGE_OPTIONS[0].baseAmount;
 const defaultLetterTemplates = [
     {
         id: "payment-reminder",
@@ -3562,11 +3622,14 @@ let insightsLoading = false;
 let activeInsightsSection = "overview";
 let hasAutoStartedInitialSync = false;
 let hasLoadedWorkingSyncPanel = false;
+let statePersistenceDisabled = false;
+let statePersistenceWarningShown = false;
 let denseMode = false;
 let quickNoteInvoiceId = null;
 let lastPaymentPlanAutoNote = "";
 let selectedClientInvoiceIds = new Set();
 let selectedLateChargeInvoiceIds = new Set();
+let latePaymentChargeBaseAmounts = new Map();
 const customerTransactionCache = new Map();
 const customerTransactionLoading = new Set();
 let visibleColumns = {
@@ -3729,7 +3792,25 @@ function persistLetterTemplates() {
 }
 
 function persistState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (statePersistenceDisabled) return;
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+        console.warn("Unable to persist console state in browser storage", error);
+        statePersistenceDisabled = true;
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+        } catch {
+            // Ignore storage cleanup failures; the in-memory state remains usable.
+        }
+        if (!statePersistenceWarningShown) {
+            statePersistenceWarningShown = true;
+            showToast(
+                "Browser storage is unavailable or full. Server-saved changes will still work in this session.",
+                "info"
+            );
+        }
+    }
 }
 
 function replaceState(next) {
@@ -4547,7 +4628,7 @@ function renderDashboardHero() {
     document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"}`;
     document.getElementById("heroLateChargeCount").textContent = totals.lateChargeCount.toLocaleString("en-GB");
     document.getElementById("heroLateChargeSummary").textContent = totals.lateChargeCount
-        ? `${formatCurrency(totals.lateChargeAmount)} to review`
+        ? `${formatCurrency(totals.lateChargeAmount)} incl VAT to review`
         : totals.lateChargeReviewCount
         ? "No eligible charges right now"
         : "No charges need review";
@@ -4599,7 +4680,7 @@ function renderSummaryCounts() {
         badDebt: invoices.filter((invoice) => invoiceCategory(invoice) === "bad-debt").length,
     };
     const totals = {
-        all: invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        all: invoices.reduce((sum, invoice) => sum + invoiceAmountBreakdown(invoice).totalAmount, 0),
         paid: invoices.filter((invoice) => invoiceCategory(invoice) === "paid").reduce((sum, invoice) => sum + Number(invoice.total || 0), 0),
         query: invoices.filter((invoice) => invoiceCategory(invoice) === "query").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
         overdue: invoices.filter((invoice) => invoiceCategory(invoice) === "overdue").reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
@@ -5845,12 +5926,43 @@ function latePaymentChargeRaised(invoice) {
     return Boolean(invoice?.latePaymentChargeRaisedAt || invoice?.latePaymentChargeInvoiceId || invoice?.latePaymentChargeInvoiceNumber);
 }
 
+function roundMoney(value) {
+    return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function normaliseLatePaymentChargeBaseAmount(value) {
+    const amount = Number(value);
+    const match = LATE_PAYMENT_CHARGE_OPTIONS.find((option) => option.baseAmount === amount);
+    return match ? match.baseAmount : DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT;
+}
+
+function latePaymentChargeGrossAmount(baseAmount) {
+    return roundMoney(normaliseLatePaymentChargeBaseAmount(baseAmount) * (1 + LATE_PAYMENT_CHARGE_VAT_RATE));
+}
+
+function latePaymentChargeOptionLabel(baseAmount) {
+    const normalised = normaliseLatePaymentChargeBaseAmount(baseAmount);
+    const option = LATE_PAYMENT_CHARGE_OPTIONS.find((item) => item.baseAmount === normalised);
+    return option ? option.label : `${formatCurrency(normalised)} + VAT`;
+}
+
+function latePaymentChargeOptionHTML(selectedBaseAmount) {
+    const selected = normaliseLatePaymentChargeBaseAmount(selectedBaseAmount);
+    return LATE_PAYMENT_CHARGE_OPTIONS.map((option) => {
+        const gross = latePaymentChargeGrossAmount(option.baseAmount);
+        const selectedAttr = option.baseAmount === selected ? " selected" : "";
+        return `<option value="${option.baseAmount}"${selectedAttr}>${escapeHTML(option.label)} (${formatCurrency(gross)})</option>`;
+    }).join("");
+}
+
+function selectedLatePaymentChargeBaseAmount(invoice) {
+    return normaliseLatePaymentChargeBaseAmount(latePaymentChargeBaseAmounts.get(invoice?.id));
+}
+
 function latePaymentChargeAmount(invoice) {
-    const amount = Number(invoice?.latePayment?.interest || 0);
-    if (amount > 0) return amount;
-    const amountDue = Number(invoice?.amountDue || 0);
-    const overdueDays = Math.max(0, Number(invoice?.overdueDays || 0));
-    return Math.round(amountDue * 0.08 * overdueDays / 365 * 100) / 100;
+    const raisedAmount = Number(invoice?.latePaymentChargeAmount || 0);
+    if (latePaymentChargeRaised(invoice) && raisedAmount > 0) return raisedAmount;
+    return latePaymentChargeGrossAmount(selectedLatePaymentChargeBaseAmount(invoice));
 }
 
 function latePaymentChargeBlockReason(invoice) {
@@ -5906,10 +6018,11 @@ function renderLateChargesScreen() {
     const invoices = stats.candidates;
     const validIds = new Set(stats.eligible.map((invoice) => invoice.id));
     selectedLateChargeInvoiceIds = new Set([...selectedLateChargeInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
+    latePaymentChargeBaseAmounts = new Map([...latePaymentChargeBaseAmounts].filter(([invoiceId]) => validIds.has(invoiceId)));
     const eligibleCount = stats.eligibleCount;
     const selectedCount = selectedLateChargeInvoiceIds.size;
     summary.textContent = invoices.length
-        ? `${invoices.length.toLocaleString("en-GB")} invoice${invoices.length === 1 ? "" : "s"} are more than 14 days overdue. ${eligibleCount.toLocaleString("en-GB")} can still have a charge raised, totalling ${formatCurrency(stats.eligibleAmount)}.`
+        ? `${invoices.length.toLocaleString("en-GB")} invoice${invoices.length === 1 ? "" : "s"} are more than 14 days overdue. ${eligibleCount.toLocaleString("en-GB")} can still have a charge raised, totalling ${formatCurrency(stats.eligibleAmount)} including VAT.`
         : "No invoices are currently more than 14 days overdue.";
     raiseButton.disabled = selectedCount === 0 || !isXeroConnected();
     raiseButton.textContent = selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges";
@@ -5917,6 +6030,15 @@ function renderLateChargesScreen() {
     if (selectAllButton) {
         selectAllButton.disabled = eligibleCount === 0;
         selectAllButton.textContent = eligibleCount ? `Select all ${eligibleCount.toLocaleString("en-GB")} eligible` : "No eligible charges";
+    }
+    const bulkSelect = document.getElementById("bulkLateChargeAmountSelect");
+    if (bulkSelect) {
+        bulkSelect.innerHTML = latePaymentChargeOptionHTML(bulkSelect.value || DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT);
+    }
+    const applyBulkButton = document.getElementById("applyBulkLateChargeButton");
+    if (applyBulkButton) {
+        applyBulkButton.disabled = eligibleCount === 0;
+        applyBulkButton.textContent = selectedCount ? "Apply to selected" : "Apply to all eligible";
     }
 
     target.innerHTML = "";
@@ -5932,8 +6054,9 @@ function renderLateChargesScreen() {
     invoices.forEach((invoice) => {
         const blockReason = latePaymentChargeBlockReason(invoice);
         const eligible = !blockReason;
+        const selectedBaseAmount = selectedLatePaymentChargeBaseAmount(invoice);
         const chargeAmount = latePaymentChargeAmount(invoice);
-        const row = document.createElement("label");
+        const row = document.createElement("div");
         row.className = `late-charge-row${latePaymentChargeRaised(invoice) ? " is-raised" : ""}${eligible ? "" : " is-ineligible"}`;
         row.innerHTML = `
             <input type="checkbox" value="${invoice.id}" ${selectedLateChargeInvoiceIds.has(invoice.id) ? "checked" : ""} ${eligible ? "" : "disabled"}>
@@ -5941,12 +6064,21 @@ function renderLateChargesScreen() {
                 <strong>${escapeHTML(invoice.customerName || "Unnamed client")} · ${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong>
                 <span>${formatCurrency(invoice.amountDue || 0)} outstanding · due ${formatDate(invoice.dueDate)} · ${Number(invoice.overdueDays || 0).toLocaleString("en-GB")} days overdue</span>
             </span>
-            <span class="late-charge-amount">${formatCurrency(chargeAmount)}</span>
+            <span class="late-charge-controls">
+                <select class="late-charge-select" ${eligible ? "" : "disabled"} aria-label="Late payment charge for ${escapeHTML(invoice.invoiceNumber || "invoice")}">
+                    ${latePaymentChargeOptionHTML(selectedBaseAmount)}
+                </select>
+            </span>
+            <span class="late-charge-amount">${formatCurrency(chargeAmount)} inc VAT</span>
             <span class="late-charge-status">${eligible ? "Ready" : escapeHTML(blockReason)}</span>
         `;
         row.querySelector("input").addEventListener("change", (event) => {
             if (event.target.checked) selectedLateChargeInvoiceIds.add(invoice.id);
             else selectedLateChargeInvoiceIds.delete(invoice.id);
+            renderLateChargesScreen();
+        });
+        row.querySelector(".late-charge-select")?.addEventListener("change", (event) => {
+            latePaymentChargeBaseAmounts.set(invoice.id, normaliseLatePaymentChargeBaseAmount(event.target.value));
             renderLateChargesScreen();
         });
         target.appendChild(row);
@@ -5957,6 +6089,22 @@ function selectAllEligibleLatePaymentCharges() {
     const stats = latePaymentChargeReviewStats();
     selectedLateChargeInvoiceIds = new Set(stats.eligible.map((invoice) => invoice.id));
     renderLateChargesScreen();
+}
+
+function applyBulkLatePaymentChargeAmount() {
+    const stats = latePaymentChargeReviewStats();
+    if (!stats.eligibleCount) return showToast("No eligible late payment charges", "info");
+    const select = document.getElementById("bulkLateChargeAmountSelect");
+    const baseAmount = normaliseLatePaymentChargeBaseAmount(select?.value);
+    const targetInvoices = selectedLateChargeInvoiceIds.size
+        ? stats.eligible.filter((invoice) => selectedLateChargeInvoiceIds.has(invoice.id))
+        : stats.eligible;
+    targetInvoices.forEach((invoice) => latePaymentChargeBaseAmounts.set(invoice.id, baseAmount));
+    renderLateChargesScreen();
+    showToast(
+        `${latePaymentChargeOptionLabel(baseAmount)} applied to ${targetInvoices.length.toLocaleString("en-GB")} charge${targetInvoices.length === 1 ? "" : "s"}`,
+        "success"
+    );
 }
 
 function showLatePaymentChargeReviewPrompt() {
@@ -5973,7 +6121,15 @@ async function raiseLatePaymentCharges() {
     const invoiceIds = [...selectedLateChargeInvoiceIds];
     if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
     if (!isXeroConnected()) return showToast("Connect Xero before raising late payment charges", "error");
-    if (!window.confirm(`Raise ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} in Xero?`)) return;
+    const chargeSelections = invoiceIds.map((invoiceId) => {
+        const invoice = findInvoiceById(invoiceId);
+        return {
+            invoiceId,
+            baseAmount: selectedLatePaymentChargeBaseAmount(invoice)
+        };
+    });
+    const chargeTotal = chargeSelections.reduce((sum, item) => sum + latePaymentChargeGrossAmount(item.baseAmount), 0);
+    if (!window.confirm(`Raise ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} in Xero totalling ${formatCurrency(chargeTotal)} including VAT?`)) return;
 
     const button = document.getElementById("raiseLateChargesButton");
     if (button) {
@@ -5983,10 +6139,11 @@ async function raiseLatePaymentCharges() {
     try {
         const payload = await requestJSON(api.endpoints.latePaymentCharges, {
             method: "POST",
-            body: JSON.stringify({ invoiceIds })
+            body: JSON.stringify({ invoiceIds, chargeSelections })
         });
         if (payload?.panel) replaceState(normaliseState(payload.panel));
         else await hydrateFromAPI();
+        invoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
         selectedLateChargeInvoiceIds.clear();
         renderAll();
         const createdCount = Number(payload?.created?.length || 0);
@@ -6013,7 +6170,11 @@ async function raiseLatePaymentCharges() {
         }
     } catch (error) {
         console.error("Unable to raise late payment charges", error);
-        showToast(error.message || "Unable to raise late payment charges", "error");
+        const message = String(error.message || "");
+        const quotaMessage = message.toLowerCase().includes("quota has been exceeded")
+            ? "Xero quota has been exceeded. No selected invoice was marked as charged; wait for Xero's quota to reset or raise the charge manually in Xero."
+            : message || "Unable to raise late payment charges";
+        showToast(quotaMessage, "error");
         renderLateChargesScreen();
     }
 }
@@ -7207,6 +7368,8 @@ function clearLocalConsoleState(panel = null) {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SYNC_SETTINGS_KEY);
     localStorage.removeItem(LETTER_TEMPLATES_KEY);
+    statePersistenceDisabled = false;
+    statePersistenceWarningShown = false;
     syncSettings = { invoiceScope: "full_history", invoiceYears: [] };
     letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
     selectedLetterTemplateId = letterTemplates[0]?.id || "";
@@ -7553,6 +7716,8 @@ function wireSyncButtons() {
     if (lateChargeReviewCard) lateChargeReviewCard.addEventListener("click", openLateChargesScreen);
     const selectAllLateChargesButton = document.getElementById("selectAllLateChargesButton");
     if (selectAllLateChargesButton) selectAllLateChargesButton.addEventListener("click", selectAllEligibleLatePaymentCharges);
+    const applyBulkLateChargeButton = document.getElementById("applyBulkLateChargeButton");
+    if (applyBulkLateChargeButton) applyBulkLateChargeButton.addEventListener("click", applyBulkLatePaymentChargeAmount);
     const raiseLateChargesButton = document.getElementById("raiseLateChargesButton");
     if (raiseLateChargesButton) raiseLateChargesButton.addEventListener("click", raiseLatePaymentCharges);
     const refreshInsightsButton = document.getElementById("refreshInsightsButton");
