@@ -399,7 +399,17 @@ async def xero_api_get(
             _raise_xero_http_error(response, "API request")
         if response.status_code == status.HTTP_304_NOT_MODIFIED or not response.content:
             return {}
-        return response.json()
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "Xero API request returned an invalid response. Try the sync again; if it repeats, reconnect Xero.",
+                    "status_code": response.status_code,
+                    "response": response.text[:1000],
+                },
+            ) from exc
 
 
 async def create_history_record(connection_row: dict, resource: str, resource_id: str, details: str) -> dict:

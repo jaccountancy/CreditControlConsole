@@ -14,7 +14,6 @@ from fastapi import HTTPException, status
 from .config import get_settings
 from .database import get_connection, utcnow
 from .xero import (
-    CONTACTS_URL,
     CREDIT_NOTES_URL,
     INVOICES_URL,
     OVERPAYMENTS_URL,
@@ -1021,8 +1020,38 @@ def _developer_log_message(row: dict) -> str:
 def run_sync_job(user: dict, sync_run_id: str, sync_options: dict | None = None) -> None:
     try:
         asyncio.run(run_sync(user, sync_run_id, sync_options))
-    except Exception:
+    except Exception as exc:
         logger.exception("Background Xero sync failed")
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT status FROM sync_runs WHERE id = %s", (sync_run_id,))
+                row = cursor.fetchone()
+            connection.commit()
+        if row and row.get("status") in ACTIVE_SYNC_STATUSES:
+            message = _sync_error_message(exc)
+            _update_sync_run(
+                sync_run_id,
+                status="failed",
+                current_step="Sync failed",
+                summary="Xero sync failed before it could complete.",
+                error_message=message,
+                failed_count=1,
+                completed_at=utcnow(),
+            )
+
+
+def _contacts_from_invoices(invoices: list[dict]) -> list[dict]:
+    contacts_by_id: dict[str, dict] = {}
+    for invoice in invoices:
+        contact = invoice.get("Contact") or {}
+        contact_id = contact.get("ContactID")
+        if not contact_id:
+            continue
+        existing = contacts_by_id.setdefault(contact_id, {"ContactID": contact_id})
+        for key, value in contact.items():
+            if value not in (None, "", [], {}) and not existing.get(key):
+                existing[key] = value
+    return list(contacts_by_id.values())
 
 
 async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = None) -> dict:
@@ -1047,7 +1076,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         else False
     )
     needs_paid_backfill = sync_options["paid_page_limit"] != 0 and not scope_already_imported
-    contact_fetch_label = "changed contacts" if is_incremental_sync else "contacts"
+    contact_fetch_label = "changed customer records" if is_incremental_sync else "customer records"
     invoice_fetch_label = "changed invoices" if is_incremental_sync else "outstanding invoices"
     invoice_fetch_step = f"Fetching {invoice_fetch_label} from Xero"
     invoice_where = _with_invoice_year_filter(
@@ -1072,15 +1101,6 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     )
 
     try:
-        def contact_progress(_, total_records: int, __) -> None:
-            _update_sync_run(
-                sync_run_id,
-                current_step=f"Fetching {contact_fetch_label} from Xero",
-                summary=f"Fetched {total_records} {contact_fetch_label} from Xero.",
-                customers_synced=total_records,
-                contacts_total=total_records,
-            )
-
         def outstanding_invoice_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
@@ -1174,19 +1194,10 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 on_overpayment_page=overpayment_progress,
             )
 
-        contacts = await fetch_paginated_collection(
-            connection_row,
-            CONTACTS_URL,
-            "Contacts",
-            on_page=contact_progress,
-            modified_since=modified_since,
-        )
         _update_sync_run(
             sync_run_id,
             current_step=invoice_fetch_step,
-            summary=f"Fetched {len(contacts)} {contact_fetch_label}. Fetching {invoice_fetch_label}.",
-            contacts_total=len(contacts),
-            customers_synced=len(contacts),
+            summary=f"Fetching {invoice_fetch_label}. Customer records will be built from invoice contacts.",
         )
         outstanding_invoices = await fetch_paginated_collection(
             connection_row,
@@ -1196,10 +1207,14 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             on_page=outstanding_invoice_progress,
             modified_since=modified_since,
         )
+        contacts = _contacts_from_invoices(outstanding_invoices)
         _update_sync_run(
             sync_run_id,
             current_step=f"Importing {invoice_fetch_label}",
-            summary=f"Importing {len(contacts)} {contact_fetch_label} and {len(outstanding_invoices)} {invoice_fetch_label}.",
+            summary=(
+                f"Fetched {len(outstanding_invoices)} {invoice_fetch_label}. "
+                f"Prepared {len(contacts)} customer records from invoice contacts."
+            ),
             contacts_total=len(contacts),
             invoices_total=len(outstanding_invoices),
             customers_synced=0,
