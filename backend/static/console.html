@@ -3525,6 +3525,7 @@ const emptyData = {
     audit: [],
     selectedInvoice: null
 };
+const persistedUIState = loadPersistedUIState();
 const state = loadState();
 let panelSessionToken = loadPanelSessionToken();
 const syncScopeLabels = {
@@ -3597,15 +3598,15 @@ let letterTemplates = loadLetterTemplates();
 let selectedLetterTemplateId = letterTemplates[0]?.id || "";
 let lastGeneratedLetter = "";
 let lastGeneratedLetterClientId = "";
-let selectedFilter = "all";
-let selectedInvoiceId = state.selectedInvoice?.id || null;
+let selectedFilter = persistedUIState.selectedFilter || "all";
+let selectedInvoiceId = persistedUIState.selectedInvoiceId || state.selectedInvoice?.id || null;
 let selectedInvoiceIds = new Set();
-let selectedClientId = null;
+let selectedClientId = persistedUIState.selectedClientId || null;
 let activeView = "ledger";
 let activeClientSection = "overview";
 let searchTerm = "";
-let clientFilter = "all";
-let sortMode = "priority";
+let clientFilter = persistedUIState.clientFilter || "all";
+let sortMode = persistedUIState.sortMode || "priority";
 let pageSize = 25;
 let currentPage = 1;
 let isSyncing = false;
@@ -3623,8 +3624,7 @@ let activeInsightsSection = "overview";
 let hasAutoStartedInitialSync = false;
 let hasLoadedWorkingSyncPanel = false;
 let statePersistenceDisabled = false;
-let statePersistenceWarningShown = false;
-let denseMode = false;
+let denseMode = Boolean(persistedUIState.denseMode);
 let quickNoteInvoiceId = null;
 let lastPaymentPlanAutoNote = "";
 let selectedClientInvoiceIds = new Set();
@@ -3633,8 +3633,8 @@ let latePaymentChargeBaseAmounts = new Map();
 const customerTransactionCache = new Map();
 const customerTransactionLoading = new Set();
 let visibleColumns = {
-    description: true,
-    notes: true
+    description: persistedUIState.visibleColumns?.description !== false,
+    notes: persistedUIState.visibleColumns?.notes !== false
 };
 
 const sortLabels = { priority: "Priority", due: "Due date", amount: "Amount due", client: "Client" };
@@ -3707,15 +3707,28 @@ function normaliseState(payload) {
     };
 }
 
+function loadPersistedUIState() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        if (!stored || typeof stored !== "object") return {};
+        if (Array.isArray(stored.customers) || Array.isArray(stored.audit) || stored.dashboard) {
+            localStorage.removeItem(STORAGE_KEY);
+            return {};
+        }
+        return stored.version === 2 ? stored : {};
+    } catch {
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+        } catch {
+            // Ignore storage cleanup failures; live API data still loads normally.
+        }
+        return {};
+    }
+}
+
 function loadState() {
     const injected = normaliseState(window.HYMN_PANEL_DATA || emptyData);
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return injected;
-        return normaliseState({ ...injected, ...JSON.parse(stored) });
-    } catch {
-        return injected;
-    }
+    return injected;
 }
 
 function loadPanelSessionToken() {
@@ -3794,21 +3807,23 @@ function persistLetterTemplates() {
 function persistState() {
     if (statePersistenceDisabled) return;
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            version: 2,
+            selectedInvoiceId,
+            selectedClientId,
+            selectedFilter,
+            clientFilter,
+            sortMode,
+            denseMode,
+            visibleColumns
+        }));
     } catch (error) {
-        console.warn("Unable to persist console state in browser storage", error);
+        console.warn("Unable to persist console UI state in browser storage", error);
         statePersistenceDisabled = true;
         try {
             localStorage.removeItem(STORAGE_KEY);
         } catch {
             // Ignore storage cleanup failures; the in-memory state remains usable.
-        }
-        if (!statePersistenceWarningShown) {
-            statePersistenceWarningShown = true;
-            showToast(
-                "Browser storage is unavailable or full. Server-saved changes will still work in this session.",
-                "info"
-            );
         }
     }
 }
@@ -7369,7 +7384,6 @@ function clearLocalConsoleState(panel = null) {
     localStorage.removeItem(SYNC_SETTINGS_KEY);
     localStorage.removeItem(LETTER_TEMPLATES_KEY);
     statePersistenceDisabled = false;
-    statePersistenceWarningShown = false;
     syncSettings = { invoiceScope: "full_history", invoiceYears: [] };
     letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
     selectedLetterTemplateId = letterTemplates[0]?.id || "";
