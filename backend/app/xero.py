@@ -22,6 +22,7 @@ XERO_PAGE_SIZE = 100
 XERO_PAGE_DELAY_SECONDS = 1.05
 XERO_RATE_LIMIT_RETRIES = 3
 XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
+XERO_HISTORY_SIGNATURE = "By Jenius AI"
 XERO_PERMISSION_MESSAGE = (
     "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
     "and contact note write-back access, then try again."
@@ -127,6 +128,25 @@ def _raise_xero_request_error(exc: httpx.RequestError, action: str) -> None:
             "error": str(exc),
         },
     ) from exc
+
+
+def _signed_history_note(details: str, limit: int = 4000) -> str:
+    note = str(details or "").strip()
+    signature = XERO_HISTORY_SIGNATURE
+    if not note:
+        return signature
+    if note.lower().endswith(signature.lower()):
+        signed = note
+    else:
+        signed = f"{note} {signature}"
+    if len(signed) <= limit:
+        return signed
+
+    suffix = f" {signature}"
+    body_limit = max(limit - len(suffix), 0)
+    if body_limit <= 0:
+        return signature[:limit]
+    return f"{signed[:body_limit].rstrip()}{suffix}"
 
 
 def _iso_to_datetime(value: str | None) -> datetime | None:
@@ -392,7 +412,7 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
         raise ValueError(f"Unsupported Xero history resource: {resource}")
 
     connection_row = await refresh_connection(connection_row["id"])
-    note_body = details.strip()[:4000]
+    note_body = _signed_history_note(details)
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             response = await client.put(

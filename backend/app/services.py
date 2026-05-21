@@ -34,6 +34,7 @@ from .xero import (
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=30)
+JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
@@ -94,6 +95,15 @@ def _safe_json(value):
         return value
     except TypeError:
         return str(value)
+
+
+def _with_jenius_signature(message: str) -> str:
+    text = str(message or "").strip()
+    if not text:
+        return JENIUS_NOTE_SIGNATURE
+    if text.lower().endswith(JENIUS_NOTE_SIGNATURE.lower()):
+        return text
+    return f"{text} {JENIUS_NOTE_SIGNATURE}"
 
 
 def record_audit_event(entity_type: str, entity_id: str, event_type: str, payload: dict, user_id: str | None) -> None:
@@ -2513,7 +2523,10 @@ async def allocate_customer_credit(user: dict, customer_id: str, payload: dict) 
         source_label = f"overpayment {source.get('number') or source_id}"
 
     invoice_number = invoice.get("invoiceNumber") or xero_invoice_id
-    status_note = f"Allocated {source_label} to invoice {invoice_number} for {source.get('currencyCode') or invoice.get('currencyCode') or 'GBP'} {amount:,.2f}."
+    status_note = _with_jenius_signature(
+        f"Allocated {source_label} to invoice {invoice_number} for "
+        f"{source.get('currencyCode') or invoice.get('currencyCode') or 'GBP'} {amount:,.2f}."
+    )
     local_invoice_id = await _refresh_local_invoice_from_xero(
         connection_row,
         customer["id"],
@@ -2521,6 +2534,17 @@ async def allocate_customer_credit(user: dict, customer_id: str, payload: dict) 
         user["id"],
         status_note,
     )
+    xero_note_synced = True
+    xero_note_error = ""
+    for resource, resource_id in (("Invoices", xero_invoice_id), ("Contacts", customer.get("xero_contact_id"))):
+        if not resource_id:
+            continue
+        try:
+            await create_history_record(connection_row, resource, resource_id, status_note)
+        except Exception as exc:
+            xero_note_synced = False
+            xero_note_error = _sync_error_message(exc)
+            logger.exception("Unable to add Xero allocation history note to %s %s", resource, resource_id)
     record_audit_event(
         "customer",
         str(customer["id"]),
@@ -2536,6 +2560,8 @@ async def allocate_customer_credit(user: dict, customer_id: str, payload: dict) 
             "amount": float(amount),
             "currency_code": source.get("currencyCode") or invoice.get("currencyCode") or "GBP",
             "allocation": allocation_response,
+            "xero_note_synced": xero_note_synced,
+            "xero_note_error": xero_note_error,
         },
         user["id"],
     )
@@ -2685,7 +2711,7 @@ def add_customer_note(customer_id: str, user: dict, body: str) -> None:
 
 def _format_xero_note(user: dict, body: str) -> str:
     author = user.get("full_name") or user.get("email") or "Credit Control Console user"
-    return f"Credit Control Console note from {author}: {body.strip()}"
+    return _with_jenius_signature(f"Credit Control Console note from {author}: {body.strip()}")
 
 
 async def sync_invoice_note_to_xero(invoice_id: str, user: dict, body: str) -> dict:
@@ -3507,7 +3533,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     continue
 
                 now = utcnow()
-                history_note = (
+                history_note = _with_jenius_signature(
                     f"Late payment charge raised on {_invoice_date_description(today)} for invoice "
                     f"{invoice.get('invoice_number') or invoice['id']}, originally due "
                     f"{_invoice_date_description(invoice.get('due_date'))}. Charge amount: "
@@ -3710,7 +3736,7 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         }
         allocation_response = await allocate_credit_note(connection_row, credit_note_id, allocation_payload)
 
-        contact_note = (
+        contact_note = _with_jenius_signature(
             f"via jeNIUS AI WE HAVE WRITTEN OFF INVOICE '{invoice_number}'. "
             f"Credit note {credit_note_number or credit_note_id} was raised for {amount_label} to account code {account_code} "
             "Irrecoverable Receivables / Bad Debt Write Off and allocated to the invoice. "
@@ -3730,6 +3756,7 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         )
         if not contact_note_synced:
             status_note = f"{status_note} Xero contact note was not added: {contact_note_error}"
+        status_note = _with_jenius_signature(status_note)
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
