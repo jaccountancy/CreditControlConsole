@@ -1625,12 +1625,13 @@ body.is-dense .note-snippet {
 }
 .client-workspace-layout {
     display: grid;
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr) minmax(220px, 260px);
     gap: 14px;
     align-items: start;
 }
 .client-summary-panel,
-.client-main-panel {
+.client-main-panel,
+.client-action-center {
     display: grid;
     gap: 16px;
 }
@@ -1639,7 +1640,8 @@ body.is-dense .note-snippet {
     margin: 0;
 }
 .client-summary-card,
-.audit-trail-panel {
+.audit-trail-panel,
+.client-action-center-card {
     padding: 18px;
     border-radius: 8px;
     background: rgba(255, 255, 255, 0.72);
@@ -2279,7 +2281,7 @@ body.is-dense .note-snippet {
 }
 .client-overview-card {
     display: grid;
-    gap: 13px;
+    gap: 11px;
     background: rgba(255, 255, 255, 0.9);
 }
 .client-avatar {
@@ -2299,7 +2301,8 @@ body.is-dense .note-snippet {
 .client-sidebar-status {
     color: var(--muted);
     font-weight: 750;
-    line-height: 1.45;
+    line-height: 1.35;
+    margin: 0;
 }
 .client-sidebar-metrics,
 .assignment-grid {
@@ -2310,7 +2313,7 @@ body.is-dense .note-snippet {
 .client-sidebar-metrics div,
 .assignment-grid article {
     min-width: 0;
-    padding: 12px;
+    padding: 10px;
     border-radius: 6px;
     background: var(--surface-soft);
     border: 1px solid var(--line);
@@ -2335,32 +2338,46 @@ body.is-dense .note-snippet {
     flex: 1 1 auto;
     justify-content: center;
 }
+.client-disclosure {
+    border-top: 1px solid var(--line);
+    padding-top: 4px;
+}
+.client-disclosure summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+.client-disclosure .xero-contact-details {
+    margin-top: 10px;
+}
 .client-section-nav {
-    position: relative;
-    top: auto;
+    position: sticky;
+    top: 10px;
     z-index: 12;
     display: flex;
-    gap: 0;
+    gap: 8px;
     overflow-x: auto;
-    padding: 0 2px;
-    margin-bottom: 14px;
-    border-radius: 0;
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    backdrop-filter: none;
+    padding: 8px;
+    margin-bottom: 0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(12px);
 }
 .client-section-nav button {
-    flex: 0 0 auto;
-    min-height: 48px;
+    flex: 1 1 0;
+    min-height: 42px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: rgba(248, 251, 255, 0.72);
     color: #40506b;
-    padding: 12px 16px;
+    padding: 10px 12px;
     text-align: center;
     font-weight: 850;
     white-space: nowrap;
@@ -2371,8 +2388,35 @@ body.is-dense .note-snippet {
 }
 .client-section-nav button.is-active {
     color: var(--blue);
-    background: transparent;
-    box-shadow: inset 0 -3px 0 var(--blue);
+    background: var(--blue-soft);
+    border-color: rgba(29, 103, 242, 0.22);
+    box-shadow: none;
+}
+.client-action-center {
+    position: sticky;
+    top: 18px;
+    align-self: start;
+}
+.client-action-center-card {
+    display: grid;
+    gap: 12px;
+}
+.client-action-center-card h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+.client-action-stack {
+    display: grid;
+    gap: 9px;
+}
+.client-action-stack .primary-button,
+.client-action-stack .ghost-button {
+    width: 100%;
+    justify-content: center;
+    min-height: 42px;
+}
+.client-action-stack .ghost-button {
+    background: rgba(255, 255, 255, 0.76);
 }
 .client-action-bar {
     position: sticky;
@@ -2422,8 +2466,13 @@ body.is-dense .note-snippet {
 .client-section-pane {
     display: grid;
     gap: 16px;
+    scroll-margin-top: 92px;
 }
 .client-section-pane[hidden] { display: none; }
+.client-section-pane.is-active-workspace-section > .detail-panel:first-child,
+.client-section-pane.is-active-workspace-section > .client-status-banner {
+    box-shadow: 0 0 0 1px rgba(29, 103, 242, 0.16), var(--shadow);
+}
 .client-status-banner {
     padding: 16px 18px;
     border-radius: 18px;
@@ -2836,11 +2885,22 @@ body.is-syncing .sync-dot {
     .import-year-grid,
     .detail-stats,
     .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .client-main-panel { grid-column: 1 / -1; }
+    .client-action-center {
+        grid-column: 2;
+        grid-row: 1;
+        position: static;
+    }
 }
 @media (max-width: 860px) {
     .ledger-shell { width: calc(100vw - 24px); margin: 8px auto 30px; }
     .summary-chip { min-width: 0; }
     .summary-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .client-main-panel,
+    .client-action-center {
+        grid-column: auto;
+        grid-row: auto;
+    }
     .toolbar-controls, .topbar-actions, .pagination, .bulk-action-toolbar, .bulk-action-controls, .client-action-bar { flex-wrap: wrap; justify-content: flex-start; }
     .dashboard-hero,
     .insights-grid,
@@ -2859,6 +2919,8 @@ body.is-syncing .sync-dot {
     .detail-grid { grid-template-columns: 1fr; }
     .client-sidebar,
     .selected-invoice-panel,
+    .client-action-center,
+    .client-section-nav,
     .client-action-bar {
         position: static;
     }
@@ -2909,7 +2971,7 @@ body.is-syncing .sync-dot {
                     <button class="ghost-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Actions</button>
                     <div class="xero-action-menu" id="clientActionMenu">
                         <button type="button" data-client-action="reminder">Send reminder</button>
-                        <button type="button" data-client-action="payment">Record payment</button>
+                        <button type="button" data-client-action="payment">Start payment plan</button>
                         <button type="button" data-client-action="note">Add note</button>
                         <button type="button" data-client-action="legal">Escalate account</button>
                         <button type="button" id="clientRunImportButton">Run import</button>
@@ -3262,24 +3324,22 @@ body.is-syncing .sync-dot {
                             <a class="client-profile-action" id="clientEmailLink" href="#" hidden>Email</a>
                             <a class="client-profile-action" id="selectedContactXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
                         </div>
-                        <div class="xero-contact-details">
-                            <span>Xero contact</span>
-                            <strong id="clientContactSummary">--</strong>
-                        </div>
-                        <div class="xero-contact-details" id="xeroContactDetails"></div>
+                        <details class="client-disclosure">
+                            <summary>Contact details</summary>
+                            <div class="xero-contact-details">
+                                <span>Xero contact</span>
+                                <strong id="clientContactSummary">--</strong>
+                            </div>
+                            <div class="xero-contact-details" id="xeroContactDetails"></div>
+                        </details>
                     </section>
                 </aside>
 
                 <div class="client-main-panel">
-                    <nav class="client-section-nav" aria-label="Client sections">
-                        <button type="button" class="is-active" data-client-section="overview">Overview</button>
-                        <button type="button" data-client-section="invoices">Invoices</button>
-                        <button type="button" data-client-section="payments">Payments & Credits</button>
-                        <button type="button" data-client-section="notes">Notes</button>
-                        <button type="button" data-client-section="payment-plans">Payment Plans</button>
-                        <button type="button" data-client-section="letters">Letters</button>
-                        <button type="button" data-client-section="legal">Legal Escalation</button>
-                        <button type="button" data-client-section="settings">Settings</button>
+                    <nav class="client-section-nav" aria-label="Recovery workspace">
+                        <button type="button" class="is-active" data-client-section="overview">Summary</button>
+                        <button type="button" data-client-section="invoices">Transactions</button>
+                        <button type="button" data-client-section="notes">Activity & Workflow</button>
                     </nav>
 
                     <section class="client-section-pane" data-client-pane="overview">
@@ -3297,13 +3357,13 @@ body.is-syncing .sync-dot {
                                     <p class="eyebrow">Next best action</p>
                                     <h3 id="clientNextActionTitle">Review account</h3>
                                 </div>
-                                <button class="ghost-button" type="button" data-client-action="reminder">Open letters</button>
+                                <button class="ghost-button" type="button" data-client-action="reminder">Generate letter</button>
                             </div>
                             <p id="clientNextActionBody" class="detail-meta">Select a client to see the recommended operational next step.</p>
                         </section>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="invoices" hidden>
+                    <section class="client-section-pane" data-client-pane="invoices">
                         <div class="invoice-workspace-split">
                             <section class="detail-panel client-invoices-panel">
                                 <div class="panel-heading">
@@ -3331,7 +3391,7 @@ body.is-syncing .sync-dot {
                                 <div class="selected-invoice-detail" id="selectedInvoiceDetail"></div>
                                 <div class="selected-invoice-actions">
                                     <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
-                                    <button class="ghost-button" type="button" data-client-action="payment">Record payment</button>
+                                    <button class="ghost-button" type="button" data-client-action="payment">Start payment plan</button>
                                     <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
                                 </div>
                                 <form class="stack-form" id="invoiceNoteForm">
@@ -3343,7 +3403,7 @@ body.is-syncing .sync-dot {
                         </div>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="payments" hidden>
+                    <section class="client-section-pane" data-client-pane="payments">
                         <section class="detail-panel">
                             <div class="section-heading">
                                 <p class="eyebrow">Payments made</p>
@@ -3387,7 +3447,7 @@ body.is-syncing .sync-dot {
                         </section>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="notes" hidden>
+                    <section class="client-section-pane" data-client-pane="notes">
                         <section class="detail-panel account-file-section account-notes-section">
                             <div class="section-heading">
                                 <p class="eyebrow">Client notes</p>
@@ -3401,7 +3461,7 @@ body.is-syncing .sync-dot {
                         </section>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="payment-plans" hidden>
+                    <section class="client-section-pane" data-client-pane="payment-plans">
                         <section class="detail-panel">
                             <div class="section-heading">
                                 <p class="eyebrow">Payment plans</p>
@@ -3425,7 +3485,7 @@ body.is-syncing .sync-dot {
                         </section>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="letters" hidden>
+                    <section class="client-section-pane" data-client-pane="letters">
                         <section class="detail-panel">
                             <div class="section-heading">
                                 <p class="eyebrow">Letters</p>
@@ -3442,7 +3502,7 @@ body.is-syncing .sync-dot {
                         </section>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="legal" hidden>
+                    <section class="client-section-pane" data-client-pane="legal">
                         <section class="detail-panel legal-escalation-panel">
                             <div class="panel-heading">
                                 <div>
@@ -3482,7 +3542,7 @@ body.is-syncing .sync-dot {
                         </section>
                     </section>
 
-                    <section class="client-section-pane" data-client-pane="settings" hidden>
+                    <section class="client-section-pane" data-client-pane="settings">
                         <section class="detail-panel assignment-panel">
                             <div class="panel-heading">
                                 <div>
@@ -3528,6 +3588,29 @@ body.is-syncing .sync-dot {
                         </section>
                     </section>
                 </div>
+
+                <aside class="client-action-center" aria-label="Recovery action center">
+                    <section class="client-action-center-card">
+                        <p class="eyebrow">Action center</p>
+                        <h3>Recovery actions</h3>
+                        <div class="client-action-stack">
+                            <button class="primary-button" type="button" data-client-action="reminder">Generate letter</button>
+                            <button class="ghost-button" type="button" data-client-action="note">Add client note</button>
+                            <button class="ghost-button" type="button" data-client-action="invoice-note">Add invoice note</button>
+                            <button class="ghost-button" type="button" data-client-action="payment">Start payment plan</button>
+                            <button class="ghost-button legal-button" type="button" data-client-action="legal">Escalate legal</button>
+                            <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
+                        </div>
+                    </section>
+                    <section class="client-action-center-card">
+                        <p class="eyebrow">Xero actions</p>
+                        <h3>Account controls</h3>
+                        <div class="client-action-stack">
+                            <button class="ghost-button" id="actionCenterRefreshTransactionsButton" type="button">Refresh transactions</button>
+                            <button class="ghost-button" id="actionCenterAssignClientManagerButton" type="button">Assign owner</button>
+                        </div>
+                    </section>
+                </aside>
             </div>
         </section>
     </main>
@@ -3817,6 +3900,11 @@ const filterLabels = {
     under100: "Under £100"
 };
 const clientSections = new Set(["overview", "invoices", "payments", "notes", "payment-plans", "letters", "legal", "settings"]);
+const clientSectionNavGroups = {
+    overview: ["overview"],
+    invoices: ["invoices", "payments"],
+    notes: ["notes", "payment-plans", "letters", "legal", "settings"],
+};
 const NOTICE_STATUS = "7 Day Notice Sent";
 const NOTICE_PERIOD_DAYS = 7;
 
@@ -5067,8 +5155,11 @@ function openClientWorkspace(invoice, focusId, section = "overview") {
     activeView = "client";
     activeClientSection = clientSections.has(section) ? section : "overview";
     renderAll();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    if (focusId) window.setTimeout(() => document.getElementById(focusId)?.focus(), 350);
+    if (activeClientSection === "overview" && !focusId) {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+        scrollClientWorkspaceTarget(activeClientSection, focusId, 350);
+    }
 }
 
 function openQuickNotePanel(invoice) {
@@ -5311,12 +5402,13 @@ function renderClientSectionVisibility() {
     const clientScreen = document.getElementById("clientScreen");
     if (clientScreen) clientScreen.dataset.activeSection = activeClientSection;
     document.querySelectorAll("[data-client-section]").forEach((button) => {
-        const active = button.dataset.clientSection === activeClientSection;
+        const active = (clientSectionNavGroups[button.dataset.clientSection] || [button.dataset.clientSection]).includes(activeClientSection);
         button.classList.toggle("is-active", active);
         button.setAttribute("aria-current", active ? "page" : "false");
     });
     document.querySelectorAll("[data-client-pane]").forEach((pane) => {
-        pane.hidden = pane.dataset.clientPane !== activeClientSection;
+        pane.hidden = false;
+        pane.classList.toggle("is-active-workspace-section", pane.dataset.clientPane === activeClientSection);
     });
 }
 
@@ -7116,11 +7208,21 @@ function closeToolbarMenus() {
     });
 }
 
+function scrollClientWorkspaceTarget(section, focusId = "", delay = 120) {
+    window.setTimeout(() => {
+        const focusTarget = focusId ? document.getElementById(focusId) : null;
+        const sectionTarget = document.querySelector(`[data-client-pane="${section}"]`);
+        const scrollTarget = focusTarget?.closest("[data-client-pane]") || sectionTarget;
+        scrollTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (focusTarget) focusTarget.focus({ preventScroll: true });
+    }, delay);
+}
+
 function activateClientSection(section, focusId = "") {
     if (!clientSections.has(section)) return;
     activeClientSection = section;
     renderClientScreen();
-    if (focusId) window.setTimeout(() => document.getElementById(focusId)?.focus(), 120);
+    scrollClientWorkspaceTarget(section, focusId);
 }
 
 function handleClientQuickAction(action) {
@@ -7165,6 +7267,10 @@ function wireClientWorkspace() {
     document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
     document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
     document.getElementById("refreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
+    document.getElementById("actionCenterRefreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
+    document.getElementById("actionCenterAssignClientManagerButton")?.addEventListener("click", () => {
+        document.getElementById("assignClientManagerButton")?.click();
+    });
     document.getElementById("topbarClientButton")?.addEventListener("click", () => {
         if (!selectedClientId && !selectedInvoiceId) return;
         activeView = "client";
