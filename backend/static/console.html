@@ -920,14 +920,13 @@ button.hero-summary-card {
 }
 .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
 .sync-inline-banner.is-success .sync-inline-copy span { color: #168246; }
-.invoice-table { width: 100%; border-collapse: collapse; min-width: 1040px; table-layout: fixed; }
+.invoice-table { width: 100%; border-collapse: collapse; min-width: 940px; table-layout: fixed; }
 .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
-.invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 23%; }
-.invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 15%; }
-.invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 24%; }
+.invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 25%; }
+.invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 35%; }
+.invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 18%; }
 .invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 17%; }
-.invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 16%; }
-.invoice-table th:nth-child(7), .invoice-table td:nth-child(7) { width: 54px; }
+.invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 54px; }
 .invoice-table th, .invoice-table td {
     padding: 16px 18px;
     border-bottom: 1px solid var(--line);
@@ -3030,7 +3029,7 @@ body.is-syncing .sync-dot {
                         <label><input type="checkbox" data-column-toggle="notes" checked> Notes</label>
                     </div>
                 </div>
-                <button class="ghost-button" id="denseModeButton" type="button" aria-pressed="false">Dense table</button>
+                <button class="ghost-button" id="denseModeButton" type="button" aria-pressed="true">Comfort table</button>
                 <button class="ghost-button" id="reviewLateChargesButton" type="button">Review late charges</button>
                 <button class="ghost-button" id="clearFiltersButton" type="button">Clear filters</button>
                 <button class="ghost-button" id="exportFilteredButton" type="button">Export CSV</button>
@@ -3067,7 +3066,6 @@ body.is-syncing .sync-dot {
                         <tr>
                             <th class="is-sticky select-cell"><input id="selectAllInvoices" type="checkbox" aria-label="Select all invoices for visible clients"></th>
                             <th class="is-sticky">Client</th>
-                            <th class="is-sticky">Invoices</th>
                             <th class="is-sticky" data-column="description">Oldest Item</th>
                             <th class="is-sticky">Amount Due</th>
                             <th class="is-sticky" data-column="notes">Credits</th>
@@ -3796,7 +3794,7 @@ let activeInsightsSection = "overview";
 let hasAutoStartedInitialSync = false;
 let hasLoadedWorkingSyncPanel = false;
 let statePersistenceDisabled = false;
-let denseMode = Boolean(persistedUIState.denseMode);
+let denseMode = persistedUIState.version >= 3 ? persistedUIState.denseMode !== false : true;
 let quickNoteInvoiceId = null;
 let lastPaymentPlanAutoNote = "";
 let selectedClientInvoiceIds = new Set();
@@ -3887,7 +3885,7 @@ function loadPersistedUIState() {
             localStorage.removeItem(STORAGE_KEY);
             return {};
         }
-        return stored.version === 2 ? stored : {};
+        return [2, 3].includes(stored.version) ? stored : {};
     } catch {
         try {
             localStorage.removeItem(STORAGE_KEY);
@@ -3980,7 +3978,7 @@ function persistState() {
     if (statePersistenceDisabled) return;
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            version: 2,
+            version: 3,
             selectedInvoiceId,
             selectedClientId,
             selectedFilter,
@@ -5161,12 +5159,12 @@ function renderInvoiceTable() {
     if (isSyncing && !paged.length) {
         for (let index = 0; index < 5; index += 1) {
             const row = document.createElement("tr");
-            row.innerHTML = `<td colspan="7"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
+            row.innerHTML = `<td colspan="6"><div class="table-skeleton" style="width: ${72 + (index % 3) * 8}%"></div></td>`;
             tbody.appendChild(row);
         }
     } else if (!paged.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="7"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+        row.innerHTML = `<td colspan="6"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
         tbody.appendChild(row);
     } else {
         paged.forEach((group) => {
@@ -5180,9 +5178,6 @@ function renderInvoiceTable() {
             const creditClass = creditState.status === "ready" ? "has-credit" : creditState.status === "loading" ? "is-loading" : "";
             const clientName = group.client?.name || invoice?.customerName || "Unnamed client";
             const clientContact = group.client?.primaryPerson || group.client?.email || group.client?.phone || invoice?.customerContact || group.id;
-            const invoiceLabel = group.openCount
-                ? `${group.openCount.toLocaleString("en-GB")} open of ${group.invoiceCount.toLocaleString("en-GB")}`
-                : `${group.invoiceCount.toLocaleString("en-GB")} invoice${group.invoiceCount === 1 ? "" : "s"}`;
             const row = document.createElement("tr");
             row.className = `client-group-row ${group.id === selectedClientId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
@@ -5194,11 +5189,6 @@ function renderInvoiceTable() {
                         <div class="client-inline-status">${statusPill(invoice)}</div>
                         ${clientGroupHoverHTML(group)}
                     </div>
-                </td>
-                <td>
-                    <div class="client-name">${invoiceLabel}</div>
-                    <div class="invoice-subline">${group.overdueCount.toLocaleString("en-GB")} overdue · max ${group.maxOverdueDays.toLocaleString("en-GB")} days</div>
-                    <div class="client-group-counts"><span>${group.invoiceCount.toLocaleString("en-GB")} synced</span><span>${group.openCount.toLocaleString("en-GB")} open</span></div>
                 </td>
                 <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(invoiceLineSummary(oldestInvoice))}</div><div class="invoice-subline">${escapeHTML(oldestInvoice?.invoiceNumber || "Invoice")} · due ${formatDate(oldestInvoice?.dueDate)}</div></div></div></td>
                 <td class="amount-cell" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong><div class="payment-status">${group.openCount.toLocaleString("en-GB")} open invoice${group.openCount === 1 ? "" : "s"}</div></td>
@@ -7040,6 +7030,7 @@ function wireFilters() {
     document.getElementById("columnButton").addEventListener("click", () => toggleToolbarMenu("columnMenu", "columnButton"));
     document.getElementById("denseModeButton").addEventListener("click", () => {
         denseMode = !denseMode;
+        persistState();
         renderToolbarControls();
     });
     document.getElementById("clearFiltersButton").addEventListener("click", () => {

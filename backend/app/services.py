@@ -3183,8 +3183,8 @@ def _normalise_late_payment_charge_base_amount(value) -> Decimal:
     return amount
 
 
-def _late_payment_charge_selection_lookup(invoice_ids: list[UUID], charge_selections=None) -> dict[str, Decimal]:
-    selected = {str(invoice_id): DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT for invoice_id in invoice_ids}
+def _late_payment_charge_selection_lookup(invoice_refs: list[str], charge_selections=None) -> dict[str, Decimal]:
+    selected = {invoice_ref: DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT for invoice_ref in invoice_refs}
     if not charge_selections:
         return selected
 
@@ -3243,15 +3243,17 @@ def _late_payment_charge_description(invoice: dict, overdue_days: int, base_amou
 
 async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge_selections=None) -> dict:
     try:
-        unique_invoice_ids = list(dict.fromkeys(UUID(str(invoice_id).strip()) for invoice_id in invoice_ids if str(invoice_id).strip()))
+        unique_invoice_refs = list(dict.fromkeys(str(UUID(str(invoice_id).strip())) for invoice_id in invoice_ids if str(invoice_id).strip()))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id in late payment charge selection.") from exc
-    if not unique_invoice_ids:
+    if not unique_invoice_refs:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
-    charge_selection_lookup = _late_payment_charge_selection_lookup(unique_invoice_ids, charge_selections)
+    charge_selection_lookup = _late_payment_charge_selection_lookup(unique_invoice_refs, charge_selections)
 
     today = utcnow().date()
     settings = get_settings()
+    local_invoice_ids = [UUID(invoice_ref) for invoice_ref in unique_invoice_refs]
+    xero_invoice_ids = [invoice_ref.lower() for invoice_ref in unique_invoice_refs]
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -3270,19 +3272,44 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                 FROM invoices
                 JOIN customers ON customers.id = invoices.customer_id
                 WHERE invoices.id = ANY(%s)
+                   OR lower(invoices.xero_invoice_id) = ANY(%s)
                 ORDER BY invoices.due_date ASC NULLS LAST, invoices.invoice_number ASC
                 """,
-                (unique_invoice_ids,),
+                (local_invoice_ids, xero_invoice_ids),
             )
             invoices = cursor.fetchall()
         connection.commit()
 
-    if len(invoices) != len(unique_invoice_ids):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more selected invoices could not be found.")
+    invoices_by_ref = {}
+    for invoice in invoices:
+        local_ref = str(invoice["id"])
+        xero_ref = str(invoice.get("xero_invoice_id") or "").lower()
+        if local_ref in charge_selection_lookup:
+            invoices_by_ref[local_ref] = invoice
+        if xero_ref in charge_selection_lookup and xero_ref not in invoices_by_ref:
+            invoices_by_ref[xero_ref] = invoice
+
+    selected_invoices = []
+    charge_selection_by_invoice_id = {}
+    skipped = []
+    seen_invoice_ids = set()
+    for invoice_ref in unique_invoice_refs:
+        invoice = invoices_by_ref.get(invoice_ref)
+        if invoice is None:
+            skipped.append({"invoiceId": invoice_ref, "reason": "Invoice could not be found. Refresh the ledger and try again."})
+            continue
+        invoice_id = str(invoice["id"])
+        if invoice_id in seen_invoice_ids:
+            continue
+        seen_invoice_ids.add(invoice_id)
+        selected_invoices.append(invoice)
+        charge_selection_by_invoice_id[invoice_id] = charge_selection_lookup[invoice_ref]
+
+    if not selected_invoices:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected invoices could not be found. Refresh the ledger and try again.")
 
     chargeable = []
-    skipped = []
-    for invoice in invoices:
+    for invoice in selected_invoices:
         due_date = invoice.get("due_date")
         overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
         amount_due = _float(invoice.get("amount_due"))
@@ -3298,7 +3325,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
         if not invoice.get("xero_contact_id"):
             skipped.append({"invoiceId": str(invoice["id"]), "reason": "Customer is not linked to a Xero contact."})
             continue
-        charge_base_amount = charge_selection_lookup[str(invoice["id"])]
+        charge_base_amount = charge_selection_by_invoice_id[str(invoice["id"])]
         charge_amount = _late_payment_charge_gross_amount(charge_base_amount)
         if charge_amount <= 0:
             skipped.append({"invoiceId": str(invoice["id"]), "reason": "Calculated late payment charge is zero."})
@@ -3359,7 +3386,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     connection.commit()
                     continue
 
-                charge_base_amount = charge_selection_lookup[str(locked_invoice["id"])]
+                charge_base_amount = charge_selection_by_invoice_id[str(locked_invoice["id"])]
                 charge_amount = _late_payment_charge_gross_amount(charge_base_amount)
                 if charge_amount <= 0:
                     skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Calculated late payment charge is zero."})
