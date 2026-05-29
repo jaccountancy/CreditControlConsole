@@ -1966,6 +1966,10 @@ body.is-dense .note-snippet {
     gap: 12px;
     margin-bottom: 18px;
 }
+.late-charge-search {
+    flex: 1 1 280px;
+    min-width: 240px;
+}
 .late-charge-bulk-control,
 .late-charge-controls {
     display: inline-flex;
@@ -3366,6 +3370,20 @@ body.is-syncing .sync-dot {
             </div>
             <section class="detail-panel">
                 <div class="late-charge-bulk-toolbar">
+                    <label class="search-wrap late-charge-search">
+                        <span class="search-icon">⌕</span>
+                        <input id="lateChargeSearch" type="search" placeholder="Search client or invoice...">
+                    </label>
+                    <label class="late-charge-bulk-control">
+                        View
+                        <select id="lateChargeFilterSelect">
+                            <option value="active">Active uncharged</option>
+                            <option value="eligible">Ready to raise</option>
+                            <option value="charged">Already charged</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="all">All overdue</option>
+                        </select>
+                    </label>
                     <label class="late-charge-bulk-control">
                         Bulk charge
                         <select id="bulkLateChargeAmountSelect"></select>
@@ -3865,7 +3883,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Xero note write-back</h4>
-                    <p>When you add a client note, invoice note, or generated letter note, the console first saves it locally so the audit trail updates immediately. It then uses the connected Xero account to add a history note to the matching Xero contact or invoice. If Xero is disconnected or rejects the note, the local note remains and the app shows an error so you can reconnect or retry.</p>
+                    <p>When you add notes, change invoice status, create payment plans, write off debt, or raise late payment charges, the console first saves the local audit trail. It then uses the connected Xero account to add history notes to the matching Xero contact and invoice where available. If Xero is disconnected or rejects a note, the local update remains and the app shows an error so you can reconnect or retry.</p>
                 </section>
                 <section class="help-section">
                     <h4>Settings, logs, and troubleshooting</h4>
@@ -3891,8 +3909,9 @@ const XERO_CONNECTED_NOTICE_DURATION_MS = 9000;
 const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
 const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
 const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
-const DEFAULT_API_BASE_URL = window.location.protocol === "file:"
-    ? "https://creditcontrolconsole-production.up.railway.app"
+const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
+const DEFAULT_API_BASE_URL = window.location.protocol === "file:" || /(^|\.)team\.jaccountancy\.co\.uk$/i.test(window.location.hostname)
+    ? PRODUCTION_API_BASE_URL
     : window.location.origin;
 const api = normaliseAPI(window.HYMN_PANEL_API || {});
 const emptyData = {
@@ -4007,6 +4026,10 @@ let lastPaymentPlanAutoNote = "";
 let selectedClientInvoiceIds = new Set();
 let selectedLateChargeInvoiceIds = new Set();
 let latePaymentChargeBaseAmounts = new Map();
+let lateChargeSearchTerm = "";
+let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
+    ? persistedUIState.lateChargeFilter
+    : "active";
 const customerTransactionCache = new Map();
 const customerTransactionLoading = new Set();
 let visibleColumns = {
@@ -4022,6 +4045,13 @@ const filterLabels = {
     over500: "Over £500",
     over1000: "Over £1,000",
     under100: "Under £100"
+};
+const lateChargeFilterLabels = {
+    active: "Active uncharged",
+    eligible: "Ready to raise",
+    charged: "Already charged",
+    blocked: "Blocked",
+    all: "All overdue"
 };
 const clientSections = new Set(["overview", "invoices", "payments", "notes", "payment-plans", "letters", "legal", "settings"]);
 const clientSectionNavGroups = {
@@ -4195,6 +4225,7 @@ function persistState() {
             selectedClientId,
             selectedFilter,
             clientFilter,
+            lateChargeFilter,
             sortMode,
             denseMode,
             visibleColumns
@@ -5320,7 +5351,7 @@ async function saveQuickInvoiceNote() {
         if (payload?.panel) replaceState(normaliseState(payload.panel));
         else await hydrateFromAPI();
         renderAll();
-        showToast(payload?.xeroNoteSynced ? "Invoice note saved and added to Xero" : "Invoice note saved locally", payload?.xeroNoteSynced ? "success" : "info");
+        showToast(payload?.xeroNoteSynced ? "Invoice note saved and added to Xero contact and invoice" : "Invoice note saved locally", payload?.xeroNoteSynced ? "success" : "info");
     } catch (error) {
         console.error("Unable to sync quick note", error);
         showToast("Unable to sync invoice note", "error");
@@ -6537,6 +6568,33 @@ function isLatePaymentChargeEligible(invoice) {
     return !latePaymentChargeBlockReason(invoice);
 }
 
+function latePaymentChargeSearchText(invoice) {
+    return [
+        invoice.customerName,
+        invoice.invoiceNumber,
+        invoice.description,
+        invoice.notesSummary,
+        invoice.controlStatus,
+        invoice.latePaymentChargeInvoiceNumber
+    ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function latePaymentChargeMatchesSearch(invoice) {
+    const query = lateChargeSearchTerm.trim().toLowerCase();
+    if (!query) return true;
+    return latePaymentChargeSearchText(invoice).includes(query);
+}
+
+function latePaymentChargeMatchesFilter(invoice) {
+    const raised = latePaymentChargeRaised(invoice);
+    const eligible = isLatePaymentChargeEligible(invoice);
+    if (lateChargeFilter === "all") return true;
+    if (lateChargeFilter === "charged") return raised;
+    if (lateChargeFilter === "eligible") return eligible;
+    if (lateChargeFilter === "blocked") return !raised && !eligible;
+    return !raised;
+}
+
 function latePaymentChargeCandidates() {
     return allInvoices()
         .filter((invoice) => Number(invoice.amountDue || 0) > 0 && Number(invoice.overdueDays || 0) > 14)
@@ -6545,13 +6603,20 @@ function latePaymentChargeCandidates() {
 
 function latePaymentChargeReviewStats() {
     const candidates = latePaymentChargeCandidates();
+    const visible = candidates.filter((invoice) => latePaymentChargeMatchesFilter(invoice) && latePaymentChargeMatchesSearch(invoice));
     const eligible = candidates.filter(isLatePaymentChargeEligible);
+    const visibleEligible = visible.filter(isLatePaymentChargeEligible);
     return {
         candidates,
+        visible,
         eligible,
+        visibleEligible,
         candidateCount: candidates.length,
+        visibleCount: visible.length,
         eligibleCount: eligible.length,
+        visibleEligibleCount: visibleEligible.length,
         eligibleAmount: eligible.reduce((sum, invoice) => sum + latePaymentChargeAmount(invoice), 0),
+        visibleEligibleAmount: visibleEligible.reduce((sum, invoice) => sum + latePaymentChargeAmount(invoice), 0),
     };
 }
 
@@ -6570,17 +6635,22 @@ function renderLateChargesScreen() {
     if (!screen || !target || !summary || !raiseButton) return;
 
     const stats = latePaymentChargeReviewStats();
-    const invoices = stats.candidates;
-    const validIds = new Set(stats.eligible.map((invoice) => invoice.id));
+    const invoices = stats.visible;
+    const validIds = new Set(stats.visibleEligible.map((invoice) => invoice.id));
     selectedLateChargeInvoiceIds = new Set([...selectedLateChargeInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
     latePaymentChargeBaseAmounts = new Map([...latePaymentChargeBaseAmounts].filter(([invoiceId]) => validIds.has(invoiceId)));
-    const eligibleCount = stats.eligibleCount;
+    const eligibleCount = stats.visibleEligibleCount;
     const selectedCount = selectedLateChargeInvoiceIds.size;
-    summary.textContent = invoices.length
-        ? `${invoices.length.toLocaleString("en-GB")} invoice${invoices.length === 1 ? "" : "s"} are more than 14 days overdue. ${eligibleCount.toLocaleString("en-GB")} can still have a charge raised, totalling ${formatCurrency(stats.eligibleAmount)} including VAT.`
+    const filterLabel = lateChargeFilterLabels[lateChargeFilter] || lateChargeFilterLabels.active;
+    summary.textContent = stats.candidateCount
+        ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} overdue invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). ${eligibleCount.toLocaleString("en-GB")} visible charge${eligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)} including VAT.`
         : "No invoices are currently more than 14 days overdue.";
     raiseButton.disabled = selectedCount === 0 || !isXeroConnected();
     raiseButton.textContent = selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges";
+    const searchInput = document.getElementById("lateChargeSearch");
+    if (searchInput && searchInput.value !== lateChargeSearchTerm) searchInput.value = lateChargeSearchTerm;
+    const filterSelect = document.getElementById("lateChargeFilterSelect");
+    if (filterSelect && filterSelect.value !== lateChargeFilter) filterSelect.value = lateChargeFilter;
     const selectAllButton = document.getElementById("selectAllLateChargesButton");
     if (selectAllButton) {
         selectAllButton.disabled = eligibleCount === 0;
@@ -6597,11 +6667,19 @@ function renderLateChargesScreen() {
     }
 
     target.innerHTML = "";
-    if (!invoices.length) {
+    if (!stats.candidateCount) {
         const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
         emptyState.querySelector(".eyebrow").textContent = "No late charges";
         emptyState.querySelector("h4").textContent = "No invoices are more than 14 days overdue";
         emptyState.querySelector("p:last-child").textContent = "This screen will populate when open invoices cross the 14 day overdue threshold.";
+        target.appendChild(emptyState);
+        return;
+    }
+    if (!invoices.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = "No matches";
+        emptyState.querySelector("h4").textContent = "No late-charge rows match this view";
+        emptyState.querySelector("p:last-child").textContent = "Change the client search or switch the view filter to include charged and blocked invoices.";
         target.appendChild(emptyState);
         return;
     }
@@ -6642,18 +6720,18 @@ function renderLateChargesScreen() {
 
 function selectAllEligibleLatePaymentCharges() {
     const stats = latePaymentChargeReviewStats();
-    selectedLateChargeInvoiceIds = new Set(stats.eligible.map((invoice) => invoice.id));
+    selectedLateChargeInvoiceIds = new Set(stats.visibleEligible.map((invoice) => invoice.id));
     renderLateChargesScreen();
 }
 
 function applyBulkLatePaymentChargeAmount() {
     const stats = latePaymentChargeReviewStats();
-    if (!stats.eligibleCount) return showToast("No eligible late payment charges", "info");
+    if (!stats.visibleEligibleCount) return showToast("No visible eligible late payment charges", "info");
     const select = document.getElementById("bulkLateChargeAmountSelect");
     const baseAmount = normaliseLatePaymentChargeBaseAmount(select?.value);
     const targetInvoices = selectedLateChargeInvoiceIds.size
-        ? stats.eligible.filter((invoice) => selectedLateChargeInvoiceIds.has(invoice.id))
-        : stats.eligible;
+        ? stats.visibleEligible.filter((invoice) => selectedLateChargeInvoiceIds.has(invoice.id))
+        : stats.visibleEligible;
     targetInvoices.forEach((invoice) => latePaymentChargeBaseAmounts.set(invoice.id, baseAmount));
     renderLateChargesScreen();
     showToast(
@@ -6705,6 +6783,7 @@ async function raiseLatePaymentCharges() {
         const skipped = payload?.skipped || [];
         const skippedCount = Number(skipped.length || 0);
         const historyNoteFailures = (payload?.created || []).filter((item) => item.historyNoteSynced === false).length;
+        const contactNoteFailures = (payload?.created || []).filter((item) => item.contactNoteSynced === false).length;
         const skippedReasons = [...new Set(skipped.map((item) => item.reason).filter(Boolean))];
         if (!createdCount && skippedCount) {
             showToast(
@@ -6714,7 +6793,7 @@ async function raiseLatePaymentCharges() {
         } else {
             showToast(
                 `${createdCount} late payment charge${createdCount === 1 ? "" : "s"} raised${skippedCount ? `, ${skippedCount} skipped` : ""}`,
-                historyNoteFailures ? "info" : "success"
+                historyNoteFailures || contactNoteFailures ? "info" : "success"
             );
         }
         if (createdCount && skippedReasons.length) {
@@ -6722,6 +6801,9 @@ async function raiseLatePaymentCharges() {
         }
         if (historyNoteFailures) {
             showToast(`${historyNoteFailures.toLocaleString("en-GB")} original invoice history note${historyNoteFailures === 1 ? "" : "s"} could not be added in Xero.`, "error");
+        }
+        if (contactNoteFailures) {
+            showToast(`${contactNoteFailures.toLocaleString("en-GB")} Xero contact note${contactNoteFailures === 1 ? "" : "s"} could not be added.`, "error");
         }
     } catch (error) {
         console.error("Unable to raise late payment charges", error);
@@ -7253,10 +7335,14 @@ function wireFilters() {
     document.getElementById("clearFiltersButton").addEventListener("click", () => {
         selectedFilter = "all";
         clientFilter = "all";
+        lateChargeFilter = "active";
+        lateChargeSearchTerm = "";
         sortMode = "priority";
         searchTerm = "";
         currentPage = 1;
         document.getElementById("ledgerSearch").value = "";
+        const lateChargeSearch = document.getElementById("lateChargeSearch");
+        if (lateChargeSearch) lateChargeSearch.value = "";
         closeToolbarMenus();
         renderAll();
         showToast("Filters cleared", "info");
@@ -7969,6 +8055,8 @@ function clearLocalConsoleState(panel = null) {
     letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
     selectedLetterTemplateId = letterTemplates[0]?.id || "";
     selectedFilter = "all";
+    lateChargeFilter = "active";
+    lateChargeSearchTerm = "";
     selectedInvoiceId = null;
     selectedInvoiceIds = new Set();
     selectedClientId = null;
@@ -8309,6 +8397,18 @@ function wireSyncButtons() {
     if (reviewLateChargesButton) reviewLateChargesButton.addEventListener("click", openLateChargesScreen);
     const lateChargeReviewCard = document.getElementById("lateChargeReviewCard");
     if (lateChargeReviewCard) lateChargeReviewCard.addEventListener("click", openLateChargesScreen);
+    const lateChargeSearch = document.getElementById("lateChargeSearch");
+    if (lateChargeSearch) lateChargeSearch.addEventListener("input", (event) => {
+        lateChargeSearchTerm = event.target.value;
+        renderLateChargesScreen();
+    });
+    const lateChargeFilterSelect = document.getElementById("lateChargeFilterSelect");
+    if (lateChargeFilterSelect) lateChargeFilterSelect.addEventListener("change", (event) => {
+        lateChargeFilter = lateChargeFilterLabels[event.target.value] ? event.target.value : "active";
+        selectedLateChargeInvoiceIds.clear();
+        persistState();
+        renderLateChargesScreen();
+    });
     const selectAllLateChargesButton = document.getElementById("selectAllLateChargesButton");
     if (selectAllLateChargesButton) selectAllLateChargesButton.addEventListener("click", selectAllEligibleLatePaymentCharges);
     const applyBulkLateChargeButton = document.getElementById("applyBulkLateChargeButton");
@@ -8388,9 +8488,15 @@ async function applyClientStatus(client, statusValue, note = "", options = {}) {
             requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId })
         ));
         if (results.some((result) => result.status === "rejected")) throw new Error("One or more status updates failed");
+        const noteFailures = results
+            .filter((result) => result.status === "fulfilled")
+            .filter((result) => result.value?.xeroNoteSynced === false).length;
         await hydrateFromAPI();
         renderAll();
-        showToast(options.syncedMessage || "Bulk status synced", "success");
+        showToast(options.syncedMessage || "Bulk status synced", noteFailures ? "info" : "success");
+        if (noteFailures) {
+            showToast(`${noteFailures.toLocaleString("en-GB")} Xero status note${noteFailures === 1 ? "" : "s"} could not be added.`, "error");
+        }
         return true;
     } catch (error) {
         console.error("Unable to save bulk status", error);
@@ -8470,7 +8576,7 @@ function wireForms() {
             await hydrateFromAPI();
             renderAll();
             if (payload?.xeroNoteSynced) {
-                showToast("Invoice note saved and added to Xero", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+                showToast("Invoice note saved and added to Xero contact and invoice", "success", { label: "View audit trail", onClick: scrollAuditTrail });
             } else {
                 showToast(`Invoice note saved locally. Xero note was not added: ${payload?.xeroNoteError || "Reconnect Xero and try again."}`, "error");
             }
@@ -8541,7 +8647,11 @@ function wireForms() {
             if (payload?.panel) replaceState(normaliseState(payload.panel));
             else await hydrateFromAPI();
             renderAll();
-            showToast("Payment plan synced", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+            if (payload?.xeroNoteSynced) {
+                showToast("Payment plan synced to Xero notes", "success", { label: "View audit trail", onClick: scrollAuditTrail });
+            } else {
+                showToast(`Payment plan saved locally. Xero note was not added: ${payload?.xeroNoteError || "Reconnect Xero and try again."}`, "error");
+            }
         } catch (error) {
             console.error("Unable to sync payment plan", error);
             showToast("Unable to sync payment plan", "error");

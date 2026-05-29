@@ -2733,14 +2733,21 @@ def _format_xero_note(user: dict, body: str) -> str:
     return _with_jenius_signature(f"Credit Control Console note from {author}: {body.strip()}")
 
 
-async def sync_invoice_note_to_xero(invoice_id: str, user: dict, body: str) -> dict:
+async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: str, event_type: str = "xero.workflow_note") -> dict:
+    note_body = _with_jenius_signature(body)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, xero_invoice_id, invoice_number
+                SELECT invoices.id,
+                       invoices.xero_invoice_id,
+                       invoices.invoice_number,
+                       customers.id AS customer_id,
+                       customers.name AS customer_name,
+                       customers.xero_contact_id
                 FROM invoices
-                WHERE id = %s
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE invoices.id = %s
                 """,
                 (invoice_id,),
             )
@@ -2748,32 +2755,84 @@ async def sync_invoice_note_to_xero(invoice_id: str, user: dict, body: str) -> d
         connection.commit()
 
     if invoice is None:
-        return {"synced": False, "error": "Invoice not found."}
-    if not invoice.get("xero_invoice_id"):
-        return {"synced": False, "error": "Invoice is not linked to a Xero invoice."}
+        return {
+            "synced": False,
+            "invoiceNoteSynced": False,
+            "contactNoteSynced": False,
+            "error": "Invoice not found.",
+        }
+
+    targets = {
+        "Invoices": invoice.get("xero_invoice_id"),
+        "Contacts": invoice.get("xero_contact_id"),
+    }
+    results = {
+        "Invoices": {"synced": False, "error": ""},
+        "Contacts": {"synced": False, "error": ""},
+    }
 
     try:
         connection_row = get_xero_connection_for_user(user["id"])
-        await create_history_record(connection_row, "Invoices", invoice["xero_invoice_id"], _format_xero_note(user, body))
     except Exception as exc:
         error = _sync_error_message(exc)
         record_audit_event(
             "invoice",
             invoice_id,
-            "xero.note.failed",
+            f"{event_type}.failed",
             {"error": error, "invoice_number": invoice.get("invoice_number"), "detail": _sync_error_payload(exc)},
             user["id"],
         )
-        return {"synced": False, "error": error}
+        return {
+            "synced": False,
+            "invoiceNoteSynced": False,
+            "contactNoteSynced": False,
+            "error": error,
+        }
 
+    for resource, resource_id in targets.items():
+        if not resource_id:
+            results[resource]["error"] = (
+                "Invoice is not linked to a Xero invoice."
+                if resource == "Invoices"
+                else "Customer is not linked to a Xero contact."
+            )
+            continue
+        try:
+            await create_history_record(connection_row, resource, resource_id, note_body)
+            results[resource]["synced"] = True
+        except Exception as exc:
+            error = _sync_error_message(exc)
+            results[resource]["error"] = error
+            logger.exception("Unable to add Xero workflow history note to %s %s", resource, resource_id)
+
+    errors = [result["error"] for result in results.values() if result["error"]]
+    synced = results["Invoices"]["synced"] and results["Contacts"]["synced"]
     record_audit_event(
         "invoice",
         invoice_id,
-        "xero.note.synced",
-        {"invoice_number": invoice.get("invoice_number"), "xero_invoice_id": invoice.get("xero_invoice_id")},
+        f"{event_type}.{'synced' if synced else 'failed'}",
+        {
+            "invoice_number": invoice.get("invoice_number"),
+            "customer_id": str(invoice.get("customer_id")),
+            "customer_name": invoice.get("customer_name"),
+            "xero_invoice_id": invoice.get("xero_invoice_id"),
+            "xero_contact_id": invoice.get("xero_contact_id"),
+            "invoice_note_synced": results["Invoices"]["synced"],
+            "contact_note_synced": results["Contacts"]["synced"],
+            "errors": errors,
+        },
         user["id"],
     )
-    return {"synced": True, "error": ""}
+    return {
+        "synced": synced,
+        "invoiceNoteSynced": results["Invoices"]["synced"],
+        "contactNoteSynced": results["Contacts"]["synced"],
+        "error": "; ".join(errors),
+    }
+
+
+async def sync_invoice_note_to_xero(invoice_id: str, user: dict, body: str) -> dict:
+    return await sync_invoice_workflow_note_to_xero(invoice_id, user, _format_xero_note(user, body), "xero.note")
 
 
 async def sync_customer_note_to_xero(customer_id: str, user: dict, body: str) -> dict:
@@ -2817,6 +2876,119 @@ async def sync_customer_note_to_xero(customer_id: str, user: dict, body: str) ->
         user["id"],
     )
     return {"synced": True, "error": ""}
+
+
+async def sync_invoice_status_to_xero(invoice_id: str, user: dict, status_value: str, note: str = "") -> dict:
+    detail = f'Credit Control Console status updated to "{status_value}".'
+    if note:
+        detail = f"{detail} Note: {note.strip()}"
+    return await sync_invoice_workflow_note_to_xero(invoice_id, user, detail, "xero.status_note")
+
+
+async def sync_invoice_promise_to_xero(invoice_id: str, user: dict, promised_amount: str, promised_date: str, note: str = "") -> dict:
+    detail = f"Payment promise recorded for £{promised_amount} due on {promised_date}."
+    if note:
+        detail = f"{detail} Note: {note.strip()}"
+    return await sync_invoice_workflow_note_to_xero(invoice_id, user, detail, "xero.promise_note")
+
+
+async def sync_payment_plan_to_xero(customer_id: str, user: dict, payment_plan: dict) -> dict:
+    invoice_ids = [str(invoice_id) for invoice_id in payment_plan.get("invoiceIds") or [] if str(invoice_id).strip()]
+    if not invoice_ids:
+        return {"synced": False, "contactNoteSynced": False, "invoiceNoteSynced": False, "error": "Payment plan has no invoices."}
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, xero_contact_id
+                FROM customers
+                WHERE id = %s
+                """,
+                (customer_id,),
+            )
+            customer = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT id, xero_invoice_id, invoice_number
+                FROM invoices
+                WHERE customer_id = %s
+                  AND id = ANY(%s)
+                ORDER BY due_date ASC NULLS LAST, invoice_number ASC
+                """,
+                (customer_id, [UUID(invoice_id) for invoice_id in invoice_ids]),
+            )
+            invoices = cursor.fetchall()
+        connection.commit()
+
+    if customer is None:
+        return {"synced": False, "contactNoteSynced": False, "invoiceNoteSynced": False, "error": "Customer not found."}
+
+    invoice_refs = ", ".join(invoice.get("invoice_number") or str(invoice["id"]) for invoice in invoices) or "selected invoices"
+    note_body = _with_jenius_signature(
+        f"Payment plan created for {payment_plan.get('durationMonths')} months covering {len(invoices)} invoice(s): "
+        f"{invoice_refs}. Plan total: £{_float(payment_plan.get('totalAmount')):,.2f}. "
+        f"Monthly payment: £{_float(payment_plan.get('monthlyAmount')):,.2f}. "
+        f"Expected completion: {payment_plan.get('promisedDate') or 'not recorded'}."
+    )
+    errors = []
+    contact_note_synced = False
+    invoice_note_results = []
+
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+    except Exception as exc:
+        error = _sync_error_message(exc)
+        record_audit_event("customer", customer_id, "xero.payment_plan_note.failed", {"error": error, "detail": _sync_error_payload(exc)}, user["id"])
+        return {"synced": False, "contactNoteSynced": False, "invoiceNoteSynced": False, "error": error}
+
+    if customer.get("xero_contact_id"):
+        try:
+            await create_history_record(connection_row, "Contacts", customer["xero_contact_id"], note_body)
+            contact_note_synced = True
+        except Exception as exc:
+            error = _sync_error_message(exc)
+            errors.append(error)
+            logger.exception("Unable to add payment plan history note to Xero contact %s", customer.get("xero_contact_id"))
+    else:
+        errors.append("Customer is not linked to a Xero contact.")
+
+    for invoice in invoices:
+        if not invoice.get("xero_invoice_id"):
+            invoice_note_results.append(False)
+            errors.append(f"Invoice {invoice.get('invoice_number') or invoice['id']} is not linked to a Xero invoice.")
+            continue
+        try:
+            await create_history_record(connection_row, "Invoices", invoice["xero_invoice_id"], note_body)
+            invoice_note_results.append(True)
+        except Exception as exc:
+            error = _sync_error_message(exc)
+            errors.append(error)
+            invoice_note_results.append(False)
+            logger.exception("Unable to add payment plan history note to Xero invoice %s", invoice.get("invoice_number") or invoice["id"])
+
+    invoice_notes_synced = bool(invoice_note_results) and all(invoice_note_results)
+    synced = contact_note_synced and invoice_notes_synced
+    record_audit_event(
+        "customer",
+        customer_id,
+        f"xero.payment_plan_note.{'synced' if synced else 'failed'}",
+        {
+            "customer": customer.get("name"),
+            "xero_contact_id": customer.get("xero_contact_id"),
+            "invoice_ids": invoice_ids,
+            "contact_note_synced": contact_note_synced,
+            "invoice_note_synced": invoice_notes_synced,
+            "errors": errors,
+        },
+        user["id"],
+    )
+    return {
+        "synced": synced,
+        "contactNoteSynced": contact_note_synced,
+        "invoiceNoteSynced": invoice_notes_synced,
+        "error": "; ".join(dict.fromkeys(error for error in errors if error)),
+    }
 
 
 def _parse_iso_date(value) -> date | None:
@@ -3326,11 +3498,9 @@ def _late_payment_charge_error_message(exc: Exception) -> str:
 def _late_payment_charge_description(invoice: dict, overdue_days: int, base_amount: Decimal, gross_amount: Decimal) -> str:
     invoice_number = invoice.get("invoice_number") or str(invoice["id"])
     return (
-        f"Late payment charge for overdue invoice {invoice_number}. "
-        f"Charge: £{base_amount:,.2f} + VAT (£{gross_amount:,.2f} total). "
-        f"Original invoice date: {_invoice_date_description(invoice.get('invoice_date'))}. "
-        f"Original due date: {_invoice_date_description(invoice.get('due_date'))}. "
-        f"Invoice was {overdue_days} days overdue at the charge date."
+        f"Contractual late payment charge for Invoice {invoice_number}, which remained outstanding "
+        f"for {overdue_days} days beyond the due date. Charge applied in accordance with our "
+        f"Terms of Engagement. £{base_amount:,.2f} plus VAT."
     )
 
 
@@ -3591,6 +3761,13 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     """,
                     (invoice["id"], user["id"], history_note),
                 )
+                cursor.execute(
+                    """
+                    INSERT INTO customer_notes (customer_id, user_id, body)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (invoice["customer_id"], user["id"], history_note),
+                )
             connection.commit()
 
         history_note_synced = False
@@ -3602,6 +3779,16 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
             except Exception as exc:
                 history_note_error = _sync_error_message(exc)
                 logger.exception("Unable to add late payment charge history note to Xero invoice %s", invoice.get("invoice_number") or invoice["id"])
+
+        contact_note_synced = False
+        contact_note_error = ""
+        if invoice.get("xero_contact_id"):
+            try:
+                await create_history_record(connection_row, "Contacts", invoice["xero_contact_id"], history_note)
+                contact_note_synced = True
+            except Exception as exc:
+                contact_note_error = _sync_error_message(exc)
+                logger.exception("Unable to add late payment charge history note to Xero contact %s", invoice.get("customer_name") or invoice["customer_id"])
 
         record_audit_event(
             "invoice",
@@ -3623,6 +3810,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                 "description": description,
                 "history_note_synced": history_note_synced,
                 "history_note_error": history_note_error,
+                "contact_note_synced": contact_note_synced,
+                "contact_note_error": contact_note_error,
             },
             user["id"],
         )
@@ -3640,6 +3829,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                 "description": description,
                 "historyNoteSynced": history_note_synced,
                 "historyNoteError": history_note_error,
+                "contactNoteSynced": contact_note_synced,
+                "contactNoteError": contact_note_error,
             }
         )
 

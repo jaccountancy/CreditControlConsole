@@ -55,7 +55,10 @@ from .services import (
     run_sync_job,
     serialize_sync_run,
     sync_customer_note_to_xero,
+    sync_invoice_promise_to_xero,
     sync_invoice_note_to_xero,
+    sync_invoice_status_to_xero,
+    sync_payment_plan_to_xero,
     sync_run_has_working_data,
     update_control_status,
 )
@@ -324,13 +327,14 @@ def invoice_page(invoice_id: str, request: Request, user: dict = Depends(require
 
 
 @app.post("/invoices/{invoice_id}/notes")
-def invoice_add_note(invoice_id: str, user: dict = Depends(require_user), body: str = Form(...)):
+async def invoice_add_note(invoice_id: str, user: dict = Depends(require_user), body: str = Form(...)):
     add_note(invoice_id, user, body)
+    await sync_invoice_note_to_xero(invoice_id, user, body)
     return RedirectResponse(f"/invoices/{invoice_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/invoices/{invoice_id}/promises")
-def invoice_add_promise(
+async def invoice_add_promise(
     invoice_id: str,
     user: dict = Depends(require_user),
     promised_amount: str = Form(...),
@@ -338,17 +342,19 @@ def invoice_add_promise(
     note: str = Form(""),
 ):
     add_promise(invoice_id, user, promised_amount, promised_date, note)
+    await sync_invoice_promise_to_xero(invoice_id, user, promised_amount, promised_date, note)
     return RedirectResponse(f"/invoices/{invoice_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/invoices/{invoice_id}/status")
-def invoice_set_status(
+async def invoice_set_status(
     invoice_id: str,
     user: dict = Depends(require_user),
     status_value: str = Form(...),
     note: str = Form(""),
 ):
     update_control_status(invoice_id, user, status_value, note)
+    await sync_invoice_status_to_xero(invoice_id, user, status_value, note)
     return RedirectResponse(f"/invoices/{invoice_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -569,8 +575,11 @@ async def api_invoice_add_promise(invoice_id: str, request: Request, user: dict 
     if not promised_amount or not promised_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Promised amount and date are required.")
     add_promise(invoice_id, user, promised_amount, promised_date, note)
+    xero_note = await sync_invoice_promise_to_xero(invoice_id, user, promised_amount, promised_date, note)
     return {
         "status": "ok",
+        "xeroNoteSynced": xero_note["synced"],
+        "xeroNoteError": xero_note.get("error", ""),
         "invoice": invoice_detail(invoice_id),
     }
 
@@ -585,9 +594,12 @@ async def api_customer_create_payment_plan(customer_id: str, request: Request, u
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Payment plan duration is required.") from exc
     note = str(payload.get("note", "")).strip()
     plan = create_payment_plan(customer_id, user, invoice_ids, duration_months, note)
+    xero_note = await sync_payment_plan_to_xero(customer_id, user, plan)
     return {
         "status": "ok",
         "paymentPlan": plan,
+        "xeroNoteSynced": xero_note["synced"],
+        "xeroNoteError": xero_note.get("error", ""),
         "panel": panel_payload(user),
     }
 
@@ -600,8 +612,11 @@ async def api_invoice_set_status(invoice_id: str, request: Request, user: dict =
     if not status_value:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status is required.")
     update_control_status(invoice_id, user, status_value, note)
+    xero_note = await sync_invoice_status_to_xero(invoice_id, user, status_value, note)
     return {
         "status": "ok",
+        "xeroNoteSynced": xero_note["synced"],
+        "xeroNoteError": xero_note.get("error", ""),
         "invoice": invoice_detail(invoice_id),
     }
 
