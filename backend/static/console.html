@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Credit Control</title>
+    <title>Jenius AI</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1673,7 +1673,7 @@ body.is-dense .note-snippet {
 }
 .client-workspace-layout {
     display: grid;
-    grid-template-columns: minmax(205px, 236px) minmax(0, 1fr) minmax(205px, 236px);
+    grid-template-columns: minmax(160px, 190px) minmax(0, 1fr) minmax(280px, 330px);
     gap: 12px;
     align-items: start;
 }
@@ -1689,7 +1689,8 @@ body.is-dense .note-snippet {
 }
 .client-summary-card,
 .audit-trail-panel,
-.client-action-center-card {
+.client-action-center-card,
+.client-timeline-card {
     padding: 14px;
     border-radius: 10px;
     background: rgba(255, 255, 255, 0.86);
@@ -1909,27 +1910,53 @@ body.is-dense .note-snippet {
     gap: 16px;
 }
 .interest-breakdown-panel {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
-    gap: 10px;
+    display: block;
     margin-bottom: 0;
 }
 .interest-breakdown-card {
-    padding: 12px;
+    padding: 16px;
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.82);
     border: 1px solid var(--line);
 }
+.interest-breakdown-card.is-summary {
+    display: grid;
+    gap: 12px;
+}
+.interest-breakdown-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(248, 251, 255, 0.78);
+}
+.interest-breakdown-summary-grid div {
+    min-width: 0;
+    padding: 12px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+}
+.interest-breakdown-summary-grid div:nth-child(3n) {
+    border-right: 0;
+}
+.interest-breakdown-summary-grid div:nth-last-child(-n + 3) {
+    border-bottom: 0;
+}
 .interest-breakdown-card span {
     display: block;
     color: var(--muted);
-    font-size: 0.74rem;
+    font-size: 0.68rem;
     font-weight: 850;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     margin-bottom: 5px;
 }
-.interest-breakdown-card strong { font-size: 1.05rem; }
+.interest-breakdown-card strong {
+    display: block;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+}
 .info-button {
     width: 34px;
     height: 34px;
@@ -2343,8 +2370,56 @@ body.is-dense .note-snippet {
 }
 .client-overview-card {
     display: grid;
-    gap: 11px;
+    gap: 9px;
     background: rgba(255, 255, 255, 0.9);
+}
+.client-sidebar-facts {
+    display: grid;
+    gap: 4px;
+}
+.client-sidebar-facts strong {
+    display: block;
+    font-size: 0.94rem;
+    line-height: 1.28;
+}
+.client-sidebar-disclosure-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+}
+.sidebar-mini-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+.sidebar-mini-list .timeline-item,
+.sidebar-mini-list .empty-state {
+    padding: 10px;
+    border-radius: 10px;
+}
+.sidebar-mini-list .timeline-head {
+    display: grid;
+    gap: 3px;
+}
+.sidebar-mini-list .timeline-head span {
+    margin: 0;
+}
+.sidebar-mini-list .timeline-title {
+    color: var(--ink);
+    font-size: 0.82rem;
+    font-weight: 850;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.sidebar-mini-list .timeline-body {
+    font-size: 0.82rem;
+}
+.sidebar-mini-list .timeline-stamp {
+    color: var(--muted);
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: none;
 }
 .client-avatar {
     width: 42px;
@@ -2518,6 +2593,121 @@ body.is-dense .note-snippet {
 .client-action-stack .ghost-button {
     background: rgba(255, 255, 255, 0.76);
 }
+.recovery-workflow-card,
+.recovery-timeline-card {
+    display: grid;
+    gap: 12px;
+}
+.recovery-workflow-card h3,
+.recovery-timeline-card h3 {
+    margin: 0;
+    font-size: 1.02rem;
+}
+.recovery-workflow-list {
+    display: grid;
+    gap: 8px;
+}
+.recovery-stage {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(248, 251, 255, 0.84);
+    color: var(--ink);
+    text-align: left;
+}
+.recovery-stage:hover {
+    border-color: rgba(29, 103, 242, 0.28);
+    background: rgba(233, 241, 255, 0.66);
+}
+.recovery-stage-marker {
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 900;
+}
+.recovery-stage-copy {
+    display: grid;
+    gap: 2px;
+}
+.recovery-stage-title {
+    font-weight: 900;
+    line-height: 1.2;
+}
+.recovery-stage-state {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.recovery-stage.is-complete .recovery-stage-marker {
+    border-color: rgba(39, 176, 95, 0.24);
+    background: var(--green-soft);
+    color: var(--green);
+}
+.recovery-stage.is-current {
+    border-color: rgba(255, 159, 47, 0.34);
+    background: var(--orange-soft);
+}
+.recovery-stage.is-current .recovery-stage-marker {
+    border-color: rgba(255, 159, 47, 0.38);
+    background: #ffffff;
+    color: #a96500;
+}
+.recovery-timeline {
+    display: grid;
+    gap: 12px;
+}
+.recovery-timeline-entry {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+}
+.recovery-timeline-date {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+.recovery-timeline-event {
+    position: relative;
+    display: grid;
+    gap: 4px;
+    padding-left: 14px;
+}
+.recovery-timeline-event::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--blue);
+}
+.recovery-timeline-event strong {
+    line-height: 1.25;
+}
+.recovery-timeline-event span {
+    color: var(--muted);
+    font-size: 0.82rem;
+    font-weight: 750;
+    line-height: 1.35;
+}
 .client-action-bar {
     position: sticky;
     top: 12px;
@@ -2618,15 +2808,28 @@ body.is-dense .note-snippet {
 .client-kpi-strip .detail-stat.is-urgent strong {
     color: var(--red);
 }
-.invoice-workspace-split {
+.invoice-workspace-panel {
     display: grid;
-    grid-template-columns: minmax(320px, 0.95fr) minmax(300px, 0.75fr);
+    gap: 16px;
+}
+.invoice-workspace-split {
+    display: block;
+}
+.invoice-workspace-body {
+    display: grid;
+    grid-template-columns: minmax(300px, 0.82fr) minmax(360px, 1fr);
     gap: 16px;
     align-items: start;
 }
 .selected-invoice-panel {
-    position: sticky;
-    top: 86px;
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+    padding-left: 16px;
+    border-left: 1px solid var(--line);
+}
+.client-invoices-column {
+    min-width: 0;
 }
 .selected-invoice-detail {
     display: grid;
@@ -3036,6 +3239,8 @@ body.is-syncing .sync-dot {
     .insight-two-column,
     .client-workspace-layout,
     .invoice-workspace-split,
+    .invoice-workspace-body,
+    .interest-breakdown-summary-grid,
     .interest-breakdown-panel,
     .account-file-grid,
     .xero-transaction-summary,
@@ -3051,6 +3256,12 @@ body.is-syncing .sync-dot {
     .client-section-nav,
     .client-action-bar {
         position: static;
+    }
+    .selected-invoice-panel {
+        padding-left: 0;
+        padding-top: 16px;
+        border-left: 0;
+        border-top: 1px solid var(--line);
     }
     .late-charge-row {
         grid-template-columns: 28px minmax(0, 1fr);
@@ -3082,7 +3293,7 @@ body.is-syncing .sync-dot {
         <header class="ledger-topbar">
             <div class="brand-lockup">
                 <div>
-                    <h1>Credit Control Ledger</h1>
+                    <h1>Jenius AI</h1>
                     <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                 </div>
             </div>
@@ -3162,8 +3373,8 @@ body.is-syncing .sync-dot {
             </button>
             <article class="hero-summary-card">
                 <span>Paid</span>
-                <strong id="heroPaidInvoices">0</strong>
-                <p id="heroPaidInvoicesValue">£0 paid value</p>
+                <strong id="heroPaidInvoicesValue">£0</strong>
+                <p id="heroPaidInvoices">0 invoices paid</p>
             </article>
             <article class="hero-summary-card notice-card" id="sevenDayNoticeCard" role="button" tabindex="0">
                 <span>7 Day Notices Sent</span>
@@ -3281,7 +3492,7 @@ body.is-syncing .sync-dot {
             <div class="detail-hero">
                 <div>
                     <button class="text-button" id="backFromSettingsButton" type="button">Back to ledger</button>
-                    <p class="eyebrow">Credit Control Console settings</p>
+                    <p class="eyebrow">Jenius AI settings</p>
                     <h2>Settings</h2>
                     <p class="detail-meta">Choose exactly what Xero data to import before running the next sync.</p>
                 </div>
@@ -3440,40 +3651,37 @@ body.is-syncing .sync-dot {
                 <aside class="client-summary-panel client-sidebar" aria-label="Client workspace">
                     <section class="client-summary-card client-overview-card">
                         <div class="client-avatar" id="clientAvatar">--</div>
-                        <p class="eyebrow">Client summary</p>
                         <h3 id="clientSidebarName">No client selected</h3>
-                        <p class="client-sidebar-status" id="clientSidebarStatus">Open an invoice to work the client account.</p>
-                        <div class="client-sidebar-metrics">
-                            <div>
-                                <span>Total overdue</span>
-                                <strong id="clientSidebarOverdue">£0.00</strong>
-                            </div>
-                            <div>
-                                <span>Invoices</span>
-                                <strong id="clientSidebarInvoices">0</strong>
-                            </div>
-                            <div>
-                                <span>Days overdue</span>
-                                <strong id="clientSidebarDays">0</strong>
-                            </div>
-                            <div>
-                                <span>Assigned</span>
-                                <strong id="clientSidebarAssigned">Unassigned</strong>
-                            </div>
+                        <p class="client-sidebar-status" id="clientSidebarAssigned">Unassigned</p>
+                        <div class="client-sidebar-facts">
+                            <strong id="clientSidebarInvoices">0 Open Invoices</strong>
+                            <strong id="clientSidebarOverdue">£0.00 Due</strong>
                         </div>
                         <div class="client-profile-actions client-quick-links">
-                            <a class="client-profile-action" id="clientCallLink" href="#" hidden>Call</a>
-                            <a class="client-profile-action" id="clientEmailLink" href="#" hidden>Email</a>
                             <a class="client-profile-action" id="selectedContactXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
                         </div>
-                        <details class="client-disclosure">
-                            <summary>Contact details</summary>
-                            <div class="xero-contact-details">
-                                <span>Xero contact</span>
-                                <strong id="clientContactSummary">--</strong>
-                            </div>
-                            <div class="xero-contact-details" id="xeroContactDetails"></div>
-                        </details>
+                        <div class="client-sidebar-disclosure-list">
+                            <details class="client-disclosure">
+                                <summary>Contact details</summary>
+                                <div class="xero-contact-details">
+                                    <span>Xero contact</span>
+                                    <strong id="clientContactSummary">--</strong>
+                                </div>
+                                <div class="client-profile-actions client-quick-links">
+                                    <a class="client-profile-action" id="clientCallLink" href="#" hidden>Call</a>
+                                    <a class="client-profile-action" id="clientEmailLink" href="#" hidden>Email</a>
+                                </div>
+                                <div class="xero-contact-details" id="xeroContactDetails"></div>
+                            </details>
+                            <details class="client-disclosure">
+                                <summary>Recovery notes</summary>
+                                <div class="sidebar-mini-list" id="sidebarRecoveryNotes"></div>
+                            </details>
+                            <details class="client-disclosure">
+                                <summary>Attachments</summary>
+                                <div class="sidebar-mini-list" id="sidebarAttachments"></div>
+                            </details>
+                        </div>
                     </section>
                 </aside>
 
@@ -3506,43 +3714,44 @@ body.is-syncing .sync-dot {
                     </section>
 
                     <section class="client-section-pane" data-client-pane="invoices">
-                        <div class="invoice-workspace-split">
-                            <section class="detail-panel client-invoices-panel">
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Client invoices</p>
-                                        <h3>Open ledger rows</h3>
-                                    </div>
+                        <section class="detail-panel invoice-workspace-panel">
+                            <div class="panel-heading">
+                                <div>
+                                    <p class="eyebrow">Client invoices</p>
+                                    <h3>Open ledger rows and selected invoice</h3>
+                                </div>
                                 <div class="client-invoice-bulk-actions">
                                     <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
                                     <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
                                     <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
                                 </div>
+                            </div>
+                            <div class="invoice-workspace-body">
+                                <div class="client-invoices-column">
+                                    <div class="client-invoice-list" id="clientInvoiceList"></div>
                                 </div>
-                                <div class="client-invoice-list" id="clientInvoiceList"></div>
-                            </section>
-
-                            <section class="detail-panel selected-invoice-panel">
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Selected invoice</p>
-                                        <h3 id="selectedInvoiceSummary">--</h3>
+                                <section class="selected-invoice-panel invoice-detail-pane" aria-label="Selected invoice">
+                                    <div class="panel-heading">
+                                        <div>
+                                            <p class="eyebrow">Selected invoice</p>
+                                            <h3 id="selectedInvoiceSummary">--</h3>
+                                        </div>
+                                        <a id="selectedInvoiceXeroLink" class="invoice-xero-link" target="_blank" rel="noopener" hidden>Open in Xero</a>
                                     </div>
-                                    <a id="selectedInvoiceXeroLink" class="invoice-xero-link" target="_blank" rel="noopener" hidden>Open in Xero</a>
-                                </div>
-                                <div class="selected-invoice-detail" id="selectedInvoiceDetail"></div>
-                                <div class="selected-invoice-actions">
-                                    <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
-                                    <button class="ghost-button" type="button" data-client-action="payment">Start payment plan</button>
-                                    <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
-                                </div>
-                                <form class="stack-form" id="invoiceNoteForm">
-                                    <textarea id="invoiceNoteInput" rows="4" placeholder="Note for the selected invoice"></textarea>
-                                    <button class="primary-button" type="submit">Add invoice note</button>
-                                </form>
-                                <div class="mini-timeline" id="selectedInvoiceNotesList"></div>
-                            </section>
-                        </div>
+                                    <div class="selected-invoice-detail" id="selectedInvoiceDetail"></div>
+                                    <div class="selected-invoice-actions">
+                                        <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
+                                        <button class="ghost-button" type="button" data-client-action="payment">Start payment plan</button>
+                                        <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
+                                    </div>
+                                    <form class="stack-form" id="invoiceNoteForm">
+                                        <textarea id="invoiceNoteInput" rows="4" placeholder="Note for the selected invoice"></textarea>
+                                        <button class="primary-button" type="submit">Add invoice note</button>
+                                    </form>
+                                    <div class="mini-timeline" id="selectedInvoiceNotesList"></div>
+                                </section>
+                            </div>
+                        </section>
                     </section>
 
                     <section class="client-section-pane" data-client-pane="payments">
@@ -3731,26 +3940,41 @@ body.is-syncing .sync-dot {
                     </section>
                 </div>
 
-                <aside class="client-action-center" aria-label="Recovery action center">
-                    <section class="client-action-center-card">
-                        <p class="eyebrow">Action center</p>
-                        <h3>Recovery actions</h3>
-                        <div class="client-action-stack">
-                            <button class="primary-button" type="button" data-client-action="reminder">Generate letter</button>
-                            <button class="ghost-button" type="button" data-client-action="note">Add client note</button>
-                            <button class="ghost-button" type="button" data-client-action="invoice-note">Add invoice note</button>
-                            <button class="ghost-button" type="button" data-client-action="payment">Start payment plan</button>
-                            <button class="ghost-button legal-button" type="button" data-client-action="legal">Escalate legal</button>
-                            <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
+                <aside class="client-action-center" aria-label="Recovery workflow and timeline">
+                    <section class="client-action-center-card recovery-workflow-card">
+                        <p class="eyebrow">Recovery workflow</p>
+                        <h3 id="recoveryWorkflowSummary">Review account</h3>
+                        <div class="recovery-workflow-list" id="recoveryWorkflowList">
+                            <button class="recovery-stage" type="button" data-workflow-stage="initial" data-client-action="reminder">
+                                <span class="recovery-stage-marker">○</span>
+                                <span class="recovery-stage-copy"><span class="recovery-stage-title">Initial Reminder</span><span class="recovery-stage-state">Open</span></span>
+                            </button>
+                            <button class="recovery-stage" type="button" data-workflow-stage="follow" data-client-action="reminder">
+                                <span class="recovery-stage-marker">○</span>
+                                <span class="recovery-stage-copy"><span class="recovery-stage-title">Follow-Up Reminder</span><span class="recovery-stage-state">Open</span></span>
+                            </button>
+                            <button class="recovery-stage" type="button" data-workflow-stage="notice" data-client-action="legal">
+                                <span class="recovery-stage-marker">○</span>
+                                <span class="recovery-stage-copy"><span class="recovery-stage-title">7 Day Notice</span><span class="recovery-stage-state">Open</span></span>
+                            </button>
+                            <button class="recovery-stage" type="button" data-workflow-stage="lba" data-client-action="letters">
+                                <span class="recovery-stage-marker">○</span>
+                                <span class="recovery-stage-copy"><span class="recovery-stage-title">Letter Before Action</span><span class="recovery-stage-state">Open</span></span>
+                            </button>
+                            <button class="recovery-stage" type="button" data-workflow-stage="court" data-client-action="legal">
+                                <span class="recovery-stage-marker">○</span>
+                                <span class="recovery-stage-copy"><span class="recovery-stage-title">Court Claim</span><span class="recovery-stage-state">Open</span></span>
+                            </button>
+                            <button class="recovery-stage" type="button" data-workflow-stage="enforcement" data-client-action="legal">
+                                <span class="recovery-stage-marker">○</span>
+                                <span class="recovery-stage-copy"><span class="recovery-stage-title">Enforcement</span><span class="recovery-stage-state">Open</span></span>
+                            </button>
                         </div>
                     </section>
-                    <section class="client-action-center-card">
-                        <p class="eyebrow">Xero actions</p>
-                        <h3>Account controls</h3>
-                        <div class="client-action-stack">
-                            <button class="ghost-button" id="actionCenterRefreshTransactionsButton" type="button">Refresh transactions</button>
-                            <button class="ghost-button" id="actionCenterAssignClientManagerButton" type="button">Assign owner</button>
-                        </div>
+                    <section class="client-timeline-card recovery-timeline-card">
+                        <p class="eyebrow">Recovery timeline</p>
+                        <h3>Client Timeline</h3>
+                        <div class="recovery-timeline" id="clientRecoveryTimeline"></div>
                     </section>
                 </aside>
             </div>
@@ -3836,7 +4060,7 @@ body.is-syncing .sync-dot {
             <div class="developer-log-head">
                 <div>
                     <h3 id="helpTitle">Help</h3>
-                    <p>How the Credit Control Console works from first sync through daily chasing.</p>
+                    <p>How Jenius AI works from first sync through daily chasing.</p>
                 </div>
                 <div class="developer-log-actions">
                     <button class="ghost-button" id="closeHelpButton" type="button">Close</button>
@@ -5175,8 +5399,8 @@ function renderDashboardHero() {
         : totals.lateChargeReviewCount
         ? "No eligible charges right now"
         : "No charges need review";
-    document.getElementById("heroPaidInvoices").textContent = totals.paidCount.toLocaleString("en-GB");
-    document.getElementById("heroPaidInvoicesValue").textContent = `${formatCurrency(totals.paidValue)} paid value`;
+    document.getElementById("heroPaidInvoicesValue").textContent = formatCompactCurrency(totals.paidValue);
+    document.getElementById("heroPaidInvoices").textContent = `${totals.paidCount.toLocaleString("en-GB")} invoice${totals.paidCount === 1 ? "" : "s"} paid`;
     document.getElementById("heroClientsAction").textContent = totals.clientsNeedingAction.toLocaleString("en-GB");
     const noticeSummary = document.getElementById("heroNoticesSummary");
     const noticeCard = document.getElementById("sevenDayNoticeCard");
@@ -5613,13 +5837,17 @@ function renderClientWorkspaceShell(client, invoices, openInvoices, totals, noti
     const manager = client?.manager || "Unassigned";
     document.getElementById("clientAvatar").textContent = clientInitials(client);
     document.getElementById("clientSidebarName").textContent = client?.name || "No client selected";
-    document.getElementById("clientSidebarStatus").textContent = client
-        ? `${openInvoices.length} open invoice${openInvoices.length === 1 ? "" : "s"} · ${manager}`
-        : "Open an invoice to work the client account.";
-    document.getElementById("clientSidebarOverdue").textContent = formatCurrency(totals.overduePrincipal || 0);
-    document.getElementById("clientSidebarInvoices").textContent = `${invoices.length}`;
-    document.getElementById("clientSidebarDays").textContent = `${totals.maxOverdueDays || 0}`;
+    const sidebarStatus = document.getElementById("clientSidebarStatus");
+    if (sidebarStatus) {
+        sidebarStatus.textContent = client
+            ? `${openInvoices.length} open invoice${openInvoices.length === 1 ? "" : "s"} · ${manager}`
+            : "Open an invoice to work the client account.";
+    }
     document.getElementById("clientSidebarAssigned").textContent = manager;
+    document.getElementById("clientSidebarOverdue").textContent = `${formatCurrency(totals.overduePrincipal || 0)} Due`;
+    document.getElementById("clientSidebarInvoices").textContent = `${openInvoices.length} Open Invoice${openInvoices.length === 1 ? "" : "s"}`;
+    const sidebarDays = document.getElementById("clientSidebarDays");
+    if (sidebarDays) sidebarDays.textContent = `${totals.maxOverdueDays || 0}`;
 
     const stats = document.getElementById("clientStats");
     stats.innerHTML = "";
@@ -5657,6 +5885,7 @@ function renderClientWorkspaceShell(client, invoices, openInvoices, totals, noti
     document.getElementById("clientSlaSummary").textContent = totals.maxOverdueDays > 0 ? `${totals.maxOverdueDays} days overdue` : "On track";
     document.getElementById("clientNextActionDue").textContent = nextAction.due;
     document.getElementById("clientQueueStatus").textContent = hasLegal ? "Legal escalation" : totals.overdueInvoiceCount ? "Credit control priority" : "Standard follow-up";
+    renderRecoveryWorkflow(client, invoices, totals, noticeInvoices, hasLegal);
 }
 
 function renderSelectedInvoiceDetail(invoice) {
@@ -5775,6 +6004,8 @@ function renderClientScreen() {
     renderTimeline("attachmentTimeline", selectedInvoice?.attachments || [], { eyebrow: "No attachments", title: "Proof and correspondence will appear here", body: "Add attachment records for remittances, emails or supporting correspondence." });
     renderTimeline("auditTrailTimeline", auditTrailItems(client, invoices), { eyebrow: "No audit activity", title: "Audit trail will appear here", body: "Sync, note, and status activity will be shown here for review." });
     renderTimeline("activityTimeline", activityTimelineItems(client, invoices), { eyebrow: "No activity yet", title: "Account activity will appear here", body: "Notes, letters, payment promises, attachments and status changes will build the account timeline." });
+    renderSidebarAccountLists(client, invoices);
+    renderRecoveryTimeline(client, invoices);
 }
 
 function courtCostForAmount(amountDue) {
@@ -5889,6 +6120,7 @@ function renderInterestBreakdown(invoices) {
         ["Claim before fee", formatCurrency(totals.claimValue)],
         ["Court-fee guide", formatCurrency(totals.courtCost)],
         ["Estimated claim total", formatCurrency(totals.claimTotal)],
+        ["Daily interest", totals.dailyInterest > 0 ? formatCurrency(totals.dailyInterest) : "--"],
     ] : [
         ["Principal due", "--"],
         ["Overdue principal", "--"],
@@ -5898,11 +6130,19 @@ function renderInterestBreakdown(invoices) {
         ["Claim before fee", "--"],
         ["Court-fee guide", "--"],
         ["Estimated claim total", "--"],
+        ["Daily interest", "--"],
     ];
-    target.innerHTML = rows.map(([label, value]) => `<article class="interest-breakdown-card"><span>${label}</span><strong>${value}</strong></article>`).join("");
-    if (hasAccount && totals.dailyInterest > 0) {
-        target.insertAdjacentHTML("beforeend", `<article class="interest-breakdown-card"><span>Daily interest</span><strong>${formatCurrency(totals.dailyInterest)}</strong></article>`);
-    }
+    target.innerHTML = `
+        <article class="interest-breakdown-card is-summary">
+            <div>
+                <span>Claim summary</span>
+                <strong>${hasAccount ? formatCurrency(totals.claimTotal) : "--"}</strong>
+            </div>
+            <div class="interest-breakdown-summary-grid">
+                ${rows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
+            </div>
+        </article>
+    `;
 }
 
 function renderClientInvoicePicker(invoices) {
@@ -6891,6 +7131,148 @@ function activityTimelineItems(client, invoices) {
         .slice(0, 24);
 }
 
+function clientAttachmentTimelineItems(invoices) {
+    return (invoices || [])
+        .flatMap((invoice) => (invoice.attachments || []).map((item) => ({
+            title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Attachment"}`,
+            body: item.body || item.name || "Attachment recorded",
+            stamp: item.stamp || item.createdAt || ""
+        })))
+        .sort((a, b) => timelineStampValue(b.stamp) - timelineStampValue(a.stamp))
+        .slice(0, 4);
+}
+
+function renderSidebarAccountLists(client, invoices) {
+    renderTimeline("sidebarRecoveryNotes", activityTimelineItems(client, invoices).slice(0, 4), {
+        eyebrow: "No notes",
+        title: "No recovery notes yet",
+        body: "Client notes, invoice notes and status changes will appear here."
+    });
+    renderTimeline("sidebarAttachments", clientAttachmentTimelineItems(invoices), {
+        eyebrow: "No attachments",
+        title: "No files recorded",
+        body: "Attachment records will appear here."
+    });
+}
+
+function timelineStampValue(stamp) {
+    const parsed = parseDateValue(stamp);
+    return parsed ? parsed.getTime() : 0;
+}
+
+function timelineRelativeLabel(stamp) {
+    const parsed = parseDateValue(stamp);
+    if (!parsed) return "No date";
+    const days = Math.floor((startOfDay(new Date()) - startOfDay(parsed)) / (24 * 60 * 60 * 1000));
+    if (days < 0) return "Upcoming";
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    return `${days} Days Ago`;
+}
+
+function recoveryTimelineItems(client, invoices) {
+    const activity = activityTimelineItems(client, invoices).map((item) => ({
+        title: item.title || "Recovery activity",
+        body: item.body || "",
+        stamp: item.stamp || ""
+    }));
+    const invoiceRaised = (invoices || [])
+        .map((invoice) => {
+            const stamp = invoice.invoiceDate || invoice.createdAt || invoice.dueDate || "";
+            if (!stamp) return null;
+            return {
+                title: `${invoice.invoiceNumber || "Invoice"} · Invoice raised`,
+                body: `${formatCurrency(invoice.total || invoice.amountDue || 0)} total · due ${formatDate(invoice.dueDate)}`,
+                stamp
+            };
+        })
+        .filter(Boolean);
+    return [...activity, ...invoiceRaised]
+        .sort((a, b) => timelineStampValue(b.stamp) - timelineStampValue(a.stamp))
+        .slice(0, 10);
+}
+
+function renderRecoveryTimeline(client, invoices) {
+    const target = document.getElementById("clientRecoveryTimeline");
+    if (!target) return;
+    const items = recoveryTimelineItems(client, invoices);
+    target.innerHTML = "";
+    if (!items.length) {
+        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+        emptyState.querySelector(".eyebrow").textContent = "No timeline";
+        emptyState.querySelector("h4").textContent = "Recovery activity will appear here";
+        emptyState.querySelector("p:last-child").textContent = "Calls, reminders, notes, payment promises and invoice events build this timeline.";
+        target.appendChild(emptyState);
+        return;
+    }
+    target.innerHTML = items.map((item) => `
+        <article class="recovery-timeline-entry">
+            <span class="recovery-timeline-date">${escapeHTML(timelineRelativeLabel(item.stamp))}</span>
+            <span class="recovery-timeline-event">
+                <strong>${escapeHTML(item.title || "Recovery activity")}</strong>
+                <span>${escapeHTML(item.body || formatDate(item.stamp))}</span>
+            </span>
+        </article>
+    `).join("");
+}
+
+function workflowHistoryCount(client, invoices) {
+    const clientCount = (client?.clientNotes || []).length;
+    const invoiceCount = (invoices || []).reduce((count, invoice) => count
+        + (invoice.notes || []).length
+        + (invoice.statuses || []).length
+        + (invoice.promises || []).length
+        + (invoice.attachments || []).length, 0);
+    return clientCount + invoiceCount;
+}
+
+function recoveryWorkflowStatuses(client, invoices, totals, noticeInvoices, hasLegal) {
+    const status = {
+        initial: "open",
+        follow: "open",
+        notice: "open",
+        lba: "open",
+        court: "open",
+        enforcement: "open"
+    };
+    if (!client) return status;
+    const maxDays = Number(totals.maxOverdueDays || 0);
+    const historyCount = workflowHistoryCount(client, invoices);
+    const noticeSent = noticeInvoices.length > 0;
+    const noticeEnded = noticeInvoices.some((invoice) => sevenDayNoticeDaysLeft(invoice) <= 0);
+    const hasBadDebt = (invoices || []).some((invoice) => invoiceCategory(invoice) === "bad-debt");
+
+    status.initial = maxDays > 0 || historyCount ? "complete" : "open";
+    status.follow = maxDays >= 7 || historyCount > 1 || noticeSent || hasLegal || hasBadDebt ? "complete" : maxDays > 0 ? "current" : "open";
+    status.notice = hasLegal || hasBadDebt || noticeEnded ? "complete" : noticeSent || maxDays > 0 ? "current" : "open";
+    status.lba = hasLegal || hasBadDebt ? "complete" : noticeEnded ? "current" : "open";
+    status.court = hasBadDebt ? "complete" : hasLegal ? "current" : "open";
+    status.enforcement = hasBadDebt ? "current" : "open";
+    return status;
+}
+
+function renderRecoveryWorkflow(client, invoices, totals, noticeInvoices, hasLegal) {
+    const statuses = recoveryWorkflowStatuses(client, invoices, totals, noticeInvoices, hasLegal);
+    const markerText = { complete: "✓", current: "!", open: "○" };
+    const stateText = { complete: "Complete", current: "Current", open: "Open" };
+    let currentStageTitle = "Review account";
+    document.querySelectorAll("[data-workflow-stage]").forEach((button) => {
+        const stage = button.dataset.workflowStage;
+        const value = statuses[stage] || "open";
+        button.classList.toggle("is-complete", value === "complete");
+        button.classList.toggle("is-current", value === "current");
+        button.classList.toggle("is-open", value === "open");
+        button.disabled = !client;
+        const marker = button.querySelector(".recovery-stage-marker");
+        const stateLabel = button.querySelector(".recovery-stage-state");
+        if (marker) marker.textContent = markerText[value];
+        if (stateLabel) stateLabel.textContent = stateText[value];
+        if (value === "current") currentStageTitle = button.querySelector(".recovery-stage-title")?.textContent || currentStageTitle;
+    });
+    const summary = document.getElementById("recoveryWorkflowSummary");
+    if (summary) summary.textContent = client ? currentStageTitle : "Review account";
+}
+
 function renderTimeline(targetId, items, empty) {
     const target = document.getElementById(targetId);
     if (!target) return;
@@ -6942,7 +7324,7 @@ function renderChrome() {
     document.body.classList.toggle("is-client-view", activeView === "client");
     const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
     const heading = document.querySelector(".brand-lockup h1");
-    if (heading) heading.textContent = topbarClient?.name || "Credit Control Ledger";
+    if (heading) heading.textContent = topbarClient?.name || "Jenius AI";
     const syncStamp = document.getElementById("syncStamp");
     if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
     const organisationName = state.organisation.name || "Xero organisation not connected";
@@ -7439,6 +7821,7 @@ function activateClientSection(section, focusId = "") {
 function handleClientQuickAction(action) {
     const actions = {
         reminder: ["letters", "clientLetterTemplateSelect"],
+        letters: ["letters", "clientLetterTemplateSelect"],
         payment: ["payment-plans", "paymentPlanDurationSelect"],
         note: ["notes", "clientNoteInput"],
         "invoice-note": ["invoices", "invoiceNoteInput"],
@@ -8074,7 +8457,7 @@ function clearLocalConsoleState(panel = null) {
 }
 
 async function factoryResetConsole() {
-    const confirmed = window.confirm("Factory reset the Credit Control Console? This clears imported ledger data, workflow notes, statuses, payment plans, sync history and browser settings. Xero will remain connected so you can resync from scratch.");
+    const confirmed = window.confirm("Factory reset Jenius AI? This clears imported ledger data, workflow notes, statuses, payment plans, sync history and browser settings. Xero will remain connected so you can resync from scratch.");
     if (!confirmed) return;
     try {
         const payload = await requestJSON(api.endpoints.factoryReset, { method: "POST", body: JSON.stringify({}) });
