@@ -786,6 +786,74 @@ button.hero-summary-card {
 .search-wrap input { padding-left: 44px; }
 .toolbar-controls { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-end; align-items: center; }
 .toolbar-controls .ghost-button { width: auto; min-width: 0; white-space: nowrap; }
+.ledger-table-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-height: 54px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    border-radius: 28px 28px 0 0;
+    background: rgba(255, 255, 255, 0.74);
+}
+.ledger-search-cluster {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+}
+.table-icon-button {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--ink);
+    box-shadow: 0 10px 22px rgba(30, 47, 77, 0.07);
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+.table-icon-button:hover,
+.table-icon-button[aria-expanded="true"] {
+    border-color: rgba(29, 103, 242, 0.26);
+    background: var(--blue-soft);
+    color: var(--blue);
+}
+.table-icon-button:active { transform: scale(0.97); }
+.table-icon-button svg {
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.table-search-wrap {
+    flex: 0 1 auto;
+    width: 0;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transition: width 0.22s ease, max-width 0.22s ease, opacity 0.16s ease;
+}
+.table-search-wrap.is-open,
+.table-search-wrap:focus-within {
+    width: min(360px, calc(100vw - 176px));
+    max-width: 360px;
+    opacity: 1;
+    pointer-events: auto;
+}
+.table-search-wrap input {
+    min-height: 38px;
+    padding: 9px 15px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58);
+}
 .toolbar-menu-wrap { position: relative; }
 .toolbar-menu {
     position: absolute;
@@ -814,6 +882,43 @@ button.hero-summary-card {
 .toolbar-menu button.is-active {
     background: var(--blue-soft);
     color: var(--blue);
+}
+.ledger-options-menu {
+    min-width: 290px;
+    max-width: min(320px, calc(100vw - 48px));
+    max-height: min(620px, calc(100vh - 140px));
+    display: grid;
+    gap: 10px;
+    overflow: auto;
+}
+.ledger-options-menu[hidden] { display: none; }
+.toolbar-menu-section {
+    display: grid;
+    gap: 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+}
+.toolbar-menu-section:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+.toolbar-menu-section-title {
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+.toolbar-menu-section-title strong {
+    color: var(--ink);
+    font-size: 0.72rem;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.ledger-options-actions {
+    display: grid;
+    gap: 6px;
 }
 .column-toggle-list {
     display: grid;
@@ -868,8 +973,8 @@ button.hero-summary-card {
     cursor: not-allowed;
     opacity: 0.52;
 }
-.ledger-card { border-radius: 28px; overflow: hidden; position: relative; }
-.ledger-scroll { overflow: auto; }
+.ledger-card { border-radius: 28px; overflow: visible; position: relative; }
+.ledger-scroll { overflow: auto; border-radius: 0 0 28px 28px; }
 .sync-inline-banner {
     flex: 1 1 440px;
     display: inline-flex;
@@ -3397,46 +3502,6 @@ body.is-syncing .sync-dot {
             <button class="summary-chip summary-paid" type="button" data-filter="paid"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">Paid</span><span class="summary-chip-subtext">Settled invoices</span></span><span class="summary-chip-metrics"><strong id="countPaid">0</strong><span class="summary-value" id="valuePaid">£0</span></span></button>
         </section>
 
-        <section class="toolbar-row">
-            <label class="search-wrap">
-                <span class="search-icon">⌕</span>
-                <input id="ledgerSearch" type="search" placeholder="Search client, invoice ref, description, notes...">
-            </label>
-            <div class="toolbar-controls">
-                <div class="toolbar-menu-wrap">
-                    <button class="ghost-button toolbar-menu-button" id="sortButton" type="button" aria-expanded="false" aria-controls="sortMenu">Sort: Priority</button>
-                    <div class="toolbar-menu" id="sortMenu" hidden>
-                        <button type="button" data-sort-mode="priority">Priority</button>
-                        <button type="button" data-sort-mode="due">Due date</button>
-                        <button type="button" data-sort-mode="amount">Amount due</button>
-                        <button type="button" data-sort-mode="client">Client</button>
-                    </div>
-                </div>
-                <div class="toolbar-menu-wrap">
-                    <button class="ghost-button toolbar-menu-button" id="filterButton" type="button" aria-expanded="false" aria-controls="filterMenu">Filter: All invoices</button>
-                    <div class="toolbar-menu" id="filterMenu" hidden>
-                        <button type="button" data-filter-mode="all">All invoices</button>
-                        <button type="button" data-filter-mode="action">Needs action</button>
-                        <button type="button" data-filter-mode="current">Current only</button>
-                        <button type="button" data-filter-mode="over500">Over £500</button>
-                        <button type="button" data-filter-mode="over1000">Over £1,000</button>
-                        <button type="button" data-filter-mode="under100">Under £100</button>
-                    </div>
-                </div>
-                <div class="toolbar-menu-wrap">
-                    <button class="ghost-button toolbar-menu-button" id="columnButton" type="button" aria-expanded="false" aria-controls="columnMenu">Columns</button>
-                    <div class="toolbar-menu column-toggle-list" id="columnMenu" hidden>
-                        <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
-                        <label><input type="checkbox" data-column-toggle="notes" checked> Notes</label>
-                    </div>
-                </div>
-                <button class="ghost-button" id="denseModeButton" type="button" aria-pressed="true">Comfort table</button>
-                <button class="ghost-button" id="reviewLateChargesButton" type="button">Review late charges</button>
-                <button class="ghost-button" id="clearFiltersButton" type="button">Clear filters</button>
-                <button class="ghost-button" id="exportFilteredButton" type="button">Export CSV</button>
-            </div>
-        </section>
-
         <section class="bulk-action-toolbar" id="bulkActionToolbar" hidden>
             <div class="bulk-action-summary" id="bulkActionSummary">0 invoices selected</div>
             <div class="bulk-action-controls">
@@ -3461,6 +3526,66 @@ body.is-syncing .sync-dot {
         </section>
 
         <section class="ledger-card">
+            <div class="ledger-table-toolbar" aria-label="Ledger table controls">
+                <div class="ledger-search-cluster">
+                    <button class="table-icon-button" id="ledgerSearchToggle" type="button" aria-label="Search ledger" aria-expanded="false" aria-controls="ledgerSearch" title="Search ledger">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="11" cy="11" r="6"></circle>
+                            <path d="M16 16l4 4"></path>
+                        </svg>
+                    </button>
+                    <label class="search-wrap table-search-wrap" id="ledgerSearchWrap">
+                        <input id="ledgerSearch" type="search" placeholder="Search client, invoice ref, description, notes...">
+                    </label>
+                </div>
+                <div class="toolbar-menu-wrap ledger-options-wrap">
+                    <button class="table-icon-button" id="ledgerOptionsButton" type="button" aria-label="Table options" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" title="Table options">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M12 2v3"></path>
+                            <path d="M12 19v3"></path>
+                            <path d="M4.93 4.93l2.12 2.12"></path>
+                            <path d="M16.95 16.95l2.12 2.12"></path>
+                            <path d="M2 12h3"></path>
+                            <path d="M19 12h3"></path>
+                            <path d="M4.93 19.07l2.12-2.12"></path>
+                            <path d="M16.95 7.05l2.12-2.12"></path>
+                        </svg>
+                    </button>
+                    <div class="toolbar-menu ledger-options-menu" id="ledgerOptionsMenu" hidden>
+                        <div class="toolbar-menu-section">
+                            <span class="toolbar-menu-section-title">Sort <strong id="sortStateLabel">Priority</strong></span>
+                            <button type="button" data-sort-mode="priority">Priority</button>
+                            <button type="button" data-sort-mode="due">Due date</button>
+                            <button type="button" data-sort-mode="amount">Amount due</button>
+                            <button type="button" data-sort-mode="client">Client</button>
+                        </div>
+                        <div class="toolbar-menu-section">
+                            <span class="toolbar-menu-section-title">Filter <strong id="filterStateLabel">All invoices</strong></span>
+                            <button type="button" data-filter-mode="all">All invoices</button>
+                            <button type="button" data-filter-mode="action">Needs action</button>
+                            <button type="button" data-filter-mode="current">Current only</button>
+                            <button type="button" data-filter-mode="over500">Over £500</button>
+                            <button type="button" data-filter-mode="over1000">Over £1,000</button>
+                            <button type="button" data-filter-mode="under100">Under £100</button>
+                        </div>
+                        <div class="toolbar-menu-section">
+                            <span class="toolbar-menu-section-title">Columns</span>
+                            <div class="column-toggle-list">
+                                <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
+                                <label><input type="checkbox" data-column-toggle="notes" checked> Credits</label>
+                            </div>
+                        </div>
+                        <div class="toolbar-menu-section ledger-options-actions">
+                            <span class="toolbar-menu-section-title">Actions</span>
+                            <button class="ghost-button" id="denseModeButton" type="button" aria-pressed="true">Comfort table</button>
+                            <button class="ghost-button" id="reviewLateChargesButton" type="button">Review late charges</button>
+                            <button class="ghost-button" id="clearFiltersButton" type="button">Clear filters</button>
+                            <button class="ghost-button" id="exportFilteredButton" type="button">Export CSV</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="ledger-scroll">
                 <table class="invoice-table">
                     <thead>
@@ -4073,7 +4198,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Where things are</h4>
-                    <p>The Menu contains Help, Settings, Resync from Xero when connected, Connect Xero when disconnected, Disconnect Xero, Developer log, and Back to Jenius. The top of the ledger shows totals and status chips. The toolbar controls search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                    <p>The Menu contains Help, Settings, Resync from Xero when connected, Connect Xero when disconnected, Disconnect Xero, Developer log, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                 </section>
                 <section class="help-section">
                     <h4>First sync</h4>
@@ -4099,7 +4224,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Late payment charge review</h4>
-                    <p>The dashboard card and toolbar button open the late payment charge queue. It lists invoices more than 14 days overdue, shows which ones are ready, already charged, or blocked by missing Xero contact data, and raises the selected charges back into Xero after review.</p>
+                    <p>The dashboard card and table options menu open the late payment charge queue. It lists invoices more than 14 days overdue, shows which ones are ready, already charged, or blocked by missing Xero contact data, and raises the selected charges back into Xero after review.</p>
                 </section>
                 <section class="help-section">
                     <h4>Letter templates and generated letters</h4>
@@ -5480,11 +5605,15 @@ function renderSummaryCounts() {
 }
 
 function renderToolbarControls() {
-    document.getElementById("sortButton").textContent = `Sort: ${sortLabels[sortMode]}`;
-    document.getElementById("filterButton").textContent = `Filter: ${filterLabels[clientFilter]}`;
+    const sortStateLabel = document.getElementById("sortStateLabel");
+    if (sortStateLabel) sortStateLabel.textContent = sortLabels[sortMode];
+    const filterStateLabel = document.getElementById("filterStateLabel");
+    if (filterStateLabel) filterStateLabel.textContent = filterLabels[clientFilter];
     const denseButton = document.getElementById("denseModeButton");
-    denseButton.textContent = denseMode ? "Comfort table" : "Dense table";
-    denseButton.setAttribute("aria-pressed", String(denseMode));
+    if (denseButton) {
+        denseButton.textContent = denseMode ? "Comfort table" : "Dense table";
+        denseButton.setAttribute("aria-pressed", String(denseMode));
+    }
     document.body.classList.toggle("is-dense", denseMode);
     document.querySelectorAll("[data-sort-mode]").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.sortMode === sortMode);
@@ -5492,6 +5621,14 @@ function renderToolbarControls() {
     document.querySelectorAll("[data-filter-mode]").forEach((button) => {
         button.classList.toggle("is-active", button.dataset.filterMode === clientFilter);
     });
+}
+
+function setLedgerSearchOpen(isOpen) {
+    const searchWrap = document.getElementById("ledgerSearchWrap");
+    const searchToggle = document.getElementById("ledgerSearchToggle");
+    if (!searchWrap || !searchToggle) return;
+    searchWrap.classList.toggle("is-open", isOpen);
+    searchToggle.setAttribute("aria-expanded", String(isOpen));
 }
 
 function renderBulkActionToolbar() {
@@ -7701,18 +7838,34 @@ function wireFilters() {
             renderAll();
         });
     });
-    document.getElementById("ledgerSearch").addEventListener("input", (event) => {
+    const ledgerSearch = document.getElementById("ledgerSearch");
+    const ledgerSearchToggle = document.getElementById("ledgerSearchToggle");
+    ledgerSearch.addEventListener("input", (event) => {
         searchTerm = event.target.value;
         currentPage = 1;
+        setLedgerSearchOpen(Boolean(searchTerm) || document.activeElement === ledgerSearch);
         renderInvoiceTable();
     });
-    document.getElementById("sortButton").addEventListener("click", () => toggleToolbarMenu("sortMenu", "sortButton"));
-    document.getElementById("filterButton").addEventListener("click", () => toggleToolbarMenu("filterMenu", "filterButton"));
-    document.getElementById("columnButton").addEventListener("click", () => toggleToolbarMenu("columnMenu", "columnButton"));
+    ledgerSearch.addEventListener("focus", () => setLedgerSearchOpen(true));
+    ledgerSearch.addEventListener("blur", (event) => {
+        if (!ledgerSearch.value && event.relatedTarget !== ledgerSearchToggle) setLedgerSearchOpen(false);
+    });
+    ledgerSearchToggle.addEventListener("click", () => {
+        const willOpen = !document.getElementById("ledgerSearchWrap").classList.contains("is-open");
+        setLedgerSearchOpen(willOpen || Boolean(ledgerSearch.value));
+        if (willOpen) {
+            ledgerSearch.focus();
+        } else if (!ledgerSearch.value) {
+            ledgerSearch.blur();
+        }
+    });
+    setLedgerSearchOpen(Boolean(ledgerSearch.value || searchTerm));
+    document.getElementById("ledgerOptionsButton").addEventListener("click", () => toggleToolbarMenu("ledgerOptionsMenu", "ledgerOptionsButton"));
     document.getElementById("denseModeButton").addEventListener("click", () => {
         denseMode = !denseMode;
         persistState();
         renderToolbarControls();
+        closeToolbarMenus();
     });
     document.getElementById("clearFiltersButton").addEventListener("click", () => {
         selectedFilter = "all";
@@ -7722,7 +7875,8 @@ function wireFilters() {
         sortMode = "priority";
         searchTerm = "";
         currentPage = 1;
-        document.getElementById("ledgerSearch").value = "";
+        ledgerSearch.value = "";
+        setLedgerSearchOpen(false);
         const lateChargeSearch = document.getElementById("lateChargeSearch");
         if (lateChargeSearch) lateChargeSearch.value = "";
         closeToolbarMenus();
@@ -7753,6 +7907,7 @@ function wireFilters() {
     });
     document.getElementById("exportFilteredButton").addEventListener("click", () => {
         exportInvoices(filteredInvoices(), "credit-control-filtered.csv");
+        closeToolbarMenus();
     });
     document.getElementById("selectAllInvoices").addEventListener("change", (event) => {
         const visibleInvoices = filteredClientGroups()
@@ -7784,6 +7939,7 @@ function wireFilters() {
 function toggleToolbarMenu(menuId, buttonId) {
     const menu = document.getElementById(menuId);
     const button = document.getElementById(buttonId);
+    if (!menu || !button) return;
     const willOpen = menu.hidden;
     closeToolbarMenus();
     menu.hidden = !willOpen;
@@ -7791,11 +7947,11 @@ function toggleToolbarMenu(menuId, buttonId) {
 }
 
 function closeToolbarMenus() {
-    ["sortMenu", "filterMenu", "columnMenu"].forEach((menuId) => {
+    ["sortMenu", "filterMenu", "columnMenu", "ledgerOptionsMenu"].forEach((menuId) => {
         const menu = document.getElementById(menuId);
         if (menu) menu.hidden = true;
     });
-    ["sortButton", "filterButton", "columnButton"].forEach((buttonId) => {
+    ["sortButton", "filterButton", "columnButton", "ledgerOptionsButton"].forEach((buttonId) => {
         const button = document.getElementById(buttonId);
         if (button) button.setAttribute("aria-expanded", "false");
     });
@@ -8777,7 +8933,10 @@ function wireSyncButtons() {
     const menuLateChargesButton = document.getElementById("menuLateChargesButton");
     if (menuLateChargesButton) menuLateChargesButton.addEventListener("click", openLateChargesScreen);
     const reviewLateChargesButton = document.getElementById("reviewLateChargesButton");
-    if (reviewLateChargesButton) reviewLateChargesButton.addEventListener("click", openLateChargesScreen);
+    if (reviewLateChargesButton) reviewLateChargesButton.addEventListener("click", () => {
+        closeToolbarMenus();
+        openLateChargesScreen();
+    });
     const lateChargeReviewCard = document.getElementById("lateChargeReviewCard");
     if (lateChargeReviewCard) lateChargeReviewCard.addEventListener("click", openLateChargesScreen);
     const lateChargeSearch = document.getElementById("lateChargeSearch");

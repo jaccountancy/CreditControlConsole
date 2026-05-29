@@ -3947,9 +3947,10 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         allocation_response = await allocate_credit_note(connection_row, credit_note_id, allocation_payload)
 
         contact_note = _with_jenius_signature(
-            f"via jeNIUS AI WE HAVE WRITTEN OFF INVOICE '{invoice_number}'. "
-            f"Credit note {credit_note_number or credit_note_id} was raised for {amount_label} to account code {account_code} "
-            "Irrecoverable Receivables / Bad Debt Write Off and allocated to the invoice. "
+            f"Bad debt write-off completed for invoice {invoice_number}. "
+            f"Credit note {credit_note_number or credit_note_id} was raised for {amount_label} "
+            "and allocated against the invoice. "
+            f"Account code: {account_code} Irrecoverable Receivables / Bad Debt Write Off. "
             "Reason: outstanding balance assessed as irrecoverable bad debt."
         )
         contact_note_synced = True
@@ -3961,8 +3962,10 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
             contact_note_error = _sync_error_message(exc)
 
         status_note = (
-            f"Invoice written off via Xero credit note {credit_note_number or credit_note_id}. "
-            f"Amount: {amount_label}. Account code: {account_code} Irrecoverable Receivables / Bad Debt Write Off."
+            f"Bad debt write-off completed for invoice {invoice_number}. "
+            f"Credit note {credit_note_number or credit_note_id} was raised for {amount_label} "
+            f"and allocated against the invoice. Account code: {account_code} "
+            "Irrecoverable Receivables / Bad Debt Write Off."
         )
         if not contact_note_synced:
             status_note = f"{status_note} Xero contact note was not added: {contact_note_error}"
