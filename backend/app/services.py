@@ -1129,6 +1129,42 @@ def _customer_contacts_from_xero(raw_contacts: list[dict], invoices: list[dict])
     return list(contacts_by_id.values())
 
 
+def _upsert_xero_customer(cursor, raw_contact: dict, tenant_id: str, synced_at: datetime) -> None:
+    contact = normalise_contact(raw_contact, tenant_id)
+    cursor.execute(
+        """
+        INSERT INTO customers (
+            tenant_id, xero_contact_id, name, email, phone, account_number,
+            primary_person, contact_people, addresses, total_due, overdue_amount, last_sync_at, updated_at
+        )
+        VALUES (
+            %(tenant_id)s, %(xero_contact_id)s, %(name)s, %(email)s, %(phone)s, %(account_number)s,
+            %(primary_person)s, %(contact_people_json)s::jsonb, %(addresses_json)s::jsonb, %(total_due)s, %(overdue_amount)s, %(last_sync_at)s, %(updated_at)s
+        )
+        ON CONFLICT (xero_contact_id) DO UPDATE
+        SET tenant_id = EXCLUDED.tenant_id,
+            name = EXCLUDED.name,
+            email = EXCLUDED.email,
+            phone = EXCLUDED.phone,
+            account_number = EXCLUDED.account_number,
+            primary_person = EXCLUDED.primary_person,
+            contact_people = EXCLUDED.contact_people,
+            addresses = EXCLUDED.addresses,
+            total_due = EXCLUDED.total_due,
+            overdue_amount = EXCLUDED.overdue_amount,
+            last_sync_at = EXCLUDED.last_sync_at,
+            updated_at = EXCLUDED.updated_at
+        """,
+        {
+            **contact,
+            "contact_people_json": json.dumps(contact.get("contact_people") or [], default=_json_default),
+            "addresses_json": json.dumps(contact.get("addresses") or [], default=_json_default),
+            "last_sync_at": synced_at,
+            "updated_at": synced_at,
+        },
+    )
+
+
 async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = None) -> dict:
     sync_options = normalise_sync_options(sync_options)
     connection_row = get_xero_connection_for_user(user["id"])
@@ -1342,38 +1378,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 imported_contacts = 0
 
                 for raw_contact in contacts:
-                    contact = normalise_contact(raw_contact, connection_row["tenant_id"])
-                    cursor.execute(
-                        """
-                        INSERT INTO customers (
-                            tenant_id, xero_contact_id, name, email, phone, account_number,
-                            primary_person, contact_people, addresses, total_due, overdue_amount, last_sync_at, updated_at
-                        )
-                        VALUES (
-                            %(tenant_id)s, %(xero_contact_id)s, %(name)s, %(email)s, %(phone)s, %(account_number)s,
-                            %(primary_person)s, %(contact_people_json)s::jsonb, %(addresses_json)s::jsonb, %(total_due)s, %(overdue_amount)s, %(last_sync_at)s, %(updated_at)s
-                        )
-                        ON CONFLICT (xero_contact_id) DO UPDATE
-                        SET name = EXCLUDED.name,
-                            email = EXCLUDED.email,
-                            phone = EXCLUDED.phone,
-                            account_number = EXCLUDED.account_number,
-                            primary_person = EXCLUDED.primary_person,
-                            contact_people = EXCLUDED.contact_people,
-                            addresses = EXCLUDED.addresses,
-                            total_due = EXCLUDED.total_due,
-                            overdue_amount = EXCLUDED.overdue_amount,
-                            last_sync_at = EXCLUDED.last_sync_at,
-                            updated_at = EXCLUDED.updated_at
-                        """,
-                        {
-                            **contact,
-                            "contact_people_json": json.dumps(contact.get("contact_people") or [], default=_json_default),
-                            "addresses_json": json.dumps(contact.get("addresses") or [], default=_json_default),
-                            "last_sync_at": now,
-                            "updated_at": now,
-                        },
-                    )
+                    _upsert_xero_customer(cursor, raw_contact, connection_row["tenant_id"], now)
                     imported_contacts += 1
                     if imported_contacts % 100 == 0:
                         _update_sync_run(
@@ -1634,9 +1639,41 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             on_retry=rate_limit_progress("paid invoices"),
         )
         paid_synced = 0
+        paid_contacts_synced = 0
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                paid_contact_candidates = _contacts_from_invoices(paid_invoices)
+                if paid_contact_candidates:
+                    cursor.execute(
+                        "SELECT xero_contact_id FROM customers WHERE tenant_id = %s",
+                        (connection_row["tenant_id"],),
+                    )
+                    existing_contact_ids = {
+                        row["xero_contact_id"]
+                        for row in cursor.fetchall()
+                        if row.get("xero_contact_id")
+                    }
+                    for raw_contact in paid_contact_candidates:
+                        contact_id = raw_contact.get("ContactID")
+                        if not contact_id or contact_id in existing_contact_ids:
+                            continue
+                        _upsert_xero_customer(cursor, raw_contact, connection_row["tenant_id"], now)
+                        existing_contact_ids.add(contact_id)
+                        paid_contacts_synced += 1
+
+                    if paid_contacts_synced:
+                        _update_sync_run(
+                            sync_run_id,
+                            current_step="Importing paid invoice contacts",
+                            summary=(
+                                f"Imported {paid_contacts_synced} customer contacts found only in paid invoice history."
+                            ),
+                            customers_synced=len(contacts) + paid_contacts_synced,
+                            contacts_total=len(contacts) + paid_contacts_synced,
+                            processed_count=len(contacts) + paid_contacts_synced + synced_invoices,
+                        )
+
                 cursor.execute(
                     "SELECT id, xero_contact_id FROM customers WHERE tenant_id = %s",
                     (connection_row["tenant_id"],),
@@ -1650,6 +1687,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     sync_run_id,
                     current_step="Backfilling paid invoices",
                     summary=f"Backfilling {len(paid_invoices)} paid invoices from Xero.",
+                    customers_synced=len(contacts) + paid_contacts_synced,
+                    contacts_total=len(contacts) + paid_contacts_synced,
                     invoices_total=len(outstanding_invoices) + len(paid_invoices),
                 )
                 for raw_invoice in paid_invoices:
@@ -1724,18 +1763,19 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             sync_run_id,
                             current_step="Backfilling paid invoices",
                             summary=f"Backfilled {paid_synced} of {len(paid_invoices)} paid invoices.",
-                            customers_synced=len(contacts),
+                            customers_synced=len(contacts) + paid_contacts_synced,
                             invoices_synced=synced_invoices,
-                            processed_count=len(contacts) + synced_invoices,
+                            processed_count=len(contacts) + paid_contacts_synced + synced_invoices,
                         )
 
                 _refresh_customer_totals(cursor, connection_row["tenant_id"], now)
+                total_contacts_synced = len(contacts) + paid_contacts_synced
                 completion_summary = (
-                    f"Incremental sync complete: refreshed {len(contacts)} changed contacts, "
+                    f"Incremental sync complete: refreshed {total_contacts_synced} customer contacts, "
                     f"{outstanding_synced} changed invoices, and backfilled {paid_synced} paid invoices. "
                     f"Pulled through {payments_synced} payments and {credit_sources_synced} customer credits. Scope: {sync_options['label']}."
                     if is_incremental_sync
-                    else f"Synced {len(contacts)} customers, {outstanding_synced} outstanding invoices, {paid_synced} paid invoices, {payments_synced} payments, and {credit_sources_synced} customer credits from Xero. Scope: {sync_options['label']}."
+                    else f"Synced {total_contacts_synced} customers, {outstanding_synced} outstanding invoices, {paid_synced} paid invoices, {payments_synced} payments, and {credit_sources_synced} customer credits from Xero. Scope: {sync_options['label']}."
                 )
                 cursor.execute(
                     """
@@ -1757,12 +1797,12 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     (
                         "completed",
                         "Sync complete",
-                        len(contacts),
+                        total_contacts_synced,
                         synced_invoices,
-                        len(contacts) + len(outstanding_invoices) + len(paid_invoices) + payments_synced + credit_sources_synced,
-                        len(contacts) + synced_invoices + payments_synced + credit_sources_synced,
+                        total_contacts_synced + len(outstanding_invoices) + len(paid_invoices) + payments_synced + credit_sources_synced,
+                        total_contacts_synced + synced_invoices + payments_synced + credit_sources_synced,
                         0,
-                        len(contacts),
+                        total_contacts_synced,
                         len(outstanding_invoices) + len(paid_invoices),
                         completion_summary,
                         utcnow(),

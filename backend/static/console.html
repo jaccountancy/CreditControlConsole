@@ -10080,6 +10080,28 @@
                 return parts.join(", ");
             }
 
+            function syncRunIsPaidBackfill(syncRun) {
+                const statusText = `${syncRun?.currentStep || ""} ${syncRun?.summary || ""}`.toLowerCase();
+                return statusText.includes("backfill") || statusText.includes("paid invoice");
+            }
+
+            function syncRunBackfillEta(syncRun, elapsedSeconds) {
+                if (!syncRunIsPaidBackfill(syncRun) || syncRun?.status !== "running") return "";
+                const contactsTotal = Number(syncRun.contactsTotal || 0);
+                const invoicesTotal = Number(syncRun.invoicesTotal || 0);
+                const customersSynced = Number(syncRun.customersSynced || 0);
+                const invoicesSynced = Number(syncRun.invoicesSynced || 0);
+                const completedRecords = customersSynced + invoicesSynced;
+                const totalRecords = contactsTotal + invoicesTotal;
+                const remainingRecords = Math.max(totalRecords - completedRecords, 0);
+                if (!remainingRecords) return "Finishing backfill";
+                if (elapsedSeconds < 10 || completedRecords <= 0) return "Estimating time left";
+                const secondsRemaining = Math.ceil((elapsedSeconds / completedRecords) * remainingRecords);
+                if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "Estimating time left";
+                const progress = Number(syncRun.progress || 0);
+                return `About ${formatSyncDuration(secondsRemaining)} left${progress ? ` - ${progress}% complete` : ""}`;
+            }
+
             function currentSyncOptions() {
                 return { invoiceScope: syncSettings.invoiceScope, invoiceYears: syncSettings.invoiceYears || [] };
             }
@@ -10162,10 +10184,13 @@
                 const detail = document.getElementById("syncProgressDetail");
                 if (elapsedLabel) elapsedLabel.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)}`;
                 if (etaLabel) {
+                    const backfillEta = syncRunBackfillEta(latestSyncRun, elapsedSeconds);
                     etaLabel.textContent = latestSyncRun?.status === "failed"
                         ? "Sync failed"
                         : latestSyncRun?.status === "completed"
                         ? "Sync complete"
+                        : backfillEta
+                        ? backfillEta
                         : Number(latestSyncRun?.progress || 0) > 0
                         ? `${latestSyncRun.progress}% complete`
                         : elapsedSeconds < 45

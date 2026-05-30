@@ -296,6 +296,30 @@ async def fetch_connections(access_token: str) -> list[dict]:
         return response.json()
 
 
+def _parse_xero_connection_timestamp(value) -> datetime:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _choose_xero_connection(connections: list[dict]) -> dict:
+    def connection_rank(index_and_connection: tuple[int, dict]) -> tuple[int, datetime, datetime, int]:
+        index, connection = index_and_connection
+        tenant_type = str(connection.get("tenantType") or "").upper()
+        accounting_tenant = 1 if tenant_type == "ORGANISATION" else 0
+        updated_at = _parse_xero_connection_timestamp(connection.get("updatedDateUtc"))
+        created_at = _parse_xero_connection_timestamp(connection.get("createdDateUtc"))
+        return accounting_tenant, updated_at, created_at, -index
+
+    return max(enumerate(connections), key=connection_rank)[1]
+
+
 def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> dict:
     if not connections:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No Xero organisations linked.")
@@ -314,7 +338,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
             },
         )
 
-    chosen = connections[0]
+    chosen = _choose_xero_connection(connections)
     tenant_id = chosen["tenantId"]
     expires_at = utcnow() + timedelta(seconds=token_payload["expires_in"])
     email = profile.get("email") or f'{profile.get("sub")}@xero.local'
