@@ -36,6 +36,7 @@ from .services import (
     active_ignition_sync_run_for_user,
     active_me_report_sync_run_for_user,
     active_sync_run_for_user,
+    active_xero_rate_limit_for_user,
     allocate_customer_credit,
     add_bank_statement_client,
     create_bad_debt_write_offs,
@@ -54,11 +55,13 @@ from .services import (
     ignition_payload,
     invoice_detail,
     install_sync_signal_handlers,
+    add_jashflow_charge,
     add_jashflow_payment,
     create_jashflow_loan,
     jashflow_payload,
     post_jashflow_interest_invoice,
     save_jashflow_settings,
+    update_jashflow_loan,
     list_customers,
     list_developer_logs,
     connect_me_report_client_to_current_xero,
@@ -81,6 +84,7 @@ from .services import (
     run_sync,
     run_sync_job,
     serialize_sync_run,
+    serialize_xero_rate_limit,
     serialize_ignition_sync_run,
     serialize_me_report_sync_run,
     serialize_operation_run,
@@ -556,9 +560,11 @@ def api_dashboard(user: dict = Depends(require_api_user)):
 @app.get("/api/panel")
 def api_panel(user: dict = Depends(require_panel_user)):
     active_sync_run = active_sync_run_for_user(user)
+    rate_limit = active_xero_rate_limit_for_user(user)
     return {
         **panel_payload(user),
         "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
+        "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
     }
 
 
@@ -603,18 +609,20 @@ async def api_panel_sync(request: Request, user: dict = Depends(require_panel_us
 @app.get("/api/panel/sync/{sync_run_id}")
 def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_user)):
     sync_run = get_sync_run(user, sync_run_id)
+    rate_limit = active_xero_rate_limit_for_user(user)
     payload = {
         "status": sync_run["status"],
         "syncRun": serialize_sync_run(sync_run),
         "workingDataReady": sync_run_has_working_data(sync_run),
+        "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
     }
-    if sync_run["status"] == "completed":
+    if sync_run["status"] == "completed" or payload["workingDataReady"]:
         try:
             payload["panel"] = panel_payload(user)
         except Exception as exc:
-            logger.exception("Unable to build completed sync panel payload")
+            logger.exception("Unable to build sync panel payload")
             payload["panelError"] = {
-                "message": "Sync completed, but the refreshed panel payload could not be built.",
+                "message": "Sync data is available, but the refreshed panel payload could not be built.",
                 "error": str(exc) or exc.__class__.__name__,
                 "type": exc.__class__.__name__,
             }
@@ -715,10 +723,22 @@ async def api_create_jashflow_loan(request: Request, user: dict = Depends(requir
     return {"status": "ok", "jashflow": create_jashflow_loan(user, payload)}
 
 
+@app.put("/api/jashflow/loans/{loan_id}")
+async def api_update_jashflow_loan(loan_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "jashflow": update_jashflow_loan(user, loan_id, payload)}
+
+
 @app.post("/api/jashflow/loans/{loan_id}/payments")
 async def api_add_jashflow_payment(loan_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "jashflow": add_jashflow_payment(user, loan_id, payload)}
+
+
+@app.post("/api/jashflow/loans/{loan_id}/charges")
+async def api_add_jashflow_charge(loan_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "jashflow": add_jashflow_charge(user, loan_id, payload)}
 
 
 @app.post("/api/jashflow/settings")

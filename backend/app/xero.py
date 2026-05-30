@@ -27,6 +27,7 @@ XERO_API_PAGE_TIMEOUT_SECONDS = 225
 XERO_RATE_LIMIT_RETRIES = 3
 XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
 XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 360
+XERO_DAILY_LIMIT_GUARD_REMAINING = 120
 XERO_HISTORY_SIGNATURE = "By Jenius AI"
 XERO_PERMISSION_MESSAGE = (
     "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
@@ -94,6 +95,14 @@ def _xero_rate_limit_headers(response: httpx.Response) -> dict:
         "x_applimit_remaining": response.headers.get("X-AppMinLimit-Remaining", ""),
         "x_rate_limit_problem": response.headers.get("X-Rate-Limit-Problem", ""),
     }
+
+
+def _day_limit_remaining(rate_limit_headers: dict | None) -> int | None:
+    try:
+        value = (rate_limit_headers or {}).get("x_daylimit_remaining")
+        return None if value in (None, "") else int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
@@ -717,6 +726,8 @@ async def fetch_paginated_collection(
     modified_since: datetime | None = None,
     collect_records: bool = True,
     initial_records: int = 0,
+    minimum_day_limit_remaining: int | None = None,
+    on_day_limit_guard=None,
 ) -> list[dict]:
     records: list[dict] = []
     total_records = max(int(initial_records or 0), 0)
@@ -845,6 +856,26 @@ async def fetch_paginated_collection(
             on_page(page, total_records, len(batch))
         if on_batch is not None:
             on_batch(page, batch, total_records)
+        remaining_day_calls = _day_limit_remaining(last_response.get("rate_limit_headers"))
+        if (
+            minimum_day_limit_remaining is not None
+            and remaining_day_calls is not None
+            and remaining_day_calls <= int(minimum_day_limit_remaining)
+            and len(batch) >= XERO_PAGE_SIZE
+        ):
+            if on_request is not None:
+                on_request({
+                    "collection": collection_key,
+                    "url": url,
+                    "page": page,
+                    "outcome": "daily_limit_guard",
+                    "records_so_far": total_records,
+                    "x_daylimit_remaining": remaining_day_calls,
+                    **last_response,
+                })
+            if on_day_limit_guard is not None:
+                on_day_limit_guard(page, total_records, remaining_day_calls)
+            return records
         if len(batch) < XERO_PAGE_SIZE:
             return records
         page += 1

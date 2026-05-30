@@ -36,7 +36,10 @@ def ignition_redirect_uri() -> str:
 
 def ignition_oauth_configured() -> bool:
     settings = get_settings()
-    return bool(settings.ignition_client_id and settings.ignition_client_secret)
+    placeholders = {"", "replace-me", "changeme", "change-me", "your-client-id", "your-client-secret"}
+    client_id = str(settings.ignition_client_id or "").strip()
+    client_secret = str(settings.ignition_client_secret or "").strip()
+    return client_id.lower() not in placeholders and client_secret.lower() not in placeholders
 
 
 def create_pkce_verifier() -> str:
@@ -51,7 +54,7 @@ def pkce_challenge(verifier: str) -> str:
 def ignition_authorize_url(state_token: str, code_verifier: str) -> str:
     settings = get_settings()
     if not ignition_oauth_configured():
-        raise IgnitionConfigurationError("Ignition OAuth is not configured. Add IGNITION_CLIENT_ID and IGNITION_CLIENT_SECRET.")
+        raise IgnitionConfigurationError("Ignition OAuth is not configured. Add real IGNITION_CLIENT_ID, IGNITION_CLIENT_SECRET and IGNITION_REDIRECT_URI values.")
     query = urlencode(
         {
             "client_id": settings.ignition_client_id,
@@ -75,6 +78,27 @@ def _raise_ignition_http_error(response: httpx.Response, action: str) -> None:
         detail = response.json()
     except ValueError:
         detail = response.text
+    provider_message = ""
+    if isinstance(detail, dict):
+        errors = detail.get("errors")
+        if isinstance(errors, list) and errors:
+            first_error = errors[0]
+            if isinstance(first_error, dict):
+                provider_message = str(first_error.get("detail") or first_error.get("message") or "")
+            else:
+                provider_message = str(first_error or "")
+        provider_message = provider_message or str(
+            detail.get("detail")
+            or detail.get("error_description")
+            or detail.get("message")
+            or detail.get("error")
+            or ""
+        )
+    elif detail:
+        provider_message = str(detail)
+    message = f"Ignition {action} failed."
+    if provider_message:
+        message = f"{message} {provider_message}"
     if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -89,7 +113,7 @@ def _raise_ignition_http_error(response: httpx.Response, action: str) -> None:
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail={
-            "message": f"Ignition {action} failed.",
+            "message": message,
             "status_code": response.status_code,
             "response": detail,
         },
@@ -103,9 +127,8 @@ async def exchange_ignition_code_for_tokens(code: str, code_verifier: str) -> di
     async with httpx.AsyncClient(timeout=IGNITION_TIMEOUT_SECONDS) as client:
         response = await client.post(
             settings.ignition_token_url,
+            auth=(settings.ignition_client_id or "", settings.ignition_client_secret or ""),
             data={
-                "client_id": settings.ignition_client_id,
-                "client_secret": settings.ignition_client_secret,
                 "code": code,
                 "code_verifier": code_verifier,
                 "grant_type": "authorization_code",
@@ -190,9 +213,8 @@ async def refresh_ignition_connection(connection_row: dict) -> dict:
     async with httpx.AsyncClient(timeout=IGNITION_TIMEOUT_SECONDS) as client:
         response = await client.post(
             settings.ignition_token_url,
+            auth=(settings.ignition_client_id or "", settings.ignition_client_secret or ""),
             data={
-                "client_id": settings.ignition_client_id,
-                "client_secret": settings.ignition_client_secret,
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
             },

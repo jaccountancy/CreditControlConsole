@@ -1273,6 +1273,12 @@
                 background: var(--green-soft);
                 color: #168246;
             }
+            .sync-inline-banner.is-warning {
+                border-color: rgba(255, 190, 68, 0.48);
+                background: #fff6dc;
+                color: #8a5b00;
+                box-shadow: 0 18px 48px rgba(194, 127, 0, 0.16);
+            }
             .sync-inline-spinner {
                 width: 22px;
                 height: 22px;
@@ -1302,6 +1308,22 @@
                 border-width: 0 2px 2px 0;
                 transform: rotate(45deg);
                 margin-top: -2px;
+            }
+            .sync-inline-banner.is-warning .sync-inline-spinner {
+                display: grid;
+                place-items: center;
+                animation: none;
+                border-color: rgba(255, 190, 68, 0.42);
+                border-top-color: #d28b00;
+                background: #fffaf0;
+                color: #9a6400;
+                box-shadow: none;
+            }
+            .sync-inline-banner.is-warning .sync-inline-spinner::after {
+                content: "!";
+                font-size: 0.82rem;
+                font-weight: 950;
+                line-height: 1;
             }
             .sync-inline-actions {
                 display: none;
@@ -1347,6 +1369,7 @@
             }
             .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
             .sync-inline-banner.is-success .sync-inline-copy span { color: #168246; }
+            .sync-inline-banner.is-warning .sync-inline-copy span { color: #8a5b00; }
             .sync-inline-progress {
                 position: relative;
                 width: 100%;
@@ -1392,9 +1415,13 @@
             }
             .sync-inline-banner.is-error .sync-inline-progress,
             .sync-inline-banner.is-success .sync-inline-progress,
+            .sync-inline-banner.is-warning .sync-inline-progress,
             .sync-inline-banner.is-error .sync-inline-eta,
             .sync-inline-banner.is-success .sync-inline-eta {
                 display: none;
+            }
+            .sync-inline-banner.is-warning .sync-inline-eta {
+                color: #9a6400;
             }
             .invoice-table { width: 100%; border-collapse: collapse; min-width: 940px; table-layout: fixed; }
             .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
@@ -2761,7 +2788,9 @@
             }
             .jashflow-loan-form select,
             .jashflow-loan-form input,
-            .jashflow-payment-form input {
+            .jashflow-loan-form textarea,
+            .jashflow-payment-form input,
+            .jashflow-charge-form input {
                 width: 100%;
                 min-height: 42px;
                 border: 1px solid var(--line);
@@ -2772,9 +2801,17 @@
                 font: inherit;
                 font-weight: 750;
             }
+            .jashflow-loan-form textarea {
+                min-height: 84px;
+                padding: 11px 12px;
+                resize: vertical;
+            }
             .jashflow-loan-form label {
                 display: grid;
                 gap: 7px;
+            }
+            .jashflow-form-wide {
+                grid-column: 1 / -1;
             }
             .jashflow-workspace {
                 grid-template-columns: 1fr;
@@ -2876,11 +2913,88 @@
                 display: block;
                 margin-top: 4px;
             }
+            .jashflow-info-grid,
+            .jashflow-detail-sections {
+                display: grid;
+                gap: 12px;
+            }
+            .jashflow-info-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+            .jashflow-info-grid article,
+            .jashflow-detail-section {
+                padding: 14px;
+                border-radius: 16px;
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.76);
+            }
+            .jashflow-info-grid span,
+            .jashflow-detail-section span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .jashflow-info-grid strong {
+                display: block;
+                margin-top: 5px;
+            }
+            .jashflow-detail-section h4 {
+                margin: 4px 0 10px;
+                font-size: 1rem;
+            }
+            .jashflow-notes-editor {
+                width: 100%;
+                min-height: 110px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 12px;
+                background: rgba(248, 251, 255, 0.92);
+                color: var(--ink);
+                font: inherit;
+                font-weight: 700;
+                resize: vertical;
+            }
             .jashflow-payment-form {
                 display: grid;
                 grid-template-columns: minmax(120px, 160px) minmax(120px, 160px) minmax(0, 1fr) auto;
                 gap: 10px;
                 align-items: center;
+            }
+            .jashflow-charge-form {
+                display: grid;
+                grid-template-columns: minmax(120px, 160px) minmax(120px, 160px) minmax(0, 1fr) auto;
+                gap: 10px;
+                align-items: center;
+            }
+            .jashflow-schedule-table,
+            .jashflow-statement-table {
+                width: 100%;
+                min-width: 760px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .jashflow-schedule-table th,
+            .jashflow-schedule-table td,
+            .jashflow-statement-table th,
+            .jashflow-statement-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid var(--line);
+                text-align: left;
+                vertical-align: middle;
+            }
+            .jashflow-schedule-table th,
+            .jashflow-statement-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .jashflow-table-wrap {
+                overflow-x: auto;
             }
             .jashflow-statement {
                 display: grid;
@@ -4407,7 +4521,8 @@
                 box-shadow: none;
             }
             .sync-inline-banner.is-error .sync-logo-loader svg,
-            .sync-inline-banner.is-success .sync-logo-loader svg {
+            .sync-inline-banner.is-success .sync-logo-loader svg,
+            .sync-inline-banner.is-warning .sync-logo-loader svg {
                 display: none;
             }
             .sync-progress-card h3 {
@@ -4938,10 +5053,10 @@
                                     <label for="syncScopeSelect">
                                         Data filter
                                         <select id="syncScopeSelect">
-                                            <option value="full_history">Full invoice history</option>
-                                            <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
-                                            <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
                                             <option value="outstanding_only">Outstanding invoices only</option>
+                                            <option value="outstanding_plus_500_paid">Outstanding + 500 paid invoices</option>
+                                            <option value="outstanding_plus_2500_paid">Outstanding + 2,500 paid invoices</option>
+                                            <option value="full_history">Full invoice history</option>
                                         </select>
                                     </label>
                                     <div class="import-years-panel">
@@ -5122,7 +5237,8 @@
                                 <p class="detail-meta">Track active client loans, daily compound interest, payments, and interest invoicing controls.</p>
                             </div>
                             <div class="detail-actions">
-                                <button class="primary-button" id="addJashflowClientButton" type="button">Add client</button>
+                                <button class="ghost-button" id="toggleJashflowSetupButton" type="button">Xero posting setup</button>
+                                <button class="primary-button" id="addJashflowClientButton" type="button">Add new loan</button>
                             </div>
                         </div>
                         <section class="detail-panel jashflow-panel">
@@ -5148,7 +5264,7 @@
                                     <strong id="jashflowBalanceTotal">£0.00</strong>
                                 </article>
                             </div>
-                            <form class="jashflow-settings-form" id="jashflowSettingsForm">
+                            <form class="jashflow-settings-form" id="jashflowSettingsForm" hidden>
                                 <label>
                                     Interest invoice contact
                                     <select id="jashflowInterestContactSelect" required></select>
@@ -5162,6 +5278,7 @@
                             </form>
                             <p class="late-charge-summary" id="jashflowPostingSummary">Save the Xero contact and interest account code before posting interest.</p>
                             <form class="jashflow-loan-form" id="jashflowLoanForm" hidden>
+                                <input id="jashflowLoanIdInput" type="hidden">
                                 <label>
                                     Client
                                     <select id="jashflowCustomerSelect" required></select>
@@ -5186,7 +5303,12 @@
                                     Start date
                                     <input id="jashflowStartDateInput" type="date" required>
                                 </label>
-                                <button class="primary-button" type="submit">Save loan</button>
+                                <label class="jashflow-form-wide">
+                                    Loan notes
+                                    <textarea id="jashflowNotesInput" rows="3" placeholder="Internal notes, terms, agreed variations, or review points"></textarea>
+                                </label>
+                                <button class="ghost-button" id="cancelJashflowLoanFormButton" type="button">Cancel</button>
+                                <button class="primary-button" id="jashflowLoanSubmitButton" type="submit">Save loan</button>
                             </form>
                         </section>
                         <section class="detail-panel jashflow-workspace">
@@ -6163,6 +6285,7 @@
             let isSyncing = false;
             let syncStartedAt = 0;
             let syncProgressTimer = null;
+            let xeroRateLimitTimer = null;
             let activeSyncRunId = null;
             let latestSyncRun = null;
             let lastBrowserSyncLog = null;
@@ -6193,6 +6316,8 @@
             let jashflowPostingInterest = false;
             let selectedJashflowLoanId = "";
             let jashflowFormOpen = false;
+            let jashflowSettingsOpen = false;
+            let editingJashflowLoanId = "";
             let bankStatementData = { customers: [], clients: [], summary: {} };
             let bankStatementsLoading = false;
             let bankStatementInsightsLoaded = false;
@@ -6321,7 +6446,9 @@
                         writeOffRun: config.endpoints?.writeOffRun || "/api/write-offs/run",
                         jashflow: config.endpoints?.jashflow || "/api/jashflow",
                         jashflowLoans: config.endpoints?.jashflowLoans || "/api/jashflow/loans",
+                        jashflowLoan: config.endpoints?.jashflowLoan || "/api/jashflow/loans/:loanId",
                         jashflowPayments: config.endpoints?.jashflowPayments || "/api/jashflow/loans/:loanId/payments",
+                        jashflowCharges: config.endpoints?.jashflowCharges || "/api/jashflow/loans/:loanId/charges",
                         jashflowSettings: config.endpoints?.jashflowSettings || "/api/jashflow/settings",
                         jashflowInterestPosts: config.endpoints?.jashflowInterestPosts || "/api/jashflow/interest-posts",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
@@ -6417,16 +6544,13 @@
             function loadSyncSettings() {
                 try {
                     const stored = JSON.parse(localStorage.getItem(SYNC_SETTINGS_KEY) || "{}");
-                    const invoiceScope = syncScopeLabels[stored.invoiceScope] ? stored.invoiceScope : "full_history";
+                    const invoiceScope = syncScopeLabels[stored.invoiceScope] ? stored.invoiceScope : "outstanding_only";
                     const invoiceYears = Array.isArray(stored.invoiceYears)
                         ? [...new Set(stored.invoiceYears.map((year) => Number(year)).filter((year) => Number.isInteger(year)))].sort((a, b) => a - b)
                         : [];
-                    if ((!stored.invoiceScope || stored.invoiceScope === "outstanding_only") && !invoiceYears.length) {
-                        return { invoiceScope: "full_history", invoiceYears: [] };
-                    }
                     return { invoiceScope, invoiceYears };
                 } catch {
-                    return { invoiceScope: "full_history", invoiceYears: [] };
+                    return { invoiceScope: "outstanding_only", invoiceYears: [] };
                 }
             }
 
@@ -6737,6 +6861,19 @@
                         if (activeRun && (!activeSyncRunId || activeSyncRunId === activeRun.id)) {
                             latestSyncRun = activeRun;
                             hasAutoStartedInitialSync = true;
+                        } else if (payload.xeroRateLimit?.rateLimitUntil || Number(payload.xeroRateLimit?.retryAfterSeconds || 0) > 0) {
+                            const retryAfterSeconds = Number(payload.xeroRateLimit.retryAfterSeconds || 0);
+                            latestSyncRun = {
+                                ...(latestSyncRun || {}),
+                                status: "failed",
+                                currentStep: "Xero daily limit reached",
+                                summary: payload.xeroRateLimit.message || "Xero daily limit reached.",
+                                errorMessage: payload.xeroRateLimit.message || "",
+                                rateLimitUntil: payload.xeroRateLimit.rateLimitUntil || (retryAfterSeconds > 0 ? new Date(Date.now() + retryAfterSeconds * 1000).toISOString() : ""),
+                                retryAfterSeconds,
+                            };
+                        } else if (!activeRun && latestSyncRun?.currentStep === "Xero daily limit reached" && !activeXeroRateLimit()) {
+                            latestSyncRun = null;
                         }
                         return payload;
                     }
@@ -7308,6 +7445,116 @@
                 const syncDate = lastSyncDate();
                 if (!syncDate || !isXeroConnected()) return false;
                 return Date.now() - syncDate.getTime() > 24 * 60 * 60 * 1000;
+            }
+
+            function formatWaitDuration(seconds) {
+                seconds = Math.max(0, Math.ceil(Number(seconds || 0)));
+                if (seconds < 60) return `${seconds}s`;
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return `${minutes}m`;
+                const hours = Math.floor(minutes / 60);
+                const remainingMinutes = minutes % 60;
+                return `${hours}h ${remainingMinutes.toString().padStart(2, "0")}m`;
+            }
+
+            function activeXeroRateLimit() {
+                const rawUntil = latestSyncRun?.rateLimitUntil || "";
+                const until = rawUntil ? new Date(rawUntil) : null;
+                if (until && !Number.isNaN(until.getTime()) && until.getTime() > Date.now()) {
+                    return {
+                        until,
+                        seconds: Math.max(0, Math.ceil((until.getTime() - Date.now()) / 1000)),
+                    };
+                }
+                const retryAfterSeconds = Number(latestSyncRun?.retryAfterSeconds || 0);
+                if (retryAfterSeconds > 0 && latestSyncRun?.status === "failed") {
+                    return {
+                        until: new Date(Date.now() + retryAfterSeconds * 1000),
+                        seconds: retryAfterSeconds,
+                    };
+                }
+                return null;
+            }
+
+            function formatXeroRateLimitDetail(rateLimit) {
+                if (!rateLimit) return "";
+                const resumeAt = rateLimit.until.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+                return `Xero daily API limit reached. The connection can be used again in ${formatWaitDuration(rateLimit.seconds)}, after ${resumeAt}.`;
+            }
+
+            function stopXeroRateLimitCountdown() {
+                window.clearInterval(xeroRateLimitTimer);
+                xeroRateLimitTimer = null;
+            }
+
+            function ensureXeroRateLimitCountdown() {
+                if (xeroRateLimitTimer) return;
+                xeroRateLimitTimer = window.setInterval(() => {
+                    if (!activeXeroRateLimit()) {
+                        stopXeroRateLimitCountdown();
+                        if (latestSyncRun?.currentStep === "Xero daily limit reached") latestSyncRun = null;
+                    }
+                    renderChrome();
+                }, 1000);
+            }
+
+            function showXeroRateLimitWarning(rateLimit = activeXeroRateLimit()) {
+                const inlineBanner = document.getElementById("syncInlineBanner");
+                if (!rateLimit) {
+                    stopXeroRateLimitCountdown();
+                    if (inlineBanner?.dataset.syncContext === "xero-rate-limit" && !isSyncing && !isOperationRunning && !isIgnitionSyncing && !isMeReportProcessing) {
+                        inlineBanner.hidden = true;
+                        inlineBanner.classList.remove("is-warning");
+                        inlineBanner.dataset.syncContext = "";
+                    }
+                    return false;
+                }
+
+                ensureXeroRateLimitCountdown();
+                if (isSyncing || isOperationRunning || isIgnitionSyncing || isMeReportProcessing) return true;
+
+                clearTopbarNoticeTimer();
+                if (inlineBanner) {
+                    inlineBanner.hidden = false;
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
+                    inlineBanner.classList.add("is-warning");
+                    inlineBanner.dataset.syncContext = "xero-rate-limit";
+                }
+                const inlineTitle = document.getElementById("syncInlineTitle");
+                if (inlineTitle) inlineTitle.textContent = "Xero daily limit reached";
+                const inlineDetail = document.getElementById("syncInlineDetail");
+                if (inlineDetail) inlineDetail.textContent = formatXeroRateLimitDetail(rateLimit);
+                const inlineEta = document.getElementById("syncInlineEta");
+                if (inlineEta) inlineEta.textContent = `Countdown ${formatWaitDuration(rateLimit.seconds)} · Xero resumes automatically when the daily limit resets`;
+                const inlineProgressFill = document.getElementById("syncInlineProgressFill");
+                if (inlineProgressFill) inlineProgressFill.style.width = "100%";
+                return true;
+            }
+
+            function isXeroRateLimitError(error) {
+                return Number(error?.statusCode || 0) === 429
+                    || Boolean(error?.details?.rate_limit_until || error?.details?.rateLimitUntil)
+                    || Number(error?.details?.retry_after_seconds || error?.details?.retryAfterSeconds || 0) > 0;
+            }
+
+            function applyXeroRateLimitError(error, message = "") {
+                const retryAfterSeconds = Number(error?.details?.retry_after_seconds || error?.details?.retryAfterSeconds || 0);
+                const rateLimitUntil = error?.details?.rate_limit_until
+                    || error?.details?.rateLimitUntil
+                    || latestSyncRun?.rateLimitUntil
+                    || (retryAfterSeconds > 0 ? new Date(Date.now() + retryAfterSeconds * 1000).toISOString() : "");
+                latestSyncRun = {
+                    ...(latestSyncRun || {}),
+                    status: "failed",
+                    currentStep: "Xero daily limit reached",
+                    summary: message || "Xero daily limit reached.",
+                    errorMessage: message || "Xero daily limit reached.",
+                    rateLimitUntil,
+                    retryAfterSeconds,
+                };
+                state.organisation.lastSync = "Xero daily limit reached";
+                persistState();
+                showXeroRateLimitWarning();
             }
 
             function formatRelativeAge(date) {
@@ -10242,6 +10489,101 @@
                 return (jashflowData.loans || []).find((loan) => loan.id === selectedJashflowLoanId) || (jashflowData.loans || [])[0] || null;
             }
 
+            function jashflowLoanPayload(loan, overrides = {}) {
+                return {
+                    customerId: loan?.customerId || "",
+                    principalAmount: loan?.principalAmount || 0,
+                    arrangementFee: loan?.arrangementFee || 0,
+                    annualInterestRate: loan?.annualInterestRate || 0,
+                    durationMonths: loan?.durationMonths || 12,
+                    startDate: loan?.startDate || localDateKey(),
+                    status: loan?.status || "active",
+                    notes: loan?.notes || "",
+                    ...overrides
+                };
+            }
+
+            function clearJashflowLoanForm() {
+                const form = document.getElementById("jashflowLoanForm");
+                if (form) form.reset();
+                const idInput = document.getElementById("jashflowLoanIdInput");
+                if (idInput) idInput.value = "";
+                const durationInput = document.getElementById("jashflowDurationInput");
+                if (durationInput) durationInput.value = "12";
+                const startDateInput = document.getElementById("jashflowStartDateInput");
+                if (startDateInput) startDateInput.value = localDateKey();
+                const notesInput = document.getElementById("jashflowNotesInput");
+                if (notesInput) notesInput.value = "";
+            }
+
+            function populateJashflowLoanForm(loan = null) {
+                const idInput = document.getElementById("jashflowLoanIdInput");
+                const customerSelect = document.getElementById("jashflowCustomerSelect");
+                const amountInput = document.getElementById("jashflowAmountInput");
+                const feeInput = document.getElementById("jashflowFeeInput");
+                const interestInput = document.getElementById("jashflowInterestInput");
+                const durationInput = document.getElementById("jashflowDurationInput");
+                const startDateInput = document.getElementById("jashflowStartDateInput");
+                const notesInput = document.getElementById("jashflowNotesInput");
+                if (idInput) idInput.value = loan?.id || "";
+                if (customerSelect) customerSelect.value = loan?.customerId || customerSelect.value || "";
+                if (amountInput) amountInput.value = loan ? Number(loan.principalAmount || 0).toFixed(2) : "";
+                if (feeInput) feeInput.value = loan ? Number(loan.arrangementFee || 0).toFixed(2) : "";
+                if (interestInput) interestInput.value = loan ? Number(loan.annualInterestRate || 0) : "";
+                if (durationInput) durationInput.value = loan?.durationMonths || "12";
+                if (startDateInput) startDateInput.value = loan?.startDate || localDateKey();
+                if (notesInput) notesInput.value = loan?.notes || "";
+            }
+
+            function openJashflowLoanForm(loan = null) {
+                editingJashflowLoanId = loan?.id || "";
+                jashflowFormOpen = true;
+                renderJashflowScreen();
+                populateJashflowLoanForm(loan);
+                setTimeout(() => document.getElementById("jashflowCustomerSelect")?.focus(), 0);
+            }
+
+            function closeJashflowLoanForm() {
+                editingJashflowLoanId = "";
+                jashflowFormOpen = false;
+                clearJashflowLoanForm();
+                renderJashflowScreen();
+            }
+
+            function jashflowTransactionRows(loan) {
+                return (loan?.transactions || []).slice().sort((a, b) => {
+                    const dateCompare = String(a.date || "").localeCompare(String(b.date || ""));
+                    if (dateCompare) return dateCompare;
+                    return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+                });
+            }
+
+            function jashflowFutureRepaymentSchedule(loan) {
+                const rows = [];
+                let balance = Math.max(0, Number(loan?.balance || 0));
+                const annualRate = Math.max(0, Number(loan?.annualInterestRate || 0)) / 100;
+                const monthlyRate = annualRate ? Math.pow(1 + annualRate, 1 / 12) - 1 : 0;
+                const monthlyRepayment = Math.max(0, Number(loan?.monthlyRepayment || 0));
+                const maxMonths = Math.min(Math.max(1, Number(loan?.durationMonths || 12)), 120);
+                const baseDate = new Date(`${localDateKey()}T12:00:00`);
+                for (let index = 1; index <= maxMonths && balance > 0.004; index += 1) {
+                    const dueDate = new Date(baseDate);
+                    dueDate.setMonth(dueDate.getMonth() + index);
+                    const interest = monthlyRate ? balance * monthlyRate : 0;
+                    const repayment = monthlyRepayment ? Math.min(balance + interest, monthlyRepayment) : 0;
+                    const closingBalance = Math.max(0, balance + interest - repayment);
+                    rows.push({
+                        date: dueDate.toISOString().slice(0, 10),
+                        openingBalance: balance,
+                        interest,
+                        repayment,
+                        closingBalance
+                    });
+                    balance = closingBalance;
+                }
+                return rows;
+            }
+
             async function loadJashflow(force = false) {
                 if (jashflowLoading) return;
                 jashflowLoading = true;
@@ -10282,15 +10624,25 @@
                 if (uninvoicedInterestTotal) uninvoicedInterestTotal.textContent = formatCurrency(summary.uninvoicedInterestTotal || 0);
                 if (balanceTotal) balanceTotal.textContent = formatCurrency(summary.balanceTotal || 0);
 
+                const settingsForm = document.getElementById("jashflowSettingsForm");
+                if (settingsForm) settingsForm.hidden = !jashflowSettingsOpen;
+                const setupButton = document.getElementById("toggleJashflowSetupButton");
+                if (setupButton) setupButton.textContent = jashflowSettingsOpen ? "Hide Xero posting setup" : "Xero posting setup";
                 const form = document.getElementById("jashflowLoanForm");
                 if (form) form.hidden = !jashflowFormOpen;
                 const addButton = document.getElementById("addJashflowClientButton");
                 if (addButton) addButton.textContent = jashflowFormOpen ? "Close loan form" : "Add new loan";
+                const submitButton = document.getElementById("jashflowLoanSubmitButton");
+                if (submitButton) submitButton.textContent = editingJashflowLoanId ? "Save and recalculate" : "Save loan";
                 const customerSelect = document.getElementById("jashflowCustomerSelect");
                 if (customerSelect) {
+                    const previousCustomer = customerSelect.value;
                     customerSelect.innerHTML = (jashflowData.customers || []).length
                         ? jashflowData.customers.map((customer) => `<option value="${customer.id}">${escapeHTML(customer.name || "Unnamed client")}</option>`).join("")
                         : '<option value="">No synced Xero customers available</option>';
+                    if (previousCustomer && (jashflowData.customers || []).some((customer) => customer.id === previousCustomer)) {
+                        customerSelect.value = previousCustomer;
+                    }
                     customerSelect.disabled = !(jashflowData.customers || []).length;
                 }
                 const settings = jashflowData.settings || {};
@@ -10355,10 +10707,11 @@
                         <thead>
                             <tr>
                                 <th>Client</th>
+                                <th>Start date</th>
                                 <th>Principal</th>
+                                <th>Charges</th>
                                 <th>Payments</th>
                                 <th>Interest</th>
-                                <th>Uninvoiced</th>
                                 <th>Balance</th>
                                 <th>Repayment</th>
                                 <th>Status</th>
@@ -10368,13 +10721,14 @@
                             ${activeLoanRows.map((loan) => `
                                 <tr class="${loan.id === selectedJashflowLoanId ? "is-selected" : ""}" data-jashflow-loan-id="${escapeHTML(loan.id)}">
                                     <td><strong>${escapeHTML(loan.customerName || "Unnamed client")}</strong><small>${Number(loan.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}% compound · ${Number(loan.durationMonths || 0)} months</small></td>
+                                    <td><strong>${formatDate(loan.startDate)}</strong><small>${Number(loan.daysAccrued || 0).toLocaleString("en-GB")} days accrued</small></td>
                                     <td class="amount-cell">${formatCurrency(loan.principalAmount || 0)}</td>
+                                    <td class="amount-cell">${formatCurrency(loan.chargesTotal || 0)}</td>
                                     <td class="amount-cell">${formatCurrency(loan.paymentsTotal || 0)}</td>
                                     <td class="amount-cell">${formatCurrency(loan.accruedInterest || 0)}</td>
-                                    <td class="amount-cell">${formatCurrency(loan.uninvoicedInterest || 0)}</td>
                                     <td class="amount-cell">${formatCurrency(loan.balance || 0)}</td>
                                     <td class="amount-cell">${formatCurrency(loan.monthlyRepayment || 0)}</td>
-                                    <td><strong>${escapeHTML(loan.status || "active")}</strong><small>Started ${formatDate(loan.startDate)}</small></td>
+                                    <td><strong>${escapeHTML(loan.status || "active")}</strong><small>${formatCurrency(loan.uninvoicedInterest || 0)} uninvoiced</small></td>
                                 </tr>
                             `).join("")}
                         </tbody>
@@ -10389,69 +10743,202 @@
 
                 const loan = selectedJashflowLoan();
                 if (!loan) return;
-                const statementRows = (loan.transactions || []).map((row) => `
-                    <div class="jashflow-statement-row${row.isVirtual ? " is-virtual" : ""}">
-                        <span>${formatDate(row.date)}</span>
-                        <small>${escapeHTML(row.description || row.type || "Transaction")}</small>
-                        <strong>${formatCurrency(row.amount || 0)}</strong>
-                        <strong>${formatCurrency(row.balance || 0)}</strong>
-                    </div>
+                const transactions = jashflowTransactionRows(loan);
+                const chargeRows = transactions.filter((row) => ["fee", "charge", "interest"].includes(String(row.type || "").toLowerCase()));
+                const scheduleRows = jashflowFutureRepaymentSchedule(loan);
+                const statementRows = transactions.map((row) => `
+                    <tr class="${row.isVirtual ? "is-virtual" : ""}">
+                        <td>${formatDate(row.date)}</td>
+                        <td><strong>${escapeHTML(row.description || row.type || "Transaction")}</strong><small>${escapeHTML(row.type || "")}${row.isVirtual ? " · calculated" : ""}</small></td>
+                        <td>${formatCurrency(row.debit || Math.max(Number(row.amount || 0), 0))}</td>
+                        <td>${formatCurrency(row.credit || Math.max(Number(row.amount || 0) * -1, 0))}</td>
+                        <td>${formatCurrency(row.balance || 0)}</td>
+                    </tr>
+                `).join("");
+                const chargeTableRows = chargeRows.map((row) => `
+                    <tr>
+                        <td>${formatDate(row.date)}</td>
+                        <td><strong>${escapeHTML(row.description || row.type || "Charge")}</strong><small>${row.isVirtual ? "Calculated interest, not posted yet" : escapeHTML(row.type || "")}</small></td>
+                        <td>${formatCurrency(row.debit || row.amount || 0)}</td>
+                        <td>${row.isVirtual ? "Pending" : "Saved"}</td>
+                    </tr>
+                `).join("");
+                const scheduleTableRows = scheduleRows.map((row, index) => `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${formatDate(row.date)}</td>
+                        <td>${formatCurrency(row.openingBalance)}</td>
+                        <td>${formatCurrency(row.interest)}</td>
+                        <td>${formatCurrency(row.repayment)}</td>
+                        <td>${formatCurrency(row.closingBalance)}</td>
+                    </tr>
                 `).join("");
                 detail.innerHTML = `
                     <div class="jashflow-detail-head">
                         <div>
                             <p class="eyebrow">Loan statement</p>
                             <h3>${escapeHTML(loan.customerName || "Unnamed client")}</h3>
-                            <p class="detail-meta">Started ${formatDate(loan.startDate)} · daily compound interest is recalculated each time this screen loads.</p>
+                            <p class="detail-meta">Started ${formatDate(loan.startDate)} · recalculates daily compound interest from the start date after applying saved payments and charges in date order.</p>
                         </div>
-                        <button class="ghost-button" id="exportJashflowStatementButton" type="button">Export statement</button>
+                        <div class="detail-actions">
+                            <button class="ghost-button" id="editJashflowLoanButton" type="button">Edit loan</button>
+                            <button class="ghost-button" id="recalculateJashflowLoanButton" type="button">Recalculate</button>
+                            <button class="ghost-button" id="exportJashflowStatementButton" type="button">Export statement</button>
+                        </div>
                     </div>
                     <div class="jashflow-metrics">
                         <div class="jashflow-metric"><span>Principal</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Charges</span><strong>${formatCurrency(loan.chargesTotal || 0)}</strong></div>
                         <div class="jashflow-metric"><span>Payments</span><strong>${formatCurrency(loan.paymentsTotal || 0)}</strong></div>
                         <div class="jashflow-metric"><span>Interest</span><strong>${formatCurrency(loan.accruedInterest || 0)}</strong></div>
                         <div class="jashflow-metric"><span>Invoiced interest</span><strong>${formatCurrency(loan.invoicedInterest || 0)}</strong></div>
                         <div class="jashflow-metric"><span>Uninvoiced interest</span><strong>${formatCurrency(loan.uninvoicedInterest || 0)}</strong></div>
                         <div class="jashflow-metric"><span>Monthly repayment</span><strong>${formatCurrency(loan.monthlyRepayment || 0)}</strong></div>
                     </div>
-                    <form class="jashflow-payment-form" id="jashflowPaymentForm">
-                        <input id="jashflowPaymentDateInput" type="date" value="${localDateKey()}" required>
-                        <input id="jashflowPaymentAmountInput" type="number" min="0.01" step="0.01" placeholder="Payment amount" required>
-                        <input id="jashflowPaymentNoteInput" type="text" placeholder="Payment reference">
-                        <button class="primary-button" type="submit">Add payment</button>
-                    </form>
-                    <div class="jashflow-statement">${statementRows || '<div class="empty-state"><p class="eyebrow">No transactions</p><h4>No statement rows</h4><p>This loan has no saved transactions yet.</p></div>'}</div>
+                    <div class="jashflow-info-grid">
+                        <article><span>Loan amount</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></article>
+                        <article><span>Arrangement fee</span><strong>${formatCurrency(loan.arrangementFee || 0)}</strong></article>
+                        <article><span>Compound interest</span><strong>${Number(loan.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}%</strong></article>
+                        <article><span>Term</span><strong>${Number(loan.durationMonths || 0).toLocaleString("en-GB")} months</strong></article>
+                        <article><span>Start date</span><strong>${formatDate(loan.startDate)}</strong></article>
+                        <article><span>Days accrued</span><strong>${Number(loan.daysAccrued || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Balance before interest</span><strong>${formatCurrency(loan.balanceBeforeInterest || 0)}</strong></article>
+                        <article><span>Current balance</span><strong>${formatCurrency(loan.balance || 0)}</strong></article>
+                    </div>
+                    <div class="jashflow-detail-sections">
+                        <section class="jashflow-detail-section">
+                            <span>Loan notes</span>
+                            <h4>Internal notes</h4>
+                            <textarea class="jashflow-notes-editor" id="jashflowLoanNotesEditor" placeholder="Add notes, approval points, client context, or agreed changes">${escapeHTML(loan.notes || "")}</textarea>
+                            <div class="detail-actions">
+                                <button class="primary-button" id="saveJashflowNotesButton" type="button">Save notes</button>
+                            </div>
+                        </section>
+                        <section class="jashflow-detail-section">
+                            <span>Expected repayments</span>
+                            <h4>Future schedule</h4>
+                            <div class="jashflow-table-wrap">
+                                <table class="jashflow-schedule-table">
+                                    <thead>
+                                        <tr><th>#</th><th>Due date</th><th>Opening</th><th>Interest</th><th>Expected payment</th><th>Closing</th></tr>
+                                    </thead>
+                                    <tbody>${scheduleTableRows || '<tr><td colspan="6">No future repayment rows are needed because this loan is already cleared.</td></tr>'}</tbody>
+                                </table>
+                            </div>
+                        </section>
+                        <section class="jashflow-detail-section">
+                            <span>Payments and charges</span>
+                            <h4>Add activity</h4>
+                            <form class="jashflow-payment-form" id="jashflowPaymentForm">
+                                <input id="jashflowPaymentDateInput" type="date" value="${localDateKey()}" required>
+                                <input id="jashflowPaymentAmountInput" type="number" min="0.01" step="0.01" placeholder="Payment amount" required>
+                                <input id="jashflowPaymentNoteInput" type="text" placeholder="Payment reference">
+                                <button class="primary-button" type="submit">Add payment</button>
+                            </form>
+                            <form class="jashflow-charge-form" id="jashflowChargeForm">
+                                <input id="jashflowChargeDateInput" type="date" value="${localDateKey()}" required>
+                                <input id="jashflowChargeAmountInput" type="number" min="0.01" step="0.01" placeholder="Charge amount" required>
+                                <input id="jashflowChargeNoteInput" type="text" placeholder="Charge description">
+                                <button class="ghost-button" type="submit">Add charge</button>
+                            </form>
+                        </section>
+                        <section class="jashflow-detail-section">
+                            <span>Charges</span>
+                            <h4>Fees, charges and accrued interest</h4>
+                            <div class="jashflow-table-wrap">
+                                <table class="jashflow-statement-table">
+                                    <thead>
+                                        <tr><th>Date</th><th>Description</th><th>Debit</th><th>Status</th></tr>
+                                    </thead>
+                                    <tbody>${chargeTableRows || '<tr><td colspan="4">No charges have been recorded for this loan.</td></tr>'}</tbody>
+                                </table>
+                            </div>
+                        </section>
+                        <section class="jashflow-detail-section">
+                            <span>Transactions</span>
+                            <h4>Loan statement</h4>
+                            <div class="jashflow-table-wrap">
+                                <table class="jashflow-statement-table">
+                                    <thead>
+                                        <tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running balance</th></tr>
+                                    </thead>
+                                    <tbody>${statementRows || '<tr><td colspan="5">This loan has no saved transactions yet.</td></tr>'}</tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
                 `;
+                document.getElementById("editJashflowLoanButton")?.addEventListener("click", () => openJashflowLoanForm(loan));
+                document.getElementById("recalculateJashflowLoanButton")?.addEventListener("click", recalculateJashflowLoan);
+                document.getElementById("saveJashflowNotesButton")?.addEventListener("click", saveJashflowLoanNotes);
                 document.getElementById("jashflowPaymentForm")?.addEventListener("submit", addJashflowPayment);
+                document.getElementById("jashflowChargeForm")?.addEventListener("submit", addJashflowCharge);
                 document.getElementById("exportJashflowStatementButton")?.addEventListener("click", exportJashflowStatement);
             }
 
             async function createJashflowLoan(event) {
                 event.preventDefault();
+                const loanId = document.getElementById("jashflowLoanIdInput")?.value || editingJashflowLoanId || "";
                 const payload = {
                     customerId: document.getElementById("jashflowCustomerSelect")?.value || "",
                     principalAmount: document.getElementById("jashflowAmountInput")?.value || "0",
                     arrangementFee: document.getElementById("jashflowFeeInput")?.value || "0",
                     annualInterestRate: document.getElementById("jashflowInterestInput")?.value || "0",
                     durationMonths: document.getElementById("jashflowDurationInput")?.value || "12",
-                    startDate: document.getElementById("jashflowStartDateInput")?.value || localDateKey()
+                    startDate: document.getElementById("jashflowStartDateInput")?.value || localDateKey(),
+                    notes: document.getElementById("jashflowNotesInput")?.value || "",
+                    status: "active"
                 };
                 try {
-                    const response = await requestJSON(api.endpoints.jashflowLoans, {
-                        method: "POST",
+                    const response = await requestJSON(loanId ? api.endpoints.jashflowLoan : api.endpoints.jashflowLoans, {
+                        method: loanId ? "PUT" : "POST",
                         body: JSON.stringify(payload)
-                    });
+                    }, loanId ? { loanId } : {});
                     jashflowData = normaliseJashflowPayload(response);
-                    selectedJashflowLoanId = jashflowData.loans[0]?.id || "";
-                    jashflowFormOpen = false;
-                    event.target.reset();
-                    document.getElementById("jashflowDurationInput").value = "12";
-                    document.getElementById("jashflowStartDateInput").value = localDateKey();
-                    showToast("Jashflow loan saved", "success");
+                    selectedJashflowLoanId = loanId || jashflowData.loans[0]?.id || "";
+                    closeJashflowLoanForm();
+                    showToast(loanId ? "Jashflow loan updated and recalculated" : "Jashflow loan saved", "success");
                     renderJashflowScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save Jashflow loan", "error");
+                }
+            }
+
+            async function recalculateJashflowLoan() {
+                const loan = selectedJashflowLoan();
+                if (!loan) return;
+                try {
+                    const response = await requestJSON(api.endpoints.jashflowLoan, {
+                        method: "PUT",
+                        body: JSON.stringify(jashflowLoanPayload(loan))
+                    }, { loanId: loan.id });
+                    jashflowData = normaliseJashflowPayload(response);
+                    selectedJashflowLoanId = loan.id;
+                    showToast("Jashflow interest recalculated from the loan start date", "success");
+                    renderJashflowScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to recalculate Jashflow loan", "error");
+                }
+            }
+
+            async function saveJashflowLoanNotes() {
+                const loan = selectedJashflowLoan();
+                if (!loan) return;
+                const notes = document.getElementById("jashflowLoanNotesEditor")?.value || "";
+                try {
+                    const response = await requestJSON(api.endpoints.jashflowLoan, {
+                        method: "PUT",
+                        body: JSON.stringify(jashflowLoanPayload(loan, { notes }))
+                    }, { loanId: loan.id });
+                    jashflowData = normaliseJashflowPayload(response);
+                    selectedJashflowLoanId = loan.id;
+                    showToast("Jashflow loan notes saved", "success");
+                    renderJashflowScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to save Jashflow notes", "error");
                 }
             }
 
@@ -10476,6 +10963,30 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save Jashflow payment", "error");
+                }
+            }
+
+            async function addJashflowCharge(event) {
+                event.preventDefault();
+                const loan = selectedJashflowLoan();
+                if (!loan) return;
+                const payload = {
+                    chargeDate: document.getElementById("jashflowChargeDateInput")?.value || localDateKey(),
+                    amount: document.getElementById("jashflowChargeAmountInput")?.value || "0",
+                    description: document.getElementById("jashflowChargeNoteInput")?.value || "Loan charge"
+                };
+                try {
+                    const response = await requestJSON(api.endpoints.jashflowCharges, {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    }, { loanId: loan.id });
+                    jashflowData = normaliseJashflowPayload(response);
+                    selectedJashflowLoanId = loan.id;
+                    showToast("Jashflow charge saved", "success");
+                    renderJashflowScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to save Jashflow charge", "error");
                 }
             }
 
@@ -10535,12 +11046,13 @@
                 const loan = selectedJashflowLoan();
                 if (!loan) return;
                 const rows = [
-                    ["Date", "Type", "Description", "Amount", "Balance"],
+                    ["Date", "Type", "Description", "Debit", "Credit", "Balance"],
                     ...(loan.transactions || []).map((row) => [
                         row.date || "",
                         row.type || "",
                         row.description || "",
-                        Number(row.amount || 0).toFixed(2),
+                        Number(row.debit || Math.max(Number(row.amount || 0), 0)).toFixed(2),
+                        Number(row.credit || Math.max(Number(row.amount || 0) * -1, 0)).toFixed(2),
                         Number(row.balance || 0).toFixed(2)
                     ])
                 ];
@@ -11206,7 +11718,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     inlineBanner.dataset.syncContext = "ignition";
                 }
                 updateIgnitionSyncProgress();
@@ -11220,7 +11732,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-success");
+                    inlineBanner.classList.remove("is-success", "is-warning");
                     inlineBanner.classList.add("is-error");
                     inlineBanner.dataset.syncContext = "ignition";
                 }
@@ -11239,7 +11751,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner && !keepInlineBanner && !isSyncing && !isOperationRunning) {
                     inlineBanner.hidden = true;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                 }
                 renderChrome();
                 renderIgnitionScreen();
@@ -11769,7 +12281,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     inlineBanner.dataset.syncContext = "me-report";
                 }
                 updateMeReportProgress();
@@ -11783,7 +12295,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-success");
+                    inlineBanner.classList.remove("is-success", "is-warning");
                     inlineBanner.classList.add("is-error");
                     inlineBanner.dataset.syncContext = "me-report";
                 }
@@ -11802,7 +12314,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner && !keepInlineBanner && !isSyncing && !isOperationRunning && !isIgnitionSyncing && !isMeReportProcessing) {
                     inlineBanner.hidden = true;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                 }
                 renderChrome();
                 renderMeReportScreen();
@@ -12404,6 +12916,12 @@
                 document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
                 const connected = isXeroConnected();
                 if (!connected && !isSyncing) clearSyncFailureBanner();
+                const rateLimit = activeXeroRateLimit();
+                const syncBlockedByRateLimit = Boolean(rateLimit);
+                const rateLimitCopy = rateLimit
+                    ? formatXeroRateLimitDetail(rateLimit)
+                    : "";
+                showXeroRateLimitWarning(rateLimit);
                 const hideConnectAction = connected || isSyncing;
                 const connectButton = document.getElementById("connectXeroButton");
                 if (connectButton) {
@@ -12451,10 +12969,14 @@
                 syncButtonIds.forEach((buttonId) => {
                     const button = document.getElementById(buttonId);
                     if (!button) return;
-                    button.disabled = !connected || isSyncing;
-                    button.textContent = isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "menuSyncButton" ? "Resync from Xero" : "Run import") : "Connect Xero to sync";
-                    button.title = isSyncing ? "Please wait while Xero data is imported" : connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
-                    button.setAttribute("aria-disabled", String(!connected || isSyncing));
+                    button.disabled = !connected || isSyncing || syncBlockedByRateLimit;
+                    button.textContent = syncBlockedByRateLimit
+                        ? "Xero limit reached"
+                        : isSyncing ? "Syncing from Xero..." : connected ? (buttonId === "menuSyncButton" ? "Resync from Xero" : "Run import") : "Connect Xero to sync";
+                    button.title = syncBlockedByRateLimit
+                        ? rateLimitCopy
+                        : isSyncing ? "Please wait while Xero data is imported" : connected ? "Sync invoices from Xero" : "Connect Xero before syncing";
+                    button.setAttribute("aria-disabled", String(!connected || isSyncing || syncBlockedByRateLimit));
                 });
                 const sidebarConnectButton = document.getElementById("sidebarConnectButton");
                 if (sidebarConnectButton) {
@@ -12463,12 +12985,14 @@
                 }
                 const sidebarResyncButton = document.getElementById("sidebarResyncButton");
                 if (sidebarResyncButton) {
-                    sidebarResyncButton.disabled = isSyncing;
+                    sidebarResyncButton.disabled = isSyncing || syncBlockedByRateLimit;
                     const label = sidebarResyncButton.querySelector("strong");
                     const detail = sidebarResyncButton.querySelector("span");
-                    if (label) label.textContent = isSyncing ? "Syncing..." : "Resync Data";
-                    if (detail) detail.textContent = isSyncing ? "Import in progress" : "Refresh Xero";
-                    sidebarResyncButton.title = isSyncing
+                    if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : "Resync Data";
+                    if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : "Refresh Xero";
+                    sidebarResyncButton.title = syncBlockedByRateLimit
+                        ? rateLimitCopy
+                        : isSyncing
                         ? "Please wait while Xero data is imported"
                         : "Resume or refresh Xero data from the backend connection";
                 }
@@ -14010,7 +14534,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     inlineBanner.dataset.syncContext = "operation";
                 }
                 updateOperationProgress();
@@ -14032,7 +14556,7 @@
                     const inlineBanner = document.getElementById("syncInlineBanner");
                     if (inlineBanner) {
                         inlineBanner.hidden = true;
-                        inlineBanner.classList.remove("is-error", "is-success");
+                        inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     }
                 }
                 renderChrome();
@@ -14117,7 +14641,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     inlineBanner.dataset.syncContext = inlineBanner.dataset.syncContext || "";
                     if (variant === "success") inlineBanner.classList.add("is-success");
                 }
@@ -14137,9 +14661,11 @@
             function clearSyncFailureBanner() {
                 clearTopbarNoticeTimer();
                 const inlineBanner = document.getElementById("syncInlineBanner");
+                if (inlineBanner?.dataset.syncContext === "xero-rate-limit" && activeXeroRateLimit()) return;
                 if (inlineBanner && !isSyncing && !isOperationRunning && !isIgnitionSyncing && !isMeReportProcessing) {
                     inlineBanner.hidden = true;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
+                    inlineBanner.dataset.syncContext = "";
                 }
                 const inlineTitle = document.getElementById("syncInlineTitle");
                 if (inlineTitle) inlineTitle.textContent = "Xero syncing";
@@ -14159,7 +14685,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     inlineBanner.dataset.syncContext = "xero";
                 }
                 const inlineTitle = document.getElementById("syncInlineTitle");
@@ -14177,7 +14703,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-success");
+                    inlineBanner.classList.remove("is-success", "is-warning");
                     inlineBanner.classList.add("is-error");
                     inlineBanner.dataset.syncContext = "xero";
                 }
@@ -14188,9 +14714,10 @@
             }
 
             function stopSyncFeedback({ keepInlineBanner = false } = {}) {
+                const rateLimit = activeXeroRateLimit();
                 isSyncing = false;
                 activeSyncRunId = null;
-                latestSyncRun = null;
+                if (!rateLimit) latestSyncRun = null;
                 window.clearInterval(syncProgressTimer);
                 syncProgressTimer = null;
                 const overlay = document.getElementById("syncProgressOverlay");
@@ -14198,7 +14725,7 @@
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (inlineBanner && !keepInlineBanner && !isOperationRunning && !isIgnitionSyncing && !isMeReportProcessing) {
                     inlineBanner.hidden = true;
-                    inlineBanner.classList.remove("is-error", "is-success");
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                 }
                 renderChrome();
             }
@@ -14214,6 +14741,7 @@
                 return isXeroConnected()
                     && !isSyncing
                     && !syncRunIsActive(latestSyncRun)
+                    && !activeXeroRateLimit()
                     && !hasAutoStartedInitialSync
                     && !hasCompletedSync()
                     && allInvoices().length === 0;
@@ -14264,7 +14792,16 @@
                     }
                     if (syncRun?.status === "completed" || payload?.status === "completed") return payload;
                     if (syncRun?.status === "failed" || payload?.status === "failed") {
-                        throw new Error(syncRun?.errorMessage || "Xero sync failed. Please try again.");
+                        const details = {
+                            rateLimitUntil: syncRun?.rateLimitUntil || "",
+                            rate_limit_until: syncRun?.rateLimitUntil || "",
+                            retryAfterSeconds: Number(syncRun?.retryAfterSeconds || 0),
+                            retry_after_seconds: Number(syncRun?.retryAfterSeconds || 0),
+                        };
+                        throw new APIRequestError(syncRun?.errorMessage || "Xero sync failed. Please try again.", {
+                            statusCode: details.rateLimitUntil || details.retryAfterSeconds ? 429 : 500,
+                            details,
+                        });
                     }
                 }
                 return null;
@@ -14311,7 +14848,7 @@
                 localStorage.removeItem(SYNC_SETTINGS_KEY);
                 localStorage.removeItem(LETTER_TEMPLATES_KEY);
                 statePersistenceDisabled = false;
-                syncSettings = { invoiceScope: "full_history", invoiceYears: [] };
+                syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
                 letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
                 selectedLetterTemplateId = letterTemplates[0]?.id || "";
                 selectedFilter = "all";
@@ -14355,6 +14892,14 @@
 
             async function runXeroSync({ automatic = false, allowBackendConnectionCheck = false } = {}) {
                 if (isSyncing) {
+                    renderChrome();
+                    return;
+                }
+                const rateLimit = activeXeroRateLimit();
+                if (rateLimit) {
+                    const message = formatXeroRateLimitDetail(rateLimit);
+                    showXeroRateLimitWarning(rateLimit);
+                    showToast(message, "info");
                     renderChrome();
                     return;
                 }
@@ -14413,6 +14958,20 @@
                         markAuthenticationRequired(error.message);
                     } else {
                         const message = error.message || "Xero sync failed. Please try again.";
+                        if (isXeroRateLimitError(error)) {
+                            applyXeroRateLimitError(error, message);
+                            try {
+                                await hydrateFromAPI();
+                            } catch (hydrateError) {
+                                console.error("Unable to refresh cached panel after Xero rate limit", hydrateError);
+                            }
+                            keepFailureBanner = true;
+                            storeBrowserSyncFailure(error, message);
+                            showXeroRateLimitWarning();
+                            showToast(formatXeroRateLimitDetail(activeXeroRateLimit()) || message, "info");
+                            renderChrome();
+                            return;
+                        }
                         storeBrowserSyncFailure(error, message);
                         if (isXeroDisconnectedMessage(message)) {
                             state.organisation = { ...emptyData.organisation, lastSync: "Waiting for first sync", xeroConnected: false };
@@ -14466,6 +15025,19 @@
                 } catch (error) {
                     console.error("Unable to monitor queued Xero sync", error);
                     const message = error.message || "Xero sync failed. Please try again.";
+                    if (isXeroRateLimitError(error)) {
+                        applyXeroRateLimitError(error, message);
+                        try {
+                            await hydrateFromAPI();
+                        } catch (hydrateError) {
+                            console.error("Unable to refresh cached panel after queued Xero rate limit", hydrateError);
+                        }
+                        keepFailureBanner = true;
+                        storeBrowserSyncFailure(error, message);
+                        showXeroRateLimitWarning();
+                        showToast(formatXeroRateLimitDetail(activeXeroRateLimit()) || message, "info");
+                        return;
+                    }
                     storeBrowserSyncFailure(error, message);
                     keepFailureBanner = true;
                     showSyncFailure(message);
@@ -14695,15 +15267,24 @@
                 if (menuIgnitionButton) menuIgnitionButton.addEventListener("click", openIgnitionScreen);
                 const menuMeReportButton = document.getElementById("menuMeReportButton");
                 if (menuMeReportButton) menuMeReportButton.addEventListener("click", openMeReportScreen);
+                const toggleJashflowSetupButton = document.getElementById("toggleJashflowSetupButton");
+                if (toggleJashflowSetupButton) toggleJashflowSetupButton.addEventListener("click", () => {
+                    jashflowSettingsOpen = !jashflowSettingsOpen;
+                    renderJashflowScreen();
+                });
                 const addJashflowClientButton = document.getElementById("addJashflowClientButton");
                 if (addJashflowClientButton) addJashflowClientButton.addEventListener("click", () => {
-                    jashflowFormOpen = !jashflowFormOpen;
-                    renderJashflowScreen();
                     if (jashflowFormOpen) {
+                        closeJashflowLoanForm();
+                    } else {
+                        editingJashflowLoanId = "";
+                        clearJashflowLoanForm();
+                        openJashflowLoanForm();
                         loadJashflow();
-                        setTimeout(() => document.getElementById("jashflowCustomerSelect")?.focus(), 0);
                     }
                 });
+                const cancelJashflowLoanFormButton = document.getElementById("cancelJashflowLoanFormButton");
+                if (cancelJashflowLoanFormButton) cancelJashflowLoanFormButton.addEventListener("click", closeJashflowLoanForm);
                 const jashflowLoanForm = document.getElementById("jashflowLoanForm");
                 if (jashflowLoanForm) jashflowLoanForm.addEventListener("submit", createJashflowLoan);
                 const jashflowSettingsForm = document.getElementById("jashflowSettingsForm");

@@ -411,6 +411,7 @@ CREATE TABLE IF NOT EXISTS jashflow_loans (
     annual_interest_rate NUMERIC(9, 6) NOT NULL DEFAULT 0,
     duration_months INTEGER NOT NULL,
     start_date DATE NOT NULL,
+    notes TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -424,6 +425,7 @@ ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS arrangement_fee NUMERIC(14, 
 ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS annual_interest_rate NUMERIC(9, 6) NOT NULL DEFAULT 0;
 ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS duration_months INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS start_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS notes TEXT;
 ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();

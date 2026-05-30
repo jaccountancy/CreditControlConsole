@@ -26,6 +26,7 @@ from .xero import (
     INVOICES_URL,
     OVERPAYMENTS_URL,
     PAYMENTS_URL,
+    XERO_DAILY_LIMIT_GUARD_REMAINING,
     XERO_RATE_LIMIT_RETRIES,
     allocate_credit_note,
     allocate_overpayment,
@@ -54,7 +55,7 @@ RECEIVABLE_CREDIT_NOTE_INCREMENTAL_WHERE = 'Type=="ACCRECCREDIT"'
 AUTHORISED_CREDIT_STATUS = "AUTHORISED"
 OUTSTANDING_READY_STEP = "Backfilling paid invoices"
 WORKING_DATA_STEPS = (OUTSTANDING_READY_STEP, "Fetching paid invoices from Xero", "Backfilling paid invoices")
-DEFAULT_SYNC_SCOPE = "full_history"
+DEFAULT_SYNC_SCOPE = "outstanding_only"
 INCREMENTAL_SYNC_OVERLAP = timedelta(minutes=5)
 SYNC_SCOPE_OPTIONS = {
     "outstanding_only": {
@@ -382,6 +383,23 @@ def _active_xero_rate_limit(user_id: str) -> dict | None:
     return None
 
 
+def active_xero_rate_limit_for_user(user: dict | None) -> dict | None:
+    if not user or not user.get("id"):
+        return None
+    return _active_xero_rate_limit(user["id"])
+
+
+def serialize_xero_rate_limit(rate_limit: dict | None) -> dict | None:
+    if not rate_limit:
+        return None
+    return {
+        "rateLimitUntil": _iso(rate_limit.get("rate_limit_until")) or "",
+        "retryAfterSeconds": int(rate_limit.get("retry_after_seconds") or 0),
+        "message": rate_limit.get("message") or "",
+        "previousError": rate_limit.get("previous_error") or "",
+    }
+
+
 def normalise_sync_options(options: dict | None = None) -> dict:
     options = options or {}
     invoice_scope = str(options.get("invoiceScope") or DEFAULT_SYNC_SCOPE)
@@ -617,6 +635,53 @@ def _incremental_modified_since(user_id: str) -> datetime | None:
     return latest_started_at - INCREMENTAL_SYNC_OVERLAP
 
 
+def _local_cache_sync_state(tenant_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count, MAX(COALESCE(last_sync_at, updated_at)) AS latest_at FROM customers WHERE tenant_id = %s", (tenant_id,))
+            customer_row = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count, MAX(COALESCE(invoices.synced_at, invoices.updated_at)) AS latest_at
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE customers.tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            invoice_row = cursor.fetchone() or {}
+            cursor.execute("SELECT COUNT(*) AS count, MAX(COALESCE(synced_at, updated_at)) AS latest_at FROM payments WHERE tenant_id = %s", (tenant_id,))
+            payment_row = cursor.fetchone() or {}
+            cursor.execute("SELECT COUNT(*) AS count, MAX(COALESCE(synced_at, updated_at)) AS latest_at FROM customer_credits WHERE tenant_id = %s", (tenant_id,))
+            credit_row = cursor.fetchone() or {}
+        connection.commit()
+
+    latest_candidates = [
+        customer_row.get("latest_at"),
+        invoice_row.get("latest_at"),
+        payment_row.get("latest_at"),
+        credit_row.get("latest_at"),
+    ]
+    latest_at = max((value for value in latest_candidates if value is not None), default=None)
+    return {
+        "customers": int(customer_row.get("count") or 0),
+        "invoices": int(invoice_row.get("count") or 0),
+        "payments": int(payment_row.get("count") or 0),
+        "credits": int(credit_row.get("count") or 0),
+        "latest_at": latest_at,
+    }
+
+
+def _local_cache_modified_since(tenant_id: str) -> datetime | None:
+    cache_state = _local_cache_sync_state(tenant_id)
+    if cache_state["customers"] <= 0 and cache_state["invoices"] <= 0:
+        return None
+    latest_at = cache_state.get("latest_at")
+    if latest_at is None:
+        return utcnow() - INCREMENTAL_SYNC_OVERLAP
+    return latest_at - INCREMENTAL_SYNC_OVERLAP
+
+
 def _local_invoice_years_cover(tenant_id: str, invoice_years: list[int]) -> bool:
     if not invoice_years:
         return False
@@ -829,6 +894,12 @@ async def _sync_xero_payments(
         if on_checkpoint is not None:
             on_checkpoint(page_number, processed, synced)
 
+    def pause_for_daily_limit(page_number: int, total_records: int, remaining_calls: int) -> None:
+        if on_checkpoint is not None:
+            on_checkpoint(page_number, processed, synced)
+        if on_store is not None:
+            on_store(processed, total_records, synced)
+
     await fetch_paginated_collection(
         connection_row,
         PAYMENTS_URL,
@@ -841,6 +912,8 @@ async def _sync_xero_payments(
         modified_since=modified_since,
         collect_records=False,
         initial_records=processed,
+        minimum_day_limit_remaining=XERO_DAILY_LIMIT_GUARD_REMAINING,
+        on_day_limit_guard=pause_for_daily_limit,
     )
     return synced
 
@@ -1828,7 +1901,7 @@ def sync_run_has_working_data(sync_run: dict) -> bool:
         and processed_count >= customers_synced + invoices_synced
     )
     return (
-        sync_run.get("status") in ACTIVE_SYNC_STATUSES
+        sync_run.get("status") in (*ACTIVE_SYNC_STATUSES, "failed", "completed")
         and invoices_synced > 0
         and (
             sync_run.get("current_step") in WORKING_DATA_STEPS
@@ -2143,6 +2216,7 @@ def _make_xero_request_tracer(sync_run_id: str, user_id: str, label: str):
                 "ok": "sync.xero_request.ok",
                 "timeout": "sync.xero_request.timeout",
                 "rate_limited": "sync.xero_request.rate_limited",
+                "daily_limit_guard": "sync.xero_request.daily_limit_guard",
                 "error": "sync.xero_request.error",
             }.get(outcome, "sync.xero_request")
             record_audit_event(
@@ -2162,15 +2236,21 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     connection_row = get_xero_connection_for_user(user["id"])
     sync_signature = _sync_options_signature(sync_options)
     now = utcnow()
-    candidate_modified_since = _incremental_modified_since(user["id"])
+    completed_modified_since = _incremental_modified_since(user["id"])
+    local_modified_since = _local_cache_modified_since(connection_row["tenant_id"])
+    candidate_modified_since = completed_modified_since or local_modified_since
+    local_cache_state = _local_cache_sync_state(connection_row["tenant_id"])
+    has_local_invoice_cache = local_cache_state["invoices"] > 0
     scope_already_imported = (
         _completed_sync_covers_scope(user["id"], sync_options["invoice_scope"])
         if candidate_modified_since is not None
         else False
     )
+    if has_local_invoice_cache and candidate_modified_since is not None:
+        scope_already_imported = True
     years_are_already_imported = (
         True
-        if not sync_options["invoice_years"] and scope_already_imported
+        if not sync_options["invoice_years"] and (scope_already_imported or has_local_invoice_cache)
         else (
             _local_invoice_years_cover(connection_row["tenant_id"], sync_options["invoice_years"])
             if candidate_modified_since is not None
@@ -2179,7 +2259,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     )
     modified_since = candidate_modified_since if scope_already_imported and years_are_already_imported else None
     is_incremental_sync = modified_since is not None
-    needs_paid_backfill = sync_options["paid_page_limit"] != 0 and not scope_already_imported
+    needs_paid_backfill = False if is_incremental_sync else sync_options["paid_page_limit"] != 0 and not scope_already_imported
     resume_state = None if is_incremental_sync else _latest_resumable_sync_state(user["id"], connection_row["tenant_id"], sync_signature)
     resume_checkpoints = (resume_state or {}).get("checkpoints") or {}
     resume_source_run = (resume_state or {}).get("sync_run") or {}
@@ -2193,7 +2273,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         sync_options["invoice_years"],
     )
     if is_incremental_sync:
-        sync_mode_summary = f"Incremental sync from {modified_since.isoformat()}."
+        source = "last completed sync" if completed_modified_since is not None else "local cached ledger"
+        sync_mode_summary = f"Incremental sync from {modified_since.isoformat()} using {source}."
     elif candidate_modified_since is not None:
         sync_mode_summary = "Full sync for a newly selected import scope or invoice year range."
     else:
@@ -2315,6 +2396,31 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     summary=f"Reused {payments_synced} Xero payments from the interrupted sync. Checking customer credits.",
                 )
                 return payments_synced
+
+            if not is_incremental_sync:
+                _upsert_sync_checkpoint(
+                    sync_run_id,
+                    user["id"],
+                    connection_row["tenant_id"],
+                    sync_signature,
+                    SYNC_PHASE_PAYMENTS,
+                    "completed",
+                    records_seen=0,
+                    records_stored=0,
+                    payload={
+                        "skipped_full_payment_history": True,
+                        "reason": "Full payment history is intentionally not pulled during full syncs to protect Xero daily API limits.",
+                    },
+                )
+                _update_sync_run(
+                    sync_run_id,
+                    current_step="Payment history deferred",
+                    summary=(
+                        "Skipped full Xero payment-history import to protect the daily Xero API limit. "
+                        "Future syncs will use changed-since payment imports from the cached ledger."
+                    ),
+                )
+                return 0
 
             start_page = int((payment_checkpoint or {}).get("page_number") or 0) + 1
             already_processed = int((payment_checkpoint or {}).get("records_seen") or 0)
@@ -3269,9 +3375,9 @@ def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: st
           AND initiated_by_user_id = %s
           AND tenant_id IS NOT NULL
           AND tenant_id <> ''
-          AND status = 'completed'
+          AND status IN ('completed', 'failed', 'running')
         ORDER BY completed_at DESC NULLS LAST, created_at DESC
-        LIMIT 5
+        LIMIT 20
         """,
         (user_id,),
     )
@@ -3282,6 +3388,19 @@ def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: st
         cursor.execute("SELECT EXISTS(SELECT 1 FROM customers WHERE tenant_id = %s) AS has_data", (tenant_id,))
         if cursor.fetchone().get("has_data"):
             return tenant_id
+    cursor.execute(
+        """
+        SELECT tenant_id
+        FROM customers
+        WHERE tenant_id IS NOT NULL AND tenant_id <> ''
+        GROUP BY tenant_id
+        ORDER BY MAX(updated_at) DESC NULLS LAST, COUNT(*) DESC
+        LIMIT 1
+        """
+    )
+    row = cursor.fetchone()
+    if row and row.get("tenant_id"):
+        return row["tenant_id"]
     return preferred_tenant_id
 
 
@@ -3491,13 +3610,18 @@ def panel_payload(user: dict | None = None) -> dict:
         )
 
     dashboard = dashboard_payload(tenant_id)
+    has_cached_xero_data = bool(customers or dashboard["invoice_count"] or dashboard["as_of"])
     last_sync_label = f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync"
     if not xero_connected and dashboard["as_of"]:
-        last_sync_label = "Xero disconnected"
+        last_sync_label = f'Cached ledger from {dashboard["as_of"]}'
     return {
         "organisation": {
-            "name": xero_connection.get("tenant_name", "Xero Organisation") if xero_connected and xero_connection else "",
-            "status": "Connected" if xero_connected else "Awaiting live connection",
+            "name": (
+                xero_connection.get("tenant_name", "Xero Organisation")
+                if xero_connected and xero_connection
+                else ("Cached Xero ledger" if has_cached_xero_data else "")
+            ),
+            "status": "Connected" if xero_connected else ("Cached ledger available" if has_cached_xero_data else "Awaiting live connection"),
             "lastSync": last_sync_label,
             "xeroConnected": xero_connected,
         },
@@ -3573,7 +3697,21 @@ def _jashflow_tenant_id(user: dict) -> str:
     return str(get_xero_connection_for_user(user["id"]).get("tenant_id") or "")
 
 
-def _jashflow_interest_summary(loan: dict, payments_total: Decimal, as_of: date | None = None) -> dict:
+def _jashflow_transaction_sort_key(item: dict) -> tuple:
+    transaction_date = item.get("transaction_date") or item.get("date") or date.min
+    if isinstance(transaction_date, datetime):
+        transaction_date = transaction_date.date()
+    if not isinstance(transaction_date, date):
+        transaction_date = _parse_iso_date(transaction_date, "Transaction date")
+    return (transaction_date, item.get("created_at") or datetime.min.replace(tzinfo=timezone.utc))
+
+
+def _jashflow_signed_amount(row: dict) -> Decimal:
+    amount = _money(row.get("amount"))
+    return -amount if row.get("transaction_type") == "payment" else amount
+
+
+def _jashflow_interest_summary(loan: dict, transactions: list[dict] | None = None, as_of: date | None = None) -> dict:
     as_of = as_of or utcnow().date()
     start_date = loan.get("start_date") or as_of
     if isinstance(start_date, datetime):
@@ -3586,11 +3724,58 @@ def _jashflow_interest_summary(loan: dict, payments_total: Decimal, as_of: date 
     base = principal + fee
     annual_rate_percent = _rate_percent(loan.get("annual_interest_rate"))
     annual_rate = max(0.0, float(annual_rate_percent) / 100)
-    elapsed_days = max((as_of - start_date).days, 0)
     daily_rate = (1 + annual_rate) ** (1 / 365) - 1 if annual_rate else 0
     monthly_rate = (1 + annual_rate) ** (1 / 12) - 1 if annual_rate else 0
-    accrued_interest = _money(float(base) * (((1 + daily_rate) ** elapsed_days) - 1)) if daily_rate else Decimal("0.00")
-    balance = _money(base + accrued_interest - payments_total)
+    elapsed_days = max((as_of - start_date).days, 0)
+    actual_transactions = [
+        row for row in (transactions or [])
+        if row.get("transaction_type") not in ("scheduled_repayment", "interest")
+    ]
+    if not actual_transactions:
+        actual_transactions = [
+            {"transaction_date": start_date, "transaction_type": "advance", "amount": principal, "created_at": datetime.min.replace(tzinfo=timezone.utc)},
+        ]
+        if fee > 0:
+            actual_transactions.append({"transaction_date": start_date, "transaction_type": "fee", "amount": fee, "created_at": datetime.min.replace(tzinfo=timezone.utc)})
+
+    balance_before_interest = Decimal("0.00")
+    balance = Decimal("0.00")
+    accrued_interest = Decimal("0.00")
+    cursor_date = start_date
+    payments_total = Decimal("0.00")
+    charges_total = Decimal("0.00")
+
+    def accrue_to(target_date: date) -> None:
+        nonlocal balance, accrued_interest, cursor_date
+        if target_date <= cursor_date:
+            cursor_date = max(cursor_date, target_date)
+            return
+        days = max((target_date - cursor_date).days, 0)
+        if daily_rate and balance > 0 and days > 0:
+            interest = _money(float(balance) * (((1 + daily_rate) ** days) - 1))
+            accrued_interest = _money(accrued_interest + interest)
+            balance = _money(balance + interest)
+        cursor_date = target_date
+
+    for row in sorted(actual_transactions, key=_jashflow_transaction_sort_key):
+        transaction_date = row.get("transaction_date") or start_date
+        if isinstance(transaction_date, datetime):
+            transaction_date = transaction_date.date()
+        if not isinstance(transaction_date, date):
+            transaction_date = _parse_iso_date(transaction_date, "Transaction date")
+        if transaction_date > as_of:
+            continue
+        transaction_date = max(transaction_date, start_date)
+        accrue_to(transaction_date)
+        signed_amount = _jashflow_signed_amount(row)
+        if row.get("transaction_type") == "payment":
+            payments_total = _money(payments_total + abs(signed_amount))
+        elif row.get("transaction_type") in ("fee", "charge"):
+            charges_total = _money(charges_total + signed_amount)
+        balance = _money(balance + signed_amount)
+        balance_before_interest = _money(balance_before_interest + signed_amount)
+
+    accrue_to(as_of)
     duration_months = max(1, int(loan.get("duration_months") or 1))
     if monthly_rate:
         monthly_repayment = _money(float(base) * (monthly_rate * ((1 + monthly_rate) ** duration_months)) / (((1 + monthly_rate) ** duration_months) - 1))
@@ -3599,22 +3784,25 @@ def _jashflow_interest_summary(loan: dict, payments_total: Decimal, as_of: date 
     return {
         "daysAccrued": elapsed_days,
         "dailyInterestRate": daily_rate,
+        "paymentsTotal": payments_total,
+        "chargesTotal": charges_total,
         "accruedInterest": accrued_interest,
         "balance": balance,
+        "balanceBeforeInterest": balance_before_interest,
         "monthlyRepayment": monthly_repayment,
     }
 
 
 def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_interest_total: Decimal | None = None) -> dict:
-    payments_total = sum((_money(row.get("amount")) for row in transactions if row.get("transaction_type") == "payment"), Decimal("0.00"))
     invoiced_interest_total = _money(invoiced_interest_total)
-    summary = _jashflow_interest_summary(loan, payments_total)
+    summary = _jashflow_interest_summary(loan, transactions)
+    payments_total = _money(summary["paymentsTotal"])
+    charges_total = _money(summary["chargesTotal"])
     uninvoiced_interest = max(Decimal("0.00"), _money(summary["accruedInterest"] - invoiced_interest_total))
     running_balance = Decimal("0.00")
     statement_rows = []
-    for row in sorted(transactions, key=lambda item: (item.get("transaction_date") or date.min, item.get("created_at") or datetime.min.replace(tzinfo=timezone.utc))):
-        amount = _money(row.get("amount"))
-        signed_amount = -amount if row.get("transaction_type") == "payment" else amount
+    for row in sorted(transactions, key=_jashflow_transaction_sort_key):
+        signed_amount = _jashflow_signed_amount(row)
         running_balance = _money(running_balance + signed_amount)
         statement_rows.append({
             "id": str(row.get("id")),
@@ -3622,6 +3810,8 @@ def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_inte
             "type": row.get("transaction_type") or "adjustment",
             "description": row.get("description") or "",
             "amount": float(signed_amount),
+            "debit": float(signed_amount if signed_amount > 0 else Decimal("0.00")),
+            "credit": float(abs(signed_amount) if signed_amount < 0 else Decimal("0.00")),
             "balance": float(running_balance),
             "createdAt": _iso(row.get("created_at")) or "",
             "isVirtual": False,
@@ -3634,6 +3824,8 @@ def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_inte
             "type": "interest",
             "description": f"Daily compound interest accrued over {summary['daysAccrued']} day{'s' if summary['daysAccrued'] != 1 else ''}",
             "amount": float(summary["accruedInterest"]),
+            "debit": float(summary["accruedInterest"]),
+            "credit": 0,
             "balance": float(running_balance),
             "createdAt": "",
             "isVirtual": True,
@@ -3649,6 +3841,7 @@ def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_inte
         "annualInterestRate": float(_rate_percent(loan.get("annual_interest_rate"))),
         "durationMonths": int(loan.get("duration_months") or 0),
         "startDate": _iso(loan.get("start_date")) or "",
+        "notes": loan.get("notes") or "",
         "status": loan.get("status") or "active",
         "createdAt": _iso(loan.get("created_at")) or "",
         "updatedAt": _iso(loan.get("updated_at")) or "",
@@ -3658,7 +3851,9 @@ def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_inte
         "invoicedInterest": float(invoiced_interest_total),
         "uninvoicedInterest": float(uninvoiced_interest),
         "paymentsTotal": float(payments_total),
+        "chargesTotal": float(charges_total),
         "balance": float(summary["balance"]),
+        "balanceBeforeInterest": float(summary["balanceBeforeInterest"]),
         "monthlyRepayment": float(summary["monthlyRepayment"]),
         "transactions": statement_rows,
     }
@@ -3766,6 +3961,7 @@ def jashflow_payload(user: dict) -> dict:
             "accruedInterestTotal": round(sum(loan["accruedInterest"] for loan in active_loans), 2),
             "invoicedInterestTotal": round(sum(loan["invoicedInterest"] for loan in active_loans), 2),
             "uninvoicedInterestTotal": round(sum(loan["uninvoicedInterest"] for loan in active_loans), 2),
+            "chargesTotal": round(sum(loan["chargesTotal"] for loan in active_loans), 2),
             "balanceTotal": round(sum(loan["balance"] for loan in active_loans), 2),
         },
         "settings": {
@@ -3868,6 +4064,176 @@ def create_jashflow_loan(user: dict, payload: dict) -> dict:
             "duration_months": duration_months,
             "start_date": start_date.isoformat(),
         },
+        user["id"],
+    )
+    return jashflow_payload(user)
+
+
+def update_jashflow_loan(user: dict, loan_id: str, payload: dict) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    customer_id = str(payload.get("customerId") or "").strip()
+    if not customer_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a Xero customer for the loan.")
+    principal = _positive_money(payload.get("principalAmount"), "Loan amount")
+    arrangement_fee = _non_negative_money(payload.get("arrangementFee"), "Arrangement fee")
+    annual_interest_rate = _rate_percent(payload.get("annualInterestRate"), "Compound interest rate")
+    try:
+        duration_months = int(payload.get("durationMonths") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration must be a number of months.") from exc
+    if duration_months < 1 or duration_months > 240:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration must be between 1 and 240 months.")
+    start_date = _parse_iso_date(payload.get("startDate"), "Start date")
+    status_value = str(payload.get("status") or "active").strip().lower()
+    if status_value not in {"active", "closed"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loan status must be active or closed.")
+    notes = str(payload.get("notes") or "").strip()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM jashflow_loans
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (loan_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jashflow loan not found.")
+            cursor.execute(
+                """
+                SELECT id
+                FROM customers
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (customer_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found in this Xero tenant.")
+            cursor.execute(
+                """
+                UPDATE jashflow_loans
+                SET customer_id = %s,
+                    principal_amount = %s,
+                    arrangement_fee = %s,
+                    annual_interest_rate = %s,
+                    duration_months = %s,
+                    start_date = %s,
+                    notes = %s,
+                    status = %s,
+                    updated_at = %s
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (
+                    customer_id,
+                    principal,
+                    arrangement_fee,
+                    annual_interest_rate,
+                    duration_months,
+                    start_date,
+                    notes,
+                    status_value,
+                    utcnow(),
+                    loan_id,
+                    tenant_id,
+                ),
+            )
+            cursor.execute(
+                """
+                DELETE FROM jashflow_transactions
+                WHERE loan_id = %s
+                  AND transaction_type IN ('advance', 'fee')
+                """,
+                (loan_id,),
+            )
+            cursor.execute(
+                """
+                INSERT INTO jashflow_transactions (
+                    loan_id, transaction_date, transaction_type, amount, description, created_by_user_id
+                )
+                VALUES (%s, %s, 'advance', %s, 'Loan advance', %s)
+                """,
+                (loan_id, start_date, principal, user["id"]),
+            )
+            if arrangement_fee > 0:
+                cursor.execute(
+                    """
+                    INSERT INTO jashflow_transactions (
+                        loan_id, transaction_date, transaction_type, amount, description, created_by_user_id
+                    )
+                    VALUES (%s, %s, 'fee', %s, 'Arrangement fee', %s)
+                    """,
+                    (loan_id, start_date, arrangement_fee, user["id"]),
+                )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_loan",
+        str(loan_id),
+        "jashflow.loan_updated",
+        {
+            "customer_id": customer_id,
+            "principal_amount": float(principal),
+            "arrangement_fee": float(arrangement_fee),
+            "annual_interest_rate": float(annual_interest_rate),
+            "duration_months": duration_months,
+            "start_date": start_date.isoformat(),
+            "status": status_value,
+        },
+        user["id"],
+    )
+    return jashflow_payload(user)
+
+
+def add_jashflow_charge(user: dict, loan_id: str, payload: dict) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    amount = _positive_money(payload.get("amount"), "Charge amount")
+    charge_date = _parse_iso_date(payload.get("chargeDate") or payload.get("transactionDate"), "Charge date")
+    description = str(payload.get("description") or "Loan charge").strip()[:500]
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM jashflow_loans
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (loan_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jashflow loan not found.")
+            cursor.execute(
+                """
+                INSERT INTO jashflow_transactions (
+                    loan_id, transaction_date, transaction_type, amount, description, created_by_user_id
+                )
+                VALUES (%s, %s, 'charge', %s, %s, %s)
+                RETURNING id
+                """,
+                (loan_id, charge_date, amount, description, user["id"]),
+            )
+            transaction_id = cursor.fetchone()["id"]
+            cursor.execute(
+                """
+                UPDATE jashflow_loans
+                SET updated_at = %s
+                WHERE id = %s
+                """,
+                (utcnow(), loan_id),
+            )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_loan",
+        str(loan_id),
+        "jashflow.charge_added",
+        {"transaction_id": str(transaction_id), "amount": float(amount), "charge_date": charge_date.isoformat()},
         user["id"],
     )
     return jashflow_payload(user)
