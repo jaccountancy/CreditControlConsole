@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -35,7 +35,9 @@ from .services import (
     add_promise,
     active_sync_run_for_user,
     allocate_customer_credit,
+    add_bank_statement_client,
     create_bad_debt_write_offs,
+    create_bank_statement_account,
     create_late_payment_charges,
     create_payment_plan,
     customer_detail,
@@ -73,6 +75,8 @@ from .services import (
     sync_payment_plan_to_xero,
     sync_run_has_working_data,
     update_control_status,
+    bank_statement_payload,
+    upload_bank_statement_pdf,
 )
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
 
@@ -641,6 +645,44 @@ async def api_save_jashflow_settings(request: Request, user: dict = Depends(requ
 async def api_post_jashflow_interest(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **await post_jashflow_interest_invoice(user, payload)}
+
+
+@app.get("/api/bank-statements")
+def api_bank_statements(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "bankStatements": bank_statement_payload(user)}
+
+
+@app.post("/api/bank-statements/clients")
+async def api_add_bank_statement_client(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "bankStatements": add_bank_statement_client(user, payload)}
+
+
+@app.post("/api/bank-statements/clients/{client_id}/accounts")
+async def api_create_bank_statement_account(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "bankStatements": create_bank_statement_account(user, client_id, payload)}
+
+
+@app.post("/api/bank-statements/accounts/{account_id}/uploads")
+async def api_upload_bank_statement(
+    account_id: str,
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one PDF bank statement.")
+    result = None
+    for upload in files:
+        content = await upload.read()
+        result = await upload_bank_statement_pdf(
+            user,
+            account_id,
+            upload.filename or "bank-statement.pdf",
+            upload.content_type or "application/pdf",
+            content,
+        )
+    return {"status": "ok", "bankStatements": result or bank_statement_payload(user)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

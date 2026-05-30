@@ -531,6 +531,124 @@ ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS created_at TIM
 CREATE INDEX IF NOT EXISTS jashflow_interest_lines_loan_idx
 ON jashflow_interest_post_lines (loan_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS bank_statement_clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT NOT NULL,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, customer_id)
+);
+
+ALTER TABLE bank_statement_clients ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE bank_statement_clients ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE CASCADE;
+ALTER TABLE bank_statement_clients ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE bank_statement_clients ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE bank_statement_clients ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE bank_statement_clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS bank_statement_clients_tenant_idx
+ON bank_statement_clients (tenant_id, status, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bank_statement_clients_unique_customer_idx
+ON bank_statement_clients (tenant_id, customer_id);
+
+CREATE TABLE IF NOT EXISTS bank_statement_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    extraction_client_id UUID NOT NULL REFERENCES bank_statement_clients(id) ON DELETE CASCADE,
+    account_name TEXT NOT NULL,
+    account_number TEXT NOT NULL,
+    sort_code TEXT,
+    currency_code TEXT NOT NULL DEFAULT 'GBP',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS extraction_client_id UUID REFERENCES bank_statement_clients(id) ON DELETE CASCADE;
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS account_name TEXT NOT NULL DEFAULT 'Bank account';
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS account_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS sort_code TEXT;
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS bank_statement_accounts_client_idx
+ON bank_statement_accounts (extraction_client_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS bank_statement_uploads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bank_account_id UUID NOT NULL REFERENCES bank_statement_accounts(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL,
+    content_type TEXT,
+    status TEXT NOT NULL DEFAULT 'queued',
+    error_message TEXT,
+    statement_start_date DATE,
+    statement_end_date DATE,
+    opening_balance NUMERIC(14, 2),
+    closing_balance NUMERIC(14, 2),
+    extracted_count INTEGER NOT NULL DEFAULT 0,
+    inserted_count INTEGER NOT NULL DEFAULT 0,
+    duplicate_count INTEGER NOT NULL DEFAULT 0,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS bank_account_id UUID REFERENCES bank_statement_accounts(id) ON DELETE CASCADE;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS filename TEXT NOT NULL DEFAULT '';
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS content_type TEXT;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'queued';
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS statement_start_date DATE;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS statement_end_date DATE;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(14, 2);
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS closing_balance NUMERIC(14, 2);
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS extracted_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS inserted_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS duplicate_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS bank_statement_uploads_account_idx
+ON bank_statement_uploads (bank_account_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS bank_statement_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bank_account_id UUID NOT NULL REFERENCES bank_statement_accounts(id) ON DELETE CASCADE,
+    upload_id UUID REFERENCES bank_statement_uploads(id) ON DELETE SET NULL,
+    transaction_date DATE NOT NULL,
+    description TEXT NOT NULL,
+    amount NUMERIC(14, 2) NOT NULL,
+    balance NUMERIC(14, 2),
+    transaction_type TEXT,
+    source_hash TEXT NOT NULL,
+    raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (bank_account_id, source_hash)
+);
+
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS bank_account_id UUID REFERENCES bank_statement_accounts(id) ON DELETE CASCADE;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS upload_id UUID REFERENCES bank_statement_uploads(id) ON DELETE SET NULL;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS transaction_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS balance NUMERIC(14, 2);
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS transaction_type TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS source_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS raw JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS bank_statement_transactions_account_date_idx
+ON bank_statement_transactions (bank_account_id, transaction_date, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS bank_statement_transactions_unique_hash_idx
+ON bank_statement_transactions (bank_account_id, source_hash);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entity_type TEXT NOT NULL,

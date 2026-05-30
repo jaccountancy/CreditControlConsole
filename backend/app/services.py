@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import io
 import json
@@ -919,7 +920,7 @@ def _upsert_customer_credit_source(cursor, tenant_id: str, customer_id: str, sou
             "reference": source.get("reference") or "",
             "status": source.get("status") or "",
             "transaction_type": source.get("type") or "",
-            "credit_date": _parse_iso_date(source.get("date")),
+            "credit_date": _parse_optional_iso_date(source.get("date")),
             "currency_code": source.get("currencyCode") or "GBP",
             "total": _money(source.get("total")),
             "remaining_credit": _money(source.get("remainingCredit")),
@@ -4152,6 +4153,505 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
     }
 
 
+BANK_STATEMENT_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["statementStartDate", "statementEndDate", "openingBalance", "closingBalance", "accountNumber", "transactions"],
+    "properties": {
+        "statementStartDate": {"type": ["string", "null"]},
+        "statementEndDate": {"type": ["string", "null"]},
+        "openingBalance": {"type": ["number", "null"]},
+        "closingBalance": {"type": ["number", "null"]},
+        "accountNumber": {"type": ["string", "null"]},
+        "transactions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["date", "description", "amount", "balance", "type"],
+                "properties": {
+                    "date": {"type": "string"},
+                    "description": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "balance": {"type": ["number", "null"]},
+                    "type": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+
+
+def _bank_statement_tenant_id(user: dict) -> str:
+    return str(get_xero_connection_for_user(user["id"]).get("tenant_id") or "")
+
+
+def _normalise_hash_text(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _bank_transaction_source_hash(bank_account_id: str, transaction: dict) -> str:
+    balance = transaction.get("balance")
+    components = [
+        str(bank_account_id),
+        str(transaction.get("date") or ""),
+        _normalise_hash_text(transaction.get("description")),
+        f"{_money(transaction.get('amount')):.2f}",
+        "" if balance is None else f"{_money(balance):.2f}",
+    ]
+    return hashlib.sha256("|".join(components).encode()).hexdigest()
+
+
+def _bank_statement_flags(transactions: list[dict]) -> list[dict]:
+    flags = []
+    ordered = sorted(transactions, key=lambda row: (row.get("transaction_date") or date.min, row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)))
+    previous = None
+    for row in ordered:
+        if previous:
+            previous_date = previous.get("transaction_date")
+            current_date = row.get("transaction_date")
+            if isinstance(previous_date, date) and isinstance(current_date, date):
+                day_gap = (current_date - previous_date).days
+                if day_gap > 45:
+                    flags.append({
+                        "type": "date_gap",
+                        "severity": "medium",
+                        "message": f"No extracted transactions between {previous_date.isoformat()} and {current_date.isoformat()}.",
+                    })
+            previous_balance = previous.get("balance")
+            current_balance = row.get("balance")
+            if previous_balance is not None and current_balance is not None:
+                expected = _money(previous_balance) + _money(row.get("amount"))
+                actual = _money(current_balance)
+                if abs(expected - actual) > Decimal("0.02"):
+                    flags.append({
+                        "type": "balance_mismatch",
+                        "severity": "high",
+                        "message": (
+                            f"Running balance mismatch on {current_date.isoformat() if isinstance(current_date, date) else 'a transaction'}: "
+                            f"expected £{expected:,.2f}, extracted £{actual:,.2f}."
+                        ),
+                    })
+        previous = row
+    return flags[:20]
+
+
+def _serialize_bank_account(account: dict, uploads: list[dict], transactions: list[dict]) -> dict:
+    ordered_transactions = sorted(transactions, key=lambda row: (row.get("transaction_date") or date.min, row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)))
+    return {
+        "id": str(account["id"]),
+        "clientId": str(account["extraction_client_id"]),
+        "accountName": account.get("account_name") or "Bank account",
+        "accountNumber": account.get("account_number") or "",
+        "sortCode": account.get("sort_code") or "",
+        "currencyCode": account.get("currency_code") or "GBP",
+        "createdAt": _iso(account.get("created_at")) or "",
+        "uploads": [
+            {
+                "id": str(upload["id"]),
+                "filename": upload.get("filename") or "",
+                "status": upload.get("status") or "",
+                "errorMessage": upload.get("error_message") or "",
+                "statementStartDate": _iso(upload.get("statement_start_date")) or "",
+                "statementEndDate": _iso(upload.get("statement_end_date")) or "",
+                "openingBalance": float(_money(upload.get("opening_balance"))) if upload.get("opening_balance") is not None else None,
+                "closingBalance": float(_money(upload.get("closing_balance"))) if upload.get("closing_balance") is not None else None,
+                "extractedCount": int(upload.get("extracted_count") or 0),
+                "insertedCount": int(upload.get("inserted_count") or 0),
+                "duplicateCount": int(upload.get("duplicate_count") or 0),
+                "createdAt": _iso(upload.get("created_at")) or "",
+                "completedAt": _iso(upload.get("completed_at")) or "",
+            }
+            for upload in uploads
+        ],
+        "transactions": [
+            {
+                "id": str(row["id"]),
+                "uploadId": str(row.get("upload_id")) if row.get("upload_id") else "",
+                "date": _iso(row.get("transaction_date")) or "",
+                "description": row.get("description") or "",
+                "amount": float(_money(row.get("amount"))),
+                "balance": float(_money(row.get("balance"))) if row.get("balance") is not None else None,
+                "type": row.get("transaction_type") or "",
+                "createdAt": _iso(row.get("created_at")) or "",
+            }
+            for row in ordered_transactions
+        ],
+        "flags": _bank_statement_flags(ordered_transactions),
+    }
+
+
+def bank_statement_payload(user: dict) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, email, xero_contact_id
+                FROM customers
+                WHERE tenant_id = %s
+                ORDER BY name ASC
+                """,
+                (tenant_id,),
+            )
+            customers = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT clients.*, customers.name AS customer_name, customers.email, customers.xero_contact_id
+                FROM bank_statement_clients AS clients
+                JOIN customers ON customers.id = clients.customer_id
+                WHERE clients.tenant_id = %s
+                  AND clients.status = 'active'
+                ORDER BY customers.name ASC
+                """,
+                (tenant_id,),
+            )
+            clients = cursor.fetchall()
+            client_ids = [row["id"] for row in clients]
+            accounts_by_client = defaultdict(list)
+            uploads_by_account = defaultdict(list)
+            transactions_by_account = defaultdict(list)
+            if client_ids:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM bank_statement_accounts
+                    WHERE extraction_client_id = ANY(%s)
+                    ORDER BY created_at DESC
+                    """,
+                    (client_ids,),
+                )
+                account_rows = cursor.fetchall()
+                account_ids = [row["id"] for row in account_rows]
+                for row in account_rows:
+                    accounts_by_client[str(row["extraction_client_id"])].append(row)
+                if account_ids:
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM bank_statement_uploads
+                        WHERE bank_account_id = ANY(%s)
+                        ORDER BY created_at DESC
+                        """,
+                        (account_ids,),
+                    )
+                    for row in cursor.fetchall():
+                        uploads_by_account[str(row["bank_account_id"])].append(row)
+                    cursor.execute(
+                        """
+                        SELECT *
+                        FROM bank_statement_transactions
+                        WHERE bank_account_id = ANY(%s)
+                        ORDER BY transaction_date ASC, created_at ASC
+                        """,
+                        (account_ids,),
+                    )
+                    for row in cursor.fetchall():
+                        transactions_by_account[str(row["bank_account_id"])].append(row)
+        connection.commit()
+
+    serialized_clients = []
+    for client in clients:
+        accounts = [
+            _serialize_bank_account(account, uploads_by_account.get(str(account["id"]), []), transactions_by_account.get(str(account["id"]), []))
+            for account in accounts_by_client.get(str(client["id"]), [])
+        ]
+        serialized_clients.append({
+            "id": str(client["id"]),
+            "customerId": str(client["customer_id"]),
+            "customerName": client.get("customer_name") or "Unnamed client",
+            "email": client.get("email") or "",
+            "xeroContactId": client.get("xero_contact_id") or "",
+            "createdAt": _iso(client.get("created_at")) or "",
+            "accounts": accounts,
+        })
+
+    return {
+        "customers": [
+            {
+                "id": str(customer["id"]),
+                "name": customer.get("name") or "Unnamed client",
+                "email": customer.get("email") or "",
+                "xeroContactId": customer.get("xero_contact_id") or "",
+            }
+            for customer in customers
+        ],
+        "clients": serialized_clients,
+        "summary": {
+            "clientCount": len(serialized_clients),
+            "accountCount": sum(len(client["accounts"]) for client in serialized_clients),
+            "transactionCount": sum(len(account["transactions"]) for client in serialized_clients for account in client["accounts"]),
+            "flagCount": sum(len(account["flags"]) for client in serialized_clients for account in client["accounts"]),
+        },
+    }
+
+
+def add_bank_statement_client(user: dict, payload: dict) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    customer_id = str(payload.get("customerId") or "").strip()
+    if not customer_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a Xero customer for bank statement extraction.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM customers WHERE id = %s AND tenant_id = %s",
+                (customer_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found in this Xero tenant.")
+            cursor.execute(
+                """
+                INSERT INTO bank_statement_clients (tenant_id, customer_id, status, created_by_user_id, created_at, updated_at)
+                VALUES (%s, %s, 'active', %s, %s, %s)
+                ON CONFLICT (tenant_id, customer_id) DO UPDATE
+                SET status = 'active',
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id
+                """,
+                (tenant_id, customer_id, user["id"], utcnow(), utcnow()),
+            )
+            client_id = cursor.fetchone()["id"]
+        connection.commit()
+    record_audit_event("bank_statement_client", str(client_id), "bank_statement.client_added", {"customer_id": customer_id}, user["id"])
+    return bank_statement_payload(user)
+
+
+def create_bank_statement_account(user: dict, extraction_client_id: str, payload: dict) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    account_name = str(payload.get("accountName") or "Bank account").strip()[:160]
+    account_number = str(payload.get("accountNumber") or "").strip()[:80]
+    sort_code = str(payload.get("sortCode") or "").strip()[:80]
+    currency_code = str(payload.get("currencyCode") or "GBP").strip().upper()[:8] or "GBP"
+    if not account_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter the bank account number.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM bank_statement_clients
+                WHERE id = %s
+                  AND tenant_id = %s
+                  AND status = 'active'
+                """,
+                (extraction_client_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Extraction client not found.")
+            cursor.execute(
+                """
+                INSERT INTO bank_statement_accounts (
+                    extraction_client_id, account_name, account_number, sort_code,
+                    currency_code, created_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (extraction_client_id, account_name, account_number, sort_code, currency_code, user["id"], utcnow(), utcnow()),
+            )
+            account_id = cursor.fetchone()["id"]
+        connection.commit()
+    record_audit_event("bank_statement_account", str(account_id), "bank_statement.account_added", {"account_number": account_number}, user["id"])
+    return bank_statement_payload(user)
+
+
+async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account: dict) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading statements.")
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+    prompt = (
+        "Extract bank statement transactions from this PDF. Return JSON only. "
+        "Use ISO dates in YYYY-MM-DD format. "
+        "Use signed amounts: money paid in is positive, money paid out is negative. "
+        "Include every posted transaction line with date, description, amount, running balance where shown, and a short type. "
+        "Ignore page headers, brought forward/carried forward labels unless they are opening or closing balances. "
+        f"The expected account number is {account.get('account_number') or 'unknown'}."
+    )
+    request_body = {
+        "model": settings.openai_model,
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_file",
+                        "filename": filename,
+                        "file_data": f"data:application/pdf;base64,{encoded}",
+                    },
+                    {"type": "input_text", "text": prompt},
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "bank_statement_extraction",
+                "schema": BANK_STATEMENT_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 12000,
+    }
+    async with httpx.AsyncClient(timeout=OPENAI_INSIGHTS_TIMEOUT_SECONDS) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+            json=request_body,
+        )
+    if response.is_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"OpenAI statement extraction failed with status {response.status_code}: {response.text[:500]}",
+        )
+    text = _extract_response_text(response.json())
+    try:
+        parsed = json.loads(text) if text else {}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned statement extraction that was not valid JSON.") from exc
+    return parsed
+
+
+async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF bank statement.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT accounts.*, clients.tenant_id
+                FROM bank_statement_accounts AS accounts
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                WHERE accounts.id = %s
+                  AND clients.tenant_id = %s
+                """,
+                (bank_account_id, tenant_id),
+            )
+            account = cursor.fetchone()
+            if account is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank account not found.")
+            cursor.execute(
+                """
+                INSERT INTO bank_statement_uploads (
+                    bank_account_id, filename, content_type, status,
+                    created_by_user_id, created_at
+                )
+                VALUES (%s, %s, %s, 'processing', %s, %s)
+                RETURNING id
+                """,
+                (bank_account_id, filename, content_type, user["id"], utcnow()),
+            )
+            upload_id = cursor.fetchone()["id"]
+        connection.commit()
+
+    try:
+        extracted = await _extract_bank_statement_pdf(file_bytes, filename, account)
+        transactions = extracted.get("transactions") or []
+        inserted_count = 0
+        duplicate_count = 0
+        valid_count = 0
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                for transaction in transactions:
+                    try:
+                        transaction_date = _parse_iso_date(transaction.get("date"), "Transaction date")
+                        amount = _money(transaction.get("amount"))
+                        description = str(transaction.get("description") or "").strip()
+                        if not description:
+                            continue
+                        balance = transaction.get("balance")
+                        balance_amount = _money(balance) if balance is not None else None
+                    except Exception:
+                        continue
+                    valid_count += 1
+                    source_hash = _bank_transaction_source_hash(
+                        bank_account_id,
+                        {"date": transaction_date.isoformat(), "description": description, "amount": amount, "balance": balance_amount},
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO bank_statement_transactions (
+                            bank_account_id, upload_id, transaction_date, description,
+                            amount, balance, transaction_type, source_hash, raw, created_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                        ON CONFLICT (bank_account_id, source_hash) DO NOTHING
+                        RETURNING id
+                        """,
+                        (
+                            bank_account_id,
+                            upload_id,
+                            transaction_date,
+                            description,
+                            amount,
+                            balance_amount,
+                            str(transaction.get("type") or "")[:80],
+                            source_hash,
+                            json.dumps(transaction, default=_json_default),
+                            utcnow(),
+                        ),
+                    )
+                    if cursor.fetchone():
+                        inserted_count += 1
+                    else:
+                        duplicate_count += 1
+                cursor.execute(
+                    """
+                    UPDATE bank_statement_uploads
+                    SET status = 'completed',
+                        statement_start_date = %s,
+                        statement_end_date = %s,
+                        opening_balance = %s,
+                        closing_balance = %s,
+                        extracted_count = %s,
+                        inserted_count = %s,
+                        duplicate_count = %s,
+                        completed_at = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        _parse_optional_iso_date(extracted.get("statementStartDate")),
+                        _parse_optional_iso_date(extracted.get("statementEndDate")),
+                        _money(extracted.get("openingBalance")) if extracted.get("openingBalance") is not None else None,
+                        _money(extracted.get("closingBalance")) if extracted.get("closingBalance") is not None else None,
+                        valid_count,
+                        inserted_count,
+                        duplicate_count,
+                        utcnow(),
+                        upload_id,
+                    ),
+                )
+            connection.commit()
+    except Exception as exc:
+        error = _sync_error_message(exc)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE bank_statement_uploads
+                    SET status = 'failed',
+                        error_message = %s,
+                        completed_at = %s
+                    WHERE id = %s
+                    """,
+                    (error, utcnow(), upload_id),
+                )
+            connection.commit()
+        raise
+
+    record_audit_event(
+        "bank_statement_upload",
+        str(upload_id),
+        "bank_statement.upload_extracted",
+        {"filename": filename, "inserted_count": inserted_count, "duplicate_count": duplicate_count},
+        user["id"],
+    )
+    return bank_statement_payload(user)
+
+
 def _xero_payload_date(value) -> str:
     if isinstance(value, datetime):
         return value.date().isoformat()
@@ -5015,7 +5515,7 @@ async def sync_payment_plan_to_xero(customer_id: str, user: dict, payment_plan: 
     }
 
 
-def _parse_iso_date(value) -> date | None:
+def _parse_optional_iso_date(value) -> date | None:
     if isinstance(value, date):
         return value
     if not value:
@@ -5039,7 +5539,7 @@ def is_seven_day_notice_status(value: str) -> bool:
 def _analytics_category(invoice: dict) -> str:
     control = f"{invoice.get('controlStatus') or invoice.get('status') or ''}".lower()
     amount_due = _float(invoice.get("amountDue"))
-    due_date = _parse_iso_date(invoice.get("dueDate"))
+    due_date = _parse_optional_iso_date(invoice.get("dueDate"))
     today = utcnow().date()
     if amount_due <= 0 or "paid" in control:
         return "paid"
@@ -5095,8 +5595,8 @@ def _build_insights_analytics(user: dict) -> dict:
             amount_due = _float(invoice.get("amountDue"))
             total = _float(invoice.get("total")) or amount_due
             amount_paid = _float(invoice.get("amountPaid")) or max(total - amount_due, 0)
-            due_date = _parse_iso_date(invoice.get("dueDate"))
-            invoice_date = _parse_iso_date(invoice.get("invoiceDate")) or due_date
+            due_date = _parse_optional_iso_date(invoice.get("dueDate"))
+            invoice_date = _parse_optional_iso_date(invoice.get("invoiceDate")) or due_date
             overdue_days = max((today - due_date).days, 0) if due_date else 0
             invoices.append(
                 {
@@ -5155,7 +5655,7 @@ def _build_insights_analytics(user: dict) -> dict:
     month_rows = {month: {"month": _month_key(month), "label": _month_label(month), "invoiced": 0.0, "paid": 0.0, "outstanding": 0.0} for month in _last_months(12)}
     month_lookup = {_month_key(month): month for month in month_rows}
     for invoice in invoices:
-        invoice_date = _parse_iso_date(invoice["invoiceDate"])
+        invoice_date = _parse_optional_iso_date(invoice["invoiceDate"])
         if not invoice_date:
             continue
         key = _month_key(_month_start(invoice_date))
