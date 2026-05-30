@@ -4996,6 +4996,7 @@
             const ACTION_TOAST_DURATION_MS = 9000;
             const TOPBAR_NOTICE_DURATION_MS = 9000;
             const XERO_CONNECTED_NOTICE_DURATION_MS = 9000;
+            const SYNC_STALE_HEARTBEAT_SECONDS = 120;
             const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
             const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
             const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
@@ -10064,6 +10065,17 @@
                 return Number.isFinite(timestamp) ? timestamp : 0;
             }
 
+            function secondsSinceTimestamp(value) {
+                if (!value) return 0;
+                const timestamp = Date.parse(value);
+                if (!Number.isFinite(timestamp)) return 0;
+                return Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+            }
+
+            function syncRunHeartbeatAge(syncRun) {
+                return syncRun?.status === "running" ? secondsSinceTimestamp(syncRun.heartbeatAt) : 0;
+            }
+
             function syncRunCountSummary(syncRun) {
                 if (!syncRun) return "";
                 const contactsTotal = Number(syncRun.contactsTotal || 0);
@@ -10182,6 +10194,8 @@
                 const elapsedLabel = document.getElementById("syncElapsedLabel");
                 const etaLabel = document.getElementById("syncEtaLabel");
                 const detail = document.getElementById("syncProgressDetail");
+                const heartbeatAge = syncRunHeartbeatAge(latestSyncRun);
+                const syncLooksStalled = heartbeatAge >= SYNC_STALE_HEARTBEAT_SECONDS;
                 if (elapsedLabel) elapsedLabel.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)}`;
                 if (etaLabel) {
                     const backfillEta = syncRunBackfillEta(latestSyncRun, elapsedSeconds);
@@ -10189,6 +10203,8 @@
                         ? "Sync failed"
                         : latestSyncRun?.status === "completed"
                         ? "Sync complete"
+                        : syncLooksStalled
+                        ? `No backend update for ${formatSyncDuration(heartbeatAge)}`
                         : backfillEta
                         ? backfillEta
                         : Number(latestSyncRun?.progress || 0) > 0
@@ -10204,6 +10220,8 @@
                     const step = latestSyncRun?.currentStep || latestSyncRun?.summary;
                     const detailText = latestSyncRun?.status === "failed"
                         ? latestSyncRun.errorMessage || "Xero sync failed. Please try again."
+                        : syncLooksStalled
+                        ? `The backend has not reported progress for ${formatSyncDuration(heartbeatAge)}. It will be marked failed automatically if it does not recover.`
                         : [step, counts].filter(Boolean).join(". ") || (elapsedSeconds < 90
                             ? "Please keep this page open while invoices and contacts are imported."
                             : "Xero is still responding. Please keep this page open.");

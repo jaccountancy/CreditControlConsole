@@ -20,6 +20,7 @@ PAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Payments"
 USERINFO_URL = "https://identity.xero.com/connect/userinfo"
 XERO_PAGE_SIZE = 100
 XERO_PAGE_DELAY_SECONDS = 1.05
+XERO_API_PAGE_TIMEOUT_SECONDS = 75
 XERO_RATE_LIMIT_RETRIES = 3
 XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
 XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 120
@@ -301,8 +302,9 @@ def _parse_xero_connection_timestamp(value) -> datetime:
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     if not value:
         return datetime.min.replace(tzinfo=timezone.utc)
+    text = re.sub(r"(\.\d{6})\d+(?=(Z|[+-]\d\d:\d\d)?$)", r"\1", str(value))
     try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return datetime.min.replace(tzinfo=timezone.utc)
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
@@ -620,12 +622,27 @@ async def fetch_paginated_collection(
         if max_pages is not None and page > max_pages:
             return records
         try:
-            payload = await xero_api_get(
-                connection_row,
-                url,
-                params={**(params or {}), "page": page},
-                modified_since=modified_since,
+            payload = await asyncio.wait_for(
+                xero_api_get(
+                    connection_row,
+                    url,
+                    params={**(params or {}), "page": page},
+                    modified_since=modified_since,
+                ),
+                timeout=XERO_API_PAGE_TIMEOUT_SECONDS,
             )
+        except asyncio.TimeoutError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": (
+                        f"Xero {collection_key} page {page} did not respond within "
+                        f"{XERO_API_PAGE_TIMEOUT_SECONDS} seconds. Try syncing again; "
+                        "if it repeats, reconnect Xero and check Xero service status."
+                    ),
+                    "timeout_seconds": XERO_API_PAGE_TIMEOUT_SECONDS,
+                },
+            ) from exc
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS and rate_limit_retries < XERO_RATE_LIMIT_RETRIES:

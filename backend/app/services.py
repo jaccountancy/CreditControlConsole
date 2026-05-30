@@ -34,7 +34,7 @@ from .xero import (
 
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
-SYNC_STALE_AFTER = timedelta(minutes=30)
+SYNC_STALE_AFTER = timedelta(minutes=5)
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
