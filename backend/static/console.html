@@ -1917,6 +1917,12 @@
                 background: #fff;
                 color: var(--blue);
             }
+            .insights-live-greeting {
+                text-transform: none;
+                letter-spacing: 0;
+                color: var(--muted);
+                font-size: 0.88rem;
+            }
             .insights-main {
                 min-width: 0;
             }
@@ -1974,6 +1980,37 @@
                 gap: 12px;
                 color: var(--ink);
                 font-weight: 800;
+            }
+            .insight-table-wrap {
+                margin-top: 14px;
+                overflow-x: auto;
+            }
+            .insight-table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 720px;
+            }
+            .insight-table th,
+            .insight-table td {
+                border-bottom: 1px solid var(--line);
+                padding: 10px 8px;
+                text-align: left;
+                vertical-align: top;
+                font-weight: 800;
+            }
+            .insight-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .insight-table td {
+                color: var(--ink);
+                font-size: 0.88rem;
+            }
+            .insight-table td:last-child,
+            .insight-table th:last-child {
+                text-align: right;
             }
             .bar-track {
                 height: 12px;
@@ -4657,7 +4694,7 @@
                     <header class="ledger-topbar">
                         <div class="brand-lockup">
                             <div>
-                                <h1>Jenius AI</h1>
+                                <h1>Jenius Tools</h1>
                                 <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                             </div>
                         </div>
@@ -5389,12 +5426,12 @@
                     <section class="insights-screen detail-card" id="insightsScreen" hidden>
                         <div class="detail-hero insights-hero">
                             <div>
-                                <p class="eyebrow">Jenius AI</p>
+                                <p class="eyebrow insights-live-greeting" id="insightsLiveGreeting">Loading local time...</p>
                                 <h2>Insights</h2>
                                 <p class="detail-meta" id="insightsMeta">AI analysis, reports and collection trends from synced Xero data.</p>
                             </div>
                             <div class="detail-actions">
-                                <button class="ghost-button" id="refreshInsightsButton" type="button">Refresh insights</button>
+                                <button class="ghost-button" id="refreshInsightsButton" type="button">Refresh with Jenius AI</button>
                             </div>
                         </div>
 
@@ -5433,6 +5470,7 @@
                                 <button type="button" data-insight-section="trends">Trends</button>
                                 <button type="button" data-insight-section="ageing">Ageing</button>
                                 <button type="button" data-insight-section="workflows">Workflows</button>
+                                <button type="button" data-insight-section="lpcs">LPCs</button>
                                 <button type="button" data-insight-section="ai">AI actions</button>
                                 <button type="button" data-insight-section="customer-intelligence">Customer Intelligence</button>
                                 <button type="button" data-insight-section="debt-analysis">Debt Analysis</button>
@@ -6134,6 +6172,7 @@
             let insightsData = null;
             let insightsLoading = false;
             let activeInsightsSection = persistedUIState.activeInsightsSection || "overview";
+            let insightsClockTimer = null;
             let hasAutoStartedInitialSync = false;
             let hasLoadedWorkingSyncPanel = false;
             let statePersistenceDisabled = false;
@@ -12352,7 +12391,7 @@
                 syncActiveViewShell();
                 const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
                 const heading = document.querySelector(".brand-lockup h1");
-                if (heading) heading.textContent = topbarClient?.name || "Jenius AI";
+                if (heading) heading.textContent = topbarClient?.name || "Jenius Tools";
                 const syncStamp = document.getElementById("syncStamp");
                 if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
                 const organisationName = state.organisation.name || "Xero organisation not connected";
@@ -12474,6 +12513,36 @@
                 if (banner) banner.hidden = !loading;
                 const detailTarget = document.getElementById("aiInlineDetail");
                 if (detailTarget) detailTarget.textContent = detail;
+                const refreshButton = document.getElementById("refreshInsightsButton");
+                if (refreshButton) {
+                    refreshButton.disabled = loading;
+                    refreshButton.textContent = loading ? "Jenius AI refreshing..." : "Refresh with Jenius AI";
+                }
+            }
+
+            function ordinalDay(day) {
+                const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+                return `${day}${suffix}`;
+            }
+
+            function insightsGreetingText(now = new Date()) {
+                const hour = now.getHours();
+                const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
+                const weekday = now.toLocaleDateString("en-GB", { weekday: "long" });
+                const month = now.toLocaleDateString("en-GB", { month: "long" });
+                const time = now.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: false });
+                return `${greeting}, ${weekday}, ${ordinalDay(now.getDate())} ${month} ${now.getFullYear()} ${time}`;
+            }
+
+            function updateInsightsLiveGreeting() {
+                const target = document.getElementById("insightsLiveGreeting");
+                if (target) target.textContent = insightsGreetingText();
+            }
+
+            function startInsightsClock() {
+                updateInsightsLiveGreeting();
+                if (insightsClockTimer) return;
+                insightsClockTimer = window.setInterval(updateInsightsLiveGreeting, 1000);
             }
 
             function localInsightsPayload(status = "local") {
@@ -12600,7 +12669,7 @@
             async function loadInsights(force = false) {
                 if (insightsLoading) return;
                 if (insightsData && !force) return;
-                setAiLoading(true);
+                setAiLoading(true, force ? "Refreshing insights with Jenius AI (OpenAI)." : "Building the insights dashboard");
                 renderInsightsScreen();
                 try {
                     insightsData = await requestJSON(api.endpoints.insights);
@@ -12650,6 +12719,7 @@
                     return;
                 }
                 screen.hidden = false;
+                startInsightsClock();
                 document.querySelectorAll("[data-insight-section]").forEach((button) => {
                     button.classList.toggle("is-active", button.dataset.insightSection === activeInsightsSection);
                 });
@@ -12680,6 +12750,7 @@
                     trends: trendsInsights(analytics),
                     ageing: ageingInsights(analytics),
                     workflows: workflowInsights(analytics),
+                    lpcs: latePaymentChargeInsights(),
                     ai: aiCopilotInsights(ai, analytics),
                     "customer-intelligence": customerIntelligenceInsights(analytics),
                     "debt-analysis": debtAnalysisInsights(analytics),
@@ -12886,6 +12957,109 @@
                     ["7 Day Notices", formatCurrency(notices.value || 0), `${Number(notices.count || 0).toLocaleString("en-GB")} invoices`],
                     ["Payment plans", formatCurrency(plans.value || 0), `${Number(plans.count || 0).toLocaleString("en-GB")} invoices`],
                 ])}<div class="insight-two-column">${donutChart("Workflow value split", rows, "value")}${barChart("Workflow invoice count", rows, "count")}</div><section class="insight-chart"><span>Workflow queue</span>${insightActionCards(workflowRows, "No workflow data is currently available.")}</section>`;
+            }
+
+            function latePaymentChargeRaisedRows() {
+                return allInvoices()
+                    .filter(latePaymentChargeRaised)
+                    .map((invoice) => ({
+                        ...invoice,
+                        raisedAt: invoice.latePaymentChargeRaisedAt || invoice.invoiceDate || invoice.dueDate || "",
+                        chargeAmount: latePaymentChargeAmount(invoice),
+                    }))
+                    .sort((a, b) => {
+                        const first = new Date(b.raisedAt || 0).getTime() || 0;
+                        const second = new Date(a.raisedAt || 0).getTime() || 0;
+                        return first - second || Number(b.chargeAmount || 0) - Number(a.chargeAmount || 0);
+                    });
+            }
+
+            function latePaymentChargeMonthlyRows(raisedRows) {
+                const byMonth = new Map();
+                raisedRows.forEach((invoice) => {
+                    const date = parseDateValue(invoice.raisedAt);
+                    const key = date
+                        ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+                        : "undated";
+                    const label = date
+                        ? date.toLocaleDateString("en-GB", { month: "short", year: "2-digit" })
+                        : "No date";
+                    const row = byMonth.get(key) || { key, label, count: 0, value: 0 };
+                    row.count += 1;
+                    row.value += Number(invoice.chargeAmount || 0);
+                    byMonth.set(key, row);
+                });
+                return [...byMonth.values()].sort((a, b) => a.key.localeCompare(b.key)).slice(-12);
+            }
+
+            function latePaymentChargeClientRows(raisedRows) {
+                const byClient = new Map();
+                raisedRows.forEach((invoice) => {
+                    const key = invoice.customerId || invoice.customerName || "unknown";
+                    const row = byClient.get(key) || { name: invoice.customerName || "Client", count: 0, value: 0, latestAt: invoice.raisedAt || "" };
+                    row.count += 1;
+                    row.value += Number(invoice.chargeAmount || 0);
+                    if ((new Date(invoice.raisedAt || 0).getTime() || 0) > (new Date(row.latestAt || 0).getTime() || 0)) {
+                        row.latestAt = invoice.raisedAt || "";
+                    }
+                    byClient.set(key, row);
+                });
+                return [...byClient.values()].sort((a, b) => Number(b.value || 0) - Number(a.value || 0)).slice(0, 10);
+            }
+
+            function insightDataTable(title, headers, rows, emptyCopy) {
+                if (!rows.length) return `<section class="insight-chart"><span>${escapeHTML(title)}</span><p>${escapeHTML(emptyCopy)}</p></section>`;
+                const headerHTML = headers.map((header) => `<th>${escapeHTML(header)}</th>`).join("");
+                const bodyHTML = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHTML(cell)}</td>`).join("")}</tr>`).join("");
+                return `<section class="insight-chart"><span>${escapeHTML(title)}</span><div class="insight-table-wrap"><table class="insight-table"><thead><tr>${headerHTML}</tr></thead><tbody>${bodyHTML}</tbody></table></div></section>`;
+            }
+
+            function latePaymentChargeInsights() {
+                const raisedRows = latePaymentChargeRaisedRows();
+                const stats = latePaymentChargeReviewStats();
+                const totalRaised = raisedRows.reduce((sum, invoice) => sum + Number(invoice.chargeAmount || 0), 0);
+                const averageCharge = raisedRows.length ? totalRaised / raisedRows.length : 0;
+                const clientRows = latePaymentChargeClientRows(raisedRows);
+                const monthlyRows = latePaymentChargeMonthlyRows(raisedRows);
+                const latest = raisedRows[0] || null;
+                const topClient = clientRows[0] || null;
+                const commentaryRows = [
+                    {
+                        title: "Recent LPC activity",
+                        detail: latest
+                            ? `Latest charge was raised for ${latest.customerName || "a client"} on ${formatDate(latest.raisedAt)}.`
+                            : "No late payment charge invoices have been recorded yet.",
+                        value: latest ? formatCurrency(latest.chargeAmount || 0) : "No charges",
+                        urgency: raisedRows.length ? "low" : "medium",
+                    },
+                    {
+                        title: "Eligible charge pipeline",
+                        detail: `${stats.eligibleCount.toLocaleString("en-GB")} open invoice${stats.eligibleCount === 1 ? "" : "s"} can currently be reviewed for an LPC.`,
+                        value: formatCurrency(stats.eligibleAmount || 0),
+                        urgency: stats.eligibleCount ? "medium" : "low",
+                    },
+                    {
+                        title: "Client concentration",
+                        detail: topClient
+                            ? `${topClient.name} has the highest raised LPC value across ${topClient.count.toLocaleString("en-GB")} charge${topClient.count === 1 ? "" : "s"}.`
+                            : "No client concentration is available until charges are raised.",
+                        value: topClient ? formatCurrency(topClient.value || 0) : "No data",
+                        urgency: topClient && Number(topClient.value || 0) >= totalRaised * 0.5 && raisedRows.length > 1 ? "medium" : "low",
+                    },
+                ];
+                const recentRows = raisedRows.slice(0, 14).map((invoice) => [
+                    formatDate(invoice.raisedAt),
+                    invoice.customerName || "Client",
+                    invoice.invoiceNumber || "Invoice",
+                    invoice.latePaymentChargeInvoiceNumber || "Raised",
+                    formatCurrency(invoice.chargeAmount || 0),
+                ]);
+                return `${insightCardGrid([
+                    ["LPCs raised", raisedRows.length.toLocaleString("en-GB"), "Late payment charge invoices recorded"],
+                    ["Raised value", formatCurrency(totalRaised), "Total including VAT"],
+                    ["Average LPC", formatCurrency(averageCharge), "Mean charge value"],
+                    ["Ready to review", stats.eligibleCount.toLocaleString("en-GB"), `${formatCurrency(stats.eligibleAmount || 0)} potential charges`],
+                ])}<div class="insight-two-column">${barChart("LPCs by client", clientRows, "value", "name")}${barChart("LPC monthly trend", monthlyRows, "value", "label")}</div><section class="insight-chart"><span>AI commentary</span>${insightActionCards(commentaryRows)}</section>${insightDataTable("Recent LPCs raised", ["Raised", "Client", "Original invoice", "LPC invoice", "Amount"], recentRows, "No late payment charges have been raised yet. Once charges are posted, they will appear here automatically.")}`;
             }
 
             function customerIntelligenceInsights(analytics) {
