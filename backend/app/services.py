@@ -1,13 +1,17 @@
 import asyncio
+import hashlib
+import io
 import json
 import logging
 import re
 import signal
+import zipfile
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID
+from xml.sax.saxutils import escape as xml_escape
 
 import httpx
 from fastapi import HTTPException, status
@@ -23,6 +27,7 @@ from .xero import (
     XERO_RATE_LIMIT_RETRIES,
     allocate_credit_note,
     allocate_overpayment,
+    attach_file_to_invoice,
     create_credit_note,
     create_history_record,
     create_sales_invoice,
@@ -1557,6 +1562,258 @@ def serialize_sync_run(sync_run: dict) -> dict:
         "retryAfterSeconds": int(sync_run.get("retry_after_seconds") or 0),
         "isActive": sync_run.get("status") in ACTIVE_SYNC_STATUSES,
     }
+
+
+OPERATION_LABELS = {
+    "late_payment_charges": "Late payment charges",
+    "bad_debt_write_offs": "Bad debt write-offs",
+}
+
+
+def _operation_payload(invoice_ids: list[str], options: dict | None = None) -> dict:
+    return {
+        "invoiceIds": [str(invoice_id) for invoice_id in invoice_ids],
+        "options": options or {},
+    }
+
+
+def request_operation_run(user: dict, operation_type: str, invoice_ids: list[str], options: dict | None = None) -> dict:
+    if operation_type not in OPERATION_LABELS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported operation type.")
+    clean_invoice_ids = [str(invoice_id).strip() for invoice_id in invoice_ids if str(invoice_id).strip()]
+    if not clean_invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+
+    label = OPERATION_LABELS[operation_type]
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO operation_runs (
+                    operation_type, initiated_by_user_id, status, total_count,
+                    processed_count, succeeded_count, failed_count, current_step,
+                    summary, payload, created_at, heartbeat_at
+                )
+                VALUES (%s, %s, %s, %s, 0, 0, 0, %s, %s, %s::jsonb, %s, %s)
+                RETURNING *
+                """,
+                (
+                    operation_type,
+                    user["id"],
+                    "queued",
+                    len(clean_invoice_ids),
+                    "Queued",
+                    f"{label} queued for {len(clean_invoice_ids)} invoice{'s' if len(clean_invoice_ids) != 1 else ''}.",
+                    json.dumps(_operation_payload(clean_invoice_ids, options), default=_json_default),
+                    now,
+                    now,
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def get_operation_run(user: dict, operation_run_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM operation_runs
+                WHERE id = %s
+                  AND initiated_by_user_id = %s
+                """,
+                (operation_run_id, user["id"]),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation run not found.")
+    return row
+
+
+def serialize_operation_run(operation_run: dict) -> dict:
+    total = int(operation_run.get("total_count") or 0)
+    processed = int(operation_run.get("processed_count") or 0)
+    if operation_run.get("status") in ("completed", "failed"):
+        progress = 100
+    elif operation_run.get("status") == "queued":
+        progress = 4
+    elif total:
+        progress = min(98, max(8, round((processed / total) * 100)))
+    else:
+        progress = 12
+    return {
+        "id": str(operation_run["id"]),
+        "operationType": operation_run.get("operation_type") or "",
+        "label": OPERATION_LABELS.get(operation_run.get("operation_type"), "Xero operation"),
+        "status": operation_run.get("status") or "",
+        "currentStep": operation_run.get("current_step") or "",
+        "summary": operation_run.get("summary") or "",
+        "errorMessage": operation_run.get("error_message") or "",
+        "totalCount": total,
+        "processedCount": processed,
+        "succeededCount": int(operation_run.get("succeeded_count") or 0),
+        "failedCount": int(operation_run.get("failed_count") or 0),
+        "progress": progress,
+        "result": operation_run.get("result") or {},
+        "createdAt": _iso(operation_run.get("created_at")) or "",
+        "startedAt": _iso(operation_run.get("started_at")) or "",
+        "heartbeatAt": _iso(operation_run.get("heartbeat_at")) or "",
+        "completedAt": _iso(operation_run.get("completed_at")) or "",
+        "isActive": operation_run.get("status") in ("queued", "running"),
+    }
+
+
+def _update_operation_run(operation_run_id: str, **fields) -> dict:
+    if not fields:
+        raise ValueError("No operation fields supplied.")
+    fields.setdefault("heartbeat_at", utcnow())
+    assignments = ", ".join(f"{key} = %s::jsonb" if key in {"payload", "result"} else f"{key} = %s" for key in fields)
+    values = list(fields.values())
+    values.append(operation_run_id)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                UPDATE operation_runs
+                SET {assignments}
+                WHERE id = %s
+                RETURNING *
+                """,
+                values,
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation run not found.")
+    return row
+
+
+def _invoice_operation_label(invoice_id: str) -> str:
+    try:
+        invoice_uuid = UUID(str(invoice_id))
+    except ValueError:
+        return str(invoice_id)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT invoices.invoice_number, customers.name AS customer_name
+                FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE invoices.id = %s
+                """,
+                (invoice_uuid,),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        return str(invoice_id)
+    invoice_number = row.get("invoice_number") or str(invoice_id)
+    customer_name = row.get("customer_name") or "client"
+    return f"{customer_name} · {invoice_number}"
+
+
+async def run_invoice_operation_job(
+    user: dict,
+    operation_run_id: str,
+    operation_type: str,
+    invoice_ids: list[str],
+    options: dict | None = None,
+) -> None:
+    label = OPERATION_LABELS.get(operation_type, "Xero operation")
+    created: list[dict] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    processed_count = 0
+    succeeded_count = 0
+    failed_count = 0
+    clean_invoice_ids = [str(invoice_id).strip() for invoice_id in invoice_ids if str(invoice_id).strip()]
+    _update_operation_run(
+        operation_run_id,
+        status="running",
+        started_at=utcnow(),
+        current_step=f"Starting {label.lower()}",
+        summary=f"Starting {label.lower()} for {len(clean_invoice_ids)} invoice{'s' if len(clean_invoice_ids) != 1 else ''}.",
+    )
+    charge_selections = (options or {}).get("chargeSelections") or []
+    charge_selection_by_id = {
+        str(item.get("invoiceId") or "").strip(): item
+        for item in charge_selections
+        if str(item.get("invoiceId") or "").strip()
+    }
+
+    try:
+        for invoice_id in clean_invoice_ids:
+            invoice_label = _invoice_operation_label(invoice_id)
+            action_text = "Raising late payment charge" if operation_type == "late_payment_charges" else "Raising and allocating bad debt credit note"
+            _update_operation_run(
+                operation_run_id,
+                current_step=f"{action_text}: {invoice_label}",
+                summary=f"Processed {processed_count} of {len(clean_invoice_ids)}. Working on {invoice_label}.",
+            )
+            try:
+                if operation_type == "late_payment_charges":
+                    selection = charge_selection_by_id.get(invoice_id) or {"invoiceId": invoice_id}
+                    result = await create_late_payment_charges(user, [invoice_id], [selection])
+                elif operation_type == "bad_debt_write_offs":
+                    result = await create_bad_debt_write_offs(user, [invoice_id])
+                else:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported operation type.")
+                created_items = result.get("created") or []
+                skipped_items = result.get("skipped") or []
+                created.extend(created_items)
+                skipped.extend(skipped_items)
+                if created_items:
+                    succeeded_count += len(created_items)
+                if skipped_items:
+                    failed_count += len(skipped_items)
+            except Exception as exc:
+                error = _sync_error_message(exc)
+                failed_count += 1
+                failed.append({"invoiceId": invoice_id, "reason": error})
+                logger.exception("Unable to run %s for invoice %s", operation_type, invoice_id)
+
+            processed_count += 1
+            _update_operation_run(
+                operation_run_id,
+                processed_count=processed_count,
+                succeeded_count=succeeded_count,
+                failed_count=failed_count,
+                current_step=f"{label}: {processed_count} of {len(clean_invoice_ids)} processed",
+                summary=(
+                    f"Processed {processed_count} of {len(clean_invoice_ids)} invoice"
+                    f"{'' if len(clean_invoice_ids) == 1 else 's'}; "
+                    f"{succeeded_count} succeeded, {failed_count} skipped or failed."
+                ),
+            )
+
+        result_payload = {"created": created, "skipped": [*skipped, *failed]}
+        _update_operation_run(
+            operation_run_id,
+            status="completed",
+            completed_at=utcnow(),
+            current_step=f"{label} complete",
+            summary=(
+                f"{label} complete: {succeeded_count} succeeded, "
+                f"{failed_count} skipped or failed."
+            ),
+            result=json.dumps(result_payload, default=_json_default),
+        )
+    except Exception as exc:
+        _update_operation_run(
+            operation_run_id,
+            status="failed",
+            completed_at=utcnow(),
+            current_step=f"{label} failed",
+            summary=f"{label} stopped before completion.",
+            error_message=_sync_error_message(exc),
+            result=json.dumps({"created": created, "skipped": [*skipped, *failed]}, default=_json_default),
+        )
+        logger.exception("Operation run %s failed", operation_run_id)
 
 
 def sync_run_has_working_data(sync_run: dict) -> bool:
@@ -3197,6 +3454,702 @@ def _money(value) -> Decimal:
         return Decimal(str(value if value is not None else 0)).quantize(Decimal("0.01"))
     except Exception:
         return Decimal("0.00")
+
+
+def _parse_iso_date(value, field_name: str) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value or "")[:10])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a valid date.") from exc
+
+
+def _positive_money(value, field_name: str) -> Decimal:
+    amount = _money(value)
+    if amount <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be greater than zero.")
+    return amount
+
+
+def _non_negative_money(value, field_name: str) -> Decimal:
+    amount = _money(value)
+    if amount < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} cannot be negative.")
+    return amount
+
+
+def _rate_percent(value, field_name: str = "Interest rate") -> Decimal:
+    try:
+        rate = Decimal(str(value if value is not None else 0)).quantize(Decimal("0.000001"))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a valid percentage.") from exc
+    if rate < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} cannot be negative.")
+    return rate
+
+
+def _jashflow_tenant_id(user: dict) -> str:
+    return str(get_xero_connection_for_user(user["id"]).get("tenant_id") or "")
+
+
+def _jashflow_interest_summary(loan: dict, payments_total: Decimal, as_of: date | None = None) -> dict:
+    as_of = as_of or utcnow().date()
+    start_date = loan.get("start_date") or as_of
+    if isinstance(start_date, datetime):
+        start_date = start_date.date()
+    if not isinstance(start_date, date):
+        start_date = _parse_iso_date(start_date, "Start date")
+
+    principal = _money(loan.get("principal_amount"))
+    fee = _money(loan.get("arrangement_fee"))
+    base = principal + fee
+    annual_rate_percent = _rate_percent(loan.get("annual_interest_rate"))
+    annual_rate = max(0.0, float(annual_rate_percent) / 100)
+    elapsed_days = max((as_of - start_date).days, 0)
+    daily_rate = (1 + annual_rate) ** (1 / 365) - 1 if annual_rate else 0
+    monthly_rate = (1 + annual_rate) ** (1 / 12) - 1 if annual_rate else 0
+    accrued_interest = _money(float(base) * (((1 + daily_rate) ** elapsed_days) - 1)) if daily_rate else Decimal("0.00")
+    balance = _money(base + accrued_interest - payments_total)
+    duration_months = max(1, int(loan.get("duration_months") or 1))
+    if monthly_rate:
+        monthly_repayment = _money(float(base) * (monthly_rate * ((1 + monthly_rate) ** duration_months)) / (((1 + monthly_rate) ** duration_months) - 1))
+    else:
+        monthly_repayment = _money(base / Decimal(duration_months))
+    return {
+        "daysAccrued": elapsed_days,
+        "dailyInterestRate": daily_rate,
+        "accruedInterest": accrued_interest,
+        "balance": balance,
+        "monthlyRepayment": monthly_repayment,
+    }
+
+
+def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_interest_total: Decimal | None = None) -> dict:
+    payments_total = sum((_money(row.get("amount")) for row in transactions if row.get("transaction_type") == "payment"), Decimal("0.00"))
+    invoiced_interest_total = _money(invoiced_interest_total)
+    summary = _jashflow_interest_summary(loan, payments_total)
+    uninvoiced_interest = max(Decimal("0.00"), _money(summary["accruedInterest"] - invoiced_interest_total))
+    running_balance = Decimal("0.00")
+    statement_rows = []
+    for row in sorted(transactions, key=lambda item: (item.get("transaction_date") or date.min, item.get("created_at") or datetime.min.replace(tzinfo=timezone.utc))):
+        amount = _money(row.get("amount"))
+        signed_amount = -amount if row.get("transaction_type") == "payment" else amount
+        running_balance = _money(running_balance + signed_amount)
+        statement_rows.append({
+            "id": str(row.get("id")),
+            "date": _iso(row.get("transaction_date")) or "",
+            "type": row.get("transaction_type") or "adjustment",
+            "description": row.get("description") or "",
+            "amount": float(signed_amount),
+            "balance": float(running_balance),
+            "createdAt": _iso(row.get("created_at")) or "",
+            "isVirtual": False,
+        })
+    if summary["accruedInterest"] > 0:
+        running_balance = _money(running_balance + summary["accruedInterest"])
+        statement_rows.append({
+            "id": f"{loan['id']}:interest",
+            "date": utcnow().date().isoformat(),
+            "type": "interest",
+            "description": f"Daily compound interest accrued over {summary['daysAccrued']} day{'s' if summary['daysAccrued'] != 1 else ''}",
+            "amount": float(summary["accruedInterest"]),
+            "balance": float(running_balance),
+            "createdAt": "",
+            "isVirtual": True,
+        })
+
+    return {
+        "id": str(loan["id"]),
+        "customerId": str(loan.get("customer_id")),
+        "customerName": loan.get("customer_name") or "Unnamed client",
+        "xeroContactId": loan.get("xero_contact_id") or "",
+        "principalAmount": float(_money(loan.get("principal_amount"))),
+        "arrangementFee": float(_money(loan.get("arrangement_fee"))),
+        "annualInterestRate": float(_rate_percent(loan.get("annual_interest_rate"))),
+        "durationMonths": int(loan.get("duration_months") or 0),
+        "startDate": _iso(loan.get("start_date")) or "",
+        "status": loan.get("status") or "active",
+        "createdAt": _iso(loan.get("created_at")) or "",
+        "updatedAt": _iso(loan.get("updated_at")) or "",
+        "daysAccrued": summary["daysAccrued"],
+        "dailyInterestRate": summary["dailyInterestRate"],
+        "accruedInterest": float(summary["accruedInterest"]),
+        "invoicedInterest": float(invoiced_interest_total),
+        "uninvoicedInterest": float(uninvoiced_interest),
+        "paymentsTotal": float(payments_total),
+        "balance": float(summary["balance"]),
+        "monthlyRepayment": float(summary["monthlyRepayment"]),
+        "transactions": statement_rows,
+    }
+
+
+def jashflow_payload(user: dict) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, email, xero_contact_id
+                FROM customers
+                WHERE tenant_id = %s
+                ORDER BY name ASC
+                """,
+                (tenant_id,),
+            )
+            customers = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT loans.*, customers.name AS customer_name, customers.xero_contact_id
+                FROM jashflow_loans AS loans
+                JOIN customers ON customers.id = loans.customer_id
+                WHERE loans.tenant_id = %s
+                ORDER BY loans.created_at DESC
+                """,
+                (tenant_id,),
+            )
+            loan_rows = cursor.fetchall()
+            loan_ids = [row["id"] for row in loan_rows]
+            transactions_by_loan = defaultdict(list)
+            interest_posted_by_loan = defaultdict(lambda: Decimal("0.00"))
+            if loan_ids:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM jashflow_transactions
+                    WHERE loan_id = ANY(%s)
+                    ORDER BY transaction_date ASC, created_at ASC
+                    """,
+                    (loan_ids,),
+                )
+                for row in cursor.fetchall():
+                    transactions_by_loan[str(row["loan_id"])].append(row)
+                cursor.execute(
+                    """
+                    SELECT lines.loan_id, COALESCE(SUM(lines.interest_amount), 0) AS posted_interest
+                    FROM jashflow_interest_post_lines AS lines
+                    JOIN jashflow_interest_post_batches AS batches ON batches.id = lines.batch_id
+                    WHERE lines.loan_id = ANY(%s)
+                      AND batches.status = 'completed'
+                    GROUP BY lines.loan_id
+                    """,
+                    (loan_ids,),
+                )
+                for row in cursor.fetchall():
+                    interest_posted_by_loan[str(row["loan_id"])] = _money(row.get("posted_interest"))
+            cursor.execute(
+                """
+                SELECT *
+                FROM jashflow_settings
+                WHERE tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            settings_row = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                SELECT *
+                FROM jashflow_interest_post_batches
+                WHERE tenant_id = %s
+                  AND status = 'completed'
+                ORDER BY created_at DESC
+                LIMIT 10
+                """,
+                (tenant_id,),
+            )
+            interest_posts = cursor.fetchall()
+        connection.commit()
+
+    loans = [
+        _serialize_jashflow_loan(
+            row,
+            transactions_by_loan.get(str(row["id"]), []),
+            interest_posted_by_loan.get(str(row["id"]), Decimal("0.00")),
+        )
+        for row in loan_rows
+    ]
+    active_loans = [loan for loan in loans if loan["status"] == "active"]
+    return {
+        "customers": [
+            {
+                "id": str(customer["id"]),
+                "name": customer.get("name") or "Unnamed client",
+                "email": customer.get("email") or "",
+                "xeroContactId": customer.get("xero_contact_id") or "",
+            }
+            for customer in customers
+        ],
+        "loans": loans,
+        "summary": {
+            "activeLoans": len(active_loans),
+            "principalTotal": round(sum(loan["principalAmount"] for loan in active_loans), 2),
+            "accruedInterestTotal": round(sum(loan["accruedInterest"] for loan in active_loans), 2),
+            "invoicedInterestTotal": round(sum(loan["invoicedInterest"] for loan in active_loans), 2),
+            "uninvoicedInterestTotal": round(sum(loan["uninvoicedInterest"] for loan in active_loans), 2),
+            "balanceTotal": round(sum(loan["balance"] for loan in active_loans), 2),
+        },
+        "settings": {
+            "invoiceContactId": settings_row.get("invoice_contact_id") or "",
+            "invoiceContactName": settings_row.get("invoice_contact_name") or "",
+            "interestAccountCode": settings_row.get("interest_account_code") or "",
+            "updatedAt": _iso(settings_row.get("updated_at")) or "",
+        },
+        "interestPosts": [
+            {
+                "id": str(row["id"]),
+                "status": row.get("status") or "",
+                "xeroInvoiceId": row.get("xero_invoice_id") or "",
+                "xeroInvoiceNumber": row.get("xero_invoice_number") or "",
+                "invoiceContactName": row.get("invoice_contact_name") or "",
+                "interestAccountCode": row.get("interest_account_code") or "",
+                "periodEndDate": _iso(row.get("period_end_date")) or "",
+                "totalInterestAmount": float(_money(row.get("total_interest_amount"))),
+                "attachmentFilename": row.get("attachment_filename") or "",
+                "createdAt": _iso(row.get("created_at")) or "",
+                "completedAt": _iso(row.get("completed_at")) or "",
+            }
+            for row in interest_posts
+        ],
+    }
+
+
+def create_jashflow_loan(user: dict, payload: dict) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    customer_id = str(payload.get("customerId") or "").strip()
+    if not customer_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a Xero customer for the loan.")
+    principal = _positive_money(payload.get("principalAmount"), "Loan amount")
+    arrangement_fee = _non_negative_money(payload.get("arrangementFee"), "Arrangement fee")
+    annual_interest_rate = _rate_percent(payload.get("annualInterestRate"), "Compound interest rate")
+    try:
+        duration_months = int(payload.get("durationMonths") or 0)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration must be a number of months.") from exc
+    if duration_months < 1 or duration_months > 240:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration must be between 1 and 240 months.")
+    start_date = _parse_iso_date(payload.get("startDate"), "Start date")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM customers
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (customer_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found in this Xero tenant.")
+            cursor.execute(
+                """
+                INSERT INTO jashflow_loans (
+                    tenant_id, customer_id, principal_amount, arrangement_fee,
+                    annual_interest_rate, duration_months, start_date, status,
+                    created_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
+                RETURNING id
+                """,
+                (tenant_id, customer_id, principal, arrangement_fee, annual_interest_rate, duration_months, start_date, user["id"], utcnow(), utcnow()),
+            )
+            loan_id = cursor.fetchone()["id"]
+            cursor.execute(
+                """
+                INSERT INTO jashflow_transactions (
+                    loan_id, transaction_date, transaction_type, amount, description, created_by_user_id
+                )
+                VALUES (%s, %s, 'advance', %s, 'Loan advance', %s)
+                """,
+                (loan_id, start_date, principal, user["id"]),
+            )
+            if arrangement_fee > 0:
+                cursor.execute(
+                    """
+                    INSERT INTO jashflow_transactions (
+                        loan_id, transaction_date, transaction_type, amount, description, created_by_user_id
+                    )
+                    VALUES (%s, %s, 'fee', %s, 'Arrangement fee', %s)
+                    """,
+                    (loan_id, start_date, arrangement_fee, user["id"]),
+                )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_loan",
+        str(loan_id),
+        "jashflow.loan_created",
+        {
+            "customer_id": customer_id,
+            "principal_amount": float(principal),
+            "arrangement_fee": float(arrangement_fee),
+            "annual_interest_rate": float(annual_interest_rate),
+            "duration_months": duration_months,
+            "start_date": start_date.isoformat(),
+        },
+        user["id"],
+    )
+    return jashflow_payload(user)
+
+
+def add_jashflow_payment(user: dict, loan_id: str, payload: dict) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    amount = _positive_money(payload.get("amount"), "Payment amount")
+    payment_date = _parse_iso_date(payload.get("paymentDate"), "Payment date")
+    description = str(payload.get("description") or "Payment received").strip()[:500]
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM jashflow_loans
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (loan_id, tenant_id),
+            )
+            if cursor.fetchone() is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jashflow loan not found.")
+            cursor.execute(
+                """
+                INSERT INTO jashflow_transactions (
+                    loan_id, transaction_date, transaction_type, amount, description, created_by_user_id
+                )
+                VALUES (%s, %s, 'payment', %s, %s, %s)
+                RETURNING id
+                """,
+                (loan_id, payment_date, amount, description, user["id"]),
+            )
+            transaction_id = cursor.fetchone()["id"]
+            cursor.execute(
+                """
+                UPDATE jashflow_loans
+                SET updated_at = %s
+                WHERE id = %s
+                """,
+                (utcnow(), loan_id),
+            )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_loan",
+        str(loan_id),
+        "jashflow.payment_added",
+        {"transaction_id": str(transaction_id), "amount": float(amount), "payment_date": payment_date.isoformat()},
+        user["id"],
+    )
+    return jashflow_payload(user)
+
+
+def save_jashflow_settings(user: dict, payload: dict) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    customer_id = str(payload.get("invoiceContactCustomerId") or payload.get("customerId") or "").strip()
+    account_code = str(payload.get("interestAccountCode") or "").strip()
+    if not customer_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose the Xero contact used for Jashflow interest invoices.")
+    if not account_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter the Xero interest received account code.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT name, xero_contact_id
+                FROM customers
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (customer_id, tenant_id),
+            )
+            customer = cursor.fetchone()
+            if customer is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected invoice contact was not found in this Xero tenant.")
+            xero_contact_id = customer.get("xero_contact_id")
+            if not xero_contact_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected invoice contact is missing a Xero contact id.")
+            cursor.execute(
+                """
+                INSERT INTO jashflow_settings (
+                    tenant_id, invoice_contact_id, invoice_contact_name,
+                    interest_account_code, updated_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET invoice_contact_id = EXCLUDED.invoice_contact_id,
+                    invoice_contact_name = EXCLUDED.invoice_contact_name,
+                    interest_account_code = EXCLUDED.interest_account_code,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (tenant_id, xero_contact_id, customer.get("name") or "", account_code, user["id"], utcnow(), utcnow()),
+            )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_settings",
+        tenant_id,
+        "jashflow.settings_saved",
+        {"invoice_contact_name": customer.get("name") or "", "interest_account_code": account_code},
+        user["id"],
+    )
+    return jashflow_payload(user)
+
+
+def _xlsx_column_name(index: int) -> str:
+    name = ""
+    while index:
+        index, remainder = divmod(index - 1, 26)
+        name = chr(65 + remainder) + name
+    return name
+
+
+def _xlsx_cell(reference: str, value) -> str:
+    if isinstance(value, (int, float, Decimal)):
+        return f'<c r="{reference}"><v>{value}</v></c>'
+    text = xml_escape(str(value if value is not None else ""))
+    return f'<c r="{reference}" t="inlineStr"><is><t>{text}</t></is></c>'
+
+
+def _build_jashflow_interest_workbook(lines: list[dict], period_end: date, total: Decimal) -> bytes:
+    rows = [
+        ["Client", "Xero Contact ID", "Loan ID", "Period End", "Accrued Interest", "Previously Posted", "Posting Now", "Loan Balance"],
+        *[
+            [
+                line["customerName"],
+                line["xeroContactId"],
+                line["loanId"],
+                period_end.isoformat(),
+                f"{line['accruedInterest']:.2f}",
+                f"{line['previouslyPosted']:.2f}",
+                f"{line['interestAmount']:.2f}",
+                f"{line['balance']:.2f}",
+            ]
+            for line in lines
+        ],
+        ["", "", "", "Total", "", "", f"{total:.2f}", ""],
+    ]
+    sheet_rows = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = [
+            _xlsx_cell(f"{_xlsx_column_name(column_index)}{row_index}", value)
+            for column_index, value in enumerate(row, start=1)
+        ]
+        sheet_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+    worksheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<sheetData>'
+        f'{"".join(sheet_rows)}'
+        '</sheetData>'
+        '</worksheet>'
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as workbook:
+        workbook.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '</Types>',
+        )
+        workbook.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>',
+        )
+        workbook.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="Interest" sheetId="1" r:id="rId1"/></sheets>'
+            '</workbook>',
+        )
+        workbook.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            '</Relationships>',
+        )
+        workbook.writestr("xl/worksheets/sheet1.xml", worksheet_xml)
+    return buffer.getvalue()
+
+
+async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    tenant_id = _jashflow_tenant_id(user)
+    period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
+    current_payload = jashflow_payload(user)
+    settings = current_payload.get("settings") or {}
+    invoice_contact_id = settings.get("invoiceContactId") or ""
+    invoice_contact_name = settings.get("invoiceContactName") or ""
+    account_code = settings.get("interestAccountCode") or ""
+    if not invoice_contact_id or not account_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the Jashflow interest invoice contact and account code before posting interest.")
+
+    lines = []
+    for loan in current_payload.get("loans") or []:
+        if loan.get("status") != "active":
+            continue
+        interest_amount = _money(loan.get("uninvoicedInterest"))
+        if interest_amount < Decimal("0.01"):
+            continue
+        lines.append(
+            {
+                "loanId": loan["id"],
+                "customerId": loan["customerId"],
+                "customerName": loan["customerName"],
+                "xeroContactId": loan.get("xeroContactId") or "",
+                "accruedInterest": _money(loan.get("accruedInterest")),
+                "previouslyPosted": _money(loan.get("invoicedInterest")),
+                "interestAmount": interest_amount,
+                "balance": _money(loan.get("balance")),
+            }
+        )
+    if not lines:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There is no uninvoiced Jashflow interest to post.")
+
+    total = sum((line["interestAmount"] for line in lines), Decimal("0.00")).quantize(Decimal("0.01"))
+    connection_row = get_xero_connection_for_user(user["id"])
+    description = (
+        f"Jashflow interest earned to {_invoice_date_description(period_end)}. "
+        f"Supporting client breakdown is attached to this invoice."
+    )
+    invoice_payload = {
+        "Type": "ACCREC",
+        "Contact": {"ContactID": invoice_contact_id},
+        "Date": period_end.isoformat(),
+        "DueDate": period_end.isoformat(),
+        "Reference": f"Jashflow interest to {period_end.isoformat()}",
+        "LineAmountTypes": "NoTax",
+        "Status": "AUTHORISED",
+        "LineItems": [
+            {
+                "Description": description,
+                "Quantity": 1,
+                "UnitAmount": float(total),
+                "AccountCode": account_code,
+                "TaxType": "NONE",
+            }
+        ],
+    }
+    idempotency_seed = json.dumps(
+        {"periodEnd": period_end.isoformat(), "lines": [(line["loanId"], str(line["interestAmount"])) for line in lines]},
+        sort_keys=True,
+    )
+    idempotency_key = f"jashflow-interest-{hashlib.sha256(idempotency_seed.encode()).hexdigest()[:32]}"
+    xero_response = await create_sales_invoice(connection_row, invoice_payload, idempotency_key=idempotency_key)
+    created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
+    invoice_id = created_invoice.get("InvoiceID") or created_invoice.get("ID") or ""
+    invoice_number = created_invoice.get("InvoiceNumber") or ""
+    if not invoice_id:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Xero created the Jashflow interest invoice but did not return an invoice id.")
+
+    attachment_filename = f"jashflow-interest-{period_end.isoformat()}.xlsx"
+    attachment_error = ""
+    workbook_bytes = _build_jashflow_interest_workbook(lines, period_end, total)
+    try:
+        await attach_file_to_invoice(
+            connection_row,
+            invoice_id,
+            attachment_filename,
+            workbook_bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    except Exception as exc:
+        attachment_error = _sync_error_message(exc)
+        logger.exception("Unable to attach Jashflow interest workbook to Xero invoice %s", invoice_id)
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO jashflow_interest_post_batches (
+                    tenant_id, status, xero_invoice_id, xero_invoice_number,
+                    invoice_contact_id, invoice_contact_name, interest_account_code,
+                    period_end_date, total_interest_amount, attachment_filename,
+                    error_message, created_by_user_id, created_at, completed_at
+                )
+                VALUES (%s, 'completed', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    tenant_id,
+                    invoice_id,
+                    invoice_number,
+                    invoice_contact_id,
+                    invoice_contact_name,
+                    account_code,
+                    period_end,
+                    total,
+                    attachment_filename,
+                    attachment_error,
+                    user["id"],
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+            batch_id = cursor.fetchone()["id"]
+            for line in lines:
+                cursor.execute(
+                    """
+                    INSERT INTO jashflow_interest_post_lines (
+                        batch_id, loan_id, customer_id, period_end_date,
+                        accrued_interest_amount, previously_posted_amount,
+                        interest_amount, balance_after_interest, created_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        batch_id,
+                        line["loanId"],
+                        line["customerId"],
+                        period_end,
+                        line["accruedInterest"],
+                        line["previouslyPosted"],
+                        line["interestAmount"],
+                        line["balance"],
+                        utcnow(),
+                    ),
+                )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_interest",
+        str(batch_id),
+        "jashflow.interest_posted",
+        {
+            "xero_invoice_id": invoice_id,
+            "xero_invoice_number": invoice_number,
+            "total_interest_amount": float(total),
+            "line_count": len(lines),
+            "attachment_filename": attachment_filename,
+            "attachment_error": attachment_error,
+        },
+        user["id"],
+    )
+    return {
+        "interestPost": {
+            "id": str(batch_id),
+            "xeroInvoiceId": invoice_id,
+            "xeroInvoiceNumber": invoice_number,
+            "totalInterestAmount": float(total),
+            "lineCount": len(lines),
+            "attachmentFilename": attachment_filename,
+            "attachmentError": attachment_error,
+        },
+        "jashflow": jashflow_payload(user),
+    }
 
 
 def _xero_payload_date(value) -> str:

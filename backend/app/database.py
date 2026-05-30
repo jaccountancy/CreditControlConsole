@@ -357,6 +357,180 @@ ON sync_checkpoints (initiated_by_user_id, tenant_id, sync_signature, updated_at
 CREATE INDEX IF NOT EXISTS sync_checkpoints_phase_idx
 ON sync_checkpoints (sync_run_id, phase);
 
+CREATE TABLE IF NOT EXISTS operation_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    operation_type TEXT NOT NULL,
+    initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    total_count INTEGER NOT NULL DEFAULT 0,
+    processed_count INTEGER NOT NULL DEFAULT 0,
+    succeeded_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    current_step TEXT,
+    summary TEXT,
+    error_message TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    result JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    heartbeat_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS operation_type TEXT;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'queued';
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS total_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS processed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS succeeded_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS failed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS current_step TEXT;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS result JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ;
+ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS operation_runs_user_status_idx
+ON operation_runs (initiated_by_user_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS jashflow_loans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT NOT NULL,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    principal_amount NUMERIC(14, 2) NOT NULL,
+    arrangement_fee NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    annual_interest_rate NUMERIC(9, 6) NOT NULL DEFAULT 0,
+    duration_months INTEGER NOT NULL,
+    start_date DATE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE CASCADE;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS principal_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS arrangement_fee NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS annual_interest_rate NUMERIC(9, 6) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS duration_months INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS start_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE jashflow_loans ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS jashflow_loans_tenant_status_idx
+ON jashflow_loans (tenant_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS jashflow_loans_customer_idx
+ON jashflow_loans (customer_id);
+
+CREATE TABLE IF NOT EXISTS jashflow_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    loan_id UUID NOT NULL REFERENCES jashflow_loans(id) ON DELETE CASCADE,
+    transaction_date DATE NOT NULL,
+    transaction_type TEXT NOT NULL,
+    amount NUMERIC(14, 2) NOT NULL,
+    description TEXT,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS loan_id UUID REFERENCES jashflow_loans(id) ON DELETE CASCADE;
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS transaction_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS transaction_type TEXT NOT NULL DEFAULT 'adjustment';
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE jashflow_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS jashflow_transactions_loan_date_idx
+ON jashflow_transactions (loan_id, transaction_date, created_at);
+
+CREATE TABLE IF NOT EXISTS jashflow_settings (
+    tenant_id TEXT PRIMARY KEY,
+    invoice_contact_id TEXT,
+    invoice_contact_name TEXT,
+    interest_account_code TEXT,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE jashflow_settings ADD COLUMN IF NOT EXISTS invoice_contact_id TEXT;
+ALTER TABLE jashflow_settings ADD COLUMN IF NOT EXISTS invoice_contact_name TEXT;
+ALTER TABLE jashflow_settings ADD COLUMN IF NOT EXISTS interest_account_code TEXT;
+ALTER TABLE jashflow_settings ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE jashflow_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE jashflow_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS jashflow_interest_post_batches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'completed',
+    xero_invoice_id TEXT,
+    xero_invoice_number TEXT,
+    invoice_contact_id TEXT NOT NULL,
+    invoice_contact_name TEXT,
+    interest_account_code TEXT NOT NULL,
+    period_end_date DATE NOT NULL,
+    total_interest_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    attachment_filename TEXT,
+    error_message TEXT,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS xero_invoice_id TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS xero_invoice_number TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS invoice_contact_id TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS invoice_contact_name TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS interest_account_code TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS period_end_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS total_interest_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS attachment_filename TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE jashflow_interest_post_batches ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS jashflow_interest_batches_tenant_idx
+ON jashflow_interest_post_batches (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS jashflow_interest_post_lines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    batch_id UUID NOT NULL REFERENCES jashflow_interest_post_batches(id) ON DELETE CASCADE,
+    loan_id UUID NOT NULL REFERENCES jashflow_loans(id) ON DELETE CASCADE,
+    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    period_end_date DATE NOT NULL,
+    accrued_interest_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    previously_posted_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    interest_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    balance_after_interest NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES jashflow_interest_post_batches(id) ON DELETE CASCADE;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS loan_id UUID REFERENCES jashflow_loans(id) ON DELETE CASCADE;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES customers(id) ON DELETE CASCADE;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS period_end_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS accrued_interest_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS previously_posted_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS interest_amount NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS balance_after_interest NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE jashflow_interest_post_lines ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS jashflow_interest_lines_loan_idx
+ON jashflow_interest_post_lines (loan_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entity_type TEXT NOT NULL,

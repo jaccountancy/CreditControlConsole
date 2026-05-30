@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import threading
@@ -43,9 +44,15 @@ from .services import (
     disconnect_xero,
     factory_reset_console,
     get_xero_connection_for_user,
+    get_operation_run,
     insights_payload,
     invoice_detail,
     install_sync_signal_handlers,
+    add_jashflow_payment,
+    create_jashflow_loan,
+    jashflow_payload,
+    post_jashflow_interest_invoice,
+    save_jashflow_settings,
     list_customers,
     list_developer_logs,
     normalise_sync_options,
@@ -53,9 +60,12 @@ from .services import (
     get_sync_run,
     record_sync_start_failure,
     request_sync_run,
+    request_operation_run,
+    run_invoice_operation_job,
     run_sync,
     run_sync_job,
     serialize_sync_run,
+    serialize_operation_run,
     sync_customer_note_to_xero,
     sync_invoice_promise_to_xero,
     sync_invoice_note_to_xero,
@@ -548,11 +558,89 @@ async def api_late_payment_charges(request: Request, user: dict = Depends(requir
     return {"status": "ok", **charges, "panel": panel_payload(user)}
 
 
+@app.post("/api/late-payment-charges/run")
+async def api_late_payment_charges_run(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    invoice_ids = payload.get("invoiceIds") or []
+    options = {"chargeSelections": payload.get("chargeSelections") or payload.get("charges") or []}
+    operation_run = request_operation_run(user, "late_payment_charges", invoice_ids, options)
+    threading.Thread(
+        target=lambda: asyncio.run(
+            run_invoice_operation_job(dict(user), str(operation_run["id"]), "late_payment_charges", invoice_ids, options)
+        ),
+        daemon=True,
+    ).start()
+    return {"status": "queued", "operationRun": serialize_operation_run(operation_run)}
+
+
 @app.post("/api/write-offs")
 async def api_write_offs(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     write_offs = await create_bad_debt_write_offs(user, payload.get("invoiceIds") or [])
     return {"status": "ok", **write_offs, "panel": panel_payload(user)}
+
+
+@app.post("/api/write-offs/run")
+async def api_write_offs_run(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    invoice_ids = payload.get("invoiceIds") or []
+    operation_run = request_operation_run(user, "bad_debt_write_offs", invoice_ids)
+    threading.Thread(
+        target=lambda: asyncio.run(
+            run_invoice_operation_job(dict(user), str(operation_run["id"]), "bad_debt_write_offs", invoice_ids)
+        ),
+        daemon=True,
+    ).start()
+    return {"status": "queued", "operationRun": serialize_operation_run(operation_run)}
+
+
+@app.get("/api/operations/{operation_run_id}")
+def api_operation_status(operation_run_id: str, user: dict = Depends(require_panel_user)):
+    operation_run = get_operation_run(user, operation_run_id)
+    payload = {
+        "status": operation_run["status"],
+        "operationRun": serialize_operation_run(operation_run),
+    }
+    if operation_run["status"] == "completed":
+        try:
+            payload["panel"] = panel_payload(user)
+        except Exception as exc:
+            logger.exception("Unable to build completed operation panel payload")
+            payload["panelError"] = {
+                "message": "Operation completed, but the refreshed panel payload could not be built.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+            }
+    return payload
+
+
+@app.get("/api/jashflow")
+def api_jashflow(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "jashflow": jashflow_payload(user)}
+
+
+@app.post("/api/jashflow/loans")
+async def api_create_jashflow_loan(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "jashflow": create_jashflow_loan(user, payload)}
+
+
+@app.post("/api/jashflow/loans/{loan_id}/payments")
+async def api_add_jashflow_payment(loan_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "jashflow": add_jashflow_payment(user, loan_id, payload)}
+
+
+@app.post("/api/jashflow/settings")
+async def api_save_jashflow_settings(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "jashflow": save_jashflow_settings(user, payload)}
+
+
+@app.post("/api/jashflow/interest-posts")
+async def api_post_jashflow_interest(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **await post_jashflow_interest_invoice(user, payload)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")
