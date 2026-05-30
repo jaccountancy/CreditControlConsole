@@ -3175,13 +3175,14 @@ def _serialize_timeline_items(rows: list[dict], title_key: str, body_key: str, s
 
 
 def _serialize_invoice(invoice: dict, detail: dict | None = None) -> dict:
+    effective_due_date = invoice.get("due_date") or invoice.get("invoice_date")
     payload = {
         "id": invoice["id"],
         "xeroInvoiceId": invoice.get("xero_invoice_id") or "",
         "invoiceNumber": invoice.get("invoice_number") or "",
         "status": invoice.get("status") or "",
         "controlStatus": invoice.get("control_status") or invoice.get("status") or "New",
-        "dueDate": _iso(invoice.get("due_date")),
+        "dueDate": _iso(effective_due_date),
         "invoiceDate": _iso(invoice.get("invoice_date")),
         "description": invoice.get("description") or "",
         "lineItems": invoice.get("line_items") or [],
@@ -3435,7 +3436,7 @@ def panel_payload(user: dict | None = None) -> dict:
 
     today = utcnow().date()
     for invoice in invoice_rows:
-        due_date = invoice["due_date"]
+        due_date = invoice["due_date"] or invoice["invoice_date"]
         overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
         invoice["late_payment"] = _late_payment_breakdown(float(invoice["amount_due"]), overdue_days)
         invoice["overdue_days"] = overdue_days
@@ -7235,7 +7236,7 @@ def customer_detail(customer_id: str) -> dict:
         connection.commit()
 
     for invoice in invoices:
-        due_date = invoice["due_date"]
+        due_date = invoice["due_date"] or invoice["invoice_date"]
         overdue_days = 0 if due_date is None else max((utcnow().date() - due_date).days, 0)
         invoice["late_payment"] = _late_payment_breakdown(float(invoice["amount_due"]), overdue_days)
         invoice["overdue_days"] = overdue_days
@@ -7287,7 +7288,8 @@ def invoice_detail(invoice_id: str) -> dict:
             audit = cursor.fetchall()
         connection.commit()
 
-    overdue_days = 0 if invoice["due_date"] is None else max((utcnow().date() - invoice["due_date"]).days, 0)
+    effective_due_date = invoice["due_date"] or invoice["invoice_date"]
+    overdue_days = 0 if effective_due_date is None else max((utcnow().date() - effective_due_date).days, 0)
     invoice["late_payment"] = _late_payment_breakdown(float(invoice["amount_due"]), overdue_days)
     invoice["overdue_days"] = overdue_days
     return {
@@ -8115,9 +8117,10 @@ def _late_payment_charge_error_message(exc: Exception) -> str:
 
 def _late_payment_charge_description(invoice: dict, overdue_days: int, base_amount: Decimal, gross_amount: Decimal) -> str:
     invoice_number = invoice.get("invoice_number") or str(invoice["id"])
+    overdue_label = "on its due date" if overdue_days <= 0 else f"for {overdue_days} days beyond the due date"
     return (
         f"Contractual late payment charge for Invoice {invoice_number}, which remained outstanding "
-        f"for {overdue_days} days beyond the due date. Charge applied in accordance with our "
+        f"{overdue_label}. Charge applied in accordance with our "
         f"Terms of Engagement. £{base_amount:,.2f} plus VAT."
     )
 
@@ -8192,14 +8195,11 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
 
     chargeable = []
     for invoice in selected_invoices:
-        due_date = invoice.get("due_date")
+        due_date = invoice.get("due_date") or invoice.get("invoice_date")
         overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
         amount_due = _float(invoice.get("amount_due"))
         if amount_due <= 0:
             skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice is not outstanding."})
-            continue
-        if overdue_days <= 14:
-            skipped.append({"invoiceId": str(invoice["id"]), "reason": "Invoice is not more than 14 days overdue."})
             continue
         if invoice.get("late_payment_charge_raised_at"):
             skipped.append({"invoiceId": str(invoice["id"]), "reason": "Late payment charge already raised."})
@@ -8253,15 +8253,11 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     connection.commit()
                     continue
 
-                due_date = locked_invoice.get("due_date")
+                due_date = locked_invoice.get("due_date") or locked_invoice.get("invoice_date")
                 overdue_days = 0 if due_date is None else max((today - due_date).days, 0)
                 amount_due = _float(locked_invoice.get("amount_due"))
                 if amount_due <= 0:
                     skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Invoice is not outstanding."})
-                    connection.commit()
-                    continue
-                if overdue_days <= 14:
-                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Invoice is not more than 14 days overdue."})
                     connection.commit()
                     continue
                 if locked_invoice.get("late_payment_charge_raised_at"):

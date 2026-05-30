@@ -964,13 +964,15 @@ def _normalise_invoice_line_items(invoice: dict) -> tuple[str, list[dict]]:
 
 def normalise_invoice(invoice: dict) -> dict:
     description, line_items = _normalise_invoice_line_items(invoice)
+    invoice_date = _xero_date(invoice.get("DateString") or invoice.get("Date"))
+    due_date = _xero_date(invoice.get("DueDateString") or invoice.get("DueDate")) or invoice_date
     return {
         "xero_invoice_id": invoice["InvoiceID"],
         "xero_contact_id": invoice.get("Contact", {}).get("ContactID"),
         "invoice_number": invoice.get("InvoiceNumber") or invoice["InvoiceID"],
         "status": invoice.get("Status", "UNKNOWN"),
-        "due_date": _xero_date(invoice.get("DueDateString") or invoice.get("DueDate")),
-        "invoice_date": _xero_date(invoice.get("DateString") or invoice.get("Date")),
+        "due_date": due_date,
+        "invoice_date": invoice_date,
         "description": description,
         "line_items": line_items,
         "currency_code": invoice.get("CurrencyCode"),

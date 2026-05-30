@@ -4629,13 +4629,13 @@
                 <aside class="app-sidebar" aria-label="Main navigation">
                     <div class="app-sidebar-brand">
                         <div class="app-sidebar-brand-copy">
-                            <strong>Credit Control</strong>
+                            <strong>Jaccountancy</strong>
                         </div>
                         <img class="app-sidebar-icon" src="/static/JaccountancyBlueIcon.png" alt="" aria-hidden="true">
                     </div>
                     <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
-                        <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">Clients<span>Accounts</span></a>
+                        <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">Credit Control<span>Accounts</span></a>
                         <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">LPCs<span>Late charges</span></a>
                         <a class="app-nav-button" href="#credit-control-bad-debt" data-app-nav="bad-debt">Bad Debt<span>Invoice Write offs</span></a>
                         <a class="app-nav-button" href="#credit-control-jashflow" data-app-nav="jashflow">Jashflow<span>Loans</span></a>
@@ -4649,7 +4649,7 @@
                             <strong>Resync Data</strong>
                             <span>Refresh Xero</span>
                         </button>
-                        <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
+                        <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius Hub<span>Main site</span></a>
                     </div>
                 </aside>
                 <main class="ledger-shell">
@@ -4738,7 +4738,7 @@
                                     <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                                     <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                                     <button type="button" id="developerLogButton">Developer log</button>
-                                    <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
+                                    <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius Hub</a>
                                 </div>
                             </div>
                         </div>
@@ -5008,7 +5008,7 @@
                             <div>
                                 <p class="eyebrow">Overdue invoice workflow</p>
                                 <h2>Review Late Payment Charges</h2>
-                                <p class="detail-meta">Invoices more than 14 days overdue and not already charged. Review the rows, then raise one Xero invoice per selected charge.</p>
+                                <p class="detail-meta">Open invoices with outstanding balances. Review days overdue, then raise one Xero invoice per selected late payment charge.</p>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="selectAllLateChargesButton" type="button">Select all eligible</button>
@@ -5956,7 +5956,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Where things are</h4>
-                                <p>The left sidebar holds Home, Clients, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                                <p>The left sidebar holds Home, Credit Control, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius Hub. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                             </section>
                             <section class="help-section">
                                 <h4>First sync</h4>
@@ -5982,7 +5982,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Late payment charge review</h4>
-                                <p>The dashboard card and table options menu open the late payment charge queue. It lists invoices more than 14 days overdue, shows which ones are ready, already charged, or blocked by missing Xero contact data, and raises the selected charges back into Xero after review.</p>
+                                <p>The dashboard card and table options menu open the late payment charge queue. It lists open invoices, shows how many days overdue each one is, highlights which ones are ready, already charged, or blocked by missing Xero contact data, and raises the selected charges back into Xero after review.</p>
                             </section>
                             <section class="help-section">
                                 <h4>Letter templates and generated letters</h4>
@@ -5998,7 +5998,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Leaving the console</h4>
-                                <p>Use Back to Jenius at the bottom of the left sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
+                                <p>Use Back to Jenius Hub at the bottom of the left sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
                             </section>
                         </div>
                     </div>
@@ -9898,7 +9898,6 @@
 
             function latePaymentChargeBlockReason(invoice) {
                 if (Number(invoice?.amountDue || 0) <= 0) return "Invoice is not outstanding";
-                if (Number(invoice?.overdueDays || 0) <= 14) return "Not more than 14 days overdue";
                 if (latePaymentChargeRaised(invoice)) {
                     return invoice?.latePaymentChargeInvoiceNumber
                         ? `Raised ${invoice.latePaymentChargeInvoiceNumber}`
@@ -9942,7 +9941,7 @@
 
             function latePaymentChargeCandidates() {
                 return allInvoices()
-                    .filter((invoice) => Number(invoice.amountDue || 0) > 0 && Number(invoice.overdueDays || 0) > 14)
+                    .filter((invoice) => Number(invoice.amountDue || 0) > 0)
                     .sort((a, b) => Number(b.overdueDays || 0) - Number(a.overdueDays || 0) || Number(b.amountDue || 0) - Number(a.amountDue || 0));
             }
 
@@ -9989,8 +9988,8 @@
                 const selectedCount = selectedLateChargeInvoiceIds.size;
                 const filterLabel = lateChargeFilterLabels[lateChargeFilter] || lateChargeFilterLabels.active;
                 summary.textContent = stats.candidateCount
-                    ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} overdue invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). ${eligibleCount.toLocaleString("en-GB")} visible charge${eligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)} including VAT.`
-                    : "No invoices are currently more than 14 days overdue.";
+                    ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} open invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). ${eligibleCount.toLocaleString("en-GB")} visible charge${eligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)} including VAT.`
+                    : "No open invoices are currently available for late payment charge review.";
                 raiseButton.disabled = selectedCount === 0 || !isXeroConnected() || isOperationRunning;
                 raiseButton.textContent = selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges";
                 const searchInput = document.getElementById("lateChargeSearch");
@@ -10016,8 +10015,8 @@
                 if (!stats.candidateCount) {
                     const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
                     emptyState.querySelector(".eyebrow").textContent = "No late charges";
-                    emptyState.querySelector("h4").textContent = "No invoices are more than 14 days overdue";
-                    emptyState.querySelector("p:last-child").textContent = "This screen will populate when open invoices cross the 14 day overdue threshold.";
+                    emptyState.querySelector("h4").textContent = "No open invoices are available";
+                    emptyState.querySelector("p:last-child").textContent = "This screen will populate when synced Xero invoices have outstanding balances.";
                     target.appendChild(emptyState);
                     return;
                 }
@@ -10100,7 +10099,7 @@
                 const stats = latePaymentChargeReviewStats();
                 if (!stats.eligibleCount) return;
                 showToast(
-                    `${stats.eligibleCount.toLocaleString("en-GB")} overdue invoice${stats.eligibleCount === 1 ? "" : "s"} need late payment charge review`,
+                    `${stats.eligibleCount.toLocaleString("en-GB")} open invoice${stats.eligibleCount === 1 ? "" : "s"} need late payment charge review`,
                     "info",
                     { label: "Review", onClick: openLateChargesScreen }
                 );
