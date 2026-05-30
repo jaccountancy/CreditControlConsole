@@ -321,7 +321,7 @@ BEGIN
         FROM information_schema.columns
         WHERE table_schema = current_schema()
           AND table_name = 'sync_runs'
-          AND column_name LIKE '%\_count' ESCAPE '\'
+          AND column_name LIKE '%\\_count' ESCAPE '\\'
           AND data_type IN ('smallint', 'integer', 'bigint', 'numeric')
     LOOP
         EXECUTE format('UPDATE sync_runs SET %I = 0 WHERE %I IS NULL', counter_column.column_name, counter_column.column_name);
@@ -331,7 +331,7 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS sync_checkpoints (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    sync_run_id UUID NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
+    sync_run_id TEXT NOT NULL,
     provider TEXT NOT NULL DEFAULT 'xero',
     initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     tenant_id TEXT NOT NULL,
@@ -347,6 +347,9 @@ CREATE TABLE IF NOT EXISTS sync_checkpoints (
     completed_at TIMESTAMPTZ,
     UNIQUE (sync_run_id, phase)
 );
+
+ALTER TABLE sync_checkpoints DROP CONSTRAINT IF EXISTS sync_checkpoints_sync_run_id_fkey;
+ALTER TABLE sync_checkpoints ALTER COLUMN sync_run_id TYPE TEXT USING sync_run_id::text;
 
 CREATE INDEX IF NOT EXISTS sync_checkpoints_resume_idx
 ON sync_checkpoints (initiated_by_user_id, tenant_id, sync_signature, updated_at DESC);

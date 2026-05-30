@@ -400,6 +400,7 @@ def _upsert_sync_checkpoint(
 ) -> dict | None:
     now = utcnow()
     completed_at = now if status_value == "completed" else None
+    sync_run_key = str(sync_run_id)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -421,7 +422,7 @@ def _upsert_sync_checkpoint(
                 RETURNING *
                 """,
                 (
-                    sync_run_id,
+                    sync_run_key,
                     "xero",
                     user_id,
                     tenant_id,
@@ -454,7 +455,7 @@ def _latest_resumable_sync_state(user_id: str, tenant_id: str, sync_signature: s
                   AND EXISTS (
                       SELECT 1
                       FROM sync_checkpoints
-                      WHERE sync_checkpoints.sync_run_id = sync_runs.id
+                      WHERE sync_checkpoints.sync_run_id = sync_runs.id::text
                         AND sync_checkpoints.tenant_id = %s
                         AND sync_checkpoints.sync_signature = %s
                   )
@@ -476,7 +477,7 @@ def _latest_resumable_sync_state(user_id: str, tenant_id: str, sync_signature: s
                   AND tenant_id = %s
                   AND sync_signature = %s
                 """,
-                (sync_run["id"], tenant_id, sync_signature),
+                (str(sync_run["id"]), tenant_id, sync_signature),
             )
             checkpoints = {row["phase"]: row for row in cursor.fetchall()}
         connection.commit()
