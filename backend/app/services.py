@@ -1719,7 +1719,7 @@ def _late_payment_breakdown(amount_due: float, overdue_days: int) -> dict:
     return {"interest": interest, "court_cost": court_cost}
 
 
-def dashboard_payload() -> dict:
+def dashboard_payload(tenant_id: str | None = None) -> dict:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1732,7 +1732,10 @@ def dashboard_payload() -> dict:
                     COALESCE(SUM(CASE WHEN due_date >= CURRENT_DATE - INTERVAL '90 days' AND due_date < CURRENT_DATE - INTERVAL '60 days' THEN amount_due ELSE 0 END), 0) AS overdue_61_90,
                     COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE - INTERVAL '90 days' THEN amount_due ELSE 0 END), 0) AS overdue_90_plus
                 FROM invoices
-                """
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE (%s IS NULL OR customers.tenant_id = %s)
+                """,
+                (tenant_id, tenant_id),
             )
             summary = cursor.fetchone()
             cursor.execute(
@@ -1749,7 +1752,9 @@ def dashboard_payload() -> dict:
                     WHERE remaining_credit > 0
                     GROUP BY customer_id
                 ) AS credits ON credits.customer_id = customers.id
-                """
+                WHERE (%s IS NULL OR customers.tenant_id = %s)
+                """,
+                (tenant_id, tenant_id),
             )
             customer_summary = cursor.fetchone()
             cursor.execute(
@@ -1760,10 +1765,12 @@ def dashboard_payload() -> dict:
                 FROM customers
                 LEFT JOIN invoices ON invoices.customer_id = customers.id
                 WHERE customers.total_due > 0
+                  AND (%s IS NULL OR customers.tenant_id = %s)
                 GROUP BY customers.id, customers.name, customers.total_due
                 ORDER BY customers.total_due DESC, due_date ASC NULLS LAST
                 LIMIT 5
-                """
+                """,
+                (tenant_id, tenant_id),
             )
             risks = cursor.fetchall()
             cursor.execute(
@@ -1909,6 +1916,16 @@ def _serialize_payment(payment: dict) -> dict:
 def panel_payload(user: dict | None = None) -> dict:
     customers = []
     selected_invoice = None
+    xero_connected = False
+    xero_connection = None
+    tenant_id = None
+    if user and user.get("id"):
+        try:
+            xero_connection = get_xero_connection_for_user(user["id"])
+            tenant_id = xero_connection.get("tenant_id")
+            xero_connected = True
+        except HTTPException:
+            xero_connected = False
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -1916,16 +1933,21 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
                 SELECT *
                 FROM customers
+                WHERE (%s IS NULL OR tenant_id = %s)
                 ORDER BY overdue_amount DESC, total_due DESC, name ASC
-                """
+                """,
+                (tenant_id, tenant_id),
             )
             customer_rows = cursor.fetchall()
             cursor.execute(
                 """
-                SELECT *
+                SELECT invoices.*
                 FROM invoices
+                JOIN customers ON customers.id = invoices.customer_id
+                WHERE (%s IS NULL OR customers.tenant_id = %s)
                 ORDER BY due_date ASC NULLS LAST, invoice_number ASC
-                """
+                """,
+                (tenant_id, tenant_id),
             )
             invoice_rows = cursor.fetchall()
             cursor.execute(
@@ -1941,9 +1963,12 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
                 SELECT customer_notes.*, users.full_name
                 FROM customer_notes
+                JOIN customers ON customers.id = customer_notes.customer_id
                 LEFT JOIN users ON users.id = customer_notes.user_id
+                WHERE (%s IS NULL OR customers.tenant_id = %s)
                 ORDER BY customer_notes.created_at DESC
-                """
+                """,
+                (tenant_id, tenant_id),
             )
             customer_note_rows = cursor.fetchall()
             invoice_ids = [row["id"] for row in invoice_rows]
@@ -1990,8 +2015,12 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
                 SELECT *
                 FROM payments
+                WHERE (%s IS NULL OR customer_id IN (
+                    SELECT id FROM customers WHERE tenant_id = %s
+                ))
                 ORDER BY payment_date DESC NULLS LAST, created_at DESC
-                """
+                """,
+                (tenant_id, tenant_id),
             )
             payment_rows = cursor.fetchall()
             cursor.execute(
@@ -2001,8 +2030,12 @@ def panel_payload(user: dict | None = None) -> dict:
                        COUNT(*) AS credit_count
                 FROM customer_credits
                 WHERE remaining_credit > 0
+                  AND (%s IS NULL OR customer_id IN (
+                      SELECT id FROM customers WHERE tenant_id = %s
+                  ))
                 GROUP BY customer_id
-                """
+                """,
+                (tenant_id, tenant_id),
             )
             credit_total_rows = cursor.fetchall()
         connection.commit()
@@ -2063,6 +2096,11 @@ def panel_payload(user: dict | None = None) -> dict:
                 "email": customer_row.get("email") or "",
                 "phone": customer_row.get("phone") or "",
                 "accountNumber": customer_row.get("account_number") or "",
+                "latePaymentChargeBaseAmount": (
+                    float(customer_row["late_payment_charge_base_amount"])
+                    if customer_row.get("late_payment_charge_base_amount") is not None
+                    else None
+                ),
                 "primaryPerson": customer_row.get("primary_person") or "",
                 "contactPeople": customer_row.get("contact_people") or [],
                 "addresses": customer_row.get("addresses") or [],
@@ -2077,16 +2115,7 @@ def panel_payload(user: dict | None = None) -> dict:
             }
         )
 
-    xero_connected = False
-    xero_connection = None
-    if user and user.get("id"):
-        try:
-            xero_connection = get_xero_connection_for_user(user["id"])
-            xero_connected = True
-        except HTTPException:
-            xero_connected = False
-
-    dashboard = dashboard_payload()
+    dashboard = dashboard_payload(tenant_id)
     last_sync_label = f'Last sync {dashboard["as_of"]}' if dashboard["as_of"] else "Waiting for first sync"
     if not xero_connected and dashboard["as_of"]:
         last_sync_label = "Xero disconnected"
@@ -2594,6 +2623,8 @@ async def allocate_customer_credit(user: dict, customer_id: str, payload: dict) 
             "amount": float(amount),
             "date": today.isoformat(),
         },
+        "xeroNoteSynced": xero_note_synced,
+        "xeroNoteError": xero_note_error,
         "transactions": refreshed_transactions,
         "panel": panel_payload(user),
     }
@@ -3448,6 +3479,24 @@ def _normalise_late_payment_charge_base_amount(value) -> Decimal:
     return amount
 
 
+def _stored_late_payment_charge_base_amount(value) -> Decimal | None:
+    if value is None:
+        return None
+    return _normalise_late_payment_charge_base_amount(value)
+
+
+def _resolve_late_payment_charge_base_amount(invoice: dict, requested_base_amount: Decimal) -> tuple[Decimal | None, str]:
+    stored_base_amount = _stored_late_payment_charge_base_amount(invoice.get("late_payment_charge_base_amount"))
+    if stored_base_amount is None:
+        return requested_base_amount, ""
+    if requested_base_amount != stored_base_amount:
+        return (
+            None,
+            f"Customer late payment charge is fixed at £{stored_base_amount:,.2f} + VAT. Refresh the ledger and try again.",
+        )
+    return stored_base_amount, ""
+
+
 def _late_payment_charge_selection_lookup(invoice_refs: list[str], charge_selections=None) -> dict[str, Decimal]:
     selected = {invoice_ref: DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT for invoice_ref in invoice_refs}
     if not charge_selections:
@@ -3531,7 +3580,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                        invoices.late_payment_charge_raised_at,
                        customers.id AS customer_id,
                        customers.name AS customer_name,
-                       customers.xero_contact_id
+                       customers.xero_contact_id,
+                       customers.late_payment_charge_base_amount
                 FROM invoices
                 JOIN customers ON customers.id = invoices.customer_id
                 WHERE invoices.id = ANY(%s)
@@ -3588,7 +3638,11 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
         if not invoice.get("xero_contact_id"):
             skipped.append({"invoiceId": str(invoice["id"]), "reason": "Customer is not linked to a Xero contact."})
             continue
-        charge_base_amount = charge_selection_by_invoice_id[str(invoice["id"])]
+        requested_charge_base_amount = charge_selection_by_invoice_id[str(invoice["id"])]
+        charge_base_amount, fixed_amount_error = _resolve_late_payment_charge_base_amount(invoice, requested_charge_base_amount)
+        if fixed_amount_error:
+            skipped.append({"invoiceId": str(invoice["id"]), "reason": fixed_amount_error})
+            continue
         charge_amount = _late_payment_charge_gross_amount(charge_base_amount)
         if charge_amount <= 0:
             skipped.append({"invoiceId": str(invoice["id"]), "reason": "Calculated late payment charge is zero."})
@@ -3615,7 +3669,8 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                            invoices.late_payment_charge_raised_at,
                            customers.id AS customer_id,
                            customers.name AS customer_name,
-                           customers.xero_contact_id
+                           customers.xero_contact_id,
+                           customers.late_payment_charge_base_amount
                     FROM invoices
                     JOIN customers ON customers.id = invoices.customer_id
                     WHERE invoices.id = %s
@@ -3649,7 +3704,12 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     connection.commit()
                     continue
 
-                charge_base_amount = charge_selection_by_invoice_id[str(locked_invoice["id"])]
+                requested_charge_base_amount = charge_selection_by_invoice_id[str(locked_invoice["id"])]
+                charge_base_amount, fixed_amount_error = _resolve_late_payment_charge_base_amount(locked_invoice, requested_charge_base_amount)
+                if fixed_amount_error:
+                    skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": fixed_amount_error})
+                    connection.commit()
+                    continue
                 charge_amount = _late_payment_charge_gross_amount(charge_base_amount)
                 if charge_amount <= 0:
                     skipped.append({"invoiceId": str(locked_invoice["id"]), "reason": "Calculated late payment charge is zero."})
@@ -3767,6 +3827,16 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                     VALUES (%s, %s, %s)
                     """,
                     (invoice["customer_id"], user["id"], history_note),
+                )
+                cursor.execute(
+                    """
+                    UPDATE customers
+                    SET late_payment_charge_base_amount = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                      AND late_payment_charge_base_amount IS NULL
+                    """,
+                    (charge_base_amount, now, invoice["customer_id"]),
                 )
             connection.commit()
 

@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS customers (
     primary_person TEXT,
     contact_people JSONB NOT NULL DEFAULT '[]'::jsonb,
     addresses JSONB NOT NULL DEFAULT '[]'::jsonb,
+    late_payment_charge_base_amount NUMERIC(14, 2),
     status TEXT NOT NULL DEFAULT 'active',
     total_due NUMERIC(14, 2) NOT NULL DEFAULT 0,
     overdue_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
@@ -93,6 +94,7 @@ CREATE TABLE IF NOT EXISTS customers (
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS primary_person TEXT;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_people JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS addresses JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS late_payment_charge_base_amount NUMERIC(14, 2);
 
 CREATE INDEX IF NOT EXISTS customers_name_idx ON customers (name);
 
@@ -141,6 +143,24 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_write_off_at TIMESTAMPTZ;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_id TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_number TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS bad_debt_credit_note_amount NUMERIC(14, 2);
+
+UPDATE customers
+SET late_payment_charge_base_amount = historical.base_amount
+FROM (
+    SELECT DISTINCT ON (customer_id)
+           customer_id,
+           CASE ROUND(late_payment_charge_amount, 2)
+               WHEN 24.00 THEN 20.00
+               WHEN 36.00 THEN 30.00
+               WHEN 60.00 THEN 50.00
+           END AS base_amount
+    FROM invoices
+    WHERE late_payment_charge_amount IS NOT NULL
+      AND ROUND(late_payment_charge_amount, 2) IN (24.00, 36.00, 60.00)
+    ORDER BY customer_id, late_payment_charge_raised_at DESC NULLS LAST, updated_at DESC
+) AS historical
+WHERE customers.id = historical.customer_id
+  AND customers.late_payment_charge_base_amount IS NULL;
 
 CREATE TABLE IF NOT EXISTS invoice_status_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

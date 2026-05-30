@@ -35,6 +35,7 @@
     --purple: #8d62ff;
     --purple-soft: #eee8ff;
     --shadow: 0 18px 60px rgba(41, 79, 148, 0.12);
+    --app-sidebar-width: 188px;
 }
 
 * { box-sizing: border-box; }
@@ -42,6 +43,7 @@ html, body { margin: 0; min-height: 100%; }
 body {
     font-family: "Manrope", sans-serif;
     color: var(--ink);
+    padding-right: calc(var(--app-sidebar-width) + 34px);
     background:
         radial-gradient(circle at top center, rgba(29, 103, 242, 0.10), transparent 30%),
         radial-gradient(circle at bottom left, rgba(141, 98, 255, 0.08), transparent 28%),
@@ -49,7 +51,101 @@ body {
 }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
-.ledger-shell { width: min(1360px, calc(100vw - 48px)); margin: 8px auto 48px; }
+.ledger-shell { width: min(1360px, calc(100vw - var(--app-sidebar-width) - 88px)); margin: 8px auto 48px; }
+.app-sidebar {
+    position: fixed;
+    z-index: 110;
+    top: 14px;
+    right: 16px;
+    bottom: 14px;
+    width: var(--app-sidebar-width);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    box-shadow: 0 18px 60px rgba(30, 47, 77, 0.16);
+    backdrop-filter: blur(16px);
+}
+.app-sidebar-brand {
+    display: grid;
+    gap: 2px;
+    padding: 6px 4px 8px;
+}
+.app-sidebar-brand strong {
+    font-size: 0.95rem;
+    font-weight: 900;
+}
+.app-sidebar-brand span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.app-nav {
+    display: grid;
+    gap: 7px;
+}
+.app-nav-button,
+.app-sidebar-link,
+.app-sidebar-connect {
+    width: 100%;
+    min-height: 46px;
+    display: grid;
+    align-content: center;
+    gap: 2px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    padding: 9px 11px;
+    text-align: left;
+    color: var(--ink);
+    background: transparent;
+    text-decoration: none;
+    font-weight: 900;
+}
+.app-nav-button span,
+.app-sidebar-link span {
+    color: var(--muted);
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+.app-nav-button:hover,
+.app-sidebar-link:hover,
+.app-sidebar-connect:hover {
+    border-color: rgba(29, 103, 242, 0.20);
+    background: rgba(233, 241, 255, 0.72);
+    color: var(--blue);
+}
+.app-nav-button.is-active {
+    color: var(--blue);
+    border-color: rgba(29, 103, 242, 0.26);
+    background: var(--blue-soft);
+}
+.app-sidebar-footer {
+    margin-top: auto;
+    display: grid;
+    gap: 8px;
+}
+.app-sidebar-connect {
+    color: #fff;
+    background: var(--ink);
+    border-color: rgba(30, 47, 77, 0.22);
+    text-align: center;
+}
+.app-sidebar-connect:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+}
+.app-sidebar-link {
+    color: var(--blue);
+    background: rgba(248, 251, 255, 0.86);
+}
+.ledger-topbar .topbar-actions {
+    display: none;
+}
 .ledger-topbar, .ledger-card, .detail-card {
     background: var(--surface);
     border: 1px solid rgba(255, 255, 255, 0.75);
@@ -150,7 +246,7 @@ button { cursor: pointer; }
     background: #ffffff;
 }
 body.is-client-view .ledger-shell {
-    width: min(1500px, calc(100vw - 36px));
+    width: min(1500px, calc(100vw - var(--app-sidebar-width) - 88px));
 }
 body.is-client-view .ledger-topbar {
     display: grid;
@@ -1518,6 +1614,9 @@ body.is-dense .note-snippet {
 .settings-panel {
     max-width: 760px;
 }
+.settings-panel.wide-settings-panel {
+    max-width: none;
+}
 .danger-panel {
     border-color: rgba(255, 83, 83, 0.22);
     background: rgba(255, 247, 247, 0.82);
@@ -1781,6 +1880,147 @@ body.is-dense .note-snippet {
     grid-template-columns: minmax(160px, 190px) minmax(0, 1fr) minmax(280px, 330px);
     gap: 12px;
     align-items: start;
+}
+.client-screen {
+    padding: 0;
+    border-radius: 18px;
+    background: #f4f6f8;
+    border-color: #d7dde5;
+    overflow: hidden;
+}
+.xero-client-header {
+    background: #fff;
+    border-bottom: 1px solid #cfd7e2;
+}
+.xero-client-header > .text-button {
+    margin: 14px 18px 0;
+}
+.xero-client-title-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+    padding: 10px 18px 18px;
+}
+.xero-client-avatar {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: #bdeaf5;
+    color: #124554;
+    font-weight: 900;
+}
+.xero-client-title h2 {
+    margin: 0;
+    font-size: 1.55rem;
+    line-height: 1.12;
+}
+.xero-client-meta,
+.xero-client-address {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 8px;
+    color: #566173;
+    font-size: 0.9rem;
+    font-weight: 750;
+}
+.xero-client-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.xero-client-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+.xero-client-tags span {
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: #e5e8ec;
+    color: #1d2939;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+.xero-client-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+.xero-client-tabs {
+    display: flex;
+    gap: 26px;
+    padding: 0 18px;
+    border-top: 1px solid rgba(207, 215, 226, 0.72);
+    overflow-x: auto;
+}
+.xero-client-tabs button {
+    min-height: 48px;
+    border: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: #1f2937;
+    padding: 0;
+    font-weight: 850;
+}
+.xero-client-tabs button:hover,
+.xero-client-tabs button.is-active {
+    color: #2d7bd8;
+    border-bottom-color: #2d7bd8;
+}
+.client-screen .client-workspace-layout {
+    grid-template-columns: minmax(190px, 220px) minmax(0, 1fr);
+    gap: 16px;
+    padding: 18px;
+}
+.client-screen .client-action-center,
+.legacy-client-section-nav {
+    display: none;
+}
+.client-screen .detail-panel,
+.client-summary-card,
+.client-action-center-card,
+.client-timeline-card {
+    border-radius: 4px;
+    border-color: #ccd4df;
+    background: #fff;
+    box-shadow: none;
+}
+.client-overview-card {
+    gap: 16px;
+}
+.client-overview-card .client-avatar,
+.client-overview-card h3,
+.client-sidebar-status,
+.client-sidebar-disclosure-list {
+    display: none;
+}
+.client-overview-card::before {
+    content: "Invoices owed to you  ›";
+    color: #2d7bd8;
+    font-weight: 900;
+}
+.client-sidebar-facts {
+    display: grid;
+    gap: 4px;
+}
+.client-sidebar-facts strong:first-child {
+    color: #2d7bd8;
+    font-size: 1.85rem;
+    line-height: 1;
+}
+.client-sidebar-facts strong:last-child {
+    color: #d54545;
+    font-size: 0.92rem;
+}
+.client-main-panel {
+    min-width: 0;
 }
 .client-summary-panel,
 .client-main-panel,
@@ -2309,6 +2549,113 @@ body.is-dense .note-snippet {
 }
 .allocation-form button {
     white-space: nowrap;
+}
+.xero-credit-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 12px;
+}
+.allocation-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 130;
+    display: grid;
+    place-items: start center;
+    padding: 82px 24px 24px;
+    background: rgba(244, 247, 251, 0.72);
+    backdrop-filter: blur(8px);
+}
+.allocation-panel[hidden] {
+    display: none;
+}
+.allocation-card {
+    width: min(680px, 100%);
+    border: 1px solid #b9c5d5;
+    border-radius: 4px;
+    background: #eaf2ff;
+    box-shadow: 0 18px 70px rgba(30, 47, 77, 0.18);
+    overflow: hidden;
+}
+.allocation-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 18px 20px;
+    background: #fff;
+    border-bottom: 1px solid #cdd8e7;
+}
+.allocation-head h3,
+.allocation-head p {
+    margin: 0;
+}
+.allocation-head p:last-child {
+    margin-top: 4px;
+    color: var(--muted);
+    font-weight: 750;
+}
+.allocation-dialog-form {
+    display: grid;
+    gap: 16px;
+}
+.allocation-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+.allocation-table th,
+.allocation-table td {
+    padding: 11px 12px;
+    border-bottom: 1px solid #cdd8e7;
+    text-align: left;
+    vertical-align: middle;
+}
+.allocation-table th {
+    color: #1d2939;
+    font-size: 0.78rem;
+    font-weight: 900;
+}
+.allocation-table td:last-child,
+.allocation-table th:last-child {
+    text-align: right;
+}
+.allocation-table input[type="number"] {
+    width: 108px;
+    min-height: 34px;
+    border: 1px solid #9fb3cc;
+    border-radius: 3px;
+    padding: 6px 8px;
+    text-align: right;
+    font: inherit;
+    font-weight: 800;
+}
+.allocation-summary-box {
+    display: grid;
+    gap: 8px;
+    justify-self: end;
+    width: min(320px, calc(100% - 32px));
+    margin: 0 16px;
+}
+.allocation-summary-box div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 18px;
+    align-items: center;
+    color: #1d2939;
+    font-weight: 800;
+}
+.allocation-summary-box span {
+    color: #1d2939;
+}
+.allocation-remaining {
+    padding-top: 8px;
+    border-top: 2px solid #1d2939;
+}
+.allocation-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 16px;
+    background: #d8e8ff;
 }
 .client-invoices-panel { margin: 18px 0; }
 .account-file-panel {
@@ -3126,6 +3473,13 @@ body.is-dense .note-snippet {
     font: 0.78rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     white-space: pre-wrap;
 }
+.settings-developer-log-list {
+    max-height: 420px;
+    padding: 0;
+}
+.settings-developer-log-list .empty-state {
+    margin: 0;
+}
 .help-card {
     width: min(980px, 100%);
 }
@@ -3290,6 +3644,54 @@ body.is-syncing .sync-dot {
     50% { transform: scale(1.1); opacity: 1; }
 }
 @media (max-width: 1220px) {
+    body {
+        padding-right: 0;
+        padding-bottom: 94px;
+    }
+    .ledger-shell,
+    body.is-client-view .ledger-shell {
+        width: calc(100vw - 24px);
+    }
+    .app-sidebar {
+        top: auto;
+        left: 12px;
+        right: 12px;
+        bottom: 10px;
+        width: auto;
+        min-height: 70px;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        padding: 10px;
+        border-radius: 18px;
+    }
+    .app-sidebar-brand {
+        display: none;
+    }
+    .app-nav {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+    }
+    .app-nav-button {
+        width: auto;
+        min-width: 92px;
+        min-height: 48px;
+        text-align: center;
+        padding: 8px 10px;
+    }
+    .app-sidebar-footer {
+        margin-top: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .app-sidebar-connect,
+    .app-sidebar-link {
+        width: auto;
+        min-height: 48px;
+        white-space: nowrap;
+    }
     .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
     body.is-client-view .ledger-topbar {
         grid-template-columns: minmax(0, 1fr) auto;
@@ -3320,6 +3722,13 @@ body.is-syncing .sync-dot {
 }
 @media (max-width: 860px) {
     .ledger-shell { width: calc(100vw - 24px); margin: 8px auto 30px; }
+    .app-sidebar {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+    }
+    .app-sidebar-footer {
+        display: none;
+    }
     body.is-client-view .ledger-shell { width: calc(100vw - 20px); }
     body.is-client-view .ledger-topbar {
         display: grid;
@@ -3394,6 +3803,23 @@ body.is-syncing .sync-dot {
     </style>
 </head>
 <body>
+    <aside class="app-sidebar" aria-label="Main navigation">
+        <div class="app-sidebar-brand">
+            <strong>Jenius AI</strong>
+            <span>Credit control</span>
+        </div>
+        <nav class="app-nav">
+            <button class="app-nav-button" type="button" data-app-nav="home">Home<span>Insights</span></button>
+            <button class="app-nav-button" type="button" data-app-nav="clients">Clients<span>Accounts</span></button>
+            <button class="app-nav-button" type="button" data-app-nav="invoices">Invoices<span>Ledger</span></button>
+            <button class="app-nav-button" type="button" data-app-nav="lpcs">LPCs<span>Late charges</span></button>
+            <button class="app-nav-button" type="button" data-app-nav="settings">Settings<span>Logs</span></button>
+        </nav>
+        <div class="app-sidebar-footer">
+            <button class="app-sidebar-connect" id="sidebarConnectButton" type="button">Login with Xero</button>
+            <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
+        </div>
+    </aside>
     <main class="ledger-shell">
         <header class="ledger-topbar">
             <div class="brand-lockup">
@@ -3467,7 +3893,7 @@ body.is-syncing .sync-dot {
                 <p id="heroTotalInvoicedCount">0 invoices synced</p>
             </article>
             <article class="hero-summary-card">
-                <span>Outstanding </span>
+                <span>Accounts Receivable</span>
                 <strong id="heroTotalOutstanding">£0</strong>
                 <p id="heroOpenInvoices">0 open invoices</p>
             </article>
@@ -3670,6 +4096,42 @@ body.is-syncing .sync-dot {
                 <section class="detail-panel settings-panel">
                     <div class="panel-heading">
                         <div>
+                            <p class="eyebrow">Xero connection</p>
+                            <h3>Organisation connection</h3>
+                        </div>
+                        <button class="ghost-button danger-button" id="settingsDisconnectXeroButton" type="button">Disconnect Xero</button>
+                    </div>
+                    <p class="settings-help">Disconnect only when you need to connect a different Xero organisation. Imported ledger rows remain visible until the next sync replaces them.</p>
+                </section>
+
+                <section class="detail-panel settings-panel wide-settings-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">Developer log</p>
+                            <h3>Sync and Xero events</h3>
+                        </div>
+                        <div class="developer-log-actions">
+                            <button class="ghost-button" id="settingsCopyDeveloperLogButton" type="button">Copy logs</button>
+                            <button class="ghost-button" id="settingsRefreshDeveloperLogButton" type="button">Refresh</button>
+                        </div>
+                    </div>
+                    <div class="developer-log-filter">
+                        <label for="settingsDeveloperLogDateFilter">
+                            Date
+                            <input id="settingsDeveloperLogDateFilter" type="date">
+                        </label>
+                        <button id="settingsDeveloperLogTodayButton" type="button">Today</button>
+                        <button id="settingsDeveloperLogClearDateButton" type="button">Clear</button>
+                    </div>
+                    <p class="settings-help" id="settingsDeveloperLogSummary">Recent sync events and backend errors will appear here.</p>
+                    <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperLogList">
+                        <div class="empty-state">Open Settings after a failed sync to see the exact backend response.</div>
+                    </div>
+                </section>
+
+                <section class="detail-panel settings-panel">
+                    <div class="panel-heading">
+                        <div>
                             <p class="eyebrow">Letters</p>
                             <h3>Letter templates</h3>
                         </div>
@@ -3772,6 +4234,31 @@ body.is-syncing .sync-dot {
                 </div>
             </div>
 
+            <section class="xero-client-header" aria-label="Client contact summary">
+                <button class="text-button" id="clientHeaderBackButton" type="button">Back to ledger</button>
+                <div class="xero-client-title-row">
+                    <div class="xero-client-avatar" id="xeroClientInitials">--</div>
+                    <div class="xero-client-title">
+                        <p class="eyebrow">Contacts</p>
+                        <h2 id="xeroClientName">No client selected</h2>
+                        <div class="xero-client-meta" id="xeroClientMeta"></div>
+                        <div class="xero-client-address" id="xeroClientAddress"></div>
+                        <div class="xero-client-tags" id="xeroClientTags"></div>
+                    </div>
+                    <div class="xero-client-header-actions">
+                        <a class="ghost-button" id="clientHeaderXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
+                        <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
+                        <button class="primary-button" type="button" data-client-action="reminder">New</button>
+                    </div>
+                </div>
+                <nav class="xero-client-tabs client-section-nav" aria-label="Client sections">
+                    <button type="button" class="is-active" data-client-section="overview">Activity</button>
+                    <button type="button" data-client-section="notes">Contact details</button>
+                    <button type="button" data-client-section="invoices">Financial details</button>
+                    <button type="button" data-client-section="legal">Files</button>
+                </nav>
+            </section>
+
             <div class="client-workspace-layout">
                 <aside class="client-summary-panel client-sidebar" aria-label="Client workspace">
                     <section class="client-summary-card client-overview-card">
@@ -3811,7 +4298,7 @@ body.is-syncing .sync-dot {
                 </aside>
 
                 <div class="client-main-panel">
-                    <nav class="client-section-nav" aria-label="Recovery workspace">
+                    <nav class="client-section-nav legacy-client-section-nav" aria-label="Recovery workspace">
                         <button type="button" class="is-active" data-client-section="overview">Summary</button>
                         <button type="button" data-client-section="invoices">Transactions</button>
                         <button type="button" data-client-section="notes">Activity & Workflow</button>
@@ -3891,8 +4378,8 @@ body.is-syncing .sync-dot {
                         <section class="detail-panel outstanding-transactions-panel">
                             <div class="panel-heading">
                                 <div>
-                                    <p class="eyebrow">Outstanding transactions</p>
-                                    <h3>Xero invoices, credits and overpayments</h3>
+                                    <p class="eyebrow">Unallocated Xero transactions</p>
+                                    <h3>Unallocated invoices, cash and credits</h3>
                                 </div>
                                 <button class="ghost-button" id="refreshTransactionsButton" type="button">Refresh from Xero</button>
                             </div>
@@ -3900,15 +4387,15 @@ body.is-syncing .sync-dot {
                             <div class="xero-transaction-grid">
                                 <section>
                                     <div class="section-heading compact-heading">
-                                        <p class="eyebrow">Open invoice lines</p>
-                                        <h4>Outstanding transaction lines</h4>
+                                        <p class="eyebrow">Unallocated invoices</p>
+                                        <h4>Open invoice balances</h4>
                                     </div>
                                     <div class="xero-transaction-list" id="outstandingTransactionList"></div>
                                 </section>
                                 <section>
                                     <div class="section-heading compact-heading">
-                                        <p class="eyebrow">Unallocated balances</p>
-                                        <h4>Credits to apply</h4>
+                                        <p class="eyebrow">Unallocated cash and credits</p>
+                                        <h4>Balances to allocate</h4>
                                     </div>
                                     <div class="xero-credit-list" id="unallocatedCreditList"></div>
                                 </section>
@@ -3924,6 +4411,13 @@ body.is-syncing .sync-dot {
                     </section>
 
                     <section class="client-section-pane" data-client-pane="notes">
+                        <section class="detail-panel account-file-section">
+                            <div class="section-heading">
+                                <p class="eyebrow">Xero contact</p>
+                                <h4>Contact details</h4>
+                            </div>
+                            <div class="xero-contact-details" id="clientContactDetailsPanel"></div>
+                        </section>
                         <section class="detail-panel account-file-section account-notes-section">
                             <div class="section-heading">
                                 <p class="eyebrow">Client notes</p>
@@ -4114,6 +4608,33 @@ body.is-syncing .sync-dot {
         </div>
     </template>
 
+    <section class="allocation-panel" id="allocationPanel" aria-modal="true" role="dialog" hidden>
+        <div class="allocation-card">
+            <div class="allocation-head">
+                <div>
+                    <p class="eyebrow">Xero allocation</p>
+                    <h3 id="allocationDialogTitle">Allocate Credit Balance</h3>
+                    <p id="allocationDialogSubtitle">Choose the invoice and amount to allocate.</p>
+                </div>
+                <button class="ghost-button" id="closeAllocationPanelButton" type="button">Close</button>
+            </div>
+            <form class="allocation-dialog-form" id="allocationDialogForm">
+                <input type="hidden" name="invoiceId" id="allocationDialogInvoiceId">
+                <input type="hidden" name="amount" id="allocationDialogAmount">
+                <div id="allocationDialogBody"></div>
+                <div class="allocation-summary-box">
+                    <div><span>Outstanding credit balance</span><strong id="allocationOutstandingCredit">£0.00</strong></div>
+                    <div><span>Total amount to credit</span><strong id="allocationTotalToCredit">£0.00</strong></div>
+                    <div class="allocation-remaining"><span>Remaining credit</span><strong id="allocationRemainingCredit">£0.00</strong></div>
+                </div>
+                <div class="allocation-dialog-actions">
+                    <button class="primary-button" type="submit" data-default-label="Allocate credit">Allocate credit</button>
+                    <button class="ghost-button" id="cancelAllocationPanelButton" type="button">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
     <section class="sync-progress-overlay" id="syncProgressOverlay" aria-live="polite" aria-atomic="true" hidden>
         <div class="sync-progress-card" role="status">
             <div class="sync-progress-head">
@@ -4198,12 +4719,12 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Where things are</h4>
-                    <p>The Menu contains Help, Settings, Resync from Xero when connected, Connect Xero when disconnected, Disconnect Xero, Developer log, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                    <p>The right sidebar holds Home, Clients, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                 </section>
                 <section class="help-section">
                     <h4>First sync</h4>
                     <ol>
-                        <li>Open Menu, then Settings.</li>
+                        <li>Open Settings from the right sidebar.</li>
                         <li>Choose the invoice years you want to import. No years are selected by default so you stay in control of the data volume.</li>
                         <li>Choose the data filter. Outstanding invoices only is fastest. Full invoice history imports the biggest dataset.</li>
                         <li>Run import. The first sync has to build the local ledger from scratch, so it can take longer while contacts, outstanding invoices, and any selected paid invoice history are pulled from Xero.</li>
@@ -4228,7 +4749,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Letter templates and generated letters</h4>
-                    <p>Open Menu, then Settings, to create and edit letter templates. Templates can use fields such as {{client_name}}, {{contact_name}}, {{total_due}}, {{invoice_list}}, {{today}}, and selected invoice fields. On the client screen, choose a template in the Letters section and generate it. The generated letter is shown for review, can be copied, and is automatically saved as a client note.</p>
+                    <p>Open Settings from the right sidebar to create and edit letter templates. Templates can use fields such as {{client_name}}, {{contact_name}}, {{total_due}}, {{invoice_list}}, {{today}}, and selected invoice fields. On the client screen, choose a template in the Letters section and generate it. The generated letter is shown for review, can be copied, and is automatically saved as a client note.</p>
                 </section>
                 <section class="help-section">
                     <h4>Xero note write-back</h4>
@@ -4236,11 +4757,11 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Settings, logs, and troubleshooting</h4>
-                    <p>Settings controls invoice import scope, import years, and letter templates. Developer log shows recent sync runs and backend/Xero errors, which is useful if a sync fails or Xero returns a permission, rate limit, or authentication message. If Xero is disconnected, use Connect Xero from the menu before syncing again.</p>
+                    <p>Settings controls invoice import scope, import years, letter templates, Xero disconnect, and developer logs. Developer log shows recent sync runs and backend/Xero errors, which is useful if a sync fails or Xero returns a permission, rate limit, or authentication message. If Xero is disconnected, use the sidebar login button before syncing again.</p>
                 </section>
                 <section class="help-section">
                     <h4>Leaving the console</h4>
-                    <p>Open Menu, then Back to Jenius, to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
+                    <p>Use Back to Jenius at the bottom of the right sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
                 </section>
             </div>
         </div>
@@ -4347,7 +4868,8 @@ let selectedFilter = persistedUIState.selectedFilter || "all";
 let selectedInvoiceId = persistedUIState.selectedInvoiceId || state.selectedInvoice?.id || null;
 let selectedInvoiceIds = new Set();
 let selectedClientId = persistedUIState.selectedClientId || null;
-let activeView = "ledger";
+let activeView = "insights";
+let activeNavSection = "home";
 let activeClientSection = "overview";
 let searchTerm = "";
 let clientFilter = persistedUIState.clientFilter || "all";
@@ -4376,6 +4898,7 @@ let selectedClientInvoiceIds = new Set();
 let selectedLateChargeInvoiceIds = new Set();
 let latePaymentChargeBaseAmounts = new Map();
 let lateChargeSearchTerm = "";
+let activeAllocationSource = null;
 let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
     ? persistedUIState.lateChargeFilter
     : "active";
@@ -4404,9 +4927,10 @@ const lateChargeFilterLabels = {
 };
 const clientSections = new Set(["overview", "invoices", "payments", "notes", "payment-plans", "letters", "legal", "settings"]);
 const clientSectionNavGroups = {
-    overview: ["overview"],
-    invoices: ["invoices", "payments"],
-    notes: ["notes", "payment-plans", "letters", "legal", "settings"],
+    overview: ["overview", "payments"],
+    invoices: ["invoices", "payment-plans"],
+    notes: ["notes", "settings"],
+    legal: ["letters", "legal"],
 };
 const NOTICE_STATUS = "7 Day Notice Sent";
 const NOTICE_PERIOD_DAYS = 7;
@@ -4759,6 +5283,7 @@ function decorateInvoice(customer, invoice) {
         customerName: customer.name,
         customerContact: customer.contact || "",
         customerXeroContactId: customer.xeroContactId || "",
+        customerLatePaymentChargeBaseAmount: customer.latePaymentChargeBaseAmount ?? null,
         customerStatus: customer.status || "",
         manager: customer.manager || "Unassigned",
         description: invoice.description || "",
@@ -5208,12 +5733,12 @@ function contactXeroURL(client) {
 }
 
 function renderXeroContactDetails(client) {
-    const target = document.getElementById("xeroContactDetails");
-    if (!target) return;
-    target.innerHTML = "";
+    const targets = [...document.querySelectorAll("#xeroContactDetails, #clientContactDetailsPanel")];
+    if (!targets.length) return;
+    targets.forEach((target) => { target.innerHTML = ""; });
     if (!client) return;
 
-    const addCard = (label, value, options = {}) => {
+    const addCard = (target, label, value, options = {}) => {
         if (!value) return;
         const card = document.createElement("div");
         card.className = "xero-contact-card";
@@ -5226,39 +5751,41 @@ function renderXeroContactDetails(client) {
         target.appendChild(card);
     };
 
-    addCard("Telephone", client.phone, client.phone ? { href: `tel:${client.phone.replace(/\s+/g, "")}` } : {});
-    addCard("Email", client.email, client.email ? { href: `mailto:${client.email}` } : {});
-    addCard("Account number", client.accountNumber);
+    targets.forEach((target) => {
+        addCard(target, "Telephone", client.phone, client.phone ? { href: `tel:${client.phone.replace(/\s+/g, "")}` } : {});
+        addCard(target, "Email", client.email, client.email ? { href: `mailto:${client.email}` } : {});
+        addCard(target, "Account number", client.accountNumber);
 
-    const addresses = Array.isArray(client.addresses) ? client.addresses.filter((address) => address?.address) : [];
-    if (addresses.length) {
-        addCard("Address", addresses[0].address);
-    }
+        const addresses = Array.isArray(client.addresses) ? client.addresses.filter((address) => address?.address) : [];
+        if (addresses.length) {
+            addCard(target, "Address", addresses[0].address);
+        }
 
-    const people = Array.isArray(client.contactPeople) ? client.contactPeople.filter((person) => person?.name || person?.email) : [];
-    if (people.length) {
-        const wrapper = document.createElement("div");
-        wrapper.className = "xero-contact-card";
-        const heading = document.createElement("strong");
-        heading.textContent = "Contact people";
-        const list = document.createElement("div");
-        list.className = "xero-contact-people";
-        people.slice(0, 5).forEach((person) => {
-            const item = document.createElement("div");
-            item.className = "xero-contact-person";
-            const name = document.createElement("strong");
-            name.textContent = person.name || "Unnamed contact";
-            item.appendChild(name);
-            if (person.email) {
-                const email = document.createElement("small");
-                email.textContent = person.email;
-                item.appendChild(email);
-            }
-            list.appendChild(item);
-        });
-        wrapper.append(heading, list);
-        target.appendChild(wrapper);
-    }
+        const people = Array.isArray(client.contactPeople) ? client.contactPeople.filter((person) => person?.name || person?.email) : [];
+        if (people.length) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "xero-contact-card";
+            const heading = document.createElement("strong");
+            heading.textContent = "Contact people";
+            const list = document.createElement("div");
+            list.className = "xero-contact-people";
+            people.slice(0, 5).forEach((person) => {
+                const item = document.createElement("div");
+                item.className = "xero-contact-person";
+                const name = document.createElement("strong");
+                name.textContent = person.name || "Unnamed contact";
+                item.appendChild(name);
+                if (person.email) {
+                    const email = document.createElement("small");
+                    email.textContent = person.email;
+                    item.appendChild(email);
+                }
+                list.appendChild(item);
+            });
+            wrapper.append(heading, list);
+            target.appendChild(wrapper);
+        }
+    });
 }
 
 function statusTooltip(category) {
@@ -5495,11 +6022,15 @@ function dashboardTotals() {
     const overdueInvoices = invoices.filter((invoice) => invoiceCategory(invoice) === "overdue");
     const lateChargeStats = latePaymentChargeReviewStats();
     const notices = sevenDayNoticeSummaries();
+    const receivablesTotal = Number(state.dashboard?.totalReceivables);
+    const openInvoiceCount = Number(state.dashboard?.openInvoices);
+    const localOutstandingTotal = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
     return {
         invoiceCount: invoices.length,
         totalInvoiced: invoices.reduce((sum, invoice) => sum + Number(invoice.total || (Number(invoice.amountDue || 0) + Number(invoice.amountPaid || 0)) || 0), 0),
-        openCount: openInvoices.length,
-        totalOutstanding: openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
+        openCount: Number.isFinite(openInvoiceCount) && openInvoiceCount > 0 ? openInvoiceCount : openInvoices.length,
+        totalOutstanding: Number.isFinite(receivablesTotal) ? receivablesTotal : localOutstandingTotal,
+        localOutstandingTotal,
         paidCount: paidInvoices.length,
         paidValue: invoices.reduce((sum, invoice) => sum + invoicePaidAmount(invoice), 0),
         overdueCount: overdueInvoices.length,
@@ -5517,7 +6048,7 @@ function renderDashboardHero() {
     document.getElementById("heroTotalInvoiced").textContent = formatCompactCurrency(totals.totalInvoiced);
     document.getElementById("heroTotalInvoicedCount").textContent = `${totals.invoiceCount.toLocaleString("en-GB")} invoice${totals.invoiceCount === 1 ? "" : "s"} synced`;
     document.getElementById("heroTotalOutstanding").textContent = formatCompactCurrency(totals.totalOutstanding);
-    document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"}`;
+    document.getElementById("heroOpenInvoices").textContent = `${totals.openCount.toLocaleString("en-GB")} open invoice${totals.openCount === 1 ? "" : "s"} · net of credits`;
     document.getElementById("heroLateChargeCount").textContent = totals.lateChargeCount.toLocaleString("en-GB");
     document.getElementById("heroLateChargeSummary").textContent = totals.lateChargeCount
         ? `${formatCurrency(totals.lateChargeAmount)} incl VAT to review`
@@ -5557,6 +6088,33 @@ function openFirstSevenDayNoticeClient() {
     activeView = "client";
     activeClientSection = "overview";
     renderAll();
+}
+
+function openLedgerSection(section = "invoices") {
+    activeView = "ledger";
+    activeNavSection = section === "clients" ? "clients" : "invoices";
+    if (section === "clients") {
+        selectedFilter = "all";
+        clientFilter = "all";
+        sortMode = "client";
+    } else {
+        selectedFilter = "all";
+        clientFilter = "all";
+        sortMode = "priority";
+    }
+    currentPage = 1;
+    closeTopbarMenu();
+    closeToolbarMenus();
+    renderAll();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function navigateApp(section) {
+    if (section === "home") return openInsightsScreen();
+    if (section === "clients") return openLedgerSection("clients");
+    if (section === "invoices") return openLedgerSection("invoices");
+    if (section === "lpcs") return openLateChargesScreen();
+    if (section === "settings") return openSettingsScreen();
 }
 
 function renderSummaryCounts() {
@@ -5889,6 +6447,36 @@ function clientTopbarMeta(client) {
     return parts.join(" · ") || "Client account";
 }
 
+function renderXeroClientHeader(client, openInvoices = [], totals = {}) {
+    const initials = document.getElementById("xeroClientInitials");
+    const name = document.getElementById("xeroClientName");
+    const meta = document.getElementById("xeroClientMeta");
+    const address = document.getElementById("xeroClientAddress");
+    const tags = document.getElementById("xeroClientTags");
+    const xeroLink = document.getElementById("clientHeaderXeroLink");
+    if (initials) initials.textContent = clientInitials(client);
+    if (name) name.textContent = client?.name || "No client selected";
+    if (meta) {
+        const account = client?.accountNumber ? `# ${client.accountNumber}` : "";
+        const rows = [client?.primaryPerson, client?.email, client?.phone, account].filter(Boolean);
+        meta.innerHTML = rows.map((value) => `<span>${escapeHTML(value)}</span>`).join("");
+    }
+    if (address) address.textContent = clientAddressLine(client);
+    if (tags) {
+        const manager = client?.manager ? `${client.manager}'s clients` : "Unassigned";
+        const status = totals.overdueInvoiceCount ? `${totals.overdueInvoiceCount} overdue` : "Current";
+        tags.innerHTML = [manager, `${openInvoices.length} open invoices`, status]
+            .filter(Boolean)
+            .map((value) => `<span>${escapeHTML(value)}</span>`)
+            .join("");
+    }
+    if (xeroLink) {
+        const url = contactXeroURL(client);
+        xeroLink.href = url;
+        xeroLink.hidden = !client || url === "#";
+    }
+}
+
 function renderTopbarClientContext(client = null) {
     const context = document.getElementById("topbarClientContext");
     const topbarClient = activeView === "client"
@@ -5917,14 +6505,18 @@ function renderTopbarClientContext(client = null) {
 function renderClientSectionVisibility() {
     const clientScreen = document.getElementById("clientScreen");
     if (clientScreen) clientScreen.dataset.activeSection = activeClientSection;
+    const visiblePanes = new Set(
+        Object.values(clientSectionNavGroups).find((group) => group.includes(activeClientSection)) || [activeClientSection]
+    );
     document.querySelectorAll("[data-client-section]").forEach((button) => {
         const active = (clientSectionNavGroups[button.dataset.clientSection] || [button.dataset.clientSection]).includes(activeClientSection);
         button.classList.toggle("is-active", active);
         button.setAttribute("aria-current", active ? "page" : "false");
     });
     document.querySelectorAll("[data-client-pane]").forEach((pane) => {
-        pane.hidden = false;
-        pane.classList.toggle("is-active-workspace-section", pane.dataset.clientPane === activeClientSection);
+        const visible = visiblePanes.has(pane.dataset.clientPane);
+        pane.hidden = !visible;
+        pane.classList.toggle("is-active-workspace-section", visible && pane.dataset.clientPane === activeClientSection);
     });
 }
 
@@ -5972,6 +6564,7 @@ function clientNextAction(client, invoices, totals, noticeInvoices, hasLegal) {
 
 function renderClientWorkspaceShell(client, invoices, openInvoices, totals, noticeInvoices, hasLegal) {
     const manager = client?.manager || "Unassigned";
+    renderXeroClientHeader(client, openInvoices, totals);
     document.getElementById("clientAvatar").textContent = clientInitials(client);
     document.getElementById("clientSidebarName").textContent = client?.name || "No client selected";
     const sidebarStatus = document.getElementById("clientSidebarStatus");
@@ -6471,7 +7064,7 @@ function xeroLineAmount(line) {
 }
 
 function creditSourceLabel(source) {
-    return source?.sourceType === "overpayment" ? "Overpayment" : "Credit note";
+    return source?.sourceType === "overpayment" ? "Cash overpayment" : "Credit note";
 }
 
 function renderTransactionEmpty(target, eyebrow, title, body) {
@@ -6519,15 +7112,15 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
     if (refreshButton) refreshButton.disabled = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
     if (!client) {
         summary.innerHTML = "";
-        renderTransactionEmpty(invoiceList, "No client", "Select a client", "Outstanding Xero transaction lines will appear here.");
-        renderTransactionEmpty(creditList, "No client", "Select a client", "Unallocated credits and overpayments will appear here.");
+        renderTransactionEmpty(invoiceList, "No client", "Select a client", "Unallocated Xero invoice balances will appear here.");
+        renderTransactionEmpty(creditList, "No client", "Select a client", "Unallocated credits and cash overpayments will appear here.");
         renderTransactionEmpty(allocatedList, "No client", "Select a client", "Allocated credit activity will appear here.");
         return;
     }
     if (!state.organisation?.xeroConnected) {
         summary.innerHTML = `<article><span>Xero</span><strong>Disconnected</strong></article>`;
-        renderTransactionEmpty(invoiceList, "Xero disconnected", "Connect Xero to load live transactions", "Live invoice lines need an active Xero connection.");
-        renderTransactionEmpty(creditList, "Xero disconnected", "Connect Xero to find credits", "Unallocated credit checks run directly against Xero.");
+        renderTransactionEmpty(invoiceList, "Xero disconnected", "Connect Xero to load live transactions", "Live unallocated invoice balances need an active Xero connection.");
+        renderTransactionEmpty(creditList, "Xero disconnected", "Connect Xero to find credits and cash", "Unallocated credits and overpayments are checked directly against Xero.");
         renderTransactionEmpty(allocatedList, "Xero disconnected", "Connect Xero to show allocations", "Allocated credit checks run directly against Xero.");
         return;
     }
@@ -6543,8 +7136,8 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
     const isLoading = customerTransactionLoading.has(String(client.id));
     if (cached?.error) {
         summary.innerHTML = `<article class="is-highlighted"><span>Xero transactions</span><strong>Unable to load</strong></article>`;
-        renderTransactionEmpty(invoiceList, "Xero error", "Unable to load outstanding transactions", cached.error);
-        renderTransactionEmpty(creditList, "Xero error", "Unable to load credits", cached.error);
+        renderTransactionEmpty(invoiceList, "Xero error", "Unable to load unallocated invoices", cached.error);
+        renderTransactionEmpty(creditList, "Xero error", "Unable to load unallocated cash and credits", cached.error);
         renderTransactionEmpty(allocatedList, "Xero error", "Unable to load allocated credits", cached.error);
         return;
     }
@@ -6559,22 +7152,25 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
     const currencyCode = outstandingInvoices[0]?.currencyCode || creditSources[0]?.currencyCode || allocatedCredits[0]?.currencyCode || "GBP";
     const outstandingTotal = cached?.summary?.outstandingTotal ?? outstandingInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
     const lineCount = cached?.summary?.outstandingLineCount ?? outstandingInvoices.reduce((sum, invoice) => sum + Math.max((invoice.lineItems || []).length, 1), 0);
-    const creditTotal = cached?.summary?.unallocatedCreditTotal ?? creditSources.reduce((sum, source) => sum + Number(source.remainingCredit || 0), 0);
+    const creditNoteTotal = unallocatedCredits.reduce((sum, source) => sum + Number(source.remainingCredit || 0), 0);
+    const overpaymentTotal = overpayments.reduce((sum, source) => sum + Number(source.remainingCredit || 0), 0);
+    const creditTotal = cached?.summary?.unallocatedCreditTotal ?? creditNoteTotal + overpaymentTotal;
     const allocatedTotal = cached?.summary?.allocatedCreditTotal ?? allocatedCredits.reduce((sum, source) => sum + Number(source.appliedAmount || 0), 0);
     summary.innerHTML = [
-        ["Outstanding", formatXeroCurrency(outstandingTotal, currencyCode), false],
+        ["Unallocated invoices", formatXeroCurrency(outstandingTotal, currencyCode), false],
         ["Invoice lines", Number(lineCount || 0).toLocaleString("en-GB"), false],
-        ["Unallocated credits", formatXeroCurrency(creditTotal, currencyCode), creditTotal > 0],
+        ["Unallocated credits", formatXeroCurrency(creditNoteTotal, currencyCode), creditNoteTotal > 0],
+        ["Unallocated cash", formatXeroCurrency(overpaymentTotal, currencyCode), overpaymentTotal > 0],
         ["Allocated credits", formatXeroCurrency(allocatedTotal, currencyCode), allocatedTotal > 0],
-        ["Overpayments", Number(overpayments.length || 0).toLocaleString("en-GB"), overpayments.length > 0],
+        ["To allocate", formatXeroCurrency(creditTotal, currencyCode), creditTotal > 0],
     ].map(([label, value, highlighted]) => `<article${highlighted ? " class=\"is-highlighted\"" : ""}><span>${label}</span><strong>${value}</strong></article>`).join("");
 
     invoiceList.innerHTML = "";
     if (!outstandingInvoices.length) {
         renderTransactionEmpty(
             invoiceList,
-            isLoading ? "Loading Xero" : "No outstanding invoices",
-            isLoading ? "Loading outstanding invoice lines" : "No outstanding Xero invoices found",
+            isLoading ? "Loading Xero" : "No unallocated invoices",
+            isLoading ? "Loading open invoice balances" : "No unallocated Xero invoices found",
             isLoading ? "Fetching live transaction lines for this Xero contact." : "This contact has no open Xero invoice balance."
         );
     } else {
@@ -6609,17 +7205,15 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
     if (!creditSources.length) {
         renderTransactionEmpty(
             creditList,
-            isLoading ? "Loading Xero" : "No unallocated credits",
-            isLoading ? "Checking credit notes and overpayments" : "No unallocated credits found",
-            isLoading ? "Fetching live credit balances for this Xero contact." : "This contact has no authorised credit note or overpayment balance available to allocate."
+            isLoading ? "Loading Xero" : "No unallocated cash or credits",
+            isLoading ? "Checking credit notes and overpayments" : "No unallocated cash or credits found",
+            isLoading ? "Fetching live credit and overpayment balances for this Xero contact." : "This contact has no authorised credit note or overpayment balance available to allocate."
         );
     } else {
         const eligibleInvoices = outstandingInvoices.filter((invoice) => invoice.xeroInvoiceId && Number(invoice.amountDue || 0) > 0);
         creditSources.forEach((source) => {
             const row = document.createElement("article");
             row.className = "xero-credit-row is-highlighted";
-            const defaultInvoice = eligibleInvoices[0] || null;
-            const defaultAmount = defaultInvoice ? Math.min(Number(source.remainingCredit || 0), Number(defaultInvoice.amountDue || 0)) : Number(source.remainingCredit || 0);
             row.innerHTML = `
                 <div class="xero-credit-head">
                     <div>
@@ -6628,21 +7222,12 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
                     </div>
                     <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
                 </div>
-                <form class="allocation-form">
-                    <select name="invoiceId" aria-label="Invoice to allocate to" ${eligibleInvoices.length ? "" : "disabled"}>
-                        ${eligibleInvoices.map((invoice) => `
-                            <option value="${escapeHTML(invoice.xeroInvoiceId)}">
-                                ${escapeHTML(invoice.invoiceNumber || "Invoice")} · ${formatXeroCurrency(invoice.amountDue || 0, invoice.currencyCode)}
-                            </option>
-                        `).join("")}
-                    </select>
-                    <input name="amount" type="number" min="0.01" max="${Number(source.remainingCredit || 0).toFixed(2)}" step="0.01" value="${defaultAmount.toFixed(2)}" aria-label="Amount to allocate" ${eligibleInvoices.length ? "" : "disabled"}>
-                    <button class="primary-button" type="submit" ${eligibleInvoices.length ? "" : "disabled"}>Allocate</button>
-                </form>
+                <div class="xero-credit-actions">
+                    <button class="primary-button" type="button" ${eligibleInvoices.length ? "" : "disabled"}>Allocate</button>
+                </div>
             `;
-            row.querySelector(".allocation-form")?.addEventListener("submit", (event) => {
-                event.preventDefault();
-                allocateCustomerCredit(event.currentTarget, source);
+            row.querySelector(".xero-credit-actions button")?.addEventListener("click", () => {
+                openAllocationPanel(source);
             });
             creditList.appendChild(row);
         });
@@ -6681,6 +7266,92 @@ function renderOutstandingTransactions(client, fallbackInvoices = []) {
     }
 }
 
+function allocationSourceInvoices(client) {
+    const cached = cachedCustomerTransactions(client);
+    return Array.isArray(cached?.outstandingInvoices)
+        ? cached.outstandingInvoices.filter((invoice) => invoice.xeroInvoiceId && Number(invoice.amountDue || 0) > 0)
+        : fallbackOutstandingTransactions(clientInvoices(client)).filter((invoice) => invoice.xeroInvoiceId && Number(invoice.amountDue || 0) > 0);
+}
+
+function updateAllocationDialogTotals() {
+    const body = document.getElementById("allocationDialogBody");
+    const selected = body?.querySelector("input[name='allocationInvoiceChoice']:checked");
+    const amountInputs = [...(body?.querySelectorAll(".allocation-row-amount") || [])];
+    const amountInput = amountInputs.find((input) => input.dataset.invoiceId === selected?.value);
+    const amount = Number(amountInput?.value || 0);
+    const credit = Number(activeAllocationSource?.remainingCredit || 0);
+    const currencyCode = activeAllocationSource?.currencyCode || "GBP";
+    document.getElementById("allocationDialogInvoiceId").value = selected?.value || "";
+    document.getElementById("allocationDialogAmount").value = Number.isFinite(amount) ? amount.toFixed(2) : "";
+    document.getElementById("allocationOutstandingCredit").textContent = formatXeroCurrency(credit, currencyCode);
+    document.getElementById("allocationTotalToCredit").textContent = formatXeroCurrency(Number.isFinite(amount) ? amount : 0, currencyCode);
+    document.getElementById("allocationRemainingCredit").textContent = formatXeroCurrency(Math.max(0, credit - (Number.isFinite(amount) ? amount : 0)), currencyCode);
+}
+
+function closeAllocationPanel() {
+    const panel = document.getElementById("allocationPanel");
+    if (panel) panel.hidden = true;
+    activeAllocationSource = null;
+}
+
+function openAllocationPanel(source) {
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    if (!client) return showToast("Select a client first", "error");
+    const invoices = allocationSourceInvoices(client);
+    if (!invoices.length) {
+        showToast("There are no open Xero invoices to allocate this balance to", "info");
+        return;
+    }
+    activeAllocationSource = source;
+    const currencyCode = source.currencyCode || invoices[0]?.currencyCode || "GBP";
+    const creditAmount = Number(source.remainingCredit || 0);
+    const title = document.getElementById("allocationDialogTitle");
+    const subtitle = document.getElementById("allocationDialogSubtitle");
+    const body = document.getElementById("allocationDialogBody");
+    if (title) title.textContent = "Allocate Credit Balance";
+    if (subtitle) subtitle.innerHTML = `Allocate balance on <strong>${escapeHTML(creditSourceLabel(source))} ${escapeHTML(source.number || source.id)}</strong>`;
+    if (body) {
+        body.innerHTML = `
+            <table class="allocation-table">
+                <thead>
+                    <tr>
+                        <th>Invoice</th>
+                        <th>Date</th>
+                        <th>Invoiced</th>
+                        <th>Amount due</th>
+                        <th>Amount to credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${invoices.map((invoice, index) => {
+                        const amount = Math.min(creditAmount, Number(invoice.amountDue || 0));
+                        return `
+                            <tr>
+                                <td>
+                                    <label>
+                                        <input type="radio" name="allocationInvoiceChoice" value="${escapeHTML(invoice.xeroInvoiceId)}" ${index === 0 ? "checked" : ""}>
+                                        ${escapeHTML(invoice.invoiceNumber || "Invoice")}
+                                    </label>
+                                </td>
+                                <td>${formatDate(invoice.date || invoice.invoiceDate || invoice.dueDate)}</td>
+                                <td>${formatXeroCurrency(invoice.total || invoice.amountDue || 0, invoice.currencyCode || currencyCode)}</td>
+                                <td>${formatXeroCurrency(invoice.amountDue || 0, invoice.currencyCode || currencyCode)}</td>
+                                <td><input class="allocation-row-amount" data-invoice-id="${escapeHTML(invoice.xeroInvoiceId)}" type="number" min="0.01" max="${amount.toFixed(2)}" step="0.01" value="${amount.toFixed(2)}" aria-label="Amount to credit ${escapeHTML(invoice.invoiceNumber || "invoice")}"></td>
+                            </tr>
+                        `;
+                    }).join("")}
+                </tbody>
+            </table>
+        `;
+        body.querySelectorAll("input").forEach((input) => {
+            input.addEventListener("input", updateAllocationDialogTotals);
+            input.addEventListener("change", updateAllocationDialogTotals);
+        });
+    }
+    document.getElementById("allocationPanel").hidden = false;
+    updateAllocationDialogTotals();
+}
+
 async function allocateCustomerCredit(form, source) {
     const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
     if (!client) return showToast("Select a client first", "error");
@@ -6689,10 +7360,11 @@ async function allocateCustomerCredit(form, source) {
     const amount = Number(formData.get("amount") || 0);
     if (!invoiceId) return showToast("Select an invoice to allocate to", "error");
     if (!Number.isFinite(amount) || amount <= 0) return showToast("Enter an allocation amount", "error");
-    const confirmed = window.confirm(`Allocate ${formatXeroCurrency(amount, source.currencyCode)} from ${creditSourceLabel(source).toLowerCase()} ${source.number || source.id} in Xero?`);
+    const confirmed = window.confirm(`Allocate ${formatXeroCurrency(amount, source.currencyCode)} from ${creditSourceLabel(source).toLowerCase()} ${source.number || source.id} in Xero and add a contact note?`);
     if (!confirmed) return;
 
     const button = form.querySelector("button");
+    const defaultButtonLabel = button?.dataset.defaultLabel || "Allocate in Xero";
     if (button) {
         button.disabled = true;
         button.textContent = "Allocating";
@@ -6714,7 +7386,12 @@ async function allocateCustomerCredit(form, source) {
         if (payload?.transactions) customerTransactionCache.set(String(client.id), payload.transactions);
         if (payload?.panel) replaceState(normaliseState(payload.panel));
         else await hydrateFromAPI();
-        showToast("Allocation pushed through to Xero", "success");
+        if (payload?.xeroNoteSynced === false) {
+            showToast(payload.xeroNoteError ? `Allocation pushed through to Xero. Contact note failed: ${payload.xeroNoteError}` : "Allocation pushed through to Xero, but the contact note could not be added", "info");
+        } else {
+            showToast("Allocation pushed through to Xero and contact note added", "success");
+        }
+        closeAllocationPanel();
         renderAll();
     } catch (error) {
         console.error("Unable to allocate credit", error);
@@ -6726,7 +7403,7 @@ async function allocateCustomerCredit(form, source) {
     } finally {
         if (button) {
             button.disabled = false;
-            button.textContent = "Allocate";
+            button.textContent = defaultButtonLabel;
         }
     }
 }
@@ -6899,6 +7576,16 @@ function normaliseLatePaymentChargeBaseAmount(value) {
     return match ? match.baseAmount : DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT;
 }
 
+function recognisedLatePaymentChargeBaseAmount(value) {
+    const amount = Number(value);
+    const match = LATE_PAYMENT_CHARGE_OPTIONS.find((option) => option.baseAmount === amount);
+    return match ? match.baseAmount : null;
+}
+
+function fixedLatePaymentChargeBaseAmount(invoice) {
+    return recognisedLatePaymentChargeBaseAmount(invoice?.customerLatePaymentChargeBaseAmount);
+}
+
 function latePaymentChargeGrossAmount(baseAmount) {
     return roundMoney(normaliseLatePaymentChargeBaseAmount(baseAmount) * (1 + LATE_PAYMENT_CHARGE_VAT_RATE));
 }
@@ -6909,16 +7596,20 @@ function latePaymentChargeOptionLabel(baseAmount) {
     return option ? option.label : `${formatCurrency(normalised)} + VAT`;
 }
 
-function latePaymentChargeOptionHTML(selectedBaseAmount) {
-    const selected = normaliseLatePaymentChargeBaseAmount(selectedBaseAmount);
+function latePaymentChargeOptionHTML(selectedBaseAmount, fixedBaseAmount = null) {
+    const fixed = fixedBaseAmount === null ? null : recognisedLatePaymentChargeBaseAmount(fixedBaseAmount);
+    const selected = fixed ?? normaliseLatePaymentChargeBaseAmount(selectedBaseAmount);
     return LATE_PAYMENT_CHARGE_OPTIONS.map((option) => {
         const gross = latePaymentChargeGrossAmount(option.baseAmount);
         const selectedAttr = option.baseAmount === selected ? " selected" : "";
-        return `<option value="${option.baseAmount}"${selectedAttr}>${escapeHTML(option.label)} (${formatCurrency(gross)})</option>`;
+        const fixedLabel = fixed === option.baseAmount ? " - fixed for client" : "";
+        return `<option value="${option.baseAmount}"${selectedAttr}>${escapeHTML(option.label)} (${formatCurrency(gross)})${fixedLabel}</option>`;
     }).join("");
 }
 
 function selectedLatePaymentChargeBaseAmount(invoice) {
+    const fixedBaseAmount = fixedLatePaymentChargeBaseAmount(invoice);
+    if (fixedBaseAmount !== null) return fixedBaseAmount;
     return normaliseLatePaymentChargeBaseAmount(latePaymentChargeBaseAmounts.get(invoice?.id));
 }
 
@@ -7064,8 +7755,13 @@ function renderLateChargesScreen() {
     invoices.forEach((invoice) => {
         const blockReason = latePaymentChargeBlockReason(invoice);
         const eligible = !blockReason;
+        const fixedBaseAmount = fixedLatePaymentChargeBaseAmount(invoice);
         const selectedBaseAmount = selectedLatePaymentChargeBaseAmount(invoice);
         const chargeAmount = latePaymentChargeAmount(invoice);
+        const chargeSelectDisabled = !eligible || fixedBaseAmount !== null;
+        const statusText = eligible && fixedBaseAmount !== null
+            ? `${latePaymentChargeOptionLabel(fixedBaseAmount)} fixed`
+            : (eligible ? "Ready" : blockReason);
         const row = document.createElement("div");
         row.className = `late-charge-row${latePaymentChargeRaised(invoice) ? " is-raised" : ""}${eligible ? "" : " is-ineligible"}`;
         row.innerHTML = `
@@ -7075,12 +7771,12 @@ function renderLateChargesScreen() {
                 <span>${formatCurrency(invoice.amountDue || 0)} outstanding · due ${formatDate(invoice.dueDate)} · ${Number(invoice.overdueDays || 0).toLocaleString("en-GB")} days overdue</span>
             </span>
             <span class="late-charge-controls">
-                <select class="late-charge-select" ${eligible ? "" : "disabled"} aria-label="Late payment charge for ${escapeHTML(invoice.invoiceNumber || "invoice")}">
-                    ${latePaymentChargeOptionHTML(selectedBaseAmount)}
+                <select class="late-charge-select" ${chargeSelectDisabled ? "disabled" : ""} aria-label="Late payment charge for ${escapeHTML(invoice.invoiceNumber || "invoice")}">
+                    ${latePaymentChargeOptionHTML(selectedBaseAmount, fixedBaseAmount)}
                 </select>
             </span>
             <span class="late-charge-amount">${formatCurrency(chargeAmount)} inc VAT</span>
-            <span class="late-charge-status">${eligible ? "Ready" : escapeHTML(blockReason)}</span>
+            <span class="late-charge-status">${escapeHTML(statusText)}</span>
         `;
         row.querySelector("input").addEventListener("change", (event) => {
             if (event.target.checked) selectedLateChargeInvoiceIds.add(invoice.id);
@@ -7109,10 +7805,15 @@ function applyBulkLatePaymentChargeAmount() {
     const targetInvoices = selectedLateChargeInvoiceIds.size
         ? stats.visibleEligible.filter((invoice) => selectedLateChargeInvoiceIds.has(invoice.id))
         : stats.visibleEligible;
-    targetInvoices.forEach((invoice) => latePaymentChargeBaseAmounts.set(invoice.id, baseAmount));
+    const changeableInvoices = targetInvoices.filter((invoice) => fixedLatePaymentChargeBaseAmount(invoice) === null);
+    if (!changeableInvoices.length) {
+        return showToast("Selected late payment charge amounts are already fixed for those clients", "info");
+    }
+    changeableInvoices.forEach((invoice) => latePaymentChargeBaseAmounts.set(invoice.id, baseAmount));
     renderLateChargesScreen();
+    const fixedCount = targetInvoices.length - changeableInvoices.length;
     showToast(
-        `${latePaymentChargeOptionLabel(baseAmount)} applied to ${targetInvoices.length.toLocaleString("en-GB")} charge${targetInvoices.length === 1 ? "" : "s"}`,
+        `${latePaymentChargeOptionLabel(baseAmount)} applied to ${changeableInvoices.length.toLocaleString("en-GB")} charge${changeableInvoices.length === 1 ? "" : "s"}${fixedCount ? `; ${fixedCount.toLocaleString("en-GB")} fixed` : ""}`,
         "success"
     );
 }
@@ -7459,6 +8160,13 @@ function renderClientNotesTable(notes) {
 function renderChrome() {
     document.body.classList.toggle("is-syncing", isSyncing);
     document.body.classList.toggle("is-client-view", activeView === "client");
+    if (activeView === "insights") activeNavSection = "home";
+    else if (activeView === "late-charges") activeNavSection = "lpcs";
+    else if (activeView === "settings") activeNavSection = "settings";
+    else if (activeView === "client") activeNavSection = "clients";
+    document.querySelectorAll("[data-app-nav]").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.appNav === activeNavSection);
+    });
     const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
     const heading = document.querySelector(".brand-lockup h1");
     if (heading) heading.textContent = topbarClient?.name || "Jenius AI";
@@ -7481,6 +8189,11 @@ function renderChrome() {
     }
     const disconnectButton = document.getElementById("disconnectXeroButton");
     if (disconnectButton) disconnectButton.hidden = !connected;
+    const settingsDisconnectButton = document.getElementById("settingsDisconnectXeroButton");
+    if (settingsDisconnectButton) {
+        settingsDisconnectButton.disabled = !connected || isSyncing;
+        settingsDisconnectButton.textContent = connected ? "Disconnect Xero" : "Xero disconnected";
+    }
     const menuSyncButton = document.getElementById("menuSyncButton");
     if (menuSyncButton) menuSyncButton.hidden = !connected;
     const lateChargeStats = latePaymentChargeReviewStats();
@@ -7512,6 +8225,7 @@ function renderChrome() {
     const sidebarConnectButton = document.getElementById("sidebarConnectButton");
     if (sidebarConnectButton) {
         sidebarConnectButton.textContent = connected ? "Resync Xero" : "Login with Xero";
+        sidebarConnectButton.disabled = isSyncing;
     }
     renderTopbarClientContext();
 }
@@ -7960,10 +8674,9 @@ function closeToolbarMenus() {
 function scrollClientWorkspaceTarget(section, focusId = "", delay = 120) {
     window.setTimeout(() => {
         const focusTarget = focusId ? document.getElementById(focusId) : null;
-        const sectionTarget = document.querySelector(`[data-client-pane="${section}"]`);
-        const scrollTarget = focusTarget?.closest("[data-client-pane]") || sectionTarget;
-        scrollTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (focusTarget) focusTarget.focus({ preventScroll: true });
+        if (!focusTarget) return;
+        focusTarget.closest("[data-client-pane]")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        focusTarget.focus({ preventScroll: true });
     }, delay);
 }
 
@@ -7971,7 +8684,7 @@ function activateClientSection(section, focusId = "") {
     if (!clientSections.has(section)) return;
     activeClientSection = section;
     renderClientScreen();
-    scrollClientWorkspaceTarget(section, focusId);
+    if (focusId) scrollClientWorkspaceTarget(section, focusId);
 }
 
 function handleClientQuickAction(action) {
@@ -8150,17 +8863,8 @@ function developerLogVisibleEntries() {
     return developerLogEntries.filter((entry) => localDateKey(entry.createdAt) === developerLogDateFilter);
 }
 
-function renderDeveloperLogs(logs = developerLogEntries) {
-    developerLogEntries = Array.isArray(logs) ? logs : [];
-    const visibleLogs = developerLogVisibleEntries();
-    const list = document.getElementById("developerLogList");
-    const summary = document.getElementById("developerLogSummary");
-    if (!list) return;
+function renderDeveloperLogList(list, visibleLogs) {
     list.innerHTML = "";
-    if (summary) {
-        const suffix = developerLogDateFilter ? ` for ${developerLogDateFilter}` : "";
-        summary.textContent = `${visibleLogs.length} of ${developerLogEntries.length} recent sync event${developerLogEntries.length === 1 ? "" : "s"}${suffix}`;
-    }
     if (!visibleLogs.length) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
@@ -8194,6 +8898,26 @@ function renderDeveloperLogs(logs = developerLogEntries) {
         }
         list.appendChild(article);
     });
+}
+
+function syncDeveloperLogDateInputs() {
+    document.querySelectorAll("#developerLogDateFilter, #settingsDeveloperLogDateFilter").forEach((input) => {
+        input.value = developerLogDateFilter;
+    });
+}
+
+function renderDeveloperLogs(logs = developerLogEntries) {
+    developerLogEntries = Array.isArray(logs) ? logs : [];
+    const visibleLogs = developerLogVisibleEntries();
+    const suffix = developerLogDateFilter ? ` for ${developerLogDateFilter}` : "";
+    const summaryText = `${visibleLogs.length} of ${developerLogEntries.length} recent sync event${developerLogEntries.length === 1 ? "" : "s"}${suffix}`;
+    document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
+        summary.textContent = summaryText;
+    });
+    document.querySelectorAll("#developerLogList, #settingsDeveloperLogList").forEach((list) => {
+        renderDeveloperLogList(list, visibleLogs);
+    });
+    syncDeveloperLogDateInputs();
 }
 
 function developerLogCopyText() {
@@ -8236,8 +8960,9 @@ async function copyDeveloperLogs() {
 }
 
 async function loadDeveloperLog() {
-    const summary = document.getElementById("developerLogSummary");
-    if (summary) summary.textContent = "Loading sync events...";
+    document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
+        summary.textContent = "Loading sync events...";
+    });
     try {
         const payload = await requestJSON(api.endpoints.developerLogs);
         renderDeveloperLogs(mergeBrowserDeveloperLogs(Array.isArray(payload?.logs) ? payload.logs : []));
@@ -8581,6 +9306,7 @@ function openSettingsScreen() {
     closeToolbarMenus();
     closeTopbarMenu();
     renderAll();
+    loadDeveloperLog();
     document.getElementById("menuSettingsButton")?.blur();
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -8853,6 +9579,18 @@ function wireLoginButtons() {
     };
     const connectButton = document.getElementById("connectXeroButton");
     if (connectButton) connectButton.addEventListener("click", connect);
+    const sidebarConnectButton = document.getElementById("sidebarConnectButton");
+    if (sidebarConnectButton) sidebarConnectButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (isXeroConnected()) {
+            runXeroSync();
+        } else {
+            connect(event);
+        }
+    });
+    document.querySelectorAll("[data-app-nav]").forEach((button) => {
+        button.addEventListener("click", () => navigateApp(button.dataset.appNav));
+    });
     const helpButton = document.getElementById("helpButton");
     if (helpButton) helpButton.addEventListener("click", (event) => {
         event.preventDefault();
@@ -8863,26 +9601,29 @@ function wireLoginButtons() {
         event.preventDefault();
         openDeveloperLog();
     });
-    const refreshDeveloperLogButton = document.getElementById("refreshDeveloperLogButton");
-    if (refreshDeveloperLogButton) refreshDeveloperLogButton.addEventListener("click", loadDeveloperLog);
-    const copyDeveloperLogButton = document.getElementById("copyDeveloperLogButton");
-    if (copyDeveloperLogButton) copyDeveloperLogButton.addEventListener("click", copyDeveloperLogs);
-    const developerLogDateInput = document.getElementById("developerLogDateFilter");
-    if (developerLogDateInput) developerLogDateInput.addEventListener("change", () => {
-        developerLogDateFilter = developerLogDateInput.value;
-        renderDeveloperLogs();
+    document.querySelectorAll("#refreshDeveloperLogButton, #settingsRefreshDeveloperLogButton").forEach((button) => {
+        button.addEventListener("click", loadDeveloperLog);
     });
-    const developerLogTodayButton = document.getElementById("developerLogTodayButton");
-    if (developerLogTodayButton) developerLogTodayButton.addEventListener("click", () => {
-        developerLogDateFilter = localDateKey();
-        if (developerLogDateInput) developerLogDateInput.value = developerLogDateFilter;
-        renderDeveloperLogs();
+    document.querySelectorAll("#copyDeveloperLogButton, #settingsCopyDeveloperLogButton").forEach((button) => {
+        button.addEventListener("click", copyDeveloperLogs);
     });
-    const developerLogClearDateButton = document.getElementById("developerLogClearDateButton");
-    if (developerLogClearDateButton) developerLogClearDateButton.addEventListener("click", () => {
-        developerLogDateFilter = "";
-        if (developerLogDateInput) developerLogDateInput.value = "";
-        renderDeveloperLogs();
+    document.querySelectorAll("#developerLogDateFilter, #settingsDeveloperLogDateFilter").forEach((input) => {
+        input.addEventListener("change", () => {
+            developerLogDateFilter = input.value;
+            renderDeveloperLogs();
+        });
+    });
+    document.querySelectorAll("#developerLogTodayButton, #settingsDeveloperLogTodayButton").forEach((button) => {
+        button.addEventListener("click", () => {
+            developerLogDateFilter = localDateKey();
+            renderDeveloperLogs();
+        });
+    });
+    document.querySelectorAll("#developerLogClearDateButton, #settingsDeveloperLogClearDateButton").forEach((button) => {
+        button.addEventListener("click", () => {
+            developerLogDateFilter = "";
+            renderDeveloperLogs();
+        });
     });
     const closeDeveloperLogButton = document.getElementById("closeDeveloperLogButton");
     if (closeDeveloperLogButton) closeDeveloperLogButton.addEventListener("click", closeDeveloperLog);
@@ -8896,8 +9637,7 @@ function wireLoginButtons() {
     if (helpPanel) helpPanel.addEventListener("click", (event) => {
         if (event.target.id === "helpPanel") closeHelpPanel();
     });
-    const disconnectXeroButton = document.getElementById("disconnectXeroButton");
-    if (disconnectXeroButton) disconnectXeroButton.addEventListener("click", async (event) => {
+    const disconnectXero = async (event) => {
         event.preventDefault();
         if (!window.confirm("Disconnect this Xero organisation from the console? Existing ledger rows will remain visible until the next sync.")) return;
         try {
@@ -8913,6 +9653,9 @@ function wireLoginButtons() {
             console.error("Unable to disconnect Xero", error);
             showToast(error.message || "Unable to disconnect Xero", "error");
         }
+    };
+    document.querySelectorAll("#disconnectXeroButton, #settingsDisconnectXeroButton").forEach((button) => {
+        button.addEventListener("click", disconnectXero);
     });
 }
 
@@ -9053,6 +9796,7 @@ function wireForms() {
         renderAll();
     };
     document.getElementById("backToLedgerButton")?.addEventListener("click", returnToLedger);
+    document.getElementById("clientHeaderBackButton")?.addEventListener("click", returnToLedger);
     document.getElementById("topbarBackToLedgerButton")?.addEventListener("click", returnToLedger);
     document.getElementById("backFromSettingsButton").addEventListener("click", () => {
         activeView = "ledger";
@@ -9069,6 +9813,16 @@ function wireForms() {
     document.getElementById("closeQuickNoteButton").addEventListener("click", closeQuickNotePanel);
     document.getElementById("quickNotePanel").addEventListener("click", (event) => {
         if (event.target.id === "quickNotePanel") closeQuickNotePanel();
+    });
+    document.getElementById("allocationPanel")?.addEventListener("click", (event) => {
+        if (event.target.id === "allocationPanel") closeAllocationPanel();
+    });
+    document.getElementById("closeAllocationPanelButton")?.addEventListener("click", closeAllocationPanel);
+    document.getElementById("cancelAllocationPanelButton")?.addEventListener("click", closeAllocationPanel);
+    document.getElementById("allocationDialogForm")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!activeAllocationSource) return showToast("Choose a credit or cash balance to allocate", "error");
+        await allocateCustomerCredit(event.currentTarget, activeAllocationSource);
     });
     document.getElementById("quickNoteForm").addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -9268,6 +10022,9 @@ async function init() {
         renderAll();
     } catch (error) {
         console.error("Unable to render console after loading API data", error);
+    }
+    if (activeView === "insights") {
+        loadInsights();
     }
     if (returnedFromXeroConnection) {
         showTopbarNotice(
