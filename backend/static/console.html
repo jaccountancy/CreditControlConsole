@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Jenius AI</title>
+    <title>Credit Control</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -44,12 +44,22 @@ body {
     font-family: "Manrope", sans-serif;
     color: var(--ink);
     min-height: 100vh;
+    background: var(--bg);
+}
+body.credit-control-console-ready .console-hidden-page-title {
+    display: none !important;
+}
+.console-app {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    min-height: 100vh;
+    scroll-margin-top: 96px;
     display: grid;
     grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
     align-items: start;
     gap: 20px;
     padding: 10px 10px 32px;
-    background: var(--bg);
 }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -63,24 +73,33 @@ button { cursor: pointer; }
     z-index: 110;
     top: 10px;
     width: var(--app-sidebar-width);
-    height: calc(100vh - 20px);
+    height: fit-content;
+    min-height: 0;
+    max-height: calc(100vh - 20px);
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 12px;
-    border-radius: 14px;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid rgba(61, 85, 130, 0.10);
     box-shadow: 0 12px 34px rgba(30, 47, 77, 0.12);
     backdrop-filter: blur(12px);
 }
 .app-sidebar-brand {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 4px 6px;
+}
+.app-sidebar-brand-copy {
     display: grid;
     gap: 2px;
-    padding: 6px 4px 8px;
+    min-width: 0;
 }
 .app-sidebar-brand strong {
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 900;
 }
 .app-sidebar-brand span {
@@ -90,27 +109,34 @@ button { cursor: pointer; }
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
+.app-sidebar-icon {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    object-fit: contain;
+}
 .app-nav {
     display: grid;
-    gap: 7px;
+    gap: 4px;
 }
 .app-nav-button,
 .app-sidebar-link,
 .app-sidebar-connect {
     position: relative;
     width: 100%;
-    min-height: 42px;
+    min-height: 38px;
     display: grid;
     align-content: center;
     gap: 2px;
     border: 1px solid transparent;
-    border-radius: 10px;
-    padding: 8px 10px;
+    border-radius: 8px;
+    padding: 6px 9px;
     text-align: left;
     color: var(--ink);
     background: transparent;
     text-decoration: none;
     font-weight: 900;
+    line-height: 1.18;
 }
 .app-nav-button span,
 .app-sidebar-link span {
@@ -142,9 +168,9 @@ button { cursor: pointer; }
     transform: translateY(-50%);
 }
 .app-sidebar-footer {
-    margin-top: auto;
+    margin-top: 4px;
     display: grid;
-    gap: 8px;
+    gap: 6px;
 }
 .app-sidebar-connect {
     color: #fff;
@@ -201,6 +227,18 @@ button { cursor: pointer; }
     gap: 12px;
 }
 .topbar-client-context[hidden] { display: none; }
+.header-xero-action {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+}
+.header-xero-action[hidden] { display: none; }
+.header-connect-button {
+    min-height: 40px;
+    padding: 10px 16px;
+    white-space: nowrap;
+    box-shadow: none;
+}
 .topbar-back-button,
 .topbar-contact-strip {
     border: 1px solid var(--line);
@@ -334,12 +372,13 @@ h1, h2, h3 { letter-spacing: 0; }
 .dashboard-hero {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 10px;
-    margin-bottom: 12px;
+    gap: 8px;
+    margin-bottom: 10px;
 }
 .hero-summary-card {
-    padding: 13px 15px 12px;
-    border-radius: 12px;
+    min-height: 82px;
+    padding: 10px 12px;
+    border-radius: 10px;
     background: #fff;
     border: 1px solid rgba(61, 85, 130, 0.12);
     box-shadow: none;
@@ -364,24 +403,27 @@ button.hero-summary-card {
 }
 .hero-summary-card span {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     color: var(--muted);
-    font-size: 0.78rem;
+    font-size: 0.68rem;
     font-weight: 800;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.08em;
+    line-height: 1.12;
     text-transform: uppercase;
 }
 .hero-summary-card strong {
     display: block;
     color: var(--ink);
-    font-size: clamp(1.25rem, 1.7vw, 1.65rem);
+    font-size: clamp(1.05rem, 1.35vw, 1.38rem);
     line-height: 1.05;
     letter-spacing: 0;
 }
 .hero-summary-card p {
-    margin-top: 6px;
+    margin-top: 4px;
     color: var(--muted);
+    font-size: 0.78rem;
     font-weight: 700;
+    line-height: 1.28;
 }
 #heroLatestSyncOrg { display: none; }
 .topbar-actions,
@@ -872,6 +914,52 @@ button.hero-summary-card {
     border-color: rgba(141, 98, 255, 0.38);
     background: var(--purple-soft);
     color: var(--purple);
+}
+.filter-menu-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 10px;
+}
+.status-filter-wrap {
+    z-index: 40;
+}
+.status-filter-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    font-weight: 850;
+}
+.status-filter-button span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.status-filter-button strong {
+    color: var(--ink);
+}
+.status-filter-menu {
+    min-width: 260px;
+}
+.status-filter-menu button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+}
+.status-filter-menu button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.status-filter-menu button small {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 800;
 }
 .toolbar-row {
     display: grid;
@@ -3667,15 +3755,16 @@ body.is-syncing .sync-dot {
     50% { transform: scale(1.1); opacity: 1; }
 }
 @media (max-width: 1220px) {
-    body {
+    .console-app {
         display: block;
-        padding-left: 0;
+        padding-left: 12px;
+        padding-right: 12px;
         padding-bottom: 94px;
     }
     .ledger-shell,
     body.is-client-view .ledger-shell {
         grid-column: auto;
-        width: calc(100vw - 24px);
+        width: min(100%, calc(100vw - 24px));
     }
     .app-sidebar {
         position: fixed;
@@ -3747,7 +3836,7 @@ body.is-syncing .sync-dot {
     }
 }
 @media (max-width: 860px) {
-    .ledger-shell { width: calc(100vw - 24px); margin: 8px auto 30px; }
+    .ledger-shell { width: min(100%, calc(100vw - 24px)); margin: 8px auto 30px; }
     .app-sidebar {
         grid-template-columns: minmax(0, 1fr);
         gap: 8px;
@@ -3755,7 +3844,7 @@ body.is-syncing .sync-dot {
     .app-sidebar-footer {
         display: none;
     }
-    body.is-client-view .ledger-shell { width: calc(100vw - 20px); }
+    body.is-client-view .ledger-shell { width: min(100%, calc(100vw - 20px)); }
     body.is-client-view .ledger-topbar {
         display: grid;
         grid-template-columns: 1fr;
@@ -3829,10 +3918,13 @@ body.is-syncing .sync-dot {
     </style>
 </head>
 <body>
+    <div class="console-app">
     <aside class="app-sidebar" aria-label="Main navigation">
         <div class="app-sidebar-brand">
-            <strong>Jenius AI</strong>
-            <span>Credit control</span>
+            <div class="app-sidebar-brand-copy">
+                <strong>Credit Control</strong>
+            </div>
+            <img class="app-sidebar-icon" src="JaccountancyBlueIcon.png" alt="" aria-hidden="true">
         </div>
         <nav class="app-nav">
             <button class="app-nav-button" type="button" data-app-nav="home">Home<span>Insights</span></button>
@@ -3842,7 +3934,6 @@ body.is-syncing .sync-dot {
             <button class="app-nav-button" type="button" data-app-nav="settings">Settings<span>Logs</span></button>
         </nav>
         <div class="app-sidebar-footer">
-            <button class="app-sidebar-connect" id="sidebarConnectButton" type="button">Login with Xero</button>
             <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
         </div>
     </aside>
@@ -3853,6 +3944,9 @@ body.is-syncing .sync-dot {
                     <h1>Jenius AI</h1>
                     <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                 </div>
+            </div>
+            <div class="header-xero-action" id="headerXeroAction">
+                <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Login with Xero</a>
             </div>
             <div class="topbar-client-context" id="topbarClientContext" hidden>
                 <button class="topbar-back-button" id="topbarBackToLedgerButton" type="button">Back to ledger</button>
@@ -3939,19 +4033,20 @@ body.is-syncing .sync-dot {
                 <p id="heroNoticesSummary">No active 7 day notices</p>
             </article>
         </section>
-        <section class="summary-bar">
-            <button class="summary-chip is-active" type="button" data-filter="all"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">All</span><span class="summary-chip-subtext">All invoices</span></span><span class="summary-chip-metrics"><strong id="countAll">0</strong><span class="summary-value" id="valueAll">£0</span></span></button>
-            <button class="summary-chip summary-overdue" type="button" data-filter="overdue"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">Overdue</span><span class="summary-chip-subtext">Action required</span></span><span class="summary-chip-metrics"><strong id="countOverdue">0</strong><span class="summary-value" id="valueOverdue">£0</span></span></button>
-            <button class="summary-chip summary-query" type="button" data-filter="query"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">Query</span><span class="summary-chip-subtext">Under review</span></span><span class="summary-chip-metrics"><strong id="countQuery">0</strong><span class="summary-value" id="valueQuery">£0</span></span></button>
-            <div class="summary-chip-wrap summary-legal-wrap">
-                <button class="summary-chip summary-court" type="button" data-filter="court" aria-haspopup="true"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">Legal</span><span class="summary-chip-subtext">Escalated cases</span></span><span class="summary-chip-metrics"><strong id="countCourt">0</strong><span class="summary-value" id="valueCourt">£0</span></span></button>
-                <div class="summary-chip-dropdown" aria-label="Legal workflow filters">
-                    <button type="button" data-filter-shortcut="notice"><span>7 Days Notice</span><strong id="countNotice">0</strong></button>
-                    <button type="button" data-filter-shortcut="payment-plan"><span>Payment Plan</span><strong id="countPaymentPlan">0</strong></button>
+        <section class="filter-menu-bar" aria-label="Ledger status filters">
+            <div class="toolbar-menu-wrap status-filter-wrap">
+                <button class="ghost-button status-filter-button" id="statusFilterButton" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="statusFilterMenu"><span>Filter</span><strong id="statusFilterStateLabel">All</strong></button>
+                <div class="toolbar-menu status-filter-menu" id="statusFilterMenu" hidden>
+                    <button type="button" data-filter-shortcut="all"><span>All</span><strong id="countAll">0</strong><small id="valueAll">£0</small></button>
+                    <button type="button" data-filter-shortcut="overdue"><span>Overdue</span><strong id="countOverdue">0</strong><small id="valueOverdue">£0</small></button>
+                    <button type="button" data-filter-shortcut="query"><span>Query</span><strong id="countQuery">0</strong><small id="valueQuery">£0</small></button>
+                    <button type="button" data-filter-shortcut="court"><span>Legal</span><strong id="countCourt">0</strong><small id="valueCourt">£0</small></button>
+                    <button type="button" data-filter-shortcut="payment-plan"><span>Payment Plan</span><strong id="countPaymentPlan">0</strong><small></small></button>
+                    <button type="button" data-filter-shortcut="notice"><span>7 Day Notice</span><strong id="countNotice">0</strong><small></small></button>
+                    <button type="button" data-filter-shortcut="bad-debt"><span>Bad debt</span><strong id="countBadDebt">0</strong><small id="valueBadDebt">£0</small></button>
+                    <button type="button" data-filter-shortcut="paid"><span>Paid</span><strong id="countPaid">0</strong><small id="valuePaid">£0</small></button>
                 </div>
             </div>
-            <button class="summary-chip summary-bad-debt" type="button" data-filter="bad-debt"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">Bad debt</span><span class="summary-chip-subtext">Written off</span></span><span class="summary-chip-metrics"><strong id="countBadDebt">0</strong><span class="summary-value" id="valueBadDebt">£0</span></span></button>
-            <button class="summary-chip summary-paid" type="button" data-filter="paid"><span class="summary-icon"></span><span class="summary-chip-content"><span class="summary-chip-label">Paid</span><span class="summary-chip-subtext">Settled invoices</span></span><span class="summary-chip-metrics"><strong id="countPaid">0</strong><span class="summary-value" id="valuePaid">£0</span></span></button>
         </section>
 
         <section class="bulk-action-toolbar" id="bulkActionToolbar" hidden>
@@ -4625,6 +4720,7 @@ body.is-syncing .sync-dot {
             </div>
         </section>
     </main>
+    </div>
 
     <template id="emptyStateTemplate">
         <div class="empty-state">
@@ -4894,12 +4990,12 @@ let selectedFilter = persistedUIState.selectedFilter || "all";
 let selectedInvoiceId = persistedUIState.selectedInvoiceId || state.selectedInvoice?.id || null;
 let selectedInvoiceIds = new Set();
 let selectedClientId = persistedUIState.selectedClientId || null;
-let activeView = "insights";
+let activeView = "ledger";
 let activeNavSection = "home";
 let activeClientSection = "overview";
 let searchTerm = "";
 let clientFilter = persistedUIState.clientFilter || "all";
-let sortMode = persistedUIState.sortMode || "priority";
+let sortMode = "amount";
 let pageSize = 25;
 let currentPage = 1;
 let isSyncing = false;
@@ -4943,6 +5039,16 @@ const filterLabels = {
     over500: "Over £500",
     over1000: "Over £1,000",
     under100: "Under £100"
+};
+const statusFilterLabels = {
+    all: "All",
+    overdue: "Overdue",
+    query: "Query",
+    court: "Legal",
+    "payment-plan": "Payment Plan",
+    notice: "7 Day Notice",
+    "bad-debt": "Bad debt",
+    paid: "Paid"
 };
 const lateChargeFilterLabels = {
     active: "Active uncharged",
@@ -6116,9 +6222,18 @@ function openFirstSevenDayNoticeClient() {
     renderAll();
 }
 
+function scrollConsoleToTop() {
+    const app = document.querySelector(".console-app");
+    if (app) {
+        app.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function openLedgerSection(section = "invoices") {
     activeView = "ledger";
-    activeNavSection = section === "clients" ? "clients" : "invoices";
+    activeNavSection = ["clients", "invoices"].includes(section) ? section : "invoices";
     if (section === "clients") {
         selectedFilter = "all";
         clientFilter = "all";
@@ -6132,7 +6247,7 @@ function openLedgerSection(section = "invoices") {
     closeTopbarMenu();
     closeToolbarMenus();
     renderAll();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollConsoleToTop();
 }
 
 function navigateApp(section) {
@@ -6154,7 +6269,7 @@ function openSelectedClientView() {
     if (!selectedClientId && !selectedInvoiceId) return;
     activeView = "client";
     renderAll();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollConsoleToTop();
 }
 
 function selectLedgerSummaryFilter(filter) {
@@ -6162,6 +6277,7 @@ function selectLedgerSummaryFilter(filter) {
     selectedFilter = filter;
     currentPage = 1;
     activeView = "ledger";
+    closeToolbarMenus();
     renderAll();
 }
 
@@ -6170,7 +6286,7 @@ function resetLedgerFilters() {
     clientFilter = "all";
     lateChargeFilter = "active";
     lateChargeSearchTerm = "";
-    sortMode = "priority";
+    sortMode = activeNavSection === "invoices" ? "priority" : "amount";
     searchTerm = "";
     currentPage = 1;
     const ledgerSearch = document.getElementById("ledgerSearch");
@@ -6225,7 +6341,65 @@ async function disconnectXero(event = null) {
     }
 }
 
+function trimEmbeddedPageChrome() {
+    const app = document.querySelector(".console-app");
+    if (!app) return;
+    document.body.classList.add("credit-control-console-ready");
+    const titleSelectors = "h1, .entry-title, .page-title, .wp-block-post-title, .elementor-heading-title";
+    document.querySelectorAll(titleSelectors).forEach((heading) => {
+        if (heading.closest(".console-app, .site-header, .main-header, header[role='banner']")) return;
+        const titleText = heading.textContent.replace(/\s+/g, " ").trim().toLowerCase();
+        if (titleText !== "credit control") return;
+        const pageTitleContainers = [
+            ".entry-header",
+            ".page-header",
+            ".wp-block-cover",
+            ".elementor-section",
+            ".elementor-top-section",
+            ".entry-hero",
+            ".hero",
+            ".banner",
+            "section",
+            "header",
+            ".wp-block-group",
+        ];
+        const container = pageTitleContainers
+            .map((selector) => heading.closest(selector))
+            .find((candidate) => candidate && !candidate.contains(app) && !candidate.closest(".site-header, .main-header, header[role='banner']"));
+        const target = container || heading;
+        target.hidden = true;
+        target.setAttribute("aria-hidden", "true");
+        target.classList.add("console-hidden-page-title");
+    });
+}
+
 let criticalNavigationWired = false;
+let lastSidebarNavigation = { section: "", at: 0 };
+
+function handleAppNavigation(section, event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.stopImmediatePropagation?.();
+    if (!section) return false;
+    const now = Date.now();
+    if (lastSidebarNavigation.section === section && now - lastSidebarNavigation.at < 250) return false;
+    lastSidebarNavigation = { section, at: now };
+    navigateApp(section);
+    return false;
+}
+
+function wireSidebarNavigation() {
+    document.querySelectorAll("[data-app-nav]").forEach((button) => {
+        if (button.dataset.sidebarNavWired === "true") return;
+        button.dataset.sidebarNavWired = "true";
+        const navigate = (event) => handleAppNavigation(button.dataset.appNav, event);
+        button.addEventListener("pointerup", navigate, { capture: true });
+        button.addEventListener("mouseup", navigate, { capture: true });
+        button.addEventListener("touchend", navigate, { capture: true });
+        button.addEventListener("click", navigate, { capture: true });
+        button.onclick = navigate;
+    });
+}
 
 function handleSidebarConnectButton(event) {
     event?.preventDefault?.();
@@ -6262,9 +6436,7 @@ function wireCriticalNavigation() {
         }
         const navButton = event.target.closest?.("[data-app-nav]");
         if (navButton) {
-            event.preventDefault();
-            event.stopPropagation();
-            navigateApp(navButton.dataset.appNav);
+            handleAppNavigation(navButton.dataset.appNav, event);
             return;
         }
         const backButton = event.target.closest?.("#backToLedgerButton, #clientHeaderBackButton, #topbarBackToLedgerButton, #backFromSettingsButton, #backFromInsightsButton, #backFromLateChargesButton");
@@ -6510,11 +6682,32 @@ function wireCriticalNavigation() {
             interestInfoButton.closest(".interest-tooltip-anchor")?.focus();
             return;
         }
+        const ledgerSearchButton = event.target.closest?.("#ledgerSearchToggle");
+        if (ledgerSearchButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            const ledgerSearch = document.getElementById("ledgerSearch");
+            const willOpen = !document.getElementById("ledgerSearchWrap")?.classList.contains("is-open");
+            setLedgerSearchOpen(willOpen || Boolean(ledgerSearch?.value));
+            if (willOpen) {
+                window.setTimeout(() => ledgerSearch?.focus(), 0);
+            } else if (!ledgerSearch?.value) {
+                ledgerSearch?.blur();
+            }
+            return;
+        }
         const optionsButton = event.target.closest?.("#ledgerOptionsButton");
         if (optionsButton) {
             event.preventDefault();
             event.stopPropagation();
             toggleToolbarMenu("ledgerOptionsMenu", "ledgerOptionsButton");
+            return;
+        }
+        const statusFilterButton = event.target.closest?.("#statusFilterButton");
+        if (statusFilterButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleToolbarMenu("statusFilterMenu", "statusFilterButton");
             return;
         }
         const sortButton = event.target.closest?.("[data-sort-mode]");
@@ -6749,6 +6942,8 @@ function renderSummaryCounts() {
     document.getElementById("valueOverdue").textContent = formatCompactCurrency(totals.overdue);
     document.getElementById("valueCourt").textContent = formatCompactCurrency(totals.court);
     document.getElementById("valueBadDebt").textContent = formatCompactCurrency(totals.badDebt);
+    const statusFilterStateLabel = document.getElementById("statusFilterStateLabel");
+    if (statusFilterStateLabel) statusFilterStateLabel.textContent = statusFilterLabels[selectedFilter] || statusFilterLabels.all;
     document.querySelectorAll(".summary-chip").forEach((button) => {
         const isLegalShortcut = button.dataset.filter === "court" && ["court", "notice", "payment-plan"].includes(selectedFilter);
         button.classList.toggle("is-active", button.dataset.filter === selectedFilter || isLegalShortcut);
@@ -6828,7 +7023,7 @@ function openClientWorkspace(invoice, focusId, section = "overview") {
     activeClientSection = clientSections.has(section) ? section : "overview";
     renderAll();
     if (activeClientSection === "overview" && !focusId) {
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        scrollConsoleToTop();
     } else {
         scrollClientWorkspaceTarget(activeClientSection, focusId, 350);
     }
@@ -8290,7 +8485,7 @@ function openLateChargesScreen() {
     activeView = "late-charges";
     closeTopbarMenu();
     renderAll();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollConsoleToTop();
 }
 
 function renderLateChargesScreen() {
@@ -8784,6 +8979,17 @@ function renderChrome() {
     if (connectButton) {
         connectButton.hidden = connected;
         connectButton.textContent = "Connect Xero";
+        connectButton.href = loginURL();
+    }
+    const headerConnectButton = document.getElementById("headerConnectXeroButton");
+    const headerXeroAction = document.getElementById("headerXeroAction");
+    if (headerConnectButton) {
+        headerConnectButton.hidden = connected;
+        headerConnectButton.textContent = "Login with Xero";
+        headerConnectButton.href = loginURL();
+    }
+    if (headerXeroAction) {
+        headerXeroAction.hidden = connected;
     }
     const disconnectButton = document.getElementById("disconnectXeroButton");
     if (disconnectButton) disconnectButton.hidden = !connected;
@@ -9009,6 +9215,7 @@ function openInsightsScreen() {
     activeInsightsSection = activeInsightsSection || "overview";
     closeTopbarMenu();
     renderAll();
+    scrollConsoleToTop();
     loadInsights();
 }
 
@@ -9164,6 +9371,7 @@ function wireFilters() {
         }
     });
     setLedgerSearchOpen(Boolean(ledgerSearch?.value || searchTerm));
+    document.getElementById("statusFilterButton")?.addEventListener("click", () => toggleToolbarMenu("statusFilterMenu", "statusFilterButton"));
     document.getElementById("ledgerOptionsButton")?.addEventListener("click", () => toggleToolbarMenu("ledgerOptionsMenu", "ledgerOptionsButton"));
     document.getElementById("denseModeButton")?.addEventListener("click", () => {
         denseMode = !denseMode;
@@ -9236,11 +9444,11 @@ function toggleToolbarMenu(menuId, buttonId) {
 }
 
 function closeToolbarMenus() {
-    ["sortMenu", "filterMenu", "columnMenu", "ledgerOptionsMenu"].forEach((menuId) => {
+    ["sortMenu", "filterMenu", "columnMenu", "ledgerOptionsMenu", "statusFilterMenu"].forEach((menuId) => {
         const menu = document.getElementById(menuId);
         if (menu) menu.hidden = true;
     });
-    ["sortButton", "filterButton", "columnButton", "ledgerOptionsButton"].forEach((buttonId) => {
+    ["sortButton", "filterButton", "columnButton", "ledgerOptionsButton", "statusFilterButton"].forEach((buttonId) => {
         const button = document.getElementById(buttonId);
         if (button) button.setAttribute("aria-expanded", "false");
     });
@@ -9864,7 +10072,7 @@ function openSettingsScreen() {
     renderAll();
     loadDeveloperLog();
     document.getElementById("menuSettingsButton")?.blur();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollConsoleToTop();
 }
 
 function clearLocalConsoleState(panel = null) {
@@ -10134,8 +10342,9 @@ function wireLoginButtons() {
         showToast("Opening Xero connection", "info");
         window.location.assign(url);
     };
-    const connectButton = document.getElementById("connectXeroButton");
-    if (connectButton) connectButton.addEventListener("click", connect);
+    document.querySelectorAll("#connectXeroButton, #headerConnectXeroButton").forEach((button) => {
+        button.addEventListener("click", connect);
+    });
     const sidebarConnectButton = document.getElementById("sidebarConnectButton");
     if (sidebarConnectButton) sidebarConnectButton.addEventListener("click", (event) => {
         event.preventDefault();
@@ -10528,6 +10737,8 @@ function wireForms() {
 }
 
 async function init() {
+    trimEmbeddedPageChrome();
+    wireSidebarNavigation();
     const returnedFromXeroConnection = consumeXeroConnectionReturn();
     wireCriticalNavigation();
     try {
@@ -10537,6 +10748,7 @@ async function init() {
     }
     [
         wireLoginButtons,
+        wireSidebarNavigation,
         wireSyncButtons,
         wireFilters,
         wireClientWorkspace,
