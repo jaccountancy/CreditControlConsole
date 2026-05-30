@@ -1859,6 +1859,25 @@
             .danger-button:hover {
                 background: var(--red-soft);
             }
+            .factory-reset-panel {
+                margin-top: 10px;
+                opacity: 0.76;
+            }
+            .factory-reset-panel .panel-heading {
+                align-items: flex-start;
+            }
+            .factory-reset-guard-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                justify-content: flex-end;
+            }
+            .factory-reset-guard-status {
+                margin: 10px 0 0;
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 800;
+            }
             .ai-inline-banner {
                 border-color: rgba(31, 143, 110, 0.24);
                 background: rgba(239, 252, 247, 0.98);
@@ -4899,17 +4918,6 @@
                                 </div>
                             </section>
 
-                            <section class="detail-panel settings-panel danger-panel">
-                                <div class="panel-heading">
-                                    <div>
-                                        <p class="eyebrow">Factory reset</p>
-                                        <h3>Clear local console data</h3>
-                                    </div>
-                                    <button class="ghost-button danger-button" id="factoryResetButton" type="button">Factory reset</button>
-                                </div>
-                                <p class="settings-help">This clears imported ledger rows, local credit-control workflow data, sync history and browser settings. Xero stays connected so you can choose fresh import settings and resync from scratch.</p>
-                            </section>
-
                             <section class="detail-panel settings-panel">
                                 <div class="panel-heading">
                                     <div>
@@ -4976,6 +4984,21 @@
                                         <button class="ghost-button" id="deleteLetterTemplateButton" type="button">Delete template</button>
                                     </div>
                                 </form>
+                            </section>
+
+                            <section class="detail-panel settings-panel danger-panel factory-reset-panel">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Hidden destructive action</p>
+                                        <h3>Factory settings and storage reset</h3>
+                                    </div>
+                                    <div class="factory-reset-guard-actions">
+                                        <button class="ghost-button" id="factoryResetRevealButton" type="button">Show reset controls</button>
+                                        <button class="ghost-button danger-button" id="factoryResetButton" type="button" hidden>Reset factory settings and storage</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help">This clears imported ledger rows, local credit-control workflow data, sync history and browser settings. Xero stays connected so you can choose fresh import settings and resync from scratch.</p>
+                                <p class="factory-reset-guard-status" id="factoryResetGuardStatus">Press “Show reset controls” 4 times to reveal the reset button.</p>
                             </section>
                         </div>
                     </section>
@@ -5994,6 +6017,7 @@
             const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
             const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
             const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
+            const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
             const DEFAULT_API_BASE_URL = window.location.protocol === "file:" || /(^|\.)team\.jaccountancy\.co\.uk$/i.test(window.location.hostname)
                 ? PRODUCTION_API_BASE_URL
@@ -6106,6 +6130,7 @@
             let hasAutoStartedInitialSync = false;
             let hasLoadedWorkingSyncPanel = false;
             let statePersistenceDisabled = false;
+            let factoryResetRevealClicks = 0;
             let denseMode = persistedUIState.version >= 3 ? persistedUIState.denseMode !== false : true;
             let quickNoteInvoiceId = null;
             let lastPaymentPlanAutoNote = "";
@@ -8012,6 +8037,13 @@
                         event.preventDefault();
                         event.stopPropagation();
                         disconnectXero(event);
+                        return;
+                    }
+                    const factoryResetRevealButton = event.target.closest?.("#factoryResetRevealButton");
+                    if (factoryResetRevealButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        revealFactoryResetButton();
                         return;
                     }
                     const factoryResetButton = event.target.closest?.("#factoryResetButton");
@@ -12699,6 +12731,7 @@
                 syncActiveViewShell();
                 renderChrome();
                 renderSyncSettings();
+                renderFactoryResetGuard();
                 renderLetterTemplateSettings();
                 renderDashboardHero();
                 renderSummaryCounts();
@@ -13795,6 +13828,31 @@
                 scrollConsoleToTop();
             }
 
+            function renderFactoryResetGuard() {
+                const revealButton = document.getElementById("factoryResetRevealButton");
+                const resetButton = document.getElementById("factoryResetButton");
+                const status = document.getElementById("factoryResetGuardStatus");
+                const revealed = factoryResetRevealClicks >= FACTORY_RESET_REVEAL_CLICKS;
+                const remaining = Math.max(0, FACTORY_RESET_REVEAL_CLICKS - factoryResetRevealClicks);
+                if (resetButton) resetButton.hidden = !revealed;
+                if (revealButton) {
+                    revealButton.hidden = revealed;
+                    revealButton.textContent = remaining === FACTORY_RESET_REVEAL_CLICKS
+                        ? "Show reset controls"
+                        : `Show reset controls (${remaining} more)`;
+                }
+                if (status) {
+                    status.textContent = revealed
+                        ? "Reset controls are visible. Only press this if you intend to permanently clear local console data."
+                        : `Press “Show reset controls” ${remaining} more ${remaining === 1 ? "time" : "times"} to reveal the reset button.`;
+                }
+            }
+
+            function revealFactoryResetButton() {
+                factoryResetRevealClicks = Math.min(FACTORY_RESET_REVEAL_CLICKS, factoryResetRevealClicks + 1);
+                renderFactoryResetGuard();
+            }
+
             function clearLocalConsoleState(panel = null) {
                 localStorage.removeItem(STORAGE_KEY);
                 localStorage.removeItem(SYNC_SETTINGS_KEY);
@@ -13823,12 +13881,17 @@
             }
 
             async function factoryResetConsole() {
-                const confirmed = window.confirm("Factory reset Jenius AI? This clears imported ledger data, workflow notes, statuses, payment plans, sync history and browser settings. Xero will remain connected so you can resync from scratch.");
+                if (factoryResetRevealClicks < FACTORY_RESET_REVEAL_CLICKS) {
+                    revealFactoryResetButton();
+                    return;
+                }
+                const confirmed = window.confirm("Last chance - this can't be undone. Reset factory settings and storage now? This clears imported ledger data, workflow notes, statuses, payment plans, sync history and browser settings. Xero will remain connected so you can resync from scratch.");
                 if (!confirmed) return;
                 try {
                     const payload = await requestJSON(api.endpoints.factoryReset, { method: "POST", body: JSON.stringify({}) });
                     clearLocalConsoleState(payload?.panel || null);
                     activeView = "settings";
+                    factoryResetRevealClicks = 0;
                     renderAll();
                     showToast("Factory reset complete. Choose import settings and run a fresh Xero sync.", "success");
                 } catch (error) {
@@ -14257,8 +14320,6 @@
                 if (raiseBadDebtButton) raiseBadDebtButton.addEventListener("click", raiseBadDebtWriteOffs);
                 const refreshInsightsButton = document.getElementById("refreshInsightsButton");
                 if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => loadInsights(true));
-                const factoryResetButton = document.getElementById("factoryResetButton");
-                if (factoryResetButton) factoryResetButton.addEventListener("click", factoryResetConsole);
                 const letterTemplateSettingsSelect = document.getElementById("letterTemplateSettingsSelect");
                 if (letterTemplateSettingsSelect) letterTemplateSettingsSelect.addEventListener("change", () => {
                     selectedLetterTemplateId = letterTemplateSettingsSelect.value;

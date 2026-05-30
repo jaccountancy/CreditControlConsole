@@ -3254,6 +3254,36 @@ def _serialize_payment(payment: dict) -> dict:
     }
 
 
+def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: str | None = None) -> str | None:
+    if preferred_tenant_id:
+        cursor.execute("SELECT EXISTS(SELECT 1 FROM customers WHERE tenant_id = %s) AS has_data", (preferred_tenant_id,))
+        if cursor.fetchone().get("has_data"):
+            return preferred_tenant_id
+
+    cursor.execute(
+        """
+        SELECT tenant_id
+        FROM sync_runs
+        WHERE provider = 'xero'
+          AND initiated_by_user_id = %s
+          AND tenant_id IS NOT NULL
+          AND tenant_id <> ''
+          AND status = 'completed'
+        ORDER BY completed_at DESC NULLS LAST, created_at DESC
+        LIMIT 5
+        """,
+        (user_id,),
+    )
+    for row in cursor.fetchall():
+        tenant_id = row.get("tenant_id")
+        if not tenant_id:
+            continue
+        cursor.execute("SELECT EXISTS(SELECT 1 FROM customers WHERE tenant_id = %s) AS has_data", (tenant_id,))
+        if cursor.fetchone().get("has_data"):
+            return tenant_id
+    return preferred_tenant_id
+
+
 def panel_payload(user: dict | None = None) -> dict:
     customers = []
     selected_invoice = None
@@ -3270,6 +3300,8 @@ def panel_payload(user: dict | None = None) -> dict:
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            if user and user.get("id"):
+                tenant_id = _latest_synced_tenant_for_user(cursor, user["id"], tenant_id)
             cursor.execute(
                 """
                 SELECT *
