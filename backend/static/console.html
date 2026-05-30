@@ -3085,6 +3085,12 @@
                 grid-template-columns: minmax(250px, 0.32fr) minmax(250px, 0.32fr) minmax(0, 1fr);
                 align-items: start;
             }
+            .bank-statement-workspace.is-client-list {
+                grid-template-columns: 1fr;
+            }
+            .bank-statement-workspace.is-extraction-detail {
+                grid-template-columns: minmax(260px, 0.32fr) minmax(0, 1fr);
+            }
             .bank-extraction-client-list,
             .bank-account-list,
             .bank-account-detail,
@@ -3100,6 +3106,35 @@
                 text-align: left;
                 color: var(--ink);
                 cursor: pointer;
+            }
+            .bank-client-table {
+                width: 100%;
+                min-width: 820px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .bank-client-table th,
+            .bank-client-table td {
+                padding: 13px 14px;
+                border-bottom: 1px solid var(--line);
+                text-align: left;
+                vertical-align: middle;
+            }
+            .bank-client-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .bank-client-table strong,
+            .bank-client-table small {
+                display: block;
+            }
+            .bank-client-table small {
+                margin-top: 3px;
+                color: var(--muted);
+                font-weight: 750;
             }
             .bank-client-card {
                 border: 1px solid var(--line);
@@ -5325,6 +5360,8 @@
                                 <p class="detail-meta">Build a saved extraction client list, add bank accounts, upload PDF statements, and let OpenAI extract and deduplicate transactions.</p>
                             </div>
                             <div class="detail-actions">
+                                <button class="ghost-button" id="backBankStatementClientsButton" type="button" hidden>Back to clients</button>
+                                <button class="primary-button" id="toggleBankStatementClientFormButton" type="button">Add extraction client</button>
                                 <button class="ghost-button" id="refreshBankStatementsButton" type="button">Refresh</button>
                             </div>
                         </div>
@@ -5347,7 +5384,7 @@
                                     <strong id="bankStatementFlagCount">0</strong>
                                 </article>
                             </div>
-                            <form class="bank-client-form" id="bankStatementClientForm">
+                            <form class="bank-client-form" id="bankStatementClientForm" hidden>
                                 <label>
                                     Add Xero customer
                                     <select id="bankStatementCustomerSelect" required></select>
@@ -6325,6 +6362,8 @@
             let selectedBankStatementClientId = "";
             let selectedBankAccountId = "";
             let bankAccountFormOpen = false;
+            let bankStatementClientFormOpen = false;
+            let bankStatementWorkspaceOpen = false;
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let isIgnitionSyncing = false;
@@ -11106,6 +11145,17 @@
                 loadBankStatements();
             }
 
+            function bankUploadSummary(upload) {
+                const error = String(upload?.errorMessage || "");
+                if (error) {
+                    if (/model_not_found|model .*does not exist|requested model/i.test(error)) {
+                        return "failed · OpenAI model setting was unavailable. The app now retries with supported model IDs; upload this statement again.";
+                    }
+                    return `failed · ${error.replace(/\s+/g, " ").slice(0, 220)}`;
+                }
+                return `${upload?.status || "saved"} · ${Number(upload?.insertedCount || 0).toLocaleString("en-GB")} new · ${Number(upload?.duplicateCount || 0).toLocaleString("en-GB")} duplicate`;
+            }
+
             async function loadBankStatements(force = false) {
                 if (bankStatementsLoading && !force) return;
                 bankStatementsLoading = true;
@@ -11142,6 +11192,12 @@
                 if (accountCount) accountCount.textContent = Number(summary.accountCount || 0).toLocaleString("en-GB");
                 if (transactionCount) transactionCount.textContent = Number(summary.transactionCount || 0).toLocaleString("en-GB");
                 if (flagCount) flagCount.textContent = Number(summary.flagCount || 0).toLocaleString("en-GB");
+                const clientForm = document.getElementById("bankStatementClientForm");
+                if (clientForm) clientForm.hidden = !bankStatementClientFormOpen;
+                const toggleClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
+                if (toggleClientFormButton) toggleClientFormButton.textContent = bankStatementClientFormOpen ? "Close client setup" : "Add extraction client";
+                const backButton = document.getElementById("backBankStatementClientsButton");
+                if (backButton) backButton.hidden = !bankStatementWorkspaceOpen;
 
                 const existingCustomerIds = new Set((bankStatementData.clients || []).map((client) => client.customerId));
                 const availableCustomers = (bankStatementData.customers || []).filter((customer) => !existingCustomerIds.has(customer.id));
@@ -11172,9 +11228,17 @@
                 const accountList = document.getElementById("bankAccountList");
                 const detail = document.getElementById("bankAccountDetail");
                 if (!clientList || !accountList || !detail) return;
+                const workspace = clientList.closest(".bank-statement-workspace");
+                if (workspace) {
+                    workspace.classList.toggle("is-client-list", !bankStatementWorkspaceOpen);
+                    workspace.classList.toggle("is-extraction-detail", bankStatementWorkspaceOpen);
+                }
                 clientList.innerHTML = "";
                 accountList.innerHTML = "";
                 detail.innerHTML = "";
+                accountList.hidden = !bankStatementWorkspaceOpen;
+                detail.hidden = !bankStatementWorkspaceOpen;
+                clientList.hidden = bankStatementWorkspaceOpen;
 
                 if (bankStatementsLoading) {
                     clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading extraction clients</h4><p>Reading saved bank statement records from the backend.</p></div>';
@@ -11189,29 +11253,77 @@
                     return;
                 }
 
-                clients.forEach((client) => {
-                    const accountTotal = client.accounts?.length || 0;
-                    const transactionTotal = (client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0);
-                    const flagTotal = (client.accounts || []).reduce((sum, account) => sum + (account.flags?.length || 0), 0);
-                    const button = document.createElement("button");
-                    button.type = "button";
-                    button.className = `bank-client-card${client.id === selectedBankStatementClientId ? " is-active" : ""}`;
-                    button.innerHTML = `
-                        <strong>${escapeHTML(client.customerName || "Unnamed client")}</strong>
-                        <span>${accountTotal.toLocaleString("en-GB")} account${accountTotal === 1 ? "" : "s"} · ${transactionTotal.toLocaleString("en-GB")} transaction${transactionTotal === 1 ? "" : "s"}</span>
-                        <span>${flagTotal ? `${flagTotal.toLocaleString("en-GB")} review flag${flagTotal === 1 ? "" : "s"}` : "No review flags"}</span>
+                if (!bankStatementWorkspaceOpen) {
+                    clientList.innerHTML = `
+                        <div class="jashflow-detail-head">
+                            <div>
+                                <p class="eyebrow">Extraction clients</p>
+                                <h3>Saved bank statement workspaces</h3>
+                                <p class="detail-meta">Open a client to manage accounts, upload statements and review extracted transactions.</p>
+                            </div>
+                        </div>
+                        <div class="jashflow-table-wrap">
+                            <table class="bank-client-table">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Accounts</th>
+                                        <th>Transactions</th>
+                                        <th>Review flags</th>
+                                        <th>Latest upload</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${clients.map((client) => {
+                                        const accountTotal = client.accounts?.length || 0;
+                                        const transactionTotal = (client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0);
+                                        const flagTotal = (client.accounts || []).reduce((sum, account) => sum + (account.flags?.length || 0), 0);
+                                        const latestUpload = (client.accounts || []).flatMap((account) => account.uploads || []).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+                                        return `
+                                            <tr>
+                                                <td><strong>${escapeHTML(client.customerName || "Unnamed client")}</strong><small>${escapeHTML(client.email || "No email saved")}</small></td>
+                                                <td>${accountTotal.toLocaleString("en-GB")}</td>
+                                                <td>${transactionTotal.toLocaleString("en-GB")}</td>
+                                                <td>${flagTotal ? `${flagTotal.toLocaleString("en-GB")} to review` : "Clear"}</td>
+                                                <td>${latestUpload ? `<strong>${escapeHTML(latestUpload.filename || "Statement")}</strong><small>${escapeHTML(latestUpload.status || "saved")}</small>` : "No uploads"}</td>
+                                                <td><button class="primary-button" type="button" data-open-bank-client="${escapeHTML(client.id)}">Open extraction</button></td>
+                                            </tr>
+                                        `;
+                                    }).join("")}
+                                </tbody>
+                            </table>
+                        </div>
                     `;
-                    button.addEventListener("click", () => {
-                        selectedBankStatementClientId = client.id;
-                        selectedBankAccountId = client.accounts?.[0]?.id || "";
-                        bankAccountFormOpen = false;
-                        renderBankStatementsScreen();
+                    clientList.querySelectorAll("[data-open-bank-client]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const client = clients.find((item) => item.id === button.dataset.openBankClient);
+                            selectedBankStatementClientId = button.dataset.openBankClient;
+                            selectedBankAccountId = client?.accounts?.[0]?.id || "";
+                            bankStatementWorkspaceOpen = true;
+                            bankAccountFormOpen = !(client?.accounts || []).length;
+                            bankStatementClientFormOpen = false;
+                            renderBankStatementsScreen();
+                        });
                     });
-                    clientList.appendChild(button);
-                });
+                    return;
+                }
 
                 const client = selectedBankStatementClient();
-                if (!client) return;
+                if (!client) {
+                    bankStatementWorkspaceOpen = false;
+                    renderBankStatementsScreen();
+                    return;
+                }
+
+                const selectedClientCard = document.createElement("div");
+                selectedClientCard.className = "bank-client-card is-active";
+                selectedClientCard.innerHTML = `
+                    <strong>${escapeHTML(client.customerName || "Unnamed client")}</strong>
+                    <span>${(client.accounts?.length || 0).toLocaleString("en-GB")} account${(client.accounts?.length || 0) === 1 ? "" : "s"} · ${(client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0).toLocaleString("en-GB")} transaction${(client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0) === 1 ? "" : "s"}</span>
+                    <span>Dedicated extraction workspace</span>
+                `;
+                accountList.appendChild(selectedClientCard);
                 const addAccountButton = document.createElement("button");
                 addAccountButton.type = "button";
                 addAccountButton.className = "ghost-button";
@@ -11276,7 +11388,7 @@
                 const latestUploads = (account.uploads || []).slice(0, 5).map((upload) => `
                     <div class="bank-flag-row">
                         <strong>${escapeHTML(upload.filename || "Statement upload")}</strong>
-                        <small>${escapeHTML(upload.status || "saved")} · ${Number(upload.insertedCount || 0).toLocaleString("en-GB")} new · ${Number(upload.duplicateCount || 0).toLocaleString("en-GB")} duplicate${upload.errorMessage ? ` · ${escapeHTML(upload.errorMessage)}` : ""}</small>
+                        <small>${escapeHTML(bankUploadSummary(upload))}</small>
                     </div>
                 `).join("");
                 const flags = (account.flags || []).map((flag) => `
@@ -11330,6 +11442,8 @@
                     });
                     bankStatementData = normaliseBankStatementPayload(response);
                     selectedBankStatementClientId = (bankStatementData.clients || []).find((client) => client.customerId === customerId)?.id || selectedBankStatementClientId;
+                    bankStatementWorkspaceOpen = true;
+                    bankStatementClientFormOpen = false;
                     bankAccountFormOpen = true;
                     ensureBankStatementSelection();
                     showToast("Bank statement extraction client saved", "success");
@@ -15293,6 +15407,18 @@
                 if (postJashflowInterestButton) postJashflowInterestButton.addEventListener("click", postJashflowInterest);
                 const refreshBankStatementsButton = document.getElementById("refreshBankStatementsButton");
                 if (refreshBankStatementsButton) refreshBankStatementsButton.addEventListener("click", () => loadBankStatements(true));
+                const toggleBankStatementClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
+                if (toggleBankStatementClientFormButton) toggleBankStatementClientFormButton.addEventListener("click", () => {
+                    bankStatementClientFormOpen = !bankStatementClientFormOpen;
+                    renderBankStatementsScreen();
+                    if (bankStatementClientFormOpen) setTimeout(() => document.getElementById("bankStatementCustomerSelect")?.focus(), 0);
+                });
+                const backBankStatementClientsButton = document.getElementById("backBankStatementClientsButton");
+                if (backBankStatementClientsButton) backBankStatementClientsButton.addEventListener("click", () => {
+                    bankStatementWorkspaceOpen = false;
+                    bankAccountFormOpen = false;
+                    renderBankStatementsScreen();
+                });
                 const bankStatementClientForm = document.getElementById("bankStatementClientForm");
                 if (bankStatementClientForm) bankStatementClientForm.addEventListener("submit", addBankStatementClient);
                 const refreshIgnitionButton = document.getElementById("refreshIgnitionButton");

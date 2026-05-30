@@ -47,6 +47,7 @@ ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
 PANEL_PAYMENT_LIMIT = 1000
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
+OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
@@ -114,6 +115,63 @@ def _safe_json(value):
         return value
     except TypeError:
         return str(value)
+
+
+def _normalise_openai_model_name(value: str | None) -> str:
+    text = str(value or "").strip().strip("\"'")
+    if not text:
+        return OPENAI_MODEL_FALLBACKS[0]
+    return re.sub(r"[\s_]+", "-", text).lower()
+
+
+def _openai_model_candidates(value: str | None) -> list[str]:
+    preferred = _normalise_openai_model_name(value)
+    candidates = [preferred, *OPENAI_MODEL_FALLBACKS]
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
+def _openai_error_detail(response: httpx.Response) -> tuple[str, str]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text[:500], ""
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        return str(error.get("message") or payload)[:500], str(error.get("code") or "")
+    return str(payload)[:500], ""
+
+
+async def _post_openai_responses(request_body: dict, purpose: str) -> dict:
+    settings = get_settings()
+    attempted: list[str] = []
+    last_message = ""
+    async with httpx.AsyncClient(timeout=OPENAI_INSIGHTS_TIMEOUT_SECONDS) as client:
+        for model_name in _openai_model_candidates(settings.openai_model):
+            attempted.append(model_name)
+            response = await client.post(
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+                json={**request_body, "model": model_name},
+            )
+            if not response.is_error:
+                return response.json()
+            message, code = _openai_error_detail(response)
+            last_message = message
+            lowered = message.lower()
+            missing_model = code == "model_not_found" or "model" in lowered and "does not exist" in lowered
+            if missing_model:
+                continue
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"OpenAI {purpose} failed with status {response.status_code}: {message}",
+            )
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=(
+            f"OpenAI {purpose} failed because none of the configured model names are available. "
+            f"Tried: {', '.join(attempted)}. Last error: {last_message}"
+        ),
+    )
 
 
 def _with_jenius_signature(message: str) -> str:
@@ -6349,7 +6407,6 @@ async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account:
         f"The expected account number is {account.get('account_number') or 'unknown'}."
     )
     request_body = {
-        "model": settings.openai_model,
         "input": [
             {
                 "role": "user",
@@ -6373,18 +6430,7 @@ async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account:
         },
         "max_output_tokens": 12000,
     }
-    async with httpx.AsyncClient(timeout=OPENAI_INSIGHTS_TIMEOUT_SECONDS) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/responses",
-            headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
-            json=request_body,
-        )
-    if response.is_error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"OpenAI statement extraction failed with status {response.status_code}: {response.text[:500]}",
-        )
-    text = _extract_response_text(response.json())
+    text = _extract_response_text(await _post_openai_responses(request_body, "statement extraction"))
     try:
         parsed = json.loads(text) if text else {}
     except ValueError as exc:
@@ -8292,7 +8338,6 @@ async def _generate_openai_insights(analytics: dict) -> dict:
         "riskInvoices": analytics["riskInvoices"][:8],
     }
     request_body = {
-        "model": settings.openai_model,
         "input": [
             {
                 "role": "system",
@@ -8323,14 +8368,7 @@ async def _generate_openai_insights(analytics: dict) -> dict:
         "max_output_tokens": 1800,
     }
     try:
-        async with httpx.AsyncClient(timeout=OPENAI_INSIGHTS_TIMEOUT_SECONDS) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/responses",
-                headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
-                json=request_body,
-            )
-            response.raise_for_status()
-        text = _extract_response_text(response.json())
+        text = _extract_response_text(await _post_openai_responses(request_body, "insights generation"))
         parsed = json.loads(text) if text else {}
         return {"status": "ready", **parsed}
     except Exception as exc:
