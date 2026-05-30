@@ -199,6 +199,18 @@ def auth_xero_connected():
     return RedirectResponse(add_query_params("/", {"xero": "connected"}), status_code=status.HTTP_302_FOUND)
 
 
+def queue_initial_xero_sync(user: dict) -> tuple[dict | None, bool]:
+    try:
+        sync_run, started = request_sync_run(user)
+        if started:
+            threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+        return sync_run, started
+    except Exception as exc:
+        logger.exception("Unable to queue initial Xero sync after login")
+        record_sync_start_failure(user, exc)
+        return None, False
+
+
 @app.get("/auth/xero/callback")
 async def auth_xero_callback(request: Request, code: str, state: str):
     try:
@@ -215,8 +227,13 @@ async def auth_xero_callback(request: Request, code: str, state: str):
             return response
 
         session_token = create_session(login["user"]["id"], "Web panel")
+        sync_run, sync_started = queue_initial_xero_sync(login["user"])
         redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
-        redirect_to = add_query_params(redirect_to, {"xero": "connected"})
+        redirect_params = {"xero": "connected"}
+        if sync_run:
+            redirect_params["sync_run"] = str(sync_run["id"])
+            redirect_params["sync_started"] = "1" if sync_started else "0"
+        redirect_to = add_query_params(redirect_to, redirect_params)
         redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
         response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
         set_session_cookie(response, session_token)

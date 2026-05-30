@@ -599,6 +599,13 @@ async def fetch_contacts_and_invoices(connection_row: dict) -> tuple[list[dict],
     return contacts, invoices
 
 
+def _xero_money_value(value) -> float:
+    try:
+        return round(float(value if value is not None else 0), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def normalise_contact(contact: dict, tenant_id: str) -> dict:
     contact_people = []
     for person in contact.get("ContactPersons") or []:
@@ -657,6 +664,7 @@ def normalise_contact(contact: dict, tenant_id: str) -> dict:
                 }
             )
 
+    receivable = ((contact.get("Balances") or {}).get("AccountsReceivable") or {})
     return {
         "tenant_id": tenant_id,
         "xero_contact_id": contact["ContactID"],
@@ -667,6 +675,8 @@ def normalise_contact(contact: dict, tenant_id: str) -> dict:
         "primary_person": primary_person,
         "contact_people": contact_people,
         "addresses": addresses,
+        "total_due": _xero_money_value(receivable.get("Outstanding")),
+        "overdue_amount": _xero_money_value(receivable.get("Overdue")),
     }
 
 

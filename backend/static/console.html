@@ -3924,7 +3924,7 @@ body.is-syncing .sync-dot {
             <div class="app-sidebar-brand-copy">
                 <strong>Credit Control</strong>
             </div>
-            <img class="app-sidebar-icon" src="JaccountancyBlueIcon.png" alt="" aria-hidden="true">
+            <img class="app-sidebar-icon" src="/static/JaccountancyBlueIcon.png" alt="" aria-hidden="true">
         </div>
         <nav class="app-nav">
             <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
@@ -3934,6 +3934,7 @@ body.is-syncing .sync-dot {
             <a class="app-nav-button" href="#credit-control-settings" data-app-nav="settings">Settings<span>Logs</span></a>
         </nav>
         <div class="app-sidebar-footer">
+            <button class="app-sidebar-connect" id="sidebarConnectButton" type="button">Login with Xero</button>
             <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
         </div>
     </aside>
@@ -5296,28 +5297,38 @@ function xeroConnectionReturnURL() {
 }
 
 function consumeXeroConnectionReturn() {
+    const result = { connected: false, syncRunId: "", syncStarted: false };
     const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
-    if (!isHostedPage) return false;
+    if (!isHostedPage) return result;
     try {
         const url = new URL(window.location.href);
         const hashLooksParametric = url.hash.includes("=");
         const hashParams = hashLooksParametric ? new URLSearchParams(url.hash.slice(1)) : new URLSearchParams();
         const connected = url.searchParams.get("xero") === "connected" || hashParams.get("xero") === "connected";
         const sessionToken = url.searchParams.get("panel_session") || hashParams.get("panel_session") || "";
-        if (!connected && !sessionToken) return false;
+        const syncRunId = url.searchParams.get("sync_run") || hashParams.get("sync_run") || "";
+        const syncStarted = url.searchParams.get("sync_started") || hashParams.get("sync_started") || "";
+        if (!connected && !sessionToken && !syncRunId) return result;
         if (sessionToken) storePanelSessionToken(sessionToken);
         url.searchParams.delete("xero");
         url.searchParams.delete("panel_session");
+        url.searchParams.delete("sync_run");
+        url.searchParams.delete("sync_started");
         if (hashLooksParametric) {
             hashParams.delete("xero");
             hashParams.delete("panel_session");
+            hashParams.delete("sync_run");
+            hashParams.delete("sync_started");
             const nextHash = hashParams.toString();
             url.hash = nextHash ? `#${nextHash}` : "";
         }
         window.history.replaceState(window.history.state, document.title, url.toString());
-        return true;
+        result.connected = connected || Boolean(sessionToken);
+        result.syncRunId = syncRunId;
+        result.syncStarted = syncStarted === "1" || syncStarted === "true";
+        return result;
     } catch {
-        return false;
+        return result;
     }
 }
 
@@ -6034,6 +6045,52 @@ function clientCreditState(client) {
         : { status: "empty", label: "No unallocated credits", sources: [], total: 0 };
 }
 
+function customerMatchesClientListFilters(customer) {
+    const amountDue = Number(customer?.totalDue || 0);
+    const overdueAmount = Number(customer?.overdue || 0);
+    const blob = [
+        customer?.name,
+        customer?.primaryPerson,
+        customer?.email,
+        customer?.phone,
+        customer?.accountNumber,
+        customer?.contact,
+        customer?.status
+    ].join(" ").toLowerCase();
+    const matchesSearch = blob.includes(searchTerm.toLowerCase());
+    const needsAction = amountDue > 0 || overdueAmount > 0 || /action|overdue/i.test(String(customer?.status || ""));
+    const matchesClient = clientFilter === "action" ? needsAction : clientFilter === "current" ? !needsAction : true;
+    const matchesAmount =
+        clientFilter === "over500" ? amountDue > 500 :
+        clientFilter === "over1000" ? amountDue > 1000 :
+        clientFilter === "under100" ? amountDue > 0 && amountDue < 100 :
+        true;
+    const matchesStatus =
+        selectedFilter === "all" ||
+        (selectedFilter === "overdue" && overdueAmount > 0) ||
+        (selectedFilter === "paid" && amountDue <= 0);
+    return matchesSearch && matchesClient && matchesAmount && matchesStatus;
+}
+
+function fallbackClientInvoice(customer, amountDue) {
+    if (!customer) return null;
+    return {
+        id: `client-${customer.id}`,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerContact: customer.contact || customer.email || customer.phone || "",
+        amountDue,
+        total: amountDue,
+        amountPaid: 0,
+        status: amountDue > 0 ? "Outstanding" : "Current",
+        controlStatus: amountDue > 0 ? "Outstanding" : "Paid",
+        dueDate: null,
+        invoiceNumber: "Account balance",
+        description: "Xero contact balance",
+        notesSummary: customer.contact || "Open client screen for contact details."
+    };
+}
+
 function filteredClientGroups() {
     const grouped = new Map();
     filteredInvoices().forEach((invoice) => {
@@ -6047,10 +6104,22 @@ function filteredClientGroups() {
         }
         grouped.get(key).invoices.push(invoice);
     });
+    if (activeNavSection === "clients") {
+        state.customers.forEach((customer) => {
+            if (!customer?.id || grouped.has(customer.id) || !customerMatchesClientListFilters(customer)) return;
+            grouped.set(customer.id, {
+                id: customer.id,
+                client: customer,
+                invoices: [],
+            });
+        });
+    }
     return [...grouped.values()].map((group) => {
         const invoices = group.invoices.sort(compareInvoices);
         const openInvoices = invoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
         const overdueInvoices = invoices.filter((invoice) => Number(invoice.overdueDays || 0) > 0 || invoiceCategory(invoice) === "overdue");
+        const accountBalance = Number(group.client?.totalDue || 0);
+        const fallbackInvoice = fallbackClientInvoice(group.client, accountBalance);
         const priorityInvoice = invoices.reduce((best, invoice) => {
             if (!best) return invoice;
             const priorityDiff = invoicePriorityValue(invoice) - invoicePriorityValue(best);
@@ -6060,20 +6129,25 @@ function filteredClientGroups() {
             if (!oldest) return invoice;
             return dateSortValue(invoice.dueDate) < dateSortValue(oldest.dueDate) ? invoice : oldest;
         }, null);
-        const amountDue = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+        const amountDue = openInvoices.length
+            ? openInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0)
+            : accountBalance;
+        const openCount = openInvoices.length || Number(group.client?.openInvoices || 0);
+        const overdueCount = overdueInvoices.length || (Number(group.client?.overdue || 0) > 0 ? 1 : 0);
+        const balanceOnlyGroup = !openInvoices.length && accountBalance > 0;
         return {
             ...group,
             invoices,
             openInvoices,
             overdueInvoices,
-            priorityInvoice: priorityInvoice || invoices[0] || null,
-            oldestOpenInvoice: oldestOpenInvoice || invoices[0] || null,
+            priorityInvoice: balanceOnlyGroup ? fallbackInvoice : priorityInvoice || invoices[0] || fallbackInvoice,
+            oldestOpenInvoice: balanceOnlyGroup ? fallbackInvoice : oldestOpenInvoice || invoices[0] || fallbackInvoice,
             amountDue,
             invoiceCount: invoices.length,
-            openCount: openInvoices.length,
-            overdueCount: overdueInvoices.length,
+            openCount,
+            overdueCount,
             maxOverdueDays: overdueInvoices.reduce((max, invoice) => Math.max(max, Number(invoice.overdueDays || 0)), 0),
-            oldestDueSort: dateSortValue((oldestOpenInvoice || invoices[0] || {}).dueDate),
+            oldestDueSort: dateSortValue((balanceOnlyGroup ? fallbackInvoice : oldestOpenInvoice || invoices[0] || {}).dueDate),
         };
     }).sort(compareClientGroups);
 }
@@ -6266,7 +6340,7 @@ function openLedgerSection(section = "invoices") {
     if (section === "clients") {
         selectedFilter = "all";
         clientFilter = "all";
-        sortMode = "client";
+        sortMode = "amount";
     } else {
         selectedFilter = "all";
         clientFilter = "all";
@@ -7159,7 +7233,17 @@ function closeRowActionMenus(except = null) {
 
 function openClientGroup(group, section = "overview") {
     const invoice = group?.priorityInvoice || group?.invoices?.[0] || null;
-    if (!invoice) return;
+    if (!invoice && !group?.client) return;
+    if (!group?.invoices?.length && group?.client) {
+        selectedClientId = group.client.id;
+        selectedInvoiceId = null;
+        activeView = "client";
+        activeClientSection = clientSections.has(section) ? section : "overview";
+        syncActiveViewShell();
+        renderAll();
+        scrollConsoleToTop();
+        return;
+    }
     openClientWorkspace(invoice, "", section);
 }
 
@@ -7179,7 +7263,18 @@ function renderInvoiceTable() {
         }
     } else if (!paged.length) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="6"><div class="empty-state"><p class="eyebrow">No invoices</p><h4>No ledger rows match the current filters</h4><p>Connect Xero and sync live data, or widen the search and filter settings.</p></div></td>`;
+        const emptyCopy = activeNavSection === "clients"
+            ? {
+                eyebrow: "No clients",
+                title: "No client balances match the current filters",
+                detail: "Connect Xero and sync customer balances, or widen the search and filter settings."
+            }
+            : {
+                eyebrow: "No invoices",
+                title: "No ledger rows match the current filters",
+                detail: "Connect Xero and sync live data, or widen the search and filter settings."
+            };
+        row.innerHTML = `<td colspan="6"><div class="empty-state"><p class="eyebrow">${emptyCopy.eyebrow}</p><h4>${emptyCopy.title}</h4><p>${emptyCopy.detail}</p></div></td>`;
         tbody.appendChild(row);
     } else {
         paged.forEach((group) => {
@@ -7196,7 +7291,7 @@ function renderInvoiceTable() {
             const row = document.createElement("tr");
             row.className = `client-group-row ${group.id === selectedClientId ? "is-selected" : ""} row-${category}`.trim();
             row.innerHTML = `
-                <td class="select-cell"><input class="client-select" type="checkbox" aria-label="Select invoices for ${escapeHTML(clientName)}" ${isGroupSelected ? "checked" : ""}></td>
+                <td class="select-cell"><input class="client-select" type="checkbox" aria-label="Select invoices for ${escapeHTML(clientName)}" ${isGroupSelected ? "checked" : ""} ${group.invoices.length ? "" : "disabled"}></td>
                 <td>
                     <div class="client-group-anchor">
                         <div class="client-name">${escapeHTML(clientName)}</div>
@@ -7523,6 +7618,10 @@ function renderClientScreen() {
 
     const openInvoices = invoices.filter((item) => invoiceCategory(item) !== "paid");
     const accountInterest = accountInterestTotals(invoices);
+    if (client && !openInvoices.length && Number(client.totalDue || 0) > 0) {
+        accountInterest.principal = Number(client.totalDue || 0);
+        accountInterest.overduePrincipal = Number(client.overdue || 0);
+    }
     const noticeInvoices = invoices.filter(isSevenDayNoticeInvoice).sort((a, b) => sevenDayNoticeSortValue(a) - sevenDayNoticeSortValue(b));
     const hasLegal = invoices.some((item) => invoiceCategory(item) === "court");
 
@@ -9148,12 +9247,14 @@ function localInsightsPayload(status = "local") {
         const customerInvoices = clientInvoices(customer);
         const customerOpen = customerInvoices.filter((invoice) => invoiceCategory(invoice) !== "paid");
         const customerOverdue = customerOpen.filter((invoice) => Number(invoice.overdueDays || 0) > 0 || invoiceCategory(invoice) === "overdue");
+        const invoiceTotalDue = customerOpen.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+        const invoiceOverdue = customerOverdue.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
         return {
             id: customer.id,
             name: customer.name || "Client",
-            totalDue: customerOpen.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-            overdue: customerOverdue.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0),
-            openInvoices: customerOpen.length,
+            totalDue: customerOpen.length ? invoiceTotalDue : Number(customer.totalDue || 0),
+            overdue: customerOverdue.length ? invoiceOverdue : Number(customer.overdue || 0),
+            openInvoices: customerOpen.length || Number(customer.openInvoices || 0),
             maxDaysOverdue: Math.max(0, ...customerOverdue.map((invoice) => Number(invoice.overdueDays || 0)))
         };
     }).filter((customer) => customer.totalDue > 0).sort((a, b) => b.totalDue - a.totalDue).slice(0, 10);
@@ -9257,8 +9358,16 @@ async function loadInsights(force = false) {
         insightsData = await requestJSON(api.endpoints.insights);
     } catch (error) {
         console.error("Unable to load AI insights", error);
-        insightsData = localInsightsPayload("error");
-        showToast("Using local insights because AI analysis could not be loaded", "error");
+        const authRequired = error instanceof AuthRequiredError;
+        insightsData = localInsightsPayload(authRequired ? "unauthenticated" : "error");
+        if (authRequired) {
+            showToast("Sign in with Xero to load live AI insights.", "info", {
+                label: "Connect Xero",
+                onClick: () => window.location.assign(loginURL())
+            });
+        } else {
+            showToast("Using local insights while AI analysis is unavailable", "info");
+        }
     } finally {
         setAiLoading(false);
         renderInsightsScreen();
@@ -10259,6 +10368,45 @@ async function runXeroSync({ automatic = false } = {}) {
     }
 }
 
+async function monitorQueuedXeroSync(syncRunId, { started = false } = {}) {
+    if (!syncRunId || isSyncing) return;
+    hasAutoStartedInitialSync = true;
+    let keepFailureBanner = false;
+    startSyncFeedback({
+        id: syncRunId,
+        status: started ? "running" : "queued",
+        currentStep: started ? "Starting Xero sync" : "Queued",
+        summary: "Xero is connected. Importing customer and invoice data from Xero.",
+        progress: started ? 8 : 4,
+        createdAt: new Date().toISOString(),
+        isActive: true
+    });
+    try {
+        const completedPayload = await waitForSyncRun(syncRunId);
+        if (!completedPayload) return;
+        if (completedPayload.panel) {
+            replaceState(normaliseState(completedPayload.panel));
+        } else {
+            await hydrateFromAPI();
+        }
+        renderAll();
+        showToast(completedPayload.syncRun?.summary || "Sync complete", "success");
+        showLatePaymentChargeReviewPrompt();
+    } catch (error) {
+        console.error("Unable to monitor queued Xero sync", error);
+        const message = error.message || "Xero sync failed. Please try again.";
+        storeBrowserSyncFailure(error, message);
+        keepFailureBanner = true;
+        showSyncFailure(message);
+        showToast(message, "error", {
+            label: "Developer log",
+            onClick: openDeveloperLog
+        });
+    } finally {
+        stopSyncFeedback({ keepInlineBanner: keepFailureBanner });
+    }
+}
+
 function maybeAutoStartInitialSync(delayMs = 450) {
     if (!shouldAutoStartInitialSync()) return;
     window.setTimeout(() => runXeroSync({ automatic: true }), delayMs);
@@ -10797,7 +10945,8 @@ function wireForms() {
 async function init() {
     trimEmbeddedPageChrome();
     wireSidebarNavigation();
-    const returnedFromXeroConnection = consumeXeroConnectionReturn();
+    const xeroConnectionReturn = consumeXeroConnectionReturn();
+    const returnedFromXeroConnection = xeroConnectionReturn.connected;
     wireCriticalNavigation();
     try {
         renderAll();
@@ -10831,14 +10980,18 @@ async function init() {
     }
     if (returnedFromXeroConnection) {
         showTopbarNotice(
-            "Yay - Xero is now connected",
-            "Starting first Xero sync in a moment.",
+            "Xero is now connected",
+            xeroConnectionReturn.syncRunId ? "Importing customer and invoice data from Xero." : "Starting first Xero sync in a moment.",
             "success",
             XERO_CONNECTED_NOTICE_DURATION_MS
         );
     }
     try {
-        maybeAutoStartInitialSync(returnedFromXeroConnection ? XERO_CONNECTED_NOTICE_DURATION_MS : 450);
+        if (xeroConnectionReturn.syncRunId) {
+            monitorQueuedXeroSync(xeroConnectionReturn.syncRunId, { started: xeroConnectionReturn.syncStarted });
+        } else {
+            maybeAutoStartInitialSync(450);
+        }
     } catch (error) {
         console.error("Unable to auto-start Xero sync", error);
     }

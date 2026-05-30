@@ -14,6 +14,7 @@ from fastapi import HTTPException, status
 from .config import get_settings
 from .database import get_connection, utcnow
 from .xero import (
+    CONTACTS_URL,
     CREDIT_NOTES_URL,
     INVOICES_URL,
     OVERPAYMENTS_URL,
@@ -367,16 +368,6 @@ def _completed_sync_covers_scope(user_id: str, invoice_scope: str) -> bool:
 
 
 def _refresh_customer_totals(cursor, tenant_id: str, updated_at: datetime) -> None:
-    cursor.execute(
-        """
-        UPDATE customers
-        SET total_due = 0,
-            overdue_amount = 0,
-            updated_at = %s
-        WHERE tenant_id = %s
-        """,
-        (updated_at, tenant_id),
-    )
     cursor.execute(
         """
         WITH invoice_totals AS (
@@ -1058,6 +1049,45 @@ def _contacts_from_invoices(invoices: list[dict]) -> list[dict]:
     return list(contacts_by_id.values())
 
 
+def _contact_receivable_amount(contact: dict, key: str) -> Decimal:
+    receivable = ((contact.get("Balances") or {}).get("AccountsReceivable") or {})
+    try:
+        return Decimal(str(receivable.get(key) if receivable.get(key) is not None else 0))
+    except Exception:
+        return Decimal("0")
+
+
+def _is_customer_contact(contact: dict, invoice_contact_ids: set[str]) -> bool:
+    contact_id = contact.get("ContactID")
+    if contact_id in invoice_contact_ids:
+        return True
+    if contact.get("IsCustomer") is True:
+        return True
+    return (
+        _contact_receivable_amount(contact, "Outstanding") != 0
+        or _contact_receivable_amount(contact, "Overdue") != 0
+    )
+
+
+def _customer_contacts_from_xero(raw_contacts: list[dict], invoices: list[dict]) -> list[dict]:
+    invoice_contacts = _contacts_from_invoices(invoices)
+    invoice_contact_ids = {
+        contact.get("ContactID")
+        for contact in invoice_contacts
+        if contact.get("ContactID")
+    }
+    contacts_by_id = {
+        contact["ContactID"]: contact
+        for contact in raw_contacts
+        if contact.get("ContactID") and _is_customer_contact(contact, invoice_contact_ids)
+    }
+    for contact in invoice_contacts:
+        contact_id = contact.get("ContactID")
+        if contact_id:
+            contacts_by_id.setdefault(contact_id, contact)
+    return list(contacts_by_id.values())
+
+
 async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = None) -> dict:
     sync_options = normalise_sync_options(sync_options)
     connection_row = get_xero_connection_for_user(user["id"])
@@ -1082,6 +1112,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     needs_paid_backfill = sync_options["paid_page_limit"] != 0 and not scope_already_imported
     contact_fetch_label = "changed customer records" if is_incremental_sync else "customer records"
     invoice_fetch_label = "changed invoices" if is_incremental_sync else "outstanding invoices"
+    contact_fetch_step = f"Fetching {contact_fetch_label} from Xero"
     invoice_fetch_step = f"Fetching {invoice_fetch_label} from Xero"
     invoice_where = _with_invoice_year_filter(
         ACCREC_INVOICE_WHERE if is_incremental_sync else OUTSTANDING_INVOICE_WHERE,
@@ -1105,6 +1136,14 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     )
 
     try:
+        def contact_progress(_, total_records: int, __) -> None:
+            _update_sync_run(
+                sync_run_id,
+                current_step=contact_fetch_step,
+                summary=f"Fetched {total_records} {contact_fetch_label} from Xero.",
+                contacts_total=total_records,
+            )
+
         def outstanding_invoice_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
@@ -1200,8 +1239,21 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
 
         _update_sync_run(
             sync_run_id,
+            current_step=contact_fetch_step,
+            summary=f"Fetching {contact_fetch_label} from Xero.",
+        )
+        raw_contacts = await fetch_paginated_collection(
+            connection_row,
+            CONTACTS_URL,
+            "Contacts",
+            on_page=contact_progress,
+            modified_since=modified_since if is_incremental_sync else None,
+        )
+        _update_sync_run(
+            sync_run_id,
             current_step=invoice_fetch_step,
-            summary=f"Fetching {invoice_fetch_label}. Customer records will be built from invoice contacts.",
+            summary=f"Fetched {len(raw_contacts)} {contact_fetch_label}. Fetching {invoice_fetch_label}.",
+            contacts_total=len(raw_contacts),
         )
         outstanding_invoices = await fetch_paginated_collection(
             connection_row,
@@ -1211,13 +1263,13 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             on_page=outstanding_invoice_progress,
             modified_since=modified_since,
         )
-        contacts = _contacts_from_invoices(outstanding_invoices)
+        contacts = _customer_contacts_from_xero(raw_contacts, outstanding_invoices)
         _update_sync_run(
             sync_run_id,
             current_step=f"Importing {invoice_fetch_label}",
             summary=(
                 f"Fetched {len(outstanding_invoices)} {invoice_fetch_label}. "
-                f"Prepared {len(contacts)} customer records from invoice contacts."
+                f"Prepared {len(contacts)} customer records from Xero contacts and invoice contacts."
             ),
             contacts_total=len(contacts),
             invoices_total=len(outstanding_invoices),
@@ -1238,11 +1290,11 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                         """
                         INSERT INTO customers (
                             tenant_id, xero_contact_id, name, email, phone, account_number,
-                            primary_person, contact_people, addresses, last_sync_at, updated_at
+                            primary_person, contact_people, addresses, total_due, overdue_amount, last_sync_at, updated_at
                         )
                         VALUES (
                             %(tenant_id)s, %(xero_contact_id)s, %(name)s, %(email)s, %(phone)s, %(account_number)s,
-                            %(primary_person)s, %(contact_people_json)s::jsonb, %(addresses_json)s::jsonb, %(last_sync_at)s, %(updated_at)s
+                            %(primary_person)s, %(contact_people_json)s::jsonb, %(addresses_json)s::jsonb, %(total_due)s, %(overdue_amount)s, %(last_sync_at)s, %(updated_at)s
                         )
                         ON CONFLICT (xero_contact_id) DO UPDATE
                         SET name = EXCLUDED.name,
@@ -1252,6 +1304,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                             primary_person = EXCLUDED.primary_person,
                             contact_people = EXCLUDED.contact_people,
                             addresses = EXCLUDED.addresses,
+                            total_due = EXCLUDED.total_due,
+                            overdue_amount = EXCLUDED.overdue_amount,
                             last_sync_at = EXCLUDED.last_sync_at,
                             updated_at = EXCLUDED.updated_at
                         """,
@@ -1281,17 +1335,6 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     row["xero_contact_id"]: row["id"]
                     for row in cursor.fetchall()
                 }
-
-                cursor.execute(
-                    """
-                    UPDATE customers
-                    SET total_due = 0,
-                        overdue_amount = 0,
-                        updated_at = %s
-                    WHERE tenant_id = %s
-                    """,
-                    (now, connection_row["tenant_id"]),
-                )
 
                 customer_totals: dict[str, dict[str, Decimal]] = {}
                 synced_invoices = 0
