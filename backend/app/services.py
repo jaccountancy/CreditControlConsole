@@ -19,6 +19,7 @@ from fastapi import HTTPException, status
 
 from .config import get_settings
 from .database import get_connection, utcnow
+from .ignition import IGNITION_DATASETS, fetch_ignition_collection, get_ignition_connection_for_user, ignition_oauth_configured
 from .xero import (
     CONTACTS_URL,
     CREDIT_NOTES_URL,
@@ -33,6 +34,7 @@ from .xero import (
     create_history_record,
     create_sales_invoice,
     fetch_paginated_collection,
+    merge_contacts,
     normalise_contact,
     normalise_invoice,
     normalise_payment,
@@ -1872,6 +1874,11 @@ def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     except Exception as exc:
         logger.exception("Unable to load sync run developer logs")
         logs.append(_developer_log_error_entry("developer.log.sync_runs.failed", exc))
+    try:
+        logs.extend(_list_ignition_sync_run_developer_logs(user, bounded_limit))
+    except Exception as exc:
+        logger.exception("Unable to load Ignition sync run developer logs")
+        logs.append(_developer_log_error_entry("developer.log.ignition_sync_runs.failed", exc))
 
     logs.sort(key=lambda entry: entry.get("createdAt") or "", reverse=True)
     return logs[:bounded_limit]
@@ -1887,9 +1894,11 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
                 WHERE (audit_events.user_id = %s OR audit_events.user_id IS NULL)
                   AND (
                       audit_events.entity_type = 'sync_run'
+                      OR audit_events.entity_type = 'ignition_sync_run'
                       OR audit_events.entity_type = 'xero_connection'
                       OR audit_events.event_type LIKE 'sync.%%'
                       OR audit_events.event_type LIKE 'xero.%%'
+                      OR audit_events.event_type LIKE 'ignition.%%'
                   )
                 ORDER BY audit_events.created_at DESC
                 LIMIT %s
@@ -1908,7 +1917,7 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
             "message": _developer_log_message(row),
             "payload": _safe_json(row.get("payload") or {}),
             "createdAt": _iso(row.get("created_at")) or "",
-            "syncRunId": row.get("entity_id") if row.get("entity_type") == "sync_run" else "",
+            "syncRunId": row.get("entity_id") if row.get("entity_type") in ("sync_run", "ignition_sync_run") else "",
             "syncStatus": "",
         }
         for row in rows
@@ -1943,6 +1952,41 @@ def _list_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
                 "eventType": f"sync.{status_value or 'unknown'}",
                 "message": row.get("error_message") or row.get("summary") or row.get("current_step") or "Sync run",
                 "payload": _safe_json(serialize_sync_run(row)),
+                "createdAt": _iso(row.get("created_at")) or "",
+                "syncRunId": str(row["id"]),
+                "syncStatus": status_value,
+            }
+        )
+    return logs
+
+
+def _list_ignition_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM ignition_sync_runs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], limit),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+
+    logs = []
+    for row in rows:
+        status_value = row.get("status") or ""
+        logs.append(
+            {
+                "id": str(row["id"]),
+                "level": "error" if status_value == "failed" else "info",
+                "source": "ignition_sync_runs",
+                "eventType": f"ignition.sync.{status_value or 'unknown'}",
+                "message": row.get("error_message") or row.get("summary") or row.get("current_step") or "Ignition sync run",
+                "payload": _safe_json(serialize_ignition_sync_run(row)),
                 "createdAt": _iso(row.get("created_at")) or "",
                 "syncRunId": str(row["id"]),
                 "syncStatus": status_value,
@@ -4153,6 +4197,1441 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
     }
 
 
+ME_REPORT_TAX_RATE = Decimal("0.19")
+ME_REPORT_CATEGORIES = [
+    {"group": "Income", "items": ["Sales", "Other income", "Bank interest", "Grants", "Tax refunds", "Directors' income items needing review"]},
+    {"group": "Normal allowable expenses", "items": ["Software", "Subscriptions", "Accountancy fees", "Office costs", "Telephone and internet", "Staff wages", "Employer pension", "Employer NIC", "Insurance", "Travel", "Training", "Bank charges"]},
+    {"group": "Disallowable or partly disallowable", "items": ["Client entertaining", "Fines and penalties", "Depreciation", "Non-business expenses", "Donations needing review", "Private use items", "Legal fees needing review"]},
+    {"group": "Capital allowances", "items": ["Plant and machinery", "Computer equipment", "Office equipment", "Fixtures and fittings", "Vans", "Cars", "Special rate pool items", "Assets needing review"]},
+    {"group": "Balance sheet", "items": ["Bank", "Trade debtors", "Trade creditors", "VAT", "PAYE/NIC", "Corporation tax creditor", "Director loan account", "Dividends", "Retained earnings", "Share capital"]},
+    {"group": "Special tax categories", "items": ["R&D costs", "Losses", "Accruals", "Prepayments", "Associated company adjustment", "s455/director loan risk", "Illegal dividend risk"]},
+]
+
+
+def _me_report_xero_connection(user: dict, client: dict | None = None) -> dict:
+    if client and client.get("xero_connection_id"):
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT * FROM xero_connections WHERE id = %s AND user_id = %s",
+                    (client["xero_connection_id"], user["id"]),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+        if row:
+            return row
+    return get_xero_connection_for_user(user["id"])
+
+
+def _me_report_empty_summary() -> dict:
+    return {
+        "clientCount": 0,
+        "green": 0,
+        "amber": 0,
+        "red": 0,
+        "reportsGenerated": 0,
+        "estimatedCorporationTax": 0,
+        "dividendCapacity": 0,
+        "dlaRedCount": 0,
+    }
+
+
+def _serialize_me_report_sync_run(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    return {
+        "id": str(row["id"]),
+        "clientId": str(row.get("client_id") or ""),
+        "status": row.get("status") or "",
+        "currentStep": row.get("current_step") or "",
+        "summary": row.get("summary") or "",
+        "errorMessage": row.get("error_message") or "",
+        "progress": int(row.get("progress") or 0),
+        "recordsSynced": int(row.get("records_synced") or 0),
+        "createdAt": _iso(row.get("created_at")) or "",
+        "startedAt": _iso(row.get("started_at")) or "",
+        "heartbeatAt": _iso(row.get("heartbeat_at")) or "",
+        "completedAt": _iso(row.get("completed_at")) or "",
+        "isActive": (row.get("status") or "") in ACTIVE_SYNC_STATUSES,
+    }
+
+
+def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[dict], exceptions: list[dict], reports: list[dict]) -> dict:
+    latest_review = reviews[0] if reviews else None
+    review_summary = latest_review.get("summary") if latest_review else {}
+    if isinstance(review_summary, str):
+        try:
+            review_summary = json.loads(review_summary)
+        except ValueError:
+            review_summary = {}
+    open_exceptions = [item for item in exceptions if (item.get("status") or "open") == "open"]
+    traffic_light = (latest_review or {}).get("traffic_light") or ("red" if any((item.get("severity") or "") == "red" for item in open_exceptions) else "amber")
+    return {
+        "id": str(row["id"]),
+        "clientName": row.get("client_name") or "",
+        "internalClientOwner": row.get("internal_client_owner") or "",
+        "bookkeepingFrequency": row.get("bookkeeping_frequency") or "Monthly",
+        "reportRecipientEmail": row.get("report_recipient_email") or "",
+        "yearEndMonth": int(row.get("year_end_month") or 3),
+        "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
+        "xeroTenantName": row.get("xero_tenant_name") or "",
+        "lastSyncAt": _iso(row.get("last_sync_at")) or "",
+        "lastCalculatedAt": _iso(row.get("last_calculated_at")) or "",
+        "lastReportAt": _iso(row.get("last_report_at")) or "",
+        "createdAt": _iso(row.get("created_at")) or "",
+        "trafficLight": traffic_light,
+        "summary": review_summary or {},
+        "mappings": [
+            {
+                "id": str(mapping["id"]),
+                "xeroAccountId": mapping.get("xero_account_id") or "",
+                "accountCode": mapping.get("account_code") or "",
+                "accountName": mapping.get("account_name") or "",
+                "accountType": mapping.get("account_type") or "",
+                "suggestedTreatment": mapping.get("suggested_treatment") or "",
+                "taxTreatment": mapping.get("tax_treatment") or "",
+                "category": mapping.get("category") or "",
+                "confidence": int(mapping.get("confidence") or 0),
+                "reviewRequired": bool(mapping.get("review_required")),
+                "status": mapping.get("status") or "suggested",
+                "note": mapping.get("note") or "",
+                "reason": mapping.get("reason") or "",
+            }
+            for mapping in mappings
+        ],
+        "reviews": [
+            {
+                "id": str(review["id"]),
+                "periodStart": _iso(review.get("period_start")) or "",
+                "periodEnd": _iso(review.get("period_end")) or "",
+                "status": review.get("status") or "",
+                "trafficLight": review.get("traffic_light") or "amber",
+                "summary": review.get("summary") if isinstance(review.get("summary"), dict) else {},
+                "createdAt": _iso(review.get("created_at")) or "",
+            }
+            for review in reviews
+        ],
+        "exceptions": [
+            {
+                "id": str(item["id"]),
+                "reviewId": str(item.get("review_id") or ""),
+                "severity": item.get("severity") or "amber",
+                "title": item.get("title") or "",
+                "detail": item.get("detail") or "",
+                "suggestedAction": item.get("suggested_action") or "",
+                "actionPayload": item.get("action_payload") if isinstance(item.get("action_payload"), dict) else {},
+                "status": item.get("status") or "open",
+                "note": item.get("note") or "",
+                "createdAt": _iso(item.get("created_at")) or "",
+            }
+            for item in exceptions
+        ],
+        "reports": [
+            {
+                "id": str(report["id"]),
+                "reviewId": str(report.get("review_id") or ""),
+                "status": report.get("status") or "draft",
+                "recipientEmail": report.get("recipient_email") or "",
+                "commentary": report.get("commentary") or "",
+                "createdAt": _iso(report.get("created_at")) or "",
+            }
+            for report in reports
+        ],
+    }
+
+
+def _me_report_client_row(user: dict, client_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM me_report_clients WHERE id = %s AND user_id = %s",
+                (client_id, user["id"]),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report client not found.")
+    return row
+
+
+def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dict | None]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_clients
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                """,
+                (user["id"],),
+            )
+            client_rows = cursor.fetchall()
+            client_ids = [row["id"] for row in client_rows]
+            mappings_by_client = defaultdict(list)
+            reviews_by_client = defaultdict(list)
+            exceptions_by_client = defaultdict(list)
+            reports_by_client = defaultdict(list)
+            if client_ids:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_account_mappings
+                    WHERE client_id = ANY(%s)
+                    ORDER BY account_code ASC, account_name ASC
+                    """,
+                    (client_ids,),
+                )
+                for row in cursor.fetchall():
+                    mappings_by_client[row["client_id"]].append(row)
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_reviews
+                    WHERE client_id = ANY(%s)
+                    ORDER BY period_end DESC, created_at DESC
+                    """,
+                    (client_ids,),
+                )
+                for row in cursor.fetchall():
+                    reviews_by_client[row["client_id"]].append(row)
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_exceptions
+                    WHERE client_id = ANY(%s)
+                    ORDER BY CASE severity WHEN 'red' THEN 0 WHEN 'amber' THEN 1 ELSE 2 END, created_at DESC
+                    """,
+                    (client_ids,),
+                )
+                for row in cursor.fetchall():
+                    exceptions_by_client[row["client_id"]].append(row)
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_reports
+                    WHERE client_id = ANY(%s)
+                    ORDER BY created_at DESC
+                    """,
+                    (client_ids,),
+                )
+                for row in cursor.fetchall():
+                    reports_by_client[row["client_id"]].append(row)
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_sync_runs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user["id"],),
+            )
+            latest_run = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_sync_runs
+                WHERE user_id = %s
+                  AND status IN ('queued', 'running')
+                ORDER BY COALESCE(heartbeat_at, started_at, created_at) DESC
+                LIMIT 1
+                """,
+                (user["id"],),
+            )
+            active_run = cursor.fetchone()
+        connection.commit()
+    clients = [
+        _serialize_me_report_client(
+            row,
+            mappings_by_client.get(row["id"], []),
+            reviews_by_client.get(row["id"], [])[:8],
+            exceptions_by_client.get(row["id"], [])[:50],
+            reports_by_client.get(row["id"], [])[:12],
+        )
+        for row in client_rows
+    ]
+    return clients, active_run, latest_run
+
+
+def me_report_payload(user: dict) -> dict:
+    clients, active_run, latest_run = _me_report_client_payloads(user)
+    summary = _me_report_empty_summary()
+    summary["clientCount"] = len(clients)
+    for client in clients:
+        light = client.get("trafficLight") or "amber"
+        if light in summary:
+            summary[light] += 1
+        latest_summary = client.get("summary") or {}
+        summary["estimatedCorporationTax"] += float(latest_summary.get("estimatedCorporationTax") or 0)
+        summary["dividendCapacity"] += float(latest_summary.get("dividendCapacity") or 0)
+        if str(latest_summary.get("dlaStatus") or "").lower() == "red":
+            summary["dlaRedCount"] += 1
+        summary["reportsGenerated"] += len(client.get("reports") or [])
+    try:
+        xero_connection = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        xero_connection = None
+    return {
+        "summary": summary,
+        "clients": clients,
+        "treatmentCategories": ME_REPORT_CATEGORIES,
+        "xero": {
+            "connected": bool(xero_connection),
+            "tenantName": xero_connection.get("tenant_name") if xero_connection else "",
+            "tenantId": xero_connection.get("tenant_id") if xero_connection else "",
+        },
+        "syncRun": _serialize_me_report_sync_run(active_run or latest_run),
+        "activeSyncRun": _serialize_me_report_sync_run(active_run),
+    }
+
+
+def create_me_report_client(user: dict, payload: dict) -> dict:
+    client_name = str(payload.get("clientName") or "").strip()
+    if not client_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client name is required.")
+    owner = str(payload.get("internalClientOwner") or "").strip()
+    frequency = str(payload.get("bookkeepingFrequency") or "Monthly").strip() or "Monthly"
+    recipient = str(payload.get("reportRecipientEmail") or "").strip()
+    try:
+        year_end_month = int(payload.get("yearEndMonth") or 3)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year end month must be a number from 1 to 12.") from exc
+    year_end_month = min(12, max(1, year_end_month))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO me_report_clients (
+                    user_id, client_name, internal_client_owner,
+                    bookkeeping_frequency, report_recipient_email,
+                    year_end_month, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (user["id"], client_name, owner, frequency, recipient, year_end_month, utcnow(), utcnow()),
+            )
+            client_id = cursor.fetchone()["id"]
+        connection.commit()
+    record_audit_event("me_report_client", str(client_id), "me_report.client_created", {"client_name": client_name}, user["id"])
+    return me_report_payload(user)
+
+
+def connect_me_report_client_to_current_xero(user: dict, client_id: str) -> dict:
+    _me_report_client_row(user, client_id)
+    connection_row = get_xero_connection_for_user(user["id"])
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE me_report_clients
+                SET xero_connection_id = %s,
+                    xero_tenant_id = %s,
+                    xero_tenant_name = %s,
+                    xero_connection_status = 'connected',
+                    updated_at = %s
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (
+                    connection_row.get("id"),
+                    connection_row.get("tenant_id"),
+                    connection_row.get("tenant_name") or "Xero organisation",
+                    now,
+                    client_id,
+                    user["id"],
+                ),
+            )
+        connection.commit()
+    record_audit_event(
+        "me_report_client",
+        client_id,
+        "me_report.xero_connected",
+        {"tenant_id": connection_row.get("tenant_id"), "tenant_name": connection_row.get("tenant_name")},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+def _me_treatment_for_account(account: dict) -> dict:
+    name = str(account.get("Name") or account.get("name") or "").lower()
+    code = str(account.get("Code") or account.get("code") or "")
+    account_type = str(account.get("Type") or account.get("type") or "")
+    text = f"{code} {name} {account_type}".lower()
+    rules = [
+        (("client entertaining", "entertain"), ("Client entertaining", "Add back for CT", "Client entertaining", 99, True, "Entertainment is normally disallowable for corporation tax.")),
+        (("fine", "penalt"), ("Fines and penalties", "Add back for CT", "Fines and penalties", 98, True, "Fines and penalties are normally disallowable.")),
+        (("depreciation",), ("Depreciation", "Add back for CT", "Depreciation", 99, False, "Depreciation is added back before capital allowance claims.")),
+        (("computer", "laptop", "equipment"), ("Computer equipment", "Review for capital allowances", "Computer equipment", 92, True, "Asset-style account name suggests a capital allowances review.")),
+        (("director loan", "directors loan", "dla"), ("Director loan account", "Include in DLA engine", "Director loan account", 100, False, "Director loan account identified from account name.")),
+        (("dividend",), ("Dividends", "Include in dividend engine", "Dividends", 100, False, "Dividend account identified from account name.")),
+        (("corporation tax", "corp tax", "ct creditor"), ("Corporation tax creditor", "Compare provision to estimated CT", "Corporation tax creditor", 96, False, "Corporation tax account identified from account name.")),
+        (("vat",), ("VAT", "Balance sheet tax creditor/debtor", "VAT", 95, False, "VAT balance sheet account identified.")),
+        (("paye", "nic", "hmrc payroll"), ("PAYE/NIC", "Balance sheet tax creditor", "PAYE/NIC", 95, False, "Payroll tax creditor account identified.")),
+        (("retained earnings", "profit and loss account"), ("Retained earnings", "Use in dividend capacity engine", "Retained earnings", 96, False, "Retained reserves account identified.")),
+        (("motor", "vehicle", "fuel"), ("Motor Expenses", "Review if private use risk", "Private use items", 75, True, "Motor expenses can carry private use risk.")),
+        (("legal",), ("Legal fees needing review", "Review deductibility", "Legal fees needing review", 72, True, "Legal fees can be allowable, capital or disallowable depending on the matter.")),
+        (("sales", "revenue", "turnover"), ("Sales", "Taxable trading income", "Sales", 94, False, "Income account identified.")),
+        (("bank interest", "interest received"), ("Bank interest", "Taxable income", "Bank interest", 90, False, "Interest income account identified.")),
+        (("software", "subscription"), ("Software", "Allowable expense", "Software", 90, False, "Normal software or subscription cost.")),
+        (("accountancy", "bookkeeping"), ("Accountancy fees", "Allowable expense", "Accountancy fees", 90, False, "Accountancy costs are normally allowable.")),
+        (("wages", "salary", "payroll"), ("Staff wages", "Allowable expense", "Staff wages", 90, False, "Payroll cost account identified.")),
+        (("bank charges",), ("Bank charges", "Allowable expense", "Bank charges", 90, False, "Bank charges are normally allowable.")),
+        (("trade debtor", "accounts receivable", "debtors"), ("Trade debtors", "Balance sheet working capital", "Trade debtors", 90, False, "Debtor control account identified.")),
+        (("trade creditor", "accounts payable", "creditors"), ("Trade creditors", "Balance sheet working capital", "Trade creditors", 90, False, "Creditor control account identified.")),
+        (("bank", "current account"), ("Bank", "Bank balance", "Bank", 88, False, "Bank account identified.")),
+    ]
+    for needles, result in rules:
+        if any(needle in text for needle in needles):
+            treatment, tax_treatment, category, confidence, review_required, reason = result
+            return {
+                "suggestedTreatment": treatment,
+                "taxTreatment": tax_treatment,
+                "category": category,
+                "confidence": confidence,
+                "reviewRequired": review_required,
+                "reason": reason,
+            }
+    if account_type.upper() in ("REVENUE", "SALES"):
+        return {"suggestedTreatment": "Sales", "taxTreatment": "Taxable trading income", "category": "Sales", "confidence": 84, "reviewRequired": False, "reason": "Xero account type is revenue."}
+    if account_type.upper() in ("EXPENSE", "DIRECTCOSTS", "OVERHEADS"):
+        return {"suggestedTreatment": "Normal allowable expense", "taxTreatment": "Review standard deductibility", "category": "Office costs", "confidence": 68, "reviewRequired": True, "reason": "Expense account needs staff confirmation before tax treatment is relied on."}
+    return {"suggestedTreatment": "Needs review", "taxTreatment": "Staff review required", "category": "Directors' income items needing review", "confidence": 50, "reviewRequired": True, "reason": "No confident Jaccountancy treatment rule matched this account."}
+
+
+def _money_from_report_cell(value) -> Decimal:
+    text = str(value if value is not None else "").strip()
+    if not text:
+        return Decimal("0.00")
+    negative = text.startswith("(") and text.endswith(")")
+    text = text.strip("()").replace(",", "").replace("£", "").replace("%", "")
+    try:
+        amount = Decimal(text)
+    except Exception:
+        return Decimal("0.00")
+    return -amount if negative else amount
+
+
+def _xero_report_lines(report_payload: dict) -> list[dict]:
+    lines = []
+
+    def visit(rows):
+        for row in rows or []:
+            cells = row.get("Cells") or row.get("cells") or []
+            values = [cell.get("Value") or cell.get("value") or "" for cell in cells if isinstance(cell, dict)]
+            if values:
+                label = str(values[0] or "").strip()
+                amounts = [_money_from_report_cell(value) for value in values[1:]]
+                lines.append({"label": label, "amounts": amounts, "raw": row})
+            visit(row.get("Rows") or row.get("rows") or [])
+
+    for report in report_payload.get("Reports") or report_payload.get("reports") or []:
+        visit(report.get("Rows") or report.get("rows") or [])
+    return lines
+
+
+def _report_amount(lines: list[dict], keywords: tuple[str, ...], fallback: Decimal = Decimal("0.00")) -> Decimal:
+    for line in lines:
+        label = (line.get("label") or "").lower()
+        if all(keyword in label for keyword in keywords):
+            amounts = [amount for amount in line.get("amounts") or [] if amount is not None]
+            if amounts:
+                return _money(amounts[-1])
+    return fallback
+
+
+def _normalise_contact_match_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _xero_contact_name(contact: dict) -> str:
+    return str(contact.get("Name") or contact.get("name") or "").strip()
+
+
+def _xero_contact_id(contact: dict) -> str:
+    return str(contact.get("ContactID") or contact.get("contactID") or contact.get("ContactId") or "").strip()
+
+
+def _find_duplicate_contact_candidates(contacts: list[dict]) -> list[dict]:
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for contact in contacts:
+        name = _xero_contact_name(contact)
+        contact_id = _xero_contact_id(contact)
+        key = _normalise_contact_match_name(name)
+        if key and contact_id:
+            grouped[key].append({"name": name, "contactId": contact_id})
+    candidates = []
+    for rows in grouped.values():
+        distinct_names = {row["name"].lower() for row in rows}
+        distinct_ids = {row["contactId"] for row in rows}
+        if len(distinct_names) > 1 and len(distinct_ids) > 1:
+            keep = rows[0]
+            for duplicate in rows[1:4]:
+                candidates.append({
+                    "keepContactId": keep["contactId"],
+                    "keepName": keep["name"],
+                    "mergeContactId": duplicate["contactId"],
+                    "mergeName": duplicate["name"],
+                })
+    return candidates[:10]
+
+
+def _xero_bank_transaction_amount(transaction: dict) -> Decimal:
+    if transaction.get("Total") is not None:
+        return abs(_money(transaction.get("Total")))
+    return abs(sum(_money(item.get("LineAmount")) for item in transaction.get("LineItems") or []))
+
+
+def _xero_invoice_amount_due(invoice: dict) -> Decimal:
+    return abs(_money(invoice.get("AmountDue") if invoice.get("AmountDue") is not None else invoice.get("Total")))
+
+
+def _xero_invoice_contact_id(invoice: dict) -> str:
+    contact = invoice.get("Contact") or {}
+    return str(contact.get("ContactID") or contact.get("contactID") or "").strip()
+
+
+def _find_duplicate_spend_bill_candidates(bank_transactions: list[dict], bills: list[dict]) -> list[dict]:
+    candidates = []
+    open_bills = [
+        {
+            "invoiceId": bill.get("InvoiceID") or bill.get("invoiceID") or "",
+            "invoiceNumber": bill.get("InvoiceNumber") or bill.get("Reference") or "Bill",
+            "contactId": _xero_invoice_contact_id(bill),
+            "amountDue": _xero_invoice_amount_due(bill),
+        }
+        for bill in bills
+        if _xero_invoice_amount_due(bill) > Decimal("0.00")
+    ]
+    for transaction in bank_transactions:
+        transaction_type = str(transaction.get("Type") or "").upper()
+        if transaction_type not in ("SPEND", "SPEND-MONEY", "SPEND MONEY"):
+            continue
+        amount = _xero_bank_transaction_amount(transaction)
+        contact_id = _xero_invoice_contact_id({"Contact": transaction.get("Contact") or {}})
+        for bill in open_bills:
+            if bill["contactId"] and contact_id and bill["contactId"] != contact_id:
+                continue
+            if abs(bill["amountDue"] - amount) <= Decimal("1.00"):
+                candidates.append({
+                    "bankTransactionId": transaction.get("BankTransactionID") or "",
+                    "bankTransactionReference": transaction.get("Reference") or transaction.get("Url") or "Spend money transaction",
+                    "billId": bill["invoiceId"],
+                    "billNumber": bill["invoiceNumber"],
+                    "amount": float(amount),
+                })
+                break
+    return candidates[:12]
+
+
+def _asset_book_value(asset: dict) -> Decimal:
+    for key in ("BookValue", "bookValue", "CurrentValue", "currentValue", "PurchasePrice", "purchasePrice"):
+        if asset.get(key) is not None:
+            return _money(asset.get(key))
+    return Decimal("0.00")
+
+
+def _asset_register_total(asset_payload: dict) -> Decimal | None:
+    if asset_payload.get("_error"):
+        return None
+    rows = asset_payload.get("Items") or asset_payload.get("Assets") or asset_payload.get("assets") or []
+    return sum((_asset_book_value(row) for row in rows), Decimal("0.00"))
+
+
+def _balance_sheet_fixed_asset_total(lines: list[dict]) -> Decimal:
+    fixed_asset_keywords = (("fixed", "asset"), ("plant",), ("equipment",), ("computer",), ("fixtures",), ("vehicle",), ("motor",))
+    total = Decimal("0.00")
+    for line in lines:
+        label = (line.get("label") or "").lower()
+        if any(all(keyword in label for keyword in keywords) for keywords in fixed_asset_keywords):
+            amounts = line.get("amounts") or []
+            if amounts:
+                total += _money(amounts[-1])
+    return abs(_money(total))
+
+
+async def _me_xero_optional_get(connection_row: dict, url: str, params: dict | None = None) -> dict:
+    try:
+        return await xero_api_get(connection_row, url, params=params)
+    except Exception as exc:
+        return {"_error": _sync_error_message(exc), "_type": exc.__class__.__name__}
+
+
+def _update_me_report_sync_run(sync_run_id: str, **fields) -> None:
+    if not fields:
+        return
+    assignments = ", ".join(f"{key} = %s" for key in fields)
+    values = list(fields.values())
+    values.append(sync_run_id)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE me_report_sync_runs SET {assignments} WHERE id = %s", values)
+        connection.commit()
+
+
+def request_me_report_sync_run(user: dict, client_id: str) -> tuple[dict, bool]:
+    client = _me_report_client_row(user, client_id)
+    if client.get("xero_connection_status") != "connected":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect this ME Report client to Xero before syncing.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_sync_runs
+                WHERE user_id = %s
+                  AND client_id = %s
+                  AND status IN ('queued', 'running')
+                ORDER BY COALESCE(heartbeat_at, started_at, created_at) DESC
+                LIMIT 1
+                """,
+                (user["id"], client_id),
+            )
+            active = cursor.fetchone()
+            if active:
+                connection.commit()
+                return active, False
+            cursor.execute(
+                """
+                INSERT INTO me_report_sync_runs (
+                    client_id, user_id, status, current_step,
+                    summary, progress, heartbeat_at, created_at
+                )
+                VALUES (%s, %s, 'queued', 'Queued', 'ME Report Xero sync queued.', 2, %s, %s)
+                RETURNING *
+                """,
+                (client_id, user["id"], utcnow(), utcnow()),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row, True
+
+
+def get_me_report_sync_run(user: dict, sync_run_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM me_report_sync_runs WHERE id = %s AND user_id = %s", (sync_run_id, user["id"]))
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report sync run not found.")
+    return row
+
+
+def active_me_report_sync_run_for_user(user: dict | None) -> dict | None:
+    if not user or not user.get("id"):
+        return None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_sync_runs
+                WHERE user_id = %s
+                  AND status IN ('queued', 'running')
+                ORDER BY COALESCE(heartbeat_at, started_at, created_at) DESC
+                LIMIT 1
+                """,
+                (user["id"],),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def serialize_me_report_sync_run(row: dict | None) -> dict | None:
+    return _serialize_me_report_sync_run(row)
+
+
+def run_me_report_sync_job(user: dict, sync_run_id: str) -> None:
+    try:
+        asyncio.run(run_me_report_sync(user, sync_run_id))
+    except Exception as exc:
+        logger.exception("Background ME Report sync failed")
+        _update_me_report_sync_run(
+            sync_run_id,
+            status="failed",
+            current_step="ME Report sync failed",
+            summary="ME Report sync failed before it could complete.",
+            error_message=_sync_error_message(exc),
+            progress=100,
+            heartbeat_at=utcnow(),
+            completed_at=utcnow(),
+        )
+
+
+async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
+    sync_run = get_me_report_sync_run(user, sync_run_id)
+    client = _me_report_client_row(user, str(sync_run["client_id"]))
+    connection_row = _me_report_xero_connection(user, client)
+    today = utcnow().date()
+    period_start = date(today.year, today.month, 1)
+    period_end = today
+    now = utcnow()
+    _update_me_report_sync_run(
+        sync_run_id,
+        status="running",
+        current_step="Syncing chart of accounts",
+        summary="Reading account codes and names from Xero.",
+        progress=8,
+        started_at=now,
+        heartbeat_at=now,
+    )
+    accounts_payload = await xero_api_get(connection_row, "https://api.xero.com/api.xro/2.0/Accounts")
+    accounts = accounts_payload.get("Accounts") or accounts_payload.get("accounts") or []
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            for account in accounts:
+                suggestion = _me_treatment_for_account(account)
+                cursor.execute(
+                    """
+                    INSERT INTO me_report_account_mappings (
+                        client_id, xero_account_id, account_code, account_name,
+                        account_type, suggested_treatment, tax_treatment, category,
+                        confidence, review_required, status, reason, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'suggested', %s, %s, %s)
+                    ON CONFLICT (client_id, account_code) DO UPDATE
+                    SET xero_account_id = EXCLUDED.xero_account_id,
+                        account_name = EXCLUDED.account_name,
+                        account_type = EXCLUDED.account_type,
+                        suggested_treatment = CASE
+                            WHEN me_report_account_mappings.status IN ('approved', 'amended') THEN me_report_account_mappings.suggested_treatment
+                            ELSE EXCLUDED.suggested_treatment
+                        END,
+                        tax_treatment = CASE
+                            WHEN me_report_account_mappings.status IN ('approved', 'amended') THEN me_report_account_mappings.tax_treatment
+                            ELSE EXCLUDED.tax_treatment
+                        END,
+                        category = CASE
+                            WHEN me_report_account_mappings.status IN ('approved', 'amended') THEN me_report_account_mappings.category
+                            ELSE EXCLUDED.category
+                        END,
+                        confidence = CASE
+                            WHEN me_report_account_mappings.status IN ('approved', 'amended') THEN me_report_account_mappings.confidence
+                            ELSE EXCLUDED.confidence
+                        END,
+                        review_required = CASE
+                            WHEN me_report_account_mappings.status IN ('approved', 'amended') THEN me_report_account_mappings.review_required
+                            ELSE EXCLUDED.review_required
+                        END,
+                        reason = CASE
+                            WHEN me_report_account_mappings.status IN ('approved', 'amended') THEN me_report_account_mappings.reason
+                            ELSE EXCLUDED.reason
+                        END,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        client["id"],
+                        account.get("AccountID") or account.get("accountID") or "",
+                        account.get("Code") or account.get("code") or "",
+                        account.get("Name") or account.get("name") or "",
+                        account.get("Type") or account.get("type") or "",
+                        suggestion["suggestedTreatment"],
+                        suggestion["taxTreatment"],
+                        suggestion["category"],
+                        suggestion["confidence"],
+                        suggestion["reviewRequired"],
+                        suggestion["reason"],
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+        db.commit()
+
+    _update_me_report_sync_run(
+        sync_run_id,
+        current_step="Fetching financial reports",
+        summary="Reading profit and loss, balance sheet, trial balance, bank transactions and journals.",
+        progress=32,
+        records_synced=len(accounts),
+        heartbeat_at=utcnow(),
+    )
+    report_params = {"fromDate": period_start.isoformat(), "toDate": period_end.isoformat()}
+    last_12_months_start = period_end - timedelta(days=365)
+    year_end_month = int(client.get("year_end_month") or 3)
+    ytd_start_month = 1 if year_end_month == 12 else year_end_month + 1
+    ytd_year = period_end.year if period_end.month >= ytd_start_month else period_end.year - 1
+    ytd_start = date(ytd_year, ytd_start_month, 1)
+    profit_loss_payload = await _me_xero_optional_get(connection_row, "https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss", report_params)
+    ytd_profit_loss_payload = await _me_xero_optional_get(
+        connection_row,
+        "https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss",
+        {"fromDate": ytd_start.isoformat(), "toDate": period_end.isoformat()},
+    )
+    annual_profit_loss_payload = await _me_xero_optional_get(
+        connection_row,
+        "https://api.xero.com/api.xro/2.0/Reports/ProfitAndLoss",
+        {"fromDate": last_12_months_start.isoformat(), "toDate": period_end.isoformat()},
+    )
+    balance_sheet_payload = await _me_xero_optional_get(connection_row, "https://api.xero.com/api.xro/2.0/Reports/BalanceSheet", {"date": period_end.isoformat()})
+    trial_balance_payload = await _me_xero_optional_get(connection_row, "https://api.xero.com/api.xro/2.0/Reports/TrialBalance", {"date": period_end.isoformat()})
+    bank_transactions_payload = await _me_xero_optional_get(connection_row, "https://api.xero.com/api.xro/2.0/BankTransactions", {"page": 1, "pageSize": 100})
+    journals_payload = await _me_xero_optional_get(connection_row, "https://api.xero.com/api.xro/2.0/Journals", {"offset": 0})
+    fixed_assets_payload = await _me_xero_optional_get(connection_row, "https://api.xero.com/assets.xro/1.0/Assets", {"page": 1})
+    try:
+        contacts = await fetch_paginated_collection(connection_row, CONTACTS_URL, "Contacts", max_pages=10)
+        contacts_payload = {"Contacts": contacts}
+    except Exception as exc:
+        contacts = []
+        contacts_payload = {"_error": _sync_error_message(exc)}
+    try:
+        outstanding_bills = await fetch_paginated_collection(
+            connection_row,
+            INVOICES_URL,
+            "Invoices",
+            params={"where": 'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'},
+            max_pages=5,
+        )
+        outstanding_bills_payload = {"Invoices": outstanding_bills}
+    except Exception as exc:
+        outstanding_bills = []
+        outstanding_bills_payload = {"_error": _sync_error_message(exc)}
+
+    _update_me_report_sync_run(
+        sync_run_id,
+        current_step="Calculating month-end review",
+        summary="Applying Jaccountancy tax rules for CT estimate, dividend capacity and DLA risk.",
+        progress=68,
+        records_synced=len(accounts) + len(bank_transactions_payload.get("BankTransactions") or []) + len(contacts),
+        heartbeat_at=utcnow(),
+    )
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_account_mappings
+                WHERE client_id = %s
+                ORDER BY account_code ASC
+                """,
+                (client["id"],),
+            )
+            mapping_rows = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT summary, created_at
+                FROM me_report_reviews
+                WHERE client_id = %s
+                ORDER BY created_at DESC
+                LIMIT 6
+                """,
+                (client["id"],),
+            )
+            previous_review_rows = cursor.fetchall()
+        db.commit()
+
+    pl_lines = _xero_report_lines(profit_loss_payload)
+    ytd_pl_lines = _xero_report_lines(ytd_profit_loss_payload)
+    annual_pl_lines = _xero_report_lines(annual_profit_loss_payload)
+    bs_lines = _xero_report_lines(balance_sheet_payload)
+    monthly_sales = _report_amount(pl_lines, ("sales",), _report_amount(pl_lines, ("income",)))
+    ytd_sales = _report_amount(ytd_pl_lines, ("sales",), _report_amount(ytd_pl_lines, ("income",), monthly_sales))
+    annual_turnover = _report_amount(annual_pl_lines, ("sales",), _report_amount(annual_pl_lines, ("income",)))
+    monthly_profit = _report_amount(pl_lines, ("net profit",), _report_amount(pl_lines, ("profit",)))
+    ytd_profit = _report_amount(ytd_pl_lines, ("net profit",), _report_amount(ytd_pl_lines, ("profit",), monthly_profit))
+    ytd_expenses = max(Decimal("0.00"), ytd_sales - ytd_profit)
+    monthly_expenses = max(Decimal("0.00"), monthly_sales - monthly_profit)
+    retained_earnings = _report_amount(bs_lines, ("retained",))
+    dla_balance = _report_amount(bs_lines, ("director", "loan"))
+    dividends_taken = abs(_report_amount(pl_lines, ("dividend",)))
+    disallowable_addbacks = sum(
+        Decimal("100.00")
+        for row in mapping_rows
+        if row.get("category") in ("Client entertaining", "Fines and penalties", "Depreciation", "Non-business expenses", "Private use items")
+    )
+    capital_allowance_review = sum(1 for row in mapping_rows if row.get("category") in ("Computer equipment", "Plant and machinery", "Office equipment", "Assets needing review"))
+    taxable_profit = max(Decimal("0.00"), _money(monthly_profit + disallowable_addbacks))
+    estimated_ct = _money(taxable_profit * ME_REPORT_TAX_RATE)
+    post_tax_profit = _money(monthly_profit - estimated_ct)
+    dividend_capacity = max(Decimal("0.00"), _money(retained_earnings + post_tax_profit - dividends_taken))
+    total_extractable = _money(max(dla_balance, Decimal("0.00")) + dividend_capacity)
+    low_confidence = [row for row in mapping_rows if int(row.get("confidence") or 0) < 80 or row.get("review_required")]
+    reports_with_errors = [
+        ("Profit and loss", profit_loss_payload.get("_error")),
+        ("Year-to-date profit and loss", ytd_profit_loss_payload.get("_error")),
+        ("12-month turnover report", annual_profit_loss_payload.get("_error")),
+        ("Balance sheet", balance_sheet_payload.get("_error")),
+        ("Trial balance", trial_balance_payload.get("_error")),
+        ("Bank transactions", bank_transactions_payload.get("_error")),
+        ("Journals", journals_payload.get("_error")),
+        ("Contacts", contacts_payload.get("_error")),
+        ("Accounts payable bills", outstanding_bills_payload.get("_error")),
+    ]
+    previous_vat_breach_at = None
+    for previous_review in previous_review_rows:
+        previous_summary = previous_review.get("summary") or {}
+        if isinstance(previous_summary, str):
+            try:
+                previous_summary = json.loads(previous_summary)
+            except ValueError:
+                previous_summary = {}
+        breach_value = previous_summary.get("vatThresholdFirstBreachedAt")
+        if breach_value:
+            previous_vat_breach_at = _parse_optional_iso_date(breach_value)
+            break
+    vat_threshold = Decimal("90000.00")
+    vat_threshold_exceeded = annual_turnover > vat_threshold
+    vat_threshold_first_breached_at = previous_vat_breach_at if vat_threshold_exceeded and previous_vat_breach_at else (period_end if vat_threshold_exceeded else previous_vat_breach_at)
+    vat_warning_visible = bool(vat_threshold_exceeded or (vat_threshold_first_breached_at and (period_end - vat_threshold_first_breached_at).days <= 62))
+    asset_register_total = _asset_register_total(fixed_assets_payload)
+    balance_sheet_fixed_assets = _balance_sheet_fixed_asset_total(bs_lines)
+    fixed_asset_difference = None if asset_register_total is None else _money(asset_register_total - balance_sheet_fixed_assets)
+    duplicate_spend_candidates = _find_duplicate_spend_bill_candidates(bank_transactions_payload.get("BankTransactions") or [], outstanding_bills)
+    duplicate_contact_candidates = _find_duplicate_contact_candidates(contacts)
+    open_exceptions = []
+    for label, error_message in reports_with_errors:
+        if error_message:
+            open_exceptions.append({
+                "severity": "amber" if label in ("Bank transactions", "Journals", "Fixed asset register", "Contacts", "Accounts payable bills") else "red",
+                "title": f"{label} could not be read from Xero",
+                "detail": error_message,
+                "suggested_action": "Review Xero OAuth scopes and reconnect Xero if required.",
+            })
+    if vat_warning_visible:
+        open_exceptions.append({
+            "severity": "amber",
+            "title": "VAT registration threshold review",
+            "detail": (
+                f"Xero shows estimated rolling 12-month turnover of £{_money(annual_turnover):,.2f}. "
+                f"The VAT registration threshold is £{vat_threshold:,.2f}. "
+                f"This warning remains visible for two months after the first breach date."
+            ),
+            "suggested_action": "Review VAT registration position, confirm taxable turnover, and document the client advice.",
+        })
+    if asset_register_total is None:
+        open_exceptions.append({
+            "severity": "amber",
+            "title": "Fixed asset register could not be reconciled",
+            "detail": fixed_assets_payload.get("_error") or "Xero fixed asset data was not returned.",
+            "suggested_action": "Confirm fixed asset API access and compare the fixed asset register to the Xero balance sheet manually.",
+        })
+    elif abs(fixed_asset_difference or Decimal("0.00")) > Decimal("1.00"):
+        open_exceptions.append({
+            "severity": "amber",
+            "title": "Fixed asset register does not match balance sheet",
+            "detail": (
+                f"AI-assisted matching found fixed asset register value £{_money(asset_register_total):,.2f} "
+                f"versus balance sheet fixed asset accounts £{_money(balance_sheet_fixed_assets):,.2f}."
+            ),
+            "suggested_action": "Review fixed asset account mapping, depreciation postings and disposals before report approval.",
+        })
+    for candidate in duplicate_spend_candidates:
+        open_exceptions.append({
+            "severity": "red",
+            "title": "Possible duplicate bill payment posting",
+            "detail": (
+                f"Spend money transaction {candidate['bankTransactionReference']} for £{_money(candidate['amount']):,.2f} "
+                f"matches outstanding bill {candidate['billNumber']}."
+            ),
+            "suggested_action": "Review whether the spend money transaction should be removed and the payment allocated to the bill.",
+        })
+    for candidate in duplicate_contact_candidates:
+        open_exceptions.append({
+            "severity": "amber",
+            "title": "Possible duplicate Xero contact",
+            "detail": f"{candidate['keepName']} and {candidate['mergeName']} look like the same contact.",
+            "suggested_action": "Use Merge contact after staff review to combine the duplicate contact into the selected primary contact in Xero.",
+            "action_payload": {"type": "duplicate_contact", **candidate},
+        })
+    for mapping in low_confidence[:20]:
+        open_exceptions.append({
+            "severity": "amber",
+            "title": f"{mapping.get('account_name') or mapping.get('account_code')} needs mapping review",
+            "detail": mapping.get("reason") or "AI/rules confidence is below the approval threshold.",
+            "suggested_action": "Approve, amend or mark the account as needs review before issuing the month-end report.",
+        })
+    if dla_balance < Decimal("0.00"):
+        open_exceptions.append({
+            "severity": "red",
+            "title": "Director loan account appears overdrawn",
+            "detail": f"Closing DLA balance appears to be £{abs(dla_balance):,.2f} overdrawn.",
+            "suggested_action": "Review possible s455 tax and dividend legality before report issue.",
+        })
+    if dividends_taken > retained_earnings + post_tax_profit:
+        open_exceptions.append({
+            "severity": "red",
+            "title": "Possible illegal dividend risk",
+            "detail": "Dividends appear to exceed estimated distributable reserves after corporation tax.",
+            "suggested_action": "Accountant review required before client commentary is approved.",
+        })
+    if not any("corporation tax" in (row.get("account_name") or "").lower() for row in mapping_rows):
+        open_exceptions.append({
+            "severity": "amber",
+            "title": "No corporation tax provision account identified",
+            "detail": "The account mapping did not identify a corporation tax creditor account.",
+            "suggested_action": "Confirm where the CT provision should be posted or tracked.",
+        })
+    traffic_light = "red" if any(item["severity"] == "red" for item in open_exceptions) else ("amber" if open_exceptions else "green")
+    dla_status = "red" if dla_balance < 0 else ("amber" if dla_balance == 0 else "green")
+    summary = {
+        "periodStart": period_start.isoformat(),
+        "periodEnd": period_end.isoformat(),
+        "monthlySales": float(_money(monthly_sales)),
+        "monthlyExpenses": float(_money(monthly_expenses)),
+        "monthlyProfit": float(_money(monthly_profit)),
+        "yearToDateSales": float(_money(ytd_sales)),
+        "yearToDateExpenses": float(_money(ytd_expenses)),
+        "yearToDateProfit": float(_money(ytd_profit)),
+        "rolling12MonthTurnover": float(_money(annual_turnover)),
+        "vatThreshold": float(vat_threshold),
+        "vatThresholdExceeded": vat_threshold_exceeded,
+        "vatThresholdFirstBreachedAt": _iso(vat_threshold_first_breached_at) or "",
+        "vatWarningVisible": vat_warning_visible,
+        "accountingProfit": float(_money(monthly_profit)),
+        "taxAdjustments": float(_money(disallowable_addbacks)),
+        "estimatedTaxableProfit": float(_money(taxable_profit)),
+        "estimatedCorporationTax": float(estimated_ct),
+        "effectiveTaxRate": float((estimated_ct / taxable_profit * 100).quantize(Decimal("0.1"))) if taxable_profit else 0,
+        "taxProvisionRequired": float(estimated_ct),
+        "openingRetainedReserves": float(_money(retained_earnings)),
+        "dividendsTaken": float(_money(dividends_taken)),
+        "dividendCapacity": float(_money(dividend_capacity)),
+        "directorLoanCreditBalance": float(_money(max(dla_balance, Decimal("0.00")))),
+        "totalPotentialExtraction": float(total_extractable),
+        "dlaBalance": float(_money(dla_balance)),
+        "dlaStatus": dla_status,
+        "capitalAllowanceReviewCount": capital_allowance_review,
+        "fixedAssetRegisterTotal": float(_money(asset_register_total or 0)),
+        "balanceSheetFixedAssetTotal": float(_money(balance_sheet_fixed_assets)),
+        "fixedAssetDifference": float(_money(fixed_asset_difference or 0)),
+        "duplicateSpendBillCount": len(duplicate_spend_candidates),
+        "duplicateContactCount": len(duplicate_contact_candidates),
+        "mappingReviewCount": len(low_confidence),
+        "exceptionCount": len(open_exceptions),
+        "trafficLight": traffic_light,
+        "commentary": (
+            f"This month shows estimated profit of £{_money(monthly_profit):,.2f}. "
+            f"Year-to-date profit is £{_money(ytd_profit):,.2f}. "
+            f"Estimated corporation tax is £{estimated_ct:,.2f}, subject to accountant review and final year-end adjustments. "
+            f"Rolling 12-month turnover is £{_money(annual_turnover):,.2f}, "
+            f"{'above' if vat_threshold_exceeded else 'below'} the £{vat_threshold:,.0f} VAT threshold. "
+            f"The director loan account is {'in credit' if dla_balance >= 0 else 'overdrawn'}, and DLA repayment should be considered before dividends where credit is available."
+        ),
+    }
+    raw_payload = {
+        "accounts": accounts,
+        "profitAndLoss": profit_loss_payload,
+        "yearToDateProfitAndLoss": ytd_profit_loss_payload,
+        "annualProfitAndLoss": annual_profit_loss_payload,
+        "balanceSheet": balance_sheet_payload,
+        "trialBalance": trial_balance_payload,
+        "bankTransactions": bank_transactions_payload,
+        "journals": journals_payload,
+        "fixedAssets": fixed_assets_payload,
+        "contacts": contacts_payload,
+        "outstandingBills": outstanding_bills_payload,
+    }
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO me_report_reviews (
+                    client_id, period_start, period_end, status, traffic_light,
+                    summary, raw_payload, created_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, 'calculated', %s, %s::jsonb, %s::jsonb, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    client["id"],
+                    period_start,
+                    period_end,
+                    traffic_light,
+                    json.dumps(summary, default=_json_default),
+                    json.dumps(raw_payload, default=_json_default),
+                    user["id"],
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+            review_id = cursor.fetchone()["id"]
+            cursor.execute(
+                "UPDATE me_report_exceptions SET status = 'superseded', updated_at = %s WHERE client_id = %s AND status = 'open'",
+                (utcnow(), client["id"]),
+            )
+            for item in open_exceptions:
+                cursor.execute(
+                    """
+                    INSERT INTO me_report_exceptions (
+                        client_id, review_id, severity, title, detail,
+                        suggested_action, action_payload, status, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, 'open', %s, %s)
+                    """,
+                    (
+                        client["id"],
+                        review_id,
+                        item["severity"],
+                        item["title"],
+                        item["detail"],
+                        item["suggested_action"],
+                        json.dumps(item.get("action_payload") or {}, default=_json_default),
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+            cursor.execute(
+                """
+                UPDATE me_report_clients
+                SET last_sync_at = %s,
+                    last_calculated_at = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (utcnow(), utcnow(), utcnow(), client["id"]),
+            )
+        db.commit()
+    _update_me_report_sync_run(
+        sync_run_id,
+        status="completed",
+        current_step="ME Report calculation complete",
+        summary=f"Calculated {client.get('client_name') or 'client'}: {traffic_light.upper()} status, {len(open_exceptions)} review point(s).",
+        progress=100,
+        records_synced=len(accounts),
+        heartbeat_at=utcnow(),
+        completed_at=utcnow(),
+    )
+    record_audit_event(
+        "me_report_review",
+        str(review_id),
+        "me_report.review_calculated",
+        {"client_id": str(client["id"]), "traffic_light": traffic_light, "exception_count": len(open_exceptions)},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+def update_me_report_mapping(user: dict, mapping_id: str, payload: dict) -> dict:
+    status_value = str(payload.get("status") or "approved").strip() or "approved"
+    note = str(payload.get("note") or "").strip()
+    suggested_treatment = str(payload.get("suggestedTreatment") or "").strip()
+    tax_treatment = str(payload.get("taxTreatment") or "").strip()
+    category = str(payload.get("category") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT mappings.*, clients.user_id
+                FROM me_report_account_mappings AS mappings
+                JOIN me_report_clients AS clients ON clients.id = mappings.client_id
+                WHERE mappings.id = %s
+                  AND clients.user_id = %s
+                """,
+                (mapping_id, user["id"]),
+            )
+            mapping = cursor.fetchone()
+            if not mapping:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report account mapping not found.")
+            cursor.execute(
+                """
+                UPDATE me_report_account_mappings
+                SET status = %s,
+                    note = %s,
+                    suggested_treatment = COALESCE(NULLIF(%s, ''), suggested_treatment),
+                    tax_treatment = COALESCE(NULLIF(%s, ''), tax_treatment),
+                    category = COALESCE(NULLIF(%s, ''), category),
+                    review_required = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (status_value, note, suggested_treatment, tax_treatment, category, status_value != "approved", utcnow(), mapping_id),
+            )
+        connection.commit()
+    record_audit_event("me_report_mapping", mapping_id, "me_report.mapping_updated", {"status": status_value, "note": note}, user["id"])
+    return me_report_payload(user)
+
+
+def update_me_report_exception(user: dict, exception_id: str, payload: dict) -> dict:
+    status_value = str(payload.get("status") or "resolved").strip() or "resolved"
+    note = str(payload.get("note") or "").strip()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT exceptions.*, clients.user_id
+                FROM me_report_exceptions AS exceptions
+                JOIN me_report_clients AS clients ON clients.id = exceptions.client_id
+                WHERE exceptions.id = %s
+                  AND clients.user_id = %s
+                """,
+                (exception_id, user["id"]),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report exception not found.")
+            cursor.execute(
+                """
+                UPDATE me_report_exceptions
+                SET status = %s,
+                    note = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (status_value, note, utcnow(), exception_id),
+            )
+        connection.commit()
+    record_audit_event("me_report_exception", exception_id, "me_report.exception_updated", {"status": status_value, "note": note}, user["id"])
+    return me_report_payload(user)
+
+
+async def merge_me_report_duplicate_contact(user: dict, exception_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT exceptions.*, clients.xero_connection_id, clients.user_id
+                FROM me_report_exceptions AS exceptions
+                JOIN me_report_clients AS clients ON clients.id = exceptions.client_id
+                WHERE exceptions.id = %s
+                  AND clients.user_id = %s
+                """,
+                (exception_id, user["id"]),
+            )
+            exception = cursor.fetchone()
+        connection.commit()
+    if not exception:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report duplicate contact exception not found.")
+    action_payload = exception.get("action_payload") or {}
+    if isinstance(action_payload, str):
+        try:
+            action_payload = json.loads(action_payload)
+        except ValueError:
+            action_payload = {}
+    if action_payload.get("type") != "duplicate_contact":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This ME Report exception is not a duplicate contact merge action.")
+    keep_contact_id = str(action_payload.get("keepContactId") or "").strip()
+    merge_contact_id = str(action_payload.get("mergeContactId") or "").strip()
+    if not keep_contact_id or not merge_contact_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duplicate contact exception is missing Xero contact ids.")
+    connection_row = _me_report_xero_connection(user, {"xero_connection_id": exception.get("xero_connection_id")})
+    await merge_contacts(connection_row, keep_contact_id, merge_contact_id)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE me_report_exceptions
+                SET status = 'resolved',
+                    note = %s,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (
+                    f"Merged {action_payload.get('mergeName') or merge_contact_id} into {action_payload.get('keepName') or keep_contact_id} in Xero.",
+                    utcnow(),
+                    exception_id,
+                ),
+            )
+        connection.commit()
+    record_audit_event("me_report_exception", exception_id, "me_report.contact_merged", action_payload, user["id"])
+    return me_report_payload(user)
+
+
+def _latest_me_report_review(user: dict, client_id: str, review_id: str | None = None) -> dict:
+    _me_report_client_row(user, client_id)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if review_id:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_reviews
+                    WHERE id = %s
+                      AND client_id = %s
+                    """,
+                    (review_id, client_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_reviews
+                    WHERE client_id = %s
+                    ORDER BY period_end DESC, created_at DESC
+                    LIMIT 1
+                    """,
+                    (client_id,),
+                )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Run ME Report sync and calculation before generating a report.")
+    return row
+
+
+def generate_me_report(user: dict, client_id: str, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    client = _me_report_client_row(user, client_id)
+    review = _latest_me_report_review(user, client_id, payload.get("reviewId"))
+    summary = review.get("summary") or {}
+    if isinstance(summary, str):
+        try:
+            summary = json.loads(summary)
+        except ValueError:
+            summary = {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_exceptions
+                WHERE client_id = %s
+                  AND review_id = %s
+                  AND status = 'open'
+                ORDER BY CASE severity WHEN 'red' THEN 0 WHEN 'amber' THEN 1 ELSE 2 END, created_at DESC
+                """,
+                (client_id, review["id"]),
+            )
+            exceptions = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT *
+                FROM me_report_account_mappings
+                WHERE client_id = %s
+                ORDER BY account_code ASC
+                """,
+                (client_id,),
+            )
+            mappings = cursor.fetchall()
+        connection.commit()
+    commentary = str(payload.get("commentary") or summary.get("commentary") or "").strip()
+    if not commentary:
+        commentary = "Month-end bookkeeping review completed. Accountant approval is required before issuing final advice."
+    mapping_rows = "".join(
+        f"<tr><td>{xml_escape(row.get('account_code') or '')}</td><td>{xml_escape(row.get('account_name') or '')}</td><td>{xml_escape(row.get('category') or '')}</td><td>{xml_escape(row.get('tax_treatment') or '')}</td><td>{int(row.get('confidence') or 0)}%</td></tr>"
+        for row in mappings[:80]
+    )
+    exception_rows = "".join(
+        f"<li><strong>{xml_escape(item.get('severity') or '').upper()} - {xml_escape(item.get('title') or '')}</strong><br>{xml_escape(item.get('detail') or '')}<br><em>{xml_escape(item.get('suggested_action') or '')}</em></li>"
+        for item in exceptions
+    )
+    report_html = f"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ME Report - {xml_escape(client.get('client_name') or 'Client')}</title>
+<style>
+body {{ font-family: Arial, sans-serif; color: #1e2f4d; margin: 32px; line-height: 1.45; }}
+.cover {{ border-bottom: 4px solid #1d67f2; padding-bottom: 24px; margin-bottom: 28px; }}
+.grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }}
+.metric {{ border: 1px solid #d8e2f2; border-radius: 8px; padding: 12px; }}
+.metric span {{ display: block; color: #6b7890; font-size: 12px; text-transform: uppercase; }}
+.metric strong {{ font-size: 22px; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
+th, td {{ border-bottom: 1px solid #d8e2f2; text-align: left; padding: 8px; font-size: 13px; }}
+h1, h2 {{ color: #1e2f4d; }}
+</style>
+</head>
+<body>
+<section class="cover">
+<p>Jaccountancy Month-End Bookkeeping Report</p>
+<h1>{xml_escape(client.get('client_name') or 'Client')}</h1>
+<p>Period {xml_escape(summary.get('periodStart') or '')} to {xml_escape(summary.get('periodEnd') or '')}</p>
+</section>
+<section>
+<h2>Executive summary</h2>
+<p>{xml_escape(commentary)}</p>
+<div class="grid">
+<div class="metric"><span>Monthly sales</span><strong>£{_money(summary.get('monthlySales')):,.2f}</strong></div>
+<div class="metric"><span>Monthly profit</span><strong>£{_money(summary.get('monthlyProfit')):,.2f}</strong></div>
+<div class="metric"><span>YTD sales</span><strong>£{_money(summary.get('yearToDateSales')):,.2f}</strong></div>
+<div class="metric"><span>YTD profit</span><strong>£{_money(summary.get('yearToDateProfit')):,.2f}</strong></div>
+<div class="metric"><span>Estimated CT</span><strong>£{_money(summary.get('estimatedCorporationTax')):,.2f}</strong></div>
+<div class="metric"><span>12m turnover</span><strong>£{_money(summary.get('rolling12MonthTurnover')):,.2f}</strong></div>
+<div class="metric"><span>Dividend capacity</span><strong>£{_money(summary.get('dividendCapacity')):,.2f}</strong></div>
+<div class="metric"><span>DLA balance</span><strong>£{_money(summary.get('dlaBalance')):,.2f}</strong></div>
+<div class="metric"><span>Traffic light</span><strong>{xml_escape(summary.get('trafficLight') or review.get('traffic_light') or 'amber').upper()}</strong></div>
+</div>
+</section>
+<section>
+<h2>Profit and loss versus year to date</h2>
+<p>For the current month, sales are £{_money(summary.get('monthlySales')):,.2f}, expenses are £{_money(summary.get('monthlyExpenses')):,.2f}, and profit is £{_money(summary.get('monthlyProfit')):,.2f}. Year to date, sales are £{_money(summary.get('yearToDateSales')):,.2f}, expenses are £{_money(summary.get('yearToDateExpenses')):,.2f}, and profit is £{_money(summary.get('yearToDateProfit')):,.2f}.</p>
+</section>
+<section>
+<h2>Estimated corporation tax</h2>
+<p>Accounting profit £{_money(summary.get('accountingProfit')):,.2f}, tax adjustments £{_money(summary.get('taxAdjustments')):,.2f}, taxable profit £{_money(summary.get('estimatedTaxableProfit')):,.2f}, estimated CT £{_money(summary.get('estimatedCorporationTax')):,.2f}.</p>
+</section>
+<section>
+<h2>VAT threshold check</h2>
+<p>Rolling 12-month turnover is £{_money(summary.get('rolling12MonthTurnover')):,.2f} against the £{_money(summary.get('vatThreshold')):,.2f} VAT threshold. Status: {'warning visible' if summary.get('vatWarningVisible') else 'below active warning threshold'}. First breach date: {xml_escape(summary.get('vatThresholdFirstBreachedAt') or 'not breached')}.</p>
+</section>
+<section>
+<h2>Dividend availability and DLA</h2>
+<p>The director loan account appears to be {'in credit' if _money(summary.get('dlaBalance')) >= 0 else 'overdrawn'} by £{abs(_money(summary.get('dlaBalance'))):,.2f}. If the DLA is in credit, repay that before considering dividends. Estimated further dividend capacity is £{_money(summary.get('dividendCapacity')):,.2f}.</p>
+</section>
+<section>
+<h2>Balance sheet and fixed assets</h2>
+<p>AI-assisted fixed asset matching shows fixed asset register value £{_money(summary.get('fixedAssetRegisterTotal')):,.2f} against balance sheet fixed asset accounts £{_money(summary.get('balanceSheetFixedAssetTotal')):,.2f}. Difference: £{_money(summary.get('fixedAssetDifference')):,.2f}.</p>
+</section>
+<section>
+<h2>Duplicate and data quality checks</h2>
+<p>Possible duplicate spend-money/bill issues: {int(summary.get('duplicateSpendBillCount') or 0)}. Possible duplicate Xero contacts: {int(summary.get('duplicateContactCount') or 0)}. Review any open exceptions before approval.</p>
+</section>
+<section>
+<h2>Bookkeeping review points</h2>
+<ul>{exception_rows or '<li>No open exceptions at the time this report was generated.</li>'}</ul>
+</section>
+<section>
+<h2>Account mappings</h2>
+<table><thead><tr><th>Code</th><th>Account</th><th>Category</th><th>Tax treatment</th><th>Confidence</th></tr></thead><tbody>{mapping_rows}</tbody></table>
+</section>
+</body>
+</html>
+"""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO me_report_reports (
+                    client_id, review_id, status, recipient_email,
+                    report_html, commentary, created_by_user_id, created_at
+                )
+                VALUES (%s, %s, 'draft', %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    client_id,
+                    review["id"],
+                    client.get("report_recipient_email") or "",
+                    report_html,
+                    commentary,
+                    user["id"],
+                    utcnow(),
+                ),
+            )
+            report_id = cursor.fetchone()["id"]
+            cursor.execute(
+                "UPDATE me_report_clients SET last_report_at = %s, updated_at = %s WHERE id = %s",
+                (utcnow(), utcnow(), client_id),
+            )
+        connection.commit()
+    record_audit_event("me_report_report", str(report_id), "me_report.report_generated", {"client_id": client_id, "review_id": str(review["id"])}, user["id"])
+    return {"report": {"id": str(report_id), "downloadUrl": f"/api/me-report/reports/{report_id}/download"}, "meReport": me_report_payload(user)}
+
+
+def me_report_report_html(user: dict, report_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT reports.report_html
+                FROM me_report_reports AS reports
+                JOIN me_report_clients AS clients ON clients.id = reports.client_id
+                WHERE reports.id = %s
+                  AND clients.user_id = %s
+                """,
+                (report_id, user["id"]),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report output not found.")
+    return row.get("report_html") or ""
+
+
 BANK_STATEMENT_EXTRACTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -4650,6 +6129,571 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
         user["id"],
     )
     return bank_statement_payload(user)
+
+
+IGNITION_PLAN_LABELS = ("Solo", "Solo+", "Solo MTD", "Micro", "Starter", "Standard", "Premium", "Ultimate")
+
+
+def _ignition_record_id(dataset: str, row: dict, index: int) -> str:
+    for key in ("slug", "id", "uuid", "reference_number", "external_client_id", "client_slug", "service_slug"):
+        value = row.get(key)
+        if value not in (None, "", [], {}):
+            return str(value)
+    return hashlib.sha256(json.dumps(row, sort_keys=True, default=_json_default).encode("utf-8")).hexdigest()[:32] or f"{dataset}-{index}"
+
+
+def _parse_ignition_datetime(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _ignition_source_dates(row: dict) -> tuple[datetime | None, datetime | None]:
+    created = _parse_ignition_datetime(row.get("created_at") or row.get("created") or row.get("created_on"))
+    updated = _parse_ignition_datetime(row.get("updated_at") or row.get("modified_at") or row.get("last_updated_at") or row.get("accepted_at") or row.get("sent_at"))
+    return created, updated
+
+
+def _update_ignition_sync_run(sync_run_id: str, **fields) -> dict:
+    if not fields:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM ignition_sync_runs WHERE id = %s", (sync_run_id,))
+                row = cursor.fetchone()
+            connection.commit()
+        return row or {}
+    assignments = []
+    values = []
+    for key, value in fields.items():
+        if key == "datasets_synced":
+            assignments.append(f"{key} = %s::jsonb")
+            values.append(json.dumps(value or {}, default=_json_default))
+        else:
+            assignments.append(f"{key} = %s")
+            values.append(value)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE ignition_sync_runs SET {', '.join(assignments)} WHERE id = %s RETURNING *",
+                (*values, sync_run_id),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row or {}
+
+
+def _upsert_ignition_records(user: dict, practice_id: str, dataset: str, rows: list[dict]) -> int:
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for index, row in enumerate(rows):
+                external_id = _ignition_record_id(dataset, row, index)
+                created_at, updated_at = _ignition_source_dates(row)
+                cursor.execute(
+                    """
+                    INSERT INTO ignition_reporting_records (
+                        user_id, practice_id, dataset, external_id, payload,
+                        source_created_at, source_updated_at, synced_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                    ON CONFLICT (user_id, dataset, external_id) DO UPDATE
+                    SET practice_id = EXCLUDED.practice_id,
+                        payload = EXCLUDED.payload,
+                        source_created_at = EXCLUDED.source_created_at,
+                        source_updated_at = EXCLUDED.source_updated_at,
+                        synced_at = EXCLUDED.synced_at,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        user["id"],
+                        practice_id,
+                        dataset,
+                        external_id,
+                        json.dumps(row, default=_json_default),
+                        created_at,
+                        updated_at,
+                        now,
+                        now,
+                    ),
+                )
+        connection.commit()
+    return len(rows)
+
+
+def request_ignition_sync_run(user: dict) -> tuple[dict, bool]:
+    try:
+        get_ignition_connection_for_user(user["id"])
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Ignition before syncing.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM ignition_sync_runs
+                WHERE user_id = %s
+                  AND status IN ('queued', 'running')
+                ORDER BY COALESCE(heartbeat_at, started_at, created_at) DESC
+                LIMIT 1
+                """,
+                (user["id"],),
+            )
+            active = cursor.fetchone()
+            if active:
+                connection.commit()
+                return active, False
+            cursor.execute(
+                """
+                INSERT INTO ignition_sync_runs (
+                    user_id, status, current_step, summary,
+                    fetched_count, processed_count, failed_count,
+                    datasets_synced, heartbeat_at, created_at
+                )
+                VALUES (%s, 'queued', 'Queued', 'Ignition reporting sync queued.', 0, 0, 0, '{}'::jsonb, %s, %s)
+                RETURNING *
+                """,
+                (user["id"], utcnow(), utcnow()),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row, True
+
+
+def get_ignition_sync_run(user: dict, sync_run_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM ignition_sync_runs WHERE id = %s AND user_id = %s", (sync_run_id, user["id"]))
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ignition sync run not found.")
+    return row
+
+
+def active_ignition_sync_run_for_user(user: dict | None) -> dict | None:
+    if not user or not user.get("id"):
+        return None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM ignition_sync_runs
+                WHERE user_id = %s
+                  AND status IN ('queued', 'running')
+                ORDER BY COALESCE(heartbeat_at, started_at, created_at) DESC
+                LIMIT 1
+                """,
+                (user["id"],),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def serialize_ignition_sync_run(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    status_value = row.get("status") or ""
+    dataset_counts = row.get("datasets_synced") or {}
+    if isinstance(dataset_counts, str):
+        try:
+            dataset_counts = json.loads(dataset_counts)
+        except ValueError:
+            dataset_counts = {}
+    dataset_total = len(IGNITION_DATASETS)
+    datasets_done = len([name for name, count in dataset_counts.items() if count is not None])
+    if status_value in ("completed", "failed"):
+        progress = 100
+    elif status_value == "queued":
+        progress = 4
+    else:
+        progress = min(95, max(8, round((datasets_done / max(dataset_total, 1)) * 95)))
+    return {
+        "id": str(row["id"]),
+        "status": status_value,
+        "currentStep": row.get("current_step") or "",
+        "summary": row.get("summary") or "",
+        "errorMessage": row.get("error_message") or "",
+        "fetchedCount": int(row.get("fetched_count") or 0),
+        "processedCount": int(row.get("processed_count") or 0),
+        "failedCount": int(row.get("failed_count") or 0),
+        "datasetsSynced": dataset_counts,
+        "progress": progress,
+        "createdAt": _iso(row.get("created_at")) or "",
+        "startedAt": _iso(row.get("started_at")) or "",
+        "heartbeatAt": _iso(row.get("heartbeat_at")) or "",
+        "completedAt": _iso(row.get("completed_at")) or "",
+        "isActive": status_value in ACTIVE_SYNC_STATUSES,
+    }
+
+
+def _money_from_ignition(value) -> Decimal:
+    if isinstance(value, dict):
+        return _money(value.get("amount"))
+    return _money(value)
+
+
+def _proposal_value(row: dict) -> Decimal:
+    amount = _money_from_ignition(row.get("minimum_contract_value") or row.get("contract_value") or row.get("total_value"))
+    if amount:
+        return amount
+    return sum(_money_from_ignition((service.get("pricing") or {}).get("minimum_contract_value")) for service in row.get("services") or [])
+
+
+def _proposal_mrr(row: dict) -> Decimal:
+    total = Decimal("0.00")
+    for service in row.get("services") or []:
+        pricing = service.get("pricing") or {}
+        billing = service.get("billing") or {}
+        period = _money_from_ignition(pricing.get("minimum_period_value"))
+        if period:
+            summary = str(billing.get("summary") or "").lower()
+            if "year" in summary or "annual" in summary:
+                total += period / Decimal("12")
+            elif "quarter" in summary:
+                total += period / Decimal("3")
+            else:
+                total += period
+    if total:
+        return total
+    length = _money(row.get("minimum_contract_length") or 0)
+    value = _proposal_value(row)
+    return value / length if length > 0 else Decimal("0.00")
+
+
+def _service_names_from_proposal(row: dict) -> list[str]:
+    names = []
+    for service in row.get("services") or []:
+        text = " ".join(
+            str(value or "")
+            for value in (service.get("name"), service.get("description"), ((service.get("service_category") or {}).get("name")))
+        ).strip()
+        if text:
+            names.append(text)
+    return names or [row.get("name") or ""]
+
+
+def _plan_label_for_text(text: str) -> str:
+    lowered = str(text or "").lower()
+    if "solo+" in lowered or "solo plus" in lowered:
+        return "Solo+"
+    if "mtd" in lowered and "solo" in lowered:
+        return "Solo MTD"
+    for label in ("Ultimate", "Premium", "Standard", "Starter", "Micro", "Solo"):
+        if label.lower() in lowered:
+            return label
+    return "Other"
+
+
+def _is_renewal_proposal(row: dict) -> bool:
+    text = " ".join(
+        str(value or "")
+        for value in (
+            row.get("name"),
+            row.get("reference_number"),
+            row.get("client_name"),
+            " ".join(_service_names_from_proposal(row)),
+            row.get("state"),
+        )
+    ).lower()
+    renewal_markers = ("renewal", "renew", "existing client", "existing-client", "retainer continuation", "subscription renewal")
+    return any(marker in text for marker in renewal_markers)
+
+
+def _invoice_status(row: dict) -> str:
+    return str(row.get("status") or row.get("state") or row.get("payment_status") or "").lower()
+
+
+def _dataset_payloads(records: dict[str, list[dict]], dataset: str) -> list[dict]:
+    return [record.get("payload") or {} for record in records.get(dataset, [])]
+
+
+def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
+    today = utcnow().date()
+    month_start = date(today.year, today.month, 1)
+    proposals = _dataset_payloads(records, "proposals")
+    invoices = _dataset_payloads(records, "invoices")
+    payments = _dataset_payloads(records, "payments")
+    collections = _dataset_payloads(records, "collections")
+    clients = _dataset_payloads(records, "clients")
+    deals = _dataset_payloads(records, "deals")
+
+    sent_mtd = [row for row in proposals if (_parse_optional_iso_date(row.get("sent_at") or row.get("created_at")) or date.min) >= month_start]
+    accepted = [row for row in proposals if str(row.get("state") or "").lower() == "accepted" or row.get("accepted_at")]
+    accepted_mtd = [row for row in accepted if (_parse_optional_iso_date(row.get("accepted_at") or row.get("created_at")) or date.min) >= month_start]
+    new_clients_mtd = [row for row in clients if (_parse_optional_iso_date(row.get("created_at")) or date.min) >= month_start]
+    payments_mtd = [row for row in payments if (_parse_optional_iso_date(row.get("paid_at") or row.get("payment_date") or row.get("created_at")) or date.min) >= month_start]
+    outstanding_invoices = [
+        row for row in invoices
+        if _invoice_status(row) not in ("paid", "void", "voided", "cancelled", "canceled")
+        and _money_from_ignition(row.get("amount_due") or row.get("balance") or row.get("outstanding_amount") or row.get("total")) > 0
+    ]
+    overdue_invoices = [row for row in outstanding_invoices if (_parse_optional_iso_date(row.get("due_date")) or today) < today]
+    awaiting = [row for row in proposals if str(row.get("state") or "").lower() in ("awaiting_acceptance", "sent")]
+    renewal_proposals = [row for row in proposals if _is_renewal_proposal(row)]
+    new_work_proposals = [row for row in proposals if not _is_renewal_proposal(row)]
+    accepted_renewals = [row for row in renewal_proposals if str(row.get("state") or "").lower() == "accepted" or row.get("accepted_at")]
+    accepted_new_work = [row for row in new_work_proposals if str(row.get("state") or "").lower() == "accepted" or row.get("accepted_at")]
+    pipeline_value = sum(_money_from_ignition(row.get("value") or row.get("amount") or row.get("total_value")) for row in deals)
+    collection_fees = sum(_money_from_ignition(row.get("fee") or row.get("fees") or row.get("processing_fee")) for row in collections)
+    collection_clawbacks = sum(_money_from_ignition(row.get("clawback") or row.get("clawbacks")) for row in collections)
+    collection_disbursements = sum(_money_from_ignition(row.get("net_disbursement") or row.get("disbursement") or row.get("amount")) for row in collections)
+
+    service_rollups: dict[str, dict] = {}
+    for proposal in proposals:
+        state_value = str(proposal.get("state") or "").lower()
+        proposal_mrr = _proposal_mrr(proposal)
+        labels = {_plan_label_for_text(name) for name in _service_names_from_proposal(proposal)}
+        for label in labels:
+            rollup = service_rollups.setdefault(label, {"name": label, "proposals": 0, "accepted": 0, "mrr": Decimal("0.00"), "contractValue": Decimal("0.00")})
+            rollup["proposals"] += 1
+            if state_value == "accepted" or proposal.get("accepted_at"):
+                rollup["accepted"] += 1
+                rollup["mrr"] += proposal_mrr
+                rollup["contractValue"] += _proposal_value(proposal)
+    service_performance = []
+    for label in (*IGNITION_PLAN_LABELS, "Other"):
+        rollup = service_rollups.get(label, {"name": label, "proposals": 0, "accepted": 0, "mrr": Decimal("0.00"), "contractValue": Decimal("0.00")})
+        service_performance.append({
+            "name": rollup["name"],
+            "proposals": rollup["proposals"],
+            "accepted": rollup["accepted"],
+            "mrr": float(_money(rollup["mrr"])),
+            "contractValue": float(_money(rollup["contractValue"])),
+        })
+
+    creator_rollups: dict[str, dict] = {}
+    for proposal in proposals:
+        creator = proposal.get("creator") or proposal.get("sender") or {}
+        manager = creator.get("name") if isinstance(creator, dict) else str(creator or "")
+        manager = manager or "Unassigned"
+        rollup = creator_rollups.setdefault(manager, {"name": manager, "proposals": 0, "accepted": 0, "value": Decimal("0.00")})
+        rollup["proposals"] += 1
+        if str(proposal.get("state") or "").lower() == "accepted" or proposal.get("accepted_at"):
+            rollup["accepted"] += 1
+            rollup["value"] += _proposal_value(proposal)
+
+    accepted_value = sum(_proposal_value(row) for row in accepted)
+    accepted_value_mtd = sum(_proposal_value(row) for row in accepted_mtd)
+    expected_mrr = sum(_proposal_mrr(row) for row in accepted)
+    awaiting_value = sum(_proposal_value(row) for row in awaiting)
+    payment_total_mtd = sum(_money_from_ignition(row.get("amount") or row.get("total") or row.get("payment_amount")) for row in payments_mtd)
+    outstanding_total = sum(_money_from_ignition(row.get("amount_due") or row.get("balance") or row.get("outstanding_amount") or row.get("total")) for row in outstanding_invoices)
+    conversion_rate = (len(accepted) / len(proposals) * 100) if proposals else 0
+    mtd_conversion_rate = (len(accepted_mtd) / len(sent_mtd) * 100) if sent_mtd else 0
+
+    return {
+        "totals": {
+            "clientCount": len(clients),
+            "newClientsMtd": len(new_clients_mtd),
+            "proposalsCreated": len(proposals),
+            "proposalsSentMtd": len(sent_mtd),
+            "proposalsAccepted": len(accepted),
+            "proposalsAcceptedMtd": len(accepted_mtd),
+            "proposalConversionRate": round(conversion_rate, 1),
+            "mtdProposalConversionRate": round(mtd_conversion_rate, 1),
+            "acceptedProposalValue": float(_money(accepted_value)),
+            "acceptedProposalValueMtd": float(_money(accepted_value_mtd)),
+            "expectedMrr": float(_money(expected_mrr)),
+            "expectedArr": float(_money(expected_mrr * Decimal("12"))),
+            "awaitingProposalValue": float(_money(awaiting_value)),
+            "outstandingInvoices": len(outstanding_invoices),
+            "overdueInvoices": len(overdue_invoices),
+            "outstandingInvoiceValue": float(_money(outstanding_total)),
+            "paymentsReceivedMtd": float(_money(payment_total_mtd)),
+            "collectionFees": float(_money(collection_fees)),
+            "collectionClawbacks": float(_money(collection_clawbacks)),
+            "collectionDisbursements": float(_money(collection_disbursements)),
+            "pipelineValue": float(_money(pipeline_value)),
+        },
+        "servicePerformance": service_performance,
+        "managerPerformance": sorted(
+            [
+                {
+                    "name": row["name"],
+                    "proposals": row["proposals"],
+                    "accepted": row["accepted"],
+                    "value": float(_money(row["value"])),
+                    "conversionRate": round((row["accepted"] / row["proposals"] * 100) if row["proposals"] else 0, 1),
+                }
+                for row in creator_rollups.values()
+            ],
+            key=lambda row: row["value"],
+            reverse=True,
+        )[:12],
+        "awaitingProposals": [
+            {
+                "name": row.get("name") or row.get("reference_number") or "Proposal",
+                "clientName": row.get("client_name") or "",
+                "value": float(_money(_proposal_value(row))),
+                "createdAt": row.get("created_at") or "",
+                "link": row.get("link") or "",
+            }
+            for row in sorted(awaiting, key=lambda item: str(item.get("created_at") or ""), reverse=True)[:10]
+        ],
+        "renewalAnalysis": {
+            "renewalCount": len(renewal_proposals),
+            "renewalAccepted": len(accepted_renewals),
+            "renewalValue": float(_money(sum(_proposal_value(row) for row in renewal_proposals))),
+            "renewalAcceptedValue": float(_money(sum(_proposal_value(row) for row in accepted_renewals))),
+            "renewalConversionRate": round((len(accepted_renewals) / len(renewal_proposals) * 100) if renewal_proposals else 0, 1),
+            "newWorkCount": len(new_work_proposals),
+            "newWorkAccepted": len(accepted_new_work),
+            "newWorkValue": float(_money(sum(_proposal_value(row) for row in new_work_proposals))),
+            "newWorkAcceptedValue": float(_money(sum(_proposal_value(row) for row in accepted_new_work))),
+            "newWorkConversionRate": round((len(accepted_new_work) / len(new_work_proposals) * 100) if new_work_proposals else 0, 1),
+        },
+    }
+
+
+def _ignition_records_for_user(user: dict) -> dict[str, list[dict]]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                ORDER BY dataset ASC, COALESCE(source_created_at, created_at) DESC
+                """,
+                (user["id"],),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        grouped[row.get("dataset") or ""].append(row)
+    return grouped
+
+
+def ignition_payload(user: dict) -> dict:
+    try:
+        connection = get_ignition_connection_for_user(user["id"])
+    except HTTPException:
+        connection = None
+    active_run = active_ignition_sync_run_for_user(user)
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM ignition_sync_runs WHERE user_id = %s ORDER BY created_at DESC LIMIT 1",
+                (user["id"],),
+            )
+            latest_run = cursor.fetchone()
+        db.commit()
+    records = _ignition_records_for_user(user)
+    dataset_counts = {dataset: len(records.get(dataset, [])) for dataset, _ in IGNITION_DATASETS}
+    return {
+        "connection": {
+            "connected": bool(connection and connection.get("status") == "connected"),
+            "oauthConfigured": ignition_oauth_configured(),
+            "practiceId": connection.get("practice_id") if connection else "",
+            "practiceName": connection.get("practice_name") if connection else "",
+            "lastSyncAt": _iso(connection.get("last_sync_at")) if connection else "",
+            "status": connection.get("status") if connection else "disconnected",
+            "errorMessage": connection.get("error_message") if connection else "",
+        },
+        "datasetCounts": dataset_counts,
+        "dashboard": _ignition_dashboard(records),
+        "syncRun": serialize_ignition_sync_run(active_run or latest_run),
+        "activeSyncRun": serialize_ignition_sync_run(active_run),
+    }
+
+
+def run_ignition_sync_job(user: dict, sync_run_id: str) -> None:
+    try:
+        asyncio.run(run_ignition_sync(user, sync_run_id))
+    except Exception as exc:
+        logger.exception("Background Ignition sync failed")
+        _update_ignition_sync_run(
+            sync_run_id,
+            status="failed",
+            current_step="Ignition sync failed",
+            summary="Ignition sync failed before it could complete.",
+            error_message=_sync_error_message(exc),
+            failed_count=1,
+            heartbeat_at=utcnow(),
+            completed_at=utcnow(),
+        )
+
+
+async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
+    connection = get_ignition_connection_for_user(user["id"])
+    dataset_counts: dict[str, int] = {}
+    total_fetched = 0
+    total_processed = 0
+    _update_ignition_sync_run(
+        sync_run_id,
+        status="running",
+        current_step="Connecting to Ignition",
+        summary="Refreshing Ignition OAuth access and preparing Reporting API sync.",
+        started_at=utcnow(),
+        heartbeat_at=utcnow(),
+    )
+    practice = {"id": connection.get("practice_id") or "", "name": connection.get("practice_name") or ""}
+    for dataset, endpoint in IGNITION_DATASETS:
+        _update_ignition_sync_run(
+            sync_run_id,
+            current_step=f"Importing {dataset.replace('_', ' ')}",
+            summary=f"Fetching {dataset.replace('_', ' ')} from Ignition Reporting API.",
+            heartbeat_at=utcnow(),
+            datasets_synced=dataset_counts,
+            fetched_count=total_fetched,
+            processed_count=total_processed,
+        )
+        try:
+            rows, meta = await fetch_ignition_collection(connection, endpoint)
+        except HTTPException as exc:
+            if dataset in ("deals", "deal_stages"):
+                dataset_counts[dataset] = 0
+                continue
+            raise exc
+        practice_meta = (meta or {}).get("practice") or {}
+        if practice_meta.get("id") or practice_meta.get("name"):
+            practice = {"id": str(practice_meta.get("id") or practice.get("id") or ""), "name": practice_meta.get("name") or practice.get("name") or ""}
+        processed = _upsert_ignition_records(user, practice.get("id") or "", dataset, rows)
+        dataset_counts[dataset] = processed
+        total_fetched += len(rows)
+        total_processed += processed
+        record_audit_event("ignition_sync_run", str(sync_run_id), f"ignition.{dataset}.synced", {"dataset": dataset, "records": processed}, user["id"])
+    summary = f"Ignition sync complete: imported {total_processed} records across {len(dataset_counts)} reporting datasets."
+    completed = _update_ignition_sync_run(
+        sync_run_id,
+        status="completed",
+        current_step="Ignition sync complete",
+        summary=summary,
+        fetched_count=total_fetched,
+        processed_count=total_processed,
+        datasets_synced=dataset_counts,
+        heartbeat_at=utcnow(),
+        completed_at=utcnow(),
+    )
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ignition_connections
+                SET practice_id = COALESCE(NULLIF(%s, ''), practice_id),
+                    practice_name = COALESCE(NULLIF(%s, ''), practice_name),
+                    status = 'connected',
+                    error_message = '',
+                    last_sync_at = %s,
+                    updated_at = %s
+                WHERE user_id = %s
+                """,
+                (practice.get("id") or "", practice.get("name") or "", utcnow(), utcnow(), user["id"]),
+            )
+        db.commit()
+    record_audit_event("ignition_sync_run", str(sync_run_id), "ignition.sync.completed", {"summary": summary}, user["id"])
+    return completed
 
 
 def _xero_payload_date(value) -> str:
@@ -6768,3 +8812,35 @@ def update_control_status(invoice_id: str, user: dict, status_value: str, note: 
             )
         connection.commit()
     record_audit_event("invoice", invoice_id, "status.updated", {"status": status_value, "note": note}, user["id"])
+
+
+async def bulk_update_invoice_status(user: dict, invoice_ids: list[str], status_value: str, note: str = "") -> dict:
+    status_value = str(status_value or "").strip()
+    if not status_value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Status is required.")
+    invoice_ids = [str(invoice_id) for invoice_id in (invoice_ids or []) if invoice_id]
+    if not invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+    note = str(note or "").strip() or "Updated from ledger bulk actions."
+    synced = 0
+    failed = 0
+    errors = []
+    for invoice_id in invoice_ids:
+        update_control_status(invoice_id, user, status_value, note)
+        try:
+            xero_note = await sync_invoice_status_to_xero(invoice_id, user, status_value, note)
+            if xero_note.get("synced"):
+                synced += 1
+            else:
+                failed += 1
+                if xero_note.get("error"):
+                    errors.append(xero_note["error"])
+        except Exception as exc:
+            failed += 1
+            errors.append(_sync_error_message(exc))
+    return {
+        "updatedCount": len(invoice_ids),
+        "xeroSyncedCount": synced,
+        "xeroFailedCount": failed,
+        "errors": errors[:5],
+    }

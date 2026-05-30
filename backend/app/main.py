@@ -33,6 +33,8 @@ from .services import (
     add_customer_note,
     add_note,
     add_promise,
+    active_ignition_sync_run_for_user,
+    active_me_report_sync_run_for_user,
     active_sync_run_for_user,
     allocate_customer_credit,
     add_bank_statement_client,
@@ -47,7 +49,9 @@ from .services import (
     factory_reset_console,
     get_xero_connection_for_user,
     get_operation_run,
+    get_ignition_sync_run,
     insights_payload,
+    ignition_payload,
     invoice_detail,
     install_sync_signal_handlers,
     add_jashflow_payment,
@@ -57,16 +61,28 @@ from .services import (
     save_jashflow_settings,
     list_customers,
     list_developer_logs,
+    connect_me_report_client_to_current_xero,
+    create_me_report_client,
+    generate_me_report,
+    get_me_report_sync_run,
     normalise_sync_options,
     panel_payload,
     get_sync_run,
+    me_report_payload,
+    me_report_report_html,
     record_sync_start_failure,
+    request_me_report_sync_run,
     request_sync_run,
+    request_ignition_sync_run,
+    run_ignition_sync_job,
+    run_me_report_sync_job,
     request_operation_run,
     run_invoice_operation_job,
     run_sync,
     run_sync_job,
     serialize_sync_run,
+    serialize_ignition_sync_run,
+    serialize_me_report_sync_run,
     serialize_operation_run,
     sync_customer_note_to_xero,
     sync_invoice_promise_to_xero,
@@ -75,8 +91,19 @@ from .services import (
     sync_payment_plan_to_xero,
     sync_run_has_working_data,
     update_control_status,
+    update_me_report_exception,
+    update_me_report_mapping,
     bank_statement_payload,
+    bulk_update_invoice_status,
+    merge_me_report_duplicate_contact,
     upload_bank_statement_pdf,
+)
+from .ignition import (
+    IgnitionConfigurationError,
+    create_pkce_verifier,
+    exchange_ignition_code_for_tokens,
+    ignition_authorize_url,
+    store_ignition_connection,
 )
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
 
@@ -111,8 +138,13 @@ def wants_json(request: Request) -> bool:
     return "application/json" in accept or "application/json" in content_type
 
 
-def xero_login_error_response(message: str, status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR) -> HTMLResponse:
+def xero_login_error_response(
+    message: str,
+    status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
+    provider: str = "Xero",
+) -> HTMLResponse:
     safe_message = escape(message)
+    safe_provider = escape(provider)
     return HTMLResponse(
         f"""
         <!doctype html>
@@ -120,7 +152,7 @@ def xero_login_error_response(message: str, status_code: int = status.HTTP_500_I
         <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Xero connection failed</title>
+            <title>{safe_provider} connection failed</title>
             <style>
                 body {{
                     margin: 0;
@@ -153,7 +185,7 @@ def xero_login_error_response(message: str, status_code: int = status.HTTP_500_I
         </head>
         <body>
             <main>
-                <h1>Xero connection failed</h1>
+                <h1>{safe_provider} connection failed</h1>
                 <p>{safe_message}</p>
                 <a href="/login">Back to login</a>
             </main>
@@ -214,6 +246,60 @@ def auth_xero_start(redirect_to: str = "/"):
 @app.get("/auth/xero/connected")
 def auth_xero_connected():
     return RedirectResponse(add_query_params("/", {"xero": "connected"}), status_code=status.HTTP_302_FOUND)
+
+
+def queue_ignition_sync(user: dict) -> tuple[dict | None, bool]:
+    try:
+        sync_run, started = request_ignition_sync_run(user)
+        if started:
+            threading.Thread(target=run_ignition_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+        return sync_run, started
+    except Exception:
+        logger.exception("Unable to queue Ignition sync")
+        return None, False
+
+
+@app.get("/auth/ignition/start")
+def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
+    redirect_to = normalise_oauth_redirect(redirect_to)
+    verifier = create_pkce_verifier()
+    state_token = start_oauth_state(redirect_to=redirect_to, provider="ignition", code_verifier=verifier)
+    try:
+        authorize_url = ignition_authorize_url(state_token, verifier)
+    except IgnitionConfigurationError as exc:
+        return xero_login_error_response(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Ignition")
+    return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/ignition/callback")
+async def auth_ignition_callback(request: Request, code: str, state: str):
+    try:
+        user = current_user_from_request(request)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to Jenius before connecting Ignition.")
+        state_row = consume_oauth_state(state)
+        if state_row.get("provider") not in ("ignition",):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Ignition OAuth state.")
+        token_payload = await exchange_ignition_code_for_tokens(code, state_row.get("code_verifier") or "")
+        store_ignition_connection(user, token_payload)
+        sync_run, sync_started = queue_ignition_sync(user)
+        redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
+        redirect_params = {"ignition": "connected"}
+        if sync_run:
+            redirect_params["ignition_sync_run"] = str(sync_run["id"])
+            redirect_params["ignition_sync_started"] = "1" if sync_started else "0"
+        return RedirectResponse(add_query_params(redirect_to, redirect_params), status_code=status.HTTP_302_FOUND)
+    except HTTPException as exc:
+        logger.warning("Ignition callback failed: %s", exc.detail)
+        detail = exc.detail
+        message = str(detail.get("message") if isinstance(detail, dict) else detail)
+        return xero_login_error_response(message, exc.status_code, provider="Ignition")
+    except IgnitionConfigurationError as exc:
+        logger.warning("Ignition callback failed: %s", exc)
+        return xero_login_error_response(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Ignition")
+    except Exception:
+        logger.exception("Unhandled Ignition callback failure")
+        return xero_login_error_response("An unexpected server error occurred while completing the Ignition connection.", provider="Ignition")
 
 
 def queue_initial_xero_sync(user: dict) -> tuple[dict | None, bool]:
@@ -647,6 +733,89 @@ async def api_post_jashflow_interest(request: Request, user: dict = Depends(requ
     return {"status": "ok", **await post_jashflow_interest_invoice(user, payload)}
 
 
+@app.get("/api/ignition")
+def api_ignition(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "ignition": ignition_payload(user)}
+
+
+@app.post("/api/ignition/sync")
+def api_ignition_sync(user: dict = Depends(require_panel_user)):
+    sync_run, started = request_ignition_sync_run(user)
+    if started:
+        threading.Thread(target=run_ignition_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+    return {"status": sync_run["status"], "started": started, "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
+
+
+@app.get("/api/ignition/sync/{sync_run_id}")
+def api_ignition_sync_status(sync_run_id: str, user: dict = Depends(require_panel_user)):
+    sync_run = get_ignition_sync_run(user, sync_run_id)
+    payload = {"status": sync_run["status"], "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
+    if sync_run["status"] == "completed":
+        payload["ignition"] = ignition_payload(user)
+    return payload
+
+
+@app.get("/api/me-report")
+def api_me_report(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": me_report_payload(user)}
+
+
+@app.post("/api/me-report/clients")
+async def api_create_me_report_client(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": create_me_report_client(user, payload)}
+
+
+@app.post("/api/me-report/clients/{client_id}/connect-xero")
+def api_connect_me_report_client_xero(client_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": connect_me_report_client_to_current_xero(user, client_id)}
+
+
+@app.post("/api/me-report/clients/{client_id}/sync")
+def api_me_report_sync(client_id: str, user: dict = Depends(require_panel_user)):
+    sync_run, started = request_me_report_sync_run(user, client_id)
+    if started:
+        threading.Thread(target=run_me_report_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+    return {"status": sync_run["status"], "started": started, "meReportSyncRun": serialize_me_report_sync_run(sync_run)}
+
+
+@app.get("/api/me-report/sync/{sync_run_id}")
+def api_me_report_sync_status(sync_run_id: str, user: dict = Depends(require_panel_user)):
+    sync_run = get_me_report_sync_run(user, sync_run_id)
+    payload = {"status": sync_run["status"], "meReportSyncRun": serialize_me_report_sync_run(sync_run)}
+    if sync_run["status"] == "completed":
+        payload["meReport"] = me_report_payload(user)
+    return payload
+
+
+@app.post("/api/me-report/mappings/{mapping_id}")
+async def api_update_me_report_mapping(mapping_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": update_me_report_mapping(user, mapping_id, payload)}
+
+
+@app.post("/api/me-report/exceptions/{exception_id}")
+async def api_update_me_report_exception(exception_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": update_me_report_exception(user, exception_id, payload)}
+
+
+@app.post("/api/me-report/exceptions/{exception_id}/merge-contact")
+async def api_merge_me_report_duplicate_contact(exception_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": await merge_me_report_duplicate_contact(user, exception_id)}
+
+
+@app.post("/api/me-report/clients/{client_id}/reports")
+async def api_generate_me_report(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **generate_me_report(user, client_id, payload)}
+
+
+@app.get("/api/me-report/reports/{report_id}/download", response_class=HTMLResponse)
+def api_download_me_report(report_id: str, user: dict = Depends(require_panel_user)):
+    return HTMLResponse(me_report_report_html(user, report_id))
+
+
 @app.get("/api/bank-statements")
 def api_bank_statements(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "bankStatements": bank_statement_payload(user)}
@@ -781,6 +950,18 @@ async def api_invoice_set_status(invoice_id: str, request: Request, user: dict =
         "xeroNoteError": xero_note.get("error", ""),
         "invoice": invoice_detail(invoice_id),
     }
+
+
+@app.post("/api/invoices/bulk-status")
+async def api_bulk_invoice_status(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    result = await bulk_update_invoice_status(
+        user,
+        payload.get("invoiceIds") or [],
+        payload.get("statusValue") or "",
+        payload.get("note") or "",
+    )
+    return {"status": "ok", **result, "panel": panel_payload(user)}
 
 
 @app.exception_handler(XeroConfigurationError)

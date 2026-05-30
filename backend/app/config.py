@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     bad_debt_write_off_account_code: str = "402"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    ignition_client_id: str | None = None
+    ignition_client_secret: str | None = None
+    ignition_redirect_uri: str | None = None
+    ignition_scopes: str = "reporting"
+    ignition_authorize_url: str = "https://developers.ignitionapp.com/oauth2/authorize"
+    ignition_token_url: str = "https://developers.ignitionapp.com/oauth2/token"
+    ignition_api_base_url: str = "https://developers.ignitionapp.com/external/api/v1"
 
     model_config = SettingsConfigDict(
         env_file=".env",

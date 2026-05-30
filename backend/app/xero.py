@@ -554,6 +554,30 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
         return response.json()
 
 
+async def merge_contacts(connection_row: dict, keep_contact_id: str, merge_contact_id: str) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.post(
+                f"{CONTACTS_URL}/{keep_contact_id}/Merge",
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"Contacts": [{"ContactID": merge_contact_id}]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "contact merge")
+        if response.is_error:
+            _raise_xero_http_error(response, "contact merge")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idempotency_key: str | None = None) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:

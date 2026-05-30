@@ -26,7 +26,11 @@ Required variables:
 - `XERO_CLIENT_ID`
 - `XERO_CLIENT_SECRET`
 - `XERO_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/xero/callback`
-- `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read accounting.attachments`
+- `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read accounting.attachments accounting.reports.read accounting.transactions.read accounting.journals.read assets`
+- `IGNITION_CLIENT_ID`
+- `IGNITION_CLIENT_SECRET`
+- `IGNITION_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/ignition/callback`
+- `IGNITION_SCOPES=reporting`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 - `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
 - `LATE_PAYMENT_CHARGE_TAX_TYPE=OUTPUT2`
@@ -42,11 +46,15 @@ The late-charge, allocation, write-off, and Jashflow interest workflows create a
 
 Bank statement extraction uses the OpenAI Responses API for PDF transaction extraction. Set `OPENAI_API_KEY` before uploading statements in the Bank Statements screen.
 
+Ignition integration uses Ignition's Reporting API OAuth application from Developer Hub. The Ignition account must have Reporting API access and the redirect URI above registered exactly. Jenius stores encrypted Ignition tokens, syncs Reporting API datasets into PostgreSQL tables/views, and serves the Ignition dashboard from stored data rather than live dashboard API calls.
+
 ## Main routes
 
 - `/` web dashboard
 - `/auth/xero/start` login with Xero
 - `/auth/xero/callback` OAuth callback
+- `/auth/ignition/start` login with Ignition
+- `/auth/ignition/callback` Ignition OAuth callback
 - `/customers` customer list
 - `/customers/{customer_id}` customer detail
 - `/invoices/{invoice_id}` invoice detail

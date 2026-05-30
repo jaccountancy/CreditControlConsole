@@ -166,7 +166,12 @@ def clear_session_cookie(response) -> None:
     response.delete_cookie(COOKIE_NAME)
 
 
-def start_oauth_state(redirect_to: str | None = None, device_code: str | None = None) -> str:
+def start_oauth_state(
+    redirect_to: str | None = None,
+    device_code: str | None = None,
+    provider: str = "xero",
+    code_verifier: str | None = None,
+) -> str:
     settings = get_settings()
     state_token = random_token()
     expires_at = utcnow() + timedelta(seconds=settings.xero_state_ttl_seconds)
@@ -175,10 +180,10 @@ def start_oauth_state(redirect_to: str | None = None, device_code: str | None = 
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO oauth_states (state_token, redirect_to, device_code, expires_at)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO oauth_states (state_token, redirect_to, device_code, provider, code_verifier, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (state_token, redirect_to, device_code, expires_at),
+                (state_token, redirect_to, device_code, provider, code_verifier, expires_at),
             )
         connection.commit()
 

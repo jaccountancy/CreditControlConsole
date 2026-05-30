@@ -51,9 +51,14 @@ CREATE TABLE IF NOT EXISTS oauth_states (
     state_token TEXT NOT NULL UNIQUE,
     redirect_to TEXT,
     device_code TEXT,
+    provider TEXT NOT NULL DEFAULT 'xero',
+    code_verifier TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     expires_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'xero';
+ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS code_verifier TEXT;
 
 CREATE TABLE IF NOT EXISTS device_logins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -648,6 +653,258 @@ ON bank_statement_transactions (bank_account_id, transaction_date, created_at);
 
 CREATE UNIQUE INDEX IF NOT EXISTS bank_statement_transactions_unique_hash_idx
 ON bank_statement_transactions (bank_account_id, source_hash);
+
+CREATE TABLE IF NOT EXISTS ignition_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    practice_id TEXT,
+    practice_name TEXT,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    scope TEXT NOT NULL DEFAULT 'reporting',
+    status TEXT NOT NULL DEFAULT 'connected',
+    error_message TEXT,
+    connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_sync_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id)
+);
+
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS practice_id TEXT;
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS practice_name TEXT;
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS access_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS refresh_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'reporting';
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'connected';
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS last_sync_at TIMESTAMPTZ;
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS ignition_connections_user_idx
+ON ignition_connections (user_id, status);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_connections_user_unique_idx
+ON ignition_connections (user_id);
+
+CREATE TABLE IF NOT EXISTS ignition_sync_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    current_step TEXT,
+    summary TEXT,
+    error_message TEXT,
+    fetched_count INTEGER NOT NULL DEFAULT 0,
+    processed_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    datasets_synced JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    heartbeat_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'queued';
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS current_step TEXT;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS fetched_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS processed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS failed_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS datasets_synced JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ;
+ALTER TABLE ignition_sync_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS ignition_sync_runs_user_status_idx
+ON ignition_sync_runs (user_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ignition_reporting_records (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    practice_id TEXT,
+    dataset TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_created_at TIMESTAMPTZ,
+    source_updated_at TIMESTAMPTZ,
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, dataset, external_id)
+);
+
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS practice_id TEXT;
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS dataset TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS external_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS source_created_at TIMESTAMPTZ;
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS source_updated_at TIMESTAMPTZ;
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_reporting_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_reporting_records_unique_idx
+ON ignition_reporting_records (user_id, dataset, external_id);
+
+CREATE INDEX IF NOT EXISTS ignition_reporting_records_dataset_idx
+ON ignition_reporting_records (user_id, dataset, synced_at DESC);
+
+CREATE OR REPLACE VIEW ignition_reporting_clients AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'clients';
+
+CREATE OR REPLACE VIEW ignition_reporting_contacts AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'contacts';
+
+CREATE OR REPLACE VIEW ignition_reporting_services AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'services';
+
+CREATE OR REPLACE VIEW ignition_reporting_proposals AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'proposals';
+
+CREATE OR REPLACE VIEW ignition_reporting_invoices AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'invoices';
+
+CREATE OR REPLACE VIEW ignition_reporting_payments AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'payments';
+
+CREATE OR REPLACE VIEW ignition_reporting_collections AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'collections';
+
+CREATE OR REPLACE VIEW ignition_reporting_deals AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'deals';
+
+CREATE OR REPLACE VIEW ignition_reporting_deal_stages AS
+SELECT * FROM ignition_reporting_records WHERE dataset = 'deal_stages';
+
+CREATE TABLE IF NOT EXISTS me_report_clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    client_name TEXT NOT NULL DEFAULT '',
+    internal_client_owner TEXT NOT NULL DEFAULT '',
+    bookkeeping_frequency TEXT NOT NULL DEFAULT 'Monthly',
+    report_recipient_email TEXT NOT NULL DEFAULT '',
+    year_end_month INTEGER NOT NULL DEFAULT 3,
+    xero_connection_id UUID REFERENCES xero_connections(id) ON DELETE SET NULL,
+    xero_tenant_id TEXT,
+    xero_tenant_name TEXT,
+    xero_connection_status TEXT NOT NULL DEFAULT 'not_connected',
+    status TEXT NOT NULL DEFAULT 'active',
+    last_sync_at TIMESTAMPTZ,
+    last_calculated_at TIMESTAMPTZ,
+    last_report_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS me_report_clients_user_status_idx
+ON me_report_clients (user_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS me_report_account_mappings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
+    xero_account_id TEXT,
+    account_code TEXT NOT NULL DEFAULT '',
+    account_name TEXT NOT NULL DEFAULT '',
+    account_type TEXT NOT NULL DEFAULT '',
+    suggested_treatment TEXT NOT NULL DEFAULT '',
+    tax_treatment TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    confidence INTEGER NOT NULL DEFAULT 0,
+    review_required BOOLEAN NOT NULL DEFAULT TRUE,
+    status TEXT NOT NULL DEFAULT 'suggested',
+    note TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS me_report_account_mappings_unique_idx
+ON me_report_account_mappings (client_id, account_code);
+
+CREATE INDEX IF NOT EXISTS me_report_account_mappings_client_status_idx
+ON me_report_account_mappings (client_id, status, confidence);
+
+CREATE TABLE IF NOT EXISTS me_report_reviews (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
+    period_start DATE NOT NULL DEFAULT CURRENT_DATE,
+    period_end DATE NOT NULL DEFAULT CURRENT_DATE,
+    status TEXT NOT NULL DEFAULT 'calculated',
+    traffic_light TEXT NOT NULL DEFAULT 'amber',
+    summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    raw_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS me_report_reviews_client_period_idx
+ON me_report_reviews (client_id, period_end DESC, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS me_report_exceptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
+    review_id UUID REFERENCES me_report_reviews(id) ON DELETE CASCADE,
+    severity TEXT NOT NULL DEFAULT 'amber',
+    title TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    suggested_action TEXT NOT NULL DEFAULT '',
+    action_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'open',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE me_report_exceptions ADD COLUMN IF NOT EXISTS action_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS me_report_exceptions_client_status_idx
+ON me_report_exceptions (client_id, status, severity, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS me_report_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
+    review_id UUID REFERENCES me_report_reviews(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    recipient_email TEXT NOT NULL DEFAULT '',
+    report_html TEXT NOT NULL DEFAULT '',
+    commentary TEXT NOT NULL DEFAULT '',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_at TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS me_report_reports_client_idx
+ON me_report_reports (client_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS me_report_sync_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'queued',
+    current_step TEXT NOT NULL DEFAULT 'Queued',
+    summary TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
+    progress INTEGER NOT NULL DEFAULT 0,
+    records_synced INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    heartbeat_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS me_report_sync_runs_client_status_idx
+ON me_report_sync_runs (client_id, status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
