@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime, parsedate_to_datetime
 from uuid import uuid4
@@ -83,6 +84,16 @@ def _xero_validation_summary(detail) -> str:
     return " ".join(messages[:4])
 
 
+def _xero_rate_limit_headers(response: httpx.Response) -> dict:
+    return {
+        "retry_after": response.headers.get("Retry-After", ""),
+        "x_daylimit_remaining": response.headers.get("X-DayLimit-Remaining", ""),
+        "x_minlimit_remaining": response.headers.get("X-MinLimit-Remaining", ""),
+        "x_applimit_remaining": response.headers.get("X-AppMinLimit-Remaining", ""),
+        "x_rate_limit_problem": response.headers.get("X-Rate-Limit-Problem", ""),
+    }
+
+
 def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
     try:
         detail = response.json()
@@ -90,12 +101,14 @@ def _raise_xero_http_error(response: httpx.Response, action: str) -> None:
         detail = response.text
 
     if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        rate_limit_headers = _xero_rate_limit_headers(response)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
                 "message": f"Xero API quota reached while trying to complete {action}. Wait for Xero's limit to reset, then try again.",
                 "status_code": response.status_code,
-                "retry_after": response.headers.get("Retry-After", ""),
+                "retry_after": rate_limit_headers["retry_after"],
+                "rate_limit_headers": rate_limit_headers,
                 "response": detail,
             },
         )
@@ -450,6 +463,7 @@ async def xero_api_get(
     url: str,
     params: dict | None = None,
     modified_since: datetime | None = None,
+    on_response=None,
 ) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     headers = {
@@ -461,6 +475,7 @@ async def xero_api_get(
     if modified_since_header:
         headers["If-Modified-Since"] = modified_since_header
 
+    started = time.monotonic()
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             response = await client.get(
@@ -469,7 +484,24 @@ async def xero_api_get(
                 headers=headers,
             )
         except httpx.RequestError as exc:
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            if on_response is not None:
+                on_response({
+                    "status_code": None,
+                    "elapsed_ms": elapsed_ms,
+                    "rate_limit_headers": {},
+                    "error": exc.__class__.__name__,
+                    "error_message": str(exc),
+                })
             _raise_xero_request_error(exc, "API request")
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        rate_limit_headers = _xero_rate_limit_headers(response)
+        if on_response is not None:
+            on_response({
+                "status_code": response.status_code,
+                "elapsed_ms": elapsed_ms,
+                "rate_limit_headers": rate_limit_headers,
+            })
         if response.is_error:
             _raise_xero_http_error(response, "API request")
         if response.status_code == status.HTTP_304_NOT_MODIFIED or not response.content:
@@ -624,6 +656,7 @@ async def fetch_paginated_collection(
     max_pages: int | None = None,
     on_page=None,
     on_retry=None,
+    on_request=None,
     modified_since: datetime | None = None,
 ) -> list[dict]:
     records: list[dict] = []
@@ -632,6 +665,13 @@ async def fetch_paginated_collection(
     while True:
         if max_pages is not None and page > max_pages:
             return records
+
+        page_started = time.monotonic()
+        last_response: dict = {}
+
+        def capture_response(info: dict) -> None:
+            last_response.update(info)
+
         try:
             payload = await asyncio.wait_for(
                 xero_api_get(
@@ -639,10 +679,24 @@ async def fetch_paginated_collection(
                     url,
                     params={**(params or {}), "page": page},
                     modified_since=modified_since,
+                    on_response=capture_response,
                 ),
                 timeout=XERO_API_PAGE_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError as exc:
+            wall_ms = int((time.monotonic() - page_started) * 1000)
+            if on_request is not None:
+                on_request({
+                    "collection": collection_key,
+                    "url": url,
+                    "page": page,
+                    "outcome": "timeout",
+                    "wall_ms": wall_ms,
+                    "timeout_seconds": XERO_API_PAGE_TIMEOUT_SECONDS,
+                    "records_so_far": len(records),
+                    "retry_count": rate_limit_retries,
+                    **last_response,
+                })
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={
@@ -652,15 +706,32 @@ async def fetch_paginated_collection(
                         "if it repeats, reconnect Xero and check Xero service status."
                     ),
                     "timeout_seconds": XERO_API_PAGE_TIMEOUT_SECONDS,
+                    "wall_ms": wall_ms,
+                    "page": page,
+                    "collection": collection_key,
+                    "records_so_far": len(records),
                 },
             ) from exc
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, dict) else {}
+            wall_ms = int((time.monotonic() - page_started) * 1000)
             if detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS and rate_limit_retries < XERO_RATE_LIMIT_RETRIES:
                 rate_limit_retries += 1
                 retry_after = detail.get("retry_after")
                 parsed_delay = _retry_after_delay_seconds(retry_after)
                 delay_seconds = parsed_delay if parsed_delay is not None else XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS
+                if on_request is not None:
+                    on_request({
+                        "collection": collection_key,
+                        "url": url,
+                        "page": page,
+                        "outcome": "rate_limited",
+                        "wall_ms": wall_ms,
+                        "retry_after_seconds": delay_seconds,
+                        "retry_count": rate_limit_retries,
+                        "records_so_far": len(records),
+                        **last_response,
+                    })
                 if delay_seconds > XERO_RATE_LIMIT_MAX_SLEEP_SECONDS:
                     raise HTTPException(
                         status_code=status.HTTP_502_BAD_GATEWAY,
@@ -671,16 +742,43 @@ async def fetch_paginated_collection(
                                 f"about {_format_delay_seconds(delay_seconds)}. Try syncing again after Xero's limit resets."
                             ),
                             "retry_after_seconds": delay_seconds,
+                            "page": page,
+                            "collection": collection_key,
                         },
                     ) from exc
                 if on_retry is not None:
                     on_retry(page, len(records), delay_seconds, rate_limit_retries)
                 await asyncio.sleep(max(delay_seconds, XERO_PAGE_DELAY_SECONDS))
                 continue
+            if on_request is not None:
+                on_request({
+                    "collection": collection_key,
+                    "url": url,
+                    "page": page,
+                    "outcome": "error",
+                    "wall_ms": wall_ms,
+                    "retry_count": rate_limit_retries,
+                    "records_so_far": len(records),
+                    "error_status_code": detail.get("status_code"),
+                    "error_message": detail.get("message"),
+                    **last_response,
+                })
             raise
         rate_limit_retries = 0
         batch = payload.get(collection_key, [])
         records.extend(batch)
+        wall_ms = int((time.monotonic() - page_started) * 1000)
+        if on_request is not None:
+            on_request({
+                "collection": collection_key,
+                "url": url,
+                "page": page,
+                "outcome": "ok",
+                "wall_ms": wall_ms,
+                "batch_size": len(batch),
+                "records_so_far": len(records),
+                **last_response,
+            })
         if on_page is not None:
             on_page(page, len(records), len(batch))
         if len(batch) < XERO_PAGE_SIZE:

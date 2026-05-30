@@ -513,6 +513,7 @@ async def _sync_xero_payments(
     on_page=None,
     on_retry=None,
     on_store=None,
+    on_request=None,
 ) -> int:
     raw_payments = await fetch_paginated_collection(
         connection_row,
@@ -520,6 +521,7 @@ async def _sync_xero_payments(
         "Payments",
         on_page=on_page,
         on_retry=on_retry,
+        on_request=on_request,
         modified_since=modified_since,
     )
     if not raw_payments:
@@ -733,6 +735,7 @@ async def _sync_xero_customer_credits(
     on_credit_note_retry=None,
     on_overpayment_page=None,
     on_overpayment_retry=None,
+    on_request=None,
 ) -> int:
     credit_note_where = RECEIVABLE_CREDIT_NOTE_INCREMENTAL_WHERE if modified_since else RECEIVABLE_CREDIT_NOTE_WHERE
     raw_credit_notes = await fetch_paginated_collection(
@@ -743,6 +746,7 @@ async def _sync_xero_customer_credits(
         modified_since=modified_since,
         on_page=on_credit_note_page,
         on_retry=on_credit_note_retry,
+        on_request=on_request,
     )
     raw_overpayments = await fetch_paginated_collection(
         connection_row,
@@ -752,6 +756,7 @@ async def _sync_xero_customer_credits(
         modified_since=modified_since,
         on_page=on_overpayment_page,
         on_retry=on_overpayment_retry,
+        on_request=on_request,
     )
 
     if modified_since is not None and not raw_credit_notes and not raw_overpayments:
@@ -806,35 +811,80 @@ def record_sync_start_failure(user: dict, exc: Exception) -> None:
 
 
 def _mark_stale_sync_runs(user_id: str) -> None:
-    stale_before = utcnow() - SYNC_STALE_AFTER
+    now = utcnow()
+    stale_before = now - SYNC_STALE_AFTER
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                UPDATE sync_runs
-                SET status = %s,
-                    current_step = %s,
-                    summary = %s,
-                    error_message = %s,
-                    failed_count = GREATEST(failed_count, 1),
-                    completed_at = %s
+                SELECT id, current_step, summary, customers_synced, invoices_synced,
+                       contacts_total, invoices_total, fetched_count, processed_count,
+                       heartbeat_at, started_at, created_at
+                FROM sync_runs
                 WHERE provider = %s
                   AND initiated_by_user_id = %s
                   AND status IN ('queued', 'running')
                   AND COALESCE(heartbeat_at, started_at, created_at) < %s
                 """,
-                (
-                    "failed",
-                    "Sync timed out",
-                    "A previous Xero sync stopped responding.",
-                    "The previous Xero sync stopped responding. Start a fresh sync.",
-                    utcnow(),
-                    "xero",
-                    user_id,
-                    stale_before,
-                ),
+                ("xero", user_id, stale_before),
             )
+            stalled_rows = cursor.fetchall()
+
+            if stalled_rows:
+                cursor.execute(
+                    """
+                    UPDATE sync_runs
+                    SET status = %s,
+                        current_step = %s,
+                        summary = %s,
+                        error_message = %s,
+                        failed_count = GREATEST(failed_count, 1),
+                        completed_at = %s
+                    WHERE id = ANY(%s)
+                    """,
+                    (
+                        "failed",
+                        "Sync timed out",
+                        "A previous Xero sync stopped responding.",
+                        "The previous Xero sync stopped responding. Start a fresh sync.",
+                        now,
+                        [row["id"] for row in stalled_rows],
+                    ),
+                )
         connection.commit()
+
+    for row in stalled_rows or []:
+        last_heartbeat = row.get("heartbeat_at") or row.get("started_at") or row.get("created_at")
+        elapsed_seconds = None
+        if last_heartbeat is not None:
+            elapsed_seconds = max(0, int((now - last_heartbeat).total_seconds()))
+        try:
+            record_audit_event(
+                "sync_run",
+                str(row["id"]),
+                "sync.stalled",
+                {
+                    "message": (
+                        f"Sync marked stale after {elapsed_seconds} seconds without a heartbeat"
+                        if elapsed_seconds is not None
+                        else "Sync marked stale (no heartbeat timestamp recorded)."
+                    ),
+                    "last_step": row.get("current_step") or "",
+                    "last_summary": row.get("summary") or "",
+                    "last_heartbeat_at": _iso(last_heartbeat),
+                    "elapsed_seconds_since_heartbeat": elapsed_seconds,
+                    "stale_threshold_seconds": int(SYNC_STALE_AFTER.total_seconds()),
+                    "customers_synced": int(row.get("customers_synced") or 0),
+                    "invoices_synced": int(row.get("invoices_synced") or 0),
+                    "contacts_total": int(row.get("contacts_total") or 0),
+                    "invoices_total": int(row.get("invoices_total") or 0),
+                    "fetched_count": int(row.get("fetched_count") or 0),
+                    "processed_count": int(row.get("processed_count") or 0),
+                },
+                user_id,
+            )
+        except Exception:
+            logger.exception("Unable to record sync stall audit event")
 
 
 def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
@@ -1275,6 +1325,29 @@ def _upsert_xero_customer(cursor, raw_contact: dict, tenant_id: str, synced_at: 
     )
 
 
+def _make_xero_request_tracer(sync_run_id: str, user_id: str, label: str):
+    def trace(info: dict) -> None:
+        try:
+            payload = {"label": label, **(info or {})}
+            outcome = str(payload.get("outcome") or "ok")
+            event_type = {
+                "ok": "sync.xero_request.ok",
+                "timeout": "sync.xero_request.timeout",
+                "rate_limited": "sync.xero_request.rate_limited",
+                "error": "sync.xero_request.error",
+            }.get(outcome, "sync.xero_request")
+            record_audit_event(
+                "sync_run",
+                str(sync_run_id),
+                event_type,
+                payload,
+                user_id,
+            )
+        except Exception:
+            logger.exception("Unable to record Xero request audit event")
+    return trace
+
+
 async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = None) -> dict:
     sync_options = normalise_sync_options(sync_options)
     connection_row = get_xero_connection_for_user(user["id"])
@@ -1404,6 +1477,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     on_page=payment_progress,
                     on_retry=rate_limit_progress("payments"),
                     on_store=payment_store_progress,
+                    on_request=_make_xero_request_tracer(sync_run_id, user["id"], "payments"),
                 )
                 _update_sync_run(
                     sync_run_id,
@@ -1436,6 +1510,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 on_credit_note_retry=rate_limit_progress("credit notes"),
                 on_overpayment_page=overpayment_progress,
                 on_overpayment_retry=rate_limit_progress("overpayments"),
+                on_request=_make_xero_request_tracer(sync_run_id, user["id"], "credit_sources"),
             )
 
         _update_sync_run(
@@ -1452,6 +1527,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 "Contacts",
                 on_page=contact_progress,
                 on_retry=rate_limit_progress(contact_fetch_label),
+                on_request=_make_xero_request_tracer(sync_run_id, user["id"], "contacts"),
                 modified_since=modified_since if is_incremental_sync else None,
             )
             contact_fetch_summary = f"Fetched {len(raw_contacts)} {contact_fetch_label}."
@@ -1487,6 +1563,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             params={"where": invoice_where},
             on_page=outstanding_invoice_progress,
             on_retry=rate_limit_progress(invoice_fetch_label),
+            on_request=_make_xero_request_tracer(sync_run_id, user["id"], "outstanding_invoices"),
             modified_since=modified_since,
         )
         contacts = _customer_contacts_from_xero(raw_contacts, outstanding_invoices)
@@ -1770,6 +1847,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             max_pages=paid_page_limit,
             on_page=paid_invoice_progress,
             on_retry=rate_limit_progress("paid invoices"),
+            on_request=_make_xero_request_tracer(sync_run_id, user["id"], "paid_invoices"),
         )
         paid_synced = 0
         paid_contacts_synced = 0

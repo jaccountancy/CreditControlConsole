@@ -59,31 +59,31 @@
                 grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
                 align-items: start;
                 gap: 20px;
-                padding: 10px 10px 32px;
+                padding: 0 10px 32px 0;
             }
             button, input, textarea, select { font: inherit; }
             button { cursor: pointer; }
             .ledger-shell {
                 grid-column: 2;
                 width: min(1320px, 100%);
-                margin: 0 auto 32px;
+                margin: 10px auto 32px;
             }
             .app-sidebar {
                 position: sticky;
                 z-index: 110;
-                top: 10px;
+                top: 0;
                 width: var(--app-sidebar-width);
-                height: fit-content;
+                height: 100vh;
                 min-height: 0;
-                max-height: calc(100vh - 20px);
                 display: flex;
                 flex-direction: column;
                 gap: 8px;
-                padding: 10px;
-                border-radius: 12px;
+                padding: 16px 12px;
+                border-radius: 0;
                 background: rgba(255, 255, 255, 0.96);
-                border: 1px solid rgba(61, 85, 130, 0.10);
-                box-shadow: 0 12px 34px rgba(30, 47, 77, 0.12);
+                border: none;
+                border-right: 1px solid rgba(61, 85, 130, 0.10);
+                box-shadow: 6px 0 24px rgba(30, 47, 77, 0.06);
                 backdrop-filter: blur(12px);
             }
             .app-sidebar-brand {
@@ -168,7 +168,7 @@
                 transform: translateY(-50%);
             }
             .app-sidebar-footer {
-                margin-top: 4px;
+                margin-top: auto;
                 display: grid;
                 gap: 6px;
             }
@@ -996,13 +996,16 @@
             .ledger-table-toolbar {
                 display: flex;
                 align-items: center;
-                justify-content: flex-end;
+                justify-content: space-between;
                 gap: 8px;
                 min-height: 54px;
                 padding: 9px 14px;
                 border-bottom: 1px solid var(--line);
                 border-radius: 28px 28px 0 0;
                 background: rgba(255, 255, 255, 0.74);
+            }
+            .ledger-filter-wrap {
+                margin-right: auto;
             }
             .ledger-search-cluster {
                 display: flex;
@@ -1280,6 +1283,55 @@
             }
             .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
             .sync-inline-banner.is-success .sync-inline-copy span { color: #168246; }
+            .sync-inline-progress {
+                position: relative;
+                width: 100%;
+                height: 6px;
+                margin-top: 6px;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.12);
+                overflow: hidden;
+            }
+            .sync-inline-progress::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                width: 40%;
+                background: linear-gradient(90deg, transparent, rgba(29, 103, 242, 0.55), transparent);
+                animation: sync-inline-shimmer 1.6s linear infinite;
+                pointer-events: none;
+            }
+            .sync-inline-progress > span {
+                position: relative;
+                z-index: 1;
+                display: block;
+                height: 100%;
+                width: 0%;
+                border-radius: 999px;
+                background: linear-gradient(90deg, #2a8dcd, #1d67f2);
+                transition: width 0.6s ease;
+            }
+            @keyframes sync-inline-shimmer {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(350%); }
+            }
+            .sync-inline-eta {
+                margin-top: 4px;
+                color: var(--blue);
+                font-size: 0.72rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .sync-inline-banner.is-error .sync-inline-progress,
+            .sync-inline-banner.is-success .sync-inline-progress,
+            .sync-inline-banner.is-error .sync-inline-eta,
+            .sync-inline-banner.is-success .sync-inline-eta {
+                display: none;
+            }
             .invoice-table { width: 100%; border-collapse: collapse; min-width: 940px; table-layout: fixed; }
             .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
             .invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 25%; }
@@ -3584,6 +3636,25 @@
                 font: 0.78rem ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
                 white-space: pre-wrap;
             }
+            .developer-log-highlights {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 4px;
+                font-size: 0.82rem;
+                color: var(--muted);
+            }
+            .developer-log-highlights li {
+                padding: 4px 8px;
+                border-radius: 8px;
+                background: rgba(30, 47, 77, 0.05);
+                color: var(--ink);
+                font-weight: 600;
+            }
+            .developer-log-entry.is-error .developer-log-highlights li {
+                background: rgba(255, 83, 83, 0.12);
+            }
             .settings-developer-log-list {
                 max-height: 420px;
                 padding: 0;
@@ -3988,12 +4059,10 @@
                     <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
                         <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">Clients<span>Accounts</span></a>
-                        <a class="app-nav-button" href="#credit-control-invoices" data-app-nav="invoices">Invoices<span>Ledger</span></a>
                         <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">LPCs<span>Late charges</span></a>
                         <a class="app-nav-button" href="#credit-control-settings" data-app-nav="settings">Settings<span>Logs</span></a>
                     </nav>
                     <div class="app-sidebar-footer">
-                        <button class="app-sidebar-connect" id="sidebarConnectButton" type="button">Login with Xero</button>
                         <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
                     </div>
                 </aside>
@@ -4052,6 +4121,8 @@
                             <div class="sync-inline-copy">
                                 <strong id="syncInlineTitle">Xero syncing</strong>
                                 <span id="syncInlineDetail">Preparing sync</span>
+                                <div class="sync-inline-progress" aria-hidden="true"><span id="syncInlineProgressFill"></span></div>
+                                <small class="sync-inline-eta" id="syncInlineEta">Estimating time left</small>
                             </div>
                             <div class="sync-inline-actions" aria-label="Sync failure actions">
                                 <button id="syncViewLogsButton" type="button">View logs</button>
@@ -4085,49 +4156,6 @@
                     </header>
 
                     <section class="ledger-view" id="ledgerView">
-                    <section class="dashboard-hero hero-summary-grid" id="dashboardHero">
-                        <article class="hero-summary-card">
-                            <span>Invoiced </span>
-                            <strong id="heroTotalInvoiced">£0</strong>
-                            <p id="heroTotalInvoicedCount">0 invoices synced</p>
-                        </article>
-                        <article class="hero-summary-card">
-                            <span>Accounts Receivable</span>
-                            <strong id="heroTotalOutstanding">£0</strong>
-                            <p id="heroOpenInvoices">0 open invoices</p>
-                        </article>
-                        <button class="hero-summary-card notice-card late-charge-review-card" id="lateChargeReviewCard" type="button">
-                            <span>Late Charges Due</span>
-                            <strong id="heroLateChargeCount">0</strong>
-                            <p id="heroLateChargeSummary">No charges need review</p>
-                        </button>
-                        <article class="hero-summary-card">
-                            <span>Paid</span>
-                            <strong id="heroPaidInvoicesValue">£0</strong>
-                            <p id="heroPaidInvoices">0 invoices paid</p>
-                        </article>
-                        <article class="hero-summary-card notice-card" id="sevenDayNoticeCard" role="button" tabindex="0">
-                            <span>7 Day Notices Sent</span>
-                            <strong id="heroClientsAction">0</strong>
-                            <p id="heroNoticesSummary">No active 7 day notices</p>
-                        </article>
-                    </section>
-                    <section class="filter-menu-bar" aria-label="Ledger status filters">
-                        <div class="toolbar-menu-wrap status-filter-wrap">
-                            <button class="ghost-button status-filter-button" id="statusFilterButton" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="statusFilterMenu"><span>Filter</span><strong id="statusFilterStateLabel">All</strong></button>
-                            <div class="toolbar-menu status-filter-menu" id="statusFilterMenu" hidden>
-                                <button type="button" data-filter-shortcut="all"><span>All</span><strong id="countAll">0</strong><small id="valueAll">£0</small></button>
-                                <button type="button" data-filter-shortcut="overdue"><span>Overdue</span><strong id="countOverdue">0</strong><small id="valueOverdue">£0</small></button>
-                                <button type="button" data-filter-shortcut="query"><span>Query</span><strong id="countQuery">0</strong><small id="valueQuery">£0</small></button>
-                                <button type="button" data-filter-shortcut="court"><span>Legal</span><strong id="countCourt">0</strong><small id="valueCourt">£0</small></button>
-                                <button type="button" data-filter-shortcut="payment-plan"><span>Payment Plan</span><strong id="countPaymentPlan">0</strong><small></small></button>
-                                <button type="button" data-filter-shortcut="notice"><span>7 Day Notice</span><strong id="countNotice">0</strong><small></small></button>
-                                <button type="button" data-filter-shortcut="bad-debt"><span>Bad debt</span><strong id="countBadDebt">0</strong><small id="valueBadDebt">£0</small></button>
-                                <button type="button" data-filter-shortcut="paid"><span>Paid</span><strong id="countPaid">0</strong><small id="valuePaid">£0</small></button>
-                            </div>
-                        </div>
-                    </section>
-
                     <section class="bulk-action-toolbar" id="bulkActionToolbar" hidden>
                         <div class="bulk-action-summary" id="bulkActionSummary">0 invoices selected</div>
                         <div class="bulk-action-controls">
@@ -4153,6 +4181,19 @@
 
                     <section class="ledger-card">
                         <div class="ledger-table-toolbar" aria-label="Ledger table controls">
+                            <div class="toolbar-menu-wrap status-filter-wrap ledger-filter-wrap">
+                                <button class="ghost-button status-filter-button" id="statusFilterButton" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="statusFilterMenu"><span>Filter</span><strong id="statusFilterStateLabel">All</strong></button>
+                                <div class="toolbar-menu status-filter-menu" id="statusFilterMenu" hidden>
+                                    <button type="button" data-filter-shortcut="all"><span>All</span><strong id="countAll">0</strong><small id="valueAll">£0</small></button>
+                                    <button type="button" data-filter-shortcut="overdue"><span>Overdue</span><strong id="countOverdue">0</strong><small id="valueOverdue">£0</small></button>
+                                    <button type="button" data-filter-shortcut="query"><span>Query</span><strong id="countQuery">0</strong><small id="valueQuery">£0</small></button>
+                                    <button type="button" data-filter-shortcut="court"><span>Legal</span><strong id="countCourt">0</strong><small id="valueCourt">£0</small></button>
+                                    <button type="button" data-filter-shortcut="payment-plan"><span>Payment Plan</span><strong id="countPaymentPlan">0</strong><small></small></button>
+                                    <button type="button" data-filter-shortcut="notice"><span>7 Day Notice</span><strong id="countNotice">0</strong><small></small></button>
+                                    <button type="button" data-filter-shortcut="bad-debt"><span>Bad debt</span><strong id="countBadDebt">0</strong><small id="valueBadDebt">£0</small></button>
+                                    <button type="button" data-filter-shortcut="paid"><span>Paid</span><strong id="countPaid">0</strong><small id="valuePaid">£0</small></button>
+                                </div>
+                            </div>
                             <div class="ledger-search-cluster">
                                 <button class="table-icon-button" id="ledgerSearchToggle" type="button" aria-label="Search ledger" aria-expanded="false" aria-controls="ledgerSearch" title="Search ledger">
                                     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -4405,6 +4446,34 @@
                                 <button class="ghost-button" id="refreshInsightsButton" type="button">Refresh insights</button>
                             </div>
                         </div>
+
+                        <section class="dashboard-hero hero-summary-grid" id="dashboardHero">
+                            <article class="hero-summary-card">
+                                <span>Invoiced </span>
+                                <strong id="heroTotalInvoiced">£0</strong>
+                                <p id="heroTotalInvoicedCount">0 invoices synced</p>
+                            </article>
+                            <article class="hero-summary-card">
+                                <span>Accounts Receivable</span>
+                                <strong id="heroTotalOutstanding">£0</strong>
+                                <p id="heroOpenInvoices">0 open invoices</p>
+                            </article>
+                            <button class="hero-summary-card notice-card late-charge-review-card" id="lateChargeReviewCard" type="button">
+                                <span>Late Charges Due</span>
+                                <strong id="heroLateChargeCount">0</strong>
+                                <p id="heroLateChargeSummary">No charges need review</p>
+                            </button>
+                            <article class="hero-summary-card">
+                                <span>Paid</span>
+                                <strong id="heroPaidInvoicesValue">£0</strong>
+                                <p id="heroPaidInvoices">0 invoices paid</p>
+                            </article>
+                            <article class="hero-summary-card notice-card" id="sevenDayNoticeCard" role="button" tabindex="0">
+                                <span>7 Day Notices Sent</span>
+                                <strong id="heroClientsAction">0</strong>
+                                <p id="heroNoticesSummary">No active 7 day notices</p>
+                            </article>
+                        </section>
 
                         <div class="insights-layout">
                             <aside class="insights-sidebar" aria-label="Insights navigation">
@@ -6432,7 +6501,7 @@
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "settings") return "settings";
                 if (activeView === "client") return "clients";
-                return activeNavSection === "clients" ? "clients" : "invoices";
+                return "clients";
             }
 
             function syncActiveViewShell() {
@@ -6450,18 +6519,12 @@
                 });
             }
 
-            function openLedgerSection(section = "invoices") {
+            function openLedgerSection(section = "clients") {
                 activeView = "ledger";
-                activeNavSection = ["clients", "invoices"].includes(section) ? section : "invoices";
-                if (section === "clients") {
-                    selectedFilter = "all";
-                    clientFilter = "all";
-                    sortMode = "amount";
-                } else {
-                    selectedFilter = "all";
-                    clientFilter = "all";
-                    sortMode = "priority";
-                }
+                activeNavSection = "clients";
+                selectedFilter = "all";
+                clientFilter = "all";
+                sortMode = "amount";
                 currentPage = 1;
                 syncActiveViewShell();
                 closeTopbarMenu();
@@ -6473,7 +6536,6 @@
             function navigateApp(section) {
                 if (section === "home") return openInsightsScreen();
                 if (section === "clients") return openLedgerSection("clients");
-                if (section === "invoices") return openLedgerSection("invoices");
                 if (section === "lpcs") return openLateChargesScreen();
                 if (section === "settings") return openSettingsScreen();
             }
@@ -6508,7 +6570,7 @@
                 clientFilter = "all";
                 lateChargeFilter = "active";
                 lateChargeSearchTerm = "";
-                sortMode = activeNavSection === "invoices" ? "priority" : "amount";
+                sortMode = "amount";
                 searchTerm = "";
                 currentPage = 1;
                 const ledgerSearch = document.getElementById("ledgerSearch");
@@ -6614,7 +6676,6 @@
             const appNavHashes = {
                 home: "credit-control-home",
                 clients: "credit-control-clients",
-                invoices: "credit-control-invoices",
                 lpcs: "credit-control-lpcs",
                 settings: "credit-control-settings",
             };
@@ -9909,6 +9970,62 @@
                 return developerLogEntries.filter((entry) => localDateKey(entry.createdAt) === developerLogDateFilter);
             }
 
+            function formatDuration(seconds) {
+                const secs = Math.max(0, Math.round(Number(seconds) || 0));
+                if (secs < 60) return `${secs}s`;
+                const minutes = Math.floor(secs / 60);
+                const remainder = secs % 60;
+                if (minutes < 60) return `${minutes}m ${String(remainder).padStart(2, "0")}s`;
+                const hours = Math.floor(minutes / 60);
+                return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
+            }
+
+            function developerLogHighlights(entry) {
+                const highlights = [];
+                const payload = entry.payload || {};
+                if (payload.heartbeatAt) {
+                    const age = secondsSinceTimestamp(payload.heartbeatAt);
+                    highlights.push(`Heartbeat ${formatDeveloperLogStamp(payload.heartbeatAt)} (${formatDuration(age)} ago)`);
+                }
+                if (payload.currentStep) {
+                    highlights.push(`Step: ${payload.currentStep}`);
+                }
+                if (payload.last_step) {
+                    highlights.push(`Last step: ${payload.last_step}`);
+                }
+                if (payload.elapsed_seconds_since_heartbeat != null) {
+                    highlights.push(`Stalled for ${formatDuration(payload.elapsed_seconds_since_heartbeat)}`);
+                }
+                if (payload.last_heartbeat_at) {
+                    highlights.push(`Last heartbeat ${formatDeveloperLogStamp(payload.last_heartbeat_at)}`);
+                }
+                if (payload.collection != null && payload.page != null) {
+                    const parts = [`${payload.collection} page ${payload.page}`];
+                    if (payload.batch_size != null) parts.push(`${payload.batch_size} records`);
+                    if (payload.records_so_far != null) parts.push(`${payload.records_so_far} total`);
+                    if (payload.wall_ms != null) parts.push(`${payload.wall_ms}ms`);
+                    if (payload.status_code != null) parts.push(`HTTP ${payload.status_code}`);
+                    highlights.push(parts.join(" · "));
+                }
+                const rateHeaders = payload.rate_limit_headers || (payload.detail && payload.detail.rate_limit_headers);
+                if (rateHeaders && typeof rateHeaders === "object") {
+                    const rateBits = [];
+                    if (rateHeaders.x_minlimit_remaining) rateBits.push(`min ${rateHeaders.x_minlimit_remaining}`);
+                    if (rateHeaders.x_daylimit_remaining) rateBits.push(`day ${rateHeaders.x_daylimit_remaining}`);
+                    if (rateHeaders.x_applimit_remaining) rateBits.push(`app ${rateHeaders.x_applimit_remaining}`);
+                    if (rateHeaders.x_rate_limit_problem) rateBits.push(`hit: ${rateHeaders.x_rate_limit_problem}`);
+                    if (rateHeaders.retry_after) rateBits.push(`retry-after ${rateHeaders.retry_after}`);
+                    if (rateBits.length) highlights.push(`Xero limits: ${rateBits.join(", ")}`);
+                }
+                if (payload.retry_after_seconds) {
+                    highlights.push(`Retry in ${formatDuration(payload.retry_after_seconds)}`);
+                }
+                if (payload.timeout_seconds) {
+                    highlights.push(`Timeout after ${payload.timeout_seconds}s`);
+                }
+                return highlights;
+            }
+
             function renderDeveloperLogList(list, visibleLogs) {
                 list.innerHTML = "";
                 if (!visibleLogs.length) {
@@ -9920,7 +10037,8 @@
                 }
                 visibleLogs.forEach((entry) => {
                     const article = document.createElement("article");
-                    article.className = `developer-log-entry ${entry.level === "error" ? "is-error" : ""}`;
+                    const isStalled = entry.eventType === "sync.stalled";
+                    article.className = `developer-log-entry ${entry.level === "error" || isStalled ? "is-error" : ""}`;
 
                     const meta = document.createElement("div");
                     meta.className = "developer-log-meta";
@@ -9937,6 +10055,19 @@
                     message.textContent = entry.message || "";
 
                     article.append(meta, title, message);
+
+                    const highlights = developerLogHighlights(entry);
+                    if (highlights.length) {
+                        const highlightList = document.createElement("ul");
+                        highlightList.className = "developer-log-highlights";
+                        highlights.forEach((text) => {
+                            const item = document.createElement("li");
+                            item.textContent = text;
+                            highlightList.appendChild(item);
+                        });
+                        article.appendChild(highlightList);
+                    }
+
                     if (entry.payload && Object.keys(entry.payload).length) {
                         const payload = document.createElement("pre");
                         payload.textContent = JSON.stringify(entry.payload, null, 2);
@@ -10229,6 +10360,41 @@
                     const inlineDetail = document.getElementById("syncInlineDetail");
                     if (inlineDetail) inlineDetail.textContent = detailText;
                 }
+
+                const progressPct = Math.min(100, Math.max(0, Number(latestSyncRun?.progress || 0)));
+                const inlineProgressFill = document.getElementById("syncInlineProgressFill");
+                if (inlineProgressFill) inlineProgressFill.style.width = `${progressPct}%`;
+
+                const inlineEta = document.getElementById("syncInlineEta");
+                if (inlineEta) {
+                    let etaText;
+                    if (latestSyncRun?.status === "failed") {
+                        etaText = "Sync failed";
+                    } else if (latestSyncRun?.status === "completed") {
+                        etaText = "Sync complete";
+                    } else if (syncLooksStalled) {
+                        etaText = `Awaiting backend (${formatSyncDuration(heartbeatAge)})`;
+                    } else {
+                        const backfillEta = syncRunBackfillEta(latestSyncRun, elapsedSeconds);
+                        if (backfillEta) {
+                            etaText = backfillEta;
+                        } else if (progressPct > 0 && progressPct < 100 && elapsedSeconds >= 5) {
+                            const totalEstimate = Math.ceil((elapsedSeconds / progressPct) * 100);
+                            const remaining = Math.max(0, totalEstimate - elapsedSeconds);
+                            etaText = remaining > 0
+                                ? `About ${formatSyncDuration(remaining)} left · ${progressPct}% complete`
+                                : `${progressPct}% complete`;
+                        } else if (elapsedSeconds < 45) {
+                            etaText = "Estimated completion 45-90s";
+                        } else if (elapsedSeconds < 90) {
+                            etaText = "Estimating time remaining";
+                        } else {
+                            etaText = "Still working - large ledgers can take longer";
+                        }
+                    }
+                    inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${etaText}`;
+                }
+
                 renderSyncSettings();
             }
 
@@ -10287,6 +10453,8 @@
                 }
                 const inlineTitle = document.getElementById("syncInlineTitle");
                 if (inlineTitle) inlineTitle.textContent = "Xero syncing";
+                const inlineProgressFill = document.getElementById("syncInlineProgressFill");
+                if (inlineProgressFill) inlineProgressFill.style.width = "0%";
                 updateSyncProgress();
                 window.clearInterval(syncProgressTimer);
                 syncProgressTimer = window.setInterval(updateSyncProgress, 1000);
