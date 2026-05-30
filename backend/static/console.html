@@ -177,10 +177,21 @@
                 background: var(--ink);
                 border-color: rgba(30, 47, 77, 0.22);
                 text-align: center;
+                cursor: pointer;
+                font: inherit;
             }
             .app-sidebar-connect:disabled {
                 opacity: 0.62;
                 cursor: not-allowed;
+            }
+            .app-sidebar-connect strong {
+                font-size: 0.86rem;
+                font-weight: 900;
+            }
+            .app-sidebar-connect span {
+                color: rgba(255, 255, 255, 0.72);
+                font-size: 0.68rem;
+                font-weight: 800;
             }
             .app-sidebar-link {
                 color: var(--blue);
@@ -998,6 +1009,7 @@
                 align-items: center;
                 justify-content: space-between;
                 gap: 8px;
+                flex-wrap: wrap;
                 min-height: 54px;
                 padding: 9px 14px;
                 border-bottom: 1px solid var(--line);
@@ -1014,6 +1026,40 @@
                 gap: 8px;
                 min-width: 0;
             }
+            .ledger-options-wrap {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+            }
+            .ledger-section-shortcuts {
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+            .ledger-section-button {
+                min-height: 38px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: #ffffff;
+                color: var(--ink);
+                padding: 8px 13px;
+                box-shadow: 0 10px 22px rgba(30, 47, 77, 0.07);
+                font: inherit;
+                font-size: 0.76rem;
+                font-weight: 900;
+                line-height: 1;
+                white-space: nowrap;
+                transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+            }
+            .ledger-section-button:hover,
+            .ledger-section-button.is-active {
+                border-color: rgba(29, 103, 242, 0.26);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            .ledger-section-button:active { transform: scale(0.97); }
             .table-icon-button {
                 width: 38px;
                 height: 38px;
@@ -1112,6 +1158,7 @@
                 padding-bottom: 0;
                 border-bottom: 0;
             }
+            .toolbar-menu-section[hidden] { display: none; }
             .toolbar-menu-section-title {
                 padding: 0 4px;
                 color: var(--muted);
@@ -2063,12 +2110,18 @@
             }
             .xero-client-title-row {
                 display: grid;
-                grid-template-columns: auto minmax(0, 1fr) auto;
+                grid-template-columns: auto minmax(0, 1fr);
                 gap: 12px;
                 align-items: start;
                 padding: 10px 18px 18px;
             }
+            .xero-client-title {
+                grid-column: 2;
+                grid-row: 2;
+            }
             .xero-client-avatar {
+                grid-column: 1;
+                grid-row: 2;
                 width: 34px;
                 height: 34px;
                 display: grid;
@@ -2113,9 +2166,11 @@
                 font-weight: 800;
             }
             .xero-client-header-actions {
+                grid-column: 1 / -1;
+                grid-row: 1;
                 display: flex;
                 flex-wrap: wrap;
-                justify-content: flex-end;
+                justify-content: flex-start;
                 gap: 8px;
             }
             .xero-client-tabs {
@@ -4067,6 +4122,10 @@
                         <a class="app-nav-button" href="#credit-control-settings" data-app-nav="settings">Settings<span>Logs</span></a>
                     </nav>
                     <div class="app-sidebar-footer">
+                        <button class="app-sidebar-connect" id="sidebarResyncButton" type="button">
+                            <strong>Resync Data</strong>
+                            <span>Refresh Xero</span>
+                        </button>
                         <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
                     </div>
                 </aside>
@@ -4082,7 +4141,6 @@
                             <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Login with Xero</a>
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
-                            <button class="topbar-back-button" id="topbarBackToLedgerButton" type="button">Back to ledger</button>
                             <button class="topbar-contact-strip" id="topbarClientButton" type="button">
                                 <span class="topbar-client-avatar" id="topbarClientAvatar">--</span>
                                 <span class="topbar-contact-copy">
@@ -4210,7 +4268,13 @@
                                 </label>
                             </div>
                             <div class="toolbar-menu-wrap ledger-options-wrap">
-                                <button class="table-icon-button" id="ledgerOptionsButton" type="button" aria-label="Table options" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" title="Table options">
+                                <div class="ledger-section-shortcuts" role="group" aria-label="Ledger table options">
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="sort" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Sort</button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="filter" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Filter</button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="columns" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Columns</button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="actions" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Actions</button>
+                                </div>
+                                <button class="table-icon-button" id="ledgerOptionsButton" type="button" aria-label="Table options" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" title="Table options" hidden>
                                     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                         <circle cx="12" cy="12" r="3"></circle>
                                         <path d="M12 2v3"></path>
@@ -4224,14 +4288,14 @@
                                     </svg>
                                 </button>
                                 <div class="toolbar-menu ledger-options-menu" id="ledgerOptionsMenu" hidden>
-                                    <div class="toolbar-menu-section">
+                                    <div class="toolbar-menu-section" data-ledger-options-panel="sort">
                                         <span class="toolbar-menu-section-title">Sort <strong id="sortStateLabel">Priority</strong></span>
                                         <button type="button" data-sort-mode="priority">Priority</button>
                                         <button type="button" data-sort-mode="due">Due date</button>
                                         <button type="button" data-sort-mode="amount">Amount due</button>
                                         <button type="button" data-sort-mode="client">Client</button>
                                     </div>
-                                    <div class="toolbar-menu-section">
+                                    <div class="toolbar-menu-section" data-ledger-options-panel="filter">
                                         <span class="toolbar-menu-section-title">Filter <strong id="filterStateLabel">All invoices</strong></span>
                                         <button type="button" data-filter-mode="all">All invoices</button>
                                         <button type="button" data-filter-mode="action">Needs action</button>
@@ -4240,14 +4304,14 @@
                                         <button type="button" data-filter-mode="over1000">Over £1,000</button>
                                         <button type="button" data-filter-mode="under100">Under £100</button>
                                     </div>
-                                    <div class="toolbar-menu-section">
+                                    <div class="toolbar-menu-section" data-ledger-options-panel="columns">
                                         <span class="toolbar-menu-section-title">Columns</span>
                                         <div class="column-toggle-list">
                                             <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
                                             <label><input type="checkbox" data-column-toggle="notes" checked> Credits</label>
                                         </div>
                                     </div>
-                                    <div class="toolbar-menu-section ledger-options-actions">
+                                    <div class="toolbar-menu-section ledger-options-actions" data-ledger-options-panel="actions">
                                         <span class="toolbar-menu-section-title">Actions</span>
                                         <button class="ghost-button" id="denseModeButton" type="button" aria-pressed="true">Comfort table</button>
                                         <button class="ghost-button" id="reviewLateChargesButton" type="button">Review late charges</button>
@@ -4287,7 +4351,6 @@
                     <section class="settings-screen detail-card" id="settingsScreen" hidden>
                         <div class="detail-hero">
                             <div>
-                                <button class="text-button" id="backFromSettingsButton" type="button">Back to ledger</button>
                                 <p class="eyebrow">Jenius AI settings</p>
                                 <h2>Settings</h2>
                                 <p class="detail-meta">Choose exactly what Xero data to import before running the next sync.</p>
@@ -4401,7 +4464,6 @@
                     <section class="late-charges-screen detail-card" id="lateChargesScreen" hidden>
                         <div class="detail-hero">
                             <div>
-                                <button class="text-button" id="backFromLateChargesButton" type="button">Back to ledger</button>
                                 <p class="eyebrow">Overdue invoice workflow</p>
                                 <h2>Review Late Payment Charges</h2>
                                 <p class="detail-meta">Invoices more than 14 days overdue and not already charged. Review the rows, then raise one Xero invoice per selected charge.</p>
@@ -4441,7 +4503,6 @@
                     <section class="insights-screen detail-card" id="insightsScreen" hidden>
                         <div class="detail-hero insights-hero">
                             <div>
-                                <button class="text-button" id="backFromInsightsButton" type="button">Back to ledger</button>
                                 <p class="eyebrow">Jenius AI</p>
                                 <h2>Insights</h2>
                                 <p class="detail-meta" id="insightsMeta">AI analysis, reports and collection trends from synced Xero data.</p>
@@ -4501,14 +4562,12 @@
                     <section class="client-screen detail-card" id="clientScreen" data-active-section="overview" hidden>
                         <div class="detail-hero client-hero" hidden>
                             <div>
-                                <button class="text-button" id="backToLedgerButton" type="button">Back to ledger</button>
                                 <p class="eyebrow">Credit control client</p>
                                 <h2 id="clientTitle">No client selected</h2>
                             </div>
                         </div>
 
                         <section class="xero-client-header" aria-label="Client contact summary">
-                            <button class="text-button" id="clientHeaderBackButton" type="button">Back to ledger</button>
                             <div class="xero-client-title-row">
                                 <div class="xero-client-avatar" id="xeroClientInitials">--</div>
                                 <div class="xero-client-title">
@@ -6750,13 +6809,6 @@
                         handleAppNavigation(navButton.dataset.appNav, event);
                         return;
                     }
-                    const backButton = event.target.closest?.("#backToLedgerButton, #clientHeaderBackButton, #topbarBackToLedgerButton, #backFromSettingsButton, #backFromInsightsButton, #backFromLateChargesButton");
-                    if (backButton) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        returnToLedgerView();
-                        return;
-                    }
                     const topbarMenuButton = event.target.closest?.("#topbarMenuButton");
                     if (topbarMenuButton) {
                         event.preventDefault();
@@ -6901,12 +6953,12 @@
                         openFirstSevenDayNoticeClient();
                         return;
                     }
-                    const syncAction = event.target.closest?.("#settingsRunSyncButton, #menuSyncButton, #clientRunImportButton, #syncRetryButton");
+                    const syncAction = event.target.closest?.("#settingsRunSyncButton, #menuSyncButton, #clientRunImportButton, #syncRetryButton, #sidebarResyncButton");
                     if (syncAction) {
                         event.preventDefault();
                         event.stopPropagation();
                         closeClientActionMenu();
-                        runXeroSync();
+                        runXeroSync({ allowBackendConnectionCheck: syncAction.id === "sidebarResyncButton" });
                         return;
                     }
                     const disconnectButton = event.target.closest?.("#disconnectXeroButton, #settingsDisconnectXeroButton");
@@ -7005,6 +7057,13 @@
                         } else if (!ledgerSearch?.value) {
                             ledgerSearch?.blur();
                         }
+                        return;
+                    }
+                    const ledgerOptionsShortcut = event.target.closest?.("[data-ledger-options-section]");
+                    if (ledgerOptionsShortcut) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openLedgerOptionsSection(ledgerOptionsShortcut.dataset.ledgerOptionsSection);
                         return;
                     }
                     const optionsButton = event.target.closest?.("#ledgerOptionsButton");
@@ -9367,6 +9426,17 @@
                     sidebarConnectButton.textContent = connected ? "Resync Xero" : "Login with Xero";
                     sidebarConnectButton.disabled = isSyncing;
                 }
+                const sidebarResyncButton = document.getElementById("sidebarResyncButton");
+                if (sidebarResyncButton) {
+                    sidebarResyncButton.disabled = isSyncing;
+                    const label = sidebarResyncButton.querySelector("strong");
+                    const detail = sidebarResyncButton.querySelector("span");
+                    if (label) label.textContent = isSyncing ? "Syncing..." : "Resync Data";
+                    if (detail) detail.textContent = isSyncing ? "Import in progress" : "Refresh Xero";
+                    sidebarResyncButton.title = isSyncing
+                        ? "Please wait while Xero data is imported"
+                        : "Resume or refresh Xero data from the backend connection";
+                }
                 renderTopbarClientContext();
             }
 
@@ -9791,6 +9861,34 @@
                 button.setAttribute("aria-expanded", String(willOpen));
             }
 
+            function setLedgerOptionsSection(section = "", menuOpen = false) {
+                const activeSection = String(section || "");
+                const menu = document.getElementById("ledgerOptionsMenu");
+                if (menu) {
+                    menu.dataset.activeSection = activeSection;
+                    menu.querySelectorAll("[data-ledger-options-panel]").forEach((panel) => {
+                        panel.hidden = Boolean(activeSection) && panel.dataset.ledgerOptionsPanel !== activeSection;
+                    });
+                }
+                document.querySelectorAll("[data-ledger-options-section]").forEach((button) => {
+                    const isActive = Boolean(menuOpen && activeSection && button.dataset.ledgerOptionsSection === activeSection);
+                    button.classList.toggle("is-active", isActive);
+                    button.setAttribute("aria-expanded", String(isActive));
+                });
+            }
+
+            function openLedgerOptionsSection(section) {
+                const menu = document.getElementById("ledgerOptionsMenu");
+                if (!menu) return;
+                const activeSection = String(section || "");
+                const willClose = !menu.hidden && menu.dataset.activeSection === activeSection;
+                closeToolbarMenus();
+                if (willClose) return;
+                menu.hidden = false;
+                document.getElementById("ledgerOptionsButton")?.setAttribute("aria-expanded", "true");
+                setLedgerOptionsSection(activeSection, true);
+            }
+
             function closeToolbarMenus() {
                 ["sortMenu", "filterMenu", "columnMenu", "ledgerOptionsMenu", "statusFilterMenu"].forEach((menuId) => {
                     const menu = document.getElementById(menuId);
@@ -9800,6 +9898,7 @@
                     const button = document.getElementById(buttonId);
                     if (button) button.setAttribute("aria-expanded", "false");
                 });
+                setLedgerOptionsSection("", false);
             }
 
             function scrollClientWorkspaceTarget(section, focusId = "", delay = 120) {
@@ -10644,12 +10743,12 @@
                 }
             }
 
-            async function runXeroSync({ automatic = false } = {}) {
+            async function runXeroSync({ automatic = false, allowBackendConnectionCheck = false } = {}) {
                 if (isSyncing) {
                     renderChrome();
                     return;
                 }
-                if (!isXeroConnected()) {
+                if (!isXeroConnected() && !allowBackendConnectionCheck) {
                     clearSyncFailureBanner();
                     renderChrome();
                     showToast("Connect Xero before syncing.", "info", {
@@ -11046,6 +11145,10 @@
                 if (settingsRunSyncButton) settingsRunSyncButton.addEventListener("click", () => runXeroSync());
                 const syncRetryButton = document.getElementById("syncRetryButton");
                 if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
+                const sidebarResyncButton = document.getElementById("sidebarResyncButton");
+                if (sidebarResyncButton && !sidebarResyncButton.onclick) {
+                    sidebarResyncButton.addEventListener("click", () => runXeroSync({ allowBackendConnectionCheck: true }));
+                }
                 const syncViewLogsButton = document.getElementById("syncViewLogsButton");
                 if (syncViewLogsButton && !syncViewLogsButton.onclick) syncViewLogsButton.addEventListener("click", openDeveloperLog);
             }
@@ -11109,9 +11212,6 @@
             }
 
             function wireForms() {
-                document.querySelectorAll("#backToLedgerButton, #clientHeaderBackButton, #topbarBackToLedgerButton, #backFromSettingsButton, #backFromInsightsButton, #backFromLateChargesButton").forEach((button) => {
-                    button.addEventListener("click", returnToLedgerView);
-                });
                 document.getElementById("closeQuickNoteButton")?.addEventListener("click", closeQuickNotePanel);
                 document.getElementById("quickNotePanel")?.addEventListener("click", (event) => {
                     if (event.target.id === "quickNotePanel") closeQuickNotePanel();
