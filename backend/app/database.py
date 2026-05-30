@@ -284,6 +284,8 @@ ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS contacts_total INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS invoices_total INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS rate_limit_until TIMESTAMPTZ;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS retry_after_seconds INTEGER NOT NULL DEFAULT 0;
 UPDATE sync_runs
 SET customers_synced = COALESCE(customers_synced, 0),
     invoices_synced = COALESCE(invoices_synced, 0),
@@ -292,7 +294,8 @@ SET customers_synced = COALESCE(customers_synced, 0),
     failed_count = COALESCE(failed_count, 0),
     heartbeat_at = COALESCE(heartbeat_at, started_at, created_at),
     contacts_total = COALESCE(contacts_total, 0),
-    invoices_total = COALESCE(invoices_total, 0);
+    invoices_total = COALESCE(invoices_total, 0),
+    retry_after_seconds = COALESCE(retry_after_seconds, 0);
 ALTER TABLE sync_runs ALTER COLUMN customers_synced SET DEFAULT 0;
 ALTER TABLE sync_runs ALTER COLUMN invoices_synced SET DEFAULT 0;
 ALTER TABLE sync_runs ALTER COLUMN fetched_count SET DEFAULT 0;
@@ -300,6 +303,7 @@ ALTER TABLE sync_runs ALTER COLUMN processed_count SET DEFAULT 0;
 ALTER TABLE sync_runs ALTER COLUMN failed_count SET DEFAULT 0;
 ALTER TABLE sync_runs ALTER COLUMN contacts_total SET DEFAULT 0;
 ALTER TABLE sync_runs ALTER COLUMN invoices_total SET DEFAULT 0;
+ALTER TABLE sync_runs ALTER COLUMN retry_after_seconds SET DEFAULT 0;
 ALTER TABLE sync_runs ALTER COLUMN customers_synced SET NOT NULL;
 ALTER TABLE sync_runs ALTER COLUMN invoices_synced SET NOT NULL;
 ALTER TABLE sync_runs ALTER COLUMN fetched_count SET NOT NULL;
@@ -307,6 +311,7 @@ ALTER TABLE sync_runs ALTER COLUMN processed_count SET NOT NULL;
 ALTER TABLE sync_runs ALTER COLUMN failed_count SET NOT NULL;
 ALTER TABLE sync_runs ALTER COLUMN contacts_total SET NOT NULL;
 ALTER TABLE sync_runs ALTER COLUMN invoices_total SET NOT NULL;
+ALTER TABLE sync_runs ALTER COLUMN retry_after_seconds SET NOT NULL;
 DO $$
 DECLARE
     counter_column RECORD;

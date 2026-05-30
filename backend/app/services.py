@@ -264,6 +264,80 @@ def _xero_rate_limit_retry_seconds(exc: Exception) -> int | None:
         return 0
 
 
+def _active_xero_rate_limit(user_id: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT rate_limit_until, retry_after_seconds, error_message
+                FROM sync_runs
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND rate_limit_until IS NOT NULL
+                  AND rate_limit_until > NOW()
+                ORDER BY rate_limit_until DESC, completed_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+                """,
+                ("xero", user_id),
+            )
+            row = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT created_at, payload
+                FROM audit_events
+                WHERE user_id = %s
+                  AND event_type = %s
+                ORDER BY created_at DESC
+                LIMIT 20
+                """,
+                (user_id, "sync.failed"),
+            )
+            audit_rows = cursor.fetchall()
+        connection.commit()
+
+    if row is not None:
+        remaining_seconds = max(0, int((row["rate_limit_until"] - utcnow()).total_seconds()) + 1)
+        return {
+            "rate_limit_until": row["rate_limit_until"],
+            "retry_after_seconds": remaining_seconds,
+            "message": (
+                f"Xero has rate-limited this connection. Wait about {_format_wait_seconds(remaining_seconds)} "
+                "before starting another sync."
+            ),
+            "previous_error": row.get("error_message") or "",
+        }
+
+    for audit_row in audit_rows:
+        payload = audit_row.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        detail = payload.get("detail") if isinstance(payload.get("detail"), dict) else {}
+        nested_detail = detail.get("detail") if isinstance(detail.get("detail"), dict) else {}
+        message = str(payload.get("error") or nested_detail.get("message") or "")
+        if "rate-limit" not in message.lower() or "contacts request" in message.lower():
+            continue
+        retry_after_seconds = nested_detail.get("retry_after_seconds") or nested_detail.get("retry_after") or 0
+        try:
+            retry_after_seconds = max(0, int(retry_after_seconds))
+        except (TypeError, ValueError):
+            continue
+        rate_limit_until = audit_row["created_at"] + timedelta(seconds=retry_after_seconds)
+        if rate_limit_until <= utcnow():
+            continue
+        remaining_seconds = max(0, int((rate_limit_until - utcnow()).total_seconds()) + 1)
+        return {
+            "rate_limit_until": rate_limit_until,
+            "retry_after_seconds": remaining_seconds,
+            "message": (
+                f"Xero has rate-limited this connection. Wait about {_format_wait_seconds(remaining_seconds)} "
+                "before starting another sync."
+            ),
+            "previous_error": message,
+        }
+
+    return None
+
+
 def normalise_sync_options(options: dict | None = None) -> dict:
     options = options or {}
     invoice_scope = str(options.get("invoiceScope") or DEFAULT_SYNC_SCOPE)
@@ -790,6 +864,17 @@ def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict
     sync_options = normalise_sync_options(sync_options)
     get_xero_connection_for_user(user["id"])
     _mark_stale_sync_runs(user["id"])
+    rate_limit = _active_xero_rate_limit(user["id"])
+    if rate_limit is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": rate_limit["message"],
+                "retry_after_seconds": rate_limit["retry_after_seconds"],
+                "rate_limit_until": _iso(rate_limit["rate_limit_until"]),
+                "previous_error": rate_limit["previous_error"],
+            },
+        )
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -911,6 +996,8 @@ def serialize_sync_run(sync_run: dict) -> dict:
         "startedAt": _iso(sync_run.get("started_at")) or "",
         "heartbeatAt": _iso(sync_run.get("heartbeat_at")) or "",
         "completedAt": _iso(sync_run.get("completed_at")) or "",
+        "rateLimitUntil": _iso(sync_run.get("rate_limit_until")) or "",
+        "retryAfterSeconds": int(sync_run.get("retry_after_seconds") or 0),
         "isActive": sync_run.get("status") in ACTIVE_SYNC_STATUSES,
     }
 
@@ -1862,15 +1949,19 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         return completed
     except Exception as exc:
         message = _sync_error_message(exc)
-        _update_sync_run(
-            sync_run_id,
-            status="failed",
-            current_step="Sync failed",
-            summary="Xero sync failed.",
-            error_message=message,
-            failed_count=1,
-            completed_at=utcnow(),
-        )
+        failure_fields = {
+            "status": "failed",
+            "current_step": "Sync failed",
+            "summary": "Xero sync failed.",
+            "error_message": message,
+            "failed_count": 1,
+            "completed_at": utcnow(),
+        }
+        retry_after_seconds = _xero_rate_limit_retry_seconds(exc)
+        if retry_after_seconds is not None:
+            failure_fields["rate_limit_until"] = utcnow() + timedelta(seconds=retry_after_seconds)
+            failure_fields["retry_after_seconds"] = retry_after_seconds
+        _update_sync_run(sync_run_id, **failure_fields)
         try:
             record_audit_event(
                 "sync_run",
