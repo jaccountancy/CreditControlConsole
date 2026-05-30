@@ -17,8 +17,8 @@
     -->
     <style>
 :root {
-    --bg: #f5f8ff;
-    --surface: rgba(255, 255, 255, 0.88);
+    --bg: #f4f6f9;
+    --surface: rgba(255, 255, 255, 0.94);
     --surface-strong: #ffffff;
     --surface-soft: #f8fbff;
     --ink: #1e2f4d;
@@ -34,8 +34,8 @@
     --red-soft: #ffe7e7;
     --purple: #8d62ff;
     --purple-soft: #eee8ff;
-    --shadow: 0 18px 60px rgba(41, 79, 148, 0.12);
-    --app-sidebar-width: 188px;
+    --shadow: 0 8px 24px rgba(41, 79, 148, 0.07);
+    --app-sidebar-width: 176px;
 }
 
 * { box-sizing: border-box; }
@@ -43,31 +43,36 @@ html, body { margin: 0; min-height: 100%; }
 body {
     font-family: "Manrope", sans-serif;
     color: var(--ink);
-    padding-right: calc(var(--app-sidebar-width) + 34px);
-    background:
-        radial-gradient(circle at top center, rgba(29, 103, 242, 0.10), transparent 30%),
-        radial-gradient(circle at bottom left, rgba(141, 98, 255, 0.08), transparent 28%),
-        linear-gradient(180deg, #fdfefe 0%, var(--bg) 100%);
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+    padding: 10px 10px 32px;
+    background: var(--bg);
 }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
-.ledger-shell { width: min(1360px, calc(100vw - var(--app-sidebar-width) - 88px)); margin: 8px auto 48px; }
+.ledger-shell {
+    grid-column: 2;
+    width: min(1320px, 100%);
+    margin: 0 auto 32px;
+}
 .app-sidebar {
-    position: fixed;
+    position: sticky;
     z-index: 110;
-    top: 14px;
-    right: 16px;
-    bottom: 14px;
+    top: 10px;
     width: var(--app-sidebar-width);
+    height: calc(100vh - 20px);
     display: flex;
     flex-direction: column;
     gap: 12px;
     padding: 12px;
-    border-radius: 22px;
-    background: rgba(255, 255, 255, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.82);
-    box-shadow: 0 18px 60px rgba(30, 47, 77, 0.16);
-    backdrop-filter: blur(16px);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(61, 85, 130, 0.10);
+    box-shadow: 0 12px 34px rgba(30, 47, 77, 0.12);
+    backdrop-filter: blur(12px);
 }
 .app-sidebar-brand {
     display: grid;
@@ -92,14 +97,15 @@ button { cursor: pointer; }
 .app-nav-button,
 .app-sidebar-link,
 .app-sidebar-connect {
+    position: relative;
     width: 100%;
-    min-height: 46px;
+    min-height: 42px;
     display: grid;
     align-content: center;
     gap: 2px;
     border: 1px solid transparent;
-    border-radius: 14px;
-    padding: 9px 11px;
+    border-radius: 10px;
+    padding: 8px 10px;
     text-align: left;
     color: var(--ink);
     background: transparent;
@@ -123,6 +129,17 @@ button { cursor: pointer; }
     color: var(--blue);
     border-color: rgba(29, 103, 242, 0.26);
     background: var(--blue-soft);
+}
+.app-nav-button.is-active::before {
+    content: "";
+    width: 3px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--blue);
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
 }
 .app-sidebar-footer {
     margin-top: auto;
@@ -159,12 +176,17 @@ button { cursor: pointer; }
     flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
-    gap: 18px;
-    padding: 22px 26px;
-    border-radius: 28px;
-    margin-bottom: 18px;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin-bottom: 10px;
 }
 .brand-lockup { display: flex; align-items: center; min-width: 0; }
+.brand-lockup h1 {
+    font-size: 1.18rem;
+    line-height: 1.05;
+    font-weight: 850;
+}
 .ledger-topbar .brand-lockup,
 .ledger-topbar .topbar-actions {
     flex: 0 0 auto;
@@ -246,7 +268,7 @@ button { cursor: pointer; }
     background: #ffffff;
 }
 body.is-client-view .ledger-shell {
-    width: min(1500px, calc(100vw - var(--app-sidebar-width) - 88px));
+    width: min(1500px, 100%);
 }
 body.is-client-view .ledger-topbar {
     display: grid;
@@ -302,24 +324,25 @@ body.is-client-view .stale-sync-warning {
     color: var(--muted);
 }
 h1, h2, h3, h4, p { margin: 0; }
-h1, h2, h3 { letter-spacing: -0.03em; }
+h1, h2, h3 { letter-spacing: 0; }
 .connection-meta {
-    margin-top: 6px;
+    margin-top: 3px;
     color: var(--muted);
-    font-size: 0.92rem;
+    font-size: 0.78rem;
+    font-weight: 750;
 }
 .dashboard-hero {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 14px;
-    margin-bottom: 20px;
+    gap: 10px;
+    margin-bottom: 12px;
 }
 .hero-summary-card {
-    padding: 16px 20px 14px;
-    border-radius: 26px;
-    background: rgba(255, 255, 255, 0.82);
-    border: 1px solid rgba(255, 255, 255, 0.75);
-    box-shadow: 0 12px 32px rgba(30, 47, 77, 0.07);
+    padding: 13px 15px 12px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid rgba(61, 85, 130, 0.12);
+    box-shadow: none;
 }
 button.hero-summary-card {
     color: inherit;
@@ -351,9 +374,9 @@ button.hero-summary-card {
 .hero-summary-card strong {
     display: block;
     color: var(--ink);
-    font-size: clamp(1.5rem, 2.2vw, 2.1rem);
+    font-size: clamp(1.25rem, 1.7vw, 1.65rem);
     line-height: 1.05;
-    letter-spacing: -0.03em;
+    letter-spacing: 0;
 }
 .hero-summary-card p {
     margin-top: 6px;
@@ -560,8 +583,8 @@ button.hero-summary-card {
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
     align-items: stretch;
-    margin-bottom: 20px;
-    gap: 14px;
+    margin-bottom: 12px;
+    gap: 10px;
 }
 .summary-chip {
     position: relative;
@@ -571,23 +594,23 @@ button.hero-summary-card {
         "icon label"
         "metrics metrics";
     align-items: start;
-    gap: 12px;
+    gap: 8px;
     width: 100%;
     min-width: 0;
-    min-height: 86px;
-    padding: 14px 16px 14px 20px;
-    border-radius: 22px;
-    background: rgba(255, 255, 255, 0.78);
+    min-height: 72px;
+    padding: 11px 13px 11px 15px;
+    border-radius: 12px;
+    background: #fff;
     border-color: var(--line);
     color: var(--muted);
     --chip-accent: var(--muted);
-    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
+    box-shadow: none;
     transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 
 .summary-chip:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     border-color: color-mix(in srgb, var(--chip-accent) 28%, white);
     box-shadow: 0 14px 30px color-mix(in srgb, var(--chip-accent) 12%, rgba(15, 23, 42, 0.12));
 }
@@ -711,9 +734,9 @@ button.hero-summary-card {
 }
 
 .summary-chip strong {
-    font-size: 1.24rem;
+    font-size: 1.06rem;
     line-height: 1;
-    letter-spacing: -0.045em;
+    letter-spacing: 0;
 }
 .summary-chip.is-active {
     color: white;
@@ -1069,8 +1092,8 @@ button.hero-summary-card {
     cursor: not-allowed;
     opacity: 0.52;
 }
-.ledger-card { border-radius: 28px; overflow: visible; position: relative; }
-.ledger-scroll { overflow: auto; border-radius: 0 0 28px 28px; }
+.ledger-card { border-radius: 14px; overflow: visible; position: relative; }
+.ledger-scroll { overflow: auto; border-radius: 0 0 14px 14px; }
 .sync-inline-banner {
     flex: 1 1 440px;
     display: inline-flex;
@@ -3645,14 +3668,17 @@ body.is-syncing .sync-dot {
 }
 @media (max-width: 1220px) {
     body {
-        padding-right: 0;
+        display: block;
+        padding-left: 0;
         padding-bottom: 94px;
     }
     .ledger-shell,
     body.is-client-view .ledger-shell {
+        grid-column: auto;
         width: calc(100vw - 24px);
     }
     .app-sidebar {
+        position: fixed;
         top: auto;
         left: 12px;
         right: 12px;
@@ -3855,8 +3881,8 @@ body.is-syncing .sync-dot {
                     <span id="syncInlineDetail">Preparing sync</span>
                 </div>
                 <div class="sync-inline-actions" aria-label="Sync failure actions">
-                    <button id="syncViewLogsButton" type="button" onclick="openDeveloperLog()">View logs</button>
-                    <button id="syncRetryButton" type="button" onclick="runXeroSync()">Try again</button>
+                    <button id="syncViewLogsButton" type="button">View logs</button>
+                    <button id="syncRetryButton" type="button">Try again</button>
                 </div>
             </div>
             <div class="sync-inline-banner ai-inline-banner" id="aiInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
@@ -4248,7 +4274,7 @@ body.is-syncing .sync-dot {
                     <div class="xero-client-header-actions">
                         <a class="ghost-button" id="clientHeaderXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
                         <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
-                        <button class="primary-button" type="button" data-client-action="reminder">New</button>
+                        <button class="primary-button" type="button" data-client-action="reminder">Send reminder</button>
                     </div>
                 </div>
                 <nav class="xero-client-tabs client-section-nav" aria-label="Client sections">
@@ -4308,7 +4334,7 @@ body.is-syncing .sync-dot {
                         <div class="client-status-banner" id="clientStateBanner">Select a client to see account status.</div>
                         <div class="detail-stats client-kpi-strip" id="clientStats"></div>
                         <div class="court-callout interest-tooltip-anchor" tabindex="0">
-                            <button class="info-button" type="button">i</button>
+                            <button class="info-button" id="interestInfoButton" type="button" aria-label="Show interest calculation">i</button>
                             <p id="interestInfoText">Account-level statutory interest and court-cost guidance will appear here for this client.</p>
                             <div class="interest-calc-tooltip" id="interestInfoTooltip" role="tooltip"></div>
                         </div>
@@ -4719,12 +4745,12 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Where things are</h4>
-                    <p>The right sidebar holds Home, Clients, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                    <p>The left sidebar holds Home, Clients, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                 </section>
                 <section class="help-section">
                     <h4>First sync</h4>
                     <ol>
-                        <li>Open Settings from the right sidebar.</li>
+                        <li>Open Settings from the left sidebar.</li>
                         <li>Choose the invoice years you want to import. No years are selected by default so you stay in control of the data volume.</li>
                         <li>Choose the data filter. Outstanding invoices only is fastest. Full invoice history imports the biggest dataset.</li>
                         <li>Run import. The first sync has to build the local ledger from scratch, so it can take longer while contacts, outstanding invoices, and any selected paid invoice history are pulled from Xero.</li>
@@ -4749,7 +4775,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Letter templates and generated letters</h4>
-                    <p>Open Settings from the right sidebar to create and edit letter templates. Templates can use fields such as {{client_name}}, {{contact_name}}, {{total_due}}, {{invoice_list}}, {{today}}, and selected invoice fields. On the client screen, choose a template in the Letters section and generate it. The generated letter is shown for review, can be copied, and is automatically saved as a client note.</p>
+                    <p>Open Settings from the left sidebar to create and edit letter templates. Templates can use fields such as {{client_name}}, {{contact_name}}, {{total_due}}, {{invoice_list}}, {{today}}, and selected invoice fields. On the client screen, choose a template in the Letters section and generate it. The generated letter is shown for review, can be copied, and is automatically saved as a client note.</p>
                 </section>
                 <section class="help-section">
                     <h4>Xero note write-back</h4>
@@ -4761,7 +4787,7 @@ body.is-syncing .sync-dot {
                 </section>
                 <section class="help-section">
                     <h4>Leaving the console</h4>
-                    <p>Use Back to Jenius at the bottom of the right sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
+                    <p>Use Back to Jenius at the bottom of the left sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
                 </section>
             </div>
         </div>
@@ -6115,6 +6141,578 @@ function navigateApp(section) {
     if (section === "invoices") return openLedgerSection("invoices");
     if (section === "lpcs") return openLateChargesScreen();
     if (section === "settings") return openSettingsScreen();
+}
+
+function returnToLedgerView() {
+    activeView = "ledger";
+    closeTopbarMenu();
+    closeToolbarMenus();
+    renderAll();
+}
+
+function openSelectedClientView() {
+    if (!selectedClientId && !selectedInvoiceId) return;
+    activeView = "client";
+    renderAll();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function selectLedgerSummaryFilter(filter) {
+    if (!filter) return;
+    selectedFilter = filter;
+    currentPage = 1;
+    activeView = "ledger";
+    renderAll();
+}
+
+function resetLedgerFilters() {
+    selectedFilter = "all";
+    clientFilter = "all";
+    lateChargeFilter = "active";
+    lateChargeSearchTerm = "";
+    sortMode = "priority";
+    searchTerm = "";
+    currentPage = 1;
+    const ledgerSearch = document.getElementById("ledgerSearch");
+    if (ledgerSearch) ledgerSearch.value = "";
+    setLedgerSearchOpen(false);
+    const lateChargeSearch = document.getElementById("lateChargeSearch");
+    if (lateChargeSearch) lateChargeSearch.value = "";
+    closeToolbarMenus();
+    renderAll();
+    showToast("Filters cleared", "info");
+}
+
+function toggleClientActionMenu() {
+    const wrap = document.getElementById("clientActionMenuWrap");
+    const button = document.getElementById("clientActionMenuButton");
+    const isOpen = !wrap?.classList.contains("is-open");
+    wrap?.classList.toggle("is-open", isOpen);
+    button?.setAttribute("aria-expanded", String(isOpen));
+}
+
+function closeClientActionMenu() {
+    document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
+    document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
+}
+
+function assignCurrentClientManager() {
+    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+    if (!client) return showToast("Select a client before assigning ownership", "info");
+    const managerName = window.prompt("Assign this client to manager", client.manager || "");
+    if (!managerName) return;
+    client.manager = managerName;
+    persistState();
+    renderAll();
+    showToast("Client owner updated", "success");
+}
+
+async function disconnectXero(event = null) {
+    event?.preventDefault?.();
+    if (!window.confirm("Disconnect this Xero organisation from the console? Existing ledger rows will remain visible until the next sync.")) return;
+    try {
+        await requestJSON(api.endpoints.disconnect, { method: "POST" });
+        state.organisation = { ...emptyData.organisation, lastSync: "Xero disconnected" };
+        clearSyncFailureBanner();
+        persistState();
+        await hydrateFromAPI();
+        clearSyncFailureBanner();
+        renderAll();
+        showToast("Xero disconnected", "success");
+    } catch (error) {
+        console.error("Unable to disconnect Xero", error);
+        showToast(error.message || "Unable to disconnect Xero", "error");
+    }
+}
+
+let criticalNavigationWired = false;
+
+function handleSidebarConnectButton(event) {
+    event?.preventDefault?.();
+    if (isXeroConnected()) {
+        runXeroSync();
+        return;
+    }
+    const url = loginURL();
+    if (!url) {
+        window.alert("Unable to start the Xero login flow.");
+        return;
+    }
+    showToast("Opening Xero connection", "info");
+    window.location.assign(url);
+}
+
+function wireCriticalNavigation() {
+    if (criticalNavigationWired) return;
+    criticalNavigationWired = true;
+    document.addEventListener("click", (event) => {
+        const filterShortcut = event.target.closest?.("[data-filter-shortcut]");
+        if (filterShortcut) {
+            event.preventDefault();
+            event.stopPropagation();
+            selectLedgerSummaryFilter(filterShortcut.dataset.filterShortcut);
+            return;
+        }
+        const summaryChip = event.target.closest?.(".summary-chip[data-filter]");
+        if (summaryChip) {
+            event.preventDefault();
+            event.stopPropagation();
+            selectLedgerSummaryFilter(summaryChip.dataset.filter);
+            return;
+        }
+        const navButton = event.target.closest?.("[data-app-nav]");
+        if (navButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            navigateApp(navButton.dataset.appNav);
+            return;
+        }
+        const backButton = event.target.closest?.("#backToLedgerButton, #clientHeaderBackButton, #topbarBackToLedgerButton, #backFromSettingsButton, #backFromInsightsButton, #backFromLateChargesButton");
+        if (backButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            returnToLedgerView();
+            return;
+        }
+        const topbarMenuButton = event.target.closest?.("#topbarMenuButton");
+        if (topbarMenuButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            const menuWrap = document.getElementById("topbarMenuWrap");
+            setTopbarMenuOpen(!menuWrap?.classList.contains("is-open"));
+            return;
+        }
+        const helpButton = event.target.closest?.("#helpButton");
+        if (helpButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            openHelpPanel();
+            return;
+        }
+        const closeHelpButton = event.target.closest?.("#closeHelpButton");
+        if (closeHelpButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeHelpPanel();
+            return;
+        }
+        const developerLogButton = event.target.closest?.("#developerLogButton, #syncViewLogsButton");
+        if (developerLogButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            openDeveloperLog();
+            return;
+        }
+        const closeDeveloperLogButton = event.target.closest?.("#closeDeveloperLogButton");
+        if (closeDeveloperLogButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeDeveloperLog();
+            return;
+        }
+        const developerLogRefreshButton = event.target.closest?.("#refreshDeveloperLogButton, #settingsRefreshDeveloperLogButton");
+        if (developerLogRefreshButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            loadDeveloperLog();
+            return;
+        }
+        const developerLogCopyButton = event.target.closest?.("#copyDeveloperLogButton, #settingsCopyDeveloperLogButton");
+        if (developerLogCopyButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            copyDeveloperLogs();
+            return;
+        }
+        const developerLogTodayButton = event.target.closest?.("#developerLogTodayButton, #settingsDeveloperLogTodayButton");
+        if (developerLogTodayButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            developerLogDateFilter = localDateKey();
+            renderDeveloperLogs();
+            return;
+        }
+        const developerLogClearButton = event.target.closest?.("#developerLogClearDateButton, #settingsDeveloperLogClearDateButton");
+        if (developerLogClearButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            developerLogDateFilter = "";
+            renderDeveloperLogs();
+            return;
+        }
+        const clientActionMenuButton = event.target.closest?.("#clientActionMenuButton");
+        if (clientActionMenuButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleClientActionMenu();
+            return;
+        }
+        const clientSectionButton = event.target.closest?.("[data-client-section]");
+        if (clientSectionButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            activateClientSection(clientSectionButton.dataset.clientSection);
+            return;
+        }
+        const clientActionButton = event.target.closest?.("[data-client-action]");
+        if (clientActionButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeClientActionMenu();
+            handleClientQuickAction(clientActionButton.dataset.clientAction);
+            return;
+        }
+        const topbarClientButton = event.target.closest?.("#topbarClientButton");
+        if (topbarClientButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            openSelectedClientView();
+            return;
+        }
+        const assignManagerButton = event.target.closest?.("#assignClientManagerButton, #actionCenterAssignClientManagerButton");
+        if (assignManagerButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            assignCurrentClientManager();
+            return;
+        }
+        const refreshTransactionsButton = event.target.closest?.("#refreshTransactionsButton, #actionCenterRefreshTransactionsButton");
+        if (refreshTransactionsButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            refreshCustomerTransactions();
+            return;
+        }
+        const clientBulkNoteButton = event.target.closest?.("#clientBulkInvoiceNoteButton");
+        if (clientBulkNoteButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            addNoteToSelectedClientInvoices();
+            return;
+        }
+        const clientBulkWriteOffButton = event.target.closest?.("#clientBulkWriteOffButton");
+        if (clientBulkWriteOffButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            writeOffSelectedClientInvoices();
+            return;
+        }
+        const sidebarConnect = event.target.closest?.("#sidebarConnectButton");
+        if (sidebarConnect) {
+            event.preventDefault();
+            event.stopPropagation();
+            handleSidebarConnectButton(event);
+            return;
+        }
+        const lateChargeEntry = event.target.closest?.("#lateChargeReviewCard, #reviewLateChargesButton");
+        if (lateChargeEntry) {
+            event.preventDefault();
+            event.stopPropagation();
+            openLateChargesScreen();
+            return;
+        }
+        const noticeEntry = event.target.closest?.("#sevenDayNoticeCard");
+        if (noticeEntry) {
+            event.preventDefault();
+            event.stopPropagation();
+            openFirstSevenDayNoticeClient();
+            return;
+        }
+        const syncAction = event.target.closest?.("#settingsRunSyncButton, #menuSyncButton, #clientRunImportButton, #syncRetryButton");
+        if (syncAction) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeClientActionMenu();
+            runXeroSync();
+            return;
+        }
+        const disconnectButton = event.target.closest?.("#disconnectXeroButton, #settingsDisconnectXeroButton");
+        if (disconnectButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            disconnectXero(event);
+            return;
+        }
+        const factoryResetButton = event.target.closest?.("#factoryResetButton");
+        if (factoryResetButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            factoryResetConsole();
+            return;
+        }
+        const lateChargeSelectAll = event.target.closest?.("#selectAllLateChargesButton");
+        if (lateChargeSelectAll) {
+            event.preventDefault();
+            event.stopPropagation();
+            selectAllEligibleLatePaymentCharges();
+            return;
+        }
+        const lateChargeApplyBulk = event.target.closest?.("#applyBulkLateChargeButton");
+        if (lateChargeApplyBulk) {
+            event.preventDefault();
+            event.stopPropagation();
+            applyBulkLatePaymentChargeAmount();
+            return;
+        }
+        const lateChargeRaise = event.target.closest?.("#raiseLateChargesButton");
+        if (lateChargeRaise) {
+            event.preventDefault();
+            event.stopPropagation();
+            raiseLatePaymentCharges();
+            return;
+        }
+        const refreshInsightsButton = event.target.closest?.("#refreshInsightsButton");
+        if (refreshInsightsButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            loadInsights(true);
+            return;
+        }
+        const newLetterTemplateButton = event.target.closest?.("#newLetterTemplateButton");
+        if (newLetterTemplateButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            createNewLetterTemplate();
+            return;
+        }
+        const deleteLetterTemplateButton = event.target.closest?.("#deleteLetterTemplateButton");
+        if (deleteLetterTemplateButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            deleteSelectedLetterTemplate();
+            return;
+        }
+        const copyGeneratedLetterButton = event.target.closest?.("#copyGeneratedLetterButton");
+        if (copyGeneratedLetterButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            copyGeneratedLetter();
+            return;
+        }
+        const closeQuickNoteButton = event.target.closest?.("#closeQuickNoteButton");
+        if (closeQuickNoteButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeQuickNotePanel();
+            return;
+        }
+        const closeAllocationButton = event.target.closest?.("#closeAllocationPanelButton, #cancelAllocationPanelButton");
+        if (closeAllocationButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeAllocationPanel();
+            return;
+        }
+        const interestInfoButton = event.target.closest?.("#interestInfoButton");
+        if (interestInfoButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            interestInfoButton.closest(".interest-tooltip-anchor")?.focus();
+            return;
+        }
+        const optionsButton = event.target.closest?.("#ledgerOptionsButton");
+        if (optionsButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleToolbarMenu("ledgerOptionsMenu", "ledgerOptionsButton");
+            return;
+        }
+        const sortButton = event.target.closest?.("[data-sort-mode]");
+        if (sortButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            sortMode = sortButton.dataset.sortMode;
+            currentPage = 1;
+            closeToolbarMenus();
+            renderAll();
+            return;
+        }
+        const filterModeButton = event.target.closest?.("[data-filter-mode]");
+        if (filterModeButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            clientFilter = filterModeButton.dataset.filterMode;
+            currentPage = 1;
+            closeToolbarMenus();
+            renderAll();
+            return;
+        }
+        const denseButton = event.target.closest?.("#denseModeButton");
+        if (denseButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            denseMode = !denseMode;
+            persistState();
+            renderToolbarControls();
+            closeToolbarMenus();
+            return;
+        }
+        const clearButton = event.target.closest?.("#clearFiltersButton");
+        if (clearButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            resetLedgerFilters();
+            return;
+        }
+        const exportButton = event.target.closest?.("#exportFilteredButton");
+        if (exportButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            exportInvoices(filteredInvoices(), "credit-control-filtered.csv");
+            closeToolbarMenus();
+            return;
+        }
+        const previousButton = event.target.closest?.("#previousPageButton");
+        if (previousButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            currentPage = Math.max(1, currentPage - 1);
+            renderInvoiceTable();
+            return;
+        }
+        const nextButton = event.target.closest?.("#nextPageButton");
+        if (nextButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            currentPage += 1;
+            renderInvoiceTable();
+        }
+    }, true);
+    document.addEventListener("change", (event) => {
+        const developerLogDateInput = event.target.closest?.("#developerLogDateFilter, #settingsDeveloperLogDateFilter");
+        if (developerLogDateInput) {
+            event.stopPropagation();
+            developerLogDateFilter = developerLogDateInput.value;
+            renderDeveloperLogs();
+            return;
+        }
+        const syncScopeInput = event.target.closest?.("#syncScopeSelect");
+        if (syncScopeInput) {
+            event.stopPropagation();
+            syncSettings = { ...syncSettings, invoiceScope: syncScopeInput.value };
+            persistSyncSettings();
+            renderSyncSettings();
+            return;
+        }
+        const importYearInput = event.target.closest?.("#importYearOptions input");
+        if (importYearInput) {
+            event.stopPropagation();
+            const importYearOptions = document.getElementById("importYearOptions");
+            syncSettings = {
+                ...syncSettings,
+                invoiceYears: [...(importYearOptions?.querySelectorAll("input:checked") || [])]
+                    .map((item) => Number(item.value))
+                    .sort((a, b) => a - b)
+            };
+            persistSyncSettings();
+            renderSyncSettings();
+            return;
+        }
+        const lateChargeFilterInput = event.target.closest?.("#lateChargeFilterSelect");
+        if (lateChargeFilterInput) {
+            event.stopPropagation();
+            lateChargeFilter = lateChargeFilterLabels[lateChargeFilterInput.value] ? lateChargeFilterInput.value : "active";
+            selectedLateChargeInvoiceIds.clear();
+            persistState();
+            renderLateChargesScreen();
+            return;
+        }
+        const lateChargeAmountInput = event.target.closest?.(".late-charge-select");
+        if (lateChargeAmountInput) {
+            event.stopPropagation();
+            const row = lateChargeAmountInput.closest(".late-charge-row");
+            const checkbox = row?.querySelector("input[type='checkbox']");
+            if (checkbox?.value) {
+                latePaymentChargeBaseAmounts.set(checkbox.value, normaliseLatePaymentChargeBaseAmount(lateChargeAmountInput.value));
+                renderLateChargesScreen();
+            }
+            return;
+        }
+        const letterTemplateInput = event.target.closest?.("#letterTemplateSettingsSelect");
+        if (letterTemplateInput) {
+            event.stopPropagation();
+            selectedLetterTemplateId = letterTemplateInput.value;
+            renderAll();
+            return;
+        }
+        const clientInvoiceInput = event.target.closest?.("#clientInvoiceSelect");
+        if (clientInvoiceInput) {
+            event.stopPropagation();
+            selectedInvoiceId = clientInvoiceInput.value;
+            renderClientScreen();
+            return;
+        }
+        const clientLetterTemplateInput = event.target.closest?.("#clientLetterTemplateSelect");
+        if (clientLetterTemplateInput) {
+            event.stopPropagation();
+            selectedLetterTemplateId = clientLetterTemplateInput.value;
+            renderClientScreen();
+            return;
+        }
+        const paymentDurationInput = event.target.closest?.("#paymentPlanDurationSelect");
+        if (paymentDurationInput) {
+            event.stopPropagation();
+            const customMonthsInput = document.getElementById("paymentPlanCustomMonthsInput");
+            const isCustom = paymentDurationInput.value === "custom";
+            if (customMonthsInput) {
+                customMonthsInput.hidden = !isCustom;
+                customMonthsInput.disabled = !isCustom;
+                if (isCustom) customMonthsInput.focus();
+            }
+            updatePaymentPlanPreview();
+            return;
+        }
+        if (event.target?.matches?.("[data-payment-plan-invoice]")) {
+            event.stopPropagation();
+            updatePaymentPlanPreview();
+            return;
+        }
+        const columnToggle = event.target.closest?.("[data-column-toggle]");
+        if (columnToggle) {
+            event.stopPropagation();
+            visibleColumns[columnToggle.dataset.columnToggle] = columnToggle.checked;
+            applyColumnVisibility();
+            return;
+        }
+        const selectAll = event.target.closest?.("#selectAllInvoices");
+        if (selectAll) {
+            event.stopPropagation();
+            const visibleInvoices = filteredClientGroups()
+                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                .flatMap((group) => group.invoices);
+            visibleInvoices.forEach((invoice) => {
+                if (selectAll.checked) {
+                    selectedInvoiceIds.add(invoice.id);
+                } else {
+                    selectedInvoiceIds.delete(invoice.id);
+                }
+            });
+            renderInvoiceTable();
+        }
+    }, true);
+    document.addEventListener("input", (event) => {
+        const ledgerSearch = event.target.closest?.("#ledgerSearch");
+        if (ledgerSearch) {
+            event.stopPropagation();
+            searchTerm = ledgerSearch.value;
+            currentPage = 1;
+            setLedgerSearchOpen(Boolean(searchTerm) || document.activeElement === ledgerSearch);
+            renderInvoiceTable();
+            return;
+        }
+        const lateChargeSearch = event.target.closest?.("#lateChargeSearch");
+        if (lateChargeSearch) {
+            event.stopPropagation();
+            lateChargeSearchTerm = lateChargeSearch.value;
+            renderLateChargesScreen();
+            return;
+        }
+        const paymentCustomMonths = event.target.closest?.("#paymentPlanCustomMonthsInput");
+        if (paymentCustomMonths) {
+            event.stopPropagation();
+            updatePaymentPlanPreview();
+        }
+    }, true);
 }
 
 function renderSummaryCounts() {
@@ -8539,64 +9137,41 @@ function renderAll() {
 
 function wireFilters() {
     document.querySelectorAll(".summary-chip").forEach((button) => {
-        button.addEventListener("click", () => {
-            selectedFilter = button.dataset.filter;
-            currentPage = 1;
-            renderAll();
-        });
+        button.addEventListener("click", () => selectLedgerSummaryFilter(button.dataset.filter));
     });
     document.querySelectorAll("[data-filter-shortcut]").forEach((button) => {
-        button.addEventListener("click", () => {
-            selectedFilter = button.dataset.filterShortcut;
-            currentPage = 1;
-            renderAll();
-        });
+        button.addEventListener("click", () => selectLedgerSummaryFilter(button.dataset.filterShortcut));
     });
     const ledgerSearch = document.getElementById("ledgerSearch");
     const ledgerSearchToggle = document.getElementById("ledgerSearchToggle");
-    ledgerSearch.addEventListener("input", (event) => {
+    if (ledgerSearch) ledgerSearch.addEventListener("input", (event) => {
         searchTerm = event.target.value;
         currentPage = 1;
         setLedgerSearchOpen(Boolean(searchTerm) || document.activeElement === ledgerSearch);
         renderInvoiceTable();
     });
-    ledgerSearch.addEventListener("focus", () => setLedgerSearchOpen(true));
-    ledgerSearch.addEventListener("blur", (event) => {
+    if (ledgerSearch) ledgerSearch.addEventListener("focus", () => setLedgerSearchOpen(true));
+    if (ledgerSearch) ledgerSearch.addEventListener("blur", (event) => {
         if (!ledgerSearch.value && event.relatedTarget !== ledgerSearchToggle) setLedgerSearchOpen(false);
     });
-    ledgerSearchToggle.addEventListener("click", () => {
-        const willOpen = !document.getElementById("ledgerSearchWrap").classList.contains("is-open");
-        setLedgerSearchOpen(willOpen || Boolean(ledgerSearch.value));
+    if (ledgerSearchToggle) ledgerSearchToggle.addEventListener("click", () => {
+        const willOpen = !document.getElementById("ledgerSearchWrap")?.classList.contains("is-open");
+        setLedgerSearchOpen(willOpen || Boolean(ledgerSearch?.value));
         if (willOpen) {
-            ledgerSearch.focus();
-        } else if (!ledgerSearch.value) {
-            ledgerSearch.blur();
+            ledgerSearch?.focus();
+        } else if (!ledgerSearch?.value) {
+            ledgerSearch?.blur();
         }
     });
-    setLedgerSearchOpen(Boolean(ledgerSearch.value || searchTerm));
-    document.getElementById("ledgerOptionsButton").addEventListener("click", () => toggleToolbarMenu("ledgerOptionsMenu", "ledgerOptionsButton"));
-    document.getElementById("denseModeButton").addEventListener("click", () => {
+    setLedgerSearchOpen(Boolean(ledgerSearch?.value || searchTerm));
+    document.getElementById("ledgerOptionsButton")?.addEventListener("click", () => toggleToolbarMenu("ledgerOptionsMenu", "ledgerOptionsButton"));
+    document.getElementById("denseModeButton")?.addEventListener("click", () => {
         denseMode = !denseMode;
         persistState();
         renderToolbarControls();
         closeToolbarMenus();
     });
-    document.getElementById("clearFiltersButton").addEventListener("click", () => {
-        selectedFilter = "all";
-        clientFilter = "all";
-        lateChargeFilter = "active";
-        lateChargeSearchTerm = "";
-        sortMode = "priority";
-        searchTerm = "";
-        currentPage = 1;
-        ledgerSearch.value = "";
-        setLedgerSearchOpen(false);
-        const lateChargeSearch = document.getElementById("lateChargeSearch");
-        if (lateChargeSearch) lateChargeSearch.value = "";
-        closeToolbarMenus();
-        renderAll();
-        showToast("Filters cleared", "info");
-    });
+    document.getElementById("clearFiltersButton")?.addEventListener("click", resetLedgerFilters);
     document.querySelectorAll("[data-sort-mode]").forEach((button) => {
         button.addEventListener("click", () => {
             sortMode = button.dataset.sortMode;
@@ -8619,11 +9194,11 @@ function wireFilters() {
             applyColumnVisibility();
         });
     });
-    document.getElementById("exportFilteredButton").addEventListener("click", () => {
+    document.getElementById("exportFilteredButton")?.addEventListener("click", () => {
         exportInvoices(filteredInvoices(), "credit-control-filtered.csv");
         closeToolbarMenus();
     });
-    document.getElementById("selectAllInvoices").addEventListener("change", (event) => {
+    document.getElementById("selectAllInvoices")?.addEventListener("change", (event) => {
         const visibleInvoices = filteredClientGroups()
             .slice((currentPage - 1) * pageSize, currentPage * pageSize)
             .flatMap((group) => group.invoices);
@@ -8640,11 +9215,11 @@ function wireFilters() {
         if (!event.target.closest(".toolbar-menu-wrap")) closeToolbarMenus();
         if (!event.target.closest(".row-actions")) closeRowActionMenus();
     });
-    document.getElementById("previousPageButton").addEventListener("click", () => {
+    document.getElementById("previousPageButton")?.addEventListener("click", () => {
         currentPage = Math.max(1, currentPage - 1);
         renderInvoiceTable();
     });
-    document.getElementById("nextPageButton").addEventListener("click", () => {
+    document.getElementById("nextPageButton")?.addEventListener("click", () => {
         currentPage += 1;
         renderInvoiceTable();
     });
@@ -8706,24 +9281,19 @@ function wireClientWorkspace() {
     if (clientActionMenuButton) {
         clientActionMenuButton.addEventListener("click", (event) => {
             event.preventDefault();
-            const wrap = document.getElementById("clientActionMenuWrap");
-            const isOpen = !wrap?.classList.contains("is-open");
-            wrap?.classList.toggle("is-open", isOpen);
-            clientActionMenuButton.setAttribute("aria-expanded", String(isOpen));
+            toggleClientActionMenu();
         });
     }
     document.addEventListener("click", (event) => {
         if (event.target.closest("#clientActionMenuWrap")) return;
-        document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
-        document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
+        closeClientActionMenu();
     });
     document.querySelectorAll("[data-client-section]").forEach((button) => {
         button.addEventListener("click", () => activateClientSection(button.dataset.clientSection));
     });
     document.querySelectorAll("[data-client-action]").forEach((button) => {
         button.addEventListener("click", () => {
-            document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
-            document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
+            closeClientActionMenu();
             handleClientQuickAction(button.dataset.clientAction);
         });
     });
@@ -8734,22 +9304,8 @@ function wireClientWorkspace() {
     document.getElementById("actionCenterAssignClientManagerButton")?.addEventListener("click", () => {
         document.getElementById("assignClientManagerButton")?.click();
     });
-    document.getElementById("topbarClientButton")?.addEventListener("click", () => {
-        if (!selectedClientId && !selectedInvoiceId) return;
-        activeView = "client";
-        renderAll();
-        window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-    document.getElementById("assignClientManagerButton")?.addEventListener("click", () => {
-        const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
-        if (!client) return showToast("Select a client before assigning ownership", "info");
-        const managerName = window.prompt("Assign this client to manager", client.manager || "");
-        if (!managerName) return;
-        client.manager = managerName;
-        persistState();
-        renderAll();
-        showToast("Client owner updated", "success");
-    });
+    document.getElementById("topbarClientButton")?.addEventListener("click", openSelectedClientView);
+    document.getElementById("assignClientManagerButton")?.addEventListener("click", assignCurrentClientManager);
 }
 
 function exportInvoices(invoices, filename) {
@@ -9503,8 +10059,9 @@ async function writeOffSelectedInvoices() {
 }
 
 function wireBulkActions() {
-    document.getElementById("bulkApplyStatusButton").addEventListener("click", () => {
-        const statusValue = document.getElementById("bulkLedgerStatusSelect").value;
+    document.getElementById("bulkApplyStatusButton")?.addEventListener("click", () => {
+        const statusValue = document.getElementById("bulkLedgerStatusSelect")?.value;
+        if (!statusValue) return;
         if (!window.confirm(`Apply "${statusValue}" to ${selectedInvoiceIds.size} selected invoice${selectedInvoiceIds.size === 1 ? "" : "s"}?`)) return;
         const stamp = new Date().toISOString();
         selectedInvoices().forEach((invoice) => {
@@ -9518,7 +10075,7 @@ function wireBulkActions() {
         renderAll();
         showToast("Bulk action applied", "success");
     });
-    document.getElementById("bulkAddNoteButton").addEventListener("click", () => {
+    document.getElementById("bulkAddNoteButton")?.addEventListener("click", () => {
         const body = window.prompt("Add a note to the selected invoices");
         if (!body) return;
         if (!window.confirm(`Add this note to ${selectedInvoiceIds.size} selected invoice${selectedInvoiceIds.size === 1 ? "" : "s"}?`)) return;
@@ -9531,7 +10088,7 @@ function wireBulkActions() {
         renderAll();
         showToast("Bulk note added", "success");
     });
-    document.getElementById("bulkAssignManagerButton").addEventListener("click", () => {
+    document.getElementById("bulkAssignManagerButton")?.addEventListener("click", () => {
         const managerName = window.prompt("Assign selected invoices to manager");
         if (!managerName) return;
         selectedInvoices().forEach((invoice) => {
@@ -9542,11 +10099,11 @@ function wireBulkActions() {
         renderAll();
         showToast("Manager assigned", "success");
     });
-    document.getElementById("bulkWriteOffButton").addEventListener("click", writeOffSelectedInvoices);
-    document.getElementById("bulkExportButton").addEventListener("click", () => {
+    document.getElementById("bulkWriteOffButton")?.addEventListener("click", writeOffSelectedInvoices);
+    document.getElementById("bulkExportButton")?.addEventListener("click", () => {
         exportInvoices(selectedInvoices(), "credit-control-selected.csv");
     });
-    document.getElementById("bulkClearSelectionButton").addEventListener("click", () => {
+    document.getElementById("bulkClearSelectionButton")?.addEventListener("click", () => {
         selectedInvoiceIds.clear();
         renderInvoiceTable();
     });
@@ -9637,23 +10194,6 @@ function wireLoginButtons() {
     if (helpPanel) helpPanel.addEventListener("click", (event) => {
         if (event.target.id === "helpPanel") closeHelpPanel();
     });
-    const disconnectXero = async (event) => {
-        event.preventDefault();
-        if (!window.confirm("Disconnect this Xero organisation from the console? Existing ledger rows will remain visible until the next sync.")) return;
-        try {
-            await requestJSON(api.endpoints.disconnect, { method: "POST" });
-            state.organisation = { ...emptyData.organisation, lastSync: "Xero disconnected" };
-            clearSyncFailureBanner();
-            persistState();
-            await hydrateFromAPI();
-            clearSyncFailureBanner();
-            renderAll();
-            showToast("Xero disconnected", "success");
-        } catch (error) {
-            console.error("Unable to disconnect Xero", error);
-            showToast(error.message || "Unable to disconnect Xero", "error");
-        }
-    };
     document.querySelectorAll("#disconnectXeroButton, #settingsDisconnectXeroButton").forEach((button) => {
         button.addEventListener("click", disconnectXero);
     });
@@ -9735,6 +10275,7 @@ function wireSyncButtons() {
 
 function wireSevenDayNoticeCard() {
     const card = document.getElementById("sevenDayNoticeCard");
+    if (!card) return;
     card.addEventListener("click", openFirstSevenDayNoticeClient);
     card.addEventListener("keydown", (event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
@@ -9791,27 +10332,11 @@ async function applyClientStatus(client, statusValue, note = "", options = {}) {
 }
 
 function wireForms() {
-    const returnToLedger = () => {
-        activeView = "ledger";
-        renderAll();
-    };
-    document.getElementById("backToLedgerButton")?.addEventListener("click", returnToLedger);
-    document.getElementById("clientHeaderBackButton")?.addEventListener("click", returnToLedger);
-    document.getElementById("topbarBackToLedgerButton")?.addEventListener("click", returnToLedger);
-    document.getElementById("backFromSettingsButton").addEventListener("click", () => {
-        activeView = "ledger";
-        renderAll();
+    document.querySelectorAll("#backToLedgerButton, #clientHeaderBackButton, #topbarBackToLedgerButton, #backFromSettingsButton, #backFromInsightsButton, #backFromLateChargesButton").forEach((button) => {
+        button.addEventListener("click", returnToLedgerView);
     });
-    document.getElementById("backFromInsightsButton").addEventListener("click", () => {
-        activeView = "ledger";
-        renderAll();
-    });
-    document.getElementById("backFromLateChargesButton").addEventListener("click", () => {
-        activeView = "ledger";
-        renderAll();
-    });
-    document.getElementById("closeQuickNoteButton").addEventListener("click", closeQuickNotePanel);
-    document.getElementById("quickNotePanel").addEventListener("click", (event) => {
+    document.getElementById("closeQuickNoteButton")?.addEventListener("click", closeQuickNotePanel);
+    document.getElementById("quickNotePanel")?.addEventListener("click", (event) => {
         if (event.target.id === "quickNotePanel") closeQuickNotePanel();
     });
     document.getElementById("allocationPanel")?.addEventListener("click", (event) => {
@@ -9824,7 +10349,7 @@ function wireForms() {
         if (!activeAllocationSource) return showToast("Choose a credit or cash balance to allocate", "error");
         await allocateCustomerCredit(event.currentTarget, activeAllocationSource);
     });
-    document.getElementById("quickNoteForm").addEventListener("submit", async (event) => {
+    document.getElementById("quickNoteForm")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await saveQuickInvoiceNote();
     });
@@ -9834,33 +10359,33 @@ function wireForms() {
             renderInsightsScreen();
         });
     });
-    document.getElementById("clientInvoiceSelect").addEventListener("change", (event) => {
+    document.getElementById("clientInvoiceSelect")?.addEventListener("change", (event) => {
         selectedInvoiceId = event.target.value;
         renderClientScreen();
     });
-    document.getElementById("clientLetterTemplateSelect").addEventListener("change", (event) => {
+    document.getElementById("clientLetterTemplateSelect")?.addEventListener("change", (event) => {
         selectedLetterTemplateId = event.target.value;
         renderClientScreen();
     });
-    document.getElementById("clientLetterForm").addEventListener("submit", async (event) => {
+    document.getElementById("clientLetterForm")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         await generateClientLetter();
     });
-    document.getElementById("copyGeneratedLetterButton").addEventListener("click", copyGeneratedLetter);
+    document.getElementById("copyGeneratedLetterButton")?.addEventListener("click", copyGeneratedLetter);
 
-    document.getElementById("clientNoteForm").addEventListener("submit", async (event) => {
+    document.getElementById("clientNoteForm")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
-        const body = document.getElementById("clientNoteInput").value.trim();
+        const body = document.getElementById("clientNoteInput")?.value.trim();
         if (!client || !body) return;
         document.getElementById("clientNoteInput").value = "";
         await saveClientNoteAndSync(client, body);
     });
 
-    document.getElementById("invoiceNoteForm").addEventListener("submit", async (event) => {
+    document.getElementById("invoiceNoteForm")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const match = mutableInvoiceById(selectedInvoiceId);
-        const body = document.getElementById("invoiceNoteInput").value.trim();
+        const body = document.getElementById("invoiceNoteInput")?.value.trim();
         if (!match || !body) return;
         match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
         document.getElementById("invoiceNoteInput").value = "";
@@ -9884,27 +10409,29 @@ function wireForms() {
 
     const durationSelect = document.getElementById("paymentPlanDurationSelect");
     const customMonthsInput = document.getElementById("paymentPlanCustomMonthsInput");
-    customMonthsInput.disabled = durationSelect.value !== "custom";
-    durationSelect.addEventListener("change", () => {
-        const isCustom = durationSelect.value === "custom";
-        customMonthsInput.hidden = !isCustom;
-        customMonthsInput.disabled = !isCustom;
-        if (isCustom) customMonthsInput.focus();
-        updatePaymentPlanPreview();
-    });
-    customMonthsInput.addEventListener("input", updatePaymentPlanPreview);
+    if (durationSelect && customMonthsInput) {
+        customMonthsInput.disabled = durationSelect.value !== "custom";
+        durationSelect.addEventListener("change", () => {
+            const isCustom = durationSelect.value === "custom";
+            customMonthsInput.hidden = !isCustom;
+            customMonthsInput.disabled = !isCustom;
+            if (isCustom) customMonthsInput.focus();
+            updatePaymentPlanPreview();
+        });
+        customMonthsInput.addEventListener("input", updatePaymentPlanPreview);
+    }
     document.addEventListener("change", (event) => {
         if (event.target?.matches?.("[data-payment-plan-invoice]")) updatePaymentPlanPreview();
     });
-    document.getElementById("paymentPlanForm").addEventListener("submit", async (event) => {
+    document.getElementById("paymentPlanForm")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
         const selectedIds = [...document.querySelectorAll("[data-payment-plan-invoice]:checked")].map((input) => input.value);
-        const durationMonths = durationSelect.value === "custom"
-            ? Number(customMonthsInput.value || 0)
-            : Number(durationSelect.value || 0);
+        const durationMonths = durationSelect?.value === "custom"
+            ? Number(customMonthsInput?.value || 0)
+            : Number(durationSelect?.value || 0);
         updatePaymentPlanPreview();
-        const note = document.getElementById("promiseNoteInput").value.trim();
+        const note = document.getElementById("promiseNoteInput")?.value.trim() || "";
         if (!client || !selectedIds.length) return showToast("Select at least one invoice for the payment plan", "error");
         if (!durationMonths || durationMonths < 1 || durationMonths > 60) return showToast("Choose a payment plan duration between 1 and 60 months", "error");
 
@@ -9930,7 +10457,8 @@ function wireForms() {
                 stamp: new Date().toISOString()
             }, ...(match.invoice.statuses || [])];
         });
-        document.getElementById("promiseNoteInput").value = "";
+        const promiseNoteInput = document.getElementById("promiseNoteInput");
+        if (promiseNoteInput) promiseNoteInput.value = "";
         persistState();
         renderAll();
         showToast("Payment plan saved locally", "success", { label: "View audit trail", onClick: scrollAuditTrail });
@@ -9954,11 +10482,13 @@ function wireForms() {
         }
     });
 
-    document.getElementById("attachmentForm").addEventListener("submit", (event) => {
+    document.getElementById("attachmentForm")?.addEventListener("submit", (event) => {
         event.preventDefault();
         const match = mutableInvoiceById(selectedInvoiceId);
-        const files = [...document.getElementById("attachmentInput").files];
-        const note = document.getElementById("attachmentNoteInput").value.trim();
+        const attachmentInput = document.getElementById("attachmentInput");
+        const attachmentNoteInput = document.getElementById("attachmentNoteInput");
+        const files = [...(attachmentInput?.files || [])];
+        const note = attachmentNoteInput?.value.trim() || "";
         if (!match || !files.length) return;
         const stamp = new Date().toISOString();
         const attachments = files.map((file) => ({
@@ -9967,24 +10497,26 @@ function wireForms() {
             stamp
         }));
         match.invoice.attachments = [...attachments, ...(match.invoice.attachments || [])];
-        document.getElementById("attachmentInput").value = "";
-        document.getElementById("attachmentNoteInput").value = "";
+        if (attachmentInput) attachmentInput.value = "";
+        if (attachmentNoteInput) attachmentNoteInput.value = "";
         persistState();
         renderAll();
         showToast("Attachment record added", "success", { label: "View audit trail", onClick: scrollAuditTrail });
     });
 
-    document.getElementById("bulkStatusForm").addEventListener("submit", async (event) => {
+    document.getElementById("bulkStatusForm")?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
-        const statusValue = document.getElementById("bulkStatusSelect").value;
-        const note = document.getElementById("bulkStatusNote").value.trim();
+        const statusValue = document.getElementById("bulkStatusSelect")?.value;
+        const note = document.getElementById("bulkStatusNote")?.value.trim() || "";
+        if (!statusValue) return;
         if (await applyClientStatus(client, statusValue, note)) {
-            document.getElementById("bulkStatusNote").value = "";
+            const bulkStatusNote = document.getElementById("bulkStatusNote");
+            if (bulkStatusNote) bulkStatusNote.value = "";
         }
     });
 
-    document.getElementById("markClientLegalButton").addEventListener("click", async () => {
+    document.getElementById("markClientLegalButton")?.addEventListener("click", async () => {
         const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
         const note = "Moved all open invoices to Legal from the client file.";
         await applyClientStatus(client, "Legal", note, {
@@ -9997,6 +10529,7 @@ function wireForms() {
 
 async function init() {
     const returnedFromXeroConnection = consumeXeroConnectionReturn();
+    wireCriticalNavigation();
     try {
         renderAll();
     } catch (error) {
