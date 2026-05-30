@@ -189,6 +189,23 @@ async def exchange_code_for_tokens(code: str) -> dict:
         return response.json()
 
 
+def _connection_refreshed_by_another_request(connection_id: str, previous_refresh_token: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM xero_connections WHERE id = %s", (connection_id,))
+            row = cursor.fetchone()
+        connection.commit()
+
+    if (
+        row
+        and row.get("refresh_token")
+        and row["refresh_token"] != previous_refresh_token
+        and row["expires_at"] > utcnow()
+    ):
+        return row
+    return None
+
+
 async def refresh_connection(connection_id: str) -> dict:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -203,6 +220,7 @@ async def refresh_connection(connection_id: str) -> dict:
         return row
 
     settings = get_settings()
+    previous_refresh_token = row["refresh_token"]
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             response = await client.post(
@@ -216,6 +234,9 @@ async def refresh_connection(connection_id: str) -> dict:
         except httpx.RequestError as exc:
             _raise_xero_request_error(exc, "token refresh")
         if response.is_error:
+            refreshed = _connection_refreshed_by_another_request(connection_id, previous_refresh_token)
+            if refreshed is not None:
+                return refreshed
             _raise_xero_http_error(response, "token refresh")
         payload = response.json()
 

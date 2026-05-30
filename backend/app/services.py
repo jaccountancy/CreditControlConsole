@@ -1127,22 +1127,22 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     connection_row = get_xero_connection_for_user(user["id"])
     now = utcnow()
     candidate_modified_since = _incremental_modified_since(user["id"])
-    years_are_already_imported = (
-        _local_invoice_years_cover(connection_row["tenant_id"], sync_options["invoice_years"])
+    scope_already_imported = (
+        _completed_sync_covers_scope(user["id"], sync_options["invoice_scope"])
         if candidate_modified_since is not None
         else False
     )
-    force_full_history_refresh = (
-        sync_options["invoice_scope"] == "full_history"
-        or sync_options["paid_page_limit"] is None
+    years_are_already_imported = (
+        True
+        if not sync_options["invoice_years"] and scope_already_imported
+        else (
+            _local_invoice_years_cover(connection_row["tenant_id"], sync_options["invoice_years"])
+            if candidate_modified_since is not None
+            else False
+        )
     )
-    modified_since = None if force_full_history_refresh else candidate_modified_since if years_are_already_imported else None
+    modified_since = candidate_modified_since if scope_already_imported and years_are_already_imported else None
     is_incremental_sync = modified_since is not None
-    scope_already_imported = (
-        _completed_sync_covers_scope(user["id"], sync_options["invoice_scope"])
-        if is_incremental_sync
-        else False
-    )
     needs_paid_backfill = sync_options["paid_page_limit"] != 0 and not scope_already_imported
     contact_fetch_label = "changed customer records" if is_incremental_sync else "customer records"
     invoice_fetch_label = "changed invoices" if is_incremental_sync else "outstanding invoices"
@@ -1154,10 +1154,8 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     )
     if is_incremental_sync:
         sync_mode_summary = f"Incremental sync from {modified_since.isoformat()}."
-    elif force_full_history_refresh:
-        sync_mode_summary = "Full history refresh requested; fetching the selected years without incremental filters."
     elif candidate_modified_since is not None:
-        sync_mode_summary = "Full sync for newly selected invoice years."
+        sync_mode_summary = "Full sync for a newly selected import scope or invoice year range."
     else:
         sync_mode_summary = "First full sync for the selected scope."
     _update_sync_run(
