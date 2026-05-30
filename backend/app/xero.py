@@ -1,7 +1,7 @@
 import asyncio
 import re
 from datetime import datetime, timedelta, timezone
-from email.utils import format_datetime
+from email.utils import format_datetime, parsedate_to_datetime
 from uuid import uuid4
 
 import httpx
@@ -22,6 +22,7 @@ XERO_PAGE_SIZE = 100
 XERO_PAGE_DELAY_SECONDS = 1.05
 XERO_RATE_LIMIT_RETRIES = 3
 XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
+XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 120
 XERO_HISTORY_SIGNATURE = "By Jenius AI"
 XERO_PERMISSION_MESSAGE = (
     "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
@@ -391,6 +392,22 @@ def _modified_since_header_value(modified_since: datetime | None) -> str | None:
     return format_datetime(modified_since.astimezone(timezone.utc), usegmt=True)
 
 
+def _retry_after_delay_seconds(retry_after: str | None) -> int | None:
+    if not retry_after:
+        return None
+    try:
+        return max(0, int(retry_after))
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(retry_after)
+    except (TypeError, ValueError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    return max(0, int((retry_at - datetime.now(timezone.utc)).total_seconds()))
+
+
 async def xero_api_get(
     connection_row: dict,
     url: str,
@@ -569,6 +586,7 @@ async def fetch_paginated_collection(
     params: dict | None = None,
     max_pages: int | None = None,
     on_page=None,
+    on_retry=None,
     modified_since: datetime | None = None,
 ) -> list[dict]:
     records: list[dict] = []
@@ -588,13 +606,23 @@ async def fetch_paginated_collection(
             detail = exc.detail if isinstance(exc.detail, dict) else {}
             if detail.get("status_code") == status.HTTP_429_TOO_MANY_REQUESTS and rate_limit_retries < XERO_RATE_LIMIT_RETRIES:
                 rate_limit_retries += 1
-                if on_page is not None:
-                    on_page(page, len(records), 0)
                 retry_after = detail.get("retry_after")
-                try:
-                    delay_seconds = int(retry_after)
-                except (TypeError, ValueError):
-                    delay_seconds = XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS
+                parsed_delay = _retry_after_delay_seconds(retry_after)
+                delay_seconds = parsed_delay if parsed_delay is not None else XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS
+                if delay_seconds > XERO_RATE_LIMIT_MAX_SLEEP_SECONDS:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail={
+                            **detail,
+                            "message": (
+                                f"Xero rate-limited the {collection_key} request and asked the app to wait "
+                                f"{delay_seconds} seconds. Try syncing again after Xero's limit resets."
+                            ),
+                            "retry_after_seconds": delay_seconds,
+                        },
+                    ) from exc
+                if on_retry is not None:
+                    on_retry(page, len(records), delay_seconds, rate_limit_retries)
                 await asyncio.sleep(max(delay_seconds, XERO_PAGE_DELAY_SECONDS))
                 continue
             raise

@@ -19,6 +19,7 @@ from .xero import (
     INVOICES_URL,
     OVERPAYMENTS_URL,
     PAYMENTS_URL,
+    XERO_RATE_LIMIT_RETRIES,
     allocate_credit_note,
     allocate_overpayment,
     create_credit_note,
@@ -413,6 +414,7 @@ async def _sync_xero_payments(
     now: datetime,
     modified_since: datetime | None = None,
     on_page=None,
+    on_retry=None,
     on_store=None,
 ) -> int:
     raw_payments = await fetch_paginated_collection(
@@ -420,6 +422,7 @@ async def _sync_xero_payments(
         PAYMENTS_URL,
         "Payments",
         on_page=on_page,
+        on_retry=on_retry,
         modified_since=modified_since,
     )
     if not raw_payments:
@@ -630,7 +633,9 @@ async def _sync_xero_customer_credits(
     now: datetime,
     modified_since: datetime | None = None,
     on_credit_note_page=None,
+    on_credit_note_retry=None,
     on_overpayment_page=None,
+    on_overpayment_retry=None,
 ) -> int:
     credit_note_where = RECEIVABLE_CREDIT_NOTE_INCREMENTAL_WHERE if modified_since else RECEIVABLE_CREDIT_NOTE_WHERE
     raw_credit_notes = await fetch_paginated_collection(
@@ -640,6 +645,7 @@ async def _sync_xero_customer_credits(
         params={"where": credit_note_where},
         modified_since=modified_since,
         on_page=on_credit_note_page,
+        on_retry=on_credit_note_retry,
     )
     raw_overpayments = await fetch_paginated_collection(
         connection_row,
@@ -648,6 +654,7 @@ async def _sync_xero_customer_credits(
         params=None if modified_since else {"where": f'Status=="{AUTHORISED_CREDIT_STATUS}"'},
         modified_since=modified_since,
         on_page=on_overpayment_page,
+        on_retry=on_overpayment_retry,
     )
 
     if modified_since is not None and not raw_credit_notes and not raw_overpayments:
@@ -1168,6 +1175,19 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
     )
 
     try:
+        def rate_limit_progress(label: str):
+            def progress(page: int, total_records: int, delay_seconds: int, retry_number: int) -> None:
+                _update_sync_run(
+                    sync_run_id,
+                    current_step="Waiting for Xero rate limit",
+                    summary=(
+                        f"Xero rate-limited {label} page {page}. Retrying in {delay_seconds} seconds "
+                        f"({retry_number} of {XERO_RATE_LIMIT_RETRIES}). Fetched {total_records} records so far."
+                    ),
+                )
+
+            return progress
+
         def contact_progress(_, total_records: int, __) -> None:
             _update_sync_run(
                 sync_run_id,
@@ -1236,6 +1256,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                     utcnow(),
                     modified_since=modified_since if is_incremental_sync else None,
                     on_page=payment_progress,
+                    on_retry=rate_limit_progress("payments"),
                     on_store=payment_store_progress,
                 )
                 _update_sync_run(
@@ -1266,7 +1287,9 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 utcnow(),
                 modified_since=modified_since if is_incremental_sync else None,
                 on_credit_note_page=credit_note_progress,
+                on_credit_note_retry=rate_limit_progress("credit notes"),
                 on_overpayment_page=overpayment_progress,
+                on_overpayment_retry=rate_limit_progress("overpayments"),
             )
 
         _update_sync_run(
@@ -1279,6 +1302,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             CONTACTS_URL,
             "Contacts",
             on_page=contact_progress,
+            on_retry=rate_limit_progress(contact_fetch_label),
             modified_since=modified_since if is_incremental_sync else None,
         )
         _update_sync_run(
@@ -1293,6 +1317,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             "Invoices",
             params={"where": invoice_where},
             on_page=outstanding_invoice_progress,
+            on_retry=rate_limit_progress(invoice_fetch_label),
             modified_since=modified_since,
         )
         contacts = _customer_contacts_from_xero(raw_contacts, outstanding_invoices)
@@ -1606,6 +1631,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             params={"where": _with_invoice_year_filter(PAID_INVOICE_WHERE, sync_options["invoice_years"])},
             max_pages=paid_page_limit,
             on_page=paid_invoice_progress,
+            on_retry=rate_limit_progress("paid invoices"),
         )
         paid_synced = 0
 

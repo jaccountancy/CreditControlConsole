@@ -1026,6 +1026,34 @@ body.is-dense .note-snippet {
     animation: sync-spin 0.85s linear infinite;
     flex: 0 0 auto;
 }
+.sync-logo-loader {
+    width: 74px;
+    height: 74px;
+    border: 0;
+    border-radius: 18px;
+    background: #fff;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 12px 34px rgba(30, 47, 77, 0.16);
+    animation: none;
+    overflow: visible;
+    flex: 0 0 auto;
+}
+.sync-logo-loader svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+.sync-logo-loader .shape-1-diagonal {
+    animation: sync-loader-diagonal-1 3.8s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+}
+.sync-logo-loader .shape-2-diagonal {
+    animation: sync-loader-diagonal-2 3.8s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+}
 .sync-progress-card h3 {
     margin: 0;
     font-size: 1.15rem;
@@ -1068,6 +1096,18 @@ body.is-syncing .sync-dot {
 }
 @keyframes sync-spin {
     to { transform: rotate(360deg); }
+}
+@keyframes sync-loader-diagonal-1 {
+    0%, 100% { transform: translateX(0) translateY(0) rotate(0deg); }
+    25% { transform: translateX(-50px) translateY(-30px) rotate(120deg); }
+    50% { transform: translateX(0) translateY(0) rotate(240deg); }
+    75% { transform: translateX(50px) translateY(30px) rotate(360deg); }
+}
+@keyframes sync-loader-diagonal-2 {
+    0%, 100% { transform: translateX(0) translateY(0) rotate(0deg); }
+    25% { transform: translateX(50px) translateY(30px) rotate(-120deg); }
+    50% { transform: translateX(0) translateY(0) rotate(-240deg); }
+    75% { transform: translateX(-50px) translateY(-30px) rotate(-360deg); }
 }
 @keyframes sync-progress {
     0% { transform: translateX(-110%); }
@@ -1413,7 +1453,26 @@ body.is-syncing .sync-dot {
     <section class="sync-progress-overlay" id="syncProgressOverlay" aria-live="polite" aria-atomic="true" hidden>
         <div class="sync-progress-card" role="status">
             <div class="sync-progress-head">
-                <span class="sync-spinner" aria-hidden="true"></span>
+                <span class="sync-spinner sync-logo-loader" aria-hidden="true">
+                    <svg viewBox="0 0 98.53 98.28" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                        <defs>
+                            <linearGradient id="syncOverlayLoaderGradient1" x1="22.13" y1="22.14" x2="82.38" y2="87.41">
+                                <stop offset="0" stop-color="#2a8dcd"/>
+                                <stop offset="1" stop-color="#3e7ec1"/>
+                            </linearGradient>
+                            <linearGradient id="syncOverlayLoaderGradient2" x1="24.15" y1="20.28" x2="84.4" y2="85.55">
+                                <stop offset="0" stop-color="#2a8dcd"/>
+                                <stop offset="1" stop-color="#3e7ec1"/>
+                            </linearGradient>
+                        </defs>
+                        <g class="shape-1-diagonal">
+                            <path fill="url(#syncOverlayLoaderGradient1)" d="M36,59.36a7.18,7.18,0,0,1-6.06-2.63c-1.34-1.76-2-4.71-2-8.87V39.28L0,44.07,44.07,0V44.18q0,8-2,11.57A6.5,6.5,0,0,1,36,59.36Z"/>
+                        </g>
+                        <g class="shape-2-diagonal">
+                            <path fill="url(#syncOverlayLoaderGradient2)" d="M98.53,53.92,54.17,98.28,36.63,80.74q16.57-.55,25.93-8.95,10.05-9,10-25.52V28Z"/>
+                        </g>
+                    </svg>
+                </span>
                 <div>
                     <h3>Please wait, pulling in data from Xero</h3>
                     <p id="syncProgressDetail">This usually takes about 45-90 seconds.</p>
