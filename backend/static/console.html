@@ -2759,6 +2759,10 @@
                 gap: 12px;
                 align-items: end;
             }
+            .jashflow-loan-form[hidden],
+            .jashflow-settings-form[hidden] {
+                display: none !important;
+            }
             .jashflow-settings-form {
                 display: grid;
                 grid-template-columns: minmax(220px, 1fr) minmax(180px, 220px) auto auto;
@@ -5130,6 +5134,23 @@
                             <section class="detail-panel settings-panel wide-settings-panel">
                                 <div class="panel-heading">
                                     <div>
+                                        <p class="eyebrow">Xero outbox</p>
+                                        <h3>Pending changes to push into Xero</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="settingsRefreshPendingXeroButton" type="button">Refresh</button>
+                                        <button class="primary-button" id="settingsSyncPendingXeroButton" type="button">Sync pending changes</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help" id="pendingXeroActionsSummary">Queued late payment charges and bad debt write-offs will appear here while Xero is paused or rate-limited.</p>
+                                <div class="developer-log-list settings-developer-log-list" id="pendingXeroActionsList">
+                                    <div class="empty-state"><p class="eyebrow">No pending changes</p><h4>Xero outbox is clear</h4><p>Actions queued during a Xero rate limit will be saved here until they are pushed.</p></div>
+                                </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel">
+                                <div class="panel-heading">
+                                    <div>
                                         <p class="eyebrow">Developer log</p>
                                         <h3>Sync and Xero events</h3>
                                     </div>
@@ -6095,6 +6116,41 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="bankAccountPanel" aria-modal="true" role="dialog" aria-labelledby="bankAccountPanelTitle" hidden>
+                    <div class="developer-log-card">
+                        <form class="stack-form" id="bankAccountForm">
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="bankAccountPanelTitle">Add bank account</h3>
+                                    <p id="bankAccountPanelSummary">Save the account details before uploading PDF statements.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeBankAccountPanelButton" type="button">Cancel</button>
+                                    <button class="primary-button" type="submit">Save account</button>
+                                </div>
+                            </div>
+                            <div class="bank-account-form bank-account-modal-form">
+                                <label>
+                                    Account name
+                                    <input id="bankAccountNameInput" type="text" required>
+                                </label>
+                                <label>
+                                    Account number
+                                    <input id="bankAccountNumberInput" type="text" inputmode="numeric" autocomplete="off" required>
+                                </label>
+                                <label>
+                                    Sort code
+                                    <input id="bankSortCodeInput" type="text" autocomplete="off">
+                                </label>
+                                <label>
+                                    Currency
+                                    <input id="bankCurrencyInput" type="text" maxlength="3" value="GBP" required>
+                                </label>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="quickNotePanel" aria-modal="true" role="dialog" aria-labelledby="quickNoteTitle" hidden>
                     <div class="developer-log-card">
                         <form class="stack-form" id="quickNoteForm">
@@ -6346,6 +6402,9 @@
             let latePaymentChargeBaseAmounts = new Map();
             let lateChargeSearchTerm = "";
             let badDebtSearchTerm = "";
+            let pendingXeroActionsData = { summary: {}, actions: [] };
+            let pendingXeroActionsLoading = false;
+            let pendingXeroActionsSyncing = false;
             let activeAllocationSource = null;
             let jashflowData = { customers: [], loans: [], summary: {} };
             let jashflowLoading = false;
@@ -6483,6 +6542,8 @@
                         latePaymentChargeRun: config.endpoints?.latePaymentChargeRun || "/api/late-payment-charges/run",
                         writeOffs: config.endpoints?.writeOffs || "/api/write-offs",
                         writeOffRun: config.endpoints?.writeOffRun || "/api/write-offs/run",
+                        pendingXeroActions: config.endpoints?.pendingXeroActions || "/api/xero/pending-actions",
+                        pendingXeroActionsSync: config.endpoints?.pendingXeroActionsSync || "/api/xero/pending-actions/sync",
                         jashflow: config.endpoints?.jashflow || "/api/jashflow",
                         jashflowLoans: config.endpoints?.jashflowLoans || "/api/jashflow/loans",
                         jashflowLoan: config.endpoints?.jashflowLoan || "/api/jashflow/loans/:loanId",
@@ -6525,6 +6586,13 @@
                     audit: Array.isArray(payload.audit) ? payload.audit : [],
                     selectedInvoice: payload.selectedInvoice || null
                 };
+            }
+
+            function payloadHasActiveXeroRateLimit(payload) {
+                const rawRateLimit = payload?.xeroRateLimit || {};
+                const retryAfterSeconds = Number(rawRateLimit.retryAfterSeconds || 0);
+                const until = rawRateLimit.rateLimitUntil ? new Date(rawRateLimit.rateLimitUntil) : null;
+                return retryAfterSeconds > 0 || (until && !Number.isNaN(until.getTime()) && until.getTime() > Date.now());
             }
 
             function loadPersistedUIState() {
@@ -6895,7 +6963,18 @@
                 try {
                     const payload = await requestJSON(api.endpoints.panel);
                     if (payload) {
-                        replaceState(normaliseState(payload));
+                        const nextState = normaliseState(payload);
+                        if (payloadHasActiveXeroRateLimit(payload) && !nextState.customers.length && state.customers.length) {
+                            nextState.customers = state.customers;
+                            nextState.dashboard = state.dashboard;
+                            nextState.selectedInvoice = state.selectedInvoice;
+                            nextState.organisation = {
+                                ...nextState.organisation,
+                                name: state.organisation.name || nextState.organisation.name,
+                                status: state.organisation.status || nextState.organisation.status,
+                            };
+                        }
+                        replaceState(nextState);
                         const activeRun = activeSyncRunFromPanel(payload);
                         if (activeRun && (!activeSyncRunId || activeSyncRunId === activeRun.id)) {
                             latestSyncRun = activeRun;
@@ -10506,6 +10585,8 @@
 
             function openJashflowScreen() {
                 activeView = "jashflow";
+                editingJashflowLoanId = "";
+                jashflowFormOpen = false;
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
@@ -11145,6 +11226,46 @@
                 loadBankStatements();
             }
 
+            function openBankAccountForm() {
+                const client = selectedBankStatementClient();
+                if (!client) {
+                    showToast("Open an extraction client before adding a bank account", "error");
+                    return;
+                }
+                bankAccountFormOpen = true;
+                renderBankAccountPanel();
+                const nameInput = document.getElementById("bankAccountNameInput");
+                if (nameInput) nameInput.value = `${client.customerName || "Client"} current account`;
+                const accountInput = document.getElementById("bankAccountNumberInput");
+                if (accountInput) accountInput.value = "";
+                const sortCodeInput = document.getElementById("bankSortCodeInput");
+                if (sortCodeInput) sortCodeInput.value = "";
+                const currencyInput = document.getElementById("bankCurrencyInput");
+                if (currencyInput) currencyInput.value = "GBP";
+                setTimeout(() => document.getElementById("bankAccountNameInput")?.focus(), 0);
+            }
+
+            function closeBankAccountForm() {
+                bankAccountFormOpen = false;
+                renderBankAccountPanel();
+            }
+
+            function renderBankAccountPanel() {
+                const panel = document.getElementById("bankAccountPanel");
+                if (!panel) return;
+                const client = selectedBankStatementClient();
+                panel.hidden = activeView !== "bank-statements" || !bankAccountFormOpen || !client;
+                if (panel.hidden) return;
+                const summary = document.getElementById("bankAccountPanelSummary");
+                if (summary) {
+                    summary.textContent = `Save the account details for ${client.customerName || "this extraction client"} before uploading PDF statements.`;
+                }
+                const nameInput = document.getElementById("bankAccountNameInput");
+                if (nameInput && !nameInput.value) nameInput.value = `${client.customerName || "Client"} current account`;
+                const currencyInput = document.getElementById("bankCurrencyInput");
+                if (currencyInput && !currencyInput.value) currencyInput.value = "GBP";
+            }
+
             function bankUploadSummary(upload) {
                 const error = String(upload?.errorMessage || "");
                 if (error) {
@@ -11301,9 +11422,10 @@
                             selectedBankStatementClientId = button.dataset.openBankClient;
                             selectedBankAccountId = client?.accounts?.[0]?.id || "";
                             bankStatementWorkspaceOpen = true;
-                            bankAccountFormOpen = !(client?.accounts || []).length;
+                            bankAccountFormOpen = false;
                             bankStatementClientFormOpen = false;
                             renderBankStatementsScreen();
+                            if (!(client?.accounts || []).length) openBankAccountForm();
                         });
                     });
                     return;
@@ -11327,11 +11449,9 @@
                 const addAccountButton = document.createElement("button");
                 addAccountButton.type = "button";
                 addAccountButton.className = "ghost-button";
-                addAccountButton.textContent = bankAccountFormOpen ? "Close account form" : "Add bank account";
+                addAccountButton.textContent = "Add bank account";
                 addAccountButton.addEventListener("click", () => {
-                    bankAccountFormOpen = !bankAccountFormOpen;
-                    renderBankStatementsScreen();
-                    if (bankAccountFormOpen) setTimeout(() => document.getElementById("bankAccountNameInput")?.focus(), 0);
+                    openBankAccountForm();
                 });
                 accountList.appendChild(addAccountButton);
 
@@ -11347,41 +11467,19 @@
                     button.addEventListener("click", () => {
                         selectedBankAccountId = account.id;
                         bankAccountFormOpen = false;
+                        renderBankAccountPanel();
                         renderBankStatementsScreen();
                     });
                     accountList.appendChild(button);
                 });
 
                 const account = selectedBankAccount();
-                const showAccountForm = bankAccountFormOpen || !(client.accounts || []).length;
-                const accountFormHTML = showAccountForm ? `
-                    <form class="bank-account-form" id="bankAccountForm">
-                        <label>
-                            Account name
-                            <input id="bankAccountNameInput" type="text" value="${escapeHTML(client.customerName || "Client")} current account" required>
-                        </label>
-                        <label>
-                            Account number
-                            <input id="bankAccountNumberInput" type="text" inputmode="numeric" autocomplete="off" required>
-                        </label>
-                        <label>
-                            Sort code
-                            <input id="bankSortCodeInput" type="text" autocomplete="off">
-                        </label>
-                        <label>
-                            Currency
-                            <input id="bankCurrencyInput" type="text" maxlength="3" value="GBP" required>
-                        </label>
-                        <button class="primary-button" type="submit">Save account</button>
-                    </form>
-                ` : "";
 
                 if (!account) {
                     detail.innerHTML = `
-                        ${accountFormHTML}
-                        <div class="empty-state"><p class="eyebrow">No accounts</p><h4>Add a bank account for ${escapeHTML(client.customerName || "this client")}</h4><p>Once saved, PDF uploads and extracted transactions are persisted against the account.</p></div>
+                        <div class="empty-state"><p class="eyebrow">No accounts</p><h4>Add a bank account for ${escapeHTML(client.customerName || "this client")}</h4><p>Once saved, PDF uploads and extracted transactions are persisted against the account.</p><button class="primary-button" id="emptyAddBankAccountButton" type="button">Add bank account</button></div>
                     `;
-                    document.getElementById("bankAccountForm")?.addEventListener("submit", createBankStatementAccount);
+                    document.getElementById("emptyAddBankAccountButton")?.addEventListener("click", openBankAccountForm);
                     return;
                 }
 
@@ -11406,7 +11504,6 @@
                     </div>
                 `).join("");
                 detail.innerHTML = `
-                    ${accountFormHTML}
                     <div class="jashflow-detail-head">
                         <div>
                             <p class="eyebrow">Extraction account</p>
@@ -11426,9 +11523,9 @@
                     <div class="bank-flag-list">${flags || '<div class="empty-state"><p class="eyebrow">Continuity</p><h4>No review flags</h4><p>Running balance checks and statement date gaps will appear here when detected.</p></div>'}</div>
                     <div class="bank-transaction-list">${transactions || '<div class="empty-state"><p class="eyebrow">Transactions</p><h4>No extracted transactions</h4><p>Transactions are saved after a PDF statement has been extracted.</p></div>'}</div>
                 `;
-                document.getElementById("bankAccountForm")?.addEventListener("submit", createBankStatementAccount);
                 document.getElementById("bankStatementUploadForm")?.addEventListener("submit", uploadBankStatements);
                 document.getElementById("exportBankTransactionsButton")?.addEventListener("click", exportBankTransactions);
+                renderBankAccountPanel();
             }
 
             async function addBankStatementClient(event) {
@@ -11444,10 +11541,11 @@
                     selectedBankStatementClientId = (bankStatementData.clients || []).find((client) => client.customerId === customerId)?.id || selectedBankStatementClientId;
                     bankStatementWorkspaceOpen = true;
                     bankStatementClientFormOpen = false;
-                    bankAccountFormOpen = true;
+                    bankAccountFormOpen = false;
                     ensureBankStatementSelection();
                     showToast("Bank statement extraction client saved", "success");
                     renderBankStatementsScreen();
+                    openBankAccountForm();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to add extraction client", "error");
@@ -11474,7 +11572,14 @@
                     const refreshedClient = selectedBankStatementClient();
                     selectedBankAccountId = refreshedClient?.accounts?.[0]?.id || selectedBankAccountId;
                     bankAccountFormOpen = false;
+                    ["bankAccountNameInput", "bankAccountNumberInput", "bankSortCodeInput"].forEach((id) => {
+                        const input = document.getElementById(id);
+                        if (input) input.value = "";
+                    });
+                    const currencyInput = document.getElementById("bankCurrencyInput");
+                    if (currencyInput) currencyInput.value = "GBP";
                     showToast("Bank account saved", "success");
+                    renderBankAccountPanel();
                     renderBankStatementsScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
@@ -12692,9 +12797,24 @@
             async function raiseBadDebtWriteOffs() {
                 const invoiceIds = [...selectedBadDebtInvoiceIds];
                 if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
-                if (!isXeroConnected()) return showToast("Connect Xero before writing off invoices", "error");
+                const rateLimit = activeXeroRateLimit();
+                if (!isXeroConnected() && !rateLimit) return showToast("Connect Xero before writing off invoices", "error");
                 const invoices = invoiceIds.map((invoiceId) => findInvoiceById(invoiceId)).filter(Boolean);
                 const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+                if (rateLimit) {
+                    if (!window.confirm(`Queue ${invoiceIds.length} bad debt write-off${invoiceIds.length === 1 ? "" : "s"} totalling ${formatCurrency(total)} for Xero? They will stay in Settings > Xero outbox until the daily limit resets.`)) return;
+                    try {
+                        await queuePendingXeroAction("bad_debt_write_offs", invoiceIds);
+                        selectedBadDebtInvoiceIds.clear();
+                        renderAll();
+                        showTopbarNotice("Bad debt write-offs queued", "Saved to the Xero outbox. Push them from Settings after the API limit resets.", "success");
+                        showToast("Bad debt write-offs queued for later Xero sync", "success");
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to queue bad debt write-offs", "error");
+                    }
+                    return;
+                }
                 if (!window.confirm(`Write off ${invoiceIds.length} invoice${invoiceIds.length === 1 ? "" : "s"} in Xero totalling ${formatCurrency(total)}? This raises credit notes to the configured bad debt account and allocates them one by one.`)) return;
                 const completedPayload = await runInvoiceOperation(
                     api.endpoints.writeOffRun,
@@ -12715,7 +12835,8 @@
             async function raiseLatePaymentCharges() {
                 const invoiceIds = [...selectedLateChargeInvoiceIds];
                 if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
-                if (!isXeroConnected()) return showToast("Connect Xero before raising late payment charges", "error");
+                const rateLimit = activeXeroRateLimit();
+                if (!isXeroConnected() && !rateLimit) return showToast("Connect Xero before raising late payment charges", "error");
                 const chargeSelections = invoiceIds.map((invoiceId) => {
                     const invoice = findInvoiceById(invoiceId);
                     return {
@@ -12724,6 +12845,21 @@
                     };
                 });
                 const chargeTotal = chargeSelections.reduce((sum, item) => sum + latePaymentChargeGrossAmount(item.baseAmount), 0);
+                if (rateLimit) {
+                    if (!window.confirm(`Queue ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} totalling ${formatCurrency(chargeTotal)} for Xero? They will stay in Settings > Xero outbox until the daily limit resets.`)) return;
+                    try {
+                        await queuePendingXeroAction("late_payment_charges", invoiceIds, { chargeSelections });
+                        invoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
+                        selectedLateChargeInvoiceIds.clear();
+                        renderAll();
+                        showTopbarNotice("Late payment charges queued", "Saved to the Xero outbox. Push them from Settings after the API limit resets.", "success");
+                        showToast("Late payment charges queued for later Xero sync", "success");
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to queue late payment charges", "error");
+                    }
+                    return;
+                }
                 if (!window.confirm(`Raise ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} in Xero totalling ${formatCurrency(chargeTotal)} including VAT?`)) return;
 
                 const completedPayload = await runInvoiceOperation(
@@ -13036,7 +13172,7 @@
                     ? formatXeroRateLimitDetail(rateLimit)
                     : "";
                 showXeroRateLimitWarning(rateLimit);
-                const hideConnectAction = connected || isSyncing;
+                const hideConnectAction = connected || isSyncing || syncBlockedByRateLimit;
                 const connectButton = document.getElementById("connectXeroButton");
                 if (connectButton) {
                     connectButton.hidden = hideConnectAction;
@@ -13094,8 +13230,9 @@
                 });
                 const sidebarConnectButton = document.getElementById("sidebarConnectButton");
                 if (sidebarConnectButton) {
-                    sidebarConnectButton.textContent = connected ? "Resync Xero" : "Login with Xero";
-                    sidebarConnectButton.disabled = isSyncing;
+                    sidebarConnectButton.textContent = syncBlockedByRateLimit ? "Xero Paused" : connected ? "Resync Xero" : "Login with Xero";
+                    sidebarConnectButton.disabled = isSyncing || syncBlockedByRateLimit;
+                    sidebarConnectButton.title = syncBlockedByRateLimit ? rateLimitCopy : "";
                 }
                 const sidebarResyncButton = document.getElementById("sidebarResyncButton");
                 if (sidebarResyncButton) {
@@ -13822,6 +13959,7 @@
                 syncActiveViewShell();
                 renderChrome();
                 renderSyncSettings();
+                renderPendingXeroActions();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
                 renderDashboardHero();
@@ -13835,6 +13973,7 @@
                 renderBadDebtScreen();
                 renderJashflowScreen();
                 renderBankStatementsScreen();
+                renderBankAccountPanel();
                 renderIgnitionScreen();
                 renderMeReportScreen();
                 renderClientScreen();
@@ -14927,9 +15066,147 @@
                 closeToolbarMenus();
                 closeTopbarMenu();
                 renderAll();
+                loadPendingXeroActions();
                 loadDeveloperLog();
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
+            }
+
+            function normalisePendingXeroActionsPayload(payload) {
+                const source = payload?.pendingActions || payload || {};
+                return {
+                    summary: source.summary || {},
+                    actions: Array.isArray(source.actions) ? source.actions : []
+                };
+            }
+
+            async function loadPendingXeroActions(force = false) {
+                if (pendingXeroActionsLoading && !force) return;
+                pendingXeroActionsLoading = true;
+                renderPendingXeroActions();
+                try {
+                    const payload = await requestJSON(api.endpoints.pendingXeroActions);
+                    pendingXeroActionsData = normalisePendingXeroActionsPayload(payload);
+                } catch (error) {
+                    console.error("Unable to load pending Xero actions", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to load pending Xero changes", "error");
+                } finally {
+                    pendingXeroActionsLoading = false;
+                    renderPendingXeroActions();
+                }
+            }
+
+            function renderPendingXeroActions() {
+                const summary = pendingXeroActionsData.summary || {};
+                const actions = pendingXeroActionsData.actions || [];
+                const pendingActions = actions.filter((action) => action.status === "pending");
+                const failedActions = actions.filter((action) => action.status === "failed");
+                const processingActions = actions.filter((action) => action.status === "processing");
+                const summaryTarget = document.getElementById("pendingXeroActionsSummary");
+                const list = document.getElementById("pendingXeroActionsList");
+                const syncButton = document.getElementById("settingsSyncPendingXeroButton");
+                const refreshButton = document.getElementById("settingsRefreshPendingXeroButton");
+                const rateLimit = activeXeroRateLimit();
+                const pendingCount = Number(summary.pendingCount || pendingActions.length || 0);
+                const invoiceCount = Number(summary.pendingInvoiceCount || pendingActions.reduce((sum, action) => sum + Number(action.invoiceCount || 0), 0));
+                const pendingAmount = Number(summary.pendingAmount || pendingActions.reduce((sum, action) => sum + Number(action.amount || 0), 0));
+                if (summaryTarget) {
+                    summaryTarget.textContent = pendingXeroActionsLoading
+                        ? "Checking the saved Xero outbox..."
+                        : pendingCount
+                        ? `${pendingCount.toLocaleString("en-GB")} pending batch${pendingCount === 1 ? "" : "es"} covering ${invoiceCount.toLocaleString("en-GB")} invoice${invoiceCount === 1 ? "" : "s"} and ${formatCurrency(pendingAmount)}.`
+                        : failedActions.length
+                        ? `No pending batches are waiting, but ${failedActions.length.toLocaleString("en-GB")} previous batch${failedActions.length === 1 ? "" : "es"} need review.`
+                        : "No pending Xero changes are waiting to be pushed.";
+                }
+                if (syncButton) {
+                    syncButton.disabled = pendingXeroActionsSyncing || pendingXeroActionsLoading || pendingCount === 0 || Boolean(rateLimit);
+                    syncButton.textContent = rateLimit
+                        ? `Xero paused ${formatWaitDuration(rateLimit.seconds)}`
+                        : pendingXeroActionsSyncing
+                        ? "Syncing pending changes..."
+                        : pendingCount
+                        ? `Sync ${pendingCount.toLocaleString("en-GB")} pending`
+                        : "No pending changes";
+                    syncButton.title = rateLimit ? formatXeroRateLimitDetail(rateLimit) : "";
+                }
+                if (refreshButton) {
+                    refreshButton.disabled = pendingXeroActionsLoading || pendingXeroActionsSyncing;
+                }
+                if (!list) return;
+                if (pendingXeroActionsLoading && !actions.length) {
+                    list.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Checking pending Xero changes</h4><p>Reading the saved outbox from the backend.</p></div>';
+                    return;
+                }
+                if (!actions.length) {
+                    list.innerHTML = '<div class="empty-state"><p class="eyebrow">No pending changes</p><h4>Xero outbox is clear</h4><p>Late payment charges and write-offs queued during rate limits will appear here.</p></div>';
+                    return;
+                }
+                list.innerHTML = actions.map((action) => {
+                    const invoices = (action.invoices || []).slice(0, 4).map((invoice) => invoice.label || invoice.invoiceNumber || invoice.id).join(", ");
+                    const extraCount = Math.max(0, Number(action.invoiceCount || 0) - 4);
+                    const statusText = String(action.status || "pending").replace("_", " ");
+                    const errorCopy = action.errorMessage ? `<p>${escapeHTML(action.errorMessage)}</p>` : "";
+                    return `
+                        <article class="developer-log-entry ${action.status === "failed" ? "is-error" : ""}">
+                            <div class="developer-log-meta">
+                                <span>${escapeHTML(statusText)}</span>
+                                <span>${escapeHTML(formatDate(action.createdAt))}</span>
+                                <span>${Number(action.invoiceCount || 0).toLocaleString("en-GB")} invoice${Number(action.invoiceCount || 0) === 1 ? "" : "s"}</span>
+                                <span>${escapeHTML(formatCurrency(action.amount || 0))}</span>
+                            </div>
+                            <strong>${escapeHTML(action.label || "Xero change")}</strong>
+                            <p>${escapeHTML(invoices || "Invoice details unavailable")}${extraCount ? ` and ${extraCount.toLocaleString("en-GB")} more` : ""}</p>
+                            ${errorCopy}
+                        </article>
+                    `;
+                }).join("");
+                if (processingActions.length) ensureXeroRateLimitCountdown();
+            }
+
+            async function queuePendingXeroAction(actionType, invoiceIds, options = {}) {
+                const payload = await requestJSON(api.endpoints.pendingXeroActions, {
+                    method: "POST",
+                    body: JSON.stringify({ actionType, invoiceIds, ...options })
+                });
+                pendingXeroActionsData = normalisePendingXeroActionsPayload(payload);
+                renderPendingXeroActions();
+                return payload;
+            }
+
+            async function syncPendingXeroActions() {
+                const pendingCount = Number(pendingXeroActionsData.summary?.pendingCount || 0);
+                if (!pendingCount) return showToast("There are no pending Xero changes to sync", "info");
+                const rateLimit = activeXeroRateLimit();
+                if (rateLimit) return showToast(`Xero is paused until ${formatXeroRateLimitDetail(rateLimit)}`, "info");
+                if (!window.confirm(`Push ${pendingCount.toLocaleString("en-GB")} pending Xero change batch${pendingCount === 1 ? "" : "es"} now?`)) return;
+                pendingXeroActionsSyncing = true;
+                renderPendingXeroActions();
+                showTopbarNotice("Syncing pending Xero changes", "Pushing saved outbox batches into Xero now.", "success", 3000);
+                try {
+                    const payload = await requestJSON(api.endpoints.pendingXeroActionsSync, { method: "POST", body: JSON.stringify({}) });
+                    pendingXeroActionsData = normalisePendingXeroActionsPayload(payload);
+                    if (payload.panel) replaceState(normaliseState(payload.panel));
+                    const result = payload.result || {};
+                    showToast(
+                        `Pending Xero sync complete: ${Number(result.processedCount || 0).toLocaleString("en-GB")} processed, ${Number(result.failedCount || 0).toLocaleString("en-GB")} failed.`,
+                        Number(result.failedCount || 0) ? "info" : "success"
+                    );
+                    renderAll();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else if (error.statusCode === 429 || error.details?.retry_after_seconds || error.details?.retryAfterSeconds) {
+                        applyXeroRateLimitError(error, "pending Xero changes");
+                    } else {
+                        showToast(error.message || "Unable to sync pending Xero changes", "error");
+                    }
+                } finally {
+                    pendingXeroActionsSyncing = false;
+                    await loadPendingXeroActions(true);
+                    renderPendingXeroActions();
+                }
             }
 
             function renderFactoryResetGuard() {
@@ -15421,6 +15698,14 @@
                 });
                 const bankStatementClientForm = document.getElementById("bankStatementClientForm");
                 if (bankStatementClientForm) bankStatementClientForm.addEventListener("submit", addBankStatementClient);
+                const bankAccountForm = document.getElementById("bankAccountForm");
+                if (bankAccountForm) bankAccountForm.addEventListener("submit", createBankStatementAccount);
+                const closeBankAccountPanelButton = document.getElementById("closeBankAccountPanelButton");
+                if (closeBankAccountPanelButton) closeBankAccountPanelButton.addEventListener("click", closeBankAccountForm);
+                const bankAccountPanel = document.getElementById("bankAccountPanel");
+                if (bankAccountPanel) bankAccountPanel.addEventListener("click", (event) => {
+                    if (event.target.id === "bankAccountPanel") closeBankAccountForm();
+                });
                 const refreshIgnitionButton = document.getElementById("refreshIgnitionButton");
                 if (refreshIgnitionButton) refreshIgnitionButton.addEventListener("click", () => loadIgnition(true));
                 const connectIgnitionButton = document.getElementById("connectIgnitionButton");
@@ -15503,6 +15788,10 @@
                 });
                 const settingsRunSyncButton = document.getElementById("settingsRunSyncButton");
                 if (settingsRunSyncButton) settingsRunSyncButton.addEventListener("click", () => runXeroSync());
+                const settingsRefreshPendingXeroButton = document.getElementById("settingsRefreshPendingXeroButton");
+                if (settingsRefreshPendingXeroButton) settingsRefreshPendingXeroButton.addEventListener("click", () => loadPendingXeroActions(true));
+                const settingsSyncPendingXeroButton = document.getElementById("settingsSyncPendingXeroButton");
+                if (settingsSyncPendingXeroButton) settingsSyncPendingXeroButton.addEventListener("click", syncPendingXeroActions);
                 const syncRetryButton = document.getElementById("syncRetryButton");
                 if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
                 const sidebarResyncButton = document.getElementById("sidebarResyncButton");

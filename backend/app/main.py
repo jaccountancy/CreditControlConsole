@@ -70,6 +70,8 @@ from .services import (
     get_me_report_sync_run,
     normalise_sync_options,
     panel_payload,
+    pending_xero_actions_payload,
+    process_pending_xero_actions,
     get_sync_run,
     me_report_payload,
     me_report_report_html,
@@ -77,6 +79,7 @@ from .services import (
     request_me_report_sync_run,
     request_sync_run,
     request_ignition_sync_run,
+    queue_pending_xero_action,
     run_ignition_sync_job,
     run_me_report_sync_job,
     request_operation_run,
@@ -690,6 +693,28 @@ async def api_write_offs_run(request: Request, user: dict = Depends(require_pane
         daemon=True,
     ).start()
     return {"status": "queued", "operationRun": serialize_operation_run(operation_run)}
+
+
+@app.get("/api/xero/pending-actions")
+def api_xero_pending_actions(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **pending_xero_actions_payload(user)}
+
+
+@app.post("/api/xero/pending-actions")
+async def api_xero_pending_actions_queue(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    action_type = payload.get("actionType") or payload.get("operationType") or ""
+    invoice_ids = payload.get("invoiceIds") or []
+    options = payload.get("options") or {}
+    if payload.get("chargeSelections") or payload.get("charges"):
+        options = {**options, "chargeSelections": payload.get("chargeSelections") or payload.get("charges") or []}
+    return {"status": "ok", **queue_pending_xero_action(user, action_type, invoice_ids, options)}
+
+
+@app.post("/api/xero/pending-actions/sync")
+async def api_xero_pending_actions_sync(user: dict = Depends(require_panel_user)):
+    result = await process_pending_xero_actions(user)
+    return {"status": "ok", **result, "panel": panel_payload(user)}
 
 
 @app.get("/api/operations/{operation_run_id}")

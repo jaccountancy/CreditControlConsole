@@ -402,6 +402,36 @@ ALTER TABLE operation_runs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS operation_runs_user_status_idx
 ON operation_runs (initiated_by_user_id, status, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS xero_pending_actions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT,
+    action_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    invoice_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    result JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ
+);
+
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS action_type TEXT NOT NULL DEFAULT 'late_payment_charges';
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS invoice_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS result JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE xero_pending_actions ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS xero_pending_actions_user_status_idx
+ON xero_pending_actions (created_by_user_id, status, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS jashflow_loans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id TEXT NOT NULL,

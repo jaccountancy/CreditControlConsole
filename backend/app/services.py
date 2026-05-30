@@ -1950,6 +1950,292 @@ async def run_invoice_operation_job(
         logger.exception("Operation run %s failed", operation_run_id)
 
 
+PENDING_XERO_ACTION_STATUSES = ("pending", "processing", "failed")
+
+
+def _pending_xero_action_invoice_ids(invoice_ids) -> list[str]:
+    try:
+        return list(dict.fromkeys(str(UUID(str(invoice_id).strip())) for invoice_id in invoice_ids if str(invoice_id).strip()))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid invoice id in pending Xero action.") from exc
+
+
+def _normalise_pending_xero_action_payload(action_type: str, invoice_ids: list[str], options: dict | None = None) -> tuple[list[str], dict]:
+    if action_type not in OPERATION_LABELS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported pending Xero action.")
+    clean_invoice_ids = _pending_xero_action_invoice_ids(invoice_ids)
+    if not clean_invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
+
+    options = dict(options or {})
+    if action_type == "late_payment_charges":
+        charge_lookup = _late_payment_charge_selection_lookup(
+            clean_invoice_ids,
+            options.get("chargeSelections") or options.get("charges") or [],
+        )
+        options["chargeSelections"] = [
+            {"invoiceId": invoice_id, "baseAmount": float(charge_lookup[invoice_id])}
+            for invoice_id in clean_invoice_ids
+        ]
+    else:
+        options = {}
+    return clean_invoice_ids, _operation_payload(clean_invoice_ids, options)
+
+
+def _pending_xero_action_tenant_id(user: dict) -> str:
+    try:
+        return str(get_xero_connection_for_user(user["id"]).get("tenant_id") or "")
+    except HTTPException:
+        return ""
+
+
+def queue_pending_xero_action(user: dict, action_type: str, invoice_ids: list[str], options: dict | None = None) -> dict:
+    clean_invoice_ids, payload = _normalise_pending_xero_action_payload(action_type, invoice_ids, options)
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO xero_pending_actions (
+                    tenant_id, action_type, status, invoice_ids, payload,
+                    created_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, 'pending', %s::jsonb, %s::jsonb, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    _pending_xero_action_tenant_id(user),
+                    action_type,
+                    json.dumps(clean_invoice_ids),
+                    json.dumps(payload, default=_json_default),
+                    user["id"],
+                    now,
+                    now,
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    record_audit_event(
+        "xero_pending_action",
+        str(row["id"]),
+        "xero_pending_action.queued",
+        {"action_type": action_type, "invoice_ids": clean_invoice_ids, "payload": payload},
+        user["id"],
+    )
+    return pending_xero_actions_payload(user)
+
+
+def _pending_xero_action_amount(action: dict, invoice_lookup: dict[str, dict]) -> float:
+    invoice_ids = [str(invoice_id) for invoice_id in action.get("invoice_ids") or []]
+    payload = action.get("payload") or {}
+    options = payload.get("options") or {}
+    if action.get("action_type") == "late_payment_charges":
+        try:
+            charge_lookup = _late_payment_charge_selection_lookup(invoice_ids, options.get("chargeSelections") or [])
+        except HTTPException:
+            charge_lookup = {invoice_id: DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT for invoice_id in invoice_ids}
+        return float(sum(_late_payment_charge_gross_amount(charge_lookup[invoice_id]) for invoice_id in invoice_ids if invoice_id in charge_lookup))
+    return float(sum(_money(invoice_lookup.get(invoice_id, {}).get("amount_due")) for invoice_id in invoice_ids))
+
+
+def _serialize_pending_xero_action(action: dict, invoice_lookup: dict[str, dict]) -> dict:
+    invoice_ids = [str(invoice_id) for invoice_id in action.get("invoice_ids") or []]
+    invoices = []
+    for invoice_id in invoice_ids:
+        invoice = invoice_lookup.get(invoice_id)
+        if not invoice:
+            invoices.append({"id": invoice_id, "label": invoice_id, "amountDue": 0})
+            continue
+        invoices.append(
+            {
+                "id": invoice_id,
+                "invoiceNumber": invoice.get("invoice_number") or "",
+                "customerName": invoice.get("customer_name") or "Client",
+                "label": f"{invoice.get('customer_name') or 'Client'} · {invoice.get('invoice_number') or invoice_id}",
+                "amountDue": _float(invoice.get("amount_due")),
+            }
+        )
+    return {
+        "id": str(action["id"]),
+        "actionType": action.get("action_type") or "",
+        "label": OPERATION_LABELS.get(action.get("action_type"), "Xero change"),
+        "status": action.get("status") or "pending",
+        "invoiceCount": len(invoice_ids),
+        "amount": _pending_xero_action_amount(action, invoice_lookup),
+        "invoices": invoices,
+        "payload": action.get("payload") or {},
+        "result": action.get("result") or {},
+        "errorMessage": action.get("error_message") or "",
+        "createdAt": _iso(action.get("created_at")) or "",
+        "updatedAt": _iso(action.get("updated_at")) or "",
+        "processedAt": _iso(action.get("processed_at")) or "",
+    }
+
+
+def pending_xero_actions_payload(user: dict) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM xero_pending_actions
+                WHERE created_by_user_id = %s
+                  AND (status <> 'completed' OR processed_at > NOW() - INTERVAL '24 hours')
+                ORDER BY
+                    CASE status
+                        WHEN 'processing' THEN 0
+                        WHEN 'pending' THEN 1
+                        WHEN 'failed' THEN 2
+                        ELSE 3
+                    END,
+                    created_at DESC
+                LIMIT 100
+                """,
+                (user["id"],),
+            )
+            actions = cursor.fetchall()
+            invoice_ids = sorted({
+                str(invoice_id)
+                for action in actions
+                for invoice_id in (action.get("invoice_ids") or [])
+            })
+            invoice_lookup = {}
+            if invoice_ids:
+                cursor.execute(
+                    """
+                    SELECT invoices.id,
+                           invoices.invoice_number,
+                           invoices.amount_due,
+                           customers.name AS customer_name
+                    FROM invoices
+                    JOIN customers ON customers.id = invoices.customer_id
+                    WHERE invoices.id = ANY(%s)
+                    """,
+                    ([UUID(invoice_id) for invoice_id in invoice_ids],),
+                )
+                invoice_lookup = {str(row["id"]): row for row in cursor.fetchall()}
+        connection.commit()
+
+    serialized = [_serialize_pending_xero_action(action, invoice_lookup) for action in actions]
+    pending = [action for action in serialized if action["status"] == "pending"]
+    failed = [action for action in serialized if action["status"] == "failed"]
+    processing = [action for action in serialized if action["status"] == "processing"]
+    return {
+        "pendingActions": {
+            "summary": {
+                "pendingCount": len(pending),
+                "failedCount": len(failed),
+                "processingCount": len(processing),
+                "pendingInvoiceCount": sum(action["invoiceCount"] for action in pending),
+                "pendingAmount": round(sum(action["amount"] for action in pending), 2),
+            },
+            "actions": serialized,
+        }
+    }
+
+
+async def process_pending_xero_actions(user: dict) -> dict:
+    rate_limit = active_xero_rate_limit_for_user(user)
+    if rate_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "message": rate_limit.get("message") or "Xero daily limit is still active.",
+                "rate_limit_until": _iso(rate_limit.get("rate_limit_until")) or "",
+                "retry_after_seconds": int(rate_limit.get("retry_after_seconds") or 0),
+            },
+        )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM xero_pending_actions
+                WHERE created_by_user_id = %s
+                  AND status = 'pending'
+                ORDER BY created_at ASC
+                LIMIT 50
+                """,
+                (user["id"],),
+            )
+            actions = cursor.fetchall()
+        connection.commit()
+
+    processed = []
+    failed = []
+    for action in actions:
+        now = utcnow()
+        action_id = str(action["id"])
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE xero_pending_actions
+                    SET status = 'processing',
+                        error_message = NULL,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (now, action["id"]),
+                )
+            connection.commit()
+
+        payload = action.get("payload") or {}
+        invoice_ids = payload.get("invoiceIds") or action.get("invoice_ids") or []
+        options = payload.get("options") or {}
+        try:
+            if action.get("action_type") == "late_payment_charges":
+                result = await create_late_payment_charges(user, invoice_ids, options.get("chargeSelections") or [])
+            elif action.get("action_type") == "bad_debt_write_offs":
+                result = await create_bad_debt_write_offs(user, invoice_ids)
+            else:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported pending Xero action.")
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE xero_pending_actions
+                        SET status = 'completed',
+                            result = %s::jsonb,
+                            error_message = NULL,
+                            updated_at = %s,
+                            processed_at = %s
+                        WHERE id = %s
+                        """,
+                        (json.dumps(result, default=_json_default), utcnow(), utcnow(), action["id"]),
+                    )
+                connection.commit()
+            processed.append({"id": action_id, "actionType": action.get("action_type"), **result})
+        except Exception as exc:
+            error = _sync_error_message(exc)
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE xero_pending_actions
+                        SET status = 'failed',
+                            error_message = %s,
+                            result = %s::jsonb,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (error, json.dumps({"error": error, "detail": _sync_error_payload(exc)}, default=_json_default), utcnow(), action["id"]),
+                    )
+                connection.commit()
+            failed.append({"id": action_id, "actionType": action.get("action_type"), "error": error})
+            logger.exception("Unable to process pending Xero action %s", action_id)
+
+    payload = pending_xero_actions_payload(user)
+    payload["result"] = {
+        "processedCount": len(processed),
+        "failedCount": len(failed),
+        "processed": processed,
+        "failed": failed,
+    }
+    return payload
+
+
 def sync_run_has_working_data(sync_run: dict) -> bool:
     customers_synced = int(sync_run.get("customers_synced") or 0)
     invoices_synced = int(sync_run.get("invoices_synced") or 0)
@@ -3459,7 +3745,7 @@ def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: st
     row = cursor.fetchone()
     if row and row.get("tenant_id"):
         return row["tenant_id"]
-    return preferred_tenant_id
+    return None
 
 
 def panel_payload(user: dict | None = None) -> dict:
@@ -6577,6 +6863,71 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
 
 
 IGNITION_PLAN_LABELS = ("Solo", "Solo+", "Solo MTD", "Micro", "Starter", "Standard", "Premium", "Ultimate")
+OPTIONAL_IGNITION_DATASETS = {"deals", "deal_stages"}
+
+
+def _ignition_provider_status(exc: HTTPException) -> int:
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    try:
+        return int(detail.get("status_code") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _mark_stale_ignition_sync_runs(user_id: str) -> None:
+    now = utcnow()
+    stale_before = now - SYNC_STALE_AFTER
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, current_step, summary, fetched_count, processed_count, heartbeat_at, started_at, created_at
+                FROM ignition_sync_runs
+                WHERE user_id = %s
+                  AND status IN ('queued', 'running')
+                  AND COALESCE(heartbeat_at, started_at, created_at) < %s
+                """,
+                (user_id, stale_before),
+            )
+            stalled_rows = cursor.fetchall()
+            if stalled_rows:
+                cursor.execute(
+                    """
+                    UPDATE ignition_sync_runs
+                    SET status = 'failed',
+                        current_step = 'Ignition sync timed out',
+                        summary = 'A previous Ignition sync stopped responding.',
+                        error_message = 'The previous Ignition sync stopped responding. Start a fresh Ignition sync.',
+                        failed_count = GREATEST(failed_count, 1),
+                        completed_at = %s
+                    WHERE id = ANY(%s)
+                    """,
+                    (now, [row["id"] for row in stalled_rows]),
+                )
+        connection.commit()
+
+    for row in stalled_rows or []:
+        last_heartbeat = row.get("heartbeat_at") or row.get("started_at") or row.get("created_at")
+        elapsed_seconds = max(0, int((now - last_heartbeat).total_seconds())) if last_heartbeat else None
+        try:
+            record_audit_event(
+                "ignition_sync_run",
+                str(row["id"]),
+                "ignition.sync.stalled",
+                {
+                    "message": "Ignition sync marked stale after losing its backend heartbeat.",
+                    "last_step": row.get("current_step") or "",
+                    "last_summary": row.get("summary") or "",
+                    "last_heartbeat_at": _iso(last_heartbeat),
+                    "elapsed_seconds_since_heartbeat": elapsed_seconds,
+                    "stale_threshold_seconds": int(SYNC_STALE_AFTER.total_seconds()),
+                    "fetched_count": int(row.get("fetched_count") or 0),
+                    "processed_count": int(row.get("processed_count") or 0),
+                },
+                user_id,
+            )
+        except Exception:
+            logger.exception("Unable to record Ignition sync stall audit event")
 
 
 def _ignition_record_id(dataset: str, row: dict, index: int) -> str:
@@ -6678,6 +7029,7 @@ def request_ignition_sync_run(user: dict) -> tuple[dict, bool]:
         get_ignition_connection_for_user(user["id"])
     except HTTPException:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Ignition before syncing.")
+    _mark_stale_ignition_sync_runs(user["id"])
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -6726,6 +7078,7 @@ def get_ignition_sync_run(user: dict, sync_run_id: str) -> dict:
 def active_ignition_sync_run_for_user(user: dict | None) -> dict | None:
     if not user or not user.get("id"):
         return None
+    _mark_stale_ignition_sync_runs(user["id"])
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -7097,8 +7450,20 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         try:
             rows, meta = await fetch_ignition_collection(connection, endpoint)
         except HTTPException as exc:
-            if dataset in ("deals", "deal_stages"):
+            provider_status = _ignition_provider_status(exc)
+            if dataset in OPTIONAL_IGNITION_DATASETS and provider_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
                 dataset_counts[dataset] = 0
+                record_audit_event(
+                    "ignition_sync_run",
+                    str(sync_run_id),
+                    f"ignition.{dataset}.skipped",
+                    {
+                        "dataset": dataset,
+                        "provider_status": provider_status,
+                        "message": "Optional Ignition Deals dataset is unavailable for this practice.",
+                    },
+                    user["id"],
+                )
                 continue
             raise exc
         practice_meta = (meta or {}).get("practice") or {}
