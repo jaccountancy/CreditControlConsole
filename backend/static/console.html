@@ -1888,7 +1888,7 @@
             }
             .insights-layout {
                 display: grid;
-                grid-template-columns: 220px minmax(0, 1fr);
+                grid-template-columns: 260px minmax(0, 1fr);
                 gap: 20px;
                 margin-top: 22px;
             }
@@ -1909,6 +1909,7 @@
                 padding: 11px 12px;
                 text-align: left;
                 font-weight: 850;
+                line-height: 1.2;
             }
             .insights-sidebar button:hover,
             .insights-sidebar button.is-active {
@@ -5433,6 +5434,12 @@
                                 <button type="button" data-insight-section="ageing">Ageing</button>
                                 <button type="button" data-insight-section="workflows">Workflows</button>
                                 <button type="button" data-insight-section="ai">AI actions</button>
+                                <button type="button" data-insight-section="customer-intelligence">Customer Intelligence</button>
+                                <button type="button" data-insight-section="debt-analysis">Debt Analysis</button>
+                                <button type="button" data-insight-section="ai-copilot">AI Copilot</button>
+                                <button type="button" data-insight-section="loans-provided">Loans provided</button>
+                                <button type="button" data-insight-section="bank-extraction">Bank Statement Extraction</button>
+                                <button type="button" data-insight-section="settled-invoices">Settled Invoice Analysis</button>
                             </aside>
                             <section class="insights-main" id="insightsContent">
                                 <div class="insights-empty">
@@ -6126,7 +6133,7 @@
             let developerLogDateFilter = "";
             let insightsData = null;
             let insightsLoading = false;
-            let activeInsightsSection = "overview";
+            let activeInsightsSection = persistedUIState.activeInsightsSection || "overview";
             let hasAutoStartedInitialSync = false;
             let hasLoadedWorkingSyncPanel = false;
             let statePersistenceDisabled = false;
@@ -6143,11 +6150,13 @@
             let activeAllocationSource = null;
             let jashflowData = { customers: [], loans: [], summary: {} };
             let jashflowLoading = false;
+            let jashflowInsightsLoaded = false;
             let jashflowPostingInterest = false;
             let selectedJashflowLoanId = "";
             let jashflowFormOpen = false;
             let bankStatementData = { customers: [], clients: [], summary: {} };
             let bankStatementsLoading = false;
+            let bankStatementInsightsLoaded = false;
             let bankStatementUploading = false;
             let selectedBankStatementClientId = "";
             let selectedBankAccountId = "";
@@ -6421,6 +6430,7 @@
                         clientFilter,
                         lateChargeFilter,
                         badDebtFilter,
+                        activeInsightsSection,
                         sortMode,
                         denseMode,
                         visibleColumns
@@ -10200,6 +10210,7 @@
                 try {
                     const payload = await requestJSON(api.endpoints.jashflow);
                     jashflowData = normaliseJashflowPayload(payload);
+                    jashflowInsightsLoaded = true;
                     if (!selectedJashflowLoanId || !jashflowData.loans.some((loan) => loan.id === selectedJashflowLoanId)) {
                         selectedJashflowLoanId = jashflowData.loans[0]?.id || "";
                     }
@@ -10213,6 +10224,7 @@
                 } finally {
                     jashflowLoading = false;
                     renderJashflowScreen();
+                    if (activeView === "insights" && activeInsightsSection === "loans-provided") renderInsightsScreen();
                 }
             }
 
@@ -10550,6 +10562,7 @@
                 try {
                     const payload = await requestJSON(api.endpoints.bankStatements);
                     bankStatementData = normaliseBankStatementPayload(payload);
+                    bankStatementInsightsLoaded = true;
                     ensureBankStatementSelection();
                 } catch (error) {
                     console.error("Unable to load bank statement extraction data", error);
@@ -10561,6 +10574,7 @@
                 } finally {
                     bankStatementsLoading = false;
                     renderBankStatementsScreen();
+                    if (activeView === "insights" && activeInsightsSection === "bank-extraction") renderInsightsScreen();
                 }
             }
 
@@ -12616,6 +12630,16 @@
                 renderAll();
                 scrollConsoleToTop();
                 loadInsights();
+                ensureInsightsSectionData(activeInsightsSection);
+            }
+
+            function ensureInsightsSectionData(section) {
+                if (section === "loans-provided" && !jashflowInsightsLoaded && !jashflowLoading) {
+                    loadJashflow();
+                }
+                if (section === "bank-extraction" && !bankStatementInsightsLoaded && !bankStatementsLoading) {
+                    loadBankStatements();
+                }
             }
 
             function renderInsightsScreen() {
@@ -12651,12 +12675,18 @@
                     </div>
                 `;
                 const sections = {
-                    overview: `${summaryCards}<div class="insight-two-column">${aiSummary(ai)}${donutChart("Outstanding by status", analytics.statusCounts || [], "value")}</div>${barChart("Status mix", analytics.statusCounts || [], "value")}`,
-                    customers: `${summaryCards}${barChart("Top customers by outstanding balance", analytics.topCustomers || [], "totalDue", "name")}`,
-                    trends: `${summaryCards}${multiMetricRows("Past 12 months", analytics.monthly || [])}`,
-                    ageing: `${summaryCards}${barChart("Ageing buckets", analytics.ageing || [], "value", "label")}`,
-                    workflows: `${summaryCards}<div class="insight-two-column">${donutChart("Workflow value split", analytics.statusCounts || [], "value")}${barChart("Workflow invoice count", analytics.statusCounts || [], "count")}</div>`,
-                    ai: `${summaryCards}${aiActionList(ai)}`
+                    overview: overviewInsights(analytics, ai),
+                    customers: topCustomersInsights(analytics),
+                    trends: trendsInsights(analytics),
+                    ageing: ageingInsights(analytics),
+                    workflows: workflowInsights(analytics),
+                    ai: aiCopilotInsights(ai, analytics),
+                    "customer-intelligence": customerIntelligenceInsights(analytics),
+                    "debt-analysis": debtAnalysisInsights(analytics),
+                    "ai-copilot": aiCopilotInsights(ai, analytics),
+                    "loans-provided": loansProvidedInsights(),
+                    "bank-extraction": bankStatementExtractionInsights(),
+                    "settled-invoices": settledInvoiceAnalysisInsights()
                 };
                 target.innerHTML = sections[activeInsightsSection] || sections.overview;
             }
@@ -12724,6 +12754,256 @@
                         <div class="insight-chart"><span>Opportunities</span><div class="ai-action-list">${renderCards(opportunities) || "<p>No opportunities identified.</p>"}</div></div>
                     </div>
                 </section>`;
+            }
+
+            function insightCardGrid(cards) {
+                return `<div class="insights-grid">${cards.map(([label, value, detail]) => insightCard(label, value, detail)).join("")}</div>`;
+            }
+
+            function insightActionCards(rows, emptyCopy = "No data available.") {
+                return rows.length
+                    ? `<div class="ai-action-list">${rows.map((row) => `<article class="ai-action-card urgency-${escapeHTML(row.urgency || "low")}"><strong>${escapeHTML(row.title)}</strong><p>${escapeHTML(row.detail || row.reason || "")}</p><span>${escapeHTML(row.value || row.impact || "")}</span></article>`).join("")}</div>`
+                    : `<p>${escapeHTML(emptyCopy)}</p>`;
+            }
+
+            function insightTotals(analytics) {
+                return analytics.totals || localInsightsPayload("local").analytics.totals || {};
+            }
+
+            function insightRiskInvoices(analytics) {
+                const supplied = Array.isArray(analytics.riskInvoices) ? analytics.riskInvoices : [];
+                if (supplied.length) return supplied;
+                return allInvoices()
+                    .filter((invoice) => Number(invoice.amountDue || 0) > 0 && Number(invoice.overdueDays || 0) > 0)
+                    .sort((a, b) => Number(b.overdueDays || 0) - Number(a.overdueDays || 0) || Number(b.amountDue || 0) - Number(a.amountDue || 0))
+                    .slice(0, 12);
+            }
+
+            function overviewInsights(analytics, ai) {
+                const totals = insightTotals(analytics);
+                const riskInvoices = insightRiskInvoices(analytics);
+                const statusCounts = analytics.statusCounts || [];
+                const overdueRatio = Number(totals.totalOutstanding || 0) ? (Number(totals.totalOverdue || 0) / Number(totals.totalOutstanding || 0)) * 100 : 0;
+                const actionRows = [
+                    {
+                        title: "Overdue concentration",
+                        detail: `${formatPercent(overdueRatio)} of the open ledger is overdue.`,
+                        value: formatCurrency(totals.totalOverdue || 0),
+                        urgency: overdueRatio >= 50 ? "high" : overdueRatio >= 25 ? "medium" : "low",
+                    },
+                    {
+                        title: "Oldest exposure",
+                        detail: riskInvoices[0] ? `${riskInvoices[0].customerName || "Client"} · ${riskInvoices[0].invoiceNumber || "Invoice"}` : "No overdue invoice currently found.",
+                        value: riskInvoices[0] ? `${Number(riskInvoices[0].overdueDays || 0).toLocaleString("en-GB")} days` : "Clear",
+                        urgency: Number(riskInvoices[0]?.overdueDays || 0) >= 90 ? "high" : "medium",
+                    },
+                    {
+                        title: "Workflow pressure",
+                        detail: "Legal, 7 Day Notice and payment plan queues are separated from ordinary overdue balances.",
+                        value: formatCurrency(Number(totals.legalValue || 0) + Number(totals.sevenDayNoticeValue || 0) + Number(totals.paymentPlanValue || 0)),
+                        urgency: Number(totals.legalValue || 0) > 0 ? "medium" : "low",
+                    },
+                ];
+                return `${insightCardGrid([
+                    ["Open ledger", formatCurrency(totals.totalOutstanding || 0), `${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices`],
+                    ["Overdue ratio", formatPercent(overdueRatio), "Overdue as a share of open debt"],
+                    ["Clients monitored", Number(totals.customerCount || state.customers.length).toLocaleString("en-GB"), "Synced customer records"],
+                    ["Max overdue", `${Number(totals.maxDaysOverdue || 0).toLocaleString("en-GB")} days`, "Oldest open exposure"],
+                ])}<div class="insight-two-column">${aiSummary(ai)}<section class="insight-chart"><span>Control actions</span>${insightActionCards(actionRows)}</section></div><div class="insight-two-column">${donutChart("Outstanding by status", statusCounts, "value")}${barChart("Status value mix", statusCounts, "value")}</div>`;
+            }
+
+            function topCustomersInsights(analytics) {
+                const customers = analytics.topCustomers || [];
+                const atRisk = customers.filter((customer) => Number(customer.maxDaysOverdue || 0) >= 30);
+                const largest = customers[0] || {};
+                return `${insightCardGrid([
+                    ["Top customers", customers.length.toLocaleString("en-GB"), "Largest outstanding balances"],
+                    ["Largest balance", formatCurrency(largest.totalDue || 0), largest.name || "No outstanding customer"],
+                    ["30+ day clients", atRisk.length.toLocaleString("en-GB"), "Priority collection queue"],
+                    ["Top-10 overdue", formatCurrency(customers.reduce((sum, row) => sum + Number(row.overdue || 0), 0)), "Overdue value in this customer set"],
+                ])}<div class="insight-two-column">${barChart("Top customers by balance", customers, "totalDue", "name")}${barChart("Top customers by overdue value", customers, "overdue", "name")}</div><section class="insight-chart"><span>Customer playbook</span>${insightActionCards(customers.map((customer) => ({
+                    title: customer.name || "Client",
+                    detail: `${Number(customer.openInvoices || 0).toLocaleString("en-GB")} open invoice${Number(customer.openInvoices || 0) === 1 ? "" : "s"} · ${Number(customer.maxDaysOverdue || 0).toLocaleString("en-GB")} max days overdue`,
+                    value: `${formatCurrency(customer.totalDue || 0)} outstanding`,
+                    urgency: Number(customer.maxDaysOverdue || 0) >= 90 ? "high" : Number(customer.maxDaysOverdue || 0) >= 30 ? "medium" : "low",
+                })), "No customer balances are currently outstanding.")}</section>`;
+            }
+
+            function trendsInsights(analytics) {
+                const monthly = analytics.monthly || [];
+                const latest = monthly[monthly.length - 1] || {};
+                const previous = monthly[monthly.length - 2] || {};
+                const outstandingMovement = Number(latest.outstanding || 0) - Number(previous.outstanding || 0);
+                const paidMovement = Number(latest.paid || 0) - Number(previous.paid || 0);
+                const bestCollection = monthly.reduce((best, row) => Number(row.paid || 0) > Number(best.paid || 0) ? row : best, {});
+                const collectionRatio = Number(latest.invoiced || 0) ? (Number(latest.paid || 0) / Number(latest.invoiced || 0)) * 100 : 0;
+                const trendRows = [
+                    { title: "Outstanding movement", detail: `${previous.label || "Previous"} to ${latest.label || "latest month"}`, value: `${outstandingMovement >= 0 ? "+" : ""}${formatCurrency(outstandingMovement)}`, urgency: outstandingMovement > 0 ? "medium" : "low" },
+                    { title: "Paid movement", detail: `${previous.label || "Previous"} to ${latest.label || "latest month"}`, value: `${paidMovement >= 0 ? "+" : ""}${formatCurrency(paidMovement)}`, urgency: paidMovement < 0 ? "medium" : "low" },
+                    { title: "Best collection month", detail: bestCollection.label || "No settled month yet", value: formatCurrency(bestCollection.paid || 0), urgency: "low" },
+                ];
+                return `${insightCardGrid([
+                    ["Latest invoiced", formatCurrency(latest.invoiced || 0), latest.label || "Latest month"],
+                    ["Latest paid", formatCurrency(latest.paid || 0), latest.label || "Latest month"],
+                    ["Latest outstanding", formatCurrency(latest.outstanding || 0), latest.label || "Latest month"],
+                    ["Collection ratio", formatPercent(collectionRatio), "Paid divided by invoiced"],
+                ])}${multiMetricRows("12 month ledger trend", monthly)}<section class="insight-chart"><span>Trend signals</span>${insightActionCards(trendRows)}</section>`;
+            }
+
+            function ageingInsights(analytics) {
+                const ageing = analytics.ageing || [];
+                const total = ageing.reduce((sum, row) => sum + Number(row.value || 0), 0);
+                const oldDebt = ageing.filter((row) => ["61-90", "90+"].includes(row.label)).reduce((sum, row) => sum + Number(row.value || 0), 0);
+                const oldRatio = total ? (oldDebt / total) * 100 : 0;
+                return `${insightCardGrid([
+                    ["Open debt", formatCurrency(total), "All ageing buckets"],
+                    ["61+ day exposure", formatCurrency(oldDebt), "Older debt requiring action"],
+                    ["Old debt ratio", formatPercent(oldRatio), "61+ days as share of open debt"],
+                    ["90+ invoices", Number((ageing.find((row) => row.label === "90+") || {}).count || 0).toLocaleString("en-GB"), "Highest risk ageing bucket"],
+                ])}<div class="insight-two-column">${barChart("Ageing by value", ageing, "value", "label")}${barChart("Ageing by invoice count", ageing, "count", "label")}</div><section class="insight-chart"><span>Ageing response</span>${insightActionCards(ageing.map((row) => ({
+                    title: `${row.label} days`,
+                    detail: `${Number(row.count || 0).toLocaleString("en-GB")} invoice${Number(row.count || 0) === 1 ? "" : "s"} in this bucket`,
+                    value: formatCurrency(row.value || 0),
+                    urgency: row.label === "90+" ? "high" : ["61-90", "31-60"].includes(row.label) ? "medium" : "low",
+                })), "No ageing data is currently available.")}</section>`;
+            }
+
+            function workflowInsights(analytics) {
+                const rows = analytics.statusCounts || [];
+                const valueTotal = rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
+                const legal = rows.find((row) => row.category === "court") || {};
+                const notices = rows.find((row) => row.category === "notice") || {};
+                const plans = rows.find((row) => row.category === "payment-plan") || {};
+                const workflowRows = rows.map((row) => ({
+                    title: row.label || row.category || "Workflow",
+                    detail: `${Number(row.count || 0).toLocaleString("en-GB")} invoice${Number(row.count || 0) === 1 ? "" : "s"}`,
+                    value: formatCurrency(row.value || 0),
+                    urgency: row.category === "court" || row.category === "bad-debt" ? "high" : ["notice", "payment-plan", "overdue"].includes(row.category) ? "medium" : "low",
+                }));
+                return `${insightCardGrid([
+                    ["Workflow value", formatCurrency(valueTotal), "Value split by current status"],
+                    ["Legal", formatCurrency(legal.value || 0), `${Number(legal.count || 0).toLocaleString("en-GB")} invoices`],
+                    ["7 Day Notices", formatCurrency(notices.value || 0), `${Number(notices.count || 0).toLocaleString("en-GB")} invoices`],
+                    ["Payment plans", formatCurrency(plans.value || 0), `${Number(plans.count || 0).toLocaleString("en-GB")} invoices`],
+                ])}<div class="insight-two-column">${donutChart("Workflow value split", rows, "value")}${barChart("Workflow invoice count", rows, "count")}</div><section class="insight-chart"><span>Workflow queue</span>${insightActionCards(workflowRows, "No workflow data is currently available.")}</section>`;
+            }
+
+            function customerIntelligenceInsights(analytics) {
+                const customers = analytics.topCustomers || [];
+                const totalValue = customers.reduce((sum, customer) => sum + Number(customer.totalDue || 0), 0);
+                const highRisk = customers.filter((customer) => Number(customer.maxDaysOverdue || 0) >= 60);
+                const cards = insightCardGrid([
+                    ["Priority clients", customers.length.toLocaleString("en-GB"), "Clients ranked by open balance"],
+                    ["Top-10 exposure", formatCurrency(totalValue), "Outstanding value in this view"],
+                    ["60+ day clients", highRisk.length.toLocaleString("en-GB"), "Needs tighter follow-up"],
+                    ["Highest days overdue", `${Math.max(0, ...customers.map((customer) => Number(customer.maxDaysOverdue || 0))).toLocaleString("en-GB")} days`, "Across priority clients"],
+                ]);
+                const rows = customers.map((customer) => ({
+                    title: customer.name || "Client",
+                    detail: `${Number(customer.openInvoices || 0).toLocaleString("en-GB")} open invoice${Number(customer.openInvoices || 0) === 1 ? "" : "s"} · ${Number(customer.maxDaysOverdue || 0).toLocaleString("en-GB")} max days overdue`,
+                    value: `${formatCurrency(customer.totalDue || 0)} outstanding`,
+                    urgency: Number(customer.maxDaysOverdue || 0) >= 90 ? "high" : Number(customer.maxDaysOverdue || 0) >= 30 ? "medium" : "low",
+                }));
+                return `${cards}<div class="insight-two-column">${barChart("Customer exposure", customers, "totalDue", "name")}<section class="insight-chart"><span>Customer intelligence queue</span>${insightActionCards(rows, "No customer balances are currently outstanding.")}</section></div>`;
+            }
+
+            function debtAnalysisInsights(analytics) {
+                const ageing = analytics.ageing || [];
+                const riskInvoices = analytics.riskInvoices || [];
+                const overdueValue = ageing.filter((row) => row.label !== "Current").reduce((sum, row) => sum + Number(row.value || 0), 0);
+                const riskRows = riskInvoices.slice(0, 8).map((invoice) => ({
+                    title: `${invoice.customerName || "Client"} · ${invoice.invoiceNumber || "Invoice"}`,
+                    detail: `${Number(invoice.overdueDays || 0).toLocaleString("en-GB")} days overdue · ${escapeHTML(invoice.controlStatus || invoice.status || "Open")}`,
+                    value: formatCurrency(invoice.amountDue || 0),
+                    urgency: Number(invoice.overdueDays || 0) >= 90 ? "high" : Number(invoice.overdueDays || 0) >= 30 ? "medium" : "low",
+                }));
+                const cards = insightCardGrid([
+                    ["Overdue value", formatCurrency(overdueValue), "All non-current ageing buckets"],
+                    ["Risk invoices", riskInvoices.length.toLocaleString("en-GB"), "Largest overdue rows"],
+                    ["90+ bucket", formatCurrency((ageing.find((row) => row.label === "90+") || {}).value || 0), "Long-tail collection risk"],
+                    ["Current bucket", formatCurrency((ageing.find((row) => row.label === "Current") || {}).value || 0), "Open but not overdue"],
+                ]);
+                return `${cards}<div class="insight-two-column">${barChart("Debt ageing", ageing, "value", "label")}<section class="insight-chart"><span>Debt risk list</span>${insightActionCards(riskRows, "No overdue debt risk rows are available.")}</section></div>`;
+            }
+
+            function aiCopilotInsights(ai, analytics) {
+                const promptRows = [
+                    { title: "Collection focus", detail: "Ask which accounts should be chased first based on balance, age and workflow status.", value: formatCurrency(analytics.totals?.totalOverdue || 0), urgency: "medium" },
+                    { title: "Workflow summary", detail: "Ask for a plain-English summary of Legal, 7 Day Notice, payment plan and query queues.", value: `${Number((analytics.statusCounts || []).reduce((sum, row) => sum + Number(row.count || 0), 0)).toLocaleString("en-GB")} invoices`, urgency: "low" },
+                    { title: "Client explanation", detail: "Ask why a customer appears high risk before deciding the next action.", value: `${Number((analytics.topCustomers || []).length).toLocaleString("en-GB")} priority clients`, urgency: "low" },
+                ];
+                return `${insightCardGrid([
+                    ["Copilot status", ai.status === "ready" ? "OpenAI" : "Local", "Current insight engine"],
+                    ["Priority actions", Number((ai.priorityActions || []).length).toLocaleString("en-GB"), "Generated from ledger signals"],
+                    ["Risks", Number((ai.risks || []).length).toLocaleString("en-GB"), "Items needing review"],
+                    ["Opportunities", Number((ai.opportunities || []).length).toLocaleString("en-GB"), "Suggested improvements"],
+                ])}<div class="insight-two-column">${aiSummary(ai)}<section class="insight-chart"><span>Copilot prompts</span>${insightActionCards(promptRows)}</section></div>${aiActionList(ai)}`;
+            }
+
+            function loansProvidedInsights() {
+                const summary = jashflowData.summary || {};
+                const activeLoans = (jashflowData.loans || []).filter((loan) => String(loan.status || "active").toLowerCase() === "active");
+                const loanRows = activeLoans
+                    .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0))
+                    .slice(0, 10)
+                    .map((loan) => ({
+                        title: loan.customerName || "Client loan",
+                        detail: `${Number(loan.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}% compound · ${Number(loan.durationMonths || 0).toLocaleString("en-GB")} months · ${formatCurrency(loan.monthlyRepayment || 0)} monthly repayment`,
+                        value: `${formatCurrency(loan.balance || 0)} balance`,
+                        urgency: Number(loan.uninvoicedInterest || 0) > 0 ? "medium" : "low",
+                    }));
+                const loadingCopy = jashflowLoading ? '<div class="insights-empty"><span class="sync-inline-spinner" aria-hidden="true"></span><strong>Loading loan intelligence</strong><p>Reading persisted Jashflow loan records.</p></div>' : "";
+                return `${insightCardGrid([
+                    ["Active loans", Number(summary.activeLoans || activeLoans.length).toLocaleString("en-GB"), "Persisted Jashflow records"],
+                    ["Principal provided", formatCurrency(summary.principalTotal || 0), "Original active loan value"],
+                    ["Current balance", formatCurrency(summary.balanceTotal || 0), "Principal, fees, interest and payments"],
+                    ["Uninvoiced interest", formatCurrency(summary.uninvoicedInterestTotal || 0), "Ready for Xero interest posting"],
+                ])}${loadingCopy}<div class="insight-two-column">${barChart("Loan balances", activeLoans, "balance", "customerName")}<section class="insight-chart"><span>Loan book</span>${insightActionCards(loanRows, "No active Jashflow loans are currently saved.")}</section></div>`;
+            }
+
+            function bankStatementExtractionInsights() {
+                const summary = bankStatementData.summary || {};
+                const clients = bankStatementData.clients || [];
+                const clientRows = clients.slice(0, 10).map((client) => {
+                    const accounts = client.accounts || [];
+                    const transactions = accounts.reduce((sum, account) => sum + Number((account.transactions || []).length), 0);
+                    const flags = accounts.reduce((sum, account) => sum + Number((account.flags || []).length), 0);
+                    return {
+                        title: client.customerName || "Extraction client",
+                        detail: `${accounts.length.toLocaleString("en-GB")} account${accounts.length === 1 ? "" : "s"} · ${transactions.toLocaleString("en-GB")} extracted transaction${transactions === 1 ? "" : "s"}`,
+                        value: `${flags.toLocaleString("en-GB")} flag${flags === 1 ? "" : "s"}`,
+                        urgency: flags > 0 ? "medium" : "low",
+                    };
+                });
+                const loadingCopy = bankStatementsLoading ? '<div class="insights-empty"><span class="sync-inline-spinner" aria-hidden="true"></span><strong>Loading extraction intelligence</strong><p>Reading persisted bank statement extraction records.</p></div>' : "";
+                return `${insightCardGrid([
+                    ["Extraction clients", Number(summary.clientCount || clients.length).toLocaleString("en-GB"), "Clients in the BSE list"],
+                    ["Bank accounts", Number(summary.accountCount || 0).toLocaleString("en-GB"), "Saved accounts"],
+                    ["Transactions", Number(summary.transactionCount || 0).toLocaleString("en-GB"), "Deduplicated extracted rows"],
+                    ["Flags", Number(summary.flagCount || 0).toLocaleString("en-GB"), "Date gaps or balance mismatches"],
+                ])}${loadingCopy}<div class="insight-two-column">${barChart("Transactions by client", clients.map((client) => ({ name: client.customerName, value: (client.accounts || []).reduce((sum, account) => sum + Number((account.transactions || []).length), 0) })), "value", "name")}<section class="insight-chart"><span>Extraction review</span>${insightActionCards(clientRows, "No bank statement extraction clients are currently saved.")}</section></div>`;
+            }
+
+            function settledInvoiceAnalysisInsights() {
+                const settledInvoices = allInvoices().filter((invoice) => invoiceCategory(invoice) === "paid" || (Number(invoice.amountDue || 0) <= 0 && invoicePaidAmount(invoice) > 0));
+                const settledValue = settledInvoices.reduce((sum, invoice) => sum + invoicePaidAmount(invoice), 0);
+                const averageValue = settledInvoices.length ? settledValue / settledInvoices.length : 0;
+                const byCustomer = new Map();
+                settledInvoices.forEach((invoice) => {
+                    const key = invoice.customerId || invoice.customerName || "unknown";
+                    const row = byCustomer.get(key) || { name: invoice.customerName || "Client", count: 0, value: 0 };
+                    row.count += 1;
+                    row.value += invoicePaidAmount(invoice);
+                    byCustomer.set(key, row);
+                });
+                const customerRows = [...byCustomer.values()].sort((a, b) => b.value - a.value).slice(0, 10);
+                const cards = insightCardGrid([
+                    ["Settled invoices", settledInvoices.length.toLocaleString("en-GB"), "Paid or fully cleared invoices"],
+                    ["Settled value", formatCurrency(settledValue), "Cash collected against settled rows"],
+                    ["Average settled invoice", formatCurrency(averageValue), "Mean paid invoice value"],
+                    ["Settled clients", byCustomer.size.toLocaleString("en-GB"), "Clients represented in settled rows"],
+                ]);
+                return `${cards}<div class="insight-two-column">${barChart("Settled value by client", customerRows, "value", "name")}<section class="insight-chart"><span>Settled invoice review</span>${insightActionCards(customerRows.map((row) => ({ title: row.name, detail: `${row.count.toLocaleString("en-GB")} settled invoice${row.count === 1 ? "" : "s"}`, value: formatCurrency(row.value), urgency: "low" })), "No settled invoices are currently available in the synced data.")}</section></div>${multiMetricRows("Settled trend", buildLocalMonthlyInsights(settledInvoices))}`;
             }
 
             function renderAll() {
@@ -14432,7 +14712,9 @@
                 document.querySelectorAll("[data-insight-section]").forEach((button) => {
                     button.addEventListener("click", () => {
                         activeInsightsSection = button.dataset.insightSection || "overview";
+                        persistState();
                         renderInsightsScreen();
+                        ensureInsightsSectionData(activeInsightsSection);
                     });
                 });
                 document.getElementById("clientInvoiceSelect")?.addEventListener("change", (event) => {
