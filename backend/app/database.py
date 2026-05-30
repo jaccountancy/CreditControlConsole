@@ -329,6 +329,31 @@ BEGIN
     END LOOP;
 END $$;
 
+CREATE TABLE IF NOT EXISTS sync_checkpoints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sync_run_id UUID NOT NULL REFERENCES sync_runs(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL DEFAULT 'xero',
+    initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    tenant_id TEXT NOT NULL,
+    sync_signature TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    status TEXT NOT NULL,
+    page_number INTEGER NOT NULL DEFAULT 0,
+    records_seen INTEGER NOT NULL DEFAULT 0,
+    records_stored INTEGER NOT NULL DEFAULT 0,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    UNIQUE (sync_run_id, phase)
+);
+
+CREATE INDEX IF NOT EXISTS sync_checkpoints_resume_idx
+ON sync_checkpoints (initiated_by_user_id, tenant_id, sync_signature, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS sync_checkpoints_phase_idx
+ON sync_checkpoints (sync_run_id, phase);
+
 CREATE TABLE IF NOT EXISTS audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     entity_type TEXT NOT NULL,

@@ -45,6 +45,7 @@ from .services import (
     get_xero_connection_for_user,
     insights_payload,
     invoice_detail,
+    install_sync_signal_handlers,
     list_customers,
     list_developer_logs,
     normalise_sync_options,
@@ -83,6 +84,7 @@ logger = logging.getLogger(__name__)
 @app.on_event("startup")
 def startup() -> None:
     ensure_schema()
+    install_sync_signal_handlers()
 
 
 def template_context(request: Request, **extra):

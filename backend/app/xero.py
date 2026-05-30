@@ -21,10 +21,12 @@ PAYMENTS_URL = "https://api.xero.com/api.xro/2.0/Payments"
 USERINFO_URL = "https://identity.xero.com/connect/userinfo"
 XERO_PAGE_SIZE = 100
 XERO_PAGE_DELAY_SECONDS = 1.05
-XERO_API_PAGE_TIMEOUT_SECONDS = 75
+XERO_STANDARD_TIMEOUT_SECONDS = 90.0
+XERO_API_REQUEST_TIMEOUT_SECONDS = 180.0
+XERO_API_PAGE_TIMEOUT_SECONDS = 225
 XERO_RATE_LIMIT_RETRIES = 3
 XERO_RATE_LIMIT_FALLBACK_DELAY_SECONDS = 65
-XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 120
+XERO_RATE_LIMIT_MAX_SLEEP_SECONDS = 360
 XERO_HISTORY_SIGNATURE = "By Jenius AI"
 XERO_PERMISSION_MESSAGE = (
     "Xero permissions need updating. Reconnect Xero to approve invoice, credit note, allocation, "
@@ -197,7 +199,7 @@ def _xero_date(value: str | None):
 
 async def exchange_code_for_tokens(code: str) -> dict:
     settings = get_settings()
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
                 TOKEN_URL,
@@ -247,7 +249,7 @@ async def refresh_connection(connection_id: str) -> dict:
 
     settings = get_settings()
     previous_refresh_token = row["refresh_token"]
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
                 TOKEN_URL,
@@ -294,7 +296,7 @@ async def refresh_connection(connection_id: str) -> dict:
 
 
 async def fetch_user_profile(access_token: str) -> dict:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.get(
                 USERINFO_URL,
@@ -308,7 +310,7 @@ async def fetch_user_profile(access_token: str) -> dict:
 
 
 async def fetch_connections(access_token: str) -> list[dict]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.get(
                 CONNECTIONS_URL,
@@ -476,7 +478,7 @@ async def xero_api_get(
         headers["If-Modified-Since"] = modified_since_header
 
     started = time.monotonic()
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_API_REQUEST_TIMEOUT_SECONDS) as client:
         try:
             response = await client.get(
                 url,
@@ -530,7 +532,7 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
 
     connection_row = await refresh_connection(connection_row["id"])
     note_body = _signed_history_note(details)
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
                 f"{base_url}/{resource_id}/History",
@@ -554,7 +556,7 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
 
 async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idempotency_key: str | None = None) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
                 INVOICES_URL,
@@ -578,7 +580,7 @@ async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idem
 
 async def create_credit_note(connection_row: dict, credit_note_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
                 CREDIT_NOTES_URL,
@@ -602,7 +604,7 @@ async def create_credit_note(connection_row: dict, credit_note_payload: dict) ->
 
 async def allocate_credit_note(connection_row: dict, credit_note_id: str, allocation_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
                 f"{CREDIT_NOTES_URL}/{credit_note_id}/Allocations",
@@ -626,7 +628,7 @@ async def allocate_credit_note(connection_row: dict, credit_note_id: str, alloca
 
 async def allocate_overpayment(connection_row: dict, overpayment_id: str, allocation_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
                 f"{OVERPAYMENTS_URL}/{overpayment_id}/Allocations",
@@ -654,13 +656,18 @@ async def fetch_paginated_collection(
     collection_key: str,
     params: dict | None = None,
     max_pages: int | None = None,
+    start_page: int = 1,
     on_page=None,
+    on_batch=None,
     on_retry=None,
     on_request=None,
     modified_since: datetime | None = None,
+    collect_records: bool = True,
+    initial_records: int = 0,
 ) -> list[dict]:
     records: list[dict] = []
-    page = 1
+    total_records = max(int(initial_records or 0), 0)
+    page = max(int(start_page or 1), 1)
     rate_limit_retries = 0
     while True:
         if max_pages is not None and page > max_pages:
@@ -693,7 +700,7 @@ async def fetch_paginated_collection(
                     "outcome": "timeout",
                     "wall_ms": wall_ms,
                     "timeout_seconds": XERO_API_PAGE_TIMEOUT_SECONDS,
-                    "records_so_far": len(records),
+                    "records_so_far": total_records,
                     "retry_count": rate_limit_retries,
                     **last_response,
                 })
@@ -709,7 +716,7 @@ async def fetch_paginated_collection(
                     "wall_ms": wall_ms,
                     "page": page,
                     "collection": collection_key,
-                    "records_so_far": len(records),
+                    "records_so_far": total_records,
                 },
             ) from exc
         except HTTPException as exc:
@@ -729,7 +736,7 @@ async def fetch_paginated_collection(
                         "wall_ms": wall_ms,
                         "retry_after_seconds": delay_seconds,
                         "retry_count": rate_limit_retries,
-                        "records_so_far": len(records),
+                        "records_so_far": total_records,
                         **last_response,
                     })
                 if delay_seconds > XERO_RATE_LIMIT_MAX_SLEEP_SECONDS:
@@ -747,7 +754,7 @@ async def fetch_paginated_collection(
                         },
                     ) from exc
                 if on_retry is not None:
-                    on_retry(page, len(records), delay_seconds, rate_limit_retries)
+                    on_retry(page, total_records, delay_seconds, rate_limit_retries)
                 await asyncio.sleep(max(delay_seconds, XERO_PAGE_DELAY_SECONDS))
                 continue
             if on_request is not None:
@@ -758,7 +765,7 @@ async def fetch_paginated_collection(
                     "outcome": "error",
                     "wall_ms": wall_ms,
                     "retry_count": rate_limit_retries,
-                    "records_so_far": len(records),
+                    "records_so_far": total_records,
                     "error_status_code": detail.get("status_code"),
                     "error_message": detail.get("message"),
                     **last_response,
@@ -766,7 +773,9 @@ async def fetch_paginated_collection(
             raise
         rate_limit_retries = 0
         batch = payload.get(collection_key, [])
-        records.extend(batch)
+        total_records += len(batch)
+        if collect_records:
+            records.extend(batch)
         wall_ms = int((time.monotonic() - page_started) * 1000)
         if on_request is not None:
             on_request({
@@ -776,11 +785,13 @@ async def fetch_paginated_collection(
                 "outcome": "ok",
                 "wall_ms": wall_ms,
                 "batch_size": len(batch),
-                "records_so_far": len(records),
+                "records_so_far": total_records,
                 **last_response,
             })
         if on_page is not None:
-            on_page(page, len(records), len(batch))
+            on_page(page, total_records, len(batch))
+        if on_batch is not None:
+            on_batch(page, batch, total_records)
         if len(batch) < XERO_PAGE_SIZE:
             return records
         page += 1
