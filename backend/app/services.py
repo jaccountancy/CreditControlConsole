@@ -36,6 +36,7 @@ from .xero import (
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
+PANEL_PAYMENT_LIMIT = 1000
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
@@ -133,6 +134,17 @@ def get_xero_connection_for_user(user_id: str) -> dict:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM xero_connections WHERE user_id = %s", (user_id,))
             row = cursor.fetchone()
+            if row is None:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM xero_connections
+                    WHERE (SELECT COUNT(*) FROM xero_connections) = 1
+                    ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                    LIMIT 1
+                    """
+                )
+                row = cursor.fetchone()
         connection.commit()
     if row is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
@@ -144,8 +156,24 @@ def disconnect_xero(user: dict) -> dict:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
+                WITH user_connection AS (
+                    SELECT id
+                    FROM xero_connections
+                    WHERE user_id = %s
+                ),
+                fallback_connection AS (
+                    SELECT id
+                    FROM xero_connections
+                    WHERE (SELECT COUNT(*) FROM xero_connections) = 1
+                      AND NOT EXISTS (SELECT 1 FROM user_connection)
+                    LIMIT 1
+                )
                 DELETE FROM xero_connections
-                WHERE user_id = %s
+                WHERE id IN (
+                    SELECT id FROM user_connection
+                    UNION
+                    SELECT id FROM fallback_connection
+                )
                 RETURNING tenant_name
                 """,
                 (user["id"],),
@@ -3030,8 +3058,9 @@ def panel_payload(user: dict | None = None) -> dict:
                     SELECT id FROM customers WHERE tenant_id = %s
                 ))
                 ORDER BY payment_date DESC NULLS LAST, created_at DESC
+                LIMIT %s
                 """,
-                (tenant_id, tenant_id),
+                (tenant_id, tenant_id, PANEL_PAYMENT_LIMIT),
             )
             payment_rows = cursor.fetchall()
             cursor.execute(

@@ -509,7 +509,15 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
         "workingDataReady": sync_run_has_working_data(sync_run),
     }
     if sync_run["status"] == "completed":
-        payload["panel"] = panel_payload(user)
+        try:
+            payload["panel"] = panel_payload(user)
+        except Exception as exc:
+            logger.exception("Unable to build completed sync panel payload")
+            payload["panelError"] = {
+                "message": "Sync completed, but the refreshed panel payload could not be built.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+            }
     return payload
 
 
