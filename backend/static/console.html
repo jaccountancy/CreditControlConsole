@@ -3927,11 +3927,11 @@ body.is-syncing .sync-dot {
             <img class="app-sidebar-icon" src="JaccountancyBlueIcon.png" alt="" aria-hidden="true">
         </div>
         <nav class="app-nav">
-            <button class="app-nav-button" type="button" data-app-nav="home">Home<span>Insights</span></button>
-            <button class="app-nav-button" type="button" data-app-nav="clients">Clients<span>Accounts</span></button>
-            <button class="app-nav-button" type="button" data-app-nav="invoices">Invoices<span>Ledger</span></button>
-            <button class="app-nav-button" type="button" data-app-nav="lpcs">LPCs<span>Late charges</span></button>
-            <button class="app-nav-button" type="button" data-app-nav="settings">Settings<span>Logs</span></button>
+            <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
+            <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">Clients<span>Accounts</span></a>
+            <a class="app-nav-button" href="#credit-control-invoices" data-app-nav="invoices">Invoices<span>Ledger</span></a>
+            <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">LPCs<span>Late charges</span></a>
+            <a class="app-nav-button" href="#credit-control-settings" data-app-nav="settings">Settings<span>Logs</span></a>
         </nav>
         <div class="app-sidebar-footer">
             <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
@@ -6231,6 +6231,35 @@ function scrollConsoleToTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function setElementVisible(element, isVisible) {
+    if (!element) return;
+    element.hidden = !isVisible;
+    element.style.display = isVisible ? "" : "none";
+}
+
+function activeNavForView() {
+    if (activeView === "insights") return "home";
+    if (activeView === "late-charges") return "lpcs";
+    if (activeView === "settings") return "settings";
+    if (activeView === "client") return "clients";
+    return activeNavSection === "clients" ? "clients" : "invoices";
+}
+
+function syncActiveViewShell() {
+    setElementVisible(document.getElementById("ledgerView"), activeView === "ledger");
+    setElementVisible(document.getElementById("clientScreen"), activeView === "client");
+    setElementVisible(document.getElementById("settingsScreen"), activeView === "settings");
+    setElementVisible(document.getElementById("insightsScreen"), activeView === "insights");
+    setElementVisible(document.getElementById("lateChargesScreen"), activeView === "late-charges");
+    document.body.classList.toggle("is-client-view", activeView === "client");
+    const activeNav = activeNavForView();
+    document.querySelectorAll("[data-app-nav]").forEach((button) => {
+        const active = button.dataset.appNav === activeNav;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-current", active ? "page" : "false");
+    });
+}
+
 function openLedgerSection(section = "invoices") {
     activeView = "ledger";
     activeNavSection = ["clients", "invoices"].includes(section) ? section : "invoices";
@@ -6244,6 +6273,7 @@ function openLedgerSection(section = "invoices") {
         sortMode = "priority";
     }
     currentPage = 1;
+    syncActiveViewShell();
     closeTopbarMenu();
     closeToolbarMenus();
     renderAll();
@@ -6260,6 +6290,7 @@ function navigateApp(section) {
 
 function returnToLedgerView() {
     activeView = "ledger";
+    syncActiveViewShell();
     closeTopbarMenu();
     closeToolbarMenus();
     renderAll();
@@ -6268,6 +6299,7 @@ function returnToLedgerView() {
 function openSelectedClientView() {
     if (!selectedClientId && !selectedInvoiceId) return;
     activeView = "client";
+    syncActiveViewShell();
     renderAll();
     scrollConsoleToTop();
 }
@@ -6374,6 +6406,7 @@ function trimEmbeddedPageChrome() {
 }
 
 let criticalNavigationWired = false;
+let sidebarHashNavigationWired = false;
 let lastSidebarNavigation = { section: "", at: 0 };
 
 function handleAppNavigation(section, event = null) {
@@ -6388,6 +6421,25 @@ function handleAppNavigation(section, event = null) {
     return false;
 }
 
+const appNavHashes = {
+    home: "credit-control-home",
+    clients: "credit-control-clients",
+    invoices: "credit-control-invoices",
+    lpcs: "credit-control-lpcs",
+    settings: "credit-control-settings",
+};
+
+function appNavSectionFromHash(hash = window.location.hash) {
+    const cleanHash = String(hash || "").replace(/^#/, "");
+    return Object.entries(appNavHashes).find(([, value]) => value === cleanHash)?.[0] || "";
+}
+
+function handleAppNavHashChange() {
+    const section = appNavSectionFromHash();
+    if (!section) return;
+    handleAppNavigation(section);
+}
+
 function wireSidebarNavigation() {
     document.querySelectorAll("[data-app-nav]").forEach((button) => {
         if (button.dataset.sidebarNavWired === "true") return;
@@ -6399,6 +6451,10 @@ function wireSidebarNavigation() {
         button.addEventListener("click", navigate, { capture: true });
         button.onclick = navigate;
     });
+    if (!sidebarHashNavigationWired) {
+        sidebarHashNavigationWired = true;
+        window.addEventListener("hashchange", handleAppNavHashChange);
+    }
 }
 
 function handleSidebarConnectButton(event) {
@@ -7021,6 +7077,7 @@ function openClientWorkspace(invoice, focusId, section = "overview") {
     selectedClientId = invoice.customerId;
     activeView = "client";
     activeClientSection = clientSections.has(section) ? section : "overview";
+    syncActiveViewShell();
     renderAll();
     if (activeClientSection === "overview" && !focusId) {
         scrollConsoleToTop();
@@ -7449,11 +7506,11 @@ function renderClientScreen() {
     const settingsScreen = document.getElementById("settingsScreen");
     const insightsScreen = document.getElementById("insightsScreen");
     const lateChargesScreen = document.getElementById("lateChargesScreen");
-    ledgerView.hidden = activeView !== "ledger";
-    clientScreen.hidden = activeView !== "client";
-    if (settingsScreen) settingsScreen.hidden = activeView !== "settings";
-    if (insightsScreen) insightsScreen.hidden = activeView !== "insights";
-    if (lateChargesScreen) lateChargesScreen.hidden = activeView !== "late-charges";
+    setElementVisible(ledgerView, activeView === "ledger");
+    setElementVisible(clientScreen, activeView === "client");
+    setElementVisible(settingsScreen, activeView === "settings");
+    setElementVisible(insightsScreen, activeView === "insights");
+    setElementVisible(lateChargesScreen, activeView === "late-charges");
     if (activeView !== "client") return;
 
     if (!clientSections.has(activeClientSection)) activeClientSection = "overview";
@@ -8483,6 +8540,7 @@ function latePaymentChargeReviewStats() {
 
 function openLateChargesScreen() {
     activeView = "late-charges";
+    syncActiveViewShell();
     closeTopbarMenu();
     renderAll();
     scrollConsoleToTop();
@@ -8952,14 +9010,11 @@ function renderClientNotesTable(notes) {
 
 function renderChrome() {
     document.body.classList.toggle("is-syncing", isSyncing);
-    document.body.classList.toggle("is-client-view", activeView === "client");
     if (activeView === "insights") activeNavSection = "home";
     else if (activeView === "late-charges") activeNavSection = "lpcs";
     else if (activeView === "settings") activeNavSection = "settings";
     else if (activeView === "client") activeNavSection = "clients";
-    document.querySelectorAll("[data-app-nav]").forEach((button) => {
-        button.classList.toggle("is-active", button.dataset.appNav === activeNavSection);
-    });
+    syncActiveViewShell();
     const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
     const heading = document.querySelector(".brand-lockup h1");
     if (heading) heading.textContent = topbarClient?.name || "Jenius AI";
@@ -9213,6 +9268,7 @@ async function loadInsights(force = false) {
 function openInsightsScreen() {
     activeView = "insights";
     activeInsightsSection = activeInsightsSection || "overview";
+    syncActiveViewShell();
     closeTopbarMenu();
     renderAll();
     scrollConsoleToTop();
@@ -9328,6 +9384,7 @@ function aiActionList(ai) {
 }
 
 function renderAll() {
+    syncActiveViewShell();
     renderChrome();
     renderSyncSettings();
     renderLetterTemplateSettings();
@@ -10067,6 +10124,7 @@ async function waitForSyncRun(syncRunId) {
 
 function openSettingsScreen() {
     activeView = "settings";
+    syncActiveViewShell();
     closeToolbarMenus();
     closeTopbarMenu();
     renderAll();
