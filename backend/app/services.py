@@ -241,6 +241,29 @@ def _sync_error_payload(exc: Exception) -> dict:
     }
 
 
+def _format_wait_seconds(seconds: int) -> str:
+    seconds = max(int(seconds or 0), 0)
+    if seconds < 60:
+        return f"{seconds} seconds"
+    minutes, remainder = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {remainder:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
+def _xero_rate_limit_retry_seconds(exc: Exception) -> int | None:
+    if not isinstance(exc, HTTPException) or not isinstance(exc.detail, dict):
+        return None
+    if exc.detail.get("status_code") != status.HTTP_429_TOO_MANY_REQUESTS:
+        return None
+    raw_delay = exc.detail.get("retry_after_seconds") or exc.detail.get("retry_after") or 0
+    try:
+        return max(0, int(raw_delay))
+    except (TypeError, ValueError):
+        return 0
+
+
 def normalise_sync_options(options: dict | None = None) -> dict:
     options = options or {}
     invoice_scope = str(options.get("invoiceScope") or DEFAULT_SYNC_SCOPE)
@@ -1333,18 +1356,41 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             current_step=contact_fetch_step,
             summary=f"Fetching {contact_fetch_label} from Xero.",
         )
-        raw_contacts = await fetch_paginated_collection(
-            connection_row,
-            CONTACTS_URL,
-            "Contacts",
-            on_page=contact_progress,
-            on_retry=rate_limit_progress(contact_fetch_label),
-            modified_since=modified_since if is_incremental_sync else None,
-        )
+        raw_contacts: list[dict] = []
+        contact_fetch_summary = ""
+        try:
+            raw_contacts = await fetch_paginated_collection(
+                connection_row,
+                CONTACTS_URL,
+                "Contacts",
+                on_page=contact_progress,
+                on_retry=rate_limit_progress(contact_fetch_label),
+                modified_since=modified_since if is_incremental_sync else None,
+            )
+            contact_fetch_summary = f"Fetched {len(raw_contacts)} {contact_fetch_label}."
+        except HTTPException as exc:
+            retry_after_seconds = _xero_rate_limit_retry_seconds(exc)
+            if retry_after_seconds is None:
+                raise
+            contact_fetch_summary = (
+                f"Xero Contacts is rate-limited for about {_format_wait_seconds(retry_after_seconds)}. "
+                "Continuing with customer details embedded in invoices."
+            )
+            record_audit_event(
+                "sync_run",
+                str(sync_run_id),
+                "sync.contacts.rate_limited",
+                {
+                    "summary": contact_fetch_summary,
+                    "retry_after_seconds": retry_after_seconds,
+                    "detail": _sync_error_payload(exc),
+                },
+                user["id"],
+            )
         _update_sync_run(
             sync_run_id,
             current_step=invoice_fetch_step,
-            summary=f"Fetched {len(raw_contacts)} {contact_fetch_label}. Fetching {invoice_fetch_label}.",
+            summary=f"{contact_fetch_summary} Fetching {invoice_fetch_label}.",
             contacts_total=len(raw_contacts),
         )
         outstanding_invoices = await fetch_paginated_collection(

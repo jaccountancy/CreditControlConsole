@@ -35,6 +35,17 @@ class XeroConfigurationError(RuntimeError):
     pass
 
 
+def _format_delay_seconds(seconds: int) -> str:
+    seconds = max(int(seconds or 0), 0)
+    if seconds < 60:
+        return f"{seconds} seconds"
+    minutes, remainder = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {remainder:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
 def _xero_validation_summary(detail) -> str:
     messages: list[str] = []
     ignored_messages = {"a validation exception occurred"}
@@ -657,7 +668,7 @@ async def fetch_paginated_collection(
                             **detail,
                             "message": (
                                 f"Xero rate-limited the {collection_key} request and asked the app to wait "
-                                f"{delay_seconds} seconds. Try syncing again after Xero's limit resets."
+                                f"about {_format_delay_seconds(delay_seconds)}. Try syncing again after Xero's limit resets."
                             ),
                             "retry_after_seconds": delay_seconds,
                         },
