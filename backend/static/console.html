@@ -6288,7 +6288,8 @@
                 dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
                 customers: [],
                 audit: [],
-                selectedInvoice: null
+                selectedInvoice: null,
+                cacheStatus: {}
             };
             const persistedUIState = loadPersistedUIState();
             const state = loadState();
@@ -6584,7 +6585,8 @@
                     dashboard: payload.dashboard || emptyData.dashboard,
                     customers: Array.isArray(payload.customers) ? payload.customers : [],
                     audit: Array.isArray(payload.audit) ? payload.audit : [],
-                    selectedInvoice: payload.selectedInvoice || null
+                    selectedInvoice: payload.selectedInvoice || null,
+                    cacheStatus: payload.cacheStatus || {}
                 };
             }
 
@@ -6733,6 +6735,7 @@
                 }));
                 state.audit = next.audit;
                 state.selectedInvoice = next.selectedInvoice;
+                state.cacheStatus = next.cacheStatus || {};
                 const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
                 const invoice = findInvoiceById(preservedInvoiceId) || findInvoiceById(nextInvoiceId) || allInvoices()[0] || null;
                 selectedInvoiceId = invoice?.id || null;
@@ -8995,16 +8998,17 @@
                     }
                 } else if (!paged.length) {
                     const row = document.createElement("tr");
+                    const cacheGap = state.cacheStatus?.hasMissingLedgerRows;
                     const emptyCopy = activeNavSection === "clients"
                         ? {
                             eyebrow: "No clients",
-                            title: "No client balances match the current filters",
-                            detail: "Connect Xero and sync customer balances, or widen the search and filter settings."
+                            title: cacheGap ? "Saved ledger cache needs rebuilding" : "No client balances match the current filters",
+                            detail: cacheGap ? state.cacheStatus.message : "Connect Xero and sync customer balances, or widen the search and filter settings."
                         }
                         : {
                             eyebrow: "No invoices",
-                            title: "No ledger rows match the current filters",
-                            detail: "Connect Xero and sync live data, or widen the search and filter settings."
+                            title: cacheGap ? "Saved ledger cache needs rebuilding" : "No ledger rows match the current filters",
+                            detail: cacheGap ? state.cacheStatus.message : "Connect Xero and sync live data, or widen the search and filter settings."
                         };
                     row.innerHTML = `<td colspan="6"><div class="empty-state"><p class="eyebrow">${emptyCopy.eyebrow}</p><h4>${emptyCopy.title}</h4><p>${emptyCopy.detail}</p></div></td>`;
                     tbody.appendChild(row);

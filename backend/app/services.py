@@ -2911,7 +2911,30 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             return credit_sources_synced
 
         outstanding_checkpoint = resume_checkpoints.get(SYNC_PHASE_OUTSTANDING)
-        if _checkpoint_completed(resume_checkpoints, SYNC_PHASE_OUTSTANDING):
+        reuse_outstanding_checkpoint = _checkpoint_completed(resume_checkpoints, SYNC_PHASE_OUTSTANDING)
+        if reuse_outstanding_checkpoint:
+            local_counts = _local_resume_counts(connection_row["tenant_id"], sync_options["invoice_years"])
+            checkpoint_contacts = _checkpoint_payload_count(outstanding_checkpoint, "contacts_count", local_counts["customers"])
+            checkpoint_outstanding = _checkpoint_payload_count(outstanding_checkpoint, "outstanding_count", local_counts["outstanding_invoices"])
+            if local_counts["customers"] < checkpoint_contacts or local_counts["outstanding_invoices"] < checkpoint_outstanding:
+                reuse_outstanding_checkpoint = False
+                resume_checkpoints.pop(SYNC_PHASE_OUTSTANDING, None)
+                record_audit_event(
+                    "sync_run",
+                    str(sync_run_id),
+                    "sync.checkpoint.invalidated",
+                    {
+                        "phase": SYNC_PHASE_OUTSTANDING,
+                        "reason": "Completed checkpoint had no matching saved ledger rows.",
+                        "checkpoint_customers": checkpoint_contacts,
+                        "checkpoint_outstanding_invoices": checkpoint_outstanding,
+                        "stored_customers": local_counts["customers"],
+                        "stored_outstanding_invoices": local_counts["outstanding_invoices"],
+                    },
+                    user["id"],
+                )
+
+        if reuse_outstanding_checkpoint:
             local_counts = _local_resume_counts(connection_row["tenant_id"], sync_options["invoice_years"])
             imported_contacts = _checkpoint_payload_count(outstanding_checkpoint, "contacts_count", local_counts["customers"])
             outstanding_synced = _checkpoint_payload_count(outstanding_checkpoint, "outstanding_count", local_counts["outstanding_invoices"])
@@ -3289,6 +3312,24 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
             return completed
 
         paid_checkpoint = resume_checkpoints.get(SYNC_PHASE_PAID_INVOICES)
+        if _checkpoint_completed(resume_checkpoints, SYNC_PHASE_PAID_INVOICES):
+            local_counts = _local_resume_counts(connection_row["tenant_id"], sync_options["invoice_years"])
+            checkpoint_paid = int((paid_checkpoint or {}).get("records_stored") or 0)
+            if local_counts["paid_invoices"] < checkpoint_paid:
+                resume_checkpoints.pop(SYNC_PHASE_PAID_INVOICES, None)
+                paid_checkpoint = None
+                record_audit_event(
+                    "sync_run",
+                    str(sync_run_id),
+                    "sync.checkpoint.invalidated",
+                    {
+                        "phase": SYNC_PHASE_PAID_INVOICES,
+                        "reason": "Completed paid-invoice checkpoint had no matching saved invoice rows.",
+                        "checkpoint_paid_invoices": checkpoint_paid,
+                        "stored_paid_invoices": local_counts["paid_invoices"],
+                    },
+                    user["id"],
+                )
         paid_synced = 0
         paid_contacts_synced = 0
         paid_records_seen = 0
@@ -3748,6 +3789,65 @@ def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: st
     return None
 
 
+def _xero_cache_status(cursor, user_id: str | None, tenant_id: str | None, stored_customers: int, stored_invoices: int) -> dict:
+    if not user_id:
+        return {
+            "hasMissingLedgerRows": False,
+            "message": "",
+            "storedCustomers": stored_customers,
+            "storedInvoices": stored_invoices,
+        }
+    cursor.execute(
+        """
+        SELECT customers_synced,
+               invoices_synced,
+               contacts_total,
+               invoices_total,
+               status,
+               current_step,
+               summary,
+               tenant_id,
+               completed_at,
+               created_at
+        FROM sync_runs
+        WHERE provider = 'xero'
+          AND initiated_by_user_id = %s
+          AND (customers_synced > 0 OR invoices_synced > 0 OR contacts_total > 0 OR invoices_total > 0)
+          AND (%s IS NULL OR tenant_id = %s OR tenant_id IS NULL OR tenant_id = '')
+        ORDER BY COALESCE(completed_at, created_at) DESC
+        LIMIT 1
+        """,
+        (user_id, tenant_id, tenant_id),
+    )
+    row = cursor.fetchone()
+    reported_customers = int((row or {}).get("customers_synced") or (row or {}).get("contacts_total") or 0)
+    reported_invoices = int((row or {}).get("invoices_synced") or (row or {}).get("invoices_total") or 0)
+    missing_rows = (
+        bool(row)
+        and (reported_customers > stored_customers or reported_invoices > stored_invoices)
+        and (reported_customers > 0 or reported_invoices > 0)
+    )
+    message = ""
+    if missing_rows:
+        message = (
+            "The last Xero sync recorded "
+            f"{reported_customers:,} customers and {reported_invoices:,} invoices, "
+            f"but the saved ledger currently has {stored_customers:,} customers and {stored_invoices:,} invoices. "
+            "The next sync will rebuild the cache instead of reusing the broken checkpoint."
+        )
+    return {
+        "hasMissingLedgerRows": missing_rows,
+        "message": message,
+        "storedCustomers": stored_customers,
+        "storedInvoices": stored_invoices,
+        "reportedCustomers": reported_customers,
+        "reportedInvoices": reported_invoices,
+        "lastSyncStatus": (row or {}).get("status") or "",
+        "lastSyncStep": (row or {}).get("current_step") or "",
+        "lastSyncSummary": (row or {}).get("summary") or "",
+    }
+
+
 def panel_payload(user: dict | None = None) -> dict:
     customers = []
     selected_invoice = None
@@ -3876,6 +3976,13 @@ def panel_payload(user: dict | None = None) -> dict:
                 (tenant_id, tenant_id),
             )
             credit_total_rows = cursor.fetchall()
+            cache_status = _xero_cache_status(
+                cursor,
+                user["id"] if user and user.get("id") else None,
+                tenant_id,
+                len(customer_rows),
+                len(invoice_rows),
+            )
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
@@ -3980,6 +4087,7 @@ def panel_payload(user: dict | None = None) -> dict:
             ),
         },
         "customers": customers,
+        "cacheStatus": cache_status,
         "audit": [
             {
                 "id": row.get("id"),
