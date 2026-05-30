@@ -886,11 +886,45 @@ def serialize_sync_run(sync_run: dict) -> dict:
 
 
 def sync_run_has_working_data(sync_run: dict) -> bool:
+    customers_synced = int(sync_run.get("customers_synced") or 0)
+    invoices_synced = int(sync_run.get("invoices_synced") or 0)
+    processed_count = int(sync_run.get("processed_count") or 0)
+    imported_invoice_rows_are_ready = (
+        invoices_synced > 0
+        and processed_count >= customers_synced + invoices_synced
+    )
     return (
         sync_run.get("status") in ACTIVE_SYNC_STATUSES
-        and sync_run.get("current_step") in WORKING_DATA_STEPS
-        and int(sync_run.get("invoices_synced") or 0) > 0
+        and invoices_synced > 0
+        and (
+            sync_run.get("current_step") in WORKING_DATA_STEPS
+            or imported_invoice_rows_are_ready
+        )
     )
+
+
+def active_sync_run_for_user(user: dict | None) -> dict | None:
+    if not user or not user.get("id"):
+        return None
+
+    _mark_stale_sync_runs(user["id"])
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM sync_runs
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND status IN ('queued', 'running')
+                ORDER BY COALESCE(heartbeat_at, started_at, created_at) DESC, created_at DESC
+                LIMIT 1
+                """,
+                ("xero", user["id"]),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
 
 
 def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:

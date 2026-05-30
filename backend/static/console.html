@@ -5409,14 +5409,32 @@ function markAuthenticationRequired(message) {
 async function hydrateFromAPI() {
     try {
         const payload = await requestJSON(api.endpoints.panel);
-        if (payload) replaceState(normaliseState(payload));
+        if (payload) {
+            replaceState(normaliseState(payload));
+            const activeRun = activeSyncRunFromPanel(payload);
+            if (activeRun && (!activeSyncRunId || activeSyncRunId === activeRun.id)) {
+                latestSyncRun = activeRun;
+                hasAutoStartedInitialSync = true;
+            }
+            return payload;
+        }
     } catch (error) {
         if (error instanceof AuthRequiredError) {
             markAuthenticationRequired(error.message);
-            return;
+            return null;
         }
         console.error("Unable to load panel data from API", error);
     }
+    return null;
+}
+
+function syncRunIsActive(syncRun) {
+    return Boolean(syncRun?.id) && (syncRun.isActive || ["queued", "running"].includes(syncRun.status));
+}
+
+function activeSyncRunFromPanel(payload) {
+    const syncRun = payload?.activeSyncRun || null;
+    return syncRunIsActive(syncRun) ? syncRun : null;
 }
 
 function decorateInvoice(customer, invoice) {
@@ -10175,6 +10193,7 @@ function hasCompletedSync() {
 function shouldAutoStartInitialSync() {
     return isXeroConnected()
         && !isSyncing
+        && !syncRunIsActive(latestSyncRun)
         && !hasAutoStartedInitialSync
         && !hasCompletedSync()
         && allInvoices().length === 0;
@@ -10368,16 +10387,18 @@ async function runXeroSync({ automatic = false } = {}) {
     }
 }
 
-async function monitorQueuedXeroSync(syncRunId, { started = false } = {}) {
-    if (!syncRunId || isSyncing) return;
+async function monitorQueuedXeroSync(syncRunId, { started = false, syncRun = null } = {}) {
+    if (!syncRunId || (isSyncing && activeSyncRunId === syncRunId)) return;
+    if (isSyncing) return;
     hasAutoStartedInitialSync = true;
     let keepFailureBanner = false;
-    startSyncFeedback({
+    const initialStatus = syncRun?.status || (started ? "running" : "queued");
+    startSyncFeedback(syncRun || {
         id: syncRunId,
-        status: started ? "running" : "queued",
-        currentStep: started ? "Starting Xero sync" : "Queued",
+        status: initialStatus,
+        currentStep: initialStatus === "running" ? "Starting Xero sync" : "Queued",
         summary: "Xero is connected. Importing customer and invoice data from Xero.",
-        progress: started ? 8 : 4,
+        progress: initialStatus === "running" ? 8 : 4,
         createdAt: new Date().toISOString(),
         isActive: true
     });
@@ -10947,6 +10968,7 @@ async function init() {
     wireSidebarNavigation();
     const xeroConnectionReturn = consumeXeroConnectionReturn();
     const returnedFromXeroConnection = xeroConnectionReturn.connected;
+    let panelPayload = null;
     wireCriticalNavigation();
     try {
         renderAll();
@@ -10969,7 +10991,7 @@ async function init() {
             console.error(`Unable to initialise ${wire.name}`, error);
         }
     });
-    await hydrateFromAPI();
+    panelPayload = await hydrateFromAPI();
     try {
         renderAll();
     } catch (error) {
@@ -10978,6 +11000,7 @@ async function init() {
     if (activeView === "insights") {
         loadInsights();
     }
+    const activePanelSyncRun = activeSyncRunFromPanel(panelPayload);
     if (returnedFromXeroConnection) {
         showTopbarNotice(
             "Xero is now connected",
@@ -10989,6 +11012,11 @@ async function init() {
     try {
         if (xeroConnectionReturn.syncRunId) {
             monitorQueuedXeroSync(xeroConnectionReturn.syncRunId, { started: xeroConnectionReturn.syncStarted });
+        } else if (activePanelSyncRun) {
+            monitorQueuedXeroSync(activePanelSyncRun.id, {
+                started: activePanelSyncRun.status !== "queued",
+                syncRun: activePanelSyncRun
+            });
         } else {
             maybeAutoStartInitialSync(450);
         }

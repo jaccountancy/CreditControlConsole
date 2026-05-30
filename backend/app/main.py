@@ -32,6 +32,7 @@ from .services import (
     add_customer_note,
     add_note,
     add_promise,
+    active_sync_run_for_user,
     allocate_customer_credit,
     create_bad_debt_write_offs,
     create_late_payment_charges,
@@ -452,7 +453,11 @@ def api_dashboard(user: dict = Depends(require_api_user)):
 
 @app.get("/api/panel")
 def api_panel(user: dict = Depends(require_panel_user)):
-    return panel_payload(user)
+    active_sync_run = active_sync_run_for_user(user)
+    return {
+        **panel_payload(user),
+        "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
+    }
 
 
 @app.get("/api/insights")
