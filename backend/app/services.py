@@ -1942,7 +1942,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
                 sync_run_id,
                 current_step="Importing payments from Xero",
                 summary=(
-                    f"Processed {processed_records} of {total_records} Xero payments; "
+                    f"Processed {processed_records} Xero payments so far; "
                     f"stored {stored_records} matching customer payments."
                 ),
                 fetched_count=len(contacts) + len(outstanding_invoices) + total_records,

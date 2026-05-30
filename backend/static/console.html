@@ -1277,9 +1277,12 @@
                 color: var(--muted);
                 font-size: 0.78rem;
                 font-weight: 800;
+                display: -webkit-box;
+                line-height: 1.2;
                 overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+                white-space: normal;
             }
             .sync-inline-banner.is-error .sync-inline-copy span { color: #b53a3a; }
             .sync-inline-banner.is-success .sync-inline-copy span { color: #168246; }
@@ -10225,6 +10228,34 @@
                 return parts.join(", ");
             }
 
+            function normaliseSyncRunSummary(syncRun) {
+                const summary = String(syncRun?.summary || "").trim();
+                if (!summary) return "";
+                return summary.replace(
+                    /Processed\s+([\d,]+)\s+of\s+\1\s+Xero payments/iu,
+                    "Processed $1 Xero payments so far"
+                );
+            }
+
+            function syncRunLiveDetail(syncRun) {
+                if (!syncRun) return "";
+                const summary = normaliseSyncRunSummary(syncRun);
+                const counts = syncRunCountSummary(syncRun);
+                const step = String(syncRun.currentStep || "").trim();
+                if (summary) return [summary, counts].filter(Boolean).join(" · ");
+                return [step, counts].filter(Boolean).join(". ");
+            }
+
+            function syncRunPhaseLabel(syncRun) {
+                const step = String(syncRun?.currentStep || "").trim();
+                if (!step) return "still working";
+                return step
+                    .replace(/\s+from Xero$/iu, "")
+                    .replace(/^Fetching\s+/iu, "fetching ")
+                    .replace(/^Importing\s+/iu, "importing ")
+                    .replace(/^Backfilling\s+/iu, "backfilling ");
+            }
+
             function syncRunIsPaidBackfill(syncRun) {
                 const statusText = `${syncRun?.currentStep || ""} ${syncRun?.summary || ""}`.toLowerCase();
                 return statusText.includes("backfill") || statusText.includes("paid invoice");
@@ -10349,13 +10380,11 @@
                         : "Still working; larger Xero ledgers can take longer";
                 }
                 if (detail) {
-                    const counts = syncRunCountSummary(latestSyncRun);
-                    const step = latestSyncRun?.currentStep || latestSyncRun?.summary;
                     const detailText = latestSyncRun?.status === "failed"
                         ? latestSyncRun.errorMessage || "Xero sync failed. Please try again."
                         : syncLooksStalled
                         ? `The backend has not reported progress for ${formatSyncDuration(heartbeatAge)}. It will be marked failed automatically if it does not recover.`
-                        : [step, counts].filter(Boolean).join(". ") || (elapsedSeconds < 90
+                        : syncRunLiveDetail(latestSyncRun) || (elapsedSeconds < 90
                             ? "Please keep this page open while invoices and contacts are imported."
                             : "Xero is still responding. Please keep this page open.");
                     detail.textContent = detailText;
@@ -10380,6 +10409,8 @@
                         const backfillEta = syncRunBackfillEta(latestSyncRun, elapsedSeconds);
                         if (backfillEta) {
                             etaText = backfillEta;
+                        } else if (progressPct >= 95 && latestSyncRun?.status === "running") {
+                            etaText = `${progressPct}% complete · ${syncRunPhaseLabel(latestSyncRun)}`;
                         } else if (progressPct > 0 && progressPct < 100 && elapsedSeconds >= 5) {
                             const totalEstimate = Math.ceil((elapsedSeconds / progressPct) * 100);
                             const remaining = Math.max(0, totalEstimate - elapsedSeconds);
