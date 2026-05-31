@@ -10141,6 +10141,7 @@
                                 <p id="heroNoticesSummary">No active 7 day notices</p>
                             </button>
                         </div>
+                        <div class="lpc-topbar-summary bad-debt-topbar-summary" id="badDebtTopbarSummary" aria-label="Bad debt ageing summary" hidden></div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
                         <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" role="status" aria-live="polite" hidden>
                             <article><span>Clients</span><strong>0</strong></article>
@@ -24853,6 +24854,7 @@
                 if (jashflowTopbarSummary) jashflowTopbarSummary.hidden = activeView !== "jashflow";
                 const creditControlTopbarSummary = document.getElementById("creditControlTopbarSummary");
                 if (creditControlTopbarSummary) creditControlTopbarSummary.hidden = activeView !== "ledger";
+                renderBadDebtTopbarSummary();
                 renderBankAccountTopbarSummary();
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
                 if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
@@ -25434,17 +25436,37 @@
                 ${insightDataTable("Monthly Xero trend table", ["Month", "Turnover", "Cash collected", "Raised", "Paid", "Collection ratio"], trendTableRows, "No monthly Xero trend data is available.")}`;
             }
 
-            function ageingInsights(analytics) {
-                const ageing = analytics.ageing || [];
+            function ageingSummaryMetrics(analytics = null) {
+                const source = analytics || (insightsData || localInsightsPayload("local")).analytics || {};
+                const ageing = source.ageing || [];
                 const total = ageing.reduce((sum, row) => sum + Number(row.value || 0), 0);
                 const oldDebt = ageing.filter((row) => ["61-90", "90+"].includes(row.label)).reduce((sum, row) => sum + Number(row.value || 0), 0);
                 const oldRatio = total ? (oldDebt / total) * 100 : 0;
-                return `${insightCardGrid([
+                return [
                     ["Open debt", formatCurrency(total), "All ageing buckets"],
                     ["61+ day exposure", formatCurrency(oldDebt), "Older debt requiring action"],
                     ["Old debt ratio", formatPercent(oldRatio), "61+ days as share of open debt"],
                     ["90+ invoices", Number((ageing.find((row) => row.label === "90+") || {}).count || 0).toLocaleString("en-GB"), "Highest risk ageing bucket"],
-                ])}<div class="insight-two-column">${barChart("Ageing by value", ageing, "value", "label")}${barChart("Ageing by invoice count", ageing, "count", "label")}</div><section class="insight-chart"><span>Ageing response</span>${insightActionCards(ageing.map((row) => ({
+                ];
+            }
+
+            function renderBadDebtTopbarSummary() {
+                const target = document.getElementById("badDebtTopbarSummary");
+                if (!target) return;
+                target.hidden = activeView !== "bad-debt";
+                if (target.hidden) return;
+                target.innerHTML = ageingSummaryMetrics().map(([label, value, detail]) => `
+                    <article>
+                        <span>${escapeHTML(label)}</span>
+                        <strong>${escapeHTML(value)}</strong>
+                        <p>${escapeHTML(detail)}</p>
+                    </article>
+                `).join("");
+            }
+
+            function ageingInsights(analytics) {
+                const ageing = analytics.ageing || [];
+                return `<div class="insight-two-column">${barChart("Ageing by value", ageing, "value", "label")}${barChart("Ageing by invoice count", ageing, "count", "label")}</div><section class="insight-chart"><span>Ageing response</span>${insightActionCards(ageing.map((row) => ({
                     title: `${row.label} days`,
                     detail: `${Number(row.count || 0).toLocaleString("en-GB")} invoice${Number(row.count || 0) === 1 ? "" : "s"} in this bucket`,
                     value: formatCurrency(row.value || 0),
