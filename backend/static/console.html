@@ -13017,6 +13017,7 @@
                 const jashflowScreen = document.getElementById("jashflowScreen");
                 const bankStatementsScreen = document.getElementById("bankStatementsScreen");
                 const ignitionScreen = document.getElementById("ignitionScreen");
+                const ignitionClientsScreen = document.getElementById("ignitionClientsScreen");
                 const meReportScreen = document.getElementById("meReportScreen");
                 setElementVisible(ledgerView, activeView === "ledger");
                 setElementVisible(clientScreen, activeView === "client");
@@ -13027,6 +13028,7 @@
                 setElementVisible(jashflowScreen, activeView === "jashflow");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
                 setElementVisible(ignitionScreen, activeView === "ignition");
+                setElementVisible(ignitionClientsScreen, activeView === "ignition-clients");
                 setElementVisible(meReportScreen, activeView === "me-report");
                 if (activeView !== "client") return;
 
@@ -16608,6 +16610,15 @@
                 loadIgnition();
             }
 
+            function openIgnitionClientsScreen() {
+                activeView = "ignition-clients";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                renderAll();
+                scrollConsoleToTop();
+                loadIgnition();
+            }
+
             async function loadIgnition(force = false) {
                 if (ignitionLoading && !force) return;
                 ignitionLoading = true;
@@ -16643,7 +16654,7 @@
                 const progress = runActive || run?.status === "completed" ? Math.min(100, Math.max(0, Number(run?.progress || 0))) : 0;
                 const topbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (topbarWidget) {
-                    topbarWidget.hidden = activeView !== "ignition" || !runActive;
+                    topbarWidget.hidden = !isIgnitionView() || !runActive;
                     topbarWidget.classList.toggle("is-syncing", runActive);
                 }
                 setIgnitionText("ignitionSyncStep", ignitionLoading ? "Loading Ignition dashboard" : run?.currentStep || (connected ? "Ready to sync Ignition" : "Waiting for Ignition connection"));
@@ -16671,8 +16682,16 @@
                     syncButton.disabled = !connected || isIgnitionSyncing || ignitionLoading;
                     syncButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Sync Ignition";
                 }
+                const openClientsButton = document.getElementById("openIgnitionClientsButton");
+                if (openClientsButton) {
+                    const clientTotal = Number(ignitionData.dashboard?.totals?.clientCount || 0);
+                    openClientsButton.textContent = clientTotal ? `Client register (${clientTotal.toLocaleString("en-GB")})` : "Client register";
+                    openClientsButton.disabled = ignitionLoading;
+                }
                 const refreshButton = document.getElementById("refreshIgnitionButton");
                 if (refreshButton) refreshButton.disabled = ignitionLoading || isIgnitionSyncing;
+                const refreshClientsButton = document.getElementById("refreshIgnitionClientsButton");
+                if (refreshClientsButton) refreshClientsButton.disabled = ignitionLoading || isIgnitionSyncing;
                 const renewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (renewalsButton) {
                     renewalsButton.hidden = activeView !== "ignition";
@@ -19702,6 +19721,7 @@
                     jashflow: "Jashflow",
                     "bank-statements": "Bank Statements",
                     ignition: "Ignition",
+                    "ignition-clients": "Ignition Client Register",
                     "me-report": "ME Report"
                 }[view] || "Console";
             }
@@ -19720,6 +19740,7 @@
                     const loan = selectedJashflowLoan();
                     return loan?.customerName || loan?.borrowerName || "Loan book";
                 }
+                if (activeView === "ignition-clients") return "Client register";
                 if (activeView === "settings") return syncScopeLabels[syncSettings.invoiceScope] || "System settings";
                 return "Opened from sidebar";
             }
@@ -19948,6 +19969,7 @@
                 else if (activeView === "late-charges") activeNavSection = "lpcs";
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
+                else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "settings") activeNavSection = "settings";
                 else if (activeView === "client") activeNavSection = "clients";
                 syncActiveViewShell();
@@ -20051,7 +20073,7 @@
                 }
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget) {
-                    ignitionTopbarWidget.hidden = activeView !== "ignition";
+                    ignitionTopbarWidget.hidden = !isIgnitionView();
                 }
                 renderTopbarClientContext();
                 renderGlobalActivityCard();
@@ -23688,6 +23710,12 @@
                 });
                 const refreshIgnitionButton = document.getElementById("refreshIgnitionButton");
                 if (refreshIgnitionButton) refreshIgnitionButton.addEventListener("click", () => loadIgnition(true));
+                const openIgnitionClientsButton = document.getElementById("openIgnitionClientsButton");
+                if (openIgnitionClientsButton) openIgnitionClientsButton.addEventListener("click", openIgnitionClientsScreen);
+                const backIgnitionDashboardButton = document.getElementById("backIgnitionDashboardButton");
+                if (backIgnitionDashboardButton) backIgnitionDashboardButton.addEventListener("click", openIgnitionScreen);
+                const refreshIgnitionClientsButton = document.getElementById("refreshIgnitionClientsButton");
+                if (refreshIgnitionClientsButton) refreshIgnitionClientsButton.addEventListener("click", () => loadIgnition(true));
                 const connectIgnitionButton = document.getElementById("connectIgnitionButton");
                 if (connectIgnitionButton) connectIgnitionButton.addEventListener("click", openIgnitionConnection);
                 const runIgnitionSyncButton = document.getElementById("runIgnitionSyncButton");
@@ -24134,7 +24162,7 @@
                 if (activeView === "insights") {
                     loadInsights();
                 }
-                if (activeView === "ignition") {
+                if (isIgnitionView()) {
                     loadIgnition();
                 }
                 if (activeView === "me-report") {
