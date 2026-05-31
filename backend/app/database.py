@@ -598,6 +598,7 @@ CREATE TABLE IF NOT EXISTS bank_statement_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     extraction_client_id UUID NOT NULL REFERENCES bank_statement_clients(id) ON DELETE CASCADE,
     account_name TEXT NOT NULL,
+    nickname TEXT,
     account_number TEXT NOT NULL,
     sort_code TEXT,
     currency_code TEXT NOT NULL DEFAULT 'GBP',
@@ -608,6 +609,7 @@ CREATE TABLE IF NOT EXISTS bank_statement_accounts (
 
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS extraction_client_id UUID REFERENCES bank_statement_clients(id) ON DELETE CASCADE;
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS account_name TEXT NOT NULL DEFAULT 'Bank account';
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS nickname TEXT;
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS account_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS sort_code TEXT;
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';
@@ -625,6 +627,11 @@ CREATE TABLE IF NOT EXISTS bank_statement_uploads (
     content_type TEXT,
     status TEXT NOT NULL DEFAULT 'queued',
     error_message TEXT,
+    source_file BYTEA,
+    source_file_size INTEGER NOT NULL DEFAULT 0,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at TIMESTAMPTZ,
+    activity_log JSONB NOT NULL DEFAULT '[]'::jsonb,
     statement_start_date DATE,
     statement_end_date DATE,
     opening_balance NUMERIC(14, 2),
@@ -642,6 +649,11 @@ ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS filename TEXT NOT NU
 ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS content_type TEXT;
 ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'queued';
 ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS source_file BYTEA;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS source_file_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ;
+ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS activity_log JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS statement_start_date DATE;
 ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS statement_end_date DATE;
 ALTER TABLE bank_statement_uploads ADD COLUMN IF NOT EXISTS opening_balance NUMERIC(14, 2);

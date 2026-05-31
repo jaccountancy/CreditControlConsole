@@ -1909,7 +1909,15 @@
                 color: var(--muted);
             }
             .page-pill.is-active { background: var(--blue); color: white; border-color: transparent; }
-            .detail-card { margin-top: 22px; border-radius: 30px; padding: 24px; }
+            .detail-card {
+                width: 100%;
+                margin-top: 22px;
+                border-radius: 30px;
+                padding: 24px;
+            }
+            body.is-tool-page .detail-card {
+                min-height: calc(100vh - 92px);
+            }
             .settings-layout {
                 display: grid;
                 gap: 18px;
@@ -1924,6 +1932,9 @@
             .settings-panel {
                 max-width: 760px;
             }
+            body.is-tool-page .settings-panel {
+                max-width: none;
+            }
             .settings-panel.wide-settings-panel {
                 max-width: none;
             }
@@ -1933,12 +1944,36 @@
                 gap: 10px;
                 margin-top: 12px;
             }
+            .system-health-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+                gap: 10px;
+                margin-top: 12px;
+            }
+            .system-health-detail-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 10px;
+                margin-top: 12px;
+            }
             .database-metric-card {
                 border: 1px solid var(--line);
                 border-radius: 12px;
                 background: rgba(255, 255, 255, 0.72);
                 padding: 12px;
                 min-width: 0;
+            }
+            .database-metric-card.is-live {
+                border-color: rgba(39, 176, 95, 0.28);
+                background: rgba(232, 248, 238, 0.7);
+            }
+            .database-metric-card.is-warning {
+                border-color: rgba(255, 159, 47, 0.34);
+                background: rgba(255, 243, 223, 0.72);
+            }
+            .database-metric-card.is-error {
+                border-color: rgba(255, 83, 83, 0.26);
+                background: rgba(255, 231, 231, 0.66);
             }
             .database-metric-card span,
             .database-metrics-row span,
@@ -1962,6 +1997,33 @@
                 font-size: 0.78rem;
                 font-weight: 700;
                 line-height: 1.35;
+            }
+            .system-health-detail-card {
+                display: grid;
+                gap: 8px;
+            }
+            .system-health-detail-card dl {
+                display: grid;
+                gap: 6px;
+                margin: 0;
+            }
+            .system-health-detail-card div {
+                display: grid;
+                grid-template-columns: minmax(110px, 0.42fr) minmax(0, 1fr);
+                gap: 10px;
+            }
+            .system-health-detail-card dt {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+            .system-health-detail-card dd {
+                margin: 0;
+                min-width: 0;
+                overflow-wrap: anywhere;
+                font-size: 0.84rem;
+                font-weight: 800;
             }
             .database-metrics-list {
                 display: grid;
@@ -3401,6 +3463,10 @@
             .bank-statement-workspace.is-client-list {
                 grid-template-columns: 1fr;
             }
+            .bank-statement-workspace.is-account-list,
+            .bank-statement-workspace.is-account-detail {
+                grid-template-columns: minmax(0, 1fr);
+            }
             .bank-statement-workspace.is-extraction-detail {
                 grid-template-columns: minmax(260px, 0.32fr) minmax(0, 1fr);
             }
@@ -3409,6 +3475,8 @@
                 min-height: calc(100vh - 310px);
             }
             #bankStatementsScreen .bank-statement-workspace.is-client-list,
+            #bankStatementsScreen .bank-statement-workspace.is-account-list,
+            #bankStatementsScreen .bank-statement-workspace.is-account-detail,
             #meReportScreen .bank-statement-workspace.is-client-list {
                 grid-template-columns: minmax(0, 1fr);
             }
@@ -3432,7 +3500,7 @@
                 min-width: 0;
             }
             #bankStatementsScreen .bank-account-summary-grid {
-                grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
             }
             #meReportScreen .ignition-summary-grid {
                 grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -3472,7 +3540,7 @@
             }
             .bank-account-summary-card,
             .bank-warning-card {
-                padding: 14px;
+                padding: 11px 12px;
                 border-radius: 14px;
                 border: 1px solid var(--line);
                 background: rgba(255, 255, 255, 0.78);
@@ -3489,12 +3557,12 @@
             }
             .bank-account-summary-card strong {
                 display: block;
-                margin-top: 6px;
-                font-size: 1rem;
+                margin-top: 4px;
+                font-size: 0.96rem;
             }
             .bank-warning-panel {
                 display: grid;
-                gap: 8px;
+                gap: 6px;
             }
             .bank-warning-card {
                 border-color: rgba(255, 159, 47, 0.34);
@@ -3528,8 +3596,9 @@
                 margin: 0;
             }
             .bank-warning-card p {
-                margin-top: 3px;
+                margin-top: 2px;
                 color: var(--muted);
+                font-size: 0.86rem;
                 font-weight: 750;
             }
             .bank-account-tabs {
@@ -3560,9 +3629,12 @@
             .bank-transaction-table,
             .bank-upload-history-table {
                 width: 100%;
-                min-width: 1040px;
+                min-width: 1180px;
                 border-collapse: collapse;
                 table-layout: fixed;
+            }
+            .bank-upload-history-table tr.is-failed-upload {
+                background: rgba(255, 231, 231, 0.28);
             }
             .bank-upload-history-row {
                 display: grid;
@@ -3610,9 +3682,77 @@
             }
             .bank-transaction-table small,
             .bank-upload-history-table small {
+                display: block;
                 margin-top: 3px;
                 color: var(--muted);
                 font-weight: 750;
+            }
+            .bank-upload-failure-advice {
+                margin-top: 7px;
+                color: #b73939;
+                font-size: 0.78rem;
+                font-weight: 850;
+                line-height: 1.35;
+            }
+            .bank-upload-activity-wrap {
+                position: relative;
+                display: inline-flex;
+                margin-top: 8px;
+            }
+            .bank-upload-activity-trigger {
+                display: inline-flex;
+                align-items: center;
+                min-height: 28px;
+                padding: 4px 10px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                background: rgba(233, 241, 255, 0.72);
+                color: var(--blue);
+                font-size: 0.76rem;
+                font-weight: 900;
+            }
+            .bank-upload-activity-popover {
+                position: absolute;
+                z-index: 60;
+                left: 0;
+                bottom: calc(100% + 8px);
+                width: min(380px, calc(100vw - 48px));
+                max-height: 320px;
+                overflow: auto;
+                display: none;
+                padding: 10px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 14px;
+                background: #fff;
+                box-shadow: 0 16px 40px rgba(30, 47, 77, 0.16);
+            }
+            .bank-upload-activity-wrap:hover .bank-upload-activity-popover,
+            .bank-upload-activity-wrap:focus-within .bank-upload-activity-popover,
+            .bank-upload-activity-wrap:focus .bank-upload-activity-popover {
+                display: grid;
+                gap: 8px;
+            }
+            .bank-upload-activity-row {
+                display: grid;
+                gap: 2px;
+                padding: 8px;
+                border-radius: 10px;
+                background: rgba(248, 251, 255, 0.86);
+            }
+            .bank-upload-activity-row span,
+            .bank-upload-activity-row small {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 850;
+            }
+            .bank-upload-activity-row strong {
+                font-size: 0.82rem;
+                line-height: 1.3;
+            }
+            .bank-retry-button {
+                min-height: 34px;
+                padding: 8px 14px;
+                white-space: nowrap;
             }
             .bank-status-pill {
                 display: inline-flex;
@@ -3635,6 +3775,11 @@
                 background: var(--orange-soft);
                 color: #9d6414;
             }
+            .bank-account-card-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 12px;
+            }
             .bank-extraction-client-list,
             .bank-account-list,
             .bank-account-detail,
@@ -3649,7 +3794,52 @@
                 width: 100%;
                 text-align: left;
                 color: var(--ink);
+            }
+            .bank-client-card {
                 cursor: pointer;
+            }
+            .bank-account-card {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 14px;
+                cursor: default;
+            }
+            .bank-account-card strong,
+            .bank-account-card span {
+                display: block;
+            }
+            .bank-account-card span {
+                margin-top: 4px;
+                color: var(--muted);
+                font-weight: 750;
+                font-size: 0.86rem;
+            }
+            .bank-account-card-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+            .bank-upload-processing-card {
+                padding: 16px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                border-radius: 16px;
+                background: rgba(233, 241, 255, 0.72);
+                box-shadow: 0 14px 40px rgba(29, 103, 242, 0.10);
+            }
+            .bank-upload-processing-card .sync-progress-head {
+                margin-bottom: 12px;
+            }
+            .bank-upload-processing-card h3,
+            .bank-upload-processing-card p {
+                margin: 0;
+            }
+            .bank-upload-processing-card p {
+                margin-top: 3px;
+                color: var(--muted);
+                font-weight: 750;
             }
             .bank-client-table {
                 width: 100%;
@@ -3774,7 +3964,7 @@
             }
             .ignition-summary-grid {
                 display: grid;
-                grid-template-columns: repeat(6, minmax(0, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
                 gap: 12px;
             }
             .ignition-summary-grid article,
@@ -3802,7 +3992,7 @@
                 font-size: 1.08rem;
             }
             .ignition-workspace {
-                grid-template-columns: minmax(0, 0.92fr) minmax(300px, 0.42fr);
+                grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.8fr);
                 align-items: start;
             }
             .ignition-report-stack,
@@ -5711,6 +5901,10 @@
                                     </div>
                                     <span class="settings-help" id="databaseMetricsUpdated">Waiting for backend data</span>
                                 </div>
+                                <div class="system-health-grid" id="systemHealthGrid">
+                                    <article class="database-metric-card"><span>System health</span><strong>--</strong><small>Waiting for backend data</small></article>
+                                </div>
+                                <div class="system-health-detail-grid" id="systemHealthDetails"></div>
                                 <div class="database-metrics-grid" id="databaseMetricsGrid">
                                     <article class="database-metric-card"><span>Database size</span><strong>--</strong><small>Waiting for backend data</small></article>
                                 </div>
@@ -5932,7 +6126,7 @@
                             <form class="jashflow-settings-form" id="jashflowSettingsForm" hidden>
                                 <label>
                                     Interest received account code
-                                    <input id="jashflowInterestAccountCodeInput" type="text" inputmode="numeric" autocomplete="off" required>
+                                    <select id="jashflowInterestAccountCodeInput" required></select>
                                 </label>
                                 <button class="ghost-button" type="submit">Save setup</button>
                                 <button class="primary-button" id="postJashflowInterestButton" type="button">Post uninvoiced interest</button>
@@ -5979,25 +6173,6 @@
                     </section>
 
                     <section class="late-charges-screen detail-card" id="bankStatementsScreen" hidden>
-                        <div class="detail-hero">
-                            <div>
-                                <p class="eyebrow">Bank statement extraction</p>
-                                <h2>Bank Statements</h2>
-                                <p class="detail-meta">Build a saved extraction client list, add bank accounts, upload PDF statements, and let OpenAI extract and deduplicate transactions.</p>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="ghost-button" id="backBankStatementClientsButton" type="button" hidden>Back to clients</button>
-                                <button class="primary-button" id="toggleBankStatementClientFormButton" type="button">Add extraction client</button>
-                                <button class="ghost-button" id="refreshBankStatementsButton" type="button">Refresh</button>
-                            </div>
-                        </div>
-                        <form class="bank-client-form" id="bankStatementClientForm" hidden>
-                            <label>
-                                Add Xero customer
-                                <select id="bankStatementCustomerSelect" required></select>
-                            </label>
-                            <button class="primary-button" type="submit">Add extraction client</button>
-                        </form>
                         <section class="detail-panel bank-statement-workspace">
                             <div class="bank-extraction-client-list" id="bankStatementClientList"></div>
                             <div class="bank-account-list" id="bankAccountList"></div>
@@ -6112,7 +6287,7 @@
                             <div>
                                 <p class="eyebrow">Month-end bookkeeping</p>
                                 <h2>ME Report</h2>
-                                <p class="detail-meta">Client register, Xero sync, account treatment review, corporation tax estimate, dividend capacity, DLA review, exceptions, and branded month-end reporting.</p>
+                                <p class="detail-meta">Client register, overview report upload, account treatment review, corporation tax estimate, dividend capacity, DLA review, exceptions, and branded month-end reporting.</p>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="backMeReportClientsButton" type="button" hidden>Back to clients</button>
@@ -6125,13 +6300,13 @@
                                 <div class="ignition-sync-head">
                                     <div>
                                         <p class="eyebrow">Workflow</p>
-                                        <strong id="meReportWorkflowStatus">Register clients, connect Xero, then calculate</strong>
-                                        <span id="meReportWorkflowSummary">The top processing cell will show syncing and calculating progress whenever Xero data is being reviewed.</span>
+                                        <strong id="meReportWorkflowStatus">Register clients, upload overview report, then calculate</strong>
+                                        <span id="meReportWorkflowSummary">The top processing cell will show upload and calculation progress whenever an overview report is being reviewed.</span>
                                     </div>
                                     <div>
-                                        <p class="eyebrow">Connected Xero</p>
-                                        <strong id="meReportXeroStatus">Not connected</strong>
-                                        <span id="meReportXeroTenant">Connect Xero before linking ME Report clients.</span>
+                                        <p class="eyebrow">Source document</p>
+                                        <strong id="meReportXeroStatus">Overview report</strong>
+                                        <span id="meReportXeroTenant">Upload the management overview report to calculate CT, dividends and DLA checks.</span>
                                     </div>
                                 </div>
                                 <div class="ignition-progress-track" aria-hidden="true"><span id="meReportProgressFill"></span></div>
@@ -6716,6 +6891,10 @@
                             </div>
                             <div class="bank-account-form bank-account-modal-form">
                                 <label>
+                                    Nickname
+                                    <input id="bankAccountNicknameInput" type="text" placeholder="Optional display name">
+                                </label>
+                                <label>
                                     Account name
                                     <input id="bankAccountNameInput" type="text" required>
                                 </label>
@@ -7015,11 +7194,18 @@
             let bankStatementUploading = false;
             let selectedBankStatementClientId = "";
             let selectedBankAccountId = "";
+            let editingBankAccountId = "";
             let bankAccountFormOpen = false;
             let bankStatementClientFormOpen = false;
             let bankStatementWorkspaceOpen = false;
+            let bankStatementAccountOpen = false;
             let bankStatementAccountTab = "transactions";
             let bankStatementTransactionSearchTerm = "";
+            let bankStatementUploadingAccountId = "";
+            let bankStatementUploadingFilename = "";
+            let bankStatementUploadStartedAt = 0;
+            let bankStatementUploadEstimatedSeconds = 0;
+            let bankStatementUploadTimer = null;
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let isIgnitionSyncing = false;
@@ -7154,7 +7340,9 @@
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
                         bankStatementClients: config.endpoints?.bankStatementClients || "/api/bank-statements/clients",
                         bankStatementAccounts: config.endpoints?.bankStatementAccounts || "/api/bank-statements/clients/:clientId/accounts",
+                        bankStatementAccount: config.endpoints?.bankStatementAccount || "/api/bank-statements/accounts/:accountId",
                         bankStatementUploads: config.endpoints?.bankStatementUploads || "/api/bank-statements/accounts/:accountId/uploads",
+                        bankStatementUploadRetry: config.endpoints?.bankStatementUploadRetry || "/api/bank-statements/uploads/:uploadId/retry",
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
@@ -8686,7 +8874,7 @@
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
                 document.body.classList.toggle("is-client-view", activeView === "client");
-                document.body.classList.toggle("is-tool-page", ["bank-statements", "me-report"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "jashflow", "bank-statements", "ignition", "me-report", "settings", "insights"].includes(activeView));
                 if (activeView !== "settings") closeSettingsSidebar();
                 const activeNav = activeNavForView();
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
@@ -11256,6 +11444,7 @@
                     loans: Array.isArray(source.loans) ? source.loans : [],
                     summary: source.summary || {},
                     settings: source.settings || {},
+                    xeroAccounts: Array.isArray(source.xeroAccounts) ? source.xeroAccounts : [],
                     interestPosts: Array.isArray(source.interestPosts) ? source.interestPosts : []
                 };
             }
@@ -11480,7 +11669,21 @@
                     contactSelect.disabled = !(jashflowData.customers || []).length;
                 }
                 const accountInput = document.getElementById("jashflowInterestAccountCodeInput");
-                if (accountInput && document.activeElement !== accountInput) accountInput.value = settings.interestAccountCode || "";
+                if (accountInput) {
+                    const accountOptions = Array.isArray(jashflowData.xeroAccounts) ? jashflowData.xeroAccounts : [];
+                    const currentCode = String(settings.interestAccountCode || "");
+                    const currentOptionMissing = currentCode && !accountOptions.some((account) => String(account.code || "") === currentCode);
+                    const optionMarkup = accountOptions.map((account) => {
+                        const code = String(account.code || "");
+                        const label = [code, account.name || "", account.type || ""].filter(Boolean).join(" · ");
+                        return `<option value="${escapeHTML(code)}">${escapeHTML(label)}</option>`;
+                    }).join("");
+                    accountInput.innerHTML = accountOptions.length
+                        ? `<option value="">Choose Xero account code...</option>${currentOptionMissing ? `<option value="${escapeHTML(currentCode)}">${escapeHTML(`${currentCode} · saved code not in latest sync`)}</option>` : ""}${optionMarkup}`
+                        : `<option value="${escapeHTML(currentCode)}">${escapeHTML(currentCode ? `${currentCode} · saved code not in latest sync` : "No Xero account codes available from latest sync")}</option>`;
+                    accountInput.value = currentCode;
+                    accountInput.disabled = !accountOptions.length && !currentCode;
+                }
                 const postButton = document.getElementById("postJashflowInterestButton");
                 const postingSummary = document.getElementById("jashflowPostingSummary");
                 const setupComplete = Boolean(settings.interestAccountCode);
@@ -11495,7 +11698,7 @@
                 }
                 if (postingSummary) {
                     postingSummary.textContent = !setupComplete
-                        ? "Save the Xero interest received account code before posting interest."
+                        ? "Choose the Xero interest received account code from the latest synced account list before posting interest."
                         : uninvoicedAmount >= 0.01
                         ? `${formatCurrency(uninvoicedAmount)} of accrued Jashflow interest will post as individual Xero invoices against each loan client.`
                         : "All accrued Jashflow interest has already been posted to Xero.";
@@ -12040,6 +12243,19 @@
                 return (client?.accounts || []).find((account) => account.id === selectedBankAccountId) || (client?.accounts || [])[0] || null;
             }
 
+            function bankAccountDisplayName(account) {
+                return String(account?.nickname || account?.displayName || account?.accountName || "Bank account").trim() || "Bank account";
+            }
+
+            function bankAccountDetailLine(account) {
+                return [
+                    account?.nickname ? account.accountName : "",
+                    account?.accountNumber || "No account number saved",
+                    account?.sortCode || "",
+                    account?.currencyCode || "GBP"
+                ].filter(Boolean).join(" · ");
+            }
+
             function ensureBankStatementSelection() {
                 const clients = bankStatementData.clients || [];
                 if (!clients.some((client) => client.id === selectedBankStatementClientId)) {
@@ -12061,27 +12277,31 @@
                 loadBankStatements();
             }
 
-            function openBankAccountForm() {
+            function openBankAccountForm(account = null) {
                 const client = selectedBankStatementClient();
                 if (!client) {
                     showToast("Open an extraction client before adding a bank account", "error");
                     return;
                 }
+                editingBankAccountId = account?.id || "";
                 bankAccountFormOpen = true;
                 renderBankAccountPanel();
+                const nicknameInput = document.getElementById("bankAccountNicknameInput");
+                if (nicknameInput) nicknameInput.value = account?.nickname || "";
                 const nameInput = document.getElementById("bankAccountNameInput");
-                if (nameInput) nameInput.value = `${client.customerName || "Client"} current account`;
+                if (nameInput) nameInput.value = account?.accountName || `${client.customerName || "Client"} current account`;
                 const accountInput = document.getElementById("bankAccountNumberInput");
-                if (accountInput) accountInput.value = "";
+                if (accountInput) accountInput.value = account?.accountNumber || "";
                 const sortCodeInput = document.getElementById("bankSortCodeInput");
-                if (sortCodeInput) sortCodeInput.value = "";
+                if (sortCodeInput) sortCodeInput.value = account?.sortCode || "";
                 const currencyInput = document.getElementById("bankCurrencyInput");
-                if (currencyInput) currencyInput.value = "GBP";
-                setTimeout(() => document.getElementById("bankAccountNameInput")?.focus(), 0);
+                if (currencyInput) currencyInput.value = account?.currencyCode || "GBP";
+                setTimeout(() => document.getElementById(account ? "bankAccountNicknameInput" : "bankAccountNameInput")?.focus(), 0);
             }
 
             function closeBankAccountForm() {
                 bankAccountFormOpen = false;
+                editingBankAccountId = "";
                 renderBankAccountPanel();
             }
 
@@ -12091,14 +12311,25 @@
                 const client = selectedBankStatementClient();
                 panel.hidden = activeView !== "bank-statements" || !bankAccountFormOpen || !client;
                 if (panel.hidden) return;
+                const editingAccount = (client.accounts || []).find((account) => account.id === editingBankAccountId) || null;
+                const title = document.getElementById("bankAccountPanelTitle");
+                if (title) title.textContent = editingAccount ? "Edit bank account" : "Add bank account";
                 const summary = document.getElementById("bankAccountPanelSummary");
                 if (summary) {
-                    summary.textContent = `Save the account details for ${client.customerName || "this extraction client"} before uploading PDF statements.`;
+                    summary.textContent = editingAccount
+                        ? `Update how ${bankAccountDisplayName(editingAccount)} appears and matches uploaded statements.`
+                        : `Save the account details for ${client.customerName || "this extraction client"} before uploading PDF statements.`;
                 }
+                const nicknameInput = document.getElementById("bankAccountNicknameInput");
+                if (nicknameInput && editingAccount && !nicknameInput.value) nicknameInput.value = editingAccount.nickname || "";
                 const nameInput = document.getElementById("bankAccountNameInput");
-                if (nameInput && !nameInput.value) nameInput.value = `${client.customerName || "Client"} current account`;
+                if (nameInput && !nameInput.value) nameInput.value = editingAccount?.accountName || `${client.customerName || "Client"} current account`;
+                const accountInput = document.getElementById("bankAccountNumberInput");
+                if (accountInput && editingAccount && !accountInput.value) accountInput.value = editingAccount.accountNumber || "";
+                const sortCodeInput = document.getElementById("bankSortCodeInput");
+                if (sortCodeInput && editingAccount && !sortCodeInput.value) sortCodeInput.value = editingAccount.sortCode || "";
                 const currencyInput = document.getElementById("bankCurrencyInput");
-                if (currencyInput && !currencyInput.value) currencyInput.value = "GBP";
+                if (currencyInput && !currencyInput.value) currencyInput.value = editingAccount?.currencyCode || "GBP";
             }
 
             function bankUploadSummary(upload) {
@@ -12110,6 +12341,66 @@
                     return `failed · ${error.replace(/\s+/g, " ").slice(0, 220)}`;
                 }
                 return `${upload?.status || "saved"} · ${Number(upload?.insertedCount || 0).toLocaleString("en-GB")} new · ${Number(upload?.duplicateCount || 0).toLocaleString("en-GB")} duplicate`;
+            }
+
+            function bankUploadActivityEvents(upload) {
+                return Array.isArray(upload?.activityEvents) ? upload.activityEvents : [];
+            }
+
+            function formatBankActivityTime(value) {
+                if (!value) return "--";
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return value;
+                return new Intl.DateTimeFormat("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                }).format(date);
+            }
+
+            function bankUploadFailureAdvice(upload) {
+                const error = String(upload?.errorMessage || "");
+                if (!error) return "";
+                if (/not valid JSON|stopped before returning valid JSON|max_output|token/i.test(error)) {
+                    return "The AI response was incomplete. Retry uses the stored PDF and the page-chunked extractor.";
+                }
+                if (/No transaction rows|selectable statement text|clearer statement/i.test(error)) {
+                    return "The PDF text could not be read as transaction rows. Try a clearer digital statement.";
+                }
+                if (/none had a usable date, description and amount/i.test(error)) {
+                    return "The extractor found rows, but the values were not complete enough to save.";
+                }
+                if (/OpenAI extraction is not configured/i.test(error)) {
+                    return "The backend needs an OpenAI API key before extraction can run.";
+                }
+                return "Review the activity history, then retry the extraction or upload a cleaner statement.";
+            }
+
+            function bankUploadActivityMarkup(upload) {
+                const events = bankUploadActivityEvents(upload);
+                const rows = events.length ? events.slice().reverse().map((event) => {
+                    const detail = event.detail || {};
+                    const bits = [];
+                    if (detail.chunkCount) bits.push(`${Number(detail.chunkCount).toLocaleString("en-GB")} chunk${Number(detail.chunkCount) === 1 ? "" : "s"}`);
+                    if (detail.validRows !== undefined) bits.push(`${Number(detail.validRows || 0).toLocaleString("en-GB")} valid row${Number(detail.validRows || 0) === 1 ? "" : "s"}`);
+                    if (detail.insertedCount !== undefined) bits.push(`${Number(detail.insertedCount || 0).toLocaleString("en-GB")} new`);
+                    if (detail.duplicateCount !== undefined) bits.push(`${Number(detail.duplicateCount || 0).toLocaleString("en-GB")} duplicate`);
+                    if (detail.fileSize) bits.push(formatFileSize(Number(detail.fileSize || 0)));
+                    return `
+                        <div class="bank-upload-activity-row">
+                            <span>${escapeHTML(formatBankActivityTime(event.createdAt))}</span>
+                            <strong>${escapeHTML(event.message || event.type || "Activity")}</strong>
+                            ${bits.length ? `<small>${escapeHTML(bits.join(" · "))}</small>` : ""}
+                        </div>
+                    `;
+                }).join("") : '<div class="bank-upload-activity-row"><strong>No detailed activity has been recorded for this older submission.</strong></div>';
+                return `
+                    <span class="bank-upload-activity-wrap" tabindex="0">
+                        <span class="bank-upload-activity-trigger">Activity</span>
+                        <span class="bank-upload-activity-popover" role="tooltip">${rows}</span>
+                    </span>
+                `;
             }
 
             function bankAccountTransactionsAscending(account) {
@@ -12149,6 +12440,33 @@
                 return new Map((account?.uploads || []).map((upload) => [String(upload.id || ""), upload]));
             }
 
+            function bankClientLastUsed(client) {
+                const activity = [];
+                (client?.accounts || []).forEach((account) => {
+                    if (account.createdAt) activity.push({ at: account.createdAt, label: "Account added" });
+                    (account.uploads || []).forEach((upload) => {
+                        const uploadAt = upload.completedAt || upload.lastAttemptAt || upload.createdAt || "";
+                        if (uploadAt) {
+                            activity.push({
+                                at: uploadAt,
+                                label: upload.status === "failed"
+                                    ? "Statement failed"
+                                    : upload.status === "processing"
+                                    ? "Statement processing"
+                                    : upload.status === "completed"
+                                    ? "Statement extracted"
+                                    : "Statement uploaded"
+                            });
+                        }
+                    });
+                    (account.transactions || []).forEach((transaction) => {
+                        const transactionAt = transaction.createdAt || transaction.date || "";
+                        if (transactionAt) activity.push({ at: transactionAt, label: "Transaction activity" });
+                    });
+                });
+                return activity.sort((left, right) => String(right.at || "").localeCompare(String(left.at || "")))[0] || null;
+            }
+
             function bankAccountDateRange(account) {
                 const dates = bankAccountTransactionsAscending(account).map((transaction) => transaction.date).filter(Boolean);
                 return {
@@ -12161,6 +12479,31 @@
                 const transactions = bankAccountTransactionsAscending(account).filter((row) => row.balance !== null && row.balance !== undefined);
                 const transaction = transactions[transactions.length - 1];
                 return transaction ? transaction.balance : null;
+            }
+
+            function bankStatementBalanceQuality(account) {
+                const transactions = bankAccountTransactionsAscending(account);
+                let checkedCount = 0;
+                let mismatchCount = 0;
+                let missingBalanceCount = 0;
+                let previous = null;
+                transactions.forEach((transaction) => {
+                    const hasBalance = transaction.balance !== null && transaction.balance !== undefined && transaction.balance !== "";
+                    if (!hasBalance) missingBalanceCount += 1;
+                    if (previous && previous.balance !== null && previous.balance !== undefined && hasBalance) {
+                        checkedCount += 1;
+                        const expected = Number(previous.balance || 0) + Number(transaction.amount || 0);
+                        const actual = Number(transaction.balance || 0);
+                        if (Math.abs(expected - actual) > 0.02) mismatchCount += 1;
+                    }
+                    previous = transaction;
+                });
+                const backendChecks = account?.qualityChecks || {};
+                return {
+                    checkedCount: Number(backendChecks.checkedCount ?? checkedCount) || 0,
+                    mismatchCount: Number(backendChecks.mismatchCount ?? mismatchCount) || 0,
+                    missingBalanceCount: Number(backendChecks.missingBalanceCount ?? missingBalanceCount) || 0
+                };
             }
 
             function bankStatementWarnings(account) {
@@ -12194,12 +12537,12 @@
                             const actual = Number(transaction.balance || 0);
                             if (Math.abs(expected - actual) > 0.02) {
                                 addWarning(
-                                    "balance-mismatch",
-                                    "high",
-                                    "Running balance mismatch",
-                                    `${formatDate(transaction.date)} expected ${formatCurrency(expected)}, extracted ${formatCurrency(actual)}.`
-                                );
-                            }
+                                "balance-mismatch",
+                                "high",
+                                "Running balance mismatch",
+                                `${formatDate(transaction.date)} expected ${formatCurrency(expected)} from the extracted amount, but the statement running balance was read as ${formatCurrency(actual)}. Review this PDF before exporting.`
+                            );
+                        }
                         }
                     }
                     previous = transaction;
@@ -12247,7 +12590,7 @@
                     addWarning(
                         flag.type || "saved-flag",
                         flag.severity || "medium",
-                        flag.type === "balance_mismatch" ? "Saved balance warning" : "Saved statement warning",
+                        flag.type === "balance_mismatch" ? "Saved running-balance warning" : "Saved statement warning",
                         flag.message || "Statement continuity needs review."
                     );
                 });
@@ -12285,8 +12628,21 @@
             }
 
             function bankExportFilename(account, suffix) {
-                const name = (account?.accountName || "bank-statement").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "bank-statement";
+                const name = bankAccountDisplayName(account).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "bank-statement";
                 return `${name}-${suffix}.csv`;
+            }
+
+            function estimateBankStatementUploadSeconds(fileCount) {
+                return Math.min(360, Math.max(45, 45 + (Math.max(1, Number(fileCount || 1)) - 1) * 35));
+            }
+
+            function bankStatementUploadCountdownText() {
+                if (!bankStatementUploadEstimatedSeconds || !bankStatementUploadStartedAt) return "Estimating time left";
+                const elapsed = Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000));
+                const remaining = Math.max(0, bankStatementUploadEstimatedSeconds - elapsed);
+                return remaining > 0
+                    ? `Estimated ready in ${formatSyncDuration(remaining)}`
+                    : "Final extraction and balance checks running";
             }
 
             async function loadBankStatements(force = false) {
@@ -12316,63 +12672,90 @@
                 const screen = document.getElementById("bankStatementsScreen");
                 if (!screen) return;
                 ensureBankStatementSelection();
-                const clientForm = document.getElementById("bankStatementClientForm");
-                if (clientForm) clientForm.hidden = !bankStatementClientFormOpen;
-                const toggleClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
-                if (toggleClientFormButton) toggleClientFormButton.textContent = bankStatementClientFormOpen ? "Close client setup" : "Add extraction client";
-                const backButton = document.getElementById("backBankStatementClientsButton");
-                if (backButton) backButton.hidden = !bankStatementWorkspaceOpen;
-
                 const existingCustomerIds = new Set((bankStatementData.clients || []).map((client) => client.customerId));
                 const availableCustomers = (bankStatementData.customers || []).filter((customer) => !existingCustomerIds.has(customer.id));
-                const customerSelect = document.getElementById("bankStatementCustomerSelect");
-                if (customerSelect) {
-                    customerSelect.innerHTML = availableCustomers.length
-                        ? '<option value="">Choose Xero customer...</option>' + availableCustomers.map((customer) => `<option value="${customer.id}">${escapeHTML(customer.name || "Unnamed client")}</option>`).join("")
-                        : '<option value="">No unadded Xero customers available</option>';
-                    customerSelect.disabled = !availableCustomers.length || bankStatementsLoading || bankStatementUploading;
-                }
-                const addClientButton = document.querySelector("#bankStatementClientForm button[type='submit']");
-                if (addClientButton) addClientButton.disabled = !availableCustomers.length || bankStatementsLoading || bankStatementUploading;
+                const clientFormDisabled = !availableCustomers.length || bankStatementsLoading || bankStatementUploading;
+                const customerOptions = availableCustomers.length
+                    ? '<option value="">Choose Xero customer...</option>' + availableCustomers.map((customer) => `<option value="${customer.id}">${escapeHTML(customer.name || "Unnamed client")}</option>`).join("")
+                    : '<option value="">No unadded Xero customers available</option>';
+                const clientFormMarkup = bankStatementClientFormOpen ? `
+                    <form class="bank-client-form" id="bankStatementClientForm">
+                        <label>
+                            Add Xero customer
+                            <select id="bankStatementCustomerSelect" ${clientFormDisabled ? "disabled" : ""} required>${customerOptions}</select>
+                        </label>
+                        <button class="primary-button" type="submit" ${clientFormDisabled ? "disabled" : ""}>Add extraction client</button>
+                    </form>
+                ` : "";
+                const clientListHeaderMarkup = `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Extraction clients</p>
+                            <h3>Saved bank statement workspaces</h3>
+                            <p class="detail-meta">Open a client to manage accounts, upload statements and review extracted transactions.</p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="primary-button" id="toggleBankStatementClientFormButton" type="button">${bankStatementClientFormOpen ? "Close client setup" : "Add extraction client"}</button>
+                            <button class="ghost-button" id="refreshBankStatementsButton" type="button" ${bankStatementsLoading ? "disabled" : ""}>Refresh</button>
+                        </div>
+                    </div>
+                    ${clientFormMarkup}
+                `;
+                const bindBankStatementClientListControls = () => {
+                    document.getElementById("refreshBankStatementsButton")?.addEventListener("click", () => loadBankStatements(true));
+                    document.getElementById("toggleBankStatementClientFormButton")?.addEventListener("click", () => {
+                        bankStatementClientFormOpen = !bankStatementClientFormOpen;
+                        renderBankStatementsScreen();
+                        if (bankStatementClientFormOpen) setTimeout(() => document.getElementById("bankStatementCustomerSelect")?.focus(), 0);
+                    });
+                    document.getElementById("bankStatementClientForm")?.addEventListener("submit", addBankStatementClient);
+                };
 
                 const clientList = document.getElementById("bankStatementClientList");
                 const accountList = document.getElementById("bankAccountList");
                 const detail = document.getElementById("bankAccountDetail");
                 if (!clientList || !accountList || !detail) return;
                 const workspace = clientList.closest(".bank-statement-workspace");
+                const showingClientList = !bankStatementWorkspaceOpen;
+                const showingAccountDetail = bankStatementWorkspaceOpen && bankStatementAccountOpen;
+                const showingAccountList = bankStatementWorkspaceOpen && !bankStatementAccountOpen;
                 if (workspace) {
-                    workspace.classList.toggle("is-client-list", !bankStatementWorkspaceOpen);
-                    workspace.classList.toggle("is-extraction-detail", bankStatementWorkspaceOpen);
+                    workspace.classList.toggle("is-client-list", showingClientList);
+                    workspace.classList.toggle("is-account-list", showingAccountList);
+                    workspace.classList.toggle("is-account-detail", showingAccountDetail);
+                    workspace.classList.toggle("is-extraction-detail", false);
                 }
                 clientList.innerHTML = "";
                 accountList.innerHTML = "";
                 detail.innerHTML = "";
-                accountList.hidden = !bankStatementWorkspaceOpen;
-                detail.hidden = !bankStatementWorkspaceOpen;
-                clientList.hidden = bankStatementWorkspaceOpen;
+                accountList.hidden = !showingAccountList;
+                detail.hidden = !showingAccountDetail;
+                clientList.hidden = !showingClientList;
 
                 if (bankStatementsLoading) {
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading extraction clients</h4><p>Reading saved bank statement records from the backend.</p></div>';
+                    clientList.innerHTML = `
+                        ${clientListHeaderMarkup}
+                        <div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading extraction clients</h4><p>Reading saved bank statement records from the backend.</p></div>
+                    `;
+                    bindBankStatementClientListControls();
                     return;
                 }
 
                 const clients = bankStatementData.clients || [];
                 if (!clients.length) {
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No extraction clients saved</h4><p>Add a synced Xero customer to create a persisted bank statement workspace.</p></div>';
+                    clientList.innerHTML = `
+                        ${clientListHeaderMarkup}
+                        <div class="empty-state"><p class="eyebrow">No clients</p><h4>No extraction clients saved</h4><p>Add a synced Xero customer to create a persisted bank statement workspace.</p></div>
+                    `;
                     accountList.innerHTML = '<div class="empty-state"><p class="eyebrow">Accounts</p><h4>No client selected</h4><p>Bank accounts are managed after a client is added.</p></div>';
                     detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Transactions</p><h4>No account selected</h4><p>PDF extraction results and review flags will appear here.</p></div>';
+                    bindBankStatementClientListControls();
                     return;
                 }
 
                 if (!bankStatementWorkspaceOpen) {
                     clientList.innerHTML = `
-                        <div class="jashflow-detail-head">
-                            <div>
-                                <p class="eyebrow">Extraction clients</p>
-                                <h3>Saved bank statement workspaces</h3>
-                                <p class="detail-meta">Open a client to manage accounts, upload statements and review extracted transactions.</p>
-                            </div>
-                        </div>
+                        ${clientListHeaderMarkup}
                         <div class="jashflow-table-wrap">
                             <table class="bank-client-table">
                                 <thead>
@@ -12381,7 +12764,7 @@
                                         <th>Accounts</th>
                                         <th>Transactions</th>
                                         <th>Review flags</th>
-                                        <th>Latest upload</th>
+                                        <th>Last used</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
@@ -12390,15 +12773,15 @@
                                         const accountTotal = client.accounts?.length || 0;
                                         const transactionTotal = (client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0);
                                         const flagTotal = (client.accounts || []).reduce((sum, account) => sum + (account.flags?.length || 0), 0);
-                                        const latestUpload = (client.accounts || []).flatMap((account) => account.uploads || []).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+                                        const lastUsed = bankClientLastUsed(client);
                                         return `
                                             <tr>
-                                                <td><strong>${escapeHTML(client.customerName || "Unnamed client")}</strong><small>${escapeHTML(client.email || "No email saved")}</small></td>
+                                                <td><strong>${escapeHTML(client.customerName || "Unnamed client")}</strong></td>
                                                 <td>${accountTotal.toLocaleString("en-GB")}</td>
                                                 <td>${transactionTotal.toLocaleString("en-GB")}</td>
                                                 <td>${flagTotal ? `${flagTotal.toLocaleString("en-GB")} to review` : "Clear"}</td>
-                                                <td>${latestUpload ? `<strong>${escapeHTML(latestUpload.filename || "Statement")}</strong><small>${escapeHTML(latestUpload.status || "saved")}</small>` : "No uploads"}</td>
-                                                <td><button class="primary-button" type="button" data-open-bank-client="${escapeHTML(client.id)}">Open extraction</button></td>
+                                                <td>${lastUsed ? `<strong>${formatDate(lastUsed.at)}</strong><small>${escapeHTML(lastUsed.label || "Workspace activity")}</small>` : "No activity yet"}</td>
+                                                <td><button class="primary-button" type="button" data-open-bank-client="${escapeHTML(client.id)}">Access Workspace</button></td>
                                             </tr>
                                         `;
                                     }).join("")}
@@ -12406,12 +12789,14 @@
                             </table>
                         </div>
                     `;
+                    bindBankStatementClientListControls();
                     clientList.querySelectorAll("[data-open-bank-client]").forEach((button) => {
                         button.addEventListener("click", () => {
                             const client = clients.find((item) => item.id === button.dataset.openBankClient);
                             selectedBankStatementClientId = button.dataset.openBankClient;
-                            selectedBankAccountId = client?.accounts?.[0]?.id || "";
+                            selectedBankAccountId = "";
                             bankStatementWorkspaceOpen = true;
+                            bankStatementAccountOpen = false;
                             bankAccountFormOpen = false;
                             bankStatementClientFormOpen = false;
                             bankStatementAccountTab = "transactions";
@@ -12430,50 +12815,83 @@
                     return;
                 }
 
-                const selectedClientCard = document.createElement("div");
-                selectedClientCard.className = "bank-client-card is-active";
-                selectedClientCard.innerHTML = `
-                    <strong>${escapeHTML(client.customerName || "Unnamed client")}</strong>
-                    <span>${(client.accounts?.length || 0).toLocaleString("en-GB")} account${(client.accounts?.length || 0) === 1 ? "" : "s"} · ${(client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0).toLocaleString("en-GB")} transaction${(client.accounts || []).reduce((sum, account) => sum + (account.transactions?.length || 0), 0) === 1 ? "" : "s"}</span>
-                    <span>Dedicated extraction workspace</span>
+                const bankAccounts = client.accounts || [];
+                const accountListHeaderMarkup = `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Bank accounts</p>
+                            <h3>${escapeHTML(client.customerName || "Extraction client")}</h3>
+                            <p class="detail-meta">${bankAccounts.length.toLocaleString("en-GB")} account${bankAccounts.length === 1 ? "" : "s"} saved. Open an account for transactions, uploads and review warnings.</p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="ghost-button" id="backBankStatementClientsButton" type="button">Back to clients</button>
+                            <button class="primary-button" id="addBankAccountButton" type="button">Add bank account</button>
+                        </div>
+                    </div>
                 `;
-                accountList.appendChild(selectedClientCard);
-                const addAccountButton = document.createElement("button");
-                addAccountButton.type = "button";
-                addAccountButton.className = "ghost-button";
-                addAccountButton.textContent = "Add bank account";
-                addAccountButton.addEventListener("click", () => {
-                    openBankAccountForm();
-                });
-                accountList.appendChild(addAccountButton);
-
-                (client.accounts || []).forEach((account) => {
-                    const button = document.createElement("button");
-                    button.type = "button";
-                    button.className = `bank-account-card${account.id === selectedBankAccountId ? " is-active" : ""}`;
-                    button.innerHTML = `
-                        <strong>${escapeHTML(account.accountName || "Bank account")}</strong>
-                        <span>${escapeHTML(account.accountNumber || "No account number saved")}${account.sortCode ? ` · ${escapeHTML(account.sortCode)}` : ""}</span>
-                        <span>${(account.transactions || []).length.toLocaleString("en-GB")} transaction${(account.transactions || []).length === 1 ? "" : "s"} · ${(account.uploads || []).length.toLocaleString("en-GB")} upload${(account.uploads || []).length === 1 ? "" : "s"}</span>
-                    `;
-                    button.addEventListener("click", () => {
-                        selectedBankAccountId = account.id;
+                const bindBankAccountListControls = () => {
+                    document.getElementById("backBankStatementClientsButton")?.addEventListener("click", () => {
+                        bankStatementWorkspaceOpen = false;
+                        bankStatementAccountOpen = false;
                         bankAccountFormOpen = false;
                         bankStatementAccountTab = "transactions";
                         bankStatementTransactionSearchTerm = "";
-                        renderBankAccountPanel();
                         renderBankStatementsScreen();
                     });
-                    accountList.appendChild(button);
-                });
+                    document.getElementById("addBankAccountButton")?.addEventListener("click", () => openBankAccountForm());
+                    accountList.querySelectorAll("[data-open-bank-account]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            selectedBankAccountId = button.dataset.openBankAccount || "";
+                            bankStatementAccountOpen = true;
+                            bankAccountFormOpen = false;
+                            bankStatementAccountTab = "transactions";
+                            bankStatementTransactionSearchTerm = "";
+                            renderBankAccountPanel();
+                            renderBankStatementsScreen();
+                        });
+                    });
+                    accountList.querySelectorAll("[data-edit-bank-account]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const account = bankAccounts.find((item) => item.id === button.dataset.editBankAccount);
+                            if (account) openBankAccountForm(account);
+                        });
+                    });
+                };
+
+                if (showingAccountList) {
+                    accountList.innerHTML = `
+                        ${accountListHeaderMarkup}
+                        ${bankAccounts.length ? `
+                            <div class="bank-account-card-grid">
+                                ${bankAccounts.map((account) => {
+                                    const latestUpload = (account.uploads || []).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+                                    return `
+                                        <article class="bank-account-card">
+                                            <div>
+                                                <strong>${escapeHTML(bankAccountDisplayName(account))}</strong>
+                                                <span>${escapeHTML(bankAccountDetailLine(account))}</span>
+                                                <span>${(account.transactions || []).length.toLocaleString("en-GB")} transaction${(account.transactions || []).length === 1 ? "" : "s"} · ${(account.uploads || []).length.toLocaleString("en-GB")} upload${(account.uploads || []).length === 1 ? "" : "s"}${latestUpload ? ` · latest ${escapeHTML(latestUpload.status || "saved")}` : ""}</span>
+                                            </div>
+                                            <div class="bank-account-card-actions">
+                                                <button class="ghost-button" type="button" data-edit-bank-account="${escapeHTML(account.id)}">Edit</button>
+                                                <button class="primary-button" type="button" data-open-bank-account="${escapeHTML(account.id)}">Open account</button>
+                                            </div>
+                                        </article>
+                                    `;
+                                }).join("")}
+                            </div>
+                        ` : `<div class="empty-state"><p class="eyebrow">No accounts</p><h4>Add a bank account for ${escapeHTML(client.customerName || "this client")}</h4><p>Each bank account opens into its own transactions and submission history page.</p><button class="primary-button" id="emptyAddBankAccountButton" type="button">Add bank account</button></div>`}
+                    `;
+                    bindBankAccountListControls();
+                    document.getElementById("emptyAddBankAccountButton")?.addEventListener("click", () => openBankAccountForm());
+                    return;
+                }
 
                 const account = selectedBankAccount();
 
                 if (!account) {
-                    detail.innerHTML = `
-                        <div class="empty-state"><p class="eyebrow">No accounts</p><h4>Add a bank account for ${escapeHTML(client.customerName || "this client")}</h4><p>Once saved, PDF uploads and extracted transactions are persisted against the account.</p><button class="primary-button" id="emptyAddBankAccountButton" type="button">Add bank account</button></div>
-                    `;
-                    document.getElementById("emptyAddBankAccountButton")?.addEventListener("click", openBankAccountForm);
+                    bankStatementAccountOpen = false;
+                    renderBankStatementsScreen();
                     return;
                 }
 
@@ -12486,8 +12904,28 @@
                     .reverse();
                 const uploads = (account.uploads || []).slice().sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
                 const warnings = bankStatementWarnings(account);
+                const balanceQuality = bankStatementBalanceQuality(account);
                 const dateRange = bankAccountDateRange(account);
                 const latestBalance = latestBankAccountBalance(account);
+                const uploadElapsedSeconds = bankStatementUploadStartedAt ? Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000)) : 0;
+                const uploadProcessingMarkup = bankStatementUploading && bankStatementUploadingAccountId === account.id ? `
+                    <article class="bank-upload-processing-card" role="status" aria-live="polite">
+                        <div class="sync-progress-head">
+                            <span class="sync-inline-spinner" aria-hidden="true"></span>
+                            <div>
+                                <h3>Extracting bank statement</h3>
+                                <p>${escapeHTML(bankStatementUploadingFilename || "PDF upload")} is being read, checked and deduplicated.</p>
+                            </div>
+                        </div>
+                        <div class="sync-progress-track" aria-hidden="true">
+                            <span class="sync-progress-bar"></span>
+                        </div>
+                        <div class="sync-progress-meta">
+                            <span id="bankStatementUploadElapsed">Elapsed ${formatSyncDuration(uploadElapsedSeconds)}</span>
+                            <span id="bankStatementUploadCountdown">${bankStatementUploadCountdownText()}</span>
+                        </div>
+                    </article>
+                ` : "";
                 const warningsMarkup = warnings.length
                     ? warnings.map((warning) => `
                         <article class="bank-warning-card ${warning.severity === "high" ? "is-high" : ""}">
@@ -12527,16 +12965,32 @@
                         </tr>
                     `;
                 }).join("");
-                const uploadRows = uploads.map((upload) => `
-                    <tr>
-                        <td><strong>${escapeHTML(upload.filename || "Statement upload")}</strong><small>${formatDate(upload.createdAt)}</small></td>
-                        <td><span class="bank-status-pill is-${escapeHTML(upload.status || "saved")}">${escapeHTML(upload.status || "saved")}</span></td>
-                        <td>${formatBankDateRange(upload.statementStartDate, upload.statementEndDate)}</td>
-                        <td><strong>${Number(upload.extractedCount || 0).toLocaleString("en-GB")} extracted</strong><small>${Number(upload.insertedCount || 0).toLocaleString("en-GB")} new - ${Number(upload.duplicateCount || 0).toLocaleString("en-GB")} duplicate</small></td>
-                        <td><strong>${upload.openingBalance === null || upload.openingBalance === undefined ? "--" : formatCurrency(upload.openingBalance)}</strong><small>Closing ${upload.closingBalance === null || upload.closingBalance === undefined ? "--" : formatCurrency(upload.closingBalance)}</small></td>
-                        <td><strong>${formatDate(upload.completedAt || upload.createdAt)}</strong><small>${escapeHTML(upload.errorMessage || bankUploadSummary(upload))}</small></td>
-                    </tr>
-                `).join("");
+                const uploadRows = uploads.map((upload) => {
+                    const failed = String(upload.status || "").toLowerCase() === "failed";
+                    const canRetry = Boolean(upload.canRetry) && !bankStatementUploading;
+                    const advice = bankUploadFailureAdvice(upload);
+                    return `
+                        <tr class="${failed ? "is-failed-upload" : ""}">
+                            <td>
+                                <strong>${escapeHTML(upload.filename || "Statement upload")}</strong>
+                                <small>${formatDate(upload.createdAt)} · ${Number(upload.attemptCount || 0).toLocaleString("en-GB")} attempt${Number(upload.attemptCount || 0) === 1 ? "" : "s"}</small>
+                            </td>
+                            <td><span class="bank-status-pill is-${escapeHTML(upload.status || "saved")}">${escapeHTML(upload.status || "saved")}</span></td>
+                            <td>${formatBankDateRange(upload.statementStartDate, upload.statementEndDate)}</td>
+                            <td><strong>${Number(upload.extractedCount || 0).toLocaleString("en-GB")} extracted</strong><small>${Number(upload.insertedCount || 0).toLocaleString("en-GB")} new · ${Number(upload.duplicateCount || 0).toLocaleString("en-GB")} duplicate</small></td>
+                            <td><strong>${upload.openingBalance === null || upload.openingBalance === undefined ? "--" : formatCurrency(upload.openingBalance)}</strong><small>Closing ${upload.closingBalance === null || upload.closingBalance === undefined ? "--" : formatCurrency(upload.closingBalance)}</small></td>
+                            <td>
+                                <strong>${formatDate(upload.completedAt || upload.lastAttemptAt || upload.createdAt)}</strong>
+                                <small>${escapeHTML(upload.errorMessage || bankUploadSummary(upload))}</small>
+                                ${failed && advice ? `<p class="bank-upload-failure-advice">${escapeHTML(advice)}</p>` : ""}
+                                ${bankUploadActivityMarkup(upload)}
+                            </td>
+                            <td>
+                                ${failed ? `<button class="ghost-button bank-retry-button" type="button" data-bank-upload-retry="${escapeHTML(upload.id || "")}" ${canRetry ? "" : "disabled"}>${canRetry ? "Retry" : "Upload again"}</button>` : ""}
+                            </td>
+                        </tr>
+                    `;
+                }).join("");
                 const activeTabMarkup = bankStatementAccountTab === "history"
                     ? `
                         <form class="bank-upload-form" id="bankStatementUploadForm">
@@ -12556,9 +13010,10 @@
                                         <th>Rows</th>
                                         <th>Balances</th>
                                         <th>Result</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
-                                <tbody>${uploadRows || '<tr><td colspan="6">No statement submissions have been uploaded for this bank account.</td></tr>'}</tbody>
+                                <tbody>${uploadRows || '<tr><td colspan="7">No statement submissions have been uploaded for this bank account.</td></tr>'}</tbody>
                             </table>
                         </div>
                     `
@@ -12588,13 +13043,16 @@
                     `;
                 detail.innerHTML = `
                     <div class="bank-account-page">
+                    ${uploadProcessingMarkup}
                     <div class="bank-account-page-header">
                         <div>
                             <p class="eyebrow">Extraction account</p>
-                            <h3>${escapeHTML(account.accountName || "Bank account")}</h3>
-                            <p class="detail-meta">${escapeHTML(account.accountNumber || "No account number saved")}${account.sortCode ? ` · ${escapeHTML(account.sortCode)}` : ""} · ${escapeHTML(account.currencyCode || "GBP")}</p>
+                            <h3>${escapeHTML(bankAccountDisplayName(account))}</h3>
+                            <p class="detail-meta">${escapeHTML(bankAccountDetailLine(account))}</p>
                         </div>
                         <div class="bank-account-actions">
+                            <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
+                            <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
                             <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
                             <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
                         </div>
@@ -12603,6 +13061,7 @@
                         <article class="bank-account-summary-card"><span>Transactions</span><strong>${transactions.length.toLocaleString("en-GB")}</strong></article>
                         <article class="bank-account-summary-card"><span>Date range</span><strong>${formatBankDateRange(dateRange.start, dateRange.end)}</strong></article>
                         <article class="bank-account-summary-card"><span>Latest balance</span><strong>${latestBalance === null || latestBalance === undefined ? "--" : formatCurrency(latestBalance)}</strong></article>
+                        <article class="bank-account-summary-card"><span>Balance QA</span><strong>${balanceQuality.mismatchCount ? `${balanceQuality.mismatchCount.toLocaleString("en-GB")} mismatch${balanceQuality.mismatchCount === 1 ? "" : "es"}` : balanceQuality.checkedCount ? `${balanceQuality.checkedCount.toLocaleString("en-GB")} checked` : "Pending"}</strong></article>
                         <article class="bank-account-summary-card"><span>Warnings</span><strong>${warnings.length ? `${warnings.length.toLocaleString("en-GB")} to review` : "Clear"}</strong></article>
                     </div>
                     <div class="bank-warning-panel" role="${warnings.length ? "alert" : "status"}">${warningsMarkup}</div>
@@ -12614,6 +13073,14 @@
                     </div>
                 `;
                 document.getElementById("bankStatementUploadForm")?.addEventListener("submit", uploadBankStatements);
+                document.getElementById("backBankAccountsButton")?.addEventListener("click", () => {
+                    bankStatementAccountOpen = false;
+                    bankAccountFormOpen = false;
+                    bankStatementAccountTab = "transactions";
+                    bankStatementTransactionSearchTerm = "";
+                    renderBankStatementsScreen();
+                });
+                document.getElementById("editBankAccountButton")?.addEventListener("click", () => openBankAccountForm(account));
                 document.getElementById("exportBankTransactionsButton")?.addEventListener("click", exportBankTransactions);
                 document.getElementById("exportBankTransactionsXeroButton")?.addEventListener("click", exportBankTransactionsForXero);
                 document.getElementById("bankTransactionSearchInput")?.addEventListener("input", (event) => {
@@ -12634,6 +13101,9 @@
                         renderBankStatementsScreen();
                     });
                 });
+                detail.querySelectorAll("[data-bank-upload-retry]").forEach((button) => {
+                    button.addEventListener("click", () => retryBankStatementUpload(button.dataset.bankUploadRetry || ""));
+                });
                 renderBankAccountPanel();
             }
 
@@ -12649,6 +13119,7 @@
                     bankStatementData = normaliseBankStatementPayload(response);
                     selectedBankStatementClientId = (bankStatementData.clients || []).find((client) => client.customerId === customerId)?.id || selectedBankStatementClientId;
                     bankStatementWorkspaceOpen = true;
+                    bankStatementAccountOpen = false;
                     bankStatementClientFormOpen = false;
                     bankAccountFormOpen = false;
                     ensureBankStatementSelection();
@@ -12665,35 +13136,58 @@
                 event.preventDefault();
                 const client = selectedBankStatementClient();
                 if (!client) return showToast("Add or select an extraction client first", "error");
+                const accountId = editingBankAccountId;
                 const payload = {
+                    nickname: document.getElementById("bankAccountNicknameInput")?.value || "",
                     accountName: document.getElementById("bankAccountNameInput")?.value || "",
                     accountNumber: document.getElementById("bankAccountNumberInput")?.value || "",
                     sortCode: document.getElementById("bankSortCodeInput")?.value || "",
                     currencyCode: document.getElementById("bankCurrencyInput")?.value || "GBP"
                 };
                 try {
-                    const response = await requestJSON(api.endpoints.bankStatementAccounts, {
+                    const response = await requestJSON(accountId ? api.endpoints.bankStatementAccount : api.endpoints.bankStatementAccounts, {
                         method: "POST",
                         body: JSON.stringify(payload)
-                    }, { clientId: client.id });
+                    }, accountId ? { accountId } : { clientId: client.id });
                     bankStatementData = normaliseBankStatementPayload(response);
                     selectedBankStatementClientId = client.id;
                     const refreshedClient = selectedBankStatementClient();
-                    selectedBankAccountId = refreshedClient?.accounts?.[0]?.id || selectedBankAccountId;
+                    selectedBankAccountId = accountId || refreshedClient?.accounts?.[0]?.id || selectedBankAccountId;
+                    bankStatementAccountOpen = true;
                     bankAccountFormOpen = false;
-                    ["bankAccountNameInput", "bankAccountNumberInput", "bankSortCodeInput"].forEach((id) => {
+                    editingBankAccountId = "";
+                    ["bankAccountNicknameInput", "bankAccountNameInput", "bankAccountNumberInput", "bankSortCodeInput"].forEach((id) => {
                         const input = document.getElementById(id);
                         if (input) input.value = "";
                     });
                     const currencyInput = document.getElementById("bankCurrencyInput");
                     if (currencyInput) currencyInput.value = "GBP";
-                    showToast("Bank account saved", "success");
+                    showToast(accountId ? "Bank account updated" : "Bank account saved", "success");
                     renderBankAccountPanel();
                     renderBankStatementsScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save bank account", "error");
                 }
+            }
+
+            function startBankStatementUploadTimer() {
+                window.clearInterval(bankStatementUploadTimer);
+                bankStatementUploadTimer = window.setInterval(() => {
+                    if (!bankStatementUploading) return;
+                    const elapsed = document.getElementById("bankStatementUploadElapsed");
+                    if (elapsed) {
+                        const seconds = Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000));
+                        elapsed.textContent = `Elapsed ${formatSyncDuration(seconds)}`;
+                    }
+                    const countdown = document.getElementById("bankStatementUploadCountdown");
+                    if (countdown) countdown.textContent = bankStatementUploadCountdownText();
+                }, 1000);
+            }
+
+            function stopBankStatementUploadTimer() {
+                window.clearInterval(bankStatementUploadTimer);
+                bankStatementUploadTimer = null;
             }
 
             async function uploadBankStatements(event) {
@@ -12708,7 +13202,13 @@
                 const formData = new FormData();
                 files.forEach((file) => formData.append("files", file, file.name));
                 bankStatementUploading = true;
+                bankStatementUploadingAccountId = account.id;
+                bankStatementUploadingFilename = files.length === 1 ? files[0].name : `${files.length.toLocaleString("en-GB")} PDF statements`;
+                bankStatementUploadStartedAt = Date.now();
+                bankStatementUploadEstimatedSeconds = estimateBankStatementUploadSeconds(files.length);
+                startBankStatementUploadTimer();
                 renderBankStatementsScreen();
+                let uploadFailed = false;
                 try {
                     const response = await requestFormData(api.endpoints.bankStatementUploads, formData, { accountId: account.id });
                     bankStatementData = normaliseBankStatementPayload(response);
@@ -12719,11 +13219,52 @@
                     const newRows = (refreshed?.uploads || []).slice(0, files.length).reduce((sum, upload) => sum + Number(upload.insertedCount || 0), 0);
                     showToast(`${uploadedCount} statement${files.length === 1 ? "" : "s"} extracted; ${newRows.toLocaleString("en-GB")} new transaction${newRows === 1 ? "" : "s"} saved`, "success");
                 } catch (error) {
+                    uploadFailed = true;
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to extract bank statement", "error");
                 } finally {
                     bankStatementUploading = false;
-                    renderBankStatementsScreen();
+                    bankStatementUploadingAccountId = "";
+                    bankStatementUploadingFilename = "";
+                    bankStatementUploadStartedAt = 0;
+                    bankStatementUploadEstimatedSeconds = 0;
+                    stopBankStatementUploadTimer();
+                    if (uploadFailed) await loadBankStatements(true);
+                    else renderBankStatementsScreen();
+                }
+            }
+
+            async function retryBankStatementUpload(uploadId) {
+                const account = selectedBankAccount();
+                if (!account || !uploadId) return;
+                bankStatementUploading = true;
+                bankStatementUploadingAccountId = account.id;
+                const upload = (account.uploads || []).find((item) => String(item.id || "") === String(uploadId));
+                bankStatementUploadingFilename = upload?.filename || "Bank statement retry";
+                bankStatementUploadStartedAt = Date.now();
+                bankStatementUploadEstimatedSeconds = estimateBankStatementUploadSeconds(1);
+                startBankStatementUploadTimer();
+                renderBankStatementsScreen();
+                let retryFailed = false;
+                try {
+                    const response = await requestJSON(api.endpoints.bankStatementUploadRetry, { method: "POST" }, { uploadId });
+                    bankStatementData = normaliseBankStatementPayload(response);
+                    selectedBankAccountId = account.id;
+                    ensureBankStatementSelection();
+                    showToast("Bank statement retry completed", "success");
+                } catch (error) {
+                    retryFailed = true;
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to retry bank statement extraction", "error");
+                } finally {
+                    bankStatementUploading = false;
+                    bankStatementUploadingAccountId = "";
+                    bankStatementUploadingFilename = "";
+                    bankStatementUploadStartedAt = 0;
+                    bankStatementUploadEstimatedSeconds = 0;
+                    stopBankStatementUploadTimer();
+                    if (retryFailed) await loadBankStatements(true);
+                    else renderBankStatementsScreen();
                 }
             }
 
@@ -13297,21 +13838,24 @@
                 const screen = document.getElementById("meReportScreen");
                 if (!screen) return;
                 const summary = meReportData.summary || {};
-                const xero = meReportData.xero || {};
                 const run = meReportRunForDisplay() || {};
                 const runActive = syncRunIsActive(run) || isMeReportProcessing;
                 const clients = meReportData.clients || [];
+                const submissions = clients.flatMap((client) => Array.isArray(client.submissions) ? client.submissions : []);
+                const latestSubmission = submissions
+                    .slice()
+                    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
                 ensureMeReportSelection();
 
-                setMeReportText("meReportWorkflowStatus", clients.length ? `${clients.length.toLocaleString("en-GB")} ME client${clients.length === 1 ? "" : "s"} registered` : "Register clients, connect Xero, then calculate");
-                setMeReportText("meReportWorkflowSummary", runActive ? run.summary || "Syncing Xero data and calculating month-end review." : "ME Report saves account mappings, exceptions, calculations and report history per client.");
-                setMeReportText("meReportXeroStatus", xero.connected ? "Xero connected" : "Xero not connected");
-                setMeReportText("meReportXeroTenant", xero.tenantName || (xero.connected ? "Connected Xero organisation" : "Use Login with Xero before linking clients."));
-                setMeReportText("meReportSyncStep", meReportLoading ? "Loading ME Report" : run.currentStep || "Ready");
-                setMeReportText("meReportSyncSummary", run.errorMessage || run.summary || (clients.length ? "Select a client to sync Xero and calculate the month-end review." : "Add a client to start the month-end register."));
-                setMeReportText("meReportSyncCounts", run.recordsSynced ? `${Number(run.recordsSynced || 0).toLocaleString("en-GB")} Xero account/report records processed` : "");
+                setMeReportText("meReportWorkflowStatus", clients.length ? `${clients.length.toLocaleString("en-GB")} ME client${clients.length === 1 ? "" : "s"} registered` : "Register clients, upload overview report, then calculate");
+                setMeReportText("meReportWorkflowSummary", runActive ? run.summary || "Processing the month-end overview report and calculating the review." : "ME Report saves uploaded overview reports, account treatment checks, exceptions, calculations and report history per client.");
+                setMeReportText("meReportXeroStatus", latestSubmission ? `${String(latestSubmission.status || "uploaded").toUpperCase()} overview report` : "Awaiting overview report");
+                setMeReportText("meReportXeroTenant", latestSubmission ? `${latestSubmission.filename || "Uploaded overview report"} · ${formatDate(latestSubmission.createdAt)}` : "Upload the client overview report PDF to calculate CT, dividends and DLA checks.");
+                setMeReportText("meReportSyncStep", meReportLoading ? "Loading ME Report" : meReportUploadProcessing ? "Processing overview report" : run.currentStep || "Ready");
+                setMeReportText("meReportSyncSummary", run.errorMessage || run.summary || (meReportUploadProcessing ? "Jenius AI is reading the uploaded report and building the CT and dividend calculations." : clients.length ? "Open a client and upload the latest overview report to calculate the month-end review." : "Add a client to start the month-end register."));
+                setMeReportText("meReportSyncCounts", run.recordsSynced ? `${Number(run.recordsSynced || 0).toLocaleString("en-GB")} source records processed` : `${submissions.length.toLocaleString("en-GB")} overview report upload${submissions.length === 1 ? "" : "s"} saved`);
                 const progressFill = document.getElementById("meReportProgressFill");
-                if (progressFill) progressFill.style.width = `${Math.min(100, Math.max(0, Number(run.progress || 0)))}%`;
+                if (progressFill) progressFill.style.width = `${meReportUploadProcessing ? 56 : Math.min(100, Math.max(0, Number(run.progress || 0)))}%`;
 
                 setMeReportText("meReportClientCount", Number(summary.clientCount || 0).toLocaleString("en-GB"));
                 setMeReportText("meReportGreenCount", Number(summary.green || 0).toLocaleString("en-GB"));
@@ -13356,7 +13900,7 @@
                     clientList.hidden = false;
                     actionList.hidden = true;
                     detail.hidden = true;
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No ME Report clients saved</h4><p>Add a client, link Xero, then run the first month-end calculation.</p></div>';
+                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No ME Report clients saved</h4><p>Add a client, then upload the first overview report to build CT, dividend and DLA calculations.</p></div>';
                     return;
                 }
 
@@ -13394,13 +13938,11 @@
                     ["reports", "Reports"]
                 ];
                 actionList.innerHTML = `
-                    <button class="ghost-button" id="connectMeReportXeroButton" type="button">${client.xeroConnectionStatus === "connected" ? "Reconnect Xero" : "Connect Xero"}</button>
-                    <button class="primary-button" id="syncMeReportButton" type="button" ${client.xeroConnectionStatus === "connected" && !isMeReportProcessing ? "" : "disabled"}>Sync and calculate</button>
+                    <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
                     <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
                     ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                 `;
-                document.getElementById("connectMeReportXeroButton")?.addEventListener("click", connectSelectedMeReportXero);
-                document.getElementById("syncMeReportButton")?.addEventListener("click", () => runSelectedMeReportSync(client.id));
+                document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
                 document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
                 actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
                     button.addEventListener("click", () => {
@@ -13412,9 +13954,18 @@
                 wireMeReportDynamicActions(client);
             }
 
+            function openMeReportSubmissionUpload(clientId = "") {
+                if (clientId) selectedMeReportClientId = clientId;
+                meReportWorkspaceOpen = true;
+                activeMeReportTab = "submission-history";
+                renderMeReportScreen();
+                const fileInput = document.getElementById("meReportSubmissionFile");
+                if (fileInput) fileInput.click();
+            }
+
             function meReportTabHint(client, key) {
                 const summary = client.summary || {};
-                if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Run first calculation";
+                if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Upload overview report";
                 if (key === "submission-history") return `${(client.submissions || []).length} uploaded`;
                 if (key === "tax") return formatCurrency(summary.estimatedCorporationTax || 0);
                 if (key === "dividends") return formatCurrency(summary.dividendCapacity || 0);
@@ -13568,9 +14119,9 @@
                         <div class="jashflow-detail-head"><div><p class="eyebrow">Director loan account</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">DLA traffic light is ${escapeHTML(String(summary.dlaStatus || "amber").toUpperCase())}.</p></div></div>
                         <div class="ignition-summary-grid">
                             ${renderMeReportMetric("Opening balance", "Awaiting confirmed opening")}
-                            ${renderMeReportMetric("Introduced/expenses", "Review in Xero")}
-                            ${renderMeReportMetric("Drawings", "Review in Xero")}
-                            ${renderMeReportMetric("Dividends/wages posted", "Review in Xero")}
+                            ${renderMeReportMetric("Introduced/expenses", "Review in source report")}
+                            ${renderMeReportMetric("Drawings", "Review in source report")}
+                            ${renderMeReportMetric("Dividends/wages posted", "Review in source report")}
                             ${renderMeReportMetric("Closing DLA", formatCurrency(summary.dlaBalance || 0))}
                             ${renderMeReportMetric("Status", String(summary.dlaStatus || "amber").toUpperCase())}
                         </div>
@@ -13582,12 +14133,12 @@
                         <div>
                             <p class="eyebrow">Client detail</p>
                             <h3>${escapeHTML(client.clientName)}</h3>
-                            <p class="detail-meta">${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.reportRecipientEmail || "No report email")} · ${escapeHTML(client.xeroConnectionStatus || "not_connected")}</p>
+                            <p class="detail-meta">${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.reportRecipientEmail || "No report email")} · overview report workflow</p>
                         </div>
                     </div>
                     <div class="ignition-summary-grid">${metrics.map(([label, value]) => renderMeReportMetric(label, value)).join("")}</div>
                     ${renderMeReportAiHelp(summary, "all")}
-                    <div class="empty-state"><p class="eyebrow">Commentary</p><h4>${escapeHTML(summary.commentary ? "Draft accountant commentary" : "Run calculation to draft commentary")}</h4><p>${escapeHTML(summary.commentary || "Once synced, Jenius will summarise the month, tax provision, dividend capacity, DLA position and review points for staff approval.")}</p></div>
+                    <div class="empty-state"><p class="eyebrow">Commentary</p><h4>${escapeHTML(summary.commentary ? "Draft accountant commentary" : "Upload overview report to draft commentary")}</h4><p>${escapeHTML(summary.commentary || "Once the overview report has been processed, Jenius will summarise the month, tax provision, dividend capacity, DLA position and review points for staff approval.")}</p></div>
                 `;
             }
 
@@ -13598,7 +14149,7 @@
                         <div>
                             <p class="eyebrow">Submission history</p>
                             <h3>${escapeHTML(client.clientName)}</h3>
-                            <p class="detail-meta">Upload the latest Xero JUK Overview PDF or management accounts. Jenius AI extracts the CT estimate and dividend availability into this workspace.</p>
+                            <p class="detail-meta">Upload the latest overview report PDF or management accounts. Jenius AI extracts the CT estimate and dividend availability into this workspace.</p>
                         </div>
                     </div>
                     <form class="bank-upload-form" id="meReportSubmissionForm">
@@ -13606,7 +14157,7 @@
                             Latest PDF
                             <input id="meReportSubmissionFile" name="file" type="file" accept="application/pdf,.pdf" required>
                         </label>
-                        <button class="primary-button" type="submit" ${meReportUploadProcessing ? "disabled" : ""}>${meReportUploadProcessing ? "Processing..." : "Upload and process"}</button>
+                        <button class="primary-button" type="submit" ${meReportUploadProcessing ? "disabled" : ""}>${meReportUploadProcessing ? "Processing..." : "Upload overview report"}</button>
                     </form>
                     <div class="bank-upload-history-table" role="table" aria-label="ME Report submission history">
                         <div class="bank-upload-history-row is-header" role="row">
@@ -13628,16 +14179,16 @@
                                 <span>${renderMeReportAiHelp(submission.calculation || {}, "all")}</span>
                                 <span>${escapeHTML(submission.errorMessage || submission.summary || "Processed by Jenius AI")}</span>
                             </div>
-                        `).join("") || '<div class="empty-state"><p class="eyebrow">No submissions</p><h4>No management accounts uploaded yet</h4><p>Upload the latest Xero JUK Overview report PDF to build CT and dividend estimates from the source document.</p></div>'}
+                        `).join("") || '<div class="empty-state"><p class="eyebrow">No submissions</p><h4>No overview report uploaded yet</h4><p>Upload the latest overview report PDF to build CT and dividend estimates from the source document.</p></div>'}
                     </div>
                 `;
             }
 
             function renderMeReportMappings(client) {
                 const mappings = client.mappings || [];
-                if (!mappings.length) return '<div class="empty-state"><p class="eyebrow">Account mappings</p><h4>No chart of accounts synced</h4><p>Connect Xero and run Sync and calculate to pull the chart of accounts into this client.</p></div>';
+                if (!mappings.length) return '<div class="empty-state"><p class="eyebrow">Account mappings</p><h4>No account treatment review yet</h4><p>Upload the overview report so Jenius can extract the Trial Balance and propose account treatments for this client.</p></div>';
                 return `
-                    <div class="jashflow-detail-head"><div><p class="eyebrow">AI/rules account treatment</p><h3>${mappings.length.toLocaleString("en-GB")} Xero accounts</h3><p class="detail-meta">Approve, amend or mark accounts as needing review. Decisions are saved for this client.</p></div></div>
+                    <div class="jashflow-detail-head"><div><p class="eyebrow">AI/rules account treatment</p><h3>${mappings.length.toLocaleString("en-GB")} accounts</h3><p class="detail-meta">Approve, amend or mark accounts as needing review. Decisions are saved for this client.</p></div></div>
                     <div class="bank-transaction-list">
                         ${mappings.map((mapping) => `
                             <div class="bank-transaction-row">
@@ -13657,7 +14208,7 @@
 
             function renderMeReportExceptions(client) {
                 const exceptions = client.exceptions || [];
-                if (!exceptions.length) return '<div class="empty-state"><p class="eyebrow">AI alerts</p><h4>No exceptions recorded</h4><p>Sync and calculate will create alerts for tax, DLA, dividend, mapping and missing-data review points.</p></div>';
+                if (!exceptions.length) return '<div class="empty-state"><p class="eyebrow">AI alerts</p><h4>No exceptions recorded</h4><p>Uploading an overview report will create alerts for tax, DLA, dividend, mapping and missing-data review points.</p></div>';
                 return `
                     <div class="jashflow-detail-head"><div><p class="eyebrow">Exception review</p><h3>${exceptions.filter((item) => item.status === "open").length.toLocaleString("en-GB")} open review point${exceptions.filter((item) => item.status === "open").length === 1 ? "" : "s"}</h3><p class="detail-meta">Staff can resolve, escalate or add notes against every exception.</p></div></div>
                     <div class="bank-flag-list">
@@ -13686,7 +14237,7 @@
                                 <button class="ghost-button" type="button" data-me-report-open="${escapeHTML(report.id)}">Open report</button>
                                 <button class="ghost-button" type="button" data-me-report-email="${escapeHTML(report.id)}">Email draft</button>
                             </div>
-                        `).join("") || '<div class="empty-state"><p class="eyebrow">No reports</p><h4>No month-end report generated yet</h4><p>Run Sync and calculate, resolve required review points, then generate a report.</p></div>'}
+                        `).join("") || '<div class="empty-state"><p class="eyebrow">No reports</p><h4>No month-end report generated yet</h4><p>Upload an overview report, resolve required review points, then generate a report.</p></div>'}
                     </div>
                 `;
             }
@@ -13747,7 +14298,7 @@
                 const formData = new FormData();
                 formData.append("file", file);
                 meReportUploadProcessing = true;
-                setAiLoading(true, "Jenius AI is extracting the management accounts PDF.");
+                setAiLoading(true, "Jenius AI is extracting the overview report PDF.");
                 renderMeReportScreen();
                 try {
                     const response = await requestFormData(api.endpoints.meReportSubmissions, formData, { clientId });
@@ -13755,7 +14306,7 @@
                     selectedMeReportClientId = clientId;
                     meReportWorkspaceOpen = true;
                     activeMeReportTab = "submission-history";
-                    showTopbarNotice("ME Report extraction complete", "Jenius AI processed the uploaded management accounts PDF.", "success");
+                    showTopbarNotice("ME Report extraction complete", "Jenius AI processed the uploaded overview report PDF.", "success");
                     showToast("ME Report PDF processed", "success");
                     renderMeReportScreen();
                 } catch (error) {
@@ -13768,21 +14319,6 @@
                 }
             }
 
-            async function connectSelectedMeReportXero() {
-                const client = selectedMeReportClient();
-                if (!client) return;
-                try {
-                    const response = await requestJSON(api.endpoints.meReportConnectXero, { method: "POST", body: JSON.stringify({}) }, { clientId: client.id });
-                    meReportData = normaliseMeReportPayload(response);
-                    selectedMeReportClientId = client.id;
-                    showToast("ME Report client linked to Xero", "success");
-                    renderMeReportScreen();
-                } catch (error) {
-                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Connect Xero from the top bar before linking this client", "error");
-                }
-            }
-
             function updateMeReportProgress() {
                 const run = meReportRunForDisplay() || {};
                 const remoteStartedAt = syncRunTimestamp(run);
@@ -13790,9 +14326,9 @@
                 const elapsedSeconds = Math.max(0, Math.floor((Date.now() - meReportSyncStartedAt) / 1000));
                 const progress = Math.min(100, Math.max(0, Number(run.progress || 0)));
                 const inlineTitle = document.getElementById("syncInlineTitle");
-                if (inlineTitle) inlineTitle.textContent = run.status === "failed" ? "ME Report failed" : (progress >= 60 ? "ME Report calculating" : "ME Report syncing");
+                if (inlineTitle) inlineTitle.textContent = run.status === "failed" ? "ME Report failed" : (progress >= 60 ? "ME Report calculating" : "ME Report processing");
                 const inlineDetail = document.getElementById("syncInlineDetail");
-                if (inlineDetail) inlineDetail.textContent = run.errorMessage || run.summary || run.currentStep || "Syncing Xero data and calculating month-end review.";
+                if (inlineDetail) inlineDetail.textContent = run.errorMessage || run.summary || run.currentStep || "Processing source report data and calculating month-end review.";
                 const inlineProgressFill = document.getElementById("syncInlineProgressFill");
                 if (inlineProgressFill) inlineProgressFill.style.width = `${progress}%`;
                 const inlineEta = document.getElementById("syncInlineEta");
@@ -13892,8 +14428,8 @@
                 startMeReportFeedback({
                     id: "",
                     status: "running",
-                    currentStep: "Starting ME Report sync",
-                    summary: "Preparing to sync Xero bookkeeping data and calculate the month-end review.",
+                    currentStep: "Starting ME Report calculation",
+                    summary: "Preparing source report data and calculating the month-end review.",
                     progress: 4,
                     createdAt: new Date().toISOString(),
                     isActive: true
@@ -13935,8 +14471,8 @@
                 startMeReportFeedback(syncRun || {
                     id: syncRunId,
                     status: initialStatus,
-                    currentStep: initialStatus === "running" ? "Starting ME Report sync" : "Queued",
-                    summary: "ME Report is syncing Xero data and calculating the month-end review.",
+                    currentStep: initialStatus === "running" ? "Starting ME Report calculation" : "Queued",
+                    summary: "ME Report is processing source report data and calculating the month-end review.",
                     progress: initialStatus === "running" ? 8 : 4,
                     createdAt: new Date().toISOString(),
                     isActive: true
@@ -16053,14 +16589,109 @@
             function renderDatabaseMetrics() {
                 const metrics = state.databaseMetrics || {};
                 const ledger = metrics.ledger || {};
+                const health = metrics.health || {};
                 const grid = document.getElementById("databaseMetricsGrid");
                 const updated = document.getElementById("databaseMetricsUpdated");
                 const tenantTarget = document.getElementById("databaseTenantMetrics");
                 const tableTarget = document.getElementById("databaseMetricsTables");
+                const healthGrid = document.getElementById("systemHealthGrid");
+                const healthDetails = document.getElementById("systemHealthDetails");
                 if (updated) {
                     updated.textContent = metrics.generatedAt
                         ? `Updated ${formatDate(metrics.generatedAt)}`
                         : "Waiting for backend data";
+                }
+                const statusClass = (value, fallback = "") => {
+                    const status = String(value || "").toLowerCase();
+                    if (["connected", "completed", "clear", "ok", "live", "active"].includes(status)) return "is-live";
+                    if (["queued", "running", "processing", "pending", "warning"].includes(status)) return "is-warning";
+                    if (["failed", "error", "disconnected", "not_connected"].includes(status)) return "is-error";
+                    return fallback;
+                };
+                const statusLabel = (value, empty = "Unknown") => String(value || empty).replace(/_/g, " ");
+                const healthCard = (label, value, hint, className = "") => `
+                    <article class="database-metric-card ${className}">
+                        <span>${escapeHTML(label)}</span>
+                        <strong>${escapeHTML(value)}</strong>
+                        <small>${escapeHTML(hint)}</small>
+                    </article>
+                `;
+                const detailCard = (title, rows, className = "") => `
+                    <article class="database-metric-card system-health-detail-card ${className}">
+                        <span>${escapeHTML(title)}</span>
+                        <dl>
+                            ${rows.map(([label, value]) => `
+                                <div>
+                                    <dt>${escapeHTML(label)}</dt>
+                                    <dd>${escapeHTML(value || "--")}</dd>
+                                </div>
+                            `).join("")}
+                        </dl>
+                    </article>
+                `;
+                if (healthGrid) {
+                    const xero = health.xero || {};
+                    const ignition = health.ignition || {};
+                    const bankStatements = health.bankStatements || {};
+                    const meReport = health.meReport || {};
+                    const jashflow = health.jashflow || {};
+                    const openAiReady = Boolean(health.openAiConfigured);
+                    const ignitionStatus = ignition.latestSyncStatus || ignition.status || "not_connected";
+                    const xeroStatus = xero.latestSyncStatus || (xero.connected ? "connected" : "disconnected");
+                    healthGrid.innerHTML = [
+                        healthCard("Environment", statusLabel(health.environment, "Unknown"), openAiReady ? `OpenAI ${health.openAiModel || "configured"}` : "OpenAI not configured", openAiReady ? "is-live" : "is-warning"),
+                        healthCard("Xero", statusLabel(xeroStatus), xero.tenantName || xero.latestSyncSummary || "No connected organisation", statusClass(xeroStatus, xero.connected ? "is-live" : "is-error")),
+                        healthCard("Ignition", statusLabel(ignitionStatus), ignition.practiceName || ignition.latestSyncSummary || "No active Ignition connection", statusClass(ignitionStatus)),
+                        healthCard("Bank extraction", `${formatInteger(bankStatements.activeUploads)} active`, `${formatInteger(bankStatements.failedUploads)} failed · ${formatInteger(bankStatements.completedUploads)} completed`, Number(bankStatements.failedUploads || 0) ? "is-error" : Number(bankStatements.activeUploads || 0) ? "is-warning" : "is-live"),
+                        healthCard("ME Report", `${formatInteger(meReport.activeSyncs)} active`, `${formatInteger(meReport.failedSyncs)} failed syncs`, Number(meReport.failedSyncs || 0) ? "is-error" : Number(meReport.activeSyncs || 0) ? "is-warning" : "is-live"),
+                        healthCard("Jashflow", `${formatInteger(jashflow.activeLoans)} active`, `${formatInteger(jashflow.totalLoans)} total loans`, "is-live"),
+                    ].join("");
+                }
+                if (healthDetails) {
+                    const xero = health.xero || {};
+                    const ignition = health.ignition || {};
+                    const bankStatements = health.bankStatements || {};
+                    const meReport = health.meReport || {};
+                    const sessions = health.sessions || {};
+                    const audit = health.audit || {};
+                    const ignitionDatasetSummary = (ignition.datasets || []).length
+                        ? (ignition.datasets || []).map((dataset) => `${dataset.name}: ${formatInteger(dataset.records)}`).join(" · ")
+                        : "No synced datasets";
+                    healthDetails.innerHTML = [
+                        detailCard("Xero Sync", [
+                            ["Tenant", xero.tenantName || xero.tenantId || "Not connected"],
+                            ["Latest status", statusLabel(xero.latestSyncStatus, xero.connected ? "connected" : "not connected")],
+                            ["Step", xero.latestSyncStep || "--"],
+                            ["Heartbeat", xero.latestSyncHeartbeatAt ? formatDeveloperLogStamp(xero.latestSyncHeartbeatAt) : "--"],
+                            ["Completed", xero.latestSyncCompletedAt ? formatDeveloperLogStamp(xero.latestSyncCompletedAt) : "--"],
+                            ["Rows", `${formatInteger(xero.customersSynced)} contacts · ${formatInteger(xero.invoicesSynced)} invoices`],
+                            ["Rate limit", xero.rateLimitUntil ? `Paused until ${formatDeveloperLogStamp(xero.rateLimitUntil)}` : "Clear"],
+                        ], statusClass(xero.latestSyncStatus, xero.connected ? "is-live" : "is-error")),
+                        detailCard("Ignition Sync", [
+                            ["Connection", `${statusLabel(ignition.status)}${ignition.practiceName ? ` · ${ignition.practiceName}` : ""}`],
+                            ["Latest status", statusLabel(ignition.latestSyncStatus, "No sync yet")],
+                            ["Step", ignition.latestSyncStep || "--"],
+                            ["Last sync", ignition.lastSyncAt ? formatDeveloperLogStamp(ignition.lastSyncAt) : "--"],
+                            ["Heartbeat", ignition.latestSyncHeartbeatAt ? formatDeveloperLogStamp(ignition.latestSyncHeartbeatAt) : "--"],
+                            ["Counts", `${formatInteger(ignition.processedCount)} processed · ${formatInteger(ignition.failedCount)} failed`],
+                            ["Datasets", ignitionDatasetSummary],
+                        ], statusClass(ignition.latestSyncStatus || ignition.status)),
+                        detailCard("Operational Queues", [
+                            ["Xero outbox", `${formatInteger(ledger.pendingActions)} pending · ${formatInteger(ledger.processingActions)} processing · ${formatInteger(ledger.failedActions)} failed`],
+                            ["Bank PDFs", `${formatInteger(bankStatements.activeUploads)} active · ${formatInteger(bankStatements.failedUploads)} failed`],
+                            ["Bank latest", bankStatements.latestCompletedAt ? formatDeveloperLogStamp(bankStatements.latestCompletedAt) : "--"],
+                            ["ME Report", `${formatInteger(meReport.activeSyncs)} active · ${formatInteger(meReport.failedSyncs)} failed`],
+                            ["ME heartbeat", meReport.latestHeartbeatAt ? formatDeveloperLogStamp(meReport.latestHeartbeatAt) : "--"],
+                        ]),
+                        detailCard("Runtime", [
+                            ["Base URL", health.baseUrlConfigured ? "Configured" : "Missing"],
+                            ["OpenAI", health.openAiConfigured ? `Configured · ${health.openAiModel || "model default"}` : "Not configured"],
+                            ["Sessions", `${formatInteger(sessions.activeSessions)} active`],
+                            ["Last seen", sessions.latestSeenAt ? formatDeveloperLogStamp(sessions.latestSeenAt) : "--"],
+                            ["Audit events", formatInteger(audit.events)],
+                            ["Latest event", audit.latestEventAt ? formatDeveloperLogStamp(audit.latestEventAt) : "--"],
+                        ], health.openAiConfigured ? "is-live" : "is-warning"),
+                    ].join("");
                 }
                 if (grid) {
                     const cards = [

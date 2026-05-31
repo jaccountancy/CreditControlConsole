@@ -99,6 +99,7 @@ from .services import (
     sync_payment_plan_to_xero,
     sync_run_has_working_data,
     update_control_status,
+    update_bank_statement_account,
     update_me_report_exception,
     update_me_report_mapping,
     bank_statement_payload,
@@ -106,6 +107,7 @@ from .services import (
     merge_me_report_duplicate_contact,
     upload_me_report_submission_pdf,
     upload_bank_statement_pdf,
+    retry_bank_statement_upload,
 )
 from .ignition import (
     IgnitionConfigurationError,
@@ -1031,6 +1033,12 @@ async def api_create_bank_statement_account(client_id: str, request: Request, us
     return {"status": "ok", "bankStatements": create_bank_statement_account(user, client_id, payload)}
 
 
+@app.post("/api/bank-statements/accounts/{account_id}")
+async def api_update_bank_statement_account(account_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "bankStatements": update_bank_statement_account(user, account_id, payload)}
+
+
 @app.post("/api/bank-statements/accounts/{account_id}/uploads")
 async def api_upload_bank_statement(
     account_id: str,
@@ -1050,6 +1058,11 @@ async def api_upload_bank_statement(
             content,
         )
     return {"status": "ok", "bankStatements": result or bank_statement_payload(user)}
+
+
+@app.post("/api/bank-statements/uploads/{upload_id}/retry")
+async def api_retry_bank_statement_upload(upload_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "bankStatements": await retry_bank_statement_upload(user, upload_id)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

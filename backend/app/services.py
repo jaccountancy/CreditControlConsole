@@ -48,6 +48,8 @@ SYNC_STALE_AFTER = timedelta(minutes=15)
 PANEL_PAYMENT_LIMIT = 1000
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
+BANK_STATEMENT_CHUNK_MAX_PAGES = 1
+BANK_STATEMENT_MAX_OUTPUT_TOKENS = 12000
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
@@ -3930,7 +3932,7 @@ def _metric_int(value) -> int:
         return 0
 
 
-def _database_metrics(cursor, tenant_id: str | None = None) -> dict:
+def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None = None) -> dict:
     table_names = list(DATABASE_METRIC_TABLES)
     cursor.execute(
         """
@@ -4031,6 +4033,127 @@ def _database_metrics(cursor, tenant_id: str | None = None) -> dict:
         """
     )
     tenant_rows = cursor.fetchall()
+    cursor.execute(
+        """
+        SELECT tenant_name, tenant_id, expires_at, updated_at, created_at
+        FROM xero_connections
+        WHERE (%s IS NULL OR user_id = %s)
+          AND (%s IS NULL OR tenant_id = %s)
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (user_id, user_id, tenant_id, tenant_id),
+    )
+    xero_connection = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT status, current_step, summary, error_message, customers_synced, invoices_synced,
+               fetched_count, processed_count, failed_count, contacts_total, invoices_total,
+               rate_limit_until, retry_after_seconds, started_at, heartbeat_at, completed_at, created_at
+        FROM sync_runs
+        WHERE provider = 'xero'
+          AND (%s IS NULL OR initiated_by_user_id = %s)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (user_id, user_id),
+    )
+    xero_sync = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT status, current_step, summary, error_message, fetched_count, processed_count,
+               failed_count, heartbeat_at, completed_at, created_at
+        FROM ignition_sync_runs
+        WHERE (%s IS NULL OR user_id = %s)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (user_id, user_id),
+    )
+    ignition_sync = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT status, practice_name, practice_id, expires_at, last_sync_at, error_message, updated_at
+        FROM ignition_connections
+        WHERE (%s IS NULL OR user_id = %s)
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (user_id, user_id),
+    )
+    ignition_connection = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT dataset, COUNT(*) AS record_count, MAX(synced_at) AS latest_sync
+        FROM ignition_reporting_records
+        WHERE (%s IS NULL OR user_id = %s)
+        GROUP BY dataset
+        ORDER BY dataset ASC
+        """,
+        (user_id, user_id),
+    )
+    ignition_dataset_rows = cursor.fetchall()
+    cursor.execute(
+        """
+        SELECT COUNT(*) FILTER (WHERE status IN ('queued', 'processing')) AS active_uploads,
+               COUNT(*) FILTER (WHERE status = 'failed') AS failed_uploads,
+               COUNT(*) FILTER (WHERE status = 'completed') AS completed_uploads,
+               MAX(created_at) AS latest_upload_at,
+               MAX(completed_at) AS latest_completed_at
+        FROM bank_statement_uploads
+        WHERE (%s IS NULL OR bank_account_id IN (
+            SELECT accounts.id
+            FROM bank_statement_accounts AS accounts
+            JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+            WHERE clients.tenant_id = %s
+        ))
+        """,
+        (tenant_id, tenant_id),
+    )
+    bank_upload_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) FILTER (WHERE status IN ('queued', 'running')) AS active_me_syncs,
+               COUNT(*) FILTER (WHERE status = 'failed') AS failed_me_syncs,
+               MAX(completed_at) AS latest_me_completed_at,
+               MAX(heartbeat_at) AS latest_me_heartbeat_at
+        FROM me_report_sync_runs
+        WHERE (%s IS NULL OR user_id = %s)
+        """,
+        (user_id, user_id),
+    )
+    me_sync_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) FILTER (WHERE status = 'active') AS active_loans,
+               COUNT(*) AS total_loans,
+               MAX(updated_at) AS latest_loan_update
+        FROM jashflow_loans
+        WHERE (%s IS NULL OR tenant_id = %s)
+        """,
+        (tenant_id, tenant_id),
+    )
+    jashflow_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) FILTER (WHERE expires_at > NOW()) AS active_sessions,
+               MAX(last_seen_at) AS latest_seen_at
+        FROM sessions
+        WHERE (%s IS NULL OR user_id = %s)
+        """,
+        (user_id, user_id),
+    )
+    session_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS log_count, MAX(created_at) AS latest_event_at
+        FROM audit_events
+        WHERE (%s IS NULL OR user_id = %s)
+        """,
+        (user_id, user_id),
+    )
+    audit_summary = cursor.fetchone() or {}
+    settings = get_settings()
     return {
         "generatedAt": _iso(utcnow()),
         "databaseName": database_row.get("database_name") or "",
@@ -4068,6 +4191,82 @@ def _database_metrics(cursor, tenant_id: str | None = None) -> dict:
             }
             for row in tenant_rows
         ],
+        "health": {
+            "environment": settings.app_env,
+            "baseUrlConfigured": bool(settings.base_url),
+            "openAiConfigured": bool(settings.openai_api_key),
+            "openAiModel": settings.openai_model,
+            "xero": {
+                "connected": bool(xero_connection),
+                "tenantName": xero_connection.get("tenant_name") or "",
+                "tenantId": xero_connection.get("tenant_id") or tenant_id or "",
+                "tokenExpiresAt": _iso(xero_connection.get("expires_at")) or "",
+                "lastConnectionUpdate": _iso(xero_connection.get("updated_at") or xero_connection.get("created_at")) or "",
+                "latestSyncStatus": xero_sync.get("status") or "",
+                "latestSyncStep": xero_sync.get("current_step") or "",
+                "latestSyncSummary": xero_sync.get("error_message") or xero_sync.get("summary") or "",
+                "latestSyncCreatedAt": _iso(xero_sync.get("created_at")) or "",
+                "latestSyncHeartbeatAt": _iso(xero_sync.get("heartbeat_at")) or "",
+                "latestSyncCompletedAt": _iso(xero_sync.get("completed_at")) or "",
+                "rateLimitUntil": _iso(xero_sync.get("rate_limit_until")) or "",
+                "retryAfterSeconds": _metric_int(xero_sync.get("retry_after_seconds")),
+                "customersSynced": _metric_int(xero_sync.get("customers_synced")),
+                "invoicesSynced": _metric_int(xero_sync.get("invoices_synced")),
+                "failedCount": _metric_int(xero_sync.get("failed_count")),
+            },
+            "ignition": {
+                "connected": bool(ignition_connection),
+                "status": ignition_connection.get("status") or "not_connected",
+                "practiceName": ignition_connection.get("practice_name") or "",
+                "practiceId": ignition_connection.get("practice_id") or "",
+                "tokenExpiresAt": _iso(ignition_connection.get("expires_at")) or "",
+                "lastSyncAt": _iso(ignition_connection.get("last_sync_at")) or "",
+                "errorMessage": ignition_connection.get("error_message") or "",
+                "latestSyncStatus": ignition_sync.get("status") or "",
+                "latestSyncStep": ignition_sync.get("current_step") or "",
+                "latestSyncSummary": ignition_sync.get("error_message") or ignition_sync.get("summary") or "",
+                "latestSyncCreatedAt": _iso(ignition_sync.get("created_at")) or "",
+                "latestSyncHeartbeatAt": _iso(ignition_sync.get("heartbeat_at")) or "",
+                "latestSyncCompletedAt": _iso(ignition_sync.get("completed_at")) or "",
+                "fetchedCount": _metric_int(ignition_sync.get("fetched_count")),
+                "processedCount": _metric_int(ignition_sync.get("processed_count")),
+                "failedCount": _metric_int(ignition_sync.get("failed_count")),
+                "datasets": [
+                    {
+                        "name": row.get("dataset") or "",
+                        "records": _metric_int(row.get("record_count")),
+                        "latestSync": _iso(row.get("latest_sync")) or "",
+                    }
+                    for row in ignition_dataset_rows
+                ],
+            },
+            "bankStatements": {
+                "activeUploads": _metric_int(bank_upload_summary.get("active_uploads")),
+                "failedUploads": _metric_int(bank_upload_summary.get("failed_uploads")),
+                "completedUploads": _metric_int(bank_upload_summary.get("completed_uploads")),
+                "latestUploadAt": _iso(bank_upload_summary.get("latest_upload_at")) or "",
+                "latestCompletedAt": _iso(bank_upload_summary.get("latest_completed_at")) or "",
+            },
+            "meReport": {
+                "activeSyncs": _metric_int(me_sync_summary.get("active_me_syncs")),
+                "failedSyncs": _metric_int(me_sync_summary.get("failed_me_syncs")),
+                "latestCompletedAt": _iso(me_sync_summary.get("latest_me_completed_at")) or "",
+                "latestHeartbeatAt": _iso(me_sync_summary.get("latest_me_heartbeat_at")) or "",
+            },
+            "jashflow": {
+                "activeLoans": _metric_int(jashflow_summary.get("active_loans")),
+                "totalLoans": _metric_int(jashflow_summary.get("total_loans")),
+                "latestLoanUpdate": _iso(jashflow_summary.get("latest_loan_update")) or "",
+            },
+            "sessions": {
+                "activeSessions": _metric_int(session_summary.get("active_sessions")),
+                "latestSeenAt": _iso(session_summary.get("latest_seen_at")) or "",
+            },
+            "audit": {
+                "events": _metric_int(audit_summary.get("log_count")),
+                "latestEventAt": _iso(audit_summary.get("latest_event_at")) or "",
+            },
+        },
     }
 
 
@@ -4081,6 +4280,7 @@ def _database_metrics_unavailable(error: Exception | None = None) -> dict:
         "tables": [],
         "ledger": {},
         "tenants": [],
+        "health": {},
         "error": str(error or "") or "Database metrics are unavailable.",
     }
 
@@ -4221,7 +4421,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 len(invoice_rows),
             )
             try:
-                database_metrics = _database_metrics(cursor, tenant_id)
+                database_metrics = _database_metrics(cursor, tenant_id, user["id"] if user and user.get("id") else None)
             except Exception as exc:
                 logger.exception("Unable to build database metrics")
                 connection.rollback()
@@ -4555,6 +4755,33 @@ def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_inte
     }
 
 
+def _jashflow_xero_account_options(cursor, user: dict, tenant_id: str) -> list[dict]:
+    cursor.execute(
+        """
+        SELECT DISTINCT ON (mappings.account_code)
+               mappings.account_code, mappings.account_name, mappings.account_type, mappings.updated_at,
+               clients.last_sync_at
+        FROM me_report_account_mappings AS mappings
+        JOIN me_report_clients AS clients ON clients.id = mappings.client_id
+        WHERE clients.user_id = %s
+          AND (clients.xero_tenant_id = %s OR clients.xero_tenant_id IS NULL OR clients.xero_tenant_id = '')
+          AND mappings.account_code <> ''
+        ORDER BY mappings.account_code ASC, clients.last_sync_at DESC NULLS LAST, mappings.updated_at DESC
+        """,
+        (user["id"], tenant_id),
+    )
+    rows = cursor.fetchall()
+    return [
+        {
+            "code": row.get("account_code") or "",
+            "name": row.get("account_name") or "",
+            "type": row.get("account_type") or "",
+            "syncedAt": _iso(row.get("last_sync_at") or row.get("updated_at")) or "",
+        }
+        for row in rows
+    ]
+
+
 def jashflow_payload(user: dict) -> dict:
     tenant_id = _jashflow_tenant_id(user)
     with get_connection() as connection:
@@ -4629,6 +4856,7 @@ def jashflow_payload(user: dict) -> dict:
                 (tenant_id,),
             )
             interest_posts = cursor.fetchall()
+            xero_accounts = _jashflow_xero_account_options(cursor, user, tenant_id)
         connection.commit()
 
     loans = [
@@ -4666,6 +4894,7 @@ def jashflow_payload(user: dict) -> dict:
             "interestAccountCode": settings_row.get("interest_account_code") or "",
             "updatedAt": _iso(settings_row.get("updated_at")) or "",
         },
+        "xeroAccounts": xero_accounts,
         "interestPosts": [
             {
                 "id": str(row["id"]),
@@ -5846,7 +6075,7 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
     encoded = base64.b64encode(file_bytes).decode("ascii")
     prompt = (
-        "Extract a month-end bookkeeping summary from this Xero JUK Overview report PDF. "
+        "Extract a month-end bookkeeping summary from this uploaded overview report PDF. "
         "Review every page before returning JSON. The format is expected to include: Review of Transactions, Profit and Loss - YTD, "
         "Profit and Loss (and VAT Registration check), Balance Sheet, Fixed Asset Reconciliation, Depreciation Schedule, "
         "Aged Payables, Aged Receivables and Trial Balance. Use GBP numbers without currency symbols. "
@@ -7472,11 +7701,38 @@ def _bank_statement_flags(transactions: list[dict]) -> list[dict]:
     return flags[:20]
 
 
+def _bank_statement_quality_summary(transactions: list[dict]) -> dict:
+    ordered = sorted(transactions, key=lambda row: (row.get("transaction_date") or date.min, row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)))
+    previous = None
+    checked_count = 0
+    mismatch_count = 0
+    missing_balance_count = 0
+    for row in ordered:
+        balance = row.get("balance")
+        if balance is None:
+            missing_balance_count += 1
+        if previous and previous.get("balance") is not None and balance is not None:
+            checked_count += 1
+            expected = _money(previous.get("balance")) + _money(row.get("amount"))
+            actual = _money(balance)
+            if abs(expected - actual) > Decimal("0.02"):
+                mismatch_count += 1
+        previous = row
+    return {
+        "checkedCount": checked_count,
+        "mismatchCount": mismatch_count,
+        "missingBalanceCount": missing_balance_count,
+        "status": "review" if mismatch_count else "incomplete" if missing_balance_count else "clear",
+    }
+
+
 def _serialize_bank_account(account: dict, uploads: list[dict], transactions: list[dict]) -> dict:
     ordered_transactions = sorted(transactions, key=lambda row: (row.get("transaction_date") or date.min, row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)))
     return {
         "id": str(account["id"]),
         "clientId": str(account["extraction_client_id"]),
+        "nickname": account.get("nickname") or "",
+        "displayName": account.get("nickname") or account.get("account_name") or "Bank account",
         "accountName": account.get("account_name") or "Bank account",
         "accountNumber": account.get("account_number") or "",
         "sortCode": account.get("sort_code") or "",
@@ -7495,6 +7751,11 @@ def _serialize_bank_account(account: dict, uploads: list[dict], transactions: li
                 "extractedCount": int(upload.get("extracted_count") or 0),
                 "insertedCount": int(upload.get("inserted_count") or 0),
                 "duplicateCount": int(upload.get("duplicate_count") or 0),
+                "attemptCount": int(upload.get("attempt_count") or 0),
+                "sourceFileSize": int(upload.get("source_file_size") or 0),
+                "canRetry": bool(upload.get("has_source_file")) and (upload.get("status") or "") != "processing",
+                "lastAttemptAt": _iso(upload.get("last_attempt_at")) or "",
+                "activityEvents": upload.get("activity_log") if isinstance(upload.get("activity_log"), list) else [],
                 "createdAt": _iso(upload.get("created_at")) or "",
                 "completedAt": _iso(upload.get("completed_at")) or "",
             }
@@ -7514,6 +7775,7 @@ def _serialize_bank_account(account: dict, uploads: list[dict], transactions: li
             for row in ordered_transactions
         ],
         "flags": _bank_statement_flags(ordered_transactions),
+        "qualityChecks": _bank_statement_quality_summary(ordered_transactions),
     }
 
 
@@ -7564,7 +7826,11 @@ def bank_statement_payload(user: dict) -> dict:
                 if account_ids:
                     cursor.execute(
                         """
-                        SELECT *
+                        SELECT id, bank_account_id, filename, content_type, status, error_message,
+                               source_file_size, attempt_count, last_attempt_at, activity_log,
+                               statement_start_date, statement_end_date, opening_balance, closing_balance,
+                               extracted_count, inserted_count, duplicate_count, created_by_user_id,
+                               created_at, completed_at, source_file IS NOT NULL AS has_source_file
                         FROM bank_statement_uploads
                         WHERE bank_account_id = ANY(%s)
                         ORDER BY created_at DESC
@@ -7655,6 +7921,7 @@ def add_bank_statement_client(user: dict, payload: dict) -> dict:
 def create_bank_statement_account(user: dict, extraction_client_id: str, payload: dict) -> dict:
     tenant_id = _bank_statement_tenant_id(user)
     account_name = str(payload.get("accountName") or "Bank account").strip()[:160]
+    nickname = str(payload.get("nickname") or "").strip()[:160]
     account_number = str(payload.get("accountNumber") or "").strip()[:80]
     sort_code = str(payload.get("sortCode") or "").strip()[:80]
     currency_code = str(payload.get("currencyCode") or "GBP").strip().upper()[:8] or "GBP"
@@ -7677,13 +7944,13 @@ def create_bank_statement_account(user: dict, extraction_client_id: str, payload
             cursor.execute(
                 """
                 INSERT INTO bank_statement_accounts (
-                    extraction_client_id, account_name, account_number, sort_code,
+                    extraction_client_id, account_name, nickname, account_number, sort_code,
                     currency_code, created_by_user_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (extraction_client_id, account_name, account_number, sort_code, currency_code, user["id"], utcnow(), utcnow()),
+                (extraction_client_id, account_name, nickname, account_number, sort_code, currency_code, user["id"], utcnow(), utcnow()),
             )
             account_id = cursor.fetchone()["id"]
         connection.commit()
@@ -7691,21 +7958,147 @@ def create_bank_statement_account(user: dict, extraction_client_id: str, payload
     return bank_statement_payload(user)
 
 
-async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account: dict) -> dict:
-    settings = get_settings()
-    if not settings.openai_api_key:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading statements.")
-    if len(file_bytes) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
-    encoded = base64.b64encode(file_bytes).decode("ascii")
-    prompt = (
+def update_bank_statement_account(user: dict, bank_account_id: str, payload: dict) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    account_name = str(payload.get("accountName") or "Bank account").strip()[:160]
+    nickname = str(payload.get("nickname") or "").strip()[:160]
+    account_number = str(payload.get("accountNumber") or "").strip()[:80]
+    sort_code = str(payload.get("sortCode") or "").strip()[:80]
+    currency_code = str(payload.get("currencyCode") or "GBP").strip().upper()[:8] or "GBP"
+    if not account_number:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter the bank account number.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE bank_statement_accounts AS accounts
+                SET account_name = %s,
+                    nickname = %s,
+                    account_number = %s,
+                    sort_code = %s,
+                    currency_code = %s,
+                    updated_at = %s
+                FROM bank_statement_clients AS clients
+                WHERE accounts.extraction_client_id = clients.id
+                  AND accounts.id = %s
+                  AND clients.tenant_id = %s
+                  AND clients.status = 'active'
+                RETURNING accounts.id
+                """,
+                (account_name, nickname, account_number, sort_code, currency_code, utcnow(), bank_account_id, tenant_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank account not found.")
+        connection.commit()
+    record_audit_event(
+        "bank_statement_account",
+        str(bank_account_id),
+        "bank_statement.account_updated",
+        {"account_number": account_number, "nickname": nickname},
+        user["id"],
+    )
+    return bank_statement_payload(user)
+
+
+def _bank_statement_upload_activity(event_type: str, message: str, detail: dict | None = None) -> dict:
+    return {
+        "type": event_type,
+        "message": message,
+        "detail": detail or {},
+        "createdAt": utcnow().isoformat(),
+    }
+
+
+def _append_bank_statement_upload_activity(cursor, upload_id: str, event_type: str, message: str, detail: dict | None = None) -> None:
+    cursor.execute(
+        """
+        UPDATE bank_statement_uploads
+        SET activity_log = COALESCE(activity_log, '[]'::jsonb) || %s::jsonb
+        WHERE id = %s
+        """,
+        (json.dumps([_bank_statement_upload_activity(event_type, message, detail)], default=_json_default), upload_id),
+    )
+
+
+def _bank_statement_pdf_chunks(file_bytes: bytes, filename: str) -> list[dict]:
+    fallback = [{
+        "bytes": file_bytes,
+        "filename": filename,
+        "label": "the full statement",
+        "index": 0,
+        "total": 1,
+    }]
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except Exception as exc:
+        logger.warning("pypdf is unavailable; extracting bank statement as one document: %s", exc)
+        return fallback
+
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        if getattr(reader, "is_encrypted", False):
+            try:
+                reader.decrypt("")
+            except Exception:
+                return fallback
+        page_count = len(reader.pages)
+        if page_count <= BANK_STATEMENT_CHUNK_MAX_PAGES:
+            return fallback
+
+        chunks = []
+        safe_stem = re.sub(r"(?i)\.pdf$", "", filename or "bank-statement").strip() or "bank-statement"
+        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", safe_stem)[:80].strip(".-") or "bank-statement"
+        for start in range(0, page_count, BANK_STATEMENT_CHUNK_MAX_PAGES):
+            end = min(start + BANK_STATEMENT_CHUNK_MAX_PAGES, page_count)
+            writer = PdfWriter()
+            for page_index in range(start, end):
+                writer.add_page(reader.pages[page_index])
+            output = io.BytesIO()
+            writer.write(output)
+            page_label = f"page {start + 1}" if end == start + 1 else f"pages {start + 1}-{end}"
+            chunks.append({
+                "bytes": output.getvalue(),
+                "filename": f"{safe_stem}-{page_label.replace(' ', '-')}.pdf",
+                "label": page_label,
+                "index": len(chunks),
+                "total": (page_count + BANK_STATEMENT_CHUNK_MAX_PAGES - 1) // BANK_STATEMENT_CHUNK_MAX_PAGES,
+            })
+        return chunks or fallback
+    except Exception as exc:
+        logger.warning("Could not split bank statement PDF into page chunks: %s", exc)
+        return fallback
+
+
+def _bank_statement_extraction_prompt(account: dict, chunk_label: str, chunk_index: int, total_chunks: int) -> str:
+    chunk_instruction = (
+        f"You are extracting {chunk_label} (chunk {chunk_index + 1} of {total_chunks}). "
+        "Only include transaction rows visible in this chunk. "
+    )
+    return (
         "Extract bank statement transactions from this PDF. Return JSON only. "
+        + chunk_instruction +
         "Use ISO dates in YYYY-MM-DD format. "
         "Use signed amounts: money paid in is positive, money paid out is negative. "
         "Include every posted transaction line with date, description, amount, running balance where shown, and a short type. "
+        "Capture the running balance exactly as printed because Jenius checks previous balance plus the signed transaction amount against each extracted running balance. "
+        "If PDF text is grouped by columns instead of rows, reconstruct each transaction by visual row order: date, narrative, debit or credit amount, then balance. "
+        "For debit-column amounts use a negative amount; for credit-column amounts use a positive amount. "
         "Ignore page headers, brought forward/carried forward labels unless they are opening or closing balances. "
         f"The expected account number is {account.get('account_number') or 'unknown'}."
     )
+
+
+def _openai_incomplete_reason(payload: dict) -> str:
+    details = payload.get("incomplete_details") or {}
+    if isinstance(details, dict) and details.get("reason"):
+        return str(details["reason"])
+    return ""
+
+
+async def _extract_bank_statement_pdf_chunk(file_bytes: bytes, filename: str, account: dict, chunk_label: str, chunk_index: int, total_chunks: int) -> dict:
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+    prompt = _bank_statement_extraction_prompt(account, chunk_label, chunk_index, total_chunks)
     request_body = {
         "input": [
             {
@@ -7728,57 +8121,171 @@ async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account:
                 "strict": True,
             }
         },
-        "max_output_tokens": 12000,
+        "max_output_tokens": BANK_STATEMENT_MAX_OUTPUT_TOKENS,
     }
-    text = _extract_response_text(await _post_openai_responses(request_body, "statement extraction"))
+    payload = await _post_openai_responses(request_body, f"statement extraction for {chunk_label}")
+    text = _extract_response_text(payload)
+    incomplete_reason = _openai_incomplete_reason(payload)
+    if not text:
+        detail = f"OpenAI returned an empty statement extraction for {chunk_label}."
+        if incomplete_reason:
+            detail = f"OpenAI stopped before finishing statement extraction for {chunk_label}: {incomplete_reason}."
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
     try:
         parsed = json.loads(text) if text else {}
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned statement extraction that was not valid JSON.") from exc
+        detail = f"OpenAI returned statement extraction for {chunk_label} that was not valid JSON."
+        if incomplete_reason:
+            detail = f"OpenAI stopped before returning valid JSON for {chunk_label}: {incomplete_reason}."
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
     return parsed
 
 
-async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
-    tenant_id = _bank_statement_tenant_id(user)
-    if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF bank statement.")
+def _merge_bank_statement_extractions(extractions: list[dict]) -> dict:
+    transactions = []
+    seen_transactions = set()
+    statement_start = None
+    statement_end = None
+    opening_balance = None
+    closing_balance = None
+
+    for extraction in extractions:
+        extracted = extraction.get("extracted") or {}
+        chunk_label = extraction.get("label") or "statement chunk"
+        chunk_index = int(extraction.get("index") or 0)
+        chunk_start = _parse_optional_iso_date(extracted.get("statementStartDate"))
+        chunk_end = _parse_optional_iso_date(extracted.get("statementEndDate"))
+        if chunk_start and (statement_start is None or chunk_start < statement_start):
+            statement_start = chunk_start
+        if chunk_end and (statement_end is None or chunk_end > statement_end):
+            statement_end = chunk_end
+        if opening_balance is None and extracted.get("openingBalance") is not None:
+            opening_balance = extracted.get("openingBalance")
+        if extracted.get("closingBalance") is not None:
+            closing_balance = extracted.get("closingBalance")
+
+        for row_index, transaction in enumerate(extracted.get("transactions") or []):
+            if not isinstance(transaction, dict):
+                continue
+            key = (
+                str(transaction.get("date") or ""),
+                _normalise_hash_text(transaction.get("description")),
+                f"{_money(transaction.get('amount')):.2f}",
+                "" if transaction.get("balance") is None else f"{_money(transaction.get('balance')):.2f}",
+            )
+            if key in seen_transactions:
+                continue
+            seen_transactions.add(key)
+            enriched = dict(transaction)
+            enriched["_sourceChunk"] = chunk_label
+            enriched["_sourceChunkIndex"] = chunk_index
+            enriched["_sourceRowIndex"] = row_index
+            transactions.append(enriched)
+
+    dated_transactions = []
+    for transaction in transactions:
+        parsed_date = _parse_optional_iso_date(transaction.get("date"))
+        if parsed_date:
+            dated_transactions.append((parsed_date, transaction))
+    if dated_transactions:
+        dated_transactions.sort(key=lambda item: (item[0], int(item[1].get("_sourceChunkIndex") or 0), int(item[1].get("_sourceRowIndex") or 0)))
+        if statement_start is None:
+            statement_start = dated_transactions[0][0]
+        if statement_end is None:
+            statement_end = dated_transactions[-1][0]
+        transactions.sort(key=lambda row: (row.get("date") or "", int(row.get("_sourceChunkIndex") or 0), int(row.get("_sourceRowIndex") or 0)))
+
+    if opening_balance is None:
+        for transaction in transactions:
+            if transaction.get("balance") is not None and transaction.get("amount") is not None:
+                opening_balance = _money(transaction.get("balance")) - _money(transaction.get("amount"))
+                break
+    if closing_balance is None:
+        for transaction in reversed(transactions):
+            if transaction.get("balance") is not None:
+                closing_balance = transaction.get("balance")
+                break
+
+    return {
+        "statementStartDate": statement_start.isoformat() if statement_start else None,
+        "statementEndDate": statement_end.isoformat() if statement_end else None,
+        "openingBalance": float(_money(opening_balance)) if opening_balance is not None else None,
+        "closingBalance": float(_money(closing_balance)) if closing_balance is not None else None,
+        "accountNumber": None,
+        "transactions": transactions,
+        "_chunkCount": len(extractions),
+    }
+
+
+async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account: dict) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading statements.")
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
+    chunks = _bank_statement_pdf_chunks(file_bytes, filename)
+    extractions = []
+    for chunk in chunks:
+        extracted = await _extract_bank_statement_pdf_chunk(
+            chunk["bytes"],
+            chunk["filename"],
+            account,
+            chunk["label"],
+            chunk["index"],
+            chunk["total"],
+        )
+        extractions.append({**chunk, "extracted": extracted})
+    merged = _merge_bank_statement_extractions(extractions)
+    if not merged["transactions"]:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="No transaction rows were extracted from the bank statement. Check that the PDF contains selectable statement text or upload a clearer statement.",
+        )
+    return merged
+
+
+async def _process_bank_statement_upload(user: dict, account: dict, upload_id: str, filename: str, content_type: str, file_bytes: bytes, is_retry: bool = False) -> dict:
+    bank_account_id = str(account["id"])
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT accounts.*, clients.tenant_id
-                FROM bank_statement_accounts AS accounts
-                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
-                WHERE accounts.id = %s
-                  AND clients.tenant_id = %s
+                UPDATE bank_statement_uploads
+                SET status = 'processing',
+                    error_message = NULL,
+                    completed_at = NULL,
+                    attempt_count = COALESCE(attempt_count, 0) + 1,
+                    last_attempt_at = %s
+                WHERE id = %s
                 """,
-                (bank_account_id, tenant_id),
+                (utcnow(), upload_id),
             )
-            account = cursor.fetchone()
-            if account is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank account not found.")
-            cursor.execute(
-                """
-                INSERT INTO bank_statement_uploads (
-                    bank_account_id, filename, content_type, status,
-                    created_by_user_id, created_at
-                )
-                VALUES (%s, %s, %s, 'processing', %s, %s)
-                RETURNING id
-                """,
-                (bank_account_id, filename, content_type, user["id"], utcnow()),
+            cursor.execute("DELETE FROM bank_statement_transactions WHERE upload_id = %s", (upload_id,))
+            _append_bank_statement_upload_activity(
+                cursor,
+                upload_id,
+                "retry_started" if is_retry else "extraction_started",
+                "Retry started." if is_retry else "Extraction started.",
+                {"filename": filename, "contentType": content_type, "fileSize": len(file_bytes)},
             )
-            upload_id = cursor.fetchone()["id"]
         connection.commit()
 
     try:
         extracted = await _extract_bank_statement_pdf(file_bytes, filename, account)
         transactions = extracted.get("transactions") or []
+        chunk_count = int(extracted.get("_chunkCount") or 1)
         inserted_count = 0
         duplicate_count = 0
         valid_count = 0
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                _append_bank_statement_upload_activity(
+                    cursor,
+                    upload_id,
+                    "ai_extraction_completed",
+                    f"AI extraction returned {len(transactions):,} row(s) from {chunk_count:,} PDF chunk(s).",
+                    {"rawRows": len(transactions), "chunkCount": chunk_count},
+                )
                 for transaction in transactions:
                     try:
                         transaction_date = _parse_iso_date(transaction.get("date"), "Transaction date")
@@ -7822,6 +8329,21 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
                         inserted_count += 1
                     else:
                         duplicate_count += 1
+                if valid_count <= 0:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail="The statement extraction returned rows, but none had a usable date, description and amount.",
+                    )
+                balance_summary = _bank_statement_quality_summary([
+                    {
+                        "transaction_date": _parse_optional_iso_date(transaction.get("date")),
+                        "amount": _money(transaction.get("amount")),
+                        "balance": _money(transaction.get("balance")) if transaction.get("balance") is not None else None,
+                        "created_at": utcnow(),
+                    }
+                    for transaction in transactions
+                    if transaction.get("date")
+                ])
                 cursor.execute(
                     """
                     UPDATE bank_statement_uploads
@@ -7848,6 +8370,18 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
                         upload_id,
                     ),
                 )
+                _append_bank_statement_upload_activity(
+                    cursor,
+                    upload_id,
+                    "saved",
+                    f"Saved {inserted_count:,} new transaction(s); {duplicate_count:,} duplicate(s) skipped.",
+                    {
+                        "validRows": valid_count,
+                        "insertedCount": inserted_count,
+                        "duplicateCount": duplicate_count,
+                        "balanceChecks": balance_summary,
+                    },
+                )
             connection.commit()
     except Exception as exc:
         error = _sync_error_message(exc)
@@ -7863,6 +8397,13 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
                     """,
                     (error, utcnow(), upload_id),
                 )
+                _append_bank_statement_upload_activity(
+                    cursor,
+                    upload_id,
+                    "failed",
+                    error,
+                    {"errorType": exc.__class__.__name__, "retryAvailable": True},
+                )
             connection.commit()
         raise
 
@@ -7874,6 +8415,85 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
         user["id"],
     )
     return bank_statement_payload(user)
+
+
+async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF bank statement.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT accounts.*, clients.tenant_id
+                FROM bank_statement_accounts AS accounts
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                WHERE accounts.id = %s
+                  AND clients.tenant_id = %s
+                """,
+                (bank_account_id, tenant_id),
+            )
+            account = cursor.fetchone()
+            if account is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank account not found.")
+            initial_activity = [_bank_statement_upload_activity(
+                "received",
+                "PDF received and queued for extraction.",
+                {"filename": filename, "contentType": content_type, "fileSize": len(file_bytes)},
+            )]
+            cursor.execute(
+                """
+                INSERT INTO bank_statement_uploads (
+                    bank_account_id, filename, content_type, status, source_file, source_file_size,
+                    activity_log, created_by_user_id, created_at
+                )
+                VALUES (%s, %s, %s, 'queued', %s, %s, %s::jsonb, %s, %s)
+                RETURNING id
+                """,
+                (bank_account_id, filename, content_type, file_bytes, len(file_bytes), json.dumps(initial_activity, default=_json_default), user["id"], utcnow()),
+            )
+            upload_id = cursor.fetchone()["id"]
+        connection.commit()
+    return await _process_bank_statement_upload(user, account, str(upload_id), filename, content_type, file_bytes)
+
+
+async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT uploads.id AS upload_id, uploads.filename, uploads.content_type, uploads.status,
+                       uploads.source_file, accounts.*, clients.tenant_id
+                FROM bank_statement_uploads AS uploads
+                JOIN bank_statement_accounts AS accounts ON accounts.id = uploads.bank_account_id
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                WHERE uploads.id = %s
+                  AND clients.tenant_id = %s
+                """,
+                (upload_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement submission not found.")
+    if row.get("status") in ("queued", "processing"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This bank statement submission is already processing.")
+    file_bytes = bytes(row.get("source_file") or b"")
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This older submission cannot be retried because the original PDF was not stored. Upload the PDF again to retry extraction.",
+        )
+    return await _process_bank_statement_upload(
+        user,
+        row,
+        str(row["upload_id"]),
+        row.get("filename") or "bank-statement.pdf",
+        row.get("content_type") or "application/pdf",
+        file_bytes,
+        is_retry=True,
+    )
 
 
 IGNITION_PLAN_LABELS = ("Solo", "Solo+", "Solo MTD", "Micro", "Starter", "Standard", "Premium", "Ultimate")
