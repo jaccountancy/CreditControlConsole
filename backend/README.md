@@ -32,6 +32,8 @@ Required variables:
 - `IGNITION_REDIRECT_URI=https://<your-api-domain>/api/ignition/callback`
 - `IGNITION_REDIRECT_URL=https://<your-api-domain>/api/ignition/callback` is also accepted as a legacy alias if Railway already has that name.
 - `IGNITION_SCOPES=reporting`
+- `IGNITION_RENEWALS_RECIPIENT_EMAIL=amie@jaccountancy.co.uk`
+- `IGNITION_RENEWALS_ZAPIER_WEBHOOK_URL`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 - `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
 - `LATE_PAYMENT_CHARGE_TAX_TYPE=OUTPUT2`

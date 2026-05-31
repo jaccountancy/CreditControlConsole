@@ -5472,6 +5472,61 @@ def _xlsx_cell(reference: str, value) -> str:
     return f'<c r="{reference}" t="inlineStr"><is><t>{text}</t></is></c>'
 
 
+def _build_simple_xlsx_workbook(rows: list[list], sheet_name: str = "Sheet1") -> bytes:
+    sheet_rows = []
+    for row_index, row in enumerate(rows, start=1):
+        cells = [
+            _xlsx_cell(f"{_xlsx_column_name(column_index)}{row_index}", value)
+            for column_index, value in enumerate(row, start=1)
+        ]
+        sheet_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+    safe_sheet_name = xml_escape(str(sheet_name or "Sheet1")[:31])
+    worksheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<sheetData>'
+        f'{"".join(sheet_rows)}'
+        '</sheetData>'
+        '</worksheet>'
+    )
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as workbook:
+        workbook.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            '</Types>',
+        )
+        workbook.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            '</Relationships>',
+        )
+        workbook.writestr(
+            "xl/workbook.xml",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            f'<sheets><sheet name="{safe_sheet_name}" sheetId="1" r:id="rId1"/></sheets>'
+            '</workbook>',
+        )
+        workbook.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+            '</Relationships>',
+        )
+        workbook.writestr("xl/worksheets/sheet1.xml", worksheet_xml)
+    return buffer.getvalue()
+
+
 def _build_jashflow_interest_workbook(lines: list[dict], period_end: date, total: Decimal) -> bytes:
     rows = [
         ["Client", "Xero Contact ID", "Loan ID", "Period End", "Accrued Interest", "Previously Posted", "Posting Now", "Loan Balance"],
@@ -9583,6 +9638,33 @@ async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
 
 IGNITION_PLAN_LABELS = ("Solo", "Solo+", "Solo MTD", "Micro", "Starter", "Standard", "Premium", "Ultimate")
 OPTIONAL_IGNITION_DATASETS = {"deals", "deal_stages"}
+IGNITION_RENEWAL_END_DATE_KEYS = {
+    "end_date",
+    "ends_on",
+    "end_on",
+    "ended_on",
+    "contract_end_date",
+    "contract_ends_on",
+    "renewal_date",
+    "renews_on",
+    "expires_at",
+    "expiry_date",
+    "valid_until",
+    "period_end_date",
+    "billing_end_date",
+    "service_end_date",
+}
+IGNITION_RENEWAL_WORKBOOK_HEADERS = [
+    "Client Name",
+    "Client Manager",
+    "Renewal Date",
+    "Service Name",
+    "Net Monthly Fee",
+    "New Net Monthly Fee",
+    "Variance",
+    "Variance %",
+    "AT Comments",
+]
 
 
 def _ignition_provider_status(exc: HTTPException) -> int:
@@ -9926,6 +10008,126 @@ def _is_renewal_proposal(row: dict) -> bool:
     return any(marker in text for marker in renewal_markers)
 
 
+def _first_mapping_text(value, keys: tuple[str, ...]) -> str:
+    if not isinstance(value, dict):
+        return ""
+    for key in keys:
+        item = value.get(key)
+        if isinstance(item, dict):
+            nested = _first_mapping_text(item, ("name", "full_name", "email", "title"))
+            if nested:
+                return nested
+        elif item not in (None, "", [], {}):
+            return str(item).strip()
+    return ""
+
+
+def _ignition_proposal_client_name(row: dict) -> str:
+    return (
+        _first_mapping_text(row, ("client_name", "clientName", "customer_name", "customerName", "business_name", "company_name"))
+        or _first_mapping_text(row.get("client"), ("name", "business_name", "company_name"))
+        or _first_mapping_text(row.get("customer"), ("name", "business_name", "company_name"))
+        or "Unknown client"
+    )
+
+
+def _ignition_proposal_client_manager(row: dict) -> str:
+    return (
+        _first_mapping_text(row, ("client_manager", "clientManager", "manager_name", "account_manager", "client_owner", "owner", "manager"))
+        or _first_mapping_text(row.get("client"), ("manager", "client_manager", "owner", "account_manager"))
+        or _first_mapping_text(row.get("creator"), ("name", "full_name", "email"))
+        or _first_mapping_text(row.get("sender"), ("name", "full_name", "email"))
+    )
+
+
+def _ignition_proposal_service_name(row: dict) -> str:
+    names = []
+    for name in _service_names_from_proposal(row):
+        text = str(name or "").strip()
+        if text and text not in names:
+            names.append(text)
+    return ", ".join(names)
+
+
+def _parse_ignition_renewal_date_value(value) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, (int, float, Decimal)):
+        try:
+            # Excel serials sometimes leak through internal spreadsheets.
+            return date(1899, 12, 30) + timedelta(days=int(value))
+        except Exception:
+            return None
+    text = str(value or "").strip()
+    if not text:
+        return None
+    parsed = _parse_optional_iso_date(text)
+    if parsed:
+        return parsed
+    for pattern in ("%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text[:10], pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _ignition_proposal_end_date(row: dict) -> date | None:
+    def walk(value) -> date | None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                key_text = str(key or "").strip().lower()
+                if key_text in IGNITION_RENEWAL_END_DATE_KEYS:
+                    parsed = _parse_ignition_renewal_date_value(item)
+                    if parsed:
+                        return parsed
+            for item in value.values():
+                parsed = walk(item)
+                if parsed:
+                    return parsed
+        elif isinstance(value, list):
+            for item in value:
+                parsed = walk(item)
+                if parsed:
+                    return parsed
+        return None
+
+    return walk(row)
+
+
+def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -> tuple[Decimal, Decimal]:
+    variance = _money(new_monthly - current_monthly)
+    if new_monthly <= 0:
+        return variance, Decimal("0.0000")
+    return variance, (variance / new_monthly).quantize(Decimal("0.0001"))
+
+
+def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
+    row = record.get("payload") or {}
+    current_monthly = _money(_proposal_mrr(row))
+    new_monthly = current_monthly
+    variance, variance_percent = _ignition_renewal_variance(current_monthly, new_monthly)
+    service_name = _ignition_proposal_service_name(row)
+    plan_name = _plan_label_for_text(service_name)
+    return {
+        "proposal_external_id": str(record.get("external_id") or ""),
+        "proposal_name": row.get("name") or row.get("reference_number") or "Ignition proposal",
+        "client_name": _ignition_proposal_client_name(row),
+        "client_manager": _ignition_proposal_client_manager(row),
+        "service_name": service_name,
+        "plan_name": plan_name,
+        "renewal_date": renewal_date,
+        "current_monthly_fee": current_monthly,
+        "new_monthly_fee": new_monthly,
+        "variance": variance,
+        "variance_percent": variance_percent,
+        "comments": service_name or plan_name,
+        "proposal_payload": row,
+    }
+
+
 def _invoice_status(row: dict) -> str:
     return str(row.get("status") or row.get("state") or row.get("payment_status") or "").lower()
 
@@ -10092,6 +10294,446 @@ def _ignition_records_for_user(user: dict) -> dict[str, list[dict]]:
     return grouped
 
 
+def _serialize_ignition_renewal_item(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "runId": str(row.get("run_id") or ""),
+        "proposalExternalId": row.get("proposal_external_id") or "",
+        "proposalName": row.get("proposal_name") or "",
+        "clientName": row.get("client_name") or "",
+        "clientManager": row.get("client_manager") or "",
+        "serviceName": row.get("service_name") or "",
+        "planName": row.get("plan_name") or "",
+        "renewalDate": _iso(row.get("renewal_date")) or "",
+        "currentMonthlyFee": float(_money(row.get("current_monthly_fee"))),
+        "newMonthlyFee": float(_money(row.get("new_monthly_fee"))),
+        "variance": float(_money(row.get("variance"))),
+        "variancePercent": float(Decimal(str(row.get("variance_percent") or 0))),
+        "comments": row.get("comments") or "",
+        "zapierSentAt": _iso(row.get("zapier_sent_at")) or "",
+        "createdAt": _iso(row.get("created_at")) or "",
+        "updatedAt": _iso(row.get("updated_at")) or "",
+    }
+
+
+def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None = None) -> dict | None:
+    if not row:
+        return None
+    total_current = _money(row.get("total_current_monthly"))
+    total_new = _money(row.get("total_new_monthly"))
+    variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    return {
+        "id": str(row.get("id") or ""),
+        "status": row.get("status") or "",
+        "windowStart": _iso(row.get("window_start")) or "",
+        "windowEnd": _iso(row.get("window_end")) or "",
+        "pickedCount": int(row.get("picked_count") or 0),
+        "skippedCount": int(row.get("skipped_count") or 0),
+        "totalCurrentMonthly": float(total_current),
+        "totalNewMonthly": float(total_new),
+        "totalVariance": float(variance),
+        "totalVariancePercent": float(variance_percent),
+        "emailSentAt": _iso(row.get("email_sent_at")) or "",
+        "finalisedAt": _iso(row.get("finalised_at")) or "",
+        "errorMessage": row.get("error_message") or "",
+        "createdAt": _iso(row.get("created_at")) or "",
+        "updatedAt": _iso(row.get("updated_at")) or "",
+        "items": [_serialize_ignition_renewal_item(item) for item in (items or [])],
+    }
+
+
+def _ignition_renewal_run_with_items(user: dict, run_id: str) -> tuple[dict, list[dict]]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (run_id, user["id"]))
+            run = cursor.fetchone()
+            if run is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Renewal run not found.")
+            cursor.execute(
+                """
+                SELECT *
+                FROM ignition_renewal_items
+                WHERE run_id = %s AND user_id = %s
+                ORDER BY renewal_date ASC, client_name ASC
+                """,
+                (run_id, user["id"]),
+            )
+            items = cursor.fetchall()
+        connection.commit()
+    return run, items
+
+
+def _recalculate_ignition_renewal_run(cursor, run_id: str) -> dict:
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*) AS item_count,
+            COALESCE(SUM(current_monthly_fee), 0) AS current_total,
+            COALESCE(SUM(new_monthly_fee), 0) AS new_total
+        FROM ignition_renewal_items
+        WHERE run_id = %s
+        """,
+        (run_id,),
+    )
+    totals = cursor.fetchone() or {}
+    status_value = "draft" if int(totals.get("item_count") or 0) else "empty"
+    cursor.execute(
+        """
+        UPDATE ignition_renewal_runs
+        SET picked_count = %s,
+            status = CASE WHEN status IN ('finalised', 'emailed') THEN status ELSE %s END,
+            total_current_monthly = %s,
+            total_new_monthly = %s,
+            updated_at = %s
+        WHERE id = %s
+        RETURNING *
+        """,
+        (
+            int(totals.get("item_count") or 0),
+            status_value,
+            _money(totals.get("current_total")),
+            _money(totals.get("new_total")),
+            utcnow(),
+            run_id,
+        ),
+    )
+    return cursor.fetchone() or {}
+
+
+def _build_ignition_renewals_workbook(items: list[dict]) -> bytes:
+    rows = [
+        IGNITION_RENEWAL_WORKBOOK_HEADERS,
+        *[
+            [
+                item.get("client_name") or "",
+                item.get("client_manager") or "",
+                _iso(item.get("renewal_date")) or "",
+                item.get("service_name") or item.get("plan_name") or "",
+                float(_money(item.get("current_monthly_fee"))),
+                float(_money(item.get("new_monthly_fee"))),
+                float(_money(item.get("variance"))),
+                float(Decimal(str(item.get("variance_percent") or 0))),
+                item.get("comments") or "",
+            ]
+            for item in items
+        ],
+    ]
+    return _build_simple_xlsx_workbook(rows, "Renewals")
+
+
+def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
+    total_current = _money(run.get("total_current_monthly"))
+    total_new = _money(run.get("total_new_monthly"))
+    variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    by_plan: dict[str, int] = defaultdict(int)
+    for item in items:
+        by_plan[item.get("plan_name") or "Other"] += 1
+    plan_summary = ", ".join(f"{plan}: {count}" for plan, count in sorted(by_plan.items())) or "No plan data"
+    return (
+        "Hi Amie,\n\n"
+        "The latest Ignition renewals round is ready to action.\n\n"
+        f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}\n"
+        f"Renewals included: {len(items)}\n"
+        f"Current monthly fees: £{total_current:,.2f}\n"
+        f"Proposed monthly fees: £{total_new:,.2f}\n"
+        f"Monthly uplift: £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)\n"
+        f"Plans: {plan_summary}\n\n"
+        "The attached workbook contains the client list, renewal dates, service names, current fees, proposed fees, variances, and comments.\n"
+    )
+
+
+async def create_ignition_renewal_run(user: dict) -> dict:
+    connection = get_ignition_connection_for_user(user["id"])
+    proposals, _meta = await fetch_ignition_collection(connection, "/reporting/proposals")
+    _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
+
+    window_start = utcnow().date()
+    window_end = window_start + timedelta(weeks=5)
+    with get_connection() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT external_id, payload
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'proposals'
+                """,
+                (user["id"],),
+            )
+            records = cursor.fetchall()
+            candidates = []
+            for record in records:
+                renewal_date = _ignition_proposal_end_date(record.get("payload") or {})
+                if renewal_date and window_start <= renewal_date <= window_end:
+                    candidates.append(_ignition_renewal_item_seed(record, renewal_date))
+
+            cursor.execute("SELECT proposal_external_id FROM ignition_renewal_items WHERE user_id = %s", (user["id"],))
+            already_picked = {row["proposal_external_id"] for row in cursor.fetchall()}
+            new_items = [item for item in candidates if item["proposal_external_id"] not in already_picked]
+            skipped_count = len(candidates) - len(new_items)
+
+            cursor.execute(
+                """
+                INSERT INTO ignition_renewal_runs (user_id, status, window_start, window_end, skipped_count, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (user["id"], "draft" if new_items else "empty", window_start, window_end, skipped_count, utcnow(), utcnow()),
+            )
+            run = cursor.fetchone()
+            inserted = []
+            for item in new_items:
+                cursor.execute(
+                    """
+                    INSERT INTO ignition_renewal_items (
+                        run_id, user_id, proposal_external_id, proposal_name, client_name,
+                        client_manager, service_name, plan_name, renewal_date, current_monthly_fee,
+                        new_monthly_fee, variance, variance_percent, comments, proposal_payload,
+                        created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    ON CONFLICT (user_id, proposal_external_id) DO NOTHING
+                    RETURNING *
+                    """,
+                    (
+                        run["id"],
+                        user["id"],
+                        item["proposal_external_id"],
+                        item["proposal_name"],
+                        item["client_name"],
+                        item["client_manager"],
+                        item["service_name"],
+                        item["plan_name"],
+                        item["renewal_date"],
+                        item["current_monthly_fee"],
+                        item["new_monthly_fee"],
+                        item["variance"],
+                        item["variance_percent"],
+                        item["comments"],
+                        json.dumps(item["proposal_payload"], default=_json_default),
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+                inserted_row = cursor.fetchone()
+                if inserted_row:
+                    inserted.append(inserted_row)
+            run = _recalculate_ignition_renewal_run(cursor, str(run["id"]))
+        db.commit()
+
+    record_audit_event(
+        "ignition_renewal_run",
+        str(run["id"]),
+        "ignition.renewals.created",
+        {"window_start": window_start.isoformat(), "window_end": window_end.isoformat(), "picked": len(inserted), "skipped_previously_picked": skipped_count},
+        user["id"],
+    )
+    return {"renewals": ignition_renewals_payload(user, str(run["id"]))}
+
+
+def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
+    updates = payload.get("items") if isinstance(payload, dict) else []
+    if not isinstance(updates, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Renewal item updates must be a list.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (run_id, user["id"]))
+            run = cursor.fetchone()
+            if run is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Renewal run not found.")
+            if run.get("finalised_at"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalised renewal runs cannot be edited.")
+            if run.get("email_sent_at"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Renewal runs cannot be edited after the workbook has been emailed.")
+            for update in updates:
+                if not isinstance(update, dict):
+                    continue
+                item_id = str(update.get("id") or "").strip()
+                if not item_id:
+                    continue
+                current = _money(update.get("currentMonthlyFee"))
+                new_monthly = _money(update.get("newMonthlyFee"))
+                variance, variance_percent = _ignition_renewal_variance(current, new_monthly)
+                cursor.execute(
+                    """
+                    UPDATE ignition_renewal_items
+                    SET client_manager = %s,
+                        service_name = %s,
+                        plan_name = %s,
+                        current_monthly_fee = %s,
+                        new_monthly_fee = %s,
+                        variance = %s,
+                        variance_percent = %s,
+                        comments = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                      AND run_id = %s
+                      AND user_id = %s
+                    """,
+                    (
+                        str(update.get("clientManager") or "").strip(),
+                        str(update.get("serviceName") or "").strip(),
+                        str(update.get("planName") or "").strip(),
+                        current,
+                        new_monthly,
+                        variance,
+                        variance_percent,
+                        str(update.get("comments") or "").strip(),
+                        utcnow(),
+                        item_id,
+                        run_id,
+                        user["id"],
+                    ),
+                )
+            _recalculate_ignition_renewal_run(cursor, run_id)
+        connection.commit()
+    return {"renewals": ignition_renewals_payload(user, run_id)}
+
+
+async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
+    settings = get_settings()
+    recipient = str(settings.ignition_renewals_recipient_email or "").strip()
+    if not recipient:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_RECIPIENT_EMAIL before sending renewal rounds.")
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending renewal emails.")
+    run, items = _ignition_renewal_run_with_items(user, run_id)
+    if not items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to email.")
+    workbook = _build_ignition_renewals_workbook(items)
+    filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.xlsx"
+    subject = f"Ignition renewals to action: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+    message["To"] = recipient
+    message.set_content(_ignition_renewal_email_body(run, items))
+    message.add_attachment(
+        workbook,
+        maintype="application",
+        subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename=filename,
+    )
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message, to_addrs=[recipient])
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ignition_renewal_runs
+                SET status = 'emailed',
+                    email_sent_at = COALESCE(email_sent_at, %s),
+                    updated_at = %s
+                WHERE id = %s AND user_id = %s
+                """,
+                (utcnow(), utcnow(), run_id, user["id"]),
+            )
+        connection.commit()
+    record_audit_event("ignition_renewal_run", run_id, "ignition.renewals.emailed", {"recipient": recipient, "items": len(items)}, user["id"])
+    return {"renewals": ignition_renewals_payload(user, run_id)}
+
+
+async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
+    settings = get_settings()
+    webhook_url = str(settings.ignition_renewals_zapier_webhook_url or "").strip()
+    if not webhook_url:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_ZAPIER_WEBHOOK_URL before finalising renewal rounds.")
+    run, items = _ignition_renewal_run_with_items(user, run_id)
+    if not items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to finalise.")
+    if run.get("finalised_at"):
+        return {"renewals": ignition_renewals_payload(user, run_id), "alreadyFinalised": True}
+    if not run.get("email_sent_at"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send the renewal workbook to Amie before finalising and raising ELs.")
+    payload = {
+        "event": "ignition_renewals_finalised",
+        "run": _serialize_ignition_renewal_run(run),
+        "items": [_serialize_ignition_renewal_item(item) for item in items],
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(webhook_url, json=payload)
+    response_payload = {"status_code": response.status_code, "body": response.text[:1000]}
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Zapier webhook failed with status {response.status_code}: {response.text[:500]}")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ignition_renewal_runs
+                SET status = 'finalised',
+                    finalised_at = %s,
+                    zapier_response = %s::jsonb,
+                    updated_at = %s
+                WHERE id = %s AND user_id = %s
+                """,
+                (utcnow(), json.dumps(response_payload), utcnow(), run_id, user["id"]),
+            )
+            cursor.execute(
+                """
+                UPDATE ignition_renewal_items
+                SET zapier_sent_at = COALESCE(zapier_sent_at, %s),
+                    updated_at = %s
+                WHERE run_id = %s AND user_id = %s
+                """,
+                (utcnow(), utcnow(), run_id, user["id"]),
+            )
+        connection.commit()
+    record_audit_event("ignition_renewal_run", run_id, "ignition.renewals.finalised", {"items": len(items), "zapier_status": response.status_code}, user["id"])
+    return {"renewals": ignition_renewals_payload(user, run_id)}
+
+
+def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if selected_run_id:
+                cursor.execute("SELECT * FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (selected_run_id, user["id"]))
+            else:
+                cursor.execute("SELECT * FROM ignition_renewal_runs WHERE user_id = %s ORDER BY created_at DESC LIMIT 1", (user["id"],))
+            current_run = cursor.fetchone()
+            items = []
+            if current_run:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM ignition_renewal_items
+                    WHERE run_id = %s AND user_id = %s
+                    ORDER BY renewal_date ASC, client_name ASC
+                    """,
+                    (current_run["id"], user["id"]),
+                )
+                items = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT id, status, window_start, window_end, picked_count, skipped_count,
+                       total_current_monthly, total_new_monthly, email_sent_at,
+                       finalised_at, error_message, created_at, updated_at
+                FROM ignition_renewal_runs
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+                LIMIT 6
+                """,
+                (user["id"],),
+            )
+            recent_runs = cursor.fetchall()
+        connection.commit()
+    return {
+        "recipientEmail": get_settings().ignition_renewals_recipient_email or "",
+        "zapierConfigured": bool(str(get_settings().ignition_renewals_zapier_webhook_url or "").strip()),
+        "currentRun": _serialize_ignition_renewal_run(current_run, items),
+        "recentRuns": [_serialize_ignition_renewal_run(row) for row in recent_runs],
+    }
+
+
 def ignition_payload(user: dict) -> dict:
     try:
         connection = get_ignition_connection_for_user(user["id"])
@@ -10120,6 +10762,7 @@ def ignition_payload(user: dict) -> dict:
         },
         "datasetCounts": dataset_counts,
         "dashboard": _ignition_dashboard(records),
+        "renewals": ignition_renewals_payload(user),
         "syncRun": serialize_ignition_sync_run(active_run or latest_run),
         "activeSyncRun": serialize_ignition_sync_run(active_run),
     }

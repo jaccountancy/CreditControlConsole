@@ -831,6 +831,90 @@ SELECT * FROM ignition_reporting_records WHERE dataset = 'deals';
 CREATE OR REPLACE VIEW ignition_reporting_deal_stages AS
 SELECT * FROM ignition_reporting_records WHERE dataset = 'deal_stages';
 
+CREATE TABLE IF NOT EXISTS ignition_renewal_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'draft',
+    window_start DATE NOT NULL,
+    window_end DATE NOT NULL,
+    picked_count INTEGER NOT NULL DEFAULT 0,
+    skipped_count INTEGER NOT NULL DEFAULT 0,
+    total_current_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    total_new_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    email_sent_at TIMESTAMPTZ,
+    finalised_at TIMESTAMPTZ,
+    zapier_response JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS window_start DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS window_end DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS picked_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS skipped_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS total_current_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS total_new_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS finalised_at TIMESTAMPTZ;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS zapier_response JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS error_message TEXT;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS ignition_renewal_runs_user_created_idx
+ON ignition_renewal_runs (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ignition_renewal_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES ignition_renewal_runs(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    proposal_external_id TEXT NOT NULL,
+    proposal_name TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    client_manager TEXT NOT NULL DEFAULT '',
+    service_name TEXT NOT NULL DEFAULT '',
+    plan_name TEXT NOT NULL DEFAULT '',
+    renewal_date DATE NOT NULL,
+    current_monthly_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    new_monthly_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    variance NUMERIC(12, 2) NOT NULL DEFAULT 0,
+    variance_percent NUMERIC(9, 4) NOT NULL DEFAULT 0,
+    comments TEXT NOT NULL DEFAULT '',
+    proposal_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    zapier_sent_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, proposal_external_id)
+);
+
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS run_id UUID REFERENCES ignition_renewal_runs(id) ON DELETE CASCADE;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS proposal_external_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS proposal_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS client_manager TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS service_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS plan_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS renewal_date DATE NOT NULL DEFAULT CURRENT_DATE;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS current_monthly_fee NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS new_monthly_fee NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS variance NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS variance_percent NUMERIC(9, 4) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS comments TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS proposal_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS zapier_sent_at TIMESTAMPTZ;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_renewal_items_user_proposal_idx
+ON ignition_renewal_items (user_id, proposal_external_id);
+
+CREATE INDEX IF NOT EXISTS ignition_renewal_items_run_idx
+ON ignition_renewal_items (run_id, renewal_date ASC);
+
 CREATE TABLE IF NOT EXISTS me_report_clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,

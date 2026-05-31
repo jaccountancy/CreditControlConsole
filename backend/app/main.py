@@ -52,8 +52,11 @@ from .services import (
     get_xero_connection_for_user,
     get_operation_run,
     get_ignition_sync_run,
+    create_ignition_renewal_run,
+    finalise_ignition_renewals,
     insights_payload,
     ignition_payload,
+    ignition_renewals_payload,
     invoice_detail,
     install_sync_signal_handlers,
     add_jashflow_charge,
@@ -100,7 +103,9 @@ from .services import (
     sync_payment_plan_to_xero,
     sync_run_has_working_data,
     send_me_report_email,
+    send_ignition_renewals_email,
     update_control_status,
+    update_ignition_renewal_run,
     update_bank_statement_account,
     update_me_report_exception,
     update_me_report_mapping,
@@ -976,6 +981,35 @@ def api_ignition_sync_status(sync_run_id: str, user: dict = Depends(require_pane
     if sync_run["status"] == "completed":
         payload["ignition"] = ignition_payload(user)
     return payload
+
+
+@app.get("/api/ignition/renewals")
+def api_ignition_renewals(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "renewals": ignition_renewals_payload(user)}
+
+
+@app.post("/api/ignition/renewals/run")
+async def api_create_ignition_renewal_run(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await create_ignition_renewal_run(user)}
+
+
+@app.post("/api/ignition/renewals/{run_id}")
+async def api_update_ignition_renewal_run(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **update_ignition_renewal_run(user, run_id, payload)}
+
+
+@app.post("/api/ignition/renewals/{run_id}/email")
+async def api_send_ignition_renewals_email(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    update_ignition_renewal_run(user, run_id, payload)
+    return {"status": "ok", **await send_ignition_renewals_email(user, run_id)}
+
+
+@app.post("/api/ignition/renewals/{run_id}/finalise")
+async def api_finalise_ignition_renewals(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    await request.body()
+    return {"status": "ok", **await finalise_ignition_renewals(user, run_id)}
 
 
 @app.get("/api/me-report")
