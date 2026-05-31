@@ -139,6 +139,62 @@ def template_context(request: Request, **extra):
     return {"request": request, "user": current_user_from_request(request), **extra}
 
 
+def reusable_xero_user(request: Request) -> dict | None:
+    user = current_user_from_request(request)
+    if user and user.get("id"):
+        try:
+            get_xero_connection_for_user(user["id"])
+            return user
+        except HTTPException:
+            pass
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT users.*
+                FROM xero_connections
+                JOIN users ON users.id = xero_connections.user_id
+                WHERE (SELECT COUNT(*) FROM xero_connections) = 1
+                ORDER BY xero_connections.updated_at DESC NULLS LAST, xero_connections.created_at DESC
+                LIMIT 1
+                """
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def panel_session_response(user: dict) -> JSONResponse:
+    session_token = create_session(user["id"], "Web panel")
+    active_sync_run = active_sync_run_for_user(user)
+    rate_limit = active_xero_rate_limit_for_user(user)
+    response = JSONResponse(
+        {
+            "status": "ok",
+            "sessionToken": session_token,
+            **panel_payload(user),
+            "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
+            "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
+        }
+    )
+    set_session_cookie(response, session_token)
+    return response
+
+
+def xero_connected_redirect(request: Request, redirect_to: str) -> RedirectResponse | None:
+    user = reusable_xero_user(request)
+    if not user:
+        return None
+
+    session_token = create_session(user["id"], "Web panel")
+    redirect_to = add_query_params(redirect_to, {"xero": "connected"})
+    redirect_to = add_fragment_params(redirect_to, {"panel_session": session_token})
+    response = RedirectResponse(redirect_to, status_code=status.HTTP_302_FOUND)
+    set_session_cookie(response, session_token)
+    return response
+
+
 def wants_json(request: Request) -> bool:
     accept = request.headers.get("accept", "")
     content_type = request.headers.get("content-type", "")
@@ -235,17 +291,19 @@ def health() -> dict:
 def login_page(request: Request):
     user = current_user_from_request(request)
     if user and user.get("id"):
-        try:
-            get_xero_connection_for_user(user["id"])
-            return RedirectResponse(add_query_params("/", {"xero": "connected"}), status_code=status.HTTP_302_FOUND)
-        except HTTPException:
-            pass
+        response = xero_connected_redirect(request, "/")
+        if response:
+            return response
     return templates.TemplateResponse(request, "login.html", template_context(request))
 
 
 @app.get("/auth/xero/start")
-def auth_xero_start(redirect_to: str = "/"):
+def auth_xero_start(request: Request, redirect_to: str = "/", force: int = 0):
     redirect_to = normalise_oauth_redirect(redirect_to)
+    if not force:
+        response = xero_connected_redirect(request, redirect_to)
+        if response:
+            return response
     state_token = start_oauth_state(redirect_to=redirect_to)
     return RedirectResponse(xero_authorize_url(state_token), status_code=status.HTTP_302_FOUND)
 
@@ -569,6 +627,18 @@ def api_panel(user: dict = Depends(require_panel_user)):
         "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
         "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
     }
+
+
+@app.post("/api/panel/session")
+def api_panel_session(request: Request):
+    origin = request.headers.get("origin")
+    if origin and origin.rstrip("/") not in allowed_panel_origins():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This panel origin is not allowed.")
+
+    user = reusable_xero_user(request)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xero has not been connected yet.")
+    return panel_session_response(user)
 
 
 @app.get("/api/insights")

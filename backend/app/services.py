@@ -89,6 +89,39 @@ SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
 SYNC_PHASE_CREDITS = "customer_credits"
 SYNC_PHASE_PAID_INVOICES = "paid_invoices"
+DATABASE_METRIC_TABLES = {
+    "users": "Users",
+    "xero_connections": "Xero connections",
+    "sessions": "Sessions",
+    "customers": "Customers",
+    "invoices": "Invoices",
+    "payments": "Payments",
+    "customer_credits": "Customer credits",
+    "customer_notes": "Customer notes",
+    "notes": "Invoice notes",
+    "payment_promises": "Payment promises",
+    "invoice_status_history": "Invoice statuses",
+    "sync_runs": "Sync runs",
+    "sync_checkpoints": "Sync checkpoints",
+    "operation_runs": "Operation runs",
+    "xero_pending_actions": "Xero outbox",
+    "audit_events": "Audit events",
+    "jashflow_loans": "Jashflow loans",
+    "jashflow_transactions": "Jashflow transactions",
+    "bank_statement_clients": "Bank statement clients",
+    "bank_statement_accounts": "Bank statement accounts",
+    "bank_statement_uploads": "Bank statement uploads",
+    "bank_statement_transactions": "Bank statement transactions",
+    "ignition_connections": "Ignition connections",
+    "ignition_sync_runs": "Ignition sync runs",
+    "ignition_reporting_records": "Ignition records",
+    "me_report_clients": "ME report clients",
+    "me_report_account_mappings": "ME report mappings",
+    "me_report_reviews": "ME report reviews",
+    "me_report_exceptions": "ME report exceptions",
+    "me_report_reports": "ME report reports",
+    "me_report_sync_runs": "ME report sync runs",
+}
 _PREVIOUS_SIGTERM_HANDLER = None
 _SYNC_SIGNAL_HANDLERS_INSTALLED = False
 
@@ -3746,11 +3779,40 @@ def _serialize_payment(payment: dict) -> dict:
     }
 
 
+def _tenant_panel_counts(cursor, tenant_id: str | None) -> dict:
+    if not tenant_id:
+        return {"customer_count": 0, "invoice_count": 0, "has_customer_balance": False}
+    cursor.execute(
+        """
+        SELECT COUNT(DISTINCT customers.id) AS customer_count,
+               COUNT(invoices.id) AS invoice_count,
+               BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) AS has_customer_balance
+        FROM customers
+        LEFT JOIN invoices ON invoices.customer_id = customers.id
+        WHERE customers.tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    row = cursor.fetchone() or {}
+    return {
+        "customer_count": _metric_int(row.get("customer_count")),
+        "invoice_count": _metric_int(row.get("invoice_count")),
+        "has_customer_balance": bool(row.get("has_customer_balance")),
+    }
+
+
+def _tenant_has_display_data(counts: dict) -> bool:
+    return _metric_int(counts.get("invoice_count")) > 0 or bool(counts.get("has_customer_balance"))
+
+
 def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: str | None = None) -> str | None:
+    fallback_tenant_id = None
     if preferred_tenant_id:
-        cursor.execute("SELECT EXISTS(SELECT 1 FROM customers WHERE tenant_id = %s) AS has_data", (preferred_tenant_id,))
-        if cursor.fetchone().get("has_data"):
+        preferred_counts = _tenant_panel_counts(cursor, preferred_tenant_id)
+        if _tenant_has_display_data(preferred_counts):
             return preferred_tenant_id
+        if preferred_counts["customer_count"]:
+            fallback_tenant_id = preferred_tenant_id
 
     cursor.execute(
         """
@@ -3770,23 +3832,36 @@ def _latest_synced_tenant_for_user(cursor, user_id: str, preferred_tenant_id: st
         tenant_id = row.get("tenant_id")
         if not tenant_id:
             continue
-        cursor.execute("SELECT EXISTS(SELECT 1 FROM customers WHERE tenant_id = %s) AS has_data", (tenant_id,))
-        if cursor.fetchone().get("has_data"):
+        tenant_counts = _tenant_panel_counts(cursor, tenant_id)
+        if _tenant_has_display_data(tenant_counts):
             return tenant_id
+        if tenant_counts["customer_count"] and fallback_tenant_id is None:
+            fallback_tenant_id = tenant_id
     cursor.execute(
         """
-        SELECT tenant_id
+        SELECT customers.tenant_id,
+               COUNT(DISTINCT customers.id) AS customer_count,
+               COUNT(invoices.id) AS invoice_count,
+               BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) AS has_customer_balance,
+               MAX(COALESCE(invoices.synced_at, customers.updated_at)) AS latest_sync
         FROM customers
-        WHERE tenant_id IS NOT NULL AND tenant_id <> ''
-        GROUP BY tenant_id
-        ORDER BY MAX(updated_at) DESC NULLS LAST, COUNT(*) DESC
+        LEFT JOIN invoices ON invoices.customer_id = customers.id
+        WHERE customers.tenant_id IS NOT NULL AND customers.tenant_id <> ''
+        GROUP BY customers.tenant_id
+        ORDER BY
+            CASE
+                WHEN COUNT(invoices.id) > 0 OR BOOL_OR(customers.total_due > 0 OR customers.overdue_amount > 0) THEN 0
+                ELSE 1
+            END,
+            latest_sync DESC NULLS LAST,
+            customer_count DESC
         LIMIT 1
         """
     )
     row = cursor.fetchone()
     if row and row.get("tenant_id"):
         return row["tenant_id"]
-    return None
+    return fallback_tenant_id
 
 
 def _xero_cache_status(cursor, user_id: str | None, tenant_id: str | None, stored_customers: int, stored_invoices: int) -> dict:
@@ -3845,6 +3920,153 @@ def _xero_cache_status(cursor, user_id: str | None, tenant_id: str | None, store
         "lastSyncStatus": (row or {}).get("status") or "",
         "lastSyncStep": (row or {}).get("current_step") or "",
         "lastSyncSummary": (row or {}).get("summary") or "",
+    }
+
+
+def _metric_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _database_metrics(cursor, tenant_id: str | None = None) -> dict:
+    table_names = list(DATABASE_METRIC_TABLES)
+    cursor.execute(
+        """
+        SELECT current_database() AS database_name,
+               pg_database_size(current_database()) AS database_size_bytes
+        """
+    )
+    database_row = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT table_name,
+               pg_total_relation_size(('public.' || quote_ident(table_name))::regclass) AS size_bytes
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name::text = ANY(%s)
+        ORDER BY array_position(%s::text[], table_name::text)
+        """,
+        (table_names, table_names),
+    )
+    size_lookup = {
+        row["table_name"]: _metric_int(row.get("size_bytes"))
+        for row in cursor.fetchall()
+    }
+    table_metrics = []
+    total_records = 0
+    for table_name in table_names:
+        if table_name not in size_lookup:
+            continue
+        cursor.execute(f'SELECT COUNT(*) AS record_count FROM "{table_name}"')
+        record_count = _metric_int((cursor.fetchone() or {}).get("record_count"))
+        total_records += record_count
+        table_metrics.append(
+            {
+                "name": table_name,
+                "label": DATABASE_METRIC_TABLES.get(table_name, table_name),
+                "records": record_count,
+                "sizeBytes": size_lookup.get(table_name, 0),
+            }
+        )
+
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS customers,
+               COUNT(*) FILTER (WHERE total_due > 0) AS customers_with_balance,
+               COUNT(DISTINCT tenant_id) AS tenants,
+               COALESCE(SUM(total_due), 0) AS total_due,
+               COALESCE(SUM(overdue_amount), 0) AS overdue_amount,
+               MAX(updated_at) AS latest_customer_update
+        FROM customers
+        WHERE (%s IS NULL OR tenant_id = %s)
+        """,
+        (tenant_id, tenant_id),
+    )
+    customer_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS invoices,
+               COUNT(*) FILTER (WHERE invoices.amount_due > 0) AS outstanding_invoices,
+               COUNT(*) FILTER (WHERE invoices.amount_due <= 0) AS settled_invoices,
+               COALESCE(SUM(invoices.amount_due) FILTER (WHERE invoices.amount_due > 0), 0) AS outstanding_amount,
+               COALESCE(SUM(invoices.total), 0) AS invoiced_amount,
+               MAX(invoices.synced_at) AS latest_invoice_sync
+        FROM invoices
+        JOIN customers ON customers.id = invoices.customer_id
+        WHERE (%s IS NULL OR customers.tenant_id = %s)
+        """,
+        (tenant_id, tenant_id),
+    )
+    invoice_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) FILTER (WHERE status = 'pending') AS pending_actions,
+               COUNT(*) FILTER (WHERE status = 'processing') AS processing_actions,
+               COUNT(*) FILTER (WHERE status = 'failed') AS failed_actions,
+               COUNT(*) FILTER (WHERE status = 'completed') AS completed_actions
+        FROM xero_pending_actions
+        WHERE (%s IS NULL OR tenant_id = %s OR tenant_id IS NULL)
+        """,
+        (tenant_id, tenant_id),
+    )
+    action_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT customers.tenant_id,
+               COALESCE(MAX(xero_connections.tenant_name), '') AS tenant_name,
+               COUNT(DISTINCT customers.id) AS customer_count,
+               COUNT(invoices.id) AS invoice_count,
+               COUNT(invoices.id) FILTER (WHERE invoices.amount_due > 0) AS outstanding_invoice_count,
+               COALESCE(SUM(invoices.amount_due) FILTER (WHERE invoices.amount_due > 0), 0) AS outstanding_amount,
+               MAX(COALESCE(invoices.synced_at, customers.updated_at)) AS latest_sync
+        FROM customers
+        LEFT JOIN invoices ON invoices.customer_id = customers.id
+        LEFT JOIN xero_connections ON xero_connections.tenant_id = customers.tenant_id
+        GROUP BY customers.tenant_id
+        ORDER BY latest_sync DESC NULLS LAST, customer_count DESC
+        LIMIT 10
+        """
+    )
+    tenant_rows = cursor.fetchall()
+    return {
+        "generatedAt": _iso(utcnow()),
+        "databaseName": database_row.get("database_name") or "",
+        "databaseSizeBytes": _metric_int(database_row.get("database_size_bytes")),
+        "totalRecords": total_records,
+        "visibleTenantId": tenant_id or "",
+        "tables": table_metrics,
+        "ledger": {
+            "tenants": _metric_int(customer_summary.get("tenants")),
+            "customers": _metric_int(customer_summary.get("customers")),
+            "customersWithBalance": _metric_int(customer_summary.get("customers_with_balance")),
+            "totalDue": _float(customer_summary.get("total_due")),
+            "overdueAmount": _float(customer_summary.get("overdue_amount")),
+            "latestCustomerUpdate": _iso(customer_summary.get("latest_customer_update")),
+            "invoices": _metric_int(invoice_summary.get("invoices")),
+            "outstandingInvoices": _metric_int(invoice_summary.get("outstanding_invoices")),
+            "settledInvoices": _metric_int(invoice_summary.get("settled_invoices")),
+            "outstandingAmount": _float(invoice_summary.get("outstanding_amount")),
+            "invoicedAmount": _float(invoice_summary.get("invoiced_amount")),
+            "latestInvoiceSync": _iso(invoice_summary.get("latest_invoice_sync")),
+            "pendingActions": _metric_int(action_summary.get("pending_actions")),
+            "processingActions": _metric_int(action_summary.get("processing_actions")),
+            "failedActions": _metric_int(action_summary.get("failed_actions")),
+            "completedActions": _metric_int(action_summary.get("completed_actions")),
+        },
+        "tenants": [
+            {
+                "tenantId": row.get("tenant_id") or "",
+                "tenantName": row.get("tenant_name") or "",
+                "customers": _metric_int(row.get("customer_count")),
+                "invoices": _metric_int(row.get("invoice_count")),
+                "outstandingInvoices": _metric_int(row.get("outstanding_invoice_count")),
+                "outstandingAmount": _float(row.get("outstanding_amount")),
+                "latestSync": _iso(row.get("latest_sync")),
+            }
+            for row in tenant_rows
+        ],
     }
 
 
@@ -3983,6 +4205,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 len(customer_rows),
                 len(invoice_rows),
             )
+            database_metrics = _database_metrics(cursor, tenant_id)
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
@@ -4088,6 +4311,7 @@ def panel_payload(user: dict | None = None) -> dict:
         },
         "customers": customers,
         "cacheStatus": cache_status,
+        "databaseMetrics": database_metrics,
         "audit": [
             {
                 "id": row.get("id"),

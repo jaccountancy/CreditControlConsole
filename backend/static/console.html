@@ -87,32 +87,13 @@
                 backdrop-filter: blur(12px);
             }
             .app-sidebar-brand {
-                display: flex;
-                align-items: flex-start;
-                justify-content: space-between;
-                gap: 10px;
-                padding: 4px 4px 6px;
+                display: block;
+                padding: 4px 2px 8px;
             }
-            .app-sidebar-brand-copy {
-                display: grid;
-                gap: 2px;
-                min-width: 0;
-            }
-            .app-sidebar-brand strong {
-                font-size: 0.9rem;
-                font-weight: 900;
-            }
-            .app-sidebar-brand span {
-                color: var(--muted);
-                font-size: 0.72rem;
-                font-weight: 800;
-                text-transform: uppercase;
-                letter-spacing: 0.08em;
-            }
-            .app-sidebar-icon {
-                width: 24px;
-                height: 24px;
-                flex: 0 0 auto;
+            .app-sidebar-logo {
+                display: block;
+                width: min(142px, 100%);
+                height: auto;
                 object-fit: contain;
             }
             .app-nav {
@@ -1870,6 +1851,73 @@
             }
             .settings-panel.wide-settings-panel {
                 max-width: none;
+            }
+            .database-metrics-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 10px;
+                margin-top: 12px;
+            }
+            .database-metric-card {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.72);
+                padding: 12px;
+                min-width: 0;
+            }
+            .database-metric-card span,
+            .database-metrics-row span,
+            .database-metrics-heading span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+            .database-metric-card strong {
+                display: block;
+                margin-top: 6px;
+                font-size: 1.22rem;
+                line-height: 1.1;
+            }
+            .database-metric-card small {
+                display: block;
+                margin-top: 6px;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+                line-height: 1.35;
+            }
+            .database-metrics-list {
+                display: grid;
+                gap: 8px;
+                margin-top: 14px;
+            }
+            .database-metrics-heading,
+            .database-metrics-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(84px, auto) minmax(84px, auto);
+                gap: 12px;
+                align-items: center;
+            }
+            .database-metrics-heading {
+                padding: 0 12px;
+            }
+            .database-metrics-row {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.68);
+                padding: 10px 12px;
+            }
+            .database-metrics-row strong {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .database-metrics-row b {
+                text-align: right;
+                font-size: 0.88rem;
             }
             .danger-panel {
                 border-color: rgba(255, 83, 83, 0.22);
@@ -4820,10 +4868,7 @@
                 <div class="console-app">
                 <aside class="app-sidebar" aria-label="Main navigation">
                     <div class="app-sidebar-brand">
-                        <div class="app-sidebar-brand-copy">
-                            <strong>Jaccountancy</strong>
-                        </div>
-                        <img class="app-sidebar-icon" src="/static/JaccountancyBlueIcon.png" alt="" aria-hidden="true">
+                        <img class="app-sidebar-logo" src="/static/JaccountancyBlueStacked.png" alt="Jaccountancy">
                     </div>
                     <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
@@ -5108,6 +5153,21 @@
                                         <span>Remaining: choose a filter and run sync</span>
                                     </div>
                                 </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Database</p>
+                                        <h3>Stored data metrics</h3>
+                                    </div>
+                                    <span class="settings-help" id="databaseMetricsUpdated">Waiting for backend data</span>
+                                </div>
+                                <div class="database-metrics-grid" id="databaseMetricsGrid">
+                                    <article class="database-metric-card"><span>Database size</span><strong>--</strong><small>Waiting for backend data</small></article>
+                                </div>
+                                <div class="database-metrics-list" id="databaseTenantMetrics"></div>
+                                <div class="database-metrics-list" id="databaseMetricsTables"></div>
                             </section>
 
                             <section class="detail-panel settings-panel">
@@ -6289,7 +6349,8 @@
                 customers: [],
                 audit: [],
                 selectedInvoice: null,
-                cacheStatus: {}
+                cacheStatus: {},
+                databaseMetrics: {}
             };
             const persistedUIState = loadPersistedUIState();
             const state = loadState();
@@ -6529,6 +6590,7 @@
                     headers: config.headers || {},
                     endpoints: {
                         panel: config.endpoints?.panel || "/api/panel",
+                        session: config.endpoints?.session || "/api/panel/session",
                         sync: config.endpoints?.sync || "/api/panel/sync",
                         syncStatus: config.endpoints?.syncStatus || "/api/panel/sync/:syncId",
                         operationStatus: config.endpoints?.operationStatus || "/api/operations/:operationId",
@@ -6586,7 +6648,8 @@
                     customers: Array.isArray(payload.customers) ? payload.customers : [],
                     audit: Array.isArray(payload.audit) ? payload.audit : [],
                     selectedInvoice: payload.selectedInvoice || null,
-                    cacheStatus: payload.cacheStatus || {}
+                    cacheStatus: payload.cacheStatus || {},
+                    databaseMetrics: payload.databaseMetrics || {}
                 };
             }
 
@@ -6736,6 +6799,7 @@
                 state.audit = next.audit;
                 state.selectedInvoice = next.selectedInvoice;
                 state.cacheStatus = next.cacheStatus || {};
+                state.databaseMetrics = next.databaseMetrics || {};
                 const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
                 const invoice = findInvoiceById(preservedInvoiceId) || findInvoiceById(nextInvoiceId) || allInvoices()[0] || null;
                 selectedInvoiceId = invoice?.id || null;
@@ -6962,44 +7026,70 @@
                 });
             }
 
+            function applyPanelPayload(payload) {
+                const nextState = normaliseState(payload);
+                if (payloadHasActiveXeroRateLimit(payload) && !nextState.customers.length && state.customers.length) {
+                    nextState.customers = state.customers;
+                    nextState.dashboard = state.dashboard;
+                    nextState.selectedInvoice = state.selectedInvoice;
+                    nextState.organisation = {
+                        ...nextState.organisation,
+                        name: state.organisation.name || nextState.organisation.name,
+                        status: state.organisation.status || nextState.organisation.status,
+                    };
+                }
+                replaceState(nextState);
+                const activeRun = activeSyncRunFromPanel(payload);
+                if (activeRun && (!activeSyncRunId || activeSyncRunId === activeRun.id)) {
+                    latestSyncRun = activeRun;
+                    hasAutoStartedInitialSync = true;
+                } else if (payload.xeroRateLimit?.rateLimitUntil || Number(payload.xeroRateLimit?.retryAfterSeconds || 0) > 0) {
+                    const retryAfterSeconds = Number(payload.xeroRateLimit.retryAfterSeconds || 0);
+                    latestSyncRun = {
+                        ...(latestSyncRun || {}),
+                        status: "failed",
+                        currentStep: "Xero daily limit reached",
+                        summary: payload.xeroRateLimit.message || "Xero daily limit reached.",
+                        errorMessage: payload.xeroRateLimit.message || "",
+                        rateLimitUntil: payload.xeroRateLimit.rateLimitUntil || (retryAfterSeconds > 0 ? new Date(Date.now() + retryAfterSeconds * 1000).toISOString() : ""),
+                        retryAfterSeconds,
+                    };
+                } else if (!activeRun && latestSyncRun?.currentStep === "Xero daily limit reached" && !activeXeroRateLimit()) {
+                    latestSyncRun = null;
+                }
+                return payload;
+            }
+
+            async function bootstrapPanelSession() {
+                try {
+                    const response = await fetch(endpointURL(api.endpoints.session), {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() }
+                    });
+                    const contentType = response.headers.get("content-type") || "";
+                    const payload = contentType.includes("application/json")
+                        ? await response.json().catch(() => null)
+                        : null;
+                    if (!response.ok || !payload) return null;
+                    if (payload.sessionToken) storePanelSessionToken(payload.sessionToken);
+                    return applyPanelPayload(payload);
+                } catch (error) {
+                    console.error("Unable to reuse existing Xero panel session", error);
+                    return null;
+                }
+            }
+
             async function hydrateFromAPI() {
                 try {
                     const payload = await requestJSON(api.endpoints.panel);
                     if (payload) {
-                        const nextState = normaliseState(payload);
-                        if (payloadHasActiveXeroRateLimit(payload) && !nextState.customers.length && state.customers.length) {
-                            nextState.customers = state.customers;
-                            nextState.dashboard = state.dashboard;
-                            nextState.selectedInvoice = state.selectedInvoice;
-                            nextState.organisation = {
-                                ...nextState.organisation,
-                                name: state.organisation.name || nextState.organisation.name,
-                                status: state.organisation.status || nextState.organisation.status,
-                            };
-                        }
-                        replaceState(nextState);
-                        const activeRun = activeSyncRunFromPanel(payload);
-                        if (activeRun && (!activeSyncRunId || activeSyncRunId === activeRun.id)) {
-                            latestSyncRun = activeRun;
-                            hasAutoStartedInitialSync = true;
-                        } else if (payload.xeroRateLimit?.rateLimitUntil || Number(payload.xeroRateLimit?.retryAfterSeconds || 0) > 0) {
-                            const retryAfterSeconds = Number(payload.xeroRateLimit.retryAfterSeconds || 0);
-                            latestSyncRun = {
-                                ...(latestSyncRun || {}),
-                                status: "failed",
-                                currentStep: "Xero daily limit reached",
-                                summary: payload.xeroRateLimit.message || "Xero daily limit reached.",
-                                errorMessage: payload.xeroRateLimit.message || "",
-                                rateLimitUntil: payload.xeroRateLimit.rateLimitUntil || (retryAfterSeconds > 0 ? new Date(Date.now() + retryAfterSeconds * 1000).toISOString() : ""),
-                                retryAfterSeconds,
-                            };
-                        } else if (!activeRun && latestSyncRun?.currentStep === "Xero daily limit reached" && !activeXeroRateLimit()) {
-                            latestSyncRun = null;
-                        }
-                        return payload;
+                        return applyPanelPayload(payload);
                     }
                 } catch (error) {
                     if (error instanceof AuthRequiredError) {
+                        const payload = await bootstrapPanelSession();
+                        if (payload) return payload;
                         markAuthenticationRequired(error.message);
                         return null;
                     }
@@ -7182,6 +7272,20 @@
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 }).format(Number(value || 0));
+            }
+
+            function formatInteger(value) {
+                return Number(value || 0).toLocaleString("en-GB");
+            }
+
+            function formatBytes(value) {
+                const bytes = Number(value || 0);
+                if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+                const units = ["B", "KB", "MB", "GB", "TB"];
+                const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+                const scaled = bytes / (1024 ** index);
+                const digits = index === 0 ? 0 : scaled >= 10 ? 1 : 2;
+                return `${scaled.toLocaleString("en-GB", { maximumFractionDigits: digits })} ${units[index]}`;
             }
 
             function formatDate(value) {
@@ -13963,6 +14067,7 @@
                 syncActiveViewShell();
                 renderChrome();
                 renderSyncSettings();
+                renderDatabaseMetrics();
                 renderPendingXeroActions();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
@@ -14673,6 +14778,67 @@
                 `;
             }
 
+            function renderDatabaseMetrics() {
+                const metrics = state.databaseMetrics || {};
+                const ledger = metrics.ledger || {};
+                const grid = document.getElementById("databaseMetricsGrid");
+                const updated = document.getElementById("databaseMetricsUpdated");
+                const tenantTarget = document.getElementById("databaseTenantMetrics");
+                const tableTarget = document.getElementById("databaseMetricsTables");
+                if (updated) {
+                    updated.textContent = metrics.generatedAt
+                        ? `Updated ${formatDate(metrics.generatedAt)}`
+                        : "Waiting for backend data";
+                }
+                if (grid) {
+                    const cards = [
+                        ["Database size", formatBytes(metrics.databaseSizeBytes), metrics.databaseName || "Current database"],
+                        ["Tracked records", formatInteger(metrics.totalRecords), "Rows across console tables"],
+                        ["Customers", formatInteger(ledger.customers), `${formatInteger(ledger.customersWithBalance)} with a balance`],
+                        ["Invoices", formatInteger(ledger.invoices), `${formatInteger(ledger.outstandingInvoices)} outstanding`],
+                        ["Outstanding", formatCurrency(ledger.outstandingAmount), `${formatCurrency(ledger.overdueAmount)} overdue`],
+                        ["Xero outbox", formatInteger(ledger.pendingActions), `${formatInteger(ledger.failedActions)} failed batches`],
+                    ];
+                    grid.innerHTML = cards.map(([label, value, hint]) => `
+                        <article class="database-metric-card">
+                            <span>${escapeHTML(label)}</span>
+                            <strong>${escapeHTML(value)}</strong>
+                            <small>${escapeHTML(hint)}</small>
+                        </article>
+                    `).join("");
+                }
+                if (tenantTarget) {
+                    const tenants = Array.isArray(metrics.tenants) ? metrics.tenants : [];
+                    tenantTarget.innerHTML = tenants.length
+                        ? `
+                            <div class="database-metrics-heading"><span>Tenant ledger</span><span>Rows</span><span>Outstanding</span></div>
+                            ${tenants.map((tenant) => `
+                                <div class="database-metrics-row">
+                                    <strong>${escapeHTML(tenant.tenantName || tenant.tenantId || "Unknown tenant")}</strong>
+                                    <b>${formatInteger(tenant.customers)} clients / ${formatInteger(tenant.invoices)} invoices</b>
+                                    <b>${formatCurrency(tenant.outstandingAmount || 0)}</b>
+                                </div>
+                            `).join("")}
+                        `
+                        : '<div class="empty-state"><p class="eyebrow">No tenant rows</p><h4>No stored ledger tenant found</h4><p>Customer and invoice rows will appear here after a successful ledger import.</p></div>';
+                }
+                if (tableTarget) {
+                    const rows = Array.isArray(metrics.tables) ? metrics.tables : [];
+                    tableTarget.innerHTML = rows.length
+                        ? `
+                            <div class="database-metrics-heading"><span>Table</span><span>Records</span><span>Size</span></div>
+                            ${rows.map((row) => `
+                                <div class="database-metrics-row">
+                                    <strong title="${escapeHTML(row.name || "")}">${escapeHTML(row.label || row.name || "Table")}</strong>
+                                    <b>${formatInteger(row.records)}</b>
+                                    <b>${formatBytes(row.sizeBytes)}</b>
+                                </div>
+                            `).join("")}
+                        `
+                        : '<div class="empty-state"><p class="eyebrow">No database metrics</p><h4>Metrics are not available yet</h4><p>Refresh the panel after the backend is connected.</p></div>';
+                }
+            }
+
             function updateSyncProgress() {
                 const remoteStartedAt = syncRunTimestamp(latestSyncRun);
                 if (remoteStartedAt && (!syncStartedAt || remoteStartedAt < syncStartedAt)) syncStartedAt = remoteStartedAt;
@@ -15260,6 +15426,8 @@
                 state.customers = Array.isArray(panel?.customers) ? panel.customers : [];
                 state.audit = Array.isArray(panel?.audit) ? panel.audit : [];
                 state.selectedInvoice = panel?.selectedInvoice || null;
+                state.cacheStatus = panel?.cacheStatus || {};
+                state.databaseMetrics = panel?.databaseMetrics || {};
                 persistState();
                 persistSyncSettings();
                 persistLetterTemplates();
