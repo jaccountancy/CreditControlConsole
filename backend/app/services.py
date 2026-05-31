@@ -10341,6 +10341,20 @@ def _bank_transaction_source_hash(bank_account_id: str, transaction: dict) -> st
     return hashlib.sha256("|".join(components).encode()).hexdigest()
 
 
+def _bank_statement_effective_amount(row: dict) -> Decimal:
+    if row.get("manual_amount") is not None:
+        return _money(row.get("manual_amount"))
+    return _money(row.get("amount"))
+
+
+def _bank_statement_effective_balance(row: dict) -> Decimal | None:
+    if row.get("manual_balance") is not None:
+        return _money(row.get("manual_balance"))
+    if row.get("balance") is None:
+        return None
+    return _money(row.get("balance"))
+
+
 def _bank_statement_flags(transactions: list[dict]) -> list[dict]:
     flags = []
     ordered = sorted(transactions, key=lambda row: (row.get("transaction_date") or date.min, row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)))
@@ -10357,10 +10371,10 @@ def _bank_statement_flags(transactions: list[dict]) -> list[dict]:
                         "severity": "medium",
                         "message": f"No extracted transactions between {previous_date.isoformat()} and {current_date.isoformat()}.",
                     })
-            previous_balance = previous.get("balance")
-            current_balance = row.get("balance")
+            previous_balance = _bank_statement_effective_balance(previous)
+            current_balance = _bank_statement_effective_balance(row)
             if previous_balance is not None and current_balance is not None:
-                expected = _money(previous_balance) + _money(row.get("amount"))
+                expected = _money(previous_balance) + _bank_statement_effective_amount(row)
                 actual = _money(current_balance)
                 if abs(expected - actual) > Decimal("0.02"):
                     flags.append({
@@ -10382,12 +10396,13 @@ def _bank_statement_quality_summary(transactions: list[dict]) -> dict:
     mismatch_count = 0
     missing_balance_count = 0
     for row in ordered:
-        balance = row.get("balance")
+        balance = _bank_statement_effective_balance(row)
         if balance is None:
             missing_balance_count += 1
-        if previous and previous.get("balance") is not None and balance is not None:
+        previous_balance = _bank_statement_effective_balance(previous) if previous else None
+        if previous_balance is not None and balance is not None:
             checked_count += 1
-            expected = _money(previous.get("balance")) + _money(row.get("amount"))
+            expected = _money(previous_balance) + _bank_statement_effective_amount(row)
             actual = _money(balance)
             if abs(expected - actual) > Decimal("0.02"):
                 mismatch_count += 1
@@ -10397,6 +10412,31 @@ def _bank_statement_quality_summary(transactions: list[dict]) -> dict:
         "mismatchCount": mismatch_count,
         "missingBalanceCount": missing_balance_count,
         "status": "review" if mismatch_count else "incomplete" if missing_balance_count else "clear",
+    }
+
+
+def _serialize_bank_statement_transaction(row: dict) -> dict:
+    raw_amount = _money(row.get("amount"))
+    raw_balance = _money(row.get("balance")) if row.get("balance") is not None else None
+    manual_amount = _money(row.get("manual_amount")) if row.get("manual_amount") is not None else None
+    manual_balance = _money(row.get("manual_balance")) if row.get("manual_balance") is not None else None
+    effective_amount = manual_amount if manual_amount is not None else raw_amount
+    effective_balance = manual_balance if manual_balance is not None else raw_balance
+    return {
+        "id": str(row["id"]),
+        "uploadId": str(row.get("upload_id")) if row.get("upload_id") else "",
+        "date": _iso(row.get("transaction_date")) or "",
+        "description": row.get("description") or "",
+        "amount": float(effective_amount),
+        "rawAmount": float(raw_amount),
+        "manualAmount": float(manual_amount) if manual_amount is not None else None,
+        "balance": float(effective_balance) if effective_balance is not None else None,
+        "rawBalance": float(raw_balance) if raw_balance is not None else None,
+        "manualBalance": float(manual_balance) if manual_balance is not None else None,
+        "manualOverrideNote": row.get("manual_override_note") or "",
+        "manualOverrideAt": _iso(row.get("manual_override_at")) or "",
+        "type": row.get("transaction_type") or "",
+        "createdAt": _iso(row.get("created_at")) or "",
     }
 
 
@@ -10435,19 +10475,7 @@ def _serialize_bank_account(account: dict, uploads: list[dict], transactions: li
             }
             for upload in uploads
         ],
-        "transactions": [
-            {
-                "id": str(row["id"]),
-                "uploadId": str(row.get("upload_id")) if row.get("upload_id") else "",
-                "date": _iso(row.get("transaction_date")) or "",
-                "description": row.get("description") or "",
-                "amount": float(_money(row.get("amount"))),
-                "balance": float(_money(row.get("balance"))) if row.get("balance") is not None else None,
-                "type": row.get("transaction_type") or "",
-                "createdAt": _iso(row.get("created_at")) or "",
-            }
-            for row in ordered_transactions
-        ],
+        "transactions": [_serialize_bank_statement_transaction(row) for row in ordered_transactions],
         "flags": _bank_statement_flags(ordered_transactions),
         "qualityChecks": _bank_statement_quality_summary(ordered_transactions),
     }
@@ -10738,6 +10766,67 @@ def update_bank_statement_account(user: dict, bank_account_id: str, payload: dic
         str(bank_account_id),
         "bank_statement.account_updated",
         {"account_number": account_number, "nickname": nickname},
+        user["id"],
+    )
+    return bank_statement_payload(user)
+
+
+def override_bank_statement_transaction(user: dict, transaction_id: str, payload: dict) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    amount_value = payload.get("amount")
+    try:
+        manual_amount = Decimal(str(amount_value)).quantize(Decimal("0.01"))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid signed transaction amount.") from exc
+    if not manual_amount.is_finite():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid signed transaction amount.")
+    note = str(payload.get("note") or "").strip()[:500]
+    override_at = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT transactions.id,
+                       transactions.amount,
+                       transactions.balance,
+                       accounts.id AS account_id,
+                       customers.name AS customer_name
+                FROM bank_statement_transactions AS transactions
+                JOIN bank_statement_accounts AS accounts ON accounts.id = transactions.bank_account_id
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                JOIN customers ON customers.id = clients.customer_id
+                WHERE transactions.id = %s
+                  AND clients.tenant_id = %s
+                  AND clients.status = 'active'
+                """,
+                (transaction_id, tenant_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement transaction not found.")
+            cursor.execute(
+                """
+                UPDATE bank_statement_transactions
+                SET manual_amount = %s,
+                    manual_override_note = %s,
+                    manual_override_at = %s,
+                    manual_override_by_user_id = %s
+                WHERE id = %s
+                """,
+                (manual_amount, note, override_at, user["id"], transaction_id),
+            )
+        connection.commit()
+    record_audit_event(
+        "bank_statement_transaction",
+        str(transaction_id),
+        "bank_statement.transaction_overridden",
+        {
+            "account_id": str(row["account_id"]),
+            "customer_name": row.get("customer_name") or "",
+            "original_amount": f"{_money(row.get('amount')):.2f}",
+            "manual_amount": f"{manual_amount:.2f}",
+            "note": note,
+        },
         user["id"],
     )
     return bank_statement_payload(user)

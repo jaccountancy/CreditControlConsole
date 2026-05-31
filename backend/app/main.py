@@ -83,6 +83,7 @@ from .services import (
     pending_xero_actions_payload,
     practice_pack_payload,
     process_pending_xero_actions,
+    override_bank_statement_transaction,
     get_sync_run,
     me_report_payload,
     me_report_report_html,
@@ -1376,6 +1377,12 @@ async def api_retry_bank_statement_upload(
 @app.delete("/api/bank-statements/uploads/{upload_id}")
 def api_delete_bank_statement_upload(upload_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", "bankStatements": delete_bank_statement_upload(user, upload_id)}
+
+
+@app.post("/api/bank-statements/transactions/{transaction_id}/override")
+async def api_override_bank_statement_transaction(transaction_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "bankStatements": override_bank_statement_transaction(user, transaction_id, payload)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

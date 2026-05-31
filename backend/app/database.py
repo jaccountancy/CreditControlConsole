@@ -712,6 +712,11 @@ CREATE TABLE IF NOT EXISTS bank_statement_transactions (
     source_hash TEXT NOT NULL,
     raw JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    manual_amount NUMERIC(14, 2),
+    manual_balance NUMERIC(14, 2),
+    manual_override_note TEXT,
+    manual_override_at TIMESTAMPTZ,
+    manual_override_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE (bank_account_id, source_hash)
 );
 
@@ -725,6 +730,11 @@ ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS transaction_typ
 ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS source_hash TEXT NOT NULL DEFAULT '';
 ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS raw JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_amount NUMERIC(14, 2);
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_balance NUMERIC(14, 2);
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_override_note TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_override_at TIMESTAMPTZ;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_override_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS bank_statement_transactions_account_date_idx
 ON bank_statement_transactions (bank_account_id, transaction_date, created_at);
