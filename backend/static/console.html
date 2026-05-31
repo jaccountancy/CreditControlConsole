@@ -503,7 +503,68 @@
                 gap: 12px;
             }
             .topbar-client-context[hidden] { display: none; }
+            .bank-continuity-topbar-pill {
+                flex: 0 1 360px;
+                min-width: 250px;
+                max-width: 440px;
+                min-height: 52px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 7px 12px 7px 8px;
+                border: 1px solid rgba(39, 176, 95, 0.24);
+                border-radius: 999px;
+                background: rgba(232, 248, 238, 0.94);
+                color: #177a3b;
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 18px rgba(39, 176, 95, 0.08);
+            }
+            .bank-continuity-topbar-pill[hidden] { display: none; }
+            .bank-continuity-mark {
+                display: inline-grid;
+                place-items: center;
+                flex: 0 0 auto;
+                width: 36px;
+                height: 36px;
+                border-radius: 999px;
+                background: #27b05f;
+                color: #ffffff;
+                font-size: 0.74rem;
+                font-weight: 950;
+            }
+            .bank-continuity-copy {
+                min-width: 0;
+                display: grid;
+                gap: 1px;
+            }
+            .bank-continuity-copy span,
+            .bank-continuity-copy strong {
+                display: block;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .bank-continuity-copy span {
+                color: rgba(23, 122, 59, 0.72);
+                font-size: 0.63rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .bank-continuity-copy strong {
+                color: #177a3b;
+                font-size: 0.9rem;
+                font-weight: 950;
+            }
+            @media (max-width: 760px) {
+                .bank-continuity-topbar-pill {
+                    flex: 1 1 100%;
+                    min-width: 0;
+                    max-width: none;
+                }
+            }
             .jashflow-topbar-summary,
+            .lpc-topbar-summary,
+            .bank-account-topbar-summary,
             .credit-control-topbar-summary {
                 flex: 1 1 720px;
                 min-width: min(760px, 100%);
@@ -516,9 +577,23 @@
                 background: var(--line);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
             }
+            .lpc-topbar-summary {
+                flex-basis: 620px;
+                min-width: min(620px, 100%);
+                grid-template-columns: repeat(4, minmax(112px, 1fr));
+            }
+            .bank-account-topbar-summary {
+                flex-basis: 780px;
+                min-width: min(760px, 100%);
+                grid-template-columns: repeat(5, minmax(104px, 1fr));
+            }
             .jashflow-topbar-summary[hidden],
+            .lpc-topbar-summary[hidden],
+            .bank-account-topbar-summary[hidden],
             .credit-control-topbar-summary[hidden] { display: none; }
             .jashflow-topbar-summary article,
+            .lpc-topbar-summary article,
+            .bank-account-topbar-summary article,
             .credit-control-topbar-summary article,
             .credit-control-topbar-summary button {
                 min-width: 0;
@@ -534,6 +609,11 @@
             }
             .jashflow-topbar-summary span,
             .jashflow-topbar-summary strong,
+            .lpc-topbar-summary span,
+            .lpc-topbar-summary strong,
+            .lpc-topbar-summary p,
+            .bank-account-topbar-summary span,
+            .bank-account-topbar-summary strong,
             .credit-control-topbar-summary span,
             .credit-control-topbar-summary strong,
             .credit-control-topbar-summary p {
@@ -543,6 +623,8 @@
                 white-space: nowrap;
             }
             .jashflow-topbar-summary span,
+            .lpc-topbar-summary span,
+            .bank-account-topbar-summary span,
             .credit-control-topbar-summary span {
                 color: var(--muted);
                 font-size: 0.64rem;
@@ -551,12 +633,21 @@
                 text-transform: uppercase;
             }
             .jashflow-topbar-summary strong,
+            .lpc-topbar-summary strong,
+            .bank-account-topbar-summary strong,
             .credit-control-topbar-summary strong {
                 margin-top: 4px;
                 color: var(--ink);
                 font-size: 0.92rem;
                 font-weight: 950;
             }
+            .bank-account-topbar-summary article.is-warning strong {
+                color: var(--orange);
+            }
+            .bank-account-topbar-summary article.is-error strong {
+                color: var(--red);
+            }
+            .lpc-topbar-summary p,
             .credit-control-topbar-summary p {
                 margin-top: 2px;
                 color: var(--muted);
@@ -2110,6 +2201,33 @@
             }
             .sync-inline-banner.is-warning .sync-inline-eta {
                 color: #9a6400;
+            }
+            .sync-inline-banner.ai-inline-banner {
+                border-color: rgba(29, 103, 242, 0.24);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
+                box-shadow: 0 18px 48px rgba(29, 103, 242, 0.14);
+            }
+            .sync-inline-banner.ai-inline-banner .sync-inline-copy span {
+                color: #536782;
+            }
+            .sync-inline-banner.ai-inline-banner .sync-inline-progress {
+                background: rgba(39, 176, 95, 0.12);
+            }
+            .sync-inline-banner.ai-inline-banner .sync-inline-progress::before {
+                background: linear-gradient(90deg, transparent, rgba(39, 176, 95, 0.46), transparent);
+            }
+            .sync-inline-banner.ai-inline-banner .sync-inline-progress > span {
+                width: 54%;
+                background: linear-gradient(90deg, #2a8dcd, #1d67f2, #27b05f);
+                animation: ai-inline-progress 1.65s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+            }
+            .sync-inline-banner.ai-inline-banner .sync-inline-eta {
+                color: var(--blue);
+            }
+            @keyframes ai-inline-progress {
+                0% { transform: translateX(-115%); }
+                48% { transform: translateX(40%); }
+                100% { transform: translateX(245%); }
             }
             .invoice-table { width: 100%; border-collapse: collapse; min-width: 940px; table-layout: fixed; }
             .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
@@ -4360,6 +4478,48 @@
             #meReportScreen #meReportClientFormPanel {
                 margin-top: 18px;
             }
+            #bankStatementsScreen .bank-extraction-hero-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(150px, 1fr));
+                gap: 12px;
+            }
+            #bankStatementsScreen .bank-extraction-hero-card {
+                min-width: 0;
+                padding: 16px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.86);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+            }
+            #bankStatementsScreen .bank-extraction-hero-card span,
+            #bankStatementsScreen .bank-extraction-hero-card strong,
+            #bankStatementsScreen .bank-extraction-hero-card small {
+                display: block;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            #bankStatementsScreen .bank-extraction-hero-card span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #bankStatementsScreen .bank-extraction-hero-card strong {
+                margin-top: 6px;
+                color: var(--ink);
+                font-size: 1.26rem;
+                font-weight: 950;
+                letter-spacing: 0;
+            }
+            #bankStatementsScreen .bank-extraction-hero-card small {
+                margin-top: 4px;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 800;
+            }
             #bankStatementsScreen .bank-client-form,
             #meReportScreen #meReportClientFormPanel {
                 padding: 16px;
@@ -4770,16 +4930,26 @@
             #meReportScreen .me-report-insight-card {
                 display: grid;
                 gap: 14px;
+                min-width: 0;
+            }
+            #meReportScreen .me-report-month-group {
+                overflow-x: auto;
+                padding-bottom: 2px;
             }
             #meReportScreen .me-report-report-row {
                 display: grid;
-                grid-template-columns: minmax(170px, 1.1fr) minmax(160px, 1fr) minmax(105px, 0.62fr) minmax(120px, 0.72fr) minmax(130px, 0.74fr) auto;
+                grid-template-columns: minmax(220px, 1.35fr) minmax(118px, 0.7fr) minmax(96px, 0.55fr) minmax(118px, 0.65fr) minmax(130px, 0.72fr) minmax(250px, max-content);
                 gap: 12px;
                 align-items: center;
+                min-width: 1040px;
                 padding: 14px;
                 border: 1px solid var(--line);
                 border-radius: 14px;
                 background: rgba(255, 255, 255, 0.82);
+            }
+            #meReportScreen .me-report-report-row > span {
+                min-width: 0;
+                overflow-wrap: anywhere;
             }
             #meReportScreen .me-report-report-row.is-header {
                 color: var(--muted);
@@ -4831,6 +5001,149 @@
                 display: grid;
                 gap: 8px;
             }
+            #meReportScreen .me-report-report-summary-card {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: start;
+                gap: 16px;
+                min-width: 0;
+            }
+            #meReportScreen .me-report-report-summary-card .detail-actions,
+            #meReportScreen .me-report-report-row .detail-actions {
+                flex-wrap: wrap;
+                gap: 8px;
+                min-width: 0;
+            }
+            #meReportScreen .me-report-report-summary-card .me-report-inline-metrics {
+                grid-column: 1 / -1;
+            }
+            #meReportScreen .me-report-inline-metrics {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 10px;
+                width: 100%;
+                min-width: 0;
+            }
+            #meReportScreen .me-report-metric-pill {
+                min-width: 0;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.84);
+            }
+            #meReportScreen .me-report-metric-pill span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #meReportScreen .me-report-metric-pill strong {
+                display: block;
+                margin-top: 3px;
+                overflow-wrap: anywhere;
+                font-size: 0.98rem;
+            }
+            #meReportScreen .me-report-subtabs {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                padding-bottom: 2px;
+            }
+            #meReportScreen .me-report-subtabs button {
+                min-height: 38px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.86);
+                color: var(--muted);
+                padding: 8px 13px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 900;
+                cursor: pointer;
+            }
+            #meReportScreen .me-report-subtabs button.is-active {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            #meReportScreen .me-report-tab-panel {
+                display: grid;
+                gap: 14px;
+            }
+            #meReportScreen .me-report-two-column {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+            }
+            #meReportScreen .me-report-table-card {
+                overflow-x: auto;
+            }
+            #meReportScreen .me-report-table-card table {
+                width: 100%;
+                min-width: 860px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            #meReportScreen .me-report-table-card th,
+            #meReportScreen .me-report-table-card td {
+                padding: 11px 12px;
+                border-bottom: 1px solid var(--line);
+                text-align: left;
+                vertical-align: top;
+                overflow-wrap: anywhere;
+                word-break: normal;
+            }
+            #meReportScreen .me-report-table-card th {
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #meReportScreen .me-report-table-card td {
+                color: var(--ink);
+                font-size: 0.86rem;
+                font-weight: 750;
+            }
+            #meReportScreen .me-report-quality-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 12px;
+                align-items: center;
+                min-width: 0;
+            }
+            #meReportScreen .me-report-quality-row strong,
+            #meReportScreen .me-report-quality-row span {
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+            #meReportScreen .me-report-quality-row .ghost-button {
+                min-height: 32px;
+                padding: 6px 12px;
+                font-size: 0.76rem;
+            }
+            #meReportScreen .me-report-vat-gauge {
+                display: grid;
+                gap: 8px;
+            }
+            #meReportScreen .me-report-vat-gauge-track {
+                height: 14px;
+                overflow: hidden;
+                border-radius: 999px;
+                background: var(--blue-soft);
+            }
+            #meReportScreen .me-report-vat-gauge-track span {
+                display: block;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, var(--blue), #77a7ff);
+            }
+            #meReportScreen .me-report-alert-card {
+                border-color: rgba(255, 159, 47, 0.34);
+                background: rgba(255, 243, 223, 0.9);
+            }
             @media (max-width: 760px) {
                 #meReportScreen .me-report-upload-form {
                     grid-template-columns: 1fr;
@@ -4838,6 +5151,25 @@
                 #meReportScreen .me-report-upload-form .primary-button,
                 #meReportScreen .me-report-upload-form .ghost-button {
                     width: 100%;
+                }
+                #meReportScreen .me-report-inline-metrics,
+                #meReportScreen .me-report-report-summary-card,
+                #meReportScreen .me-report-two-column {
+                    grid-template-columns: 1fr;
+                }
+                #meReportScreen .me-report-report-row {
+                    min-width: 0;
+                    grid-template-columns: 1fr;
+                    align-items: start;
+                }
+                #meReportScreen .me-report-report-row.is-header {
+                    display: none;
+                }
+                #meReportScreen .me-report-report-row .detail-actions {
+                    justify-content: flex-start;
+                }
+                #meReportScreen .me-report-table-card table {
+                    min-width: 720px;
                 }
             }
             .bank-account-page {
@@ -4860,6 +5192,34 @@
             }
             .bank-account-page-header h3 {
                 margin: 4px 0 0;
+            }
+            .bank-account-action-bar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+                padding: 14px 16px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: rgba(255, 255, 255, 0.82);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+            }
+            .bank-account-action-bar strong,
+            .bank-account-action-bar span {
+                display: block;
+            }
+            .bank-account-action-bar strong {
+                margin-top: 3px;
+                font-size: 0.98rem;
+                font-weight: 950;
+            }
+            .bank-account-action-bar span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
             }
             .bank-account-actions,
             .bank-account-tabs {
@@ -4967,6 +5327,12 @@
             }
             .bank-upload-history-table tr.is-failed-upload {
                 background: rgba(255, 231, 231, 0.28);
+            }
+            .bank-upload-action-stack {
+                display: inline-flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
             }
             .bank-upload-history-row {
                 display: grid;
@@ -5081,10 +5447,19 @@
                 font-size: 0.82rem;
                 line-height: 1.3;
             }
-            .bank-retry-button {
+            .bank-retry-button,
+            .bank-export-reason-button {
                 min-height: 34px;
                 padding: 8px 14px;
                 white-space: nowrap;
+            }
+            .bank-export-reason-button {
+                border-color: rgba(29, 103, 242, 0.24);
+                color: var(--blue);
+                background: #fff;
+            }
+            .bank-export-reason-button:hover {
+                background: var(--blue-soft);
             }
             .bank-status-pill {
                 display: inline-flex;
@@ -5205,6 +5580,10 @@
                 margin-top: 3px;
                 color: var(--muted);
                 font-weight: 750;
+            }
+            .bank-processing-view-button {
+                margin-top: 10px;
+                padding: 9px 14px;
             }
             @keyframes bank-processing-enter {
                 from { opacity: 0; transform: translateY(-8px) scale(0.985); }
@@ -5547,6 +5926,15 @@
                 border-radius: 18px;
                 background: rgba(248, 251, 255, 0.9);
             }
+            .ignition-topbar-tabs {
+                flex: 1 1 780px;
+                min-width: min(780px, 100%);
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.94);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+            }
             .ignition-tabs button {
                 min-height: 40px;
                 padding: 8px 12px;
@@ -5558,6 +5946,11 @@
                 font-weight: 900;
                 cursor: pointer;
                 white-space: nowrap;
+            }
+            .ignition-topbar-tabs button {
+                min-height: 36px;
+                padding: 7px 11px;
+                font-size: 0.78rem;
             }
             .ignition-tabs button:hover,
             .ignition-tabs button.is-active {
@@ -6898,6 +7291,9 @@
                 backdrop-filter: blur(10px);
             }
             .developer-log-panel[hidden] { display: none; }
+            #bankAccountPanel {
+                z-index: 260;
+            }
             .developer-log-card {
                 width: min(920px, 100%);
                 max-height: min(760px, calc(100vh - 48px));
@@ -6922,6 +7318,121 @@
                 margin: 4px 0 0;
                 color: var(--muted);
                 font-weight: 700;
+            }
+            .bank-account-panel-card {
+                width: min(760px, 100%);
+            }
+            .bank-account-dialog-form {
+                min-height: 0;
+                margin: 0;
+                gap: 0;
+                overflow: auto;
+            }
+            .bank-account-form-body {
+                display: grid;
+                gap: 16px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .bank-account-form-status {
+                padding: 12px 14px;
+                border: 1px solid rgba(255, 83, 83, 0.26);
+                border-radius: 14px;
+                background: var(--red-soft);
+                color: #ad3434;
+                font-size: 0.86rem;
+                font-weight: 850;
+            }
+            .bank-account-form-status.is-info {
+                border-color: rgba(29, 103, 242, 0.24);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            .bank-account-form-status[hidden] {
+                display: none;
+            }
+            .bank-account-setup-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+            }
+            .bank-account-setup-card {
+                display: grid;
+                gap: 14px;
+                min-width: 0;
+                padding: 16px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .bank-account-section-heading {
+                display: grid;
+                gap: 3px;
+            }
+            .bank-account-section-heading span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .bank-account-section-heading strong {
+                font-size: 0.98rem;
+                font-weight: 950;
+            }
+            .bank-account-field {
+                display: grid;
+                gap: 7px;
+                min-width: 0;
+            }
+            .bank-account-field .bank-field-label {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 10px;
+                color: var(--ink);
+                font-size: 0.82rem;
+                font-weight: 900;
+                letter-spacing: 0;
+                text-transform: none;
+            }
+            .bank-account-field .bank-field-label small {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+                white-space: nowrap;
+            }
+            .bank-account-field input {
+                min-height: 46px;
+                border-radius: 14px;
+                background: #ffffff;
+                font-weight: 850;
+            }
+            .bank-account-field input.is-invalid {
+                border-color: rgba(255, 83, 83, 0.64);
+                background: rgba(255, 231, 231, 0.42);
+                box-shadow: 0 0 0 3px rgba(255, 83, 83, 0.10);
+            }
+            .bank-field-error {
+                min-height: 16px;
+                color: #ad3434;
+                font-size: 0.72rem;
+                font-weight: 850;
+                line-height: 1.25;
+            }
+            .bank-account-form-footer {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 16px 24px 22px;
+                border-top: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.8);
+            }
+            .bank-account-form-footer .detail-meta {
+                max-width: 430px;
+                font-size: 0.82rem;
+                font-weight: 800;
             }
             .developer-log-actions {
                 display: inline-flex;
@@ -7218,6 +7729,12 @@
                 transform-box: fill-box;
                 transform-origin: center;
             }
+            .ai-inline-banner .sync-logo-loader .shape-1-diagonal {
+                animation: ai-loader-diagonal-1 3.2s ease-in-out infinite;
+            }
+            .ai-inline-banner .sync-logo-loader .shape-2-diagonal {
+                animation: ai-loader-diagonal-2 3.2s ease-in-out infinite;
+            }
             .sync-inline-banner.is-error .sync-logo-loader {
                 width: 22px;
                 height: 22px;
@@ -7286,6 +7803,18 @@
                 25% { transform: translateX(50px) translateY(30px) rotate(-120deg); }
                 50% { transform: translateX(0) translateY(0) rotate(-240deg); }
                 75% { transform: translateX(-50px) translateY(-30px) rotate(-360deg); }
+            }
+            @keyframes ai-loader-diagonal-1 {
+                0%, 100% { transform: translateX(0) translateY(0) rotate(0deg) scale(1); }
+                30% { transform: translateX(-42px) translateY(34px) rotate(105deg) scale(0.92); }
+                58% { transform: translateX(18px) translateY(-28px) rotate(235deg) scale(1.08); }
+                82% { transform: translateX(46px) translateY(18px) rotate(350deg) scale(0.98); }
+            }
+            @keyframes ai-loader-diagonal-2 {
+                0%, 100% { transform: translateX(0) translateY(0) rotate(0deg) scale(1); }
+                30% { transform: translateX(42px) translateY(-34px) rotate(-105deg) scale(1.08); }
+                58% { transform: translateX(-18px) translateY(28px) rotate(-235deg) scale(0.92); }
+                82% { transform: translateX(-46px) translateY(-18px) rotate(-350deg) scale(1.02); }
             }
             @keyframes sync-progress {
                 0% { transform: translateX(-110%); }
@@ -7377,7 +7906,9 @@
                 }
                 .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
                 body.is-ledger-view .credit-control-topbar-summary,
-                body.is-jashflow-view .jashflow-topbar-summary {
+                body.is-jashflow-view .jashflow-topbar-summary,
+                .ignition-topbar-tabs,
+                #bankStatementsScreen .bank-extraction-hero-grid {
                     width: 100%;
                     flex-basis: 100%;
                     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -7552,12 +8083,29 @@
                 .bank-account-page-header {
                     flex-direction: column;
                 }
+                .bank-account-setup-grid {
+                    grid-template-columns: 1fr;
+                }
+                .bank-account-form-footer {
+                    align-items: stretch;
+                    flex-direction: column;
+                }
             }
             @media (max-width: 560px) {
                 .summary-bar { grid-template-columns: 1fr; }
                 body.is-ledger-view .credit-control-topbar-summary,
-                body.is-jashflow-view .jashflow-topbar-summary {
+                body.is-jashflow-view .jashflow-topbar-summary,
+                body.is-bank-account-view .bank-account-topbar-summary,
+                #bankStatementsScreen .bank-extraction-hero-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .ignition-topbar-tabs {
+                    justify-content: flex-start;
+                    overflow-x: auto;
+                    flex-wrap: nowrap;
+                }
+                .ignition-topbar-tabs button {
+                    flex: 0 0 auto;
                 }
                 .jashflow-summary-grid,
                 .bank-account-summary-grid,
@@ -7624,7 +8172,7 @@
                     <div class="app-sidebar-footer">
                         <button class="app-sidebar-connect" id="sidebarResyncButton" type="button">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg></span>
-                            <span class="app-nav-copy"><strong>Resync Data</strong><span class="app-sidebar-detail">Refresh Xero</span></span>
+                            <span class="app-nav-copy"><strong>Resync Data</strong></span>
                         </button>
                         <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
@@ -7761,6 +8309,25 @@
                                 <p id="heroNoticesSummary">No active 7 day notices</p>
                             </button>
                         </div>
+                        <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
+                        <div class="bank-continuity-topbar-pill" id="bankContinuityTopbarPill" role="status" aria-live="polite" hidden>
+                            <span class="bank-continuity-mark" aria-hidden="true">OK</span>
+                            <span class="bank-continuity-copy">
+                                <span>Continuity</span>
+                                <strong id="bankContinuityTopbarTitle">No transactional gaps detected</strong>
+                            </span>
+                        </div>
+                        <nav class="ignition-tabs ignition-topbar-tabs" id="ignitionTopbarTabs" aria-label="Ignition sections" hidden>
+                            <button class="is-active" type="button" data-ignition-tab="overview">Overview</button>
+                            <button type="button" data-ignition-tab="clients">Client register</button>
+                            <button type="button" data-ignition-tab="renewals">Renewals</button>
+                            <button type="button" data-ignition-tab="staff-income">Income by staff</button>
+                            <button type="button" data-ignition-tab="subscriptions">Subscriptions</button>
+                            <button type="button" data-ignition-tab="renewal-analysis">Renewal vs new work</button>
+                            <button type="button" data-ignition-tab="creators">Proposal creators</button>
+                            <button type="button" data-ignition-tab="pipeline">Pipeline</button>
+                            <button type="button" data-ignition-tab="datasets">Datasets</button>
+                        </nav>
                         <div class="header-xero-action" id="headerXeroAction">
                             <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">START</a>
                         </div>
@@ -7816,10 +8383,31 @@
                             </div>
                         </div>
                         <div class="sync-inline-banner ai-inline-banner" id="aiInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
-                            <span class="sync-inline-spinner" aria-hidden="true"></span>
+                            <span class="sync-inline-spinner sync-logo-loader ai-logo-loader" aria-hidden="true">
+                                <svg viewBox="0 0 98.53 98.28" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                    <defs>
+                                        <linearGradient id="aiInlineLoaderGradient1" x1="22.13" y1="22.14" x2="82.38" y2="87.41">
+                                            <stop offset="0" stop-color="#2a8dcd"/>
+                                            <stop offset="1" stop-color="#27b05f"/>
+                                        </linearGradient>
+                                        <linearGradient id="aiInlineLoaderGradient2" x1="24.15" y1="20.28" x2="84.4" y2="85.55">
+                                            <stop offset="0" stop-color="#1d67f2"/>
+                                            <stop offset="1" stop-color="#3e7ec1"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <g class="shape-1-diagonal">
+                                        <path fill="url(#aiInlineLoaderGradient1)" d="M36,59.36a7.18,7.18,0,0,1-6.06-2.63c-1.34-1.76-2-4.71-2-8.87V39.28L0,44.07,44.07,0V44.18q0,8-2,11.57A6.5,6.5,0,0,1,36,59.36Z"/>
+                                    </g>
+                                    <g class="shape-2-diagonal">
+                                        <path fill="url(#aiInlineLoaderGradient2)" d="M98.53,53.92,54.17,98.28,36.63,80.74q16.57-.55,25.93-8.95,10.05-9,10-25.52V28Z"/>
+                                    </g>
+                                </svg>
+                            </span>
                             <div class="sync-inline-copy">
-                                <strong>Jenius AI is analysing the Xero data</strong>
+                                <strong id="aiInlineTitle">Jenius AI is analysing the Xero data</strong>
                                 <span id="aiInlineDetail">Building the insights dashboard</span>
+                                <div class="sync-inline-progress" aria-hidden="true"><span id="aiInlineProgressFill"></span></div>
+                                <small class="sync-inline-eta" id="aiInlineEta">Working with Jenius AI</small>
                             </div>
                         </div>
                         <div class="sync-inline-banner ignition-topbar-widget" id="ignitionTopbarWidget" role="status" aria-live="polite" aria-atomic="true" hidden>
@@ -8400,6 +8988,7 @@
                     </section>
 
                     <section class="late-charges-screen detail-card" id="bankStatementsScreen" hidden>
+                        <section class="bank-extraction-hero-grid" id="bankExtractionHeroGrid" aria-label="Bank statement extraction totals"></section>
                         <section class="detail-panel bank-statement-workspace">
                             <div class="bank-extraction-client-list" id="bankStatementClientList"></div>
                             <div class="bank-account-list" id="bankAccountList"></div>
@@ -8421,17 +9010,6 @@
                                 <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
                             </div>
                         </div>
-                        <nav class="ignition-tabs" aria-label="Ignition sections">
-                            <button class="is-active" type="button" data-ignition-tab="overview">Overview</button>
-                            <button type="button" data-ignition-tab="clients">Client register</button>
-                            <button type="button" data-ignition-tab="renewals">Renewals</button>
-                            <button type="button" data-ignition-tab="staff-income">Income by staff</button>
-                            <button type="button" data-ignition-tab="subscriptions">Subscriptions</button>
-                            <button type="button" data-ignition-tab="renewal-analysis">Renewal vs new work</button>
-                            <button type="button" data-ignition-tab="creators">Proposal creators</button>
-                            <button type="button" data-ignition-tab="pipeline">Pipeline</button>
-                            <button type="button" data-ignition-tab="datasets">Datasets</button>
-                        </nav>
                         <section class="ignition-tab-panel" data-ignition-panel="overview">
                             <section class="detail-panel ignition-panel">
                                 <div class="ignition-summary-grid" aria-label="Ignition management metrics">
@@ -8495,7 +9073,7 @@
                                     <div>
                                         <p class="eyebrow">Renewals process</p>
                                         <h3 id="ignitionRenewalsTitle">Renewals round</h3>
-                                        <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from Ignition proposals due in the next five weeks.</p>
+                                        <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.</p>
                                     </div>
                                     <div class="detail-actions">
                                         <button class="ghost-button" id="startIgnitionRenewalsButton" type="button">Create renewals round</button>
@@ -9184,8 +9762,8 @@
                 </section>
 
                 <section class="developer-log-panel" id="bankAccountPanel" aria-modal="true" role="dialog" aria-labelledby="bankAccountPanelTitle" hidden>
-                    <div class="developer-log-card">
-                        <form class="stack-form" id="bankAccountForm">
+                    <div class="developer-log-card bank-account-panel-card">
+                        <form class="stack-form bank-account-dialog-form" id="bankAccountForm" novalidate>
                             <div class="developer-log-head">
                                 <div>
                                     <h3 id="bankAccountPanelTitle">Add bank account</h3>
@@ -9193,30 +9771,56 @@
                                 </div>
                                 <div class="developer-log-actions">
                                     <button class="ghost-button" id="closeBankAccountPanelButton" type="button">Cancel</button>
-                                    <button class="primary-button" type="submit">Save account</button>
                                 </div>
                             </div>
-                            <div class="bank-account-form bank-account-modal-form">
-                                <label>
-                                    Nickname
-                                    <input id="bankAccountNicknameInput" type="text" placeholder="Optional display name">
-                                </label>
-                                <label>
-                                    Account name
-                                    <input id="bankAccountNameInput" type="text" required>
-                                </label>
-                                <label>
-                                    Account number
-                                    <input id="bankAccountNumberInput" type="text" inputmode="numeric" autocomplete="off" required>
-                                </label>
-                                <label>
-                                    Sort code
-                                    <input id="bankSortCodeInput" type="text" autocomplete="off">
-                                </label>
-                                <label>
-                                    Currency
-                                    <input id="bankCurrencyInput" type="text" maxlength="3" value="GBP" required>
-                                </label>
+                            <div class="bank-account-form-body">
+                                <div class="bank-account-form-status" id="bankAccountFormStatus" hidden></div>
+                                <div class="bank-account-setup-grid">
+                                    <section class="bank-account-setup-card">
+                                        <div class="bank-account-section-heading">
+                                            <span>Display</span>
+                                            <strong>How this account appears</strong>
+                                        </div>
+                                        <label class="bank-account-field" for="bankAccountNicknameInput">
+                                            <span class="bank-field-label"><span>Nickname</span><small>Optional</small></span>
+                                            <input id="bankAccountNicknameInput" type="text" maxlength="80" autocomplete="off" placeholder="JUK Trading">
+                                            <span class="bank-field-error" id="bankAccountNicknameInputError"></span>
+                                        </label>
+                                        <label class="bank-account-field" for="bankAccountNameInput">
+                                            <span class="bank-field-label"><span>Account name</span><small>Required</small></span>
+                                            <input id="bankAccountNameInput" type="text" maxlength="120" autocomplete="off" placeholder="Jaccountancy (UK) Ltd current account" aria-describedby="bankAccountNameInputError" required>
+                                            <span class="bank-field-error" id="bankAccountNameInputError"></span>
+                                        </label>
+                                    </section>
+                                    <section class="bank-account-setup-card">
+                                        <div class="bank-account-section-heading">
+                                            <span>Bank details</span>
+                                            <strong>Statement matching fields</strong>
+                                        </div>
+                                        <label class="bank-account-field" for="bankAccountNumberInput">
+                                            <span class="bank-field-label"><span>Account number</span><small>8 digits</small></span>
+                                            <input id="bankAccountNumberInput" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="12345678" aria-describedby="bankAccountNumberInputError" required>
+                                            <span class="bank-field-error" id="bankAccountNumberInputError"></span>
+                                        </label>
+                                        <label class="bank-account-field" for="bankSortCodeInput">
+                                            <span class="bank-field-label"><span>Sort code</span><small>6 digits</small></span>
+                                            <input id="bankSortCodeInput" type="text" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="12-34-56" aria-describedby="bankSortCodeInputError" required>
+                                            <span class="bank-field-error" id="bankSortCodeInputError"></span>
+                                        </label>
+                                        <label class="bank-account-field" for="bankCurrencyInput">
+                                            <span class="bank-field-label"><span>Currency</span><small>ISO code</small></span>
+                                            <input id="bankCurrencyInput" type="text" maxlength="3" value="GBP" autocomplete="off" placeholder="GBP" aria-describedby="bankCurrencyInputError" required>
+                                            <span class="bank-field-error" id="bankCurrencyInputError"></span>
+                                        </label>
+                                    </section>
+                                </div>
+                            </div>
+                            <div class="bank-account-form-footer">
+                                <p class="detail-meta">These details are used to label uploaded statements and reduce duplicate extraction results.</p>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="cancelBankAccountFooterButton" type="button">Cancel</button>
+                                    <button class="primary-button" id="bankAccountSubmitButton" type="submit">Save account</button>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -9498,6 +10102,7 @@
             let pageSize = 25;
             let currentPage = 1;
             let isSyncing = false;
+            let isGlobalDataRefreshRunning = false;
             let syncStartedAt = 0;
             let syncProgressTimer = null;
             let xeroRateLimitTimer = null;
@@ -9619,6 +10224,7 @@
             let selectedMeReportClientId = "";
             let meReportWorkspaceOpen = false;
             let activeMeReportTab = "overview";
+            let activeMeReportSubmissionTab = "insights";
             let selectedMeReportSubmissionId = "";
             let isMeReportProcessing = false;
             let meReportUploadProcessing = false;
@@ -11822,9 +12428,33 @@
                 return view === "ignition" || view === "ignition-clients";
             }
 
+            function activeBankStatementAccountForTopbar() {
+                if (activeView !== "bank-statements" || !bankStatementWorkspaceOpen || !bankStatementAccountOpen) return null;
+                return selectedBankAccount();
+            }
+
             function activeTopbarTitle(topbarClient = null) {
                 if (topbarClient?.name) return topbarClient.name;
                 return topbarViewTitles[activeView] || topbarViewTitles.ledger;
+            }
+
+            function topbarConnectionMetaText() {
+                const organisationName = state.organisation.name || "Xero organisation not connected";
+                const lastSync = state.organisation.lastSync || "Waiting for first sync";
+                const syncCopy = isSyncing
+                    ? "Pulling in data from Xero"
+                    : lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
+                    ? lastSync
+                    : `Last sync: ${lastSync}`;
+                return `${organisationName} · ${syncCopy}`;
+            }
+
+            function renderTopbarIdentity(topbarClient = null) {
+                const account = activeBankStatementAccountForTopbar();
+                const heading = document.getElementById("topbarPageTitle") || document.querySelector(".brand-lockup h1");
+                if (heading) heading.textContent = account ? bankAccountDisplayName(account) : activeTopbarTitle(topbarClient);
+                const connectionMeta = document.getElementById("ledgerConnectionMeta");
+                if (connectionMeta) connectionMeta.textContent = account ? bankAccountDetailLine(account) : topbarConnectionMetaText();
             }
 
             function syncActiveViewShell() {
@@ -11842,9 +12472,12 @@
                 setElementVisible(document.getElementById("practicePackScreen"), activeView === "practice-packs");
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
+                document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
+                const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
+                if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget && !isIgnitionView()) ignitionTopbarWidget.hidden = true;
                 if (activeView !== "settings") closeSettingsSidebar();
@@ -15800,6 +16433,54 @@
                 };
             }
 
+            function bankStatementSummaryNumber(value, fallback = 0) {
+                const amount = Number(value);
+                return Number.isFinite(amount) ? amount : fallback;
+            }
+
+            function bankStatementExtractionTotals() {
+                const clients = bankStatementData.clients || [];
+                const summary = bankStatementData.summary || {};
+                const fallbackAccountCount = clients.reduce((sum, client) => sum + Number((client.accounts || []).length), 0);
+                const fallbackUploadCount = clients.reduce((sum, client) => (
+                    sum + (client.accounts || []).reduce((accountSum, account) => accountSum + Number((account.uploads || []).length), 0)
+                ), 0);
+                const fallbackTransactionCount = clients.reduce((sum, client) => (
+                    sum + (client.accounts || []).reduce((accountSum, account) => accountSum + Number((account.transactions || []).length), 0)
+                ), 0);
+                return {
+                    clients: bankStatementSummaryNumber(summary.clientCount, clients.length),
+                    accounts: bankStatementSummaryNumber(summary.accountCount, fallbackAccountCount),
+                    uploads: bankStatementSummaryNumber(summary.uploadCount ?? summary.statementUploadCount, fallbackUploadCount),
+                    transactions: bankStatementSummaryNumber(summary.transactionCount, fallbackTransactionCount)
+                };
+            }
+
+            function renderBankStatementHeroCards() {
+                const grid = document.getElementById("bankExtractionHeroGrid");
+                if (!grid) return;
+                const accountDetailOpen = Boolean(activeBankStatementAccountForTopbar());
+                grid.hidden = accountDetailOpen;
+                if (accountDetailOpen) {
+                    grid.innerHTML = "";
+                    return;
+                }
+                const totals = bankStatementExtractionTotals();
+                const cards = [
+                    ["Total clients", totals.clients, "Extraction workspaces"],
+                    ["Total bank accounts", totals.accounts, "Saved accounts"],
+                    ["Total transactions", totals.transactions, "Extracted rows"],
+                    ["Total uploads", totals.uploads, "Statement files"]
+                ];
+                grid.innerHTML = cards.map(([label, value, detail]) => `
+                    <article class="bank-extraction-hero-card">
+                        <span>${escapeHTML(label)}</span>
+                        <strong>${Number(value || 0).toLocaleString("en-GB")}</strong>
+                        <small>${escapeHTML(detail)}</small>
+                    </article>
+                `).join("");
+            }
+
             function selectedBankStatementClient() {
                 return (bankStatementData.clients || []).find((client) => client.id === selectedBankStatementClientId) || (bankStatementData.clients || [])[0] || null;
             }
@@ -15834,6 +16515,56 @@
                 }
             }
 
+            function renderBankStatementContinuityTopbar() {
+                const pill = document.getElementById("bankContinuityTopbarPill");
+                if (!pill) return;
+                const account = activeView === "bank-statements" && bankStatementWorkspaceOpen && bankStatementAccountOpen
+                    ? selectedBankAccount()
+                    : null;
+                const warnings = account ? bankStatementWarnings(account) : [];
+                const showClearContinuity = Boolean(account) && warnings.length === 0;
+                pill.hidden = !showClearContinuity;
+                if (!showClearContinuity) return;
+                const title = document.getElementById("bankContinuityTopbarTitle");
+                if (title) title.textContent = "No transactional gaps detected";
+                pill.title = "Running balances, extracted statement dates, and transaction sequence checks are clear for the saved data.";
+            }
+
+            function renderBankAccountTopbarSummary() {
+                const summary = document.getElementById("bankAccountTopbarSummary");
+                if (!summary) return;
+                const account = activeBankStatementAccountForTopbar();
+                document.body.classList.toggle("is-bank-account-view", Boolean(account));
+                summary.hidden = !account;
+                if (!account) {
+                    summary.innerHTML = "";
+                    return;
+                }
+                const transactions = bankAccountTransactionsAscending(account);
+                const dateRange = bankAccountDateRange(account);
+                const latestBalance = latestBankAccountBalance(account);
+                const balanceQuality = bankStatementBalanceQuality(account);
+                const warnings = bankStatementWarnings(account);
+                const balanceQualityCopy = balanceQuality.mismatchCount
+                    ? `${balanceQuality.mismatchCount.toLocaleString("en-GB")} mismatch${balanceQuality.mismatchCount === 1 ? "" : "es"}`
+                    : balanceQuality.checkedCount
+                        ? `${balanceQuality.checkedCount.toLocaleString("en-GB")} checked`
+                        : "Pending";
+                const cards = [
+                    { label: "Transactions", value: transactions.length.toLocaleString("en-GB") },
+                    { label: "Date range", value: formatBankDateRange(dateRange.start, dateRange.end) },
+                    { label: "Latest balance", value: latestBalance === null || latestBalance === undefined ? "--" : formatCurrency(latestBalance) },
+                    { label: "Balance QA", value: balanceQualityCopy, tone: balanceQuality.mismatchCount ? "error" : "" },
+                    { label: "Warnings", value: warnings.length ? `${warnings.length.toLocaleString("en-GB")} to review` : "Clear", tone: warnings.length ? "warning" : "" }
+                ];
+                summary.innerHTML = cards.map((card) => `
+                    <article class="${card.tone ? `is-${escapeHTML(card.tone)}` : ""}">
+                        <span>${escapeHTML(card.label)}</span>
+                        <strong>${escapeHTML(card.value)}</strong>
+                    </article>
+                `).join("");
+            }
+
             function openBankStatementsScreen() {
                 activeView = "bank-statements";
                 syncActiveViewShell();
@@ -15852,22 +16583,24 @@
                 editingBankAccountId = account?.id || "";
                 bankAccountFormOpen = true;
                 renderBankAccountPanel();
+                resetBankAccountValidation();
                 const nicknameInput = document.getElementById("bankAccountNicknameInput");
                 if (nicknameInput) nicknameInput.value = account?.nickname || "";
                 const nameInput = document.getElementById("bankAccountNameInput");
                 if (nameInput) nameInput.value = account?.accountName || `${client.customerName || "Client"} current account`;
                 const accountInput = document.getElementById("bankAccountNumberInput");
-                if (accountInput) accountInput.value = account?.accountNumber || "";
+                if (accountInput) accountInput.value = bankAccountDigits(account?.accountNumber || "").slice(0, 8);
                 const sortCodeInput = document.getElementById("bankSortCodeInput");
-                if (sortCodeInput) sortCodeInput.value = account?.sortCode || "";
+                if (sortCodeInput) sortCodeInput.value = formatBankSortCode(account?.sortCode || "");
                 const currencyInput = document.getElementById("bankCurrencyInput");
-                if (currencyInput) currencyInput.value = account?.currencyCode || "GBP";
+                if (currencyInput) currencyInput.value = String(account?.currencyCode || "GBP").replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3) || "GBP";
                 setTimeout(() => document.getElementById(account ? "bankAccountNicknameInput" : "bankAccountNameInput")?.focus(), 0);
             }
 
             function closeBankAccountForm() {
                 bankAccountFormOpen = false;
                 editingBankAccountId = "";
+                resetBankAccountValidation();
                 renderBankAccountPanel();
             }
 
@@ -15891,11 +16624,144 @@
                 const nameInput = document.getElementById("bankAccountNameInput");
                 if (nameInput && !nameInput.value) nameInput.value = editingAccount?.accountName || `${client.customerName || "Client"} current account`;
                 const accountInput = document.getElementById("bankAccountNumberInput");
-                if (accountInput && editingAccount && !accountInput.value) accountInput.value = editingAccount.accountNumber || "";
+                if (accountInput && editingAccount && !accountInput.value) accountInput.value = bankAccountDigits(editingAccount.accountNumber || "").slice(0, 8);
                 const sortCodeInput = document.getElementById("bankSortCodeInput");
-                if (sortCodeInput && editingAccount && !sortCodeInput.value) sortCodeInput.value = editingAccount.sortCode || "";
+                if (sortCodeInput && editingAccount && !sortCodeInput.value) sortCodeInput.value = formatBankSortCode(editingAccount.sortCode || "");
                 const currencyInput = document.getElementById("bankCurrencyInput");
-                if (currencyInput && !currencyInput.value) currencyInput.value = editingAccount?.currencyCode || "GBP";
+                if (currencyInput && !currencyInput.value) currencyInput.value = String(editingAccount?.currencyCode || "GBP").replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3) || "GBP";
+                const submitButton = document.getElementById("bankAccountSubmitButton");
+                if (submitButton) submitButton.textContent = editingAccount ? "Save changes" : "Save account";
+            }
+
+            function bankAccountDigits(value) {
+                return String(value || "").replace(/\D/g, "");
+            }
+
+            function formatBankSortCode(value) {
+                const digits = bankAccountDigits(value).slice(0, 6);
+                return digits.replace(/(\d{2})(?=\d)/g, "$1-");
+            }
+
+            function bankAccountFieldValue(id) {
+                return String(document.getElementById(id)?.value || "").trim();
+            }
+
+            function setBankAccountFieldError(inputId, message = "") {
+                const input = document.getElementById(inputId);
+                const error = document.getElementById(`${inputId}Error`);
+                if (input) {
+                    input.classList.toggle("is-invalid", Boolean(message));
+                    input.setAttribute("aria-invalid", message ? "true" : "false");
+                }
+                if (error) error.textContent = message;
+            }
+
+            function setBankAccountFormStatus(message = "", variant = "error") {
+                const status = document.getElementById("bankAccountFormStatus");
+                if (!status) return;
+                status.hidden = !message;
+                status.textContent = message;
+                status.classList.toggle("is-info", variant === "info");
+            }
+
+            function resetBankAccountValidation() {
+                setBankAccountFormStatus("");
+                [
+                    "bankAccountNicknameInput",
+                    "bankAccountNameInput",
+                    "bankAccountNumberInput",
+                    "bankSortCodeInput",
+                    "bankCurrencyInput"
+                ].forEach((id) => setBankAccountFieldError(id, ""));
+            }
+
+            function shouldRevalidateBankAccountForm() {
+                const status = document.getElementById("bankAccountFormStatus");
+                return status?.hidden === false || Boolean(document.querySelector("#bankAccountForm input.is-invalid"));
+            }
+
+            function validateBankAccountForm(options = {}) {
+                const focus = options.focus !== false;
+                const client = selectedBankStatementClient();
+                const accountId = editingBankAccountId;
+                const nickname = bankAccountFieldValue("bankAccountNicknameInput");
+                const accountName = bankAccountFieldValue("bankAccountNameInput").replace(/\s+/g, " ");
+                const accountNumber = bankAccountDigits(bankAccountFieldValue("bankAccountNumberInput")).slice(0, 8);
+                const sortCodeDigits = bankAccountDigits(bankAccountFieldValue("bankSortCodeInput")).slice(0, 6);
+                const currencyCode = bankAccountFieldValue("bankCurrencyInput").replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3);
+                const sortCode = formatBankSortCode(sortCodeDigits);
+                const errors = new Map();
+
+                if (nickname.length > 80) errors.set("bankAccountNicknameInput", "Keep the nickname to 80 characters or fewer.");
+                if (!accountName) errors.set("bankAccountNameInput", "Enter the account name shown on the statement.");
+                else if (accountName.length < 2) errors.set("bankAccountNameInput", "Enter a fuller account name.");
+                if (accountNumber.length !== 8) errors.set("bankAccountNumberInput", "Enter the 8 digit account number.");
+                if (sortCodeDigits.length !== 6) errors.set("bankSortCodeInput", "Enter the 6 digit sort code.");
+                if (!/^[A-Z]{3}$/.test(currencyCode)) errors.set("bankCurrencyInput", "Enter a 3 letter currency code, for example GBP.");
+
+                const duplicate = (client?.accounts || []).find((account) => {
+                    if (!account || account.id === accountId) return false;
+                    return bankAccountDigits(account.accountNumber) === accountNumber
+                        && bankAccountDigits(account.sortCode) === sortCodeDigits;
+                });
+                if (duplicate && accountNumber.length === 8 && sortCodeDigits.length === 6) {
+                    errors.set("bankAccountNumberInput", `This matches ${bankAccountDisplayName(duplicate)} already saved for this client.`);
+                    errors.set("bankSortCodeInput", "Use a different sort code or edit the existing account.");
+                }
+
+                const formattedValues = {
+                    bankAccountNicknameInput: nickname,
+                    bankAccountNameInput: accountName,
+                    bankAccountNumberInput: accountNumber,
+                    bankSortCodeInput: sortCode,
+                    bankCurrencyInput: currencyCode || "GBP"
+                };
+                Object.entries(formattedValues).forEach(([id, value]) => {
+                    const input = document.getElementById(id);
+                    if (input) input.value = value;
+                    setBankAccountFieldError(id, errors.get(id) || "");
+                });
+
+                if (errors.size) {
+                    setBankAccountFormStatus("Check the highlighted fields before saving this bank account.");
+                    if (focus) document.getElementById(errors.keys().next().value)?.focus();
+                    return { valid: false, payload: null };
+                }
+
+                setBankAccountFormStatus("");
+                return {
+                    valid: true,
+                    payload: {
+                        nickname,
+                        accountName,
+                        accountNumber,
+                        sortCode,
+                        currencyCode: currencyCode || "GBP"
+                    }
+                };
+            }
+
+            function wireBankAccountFormValidation() {
+                const accountInput = document.getElementById("bankAccountNumberInput");
+                const sortCodeInput = document.getElementById("bankSortCodeInput");
+                const currencyInput = document.getElementById("bankCurrencyInput");
+                accountInput?.addEventListener("input", () => {
+                    accountInput.value = bankAccountDigits(accountInput.value).slice(0, 8);
+                    if (shouldRevalidateBankAccountForm()) validateBankAccountForm({ focus: false });
+                });
+                sortCodeInput?.addEventListener("input", () => {
+                    sortCodeInput.value = formatBankSortCode(sortCodeInput.value);
+                    if (shouldRevalidateBankAccountForm()) validateBankAccountForm({ focus: false });
+                });
+                currencyInput?.addEventListener("input", () => {
+                    currencyInput.value = String(currencyInput.value || "").replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3);
+                    if (shouldRevalidateBankAccountForm()) validateBankAccountForm({ focus: false });
+                });
+                ["bankAccountNicknameInput", "bankAccountNameInput"].forEach((id) => {
+                    document.getElementById(id)?.addEventListener("input", () => {
+                        if (shouldRevalidateBankAccountForm()) validateBankAccountForm({ focus: false });
+                    });
+                });
             }
 
             function bankUploadSummary(upload) {
@@ -16205,10 +17071,122 @@
                 URL.revokeObjectURL(link.href);
             }
 
+            function downloadBankJson(filename, payload) {
+                const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: "application/json;charset=utf-8" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(link.href);
+            }
+
             function bankExportFilename(account, suffix) {
                 const name = bankAccountDisplayName(account).replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "bank-statement";
                 return `${name}-${suffix}.csv`;
             }
+
+            function bankFailureReviewFilename(client, account, upload) {
+                const stem = [
+                    client?.customerName,
+                    bankAccountDisplayName(account),
+                    upload?.filename || upload?.id,
+                ]
+                    .filter(Boolean)
+                    .join("-")
+                    .replace(/[^a-z0-9]+/gi, "-")
+                    .replace(/^-|-$/g, "")
+                    .toLowerCase()
+                    .slice(0, 140) || "bank-statement";
+                return `${stem}-failure-reason.json`;
+            }
+
+            function bankUploadFailureCategory(upload) {
+                const error = String(upload?.errorMessage || "");
+                if (/not valid JSON|stopped before returning valid JSON|max_output|token/i.test(error)) {
+                    return "OpenAI output limit: the model response was cut off before complete JSON was returned.";
+                }
+                if (/model_not_found|model .*does not exist|requested model/i.test(error)) {
+                    return "OpenAI model configuration: the configured model was unavailable.";
+                }
+                if (/under 50 MB|50\s*MB|file size/i.test(error)) {
+                    return "PDF size limit: the uploaded statement exceeded the extractor limit.";
+                }
+                if (/No transaction rows|selectable statement text|clearer statement/i.test(error)) {
+                    return "PDF text extraction: transaction rows could not be read reliably from the statement.";
+                }
+                if (/OpenAI extraction is not configured/i.test(error)) {
+                    return "Backend configuration: OpenAI extraction is not configured.";
+                }
+                return "Extraction failed before transactions could be saved.";
+            }
+
+            function bankUploadFailureReviewPayload(client, account, upload) {
+                const savedTransactions = bankAccountTransactionsAscending(account)
+                    .filter((transaction) => String(transaction.uploadId || "") === String(upload?.id || ""))
+                    .map((transaction) => ({
+                        id: transaction.id || "",
+                        date: transaction.date || "",
+                        description: transaction.description || "",
+                        amount: Number(transaction.amount || 0),
+                        balance: transaction.balance === null || transaction.balance === undefined ? null : Number(transaction.balance || 0),
+                        type: transaction.type || "",
+                        createdAt: transaction.createdAt || "",
+                    }));
+                return {
+                    reviewType: "bank_statement_extraction_failure",
+                    exportedAt: new Date().toISOString(),
+                    failure: {
+                        status: upload?.status || "",
+                        category: bankUploadFailureCategory(upload),
+                        reason: upload?.errorMessage || bankUploadSummary(upload),
+                        advice: bankUploadFailureAdvice(upload),
+                        failedAt: upload?.completedAt || upload?.lastAttemptAt || upload?.createdAt || "",
+                    },
+                    client: {
+                        id: client?.id || "",
+                        customerId: client?.customerId || "",
+                        customerName: client?.customerName || "",
+                        email: client?.email || "",
+                        xeroContactId: client?.xeroContactId || "",
+                    },
+                    account: {
+                        id: account?.id || "",
+                        displayName: bankAccountDisplayName(account),
+                        detail: bankAccountDetailLine(account),
+                        accountName: account?.accountName || "",
+                        accountNumber: account?.accountNumber || "",
+                        sortCode: account?.sortCode || "",
+                        currencyCode: account?.currencyCode || "",
+                    },
+                    submission: {
+                        id: upload?.id || "",
+                        filename: upload?.filename || "",
+                        createdAt: upload?.createdAt || "",
+                        lastAttemptAt: upload?.lastAttemptAt || "",
+                        completedAt: upload?.completedAt || "",
+                        attemptCount: Number(upload?.attemptCount || 0),
+                        canRetry: Boolean(upload?.canRetry),
+                        sourceFileSizeBytes: Number(upload?.sourceFileSize || 0),
+                        sourceFileSize: formatFileSize(upload?.sourceFileSize || 0),
+                        statementStartDate: upload?.statementStartDate || "",
+                        statementEndDate: upload?.statementEndDate || "",
+                        openingBalance: upload?.openingBalance ?? null,
+                        closingBalance: upload?.closingBalance ?? null,
+                        extractedCount: Number(upload?.extractedCount || 0),
+                        insertedCount: Number(upload?.insertedCount || 0),
+                        duplicateCount: Number(upload?.duplicateCount || 0),
+                    },
+                    activityEvents: bankUploadActivityEvents(upload),
+                    savedTransactions,
+                    browser: {
+                        userAgent: navigator.userAgent || "",
+                        path: window.location?.pathname || "",
+                    },
+                };
+            }
+
 
             function estimateBankStatementUploadSeconds(fileCount) {
                 return Math.min(360, Math.max(45, 45 + (Math.max(1, Number(fileCount || 1)) - 1) * 35));
@@ -16265,7 +17243,9 @@
 
             function bankUploadBackgroundStatusText(upload) {
                 const status = bankUploadStatus(upload);
+                const insertedCount = Number(upload?.insertedCount || 0);
                 if (status === "queued") return "Waiting for extraction worker";
+                if (status === "processing" && insertedCount > 0) return `${insertedCount.toLocaleString("en-GB")} transaction${insertedCount === 1 ? "" : "s"} visible so far`;
                 if (status === "processing") return "Processing in the background";
                 return "Background extraction active";
             }
@@ -16277,8 +17257,10 @@
 
             function bankUploadProcessingSummary(upload, fallbackFilename, isLocalUpload) {
                 const filename = fallbackFilename || upload?.filename || "PDF statement";
+                const insertedCount = Number(upload?.insertedCount || 0);
                 if (isLocalUpload) return `${filename} is being uploaded and queued. You can keep using the console once it starts.`;
                 if (bankUploadStatus(upload) === "queued") return `${filename} is queued for background extraction. You can move around the system while it runs.`;
+                if (insertedCount > 0) return `${filename} is still extracting. ${insertedCount.toLocaleString("en-GB")} transaction${insertedCount === 1 ? "" : "s"} already ${insertedCount === 1 ? "is" : "are"} visible in Transactions.`;
                 return `${filename} is being read, checked and deduplicated in the background.`;
             }
 
@@ -16340,8 +17322,17 @@
 
             function renderBankStatementsScreen() {
                 const screen = document.getElementById("bankStatementsScreen");
-                if (!screen) return;
+                if (!screen) {
+                    renderBankStatementContinuityTopbar();
+                    return;
+                }
                 ensureBankStatementSelection();
+                renderBankStatementHeroCards();
+                renderBankStatementContinuityTopbar();
+                if (activeView === "bank-statements") {
+                    renderBankAccountTopbarSummary();
+                    renderTopbarIdentity();
+                }
                 const existingCustomerIds = new Set((bankStatementData.clients || []).map((client) => client.customerId));
                 const availableCustomers = (bankStatementData.customers || []).filter((customer) => !existingCustomerIds.has(customer.id));
                 const clientFormDisabled = !availableCustomers.length || bankStatementsLoading || bankStatementUploading;
@@ -16626,6 +17617,7 @@
                             <div>
                                 <h3>${escapeHTML(bankUploadProcessingTitle(activeUpload, localUploadActive))}</h3>
                                 <p>${escapeHTML(bankUploadProcessingSummary(activeUpload, processingFilename, localUploadActive))}</p>
+                                ${transactions.length ? `<button class="ghost-button bank-processing-view-button" type="button" data-bank-account-tab="transactions">View populated transactions</button>` : ""}
                             </div>
                         </div>
                         <div class="sync-progress-track" aria-hidden="true">
@@ -16650,18 +17642,10 @@
                             </div>
                         </article>
                     `).join("")
-                    : `
-                        <article class="bank-warning-card">
-                            <div class="bank-warning-row">
-                                <span class="bank-warning-icon">OK</span>
-                                <div>
-                                    <span>Continuity</span>
-                                    <strong>No transactional gaps detected</strong>
-                                    <p>Running balances, extracted statement dates, and transaction sequence checks are clear for the saved data.</p>
-                                </div>
-                            </div>
-                        </article>
-                    `;
+                    : "";
+                const warningsPanelMarkup = warningsMarkup
+                    ? `<div class="bank-warning-panel" role="alert">${warningsMarkup}</div>`
+                    : "";
                 const transactionRows = filteredTransactions.map((transaction) => {
                     const amount = Number(transaction.amount || 0);
                     const upload = uploadById.get(String(transaction.uploadId || ""));
@@ -16698,8 +17682,11 @@
                                 ${bankUploadActivityMarkup(upload)}
                             </td>
                             <td>
-                                ${failed ? `<button class="ghost-button bank-retry-button" type="button" data-bank-upload-retry="${escapeHTML(upload.id || "")}" ${canRetry ? "" : "disabled"}>${canRetry ? "Retry" : "Upload again"}</button>` : ""}
-                                <button class="ghost-button danger-button" type="button" data-bank-upload-delete="${escapeHTML(upload.id || "")}" ${uploadActive ? "disabled" : ""}>Delete</button>
+                                <div class="bank-upload-action-stack">
+                                    ${failed ? `<button class="ghost-button bank-retry-button" type="button" data-bank-upload-retry="${escapeHTML(upload.id || "")}" ${canRetry ? "" : "disabled"}>${canRetry ? "Retry" : "Upload again"}</button>` : ""}
+                                    ${failed ? `<button class="ghost-button bank-export-reason-button" type="button" data-bank-upload-export-reason="${escapeHTML(upload.id || "")}">Export reason</button>` : ""}
+                                    <button class="ghost-button danger-button" type="button" data-bank-upload-delete="${escapeHTML(upload.id || "")}" ${uploadActive ? "disabled" : ""}>Delete</button>
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -16756,30 +17743,20 @@
                     `;
                 detail.innerHTML = `
                     <div class="bank-account-page">
-                    <section class="bank-account-hero-card ${uploadProcessingMarkup ? "is-processing" : ""}">
-                        <div class="bank-account-page-header">
-                            <div>
-                                <p class="eyebrow">Extraction account</p>
-                                <h3>${escapeHTML(bankAccountDisplayName(account))}</h3>
-                                <p class="detail-meta">${escapeHTML(bankAccountDetailLine(account))}</p>
-                            </div>
-                            <div class="bank-account-actions">
-                                <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
-                                <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
-                                <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
-                                <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
-                            </div>
+                    <div class="bank-account-action-bar">
+                        <div>
+                            <span>Selected account</span>
+                            <strong>${bankStatementAccountTab === "history" ? "Submission history" : "Transactions"}</strong>
                         </div>
+                        <div class="bank-account-actions">
+                            <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
+                            <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
+                            <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
+                            <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
+                        </div>
+                    </div>
                         ${uploadProcessingMarkup}
-                        <div class="bank-account-summary-grid">
-                            <article class="bank-account-summary-card"><span>Transactions</span><strong>${transactions.length.toLocaleString("en-GB")}</strong></article>
-                            <article class="bank-account-summary-card"><span>Date range</span><strong>${formatBankDateRange(dateRange.start, dateRange.end)}</strong></article>
-                            <article class="bank-account-summary-card"><span>Latest balance</span><strong>${latestBalance === null || latestBalance === undefined ? "--" : formatCurrency(latestBalance)}</strong></article>
-                            <article class="bank-account-summary-card"><span>Balance QA</span><strong>${balanceQuality.mismatchCount ? `${balanceQuality.mismatchCount.toLocaleString("en-GB")} mismatch${balanceQuality.mismatchCount === 1 ? "" : "es"}` : balanceQuality.checkedCount ? `${balanceQuality.checkedCount.toLocaleString("en-GB")} checked` : "Pending"}</strong></article>
-                            <article class="bank-account-summary-card"><span>Warnings</span><strong>${warnings.length ? `${warnings.length.toLocaleString("en-GB")} to review` : "Clear"}</strong></article>
-                        </div>
-                    </section>
-                    <div class="bank-warning-panel" role="${warnings.length ? "alert" : "status"}">${warningsMarkup}</div>
+                    ${warningsPanelMarkup}
                     <nav class="bank-account-tabs" aria-label="Bank account sections">
                         <button type="button" class="${bankStatementAccountTab === "transactions" ? "is-active" : ""}" data-bank-account-tab="transactions">Transactions</button>
                         <button type="button" class="${bankStatementAccountTab === "history" ? "is-active" : ""}" data-bank-account-tab="history">Submission history</button>
@@ -16818,6 +17795,9 @@
                 });
                 detail.querySelectorAll("[data-bank-upload-retry]").forEach((button) => {
                     button.addEventListener("click", () => retryBankStatementUpload(button.dataset.bankUploadRetry || ""));
+                });
+                detail.querySelectorAll("[data-bank-upload-export-reason]").forEach((button) => {
+                    button.addEventListener("click", () => exportBankUploadFailureReason(button.dataset.bankUploadExportReason || ""));
                 });
                 detail.querySelectorAll("[data-bank-upload-delete]").forEach((button) => {
                     button.addEventListener("click", () => deleteBankStatementUpload(button.dataset.bankUploadDelete || ""));
@@ -16882,13 +17862,18 @@
                 const client = selectedBankStatementClient();
                 if (!client) return showToast("Add or select an extraction client first", "error");
                 const accountId = editingBankAccountId;
-                const payload = {
-                    nickname: document.getElementById("bankAccountNicknameInput")?.value || "",
-                    accountName: document.getElementById("bankAccountNameInput")?.value || "",
-                    accountNumber: document.getElementById("bankAccountNumberInput")?.value || "",
-                    sortCode: document.getElementById("bankSortCodeInput")?.value || "",
-                    currencyCode: document.getElementById("bankCurrencyInput")?.value || "GBP"
-                };
+                const validation = validateBankAccountForm();
+                if (!validation.valid) {
+                    showToast("Check the highlighted bank account fields.", "error");
+                    return;
+                }
+                const payload = validation.payload;
+                const submitButton = document.getElementById("bankAccountSubmitButton");
+                if (submitButton) {
+                    submitButton.disabled = true;
+                    submitButton.textContent = accountId ? "Saving changes..." : "Saving account...";
+                }
+                setBankAccountFormStatus("Saving bank account details...", "info");
                 try {
                     const response = await requestJSON(accountId ? api.endpoints.bankStatementAccount : api.endpoints.bankStatementAccounts, {
                         method: "POST",
@@ -16913,6 +17898,12 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save bank account", "error");
+                    setBankAccountFormStatus(error.message || "Unable to save bank account");
+                } finally {
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.textContent = accountId ? "Save changes" : "Save account";
+                    }
                 }
             }
 
@@ -17023,6 +18014,21 @@
                         renderBankStatementsScreen();
                     }
                 }
+            }
+
+            function exportBankUploadFailureReason(uploadId) {
+                const client = selectedBankStatementClient();
+                const account = selectedBankAccount();
+                const upload = (account?.uploads || []).find((item) => String(item.id || "") === String(uploadId || ""));
+                if (!client || !account || !upload) {
+                    showToast("Unable to find that failed bank statement submission", "error");
+                    return;
+                }
+                downloadBankJson(
+                    bankFailureReviewFilename(client, account, upload),
+                    bankUploadFailureReviewPayload(client, account, upload)
+                );
+                showToast("Bank statement failure reason exported for review", "success");
             }
 
             async function deleteBankStatementUpload(uploadId) {
@@ -17280,7 +18286,7 @@
                     renewalsButton.hidden = activeView !== "ignition";
                     renewalsButton.disabled = !connected || ignitionLoading || ignitionRenewalsLoading;
                     renewalsButton.textContent = ignitionRenewalsLoading ? "Creating..." : "Create renewals round";
-                    renewalsButton.title = connected ? "Create a new five-week renewal round from unpicked Ignition proposals" : "Connect Ignition before starting renewals";
+                    renewalsButton.title = connected ? "Create a new 8-week renewal round from unpicked accepted Ignition proposals" : "Connect Ignition before starting renewals";
                 }
 
                 const totals = ignitionData.dashboard?.totals || {};
@@ -17722,7 +18728,7 @@
 
                 if (ignitionRenewalsLoading) {
                     if (title) title.textContent = "Creating renewals round";
-                    if (summary) summary.textContent = "Refreshing Ignition proposals and reserving unpicked renewals due in the next five weeks.";
+                    if (summary) summary.textContent = "Refreshing accepted Ignition proposals and reserving unpicked renewals ending in the next 8 weeks.";
                     if (meta) meta.innerHTML = '<span>Working</span>';
                     if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Preparing renewals</h4><p>Checking Ignition proposal end dates and excluding proposals already picked in previous rounds.</p></div>';
                 } else if (run) {
@@ -17730,8 +18736,8 @@
                     if (title) title.textContent = `Renewals round ${run.windowStart || ""}${run.windowEnd ? ` to ${run.windowEnd}` : ""}`;
                     if (summary) {
                         summary.textContent = items.length
-                            ? `${items.length.toLocaleString("en-GB")} unpicked renewal${items.length === 1 ? "" : "s"} reserved. ${Number(run.skippedCount || 0).toLocaleString("en-GB")} previously picked proposal${Number(run.skippedCount || 0) === 1 ? "" : "s"} skipped.`
-                            : `No new unpicked renewals were found for ${run.windowStart || "today"} to ${run.windowEnd || "the next five weeks"}. Previously picked proposals are skipped automatically.`;
+                            ? `${items.length.toLocaleString("en-GB")} unpicked accepted proposal${items.length === 1 ? "" : "s"} reserved. ${Number(run.skippedCount || 0).toLocaleString("en-GB")} previously picked proposal${Number(run.skippedCount || 0) === 1 ? "" : "s"} skipped.`
+                            : `No new unpicked accepted proposals were found for ${run.windowStart || "today"} to ${run.windowEnd || "the next 8 weeks"}. Previously picked proposals are skipped automatically.`;
                     }
                     if (meta) {
                         meta.innerHTML = [
@@ -17746,16 +18752,16 @@
                     if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, Boolean(run.emailSentAt || run.finalisedAt));
                 } else {
                     if (title) title.textContent = "Renewals round";
-                    if (summary) summary.textContent = "Create a renewals round from Ignition proposals due in the next five weeks.";
+                    if (summary) summary.textContent = "Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.";
                     if (meta) {
                         meta.innerHTML = [
                             ["Status", "Ready"],
-                            ["Window", "Next five weeks"],
+                            ["Window", "Next 8 weeks"],
                             ["Email", `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`],
                             ["Zapier", ignitionData.renewals?.zapierConfigured ? "Configured" : "Not configured"]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
-                    if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active round</p><h4>Create a renewals round when you are ready</h4><p>Ignition will pick proposals due in the next five weeks and skip anything already reserved in an earlier round.</p></div>';
+                    if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active round</p><h4>Create a renewals round when you are ready</h4><p>Ignition will pick accepted proposals ending in the next 8 weeks and skip anything already reserved in an earlier round.</p></div>';
                 }
 
                 const locked = Boolean(run?.emailSentAt || run?.finalisedAt);
@@ -17767,7 +18773,7 @@
 
             function renderIgnitionRenewalsTable(items, locked = false) {
                 if (!items.length) {
-                    return '<div class="empty-state"><p class="eyebrow">No new renewals</p><h4>No unpicked proposals are due in this window</h4><p>The safeguard is active: proposals already reserved in earlier renewal rounds are not picked up again.</p></div>';
+                    return '<div class="empty-state"><p class="eyebrow">No new renewals</p><h4>No unpicked accepted proposals end in this window</h4><p>The safeguard is active: proposals already reserved in earlier renewal rounds are not picked up again.</p></div>';
                 }
                 const rows = items.map((item) => {
                     const current = Number(item.currentMonthlyFee || 0);
@@ -18709,6 +19715,22 @@
                 return `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
             }
 
+            const meReportSubmissionTabs = [
+                ["insights", "Insights"],
+                ["checked", "What AI checked"],
+                ["chart", "Chart of accounts"],
+                ["vat", "VAT"],
+                ["dla", "DLA"],
+                ["tax", "Corporation tax"],
+                ["dividends", "Dividend availability"],
+                ["fixed-assets", "Fixed assets"]
+            ];
+            const meReportSubmissionTabKeys = new Set(meReportSubmissionTabs.map(([key]) => key));
+
+            function renderMeReportMetricPill(label, value) {
+                return `<article class="me-report-metric-pill"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
+            }
+
             function meReportBroughtForwardTradingLoss(client = {}, summary = {}) {
                 const value = Number(client.broughtForwardTradingLoss ?? summary.broughtForwardTradingLoss ?? 0);
                 return Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -18997,54 +20019,299 @@
                 `;
             }
 
-            function renderMeReportQualityTables(summary = {}) {
+            function meReportWarningKey(type, parts) {
+                return [type, ...parts]
+                    .map((part) => String(part ?? "").trim().toLowerCase().replace(/\s+/g, " "))
+                    .join("|")
+                    .slice(0, 240);
+            }
+
+            function meReportQualityItems(summary = {}) {
                 const chartIssues = Array.isArray(summary.chartOfAccountsIssues) ? summary.chartOfAccountsIssues : [];
                 const duplicates = Array.isArray(summary.duplicateTransactionRisks) ? summary.duplicateTransactionRisks : [];
+                const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+                return [
+                    ...chartIssues.map((item) => ({
+                        key: meReportWarningKey("chart", [item.accountCode, item.accountName, item.issue]),
+                        title: `${item.accountCode || ""} ${item.accountName || "Chart issue"}`.trim(),
+                        detail: [item.issue, item.suggestion, item.source].filter(Boolean).join("<br>")
+                    })),
+                    ...duplicates.map((item) => ({
+                        key: meReportWarningKey("duplicate", [item.description, item.date, item.amount]),
+                        title: `${item.description || "Possible duplicate transaction"} · ${formatCurrency(item.amount || 0)}`,
+                        detail: [item.date, item.reason, item.source].filter(Boolean).join(" · ")
+                    })),
+                    ...warnings.map((item) => ({
+                        key: meReportWarningKey("warning", [item]),
+                        title: "Review warning",
+                        detail: String(item || "")
+                    }))
+                ];
+            }
+
+            function renderMeReportQualityTables(client = {}, summary = {}) {
+                const dismissed = new Set(Array.isArray(client.dismissedWarningKeys) ? client.dismissedWarningKeys : []);
+                const allItems = meReportQualityItems(summary);
+                const visibleItems = allItems.filter((item) => !dismissed.has(item.key));
+                const dismissedCount = allItems.length - visibleItems.length;
                 return `
                     <article class="me-report-insight-card">
                         <p class="eyebrow">Data quality</p>
-                        <h3>${(chartIssues.length + duplicates.length).toLocaleString("en-GB")} review point${chartIssues.length + duplicates.length === 1 ? "" : "s"}</h3>
+                        <h3>${visibleItems.length.toLocaleString("en-GB")} active review point${visibleItems.length === 1 ? "" : "s"}</h3>
+                        ${dismissedCount ? `<p class="detail-meta">${dismissedCount.toLocaleString("en-GB")} dismissed for this client.</p>` : ""}
                         <div class="me-report-quality-table">
-                            ${chartIssues.slice(0, 6).map((item) => `<div class="bank-flag-row"><strong>${escapeHTML(item.accountCode || "")} ${escapeHTML(item.accountName || "Chart issue")}</strong><small>${escapeHTML(item.issue || "")}<br>${escapeHTML(item.suggestion || "")}</small></div>`).join("")}
-                            ${duplicates.slice(0, 6).map((item) => `<div class="bank-flag-row"><strong>${escapeHTML(item.description || "Possible duplicate transaction")} · ${formatCurrency(item.amount || 0)}</strong><small>${escapeHTML(item.date || "")} · ${escapeHTML(item.reason || "")}</small></div>`).join("")}
-                            ${!chartIssues.length && !duplicates.length ? '<div class="empty-state"><p class="eyebrow">Clear</p><h4>No spelling or duplicate transaction risks captured</h4><p>AI did not flag chart of accounts naming or duplicate transaction risks in this upload.</p></div>' : ""}
+                            ${visibleItems.slice(0, 12).map((item) => `
+                                <div class="bank-flag-row me-report-quality-row">
+                                    <span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail).replace(/&lt;br&gt;/g, "<br>")}</small></span>
+                                    <button class="ghost-button" type="button" data-me-report-dismiss-warning="${escapeHTML(item.key)}">Dismiss</button>
+                                </div>
+                            `).join("")}
+                            ${!visibleItems.length ? '<div class="empty-state"><p class="eyebrow">Clear</p><h4>No active quality warnings</h4><p>Chart, duplicate transaction and extraction warnings are clear or have been dismissed for this client.</p></div>' : ""}
                         </div>
                     </article>
                 `;
             }
 
-            function renderMeReportSubmissionInsightPage(client, submission) {
-                const summary = submission?.calculation || client.summary || {};
-                const insights = summary.profitAndLossInsights || {};
+            function renderMeReportSubmissionHeader(client, submission, summary = {}) {
                 return `
-                    <div class="me-report-insight-page">
-                        <div class="jashflow-detail-head me-report-report-toolbar">
-                            <div>
-                                <p class="eyebrow">JUK Overview Report insights</p>
-                                <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionMonthYear(submission))}</h3>
-                                <p class="detail-meta">${escapeHTML(submission?.filename || "Overview report")} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
-                                <button class="primary-button" type="button" data-me-generate-report ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate client PDF</button>
-                            </div>
+                    <div class="jashflow-detail-head me-report-report-toolbar me-report-report-summary-card">
+                        <div>
+                            <p class="eyebrow">JUK Overview Report insights</p>
+                            <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionMonthYear(submission))}</h3>
+                            <p class="detail-meta">${escapeHTML(submission?.filename || "Overview report")} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
                         </div>
-                        <div class="ignition-summary-grid">
-                            ${renderMeReportMetric("YTD turnover", formatCurrency(summary.yearToDateSales || 0))}
-                            ${renderMeReportMetric("YTD profit", formatCurrency(summary.yearToDateProfit || 0))}
-                            ${renderMeReportMetric("Monthly profit", formatCurrency(summary.monthlyProfit || summary.accountingProfit || 0))}
-                            ${renderMeReportTaxEstimateMetric(summary)}
-                            ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
-                            ${renderMeReportMetric("DLA balance", formatCurrency(summary.dlaBalance || 0))}
+                        <div class="detail-actions">
+                            <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
+                            <button class="primary-button" type="button" data-me-generate-report ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate client PDF</button>
                         </div>
+                        <div class="me-report-inline-metrics" aria-label="Report summary">
+                            ${renderMeReportMetricPill("Actual turnover", formatCurrency(summary.yearToDateSales || 0))}
+                            ${renderMeReportMetricPill("Actual profit", formatCurrency(summary.yearToDateProfit || 0))}
+                            ${renderMeReportMetricPill("CT estimate", formatCurrency(summary.estimatedCorporationTax || 0))}
+                            ${renderMeReportMetricPill("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
+                            ${renderMeReportMetricPill("DLA balance", formatCurrency(summary.dlaBalance || 0))}
+                        </div>
+                    </div>
+                `;
+            }
+
+            function renderMeReportSubmissionTabNav(activeTab) {
+                return `<nav class="me-report-subtabs" aria-label="Report sections">${meReportSubmissionTabs.map(([key, label]) => `
+                    <button class="${activeTab === key ? "is-active" : ""}" type="button" data-me-report-subtab="${key}">${escapeHTML(label)}</button>
+                `).join("")}</nav>`;
+            }
+
+            function renderMeReportAiCheckedTab(summary = {}) {
+                const taxRows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
+                const dividendRows = Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary);
+                const balanceRows = Array.isArray(summary.balanceSheetChecks) ? summary.balanceSheetChecks : [];
+                const sourcePages = summary.sourcePagesReviewed || {};
+                const sections = Array.isArray(sourcePages.sectionsReviewed) && sourcePages.sectionsReviewed.length
+                    ? sourcePages.sectionsReviewed.join(", ")
+                    : "P&L, Balance Sheet, Fixed Asset Reconciliation, Depreciation Schedule and Trial Balance";
+                const pageText = sourcePages.pageCount
+                    ? `Pages ${sourcePages.firstPageReviewed || 1}-${sourcePages.lastPageReviewed || sourcePages.pageCount} of ${sourcePages.pageCount}`
+                    : "Uploaded report pages reviewed";
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">What AI checked</p>
+                        <h3>${escapeHTML(pageText)}</h3>
+                        <p class="detail-meta">${escapeHTML(sections)}</p>
+                    </article>
+                    ${renderMeReportCalculationTable("CT estimate", taxRows)}
+                    <section><p class="eyebrow">CT rate breakdown</p>${renderMeReportTaxBreakdownTable(summary)}</section>
+                    ${renderMeReportCalculationTable("Dividend availability", dividendRows)}
+                    ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows) : ""}
+                `;
+            }
+
+            function renderMeReportChartOfAccountsTab(client = {}, summary = {}) {
+                const trialBalanceAccounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
+                const mappings = Array.isArray(client.mappings) ? client.mappings : [];
+                const rows = trialBalanceAccounts.length
+                    ? trialBalanceAccounts.map((account) => ({
+                        code: account.accountCode,
+                        name: account.accountName,
+                        type: account.accountType,
+                        debit: account.debitYTD,
+                        credit: account.creditYTD,
+                        amount: account.amount,
+                        treatment: "Extracted from Trial Balance",
+                        source: account.source || "Uploaded report"
+                    }))
+                    : mappings.map((mapping) => ({
+                        code: mapping.accountCode,
+                        name: mapping.accountName,
+                        type: mapping.accountType,
+                        debit: "",
+                        credit: "",
+                        amount: "",
+                        treatment: mapping.suggestedTreatment || mapping.taxTreatment || "Stored mapping",
+                        source: mapping.reason || "Stored account mapping"
+                    }));
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">Chart of accounts</p>
+                        <h3>${rows.length.toLocaleString("en-GB")} account${rows.length === 1 ? "" : "s"} stored</h3>
+                        <p class="detail-meta">${trialBalanceAccounts.length ? "Trial Balance rows extracted from the uploaded overview report." : "Using stored account treatment mappings until a Trial Balance is extracted from an upload."}</p>
+                    </article>
+                    ${renderMeReportQualityTables(client, summary)}
+                    <article class="me-report-insight-card me-report-table-card">
+                        <table>
+                            <thead><tr><th>Code</th><th>Account</th><th>Type</th><th>Debit YTD</th><th>Credit YTD</th><th>Amount</th><th>Treatment</th></tr></thead>
+                            <tbody>
+                                ${rows.map((row) => `
+                                    <tr>
+                                        <td>${escapeHTML(row.code || "")}</td>
+                                        <td><strong>${escapeHTML(row.name || "")}</strong><br><small>${escapeHTML(row.source || "")}</small></td>
+                                        <td>${escapeHTML(row.type || "")}</td>
+                                        <td>${row.debit === "" ? "--" : formatCurrency(row.debit || 0)}</td>
+                                        <td>${row.credit === "" ? "--" : formatCurrency(row.credit || 0)}</td>
+                                        <td>${row.amount === "" ? "--" : formatCurrency(row.amount || 0)}</td>
+                                        <td>${escapeHTML(row.treatment || "")}</td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="7">No chart or Trial Balance rows are available yet.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderMeReportVatTab(client = {}, summary = {}) {
+                const rolling = meReportRolling12MonthTurnover(summary);
+                const threshold = Number(summary.vatThreshold || 90000);
+                const vatRegistered = Boolean(client.vatRegisteredConfirmed || summary.vatRegisteredConfirmed);
+                const thresholdExceeded = rolling > threshold;
+                const warningVisible = Boolean(summary.vatWarningVisible || (thresholdExceeded && !vatRegistered));
+                const percentage = Math.min(140, Math.max(2, Math.round(Math.abs(rolling) / Math.max(1, threshold) * 100)));
+                return `
+                    <article class="me-report-insight-card ${warningVisible ? "me-report-alert-card" : ""}">
+                        <p class="eyebrow">VAT registration</p>
+                        <h3>${formatCurrency(rolling)} rolling 12-month turnover</h3>
+                        <p class="detail-meta">VAT threshold ${formatCurrency(threshold)} · ${vatRegistered ? "client confirmed VAT registered" : thresholdExceeded ? "registration review required" : "below threshold"}.</p>
+                        <div class="me-report-vat-gauge" aria-label="VAT threshold gauge">
+                            <div class="me-report-vat-gauge-track"><span style="width: ${percentage}%"></span></div>
+                        </div>
+                        ${warningVisible ? `<button class="primary-button" type="button" data-me-report-confirm-vat>Confirm client is VAT registered</button>` : ""}
+                    </article>
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Rolling 12m turnover", formatCurrency(rolling))}
+                        ${renderMeReportMetric("VAT threshold", formatCurrency(threshold))}
+                        ${renderMeReportMetric("Threshold status", thresholdExceeded ? "Exceeded" : "Below")}
+                        ${renderMeReportMetric("Client VAT registered", vatRegistered ? "Confirmed" : "Not confirmed")}
+                    </div>
+                `;
+            }
+
+            function renderMeReportDlaTab(summary = {}) {
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Closing DLA", formatCurrency(summary.dlaBalance || 0))}
+                        ${renderMeReportMetric("Status", String(summary.dlaStatus || "amber").toUpperCase())}
+                        ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
+                        ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
+                    </div>
+                    <div class="empty-state"><p class="eyebrow">Risk engine</p><h4>${Number(summary.dlaBalance || 0) < 0 ? "Must review overdrawn DLA" : "DLA does not show an overdrawn balance"}</h4><p>${Number(summary.dlaBalance || 0) < 0 ? "Possible s455 tax and illegal dividend risk have been flagged for accountant review." : "If the DLA is in credit, repayment should be considered before dividends."}</p></div>
+                `;
+            }
+
+            function renderMeReportTaxTab(summary = {}, broughtForwardTradingLoss = 0) {
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
+                        ${renderMeReportMetric("Tax adjustments", formatCurrency(summary.taxAdjustments || 0))}
+                        ${renderMeReportMetric("B/F trading loss", formatCurrency(broughtForwardTradingLoss))}
+                        ${renderMeReportMetric("Taxable profit", formatCurrency(summary.estimatedTaxableProfit || 0))}
+                        ${renderMeReportTaxEstimateMetric(summary)}
+                        ${renderMeReportMetric("Effective tax rate", formatPercent(summary.effectiveTaxRate || 0))}
+                    </div>
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">CT rate breakdown</p>
+                        <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
+                        ${renderMeReportTaxBreakdownTable(summary)}
+                    </article>
+                    ${renderMeReportCalculationTable("CT estimate", Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary))}
+                `;
+            }
+
+            function renderMeReportDividendsTab(summary = {}) {
+                const postTaxYtdEarnings = Number.isFinite(Number(summary.currentYearEarnings))
+                    ? Number(summary.currentYearEarnings)
+                    : Number(summary.yearToDateProfit || summary.accountingProfit || 0) - Number(summary.estimatedCorporationTax || 0);
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Opening reserves", formatCurrency(summary.openingRetainedReserves || 0))}
+                        ${renderMeReportMetric("Post-tax YTD earnings", formatCurrency(postTaxYtdEarnings))}
+                        ${renderMeReportMetric("Dividends taken", formatCurrency(summary.dividendsTaken || 0))}
+                        ${renderMeReportMetric("Period-end reserves", formatCurrency(summary.periodEndDistributableReserves || 0))}
+                        ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
+                        ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
+                    </div>
+                    ${renderMeReportCalculationTable("Dividend availability", Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary))}
+                `;
+            }
+
+            function renderMeReportFixedAssetsTab(summary = {}) {
+                const fixedAssetRows = Array.isArray(summary.fixedAssetChecks) ? summary.fixedAssetChecks : [];
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Register total", formatCurrency(summary.fixedAssetRegisterTotal || 0))}
+                        ${renderMeReportMetric("Balance Sheet fixed assets", formatCurrency(summary.balanceSheetFixedAssetTotal || 0))}
+                        ${renderMeReportMetric("Difference", formatCurrency(summary.fixedAssetDifference || 0))}
+                        ${renderMeReportMetric("Review count", Number(summary.capitalAllowanceReviewCount || fixedAssetRows.length || 0).toLocaleString("en-GB"))}
+                    </div>
+                    <article class="me-report-insight-card me-report-table-card">
+                        <table>
+                            <thead><tr><th>Asset class</th><th>Balance Sheet</th><th>Register</th><th>Difference</th><th>Treatment</th></tr></thead>
+                            <tbody>
+                                ${fixedAssetRows.map((row) => `
+                                    <tr>
+                                        <td>${escapeHTML(row.assetClass || "Fixed assets")}<br><small>${escapeHTML(row.source || "")}</small></td>
+                                        <td>${formatCurrency(row.balanceSheetClosingCost || 0)}</td>
+                                        <td>${formatCurrency(row.assetRegisterClosingCost || 0)}</td>
+                                        <td>${formatCurrency(row.difference || 0)}</td>
+                                        <td>${escapeHTML(row.treatment || "Review")}</td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="5">No fixed asset reconciliation rows were extracted from this report.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderMeReportSubmissionTabPanel(client, summary, tab) {
+                const insights = summary.profitAndLossInsights || {};
+                const broughtForwardTradingLoss = meReportBroughtForwardTradingLoss(client, summary);
+                const panels = {
+                    insights: `
                         <div class="me-report-insight-grid">
                             ${renderMeReportInsightList("Going well", insights.goingWell, ["Profit and loss data has been extracted and is ready for client commentary."])}
                             ${renderMeReportInsightList("Needs attention", insights.needsAttention, summary.warnings || ["Review CT, DLA, VAT and dividend assumptions before issuing advice."])}
                             ${renderMeReportInsightList("Priorities", insights.priorities, ["Approve exceptions, confirm tax treatment, then send the client report."])}
                         </div>
                         ${renderMeReportForecastBars(summary)}
-                        ${renderMeReportQualityTables(summary)}
-                        ${renderMeReportAiHelp(summary, "all")}
+                        ${renderMeReportQualityTables(client, summary)}
+                    `,
+                    checked: renderMeReportAiCheckedTab(summary),
+                    chart: renderMeReportChartOfAccountsTab(client, summary),
+                    vat: renderMeReportVatTab(client, summary),
+                    dla: renderMeReportDlaTab(summary),
+                    tax: renderMeReportTaxTab(summary, broughtForwardTradingLoss),
+                    dividends: renderMeReportDividendsTab(summary),
+                    "fixed-assets": renderMeReportFixedAssetsTab(summary)
+                };
+                return `<section class="me-report-tab-panel">${panels[tab] || panels.insights}</section>`;
+            }
+
+            function renderMeReportSubmissionInsightPage(client, submission) {
+                const summary = submission?.calculation || client.summary || {};
+                const activeTab = meReportSubmissionTabKeys.has(activeMeReportSubmissionTab) ? activeMeReportSubmissionTab : "insights";
+                activeMeReportSubmissionTab = activeTab;
+                return `
+                    <div class="me-report-insight-page">
+                        ${renderMeReportSubmissionHeader(client, submission, summary)}
+                        ${renderMeReportSubmissionTabNav(activeTab)}
+                        ${renderMeReportSubmissionTabPanel(client, summary, activeTab)}
                     </div>
                 `;
             }
@@ -19328,6 +20595,7 @@
                     button.addEventListener("click", () => {
                         selectedMeReportSubmissionId = button.dataset.meSubmissionOpen || "";
                         activeMeReportTab = "report-insights";
+                        activeMeReportSubmissionTab = "insights";
                         meReportWorkspaceOpen = true;
                         renderMeReportScreen();
                     });
@@ -19352,6 +20620,18 @@
                 });
                 document.querySelectorAll("[data-me-report-upload-trigger]").forEach((button) => {
                     button.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
+                });
+                document.querySelectorAll("[data-me-report-subtab]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        activeMeReportSubmissionTab = button.dataset.meReportSubtab || "insights";
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-report-dismiss-warning]").forEach((button) => {
+                    button.addEventListener("click", () => dismissMeReportQualityWarning(client.id, button.dataset.meReportDismissWarning || ""));
+                });
+                document.querySelectorAll("[data-me-report-confirm-vat]").forEach((button) => {
+                    button.addEventListener("click", () => confirmMeReportVatRegistered(client.id));
                 });
                 document.querySelectorAll("[data-me-report-status-toggle]").forEach((button) => {
                     button.addEventListener("click", () => updateMeReportClientStatus(client.id, meReportClientStatus(client) === "archived" ? "active" : "archived"));
@@ -19432,6 +20712,37 @@
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save brought forward trading loss", "error");
                 }
+            }
+
+            async function updateMeReportClientPreferences(clientId, payload, successMessage) {
+                if (!clientId) return;
+                try {
+                    const response = await requestJSON(api.endpoints.meReportClient, {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    }, { clientId });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportClientId = clientId;
+                    if (successMessage) showToast(successMessage, "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to update ME Report client preference", "error");
+                }
+            }
+
+            function dismissMeReportQualityWarning(clientId, warningKey) {
+                if (!warningKey) return;
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                const keys = new Set(Array.isArray(client?.dismissedWarningKeys) ? client.dismissedWarningKeys : []);
+                keys.add(warningKey);
+                updateMeReportClientPreferences(clientId, { dismissedWarningKeys: Array.from(keys) }, "Quality warning dismissed");
+            }
+
+            function confirmMeReportVatRegistered(clientId) {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!window.confirm(`Confirm ${client?.clientName || "this client"} is VAT registered? VAT threshold warnings will be hidden for this client on future uploads.`)) return;
+                updateMeReportClientPreferences(clientId, { vatRegisteredConfirmed: true }, "VAT registration confirmed for this client");
             }
 
             async function updateMeReportClientStatus(clientId, statusValue) {
@@ -20572,18 +21883,9 @@
                 else if (activeView === "client") activeNavSection = "clients";
                 syncActiveViewShell();
                 const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
-                const heading = document.getElementById("topbarPageTitle") || document.querySelector(".brand-lockup h1");
-                if (heading) heading.textContent = activeTopbarTitle(topbarClient);
+                renderTopbarIdentity(topbarClient);
                 const syncStamp = document.getElementById("syncStamp");
                 if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
-                const organisationName = state.organisation.name || "Xero organisation not connected";
-                const lastSync = state.organisation.lastSync || "Waiting for first sync";
-                const syncCopy = isSyncing
-                    ? "Pulling in data from Xero"
-                    : lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
-                    ? lastSync
-                    : `Last sync: ${lastSync}`;
-                document.getElementById("ledgerConnectionMeta").textContent = `${organisationName} · ${syncCopy}`;
                 const connected = isXeroConnected();
                 if (!connected && !isSyncing) clearSyncFailureBanner();
                 const rateLimit = activeXeroRateLimit();
@@ -20613,6 +21915,10 @@
                 if (jashflowTopbarSummary) jashflowTopbarSummary.hidden = activeView !== "jashflow";
                 const creditControlTopbarSummary = document.getElementById("creditControlTopbarSummary");
                 if (creditControlTopbarSummary) creditControlTopbarSummary.hidden = activeView !== "ledger";
+                renderBankAccountTopbarSummary();
+                const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
+                if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
+                renderBankStatementContinuityTopbar();
                 const disconnectButton = document.getElementById("disconnectXeroButton");
                 if (disconnectButton) disconnectButton.hidden = !connected;
                 const settingsDisconnectButton = document.getElementById("settingsDisconnectXeroButton");
@@ -20711,12 +22017,31 @@
                 }[character]));
             }
 
+            function aiInlineTitleForDetail(detail = "") {
+                const copy = String(detail || "").toLowerCase();
+                if (copy.includes("extract")) return "Jenius AI is extracting";
+                if (copy.includes("process")) return "Jenius AI is processing";
+                if (copy.includes("refresh")) return "Jenius AI is refreshing";
+                return "Jenius AI is analysing the Xero data";
+            }
+
             function setAiLoading(loading, detail = "Building the insights dashboard") {
                 insightsLoading = loading;
                 const banner = document.getElementById("aiInlineBanner");
-                if (banner) banner.hidden = !loading;
+                if (banner) {
+                    banner.hidden = !loading;
+                    banner.classList.remove("is-error", "is-success", "is-warning");
+                }
+                const titleTarget = document.getElementById("aiInlineTitle");
+                if (titleTarget) titleTarget.textContent = loading ? aiInlineTitleForDetail(detail) : "Jenius AI is analysing the Xero data";
                 const detailTarget = document.getElementById("aiInlineDetail");
                 if (detailTarget) detailTarget.textContent = detail;
+                const progressFill = document.getElementById("aiInlineProgressFill");
+                if (progressFill) progressFill.style.width = loading ? "54%" : "0%";
+                const etaTarget = document.getElementById("aiInlineEta");
+                if (etaTarget) etaTarget.textContent = loading
+                    ? (String(detail || "").toLowerCase().includes("extract") ? "Extracting source document" : "Working with Jenius AI")
+                    : "Working with Jenius AI";
                 const refreshButton = document.getElementById("refreshInsightsButton");
                 if (refreshButton) {
                     refreshButton.disabled = loading;
@@ -24413,9 +25738,14 @@
                 const bankStatementClientForm = document.getElementById("bankStatementClientForm");
                 if (bankStatementClientForm) bankStatementClientForm.addEventListener("submit", addBankStatementClient);
                 const bankAccountForm = document.getElementById("bankAccountForm");
-                if (bankAccountForm) bankAccountForm.addEventListener("submit", createBankStatementAccount);
+                if (bankAccountForm) {
+                    bankAccountForm.addEventListener("submit", createBankStatementAccount);
+                    wireBankAccountFormValidation();
+                }
                 const closeBankAccountPanelButton = document.getElementById("closeBankAccountPanelButton");
                 if (closeBankAccountPanelButton) closeBankAccountPanelButton.addEventListener("click", closeBankAccountForm);
+                const cancelBankAccountFooterButton = document.getElementById("cancelBankAccountFooterButton");
+                if (cancelBankAccountFooterButton) cancelBankAccountFooterButton.addEventListener("click", closeBankAccountForm);
                 const bankAccountPanel = document.getElementById("bankAccountPanel");
                 if (bankAccountPanel) bankAccountPanel.addEventListener("click", (event) => {
                     if (event.target.id === "bankAccountPanel") closeBankAccountForm();

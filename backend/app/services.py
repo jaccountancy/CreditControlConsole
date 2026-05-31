@@ -55,7 +55,10 @@ PANEL_PAYMENT_LIMIT = 1000
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 BANK_STATEMENT_CHUNK_MAX_PAGES = 1
-BANK_STATEMENT_MAX_OUTPUT_TOKENS = 12000
+BANK_STATEMENT_MAX_OUTPUT_TOKENS = 24000
+BANK_STATEMENT_RETRY_MAX_OUTPUT_TOKENS = 32000
+BANK_STATEMENT_TEXT_CHUNK_MAX_LINES = 70
+BANK_STATEMENT_TEXT_CHUNK_OVERLAP_LINES = 4
 PRACTICE_PACK_MAX_CSV_BYTES = 12 * 1024 * 1024
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
@@ -6463,6 +6466,14 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
     review_summary = _me_report_apply_brought_forward_loss(review_summary, row)
     open_exceptions = [item for item in exceptions if (item.get("status") or "open") == "open"]
     traffic_light = (latest_review or {}).get("traffic_light") or ("red" if any((item.get("severity") or "") == "red" for item in open_exceptions) else "amber")
+    dismissed_warning_keys = row.get("dismissed_warning_keys") or []
+    if isinstance(dismissed_warning_keys, str):
+        try:
+            dismissed_warning_keys = json.loads(dismissed_warning_keys)
+        except ValueError:
+            dismissed_warning_keys = []
+    if not isinstance(dismissed_warning_keys, list):
+        dismissed_warning_keys = []
     return {
         "id": str(row["id"]),
         "clientName": row.get("client_name") or "",
@@ -6476,6 +6487,8 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "xeroContactEmail": row.get("xero_contact_email") or "",
         "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
         "xeroTenantName": row.get("xero_tenant_name") or "",
+        "vatRegisteredConfirmed": bool(row.get("vat_registered_confirmed")),
+        "dismissedWarningKeys": [str(item) for item in dismissed_warning_keys if str(item).strip()][:200],
         "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
         "lastCalculatedAt": _iso(row.get("last_calculated_at")) or "",
@@ -6782,8 +6795,25 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
 
 
 def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
-    _me_report_client_row(user, client_id)
-    brought_forward_trading_loss = _non_negative_money(payload.get("broughtForwardTradingLoss") or 0, "Brought forward trading loss")
+    client = _me_report_client_row(user, client_id)
+    if "broughtForwardTradingLoss" in payload:
+        brought_forward_trading_loss = _non_negative_money(payload.get("broughtForwardTradingLoss") or 0, "Brought forward trading loss")
+    else:
+        brought_forward_trading_loss = _money(client.get("brought_forward_trading_loss"))
+    vat_registered_confirmed = bool(payload.get("vatRegisteredConfirmed")) if "vatRegisteredConfirmed" in payload else bool(client.get("vat_registered_confirmed"))
+    existing_dismissed = client.get("dismissed_warning_keys") or []
+    if isinstance(existing_dismissed, str):
+        try:
+            existing_dismissed = json.loads(existing_dismissed)
+        except ValueError:
+            existing_dismissed = []
+    dismissed_warning_keys = existing_dismissed if isinstance(existing_dismissed, list) else []
+    if isinstance(payload.get("dismissedWarningKeys"), list):
+        dismissed_warning_keys = [
+            str(item).strip()
+            for item in payload.get("dismissedWarningKeys")
+            if str(item).strip()
+        ][:200]
     now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -6791,18 +6821,31 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                 """
                 UPDATE me_report_clients
                 SET brought_forward_trading_loss = %s,
+                    vat_registered_confirmed = %s,
+                    dismissed_warning_keys = %s::jsonb,
                     updated_at = %s
                 WHERE id = %s
                   AND user_id = %s
                 """,
-                (brought_forward_trading_loss, now, client_id, user["id"]),
+                (
+                    brought_forward_trading_loss,
+                    vat_registered_confirmed,
+                    json.dumps(dismissed_warning_keys, default=_json_default),
+                    now,
+                    client_id,
+                    user["id"],
+                ),
             )
         connection.commit()
     record_audit_event(
         "me_report_client",
         client_id,
         "me_report.client_updated",
-        {"brought_forward_trading_loss": float(brought_forward_trading_loss)},
+        {
+            "brought_forward_trading_loss": float(brought_forward_trading_loss),
+            "vat_registered_confirmed": vat_registered_confirmed,
+            "dismissed_warning_count": len(dismissed_warning_keys),
+        },
         user["id"],
     )
     return me_report_payload(user)
@@ -7688,6 +7731,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         })
     vat_threshold = ME_REPORT_DEFAULT_VAT_THRESHOLD
     vat_threshold_exceeded = rolling_12_month_turnover > vat_threshold
+    vat_registered_confirmed = bool(client.get("vat_registered_confirmed"))
     going_well_fallback = [
         f"Year-to-date profit is positive at £{ytd_profit:,.2f}." if ytd_profit > 0 else "Revenue has been extracted and is ready for trend review.",
         f"Current monthly profit is £{accounting_profit:,.2f}." if accounting_profit > 0 else "Month-end figures are now structured for review.",
@@ -7726,6 +7770,19 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         for item in (extracted.get("duplicateTransactionRisks") or [])
         if isinstance(item, dict) and (item.get("description") or item.get("reason"))
     ][:12]
+    stored_trial_balance_accounts = [
+        {
+            "accountCode": str(account.get("accountCode") or ""),
+            "accountName": str(account.get("accountName") or ""),
+            "accountType": str(account.get("accountType") or ""),
+            "debitYTD": float(_money(account.get("debitYTD"))),
+            "creditYTD": float(_money(account.get("creditYTD"))),
+            "amount": float(_me_report_account_amount(account)),
+            "source": _me_report_source_page("Trial Balance", account.get("sourcePage")),
+        }
+        for account in trial_balance_accounts
+        if isinstance(account, dict) and (account.get("accountCode") or account.get("accountName"))
+    ][:500]
 
     return {
         "periodStart": extracted.get("periodStart") or "",
@@ -7740,7 +7797,8 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "vatThreshold": float(vat_threshold),
         "vatThresholdExceeded": vat_threshold_exceeded,
         "vatThresholdFirstBreachedAt": period_end.isoformat() if vat_threshold_exceeded else "",
-        "vatWarningVisible": vat_threshold_exceeded,
+        "vatRegisteredConfirmed": vat_registered_confirmed,
+        "vatWarningVisible": vat_threshold_exceeded and not vat_registered_confirmed,
         "accountingProfit": float(accounting_profit),
         "depreciationAddBack": float(depreciation_addback),
         "amortisationAddBack": float(amortisation_addback),
@@ -7775,6 +7833,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         },
         "chartOfAccountsIssues": chart_issues,
         "duplicateTransactionRisks": duplicate_risks,
+        "trialBalanceAccounts": stored_trial_balance_accounts,
         "dataQualityIssueCount": len(chart_issues) + len(duplicate_risks),
         "commentary": (
             f"Uploaded PDF reviewed for {client.get('client_name') or 'client'}. "
@@ -8509,8 +8568,9 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
             break
     vat_threshold = Decimal("90000.00")
     vat_threshold_exceeded = annual_turnover > vat_threshold
+    vat_registered_confirmed = bool(client.get("vat_registered_confirmed"))
     vat_threshold_first_breached_at = previous_vat_breach_at if vat_threshold_exceeded and previous_vat_breach_at else (period_end if vat_threshold_exceeded else previous_vat_breach_at)
-    vat_warning_visible = bool(vat_threshold_exceeded or (vat_threshold_first_breached_at and (period_end - vat_threshold_first_breached_at).days <= 62))
+    vat_warning_visible = bool(vat_threshold_exceeded or (vat_threshold_first_breached_at and (period_end - vat_threshold_first_breached_at).days <= 62)) and not vat_registered_confirmed
     asset_register_total = _asset_register_total(fixed_assets_payload)
     balance_sheet_fixed_assets = _balance_sheet_fixed_asset_total(bs_lines)
     fixed_asset_difference = None if asset_register_total is None else _money(asset_register_total - balance_sheet_fixed_assets)
@@ -8614,6 +8674,7 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "vatThreshold": float(vat_threshold),
         "vatThresholdExceeded": vat_threshold_exceeded,
         "vatThresholdFirstBreachedAt": _iso(vat_threshold_first_breached_at) or "",
+        "vatRegisteredConfirmed": vat_registered_confirmed,
         "vatWarningVisible": vat_warning_visible,
         "accountingProfit": float(_money(monthly_profit)),
         "taxAdjustments": float(_money(disallowable_addbacks)),
@@ -10138,6 +10199,62 @@ def _append_bank_statement_upload_activity(cursor, upload_id: str, event_type: s
     )
 
 
+def _bank_statement_chunk_filename_stem(filename: str) -> str:
+    safe_stem = re.sub(r"(?i)\.pdf$", "", filename or "bank-statement").strip() or "bank-statement"
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", safe_stem)[:80].strip(".-") or "bank-statement"
+
+
+def _bank_statement_chunk_label_part(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "chunk"))[:80].strip(".-") or "chunk"
+
+
+def _bank_statement_text_lines(text: str) -> list[str]:
+    return [
+        re.sub(r"\s+", " ", line).strip()
+        for line in str(text or "").splitlines()
+        if line and line.strip()
+    ]
+
+
+def _bank_statement_text_chunks(text: str, filename: str, label: str) -> list[dict]:
+    lines = _bank_statement_text_lines(text)
+    if len(lines) <= BANK_STATEMENT_TEXT_CHUNK_MAX_LINES:
+        return []
+
+    chunks = []
+    safe_stem = _bank_statement_chunk_filename_stem(filename)
+    safe_label = _bank_statement_chunk_label_part(label)
+    step = max(1, BANK_STATEMENT_TEXT_CHUNK_MAX_LINES - BANK_STATEMENT_TEXT_CHUNK_OVERLAP_LINES)
+    start = 0
+    while start < len(lines):
+        end = min(start + BANK_STATEMENT_TEXT_CHUNK_MAX_LINES, len(lines))
+        chunks.append({
+            "text": "\n".join(lines[start:end]),
+            "filename": f"{safe_stem}-{safe_label}-lines-{start + 1}-{end}.txt",
+            "label": f"{label} lines {start + 1}-{end}",
+            "source": "text",
+        })
+        if end >= len(lines):
+            break
+        start += step
+    return chunks
+
+
+def _bank_statement_numbered_chunks(chunks: list[dict]) -> list[dict]:
+    total = len(chunks)
+    for index, chunk in enumerate(chunks):
+        chunk["index"] = index
+        chunk["total"] = total
+    return chunks
+
+
+def _bank_statement_page_text(page) -> str:
+    try:
+        return page.extract_text() or ""
+    except Exception:
+        return ""
+
+
 def _bank_statement_pdf_chunks(file_bytes: bytes, filename: str) -> list[dict]:
     fallback = [{
         "bytes": file_bytes,
@@ -10145,6 +10262,7 @@ def _bank_statement_pdf_chunks(file_bytes: bytes, filename: str) -> list[dict]:
         "label": "the full statement",
         "index": 0,
         "total": 1,
+        "source": "pdf",
     }]
     try:
         from pypdf import PdfReader, PdfWriter
@@ -10160,40 +10278,52 @@ def _bank_statement_pdf_chunks(file_bytes: bytes, filename: str) -> list[dict]:
             except Exception:
                 return fallback
         page_count = len(reader.pages)
-        if page_count <= BANK_STATEMENT_CHUNK_MAX_PAGES:
-            return fallback
 
         chunks = []
-        safe_stem = re.sub(r"(?i)\.pdf$", "", filename or "bank-statement").strip() or "bank-statement"
-        safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "-", safe_stem)[:80].strip(".-") or "bank-statement"
+        safe_stem = _bank_statement_chunk_filename_stem(filename)
         for start in range(0, page_count, BANK_STATEMENT_CHUNK_MAX_PAGES):
             end = min(start + BANK_STATEMENT_CHUNK_MAX_PAGES, page_count)
+            page_label = f"page {start + 1}" if end == start + 1 else f"pages {start + 1}-{end}"
+            page_text = "\n".join(_bank_statement_page_text(reader.pages[page_index]) for page_index in range(start, end))
+            text_chunks = _bank_statement_text_chunks(page_text, filename, page_label)
+            if text_chunks:
+                chunks.extend(text_chunks)
+                continue
+
+            if page_count <= BANK_STATEMENT_CHUNK_MAX_PAGES:
+                return fallback
+
             writer = PdfWriter()
             for page_index in range(start, end):
                 writer.add_page(reader.pages[page_index])
             output = io.BytesIO()
             writer.write(output)
-            page_label = f"page {start + 1}" if end == start + 1 else f"pages {start + 1}-{end}"
             chunks.append({
                 "bytes": output.getvalue(),
                 "filename": f"{safe_stem}-{page_label.replace(' ', '-')}.pdf",
                 "label": page_label,
-                "index": len(chunks),
-                "total": (page_count + BANK_STATEMENT_CHUNK_MAX_PAGES - 1) // BANK_STATEMENT_CHUNK_MAX_PAGES,
+                "source": "pdf",
             })
-        return chunks or fallback
+        return _bank_statement_numbered_chunks(chunks) if chunks else fallback
     except Exception as exc:
         logger.warning("Could not split bank statement PDF into page chunks: %s", exc)
         return fallback
 
 
-def _bank_statement_extraction_prompt(account: dict, chunk_label: str, chunk_index: int, total_chunks: int) -> str:
-    chunk_instruction = (
-        f"You are extracting {chunk_label} (chunk {chunk_index + 1} of {total_chunks}). "
-        "Only include transaction rows visible in this chunk. "
-    )
+def _bank_statement_extraction_prompt(account: dict, chunk_label: str, chunk_index: int, total_chunks: int, source: str = "pdf") -> str:
+    if source == "text":
+        chunk_instruction = (
+            f"You are extracting text from {chunk_label} (chunk {chunk_index + 1} of {total_chunks}). "
+            "Only include complete transaction rows visible in this text chunk. "
+            "Some lines may overlap with neighbouring chunks, so do not invent rows to bridge gaps. "
+        )
+    else:
+        chunk_instruction = (
+            f"You are extracting {chunk_label} (chunk {chunk_index + 1} of {total_chunks}). "
+            "Only include transaction rows visible in this chunk. "
+        )
     return (
-        "Extract bank statement transactions from this PDF. Return JSON only. "
+        "Extract bank statement transactions from the supplied statement source. Return JSON only. "
         + chunk_instruction +
         "Use ISO dates in YYYY-MM-DD format. "
         "Use signed amounts: money paid in is positive, money paid out is negative. "
@@ -10213,49 +10343,83 @@ def _openai_incomplete_reason(payload: dict) -> str:
     return ""
 
 
-async def _extract_bank_statement_pdf_chunk(file_bytes: bytes, filename: str, account: dict, chunk_label: str, chunk_index: int, total_chunks: int) -> dict:
-    encoded = base64.b64encode(file_bytes).decode("ascii")
-    prompt = _bank_statement_extraction_prompt(account, chunk_label, chunk_index, total_chunks)
-    request_body = {
-        "input": [
+def _openai_hit_output_limit(reason: str) -> bool:
+    text = str(reason or "").strip().lower()
+    return text == "max_output_tokens" or ("max" in text and "token" in text)
+
+
+async def _extract_bank_statement_pdf_chunk(
+    file_bytes: bytes | None,
+    filename: str,
+    account: dict,
+    chunk_label: str,
+    chunk_index: int,
+    total_chunks: int,
+    text_content: str = "",
+) -> dict:
+    source = "text" if text_content else "pdf"
+    prompt = _bank_statement_extraction_prompt(account, chunk_label, chunk_index, total_chunks, source)
+    if text_content:
+        content = [{"type": "input_text", "text": f"{prompt}\n\nStatement text chunk:\n{text_content}"}]
+    else:
+        if not file_bytes:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Statement chunk {chunk_label} was empty.")
+        encoded = base64.b64encode(file_bytes).decode("ascii")
+        content = [
             {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_file",
-                        "filename": filename,
-                        "file_data": f"data:application/pdf;base64,{encoded}",
-                    },
-                    {"type": "input_text", "text": prompt},
-                ],
-            }
-        ],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "bank_statement_extraction",
-                "schema": BANK_STATEMENT_EXTRACTION_SCHEMA,
-                "strict": True,
-            }
-        },
-        "max_output_tokens": BANK_STATEMENT_MAX_OUTPUT_TOKENS,
-    }
-    payload = await _post_openai_responses(request_body, f"statement extraction for {chunk_label}")
-    text = _extract_response_text(payload)
-    incomplete_reason = _openai_incomplete_reason(payload)
-    if not text:
-        detail = f"OpenAI returned an empty statement extraction for {chunk_label}."
-        if incomplete_reason:
-            detail = f"OpenAI stopped before finishing statement extraction for {chunk_label}: {incomplete_reason}."
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
-    try:
-        parsed = json.loads(text) if text else {}
-    except ValueError as exc:
-        detail = f"OpenAI returned statement extraction for {chunk_label} that was not valid JSON."
-        if incomplete_reason:
-            detail = f"OpenAI stopped before returning valid JSON for {chunk_label}: {incomplete_reason}."
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
-    return parsed
+                "type": "input_file",
+                "filename": filename,
+                "file_data": f"data:application/pdf;base64,{encoded}",
+            },
+            {"type": "input_text", "text": prompt},
+        ]
+    token_limits = list(dict.fromkeys((BANK_STATEMENT_MAX_OUTPUT_TOKENS, BANK_STATEMENT_RETRY_MAX_OUTPUT_TOKENS)))
+    for attempt_index, max_output_tokens in enumerate(token_limits):
+        request_body = {
+            "input": [
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "bank_statement_extraction",
+                    "schema": BANK_STATEMENT_EXTRACTION_SCHEMA,
+                    "strict": True,
+                }
+            },
+            "max_output_tokens": max_output_tokens,
+        }
+        payload = await _post_openai_responses(request_body, f"statement extraction for {chunk_label}")
+        text = _extract_response_text(payload)
+        incomplete_reason = _openai_incomplete_reason(payload)
+        output_limit_reached = _openai_hit_output_limit(incomplete_reason)
+        retry_available = output_limit_reached and attempt_index < len(token_limits) - 1
+        if not text:
+            if retry_available:
+                logger.info("Retrying bank statement extraction for %s with a larger output limit after empty max-token response.", chunk_label)
+                continue
+            detail = f"OpenAI returned an empty statement extraction for {chunk_label}."
+            if incomplete_reason:
+                detail = f"OpenAI stopped before finishing statement extraction for {chunk_label}: {incomplete_reason}."
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+        try:
+            return json.loads(text)
+        except ValueError as exc:
+            if retry_available:
+                logger.info("Retrying bank statement extraction for %s with a larger output limit after truncated JSON.", chunk_label)
+                continue
+            detail = f"OpenAI returned statement extraction for {chunk_label} that was not valid JSON."
+            if incomplete_reason:
+                detail = f"OpenAI stopped before returning valid JSON for {chunk_label}: {incomplete_reason}."
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
+
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"OpenAI could not finish statement extraction for {chunk_label}. Try splitting the bank statement into a smaller PDF and uploading again.",
+    )
 
 
 def _merge_bank_statement_extractions(extractions: list[dict]) -> dict:
@@ -10344,12 +10508,13 @@ async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account:
     extractions = []
     for chunk in chunks:
         extracted = await _extract_bank_statement_pdf_chunk(
-            chunk["bytes"],
+            chunk.get("bytes"),
             chunk["filename"],
             account,
             chunk["label"],
             chunk["index"],
             chunk["total"],
+            chunk.get("text") or "",
         )
         extractions.append({**chunk, "extracted": extracted})
     merged = _merge_bank_statement_extractions(extractions)
@@ -10359,6 +10524,72 @@ async def _extract_bank_statement_pdf(file_bytes: bytes, filename: str, account:
             detail="No transaction rows were extracted from the bank statement. Check that the PDF contains selectable statement text or upload a clearer statement.",
         )
     return merged
+
+
+def _insert_bank_statement_transactions(cursor, bank_account_id: str, upload_id: str, transactions: list[dict]) -> dict:
+    inserted_count = 0
+    duplicate_count = 0
+    valid_count = 0
+    quality_rows = []
+    for transaction in transactions:
+        try:
+            transaction_date = _parse_iso_date(transaction.get("date"), "Transaction date")
+            amount = _money(transaction.get("amount"))
+            description = str(transaction.get("description") or "").strip()
+            if not description:
+                continue
+            balance = transaction.get("balance")
+            balance_amount = _money(balance) if balance is not None else None
+        except Exception:
+            continue
+        valid_count += 1
+        source_hash = _bank_transaction_source_hash(
+            bank_account_id,
+            {"date": transaction_date.isoformat(), "description": description, "amount": amount, "balance": balance_amount},
+        )
+        cursor.execute(
+            """
+            INSERT INTO bank_statement_transactions (
+                bank_account_id, upload_id, transaction_date, description,
+                amount, balance, transaction_type, source_hash, raw, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+            ON CONFLICT (bank_account_id, source_hash) DO NOTHING
+            RETURNING id
+            """,
+            (
+                bank_account_id,
+                upload_id,
+                transaction_date,
+                description,
+                amount,
+                balance_amount,
+                str(transaction.get("type") or "")[:80],
+                source_hash,
+                json.dumps(transaction, default=_json_default),
+                utcnow(),
+            ),
+        )
+        if cursor.fetchone():
+            inserted_count += 1
+            quality_rows.append({
+                "transaction_date": transaction_date,
+                "amount": amount,
+                "balance": balance_amount,
+                "created_at": utcnow(),
+            })
+        else:
+            duplicate_count += 1
+    return {
+        "validCount": valid_count,
+        "insertedCount": inserted_count,
+        "duplicateCount": duplicate_count,
+        "qualityRows": quality_rows,
+    }
+
+
+def _bank_statement_chunk_transactions(extraction: dict) -> list[dict]:
+    return _merge_bank_statement_extractions([extraction]).get("transactions") or []
 
 
 async def _process_bank_statement_upload(user: dict, account: dict, upload_id: str, filename: str, content_type: str, file_bytes: bytes, is_retry: bool = False) -> dict:
@@ -10388,79 +10619,123 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
         connection.commit()
 
     try:
-        extracted = await _extract_bank_statement_pdf(file_bytes, filename, account)
-        transactions = extracted.get("transactions") or []
-        chunk_count = int(extracted.get("_chunkCount") or 1)
+        settings = get_settings()
+        if not settings.openai_api_key:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading statements.")
+        if len(file_bytes) > 50 * 1024 * 1024:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
+
+        chunks = _bank_statement_pdf_chunks(file_bytes, filename)
+        extractions = []
+        quality_rows = []
         inserted_count = 0
         duplicate_count = 0
         valid_count = 0
+
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 _append_bank_statement_upload_activity(
                     cursor,
                     upload_id,
-                    "ai_extraction_completed",
-                    f"AI extraction returned {len(transactions):,} row(s) from {chunk_count:,} PDF chunk(s).",
-                    {"rawRows": len(transactions), "chunkCount": chunk_count},
+                    "chunk_plan",
+                    f"Statement split into {len(chunks):,} extraction chunk(s).",
+                    {"chunkCount": len(chunks)},
                 )
-                for transaction in transactions:
-                    try:
-                        transaction_date = _parse_iso_date(transaction.get("date"), "Transaction date")
-                        amount = _money(transaction.get("amount"))
-                        description = str(transaction.get("description") or "").strip()
-                        if not description:
-                            continue
-                        balance = transaction.get("balance")
-                        balance_amount = _money(balance) if balance is not None else None
-                    except Exception:
-                        continue
-                    valid_count += 1
-                    source_hash = _bank_transaction_source_hash(
-                        bank_account_id,
-                        {"date": transaction_date.isoformat(), "description": description, "amount": amount, "balance": balance_amount},
+            connection.commit()
+
+        for chunk in chunks:
+            chunk_index = int(chunk.get("index") or 0)
+            chunk_total = int(chunk.get("total") or len(chunks) or 1)
+            chunk_label = chunk.get("label") or f"chunk {chunk_index + 1}"
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    _append_bank_statement_upload_activity(
+                        cursor,
+                        upload_id,
+                        "chunk_started",
+                        f"Extracting {chunk_label} ({chunk_index + 1:,} of {chunk_total:,}).",
+                        {"chunkIndex": chunk_index + 1, "chunkCount": chunk_total, "source": chunk.get("source") or "pdf"},
                     )
+                connection.commit()
+
+            extracted_chunk = await _extract_bank_statement_pdf_chunk(
+                chunk.get("bytes"),
+                chunk["filename"],
+                account,
+                chunk_label,
+                chunk_index,
+                chunk_total,
+                chunk.get("text") or "",
+            )
+            extraction = {**chunk, "extracted": extracted_chunk}
+            extractions.append(extraction)
+            chunk_transactions = _bank_statement_chunk_transactions(extraction)
+            partial = _merge_bank_statement_extractions(extractions)
+
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    chunk_result = _insert_bank_statement_transactions(cursor, bank_account_id, upload_id, chunk_transactions)
+                    valid_count += int(chunk_result["validCount"])
+                    inserted_count += int(chunk_result["insertedCount"])
+                    duplicate_count += int(chunk_result["duplicateCount"])
+                    quality_rows.extend(chunk_result["qualityRows"])
                     cursor.execute(
                         """
-                        INSERT INTO bank_statement_transactions (
-                            bank_account_id, upload_id, transaction_date, description,
-                            amount, balance, transaction_type, source_hash, raw, created_at
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
-                        ON CONFLICT (bank_account_id, source_hash) DO NOTHING
-                        RETURNING id
+                        UPDATE bank_statement_uploads
+                        SET statement_start_date = %s,
+                            statement_end_date = %s,
+                            opening_balance = %s,
+                            closing_balance = %s,
+                            extracted_count = %s,
+                            inserted_count = %s,
+                            duplicate_count = %s
+                        WHERE id = %s
                         """,
                         (
-                            bank_account_id,
+                            _parse_optional_iso_date(partial.get("statementStartDate")),
+                            _parse_optional_iso_date(partial.get("statementEndDate")),
+                            _money(partial.get("openingBalance")) if partial.get("openingBalance") is not None else None,
+                            _money(partial.get("closingBalance")) if partial.get("closingBalance") is not None else None,
+                            valid_count,
+                            inserted_count,
+                            duplicate_count,
                             upload_id,
-                            transaction_date,
-                            description,
-                            amount,
-                            balance_amount,
-                            str(transaction.get("type") or "")[:80],
-                            source_hash,
-                            json.dumps(transaction, default=_json_default),
-                            utcnow(),
                         ),
                     )
-                    if cursor.fetchone():
-                        inserted_count += 1
-                    else:
-                        duplicate_count += 1
-                if valid_count <= 0:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="The statement extraction returned rows, but none had a usable date, description and amount.",
+                    _append_bank_statement_upload_activity(
+                        cursor,
+                        upload_id,
+                        "chunk_saved",
+                        f"Saved {int(chunk_result['insertedCount']):,} new transaction(s) from {chunk_label}.",
+                        {
+                            "chunkIndex": chunk_index + 1,
+                            "chunkCount": chunk_total,
+                            "validRows": int(chunk_result["validCount"]),
+                            "insertedCount": int(chunk_result["insertedCount"]),
+                            "duplicateCount": int(chunk_result["duplicateCount"]),
+                            "totalValidRows": valid_count,
+                            "totalInsertedCount": inserted_count,
+                        },
                     )
-                balance_summary = _bank_statement_quality_summary([
-                    {
-                        "transaction_date": _parse_optional_iso_date(transaction.get("date")),
-                        "amount": _money(transaction.get("amount")),
-                        "balance": _money(transaction.get("balance")) if transaction.get("balance") is not None else None,
-                        "created_at": utcnow(),
-                    }
-                    for transaction in transactions
-                    if transaction.get("date")
-                ])
+                connection.commit()
+
+        extracted = _merge_bank_statement_extractions(extractions)
+        transactions = extracted.get("transactions") or []
+        chunk_count = int(extracted.get("_chunkCount") or len(chunks) or 1)
+        if not transactions:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="No transaction rows were extracted from the bank statement. Check that the PDF contains selectable statement text or upload a clearer statement.",
+            )
+        if valid_count <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="The statement extraction returned rows, but none had a usable date, description and amount.",
+            )
+
+        balance_summary = _bank_statement_quality_summary(quality_rows)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     UPDATE bank_statement_uploads
@@ -10490,6 +10765,13 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
                 _append_bank_statement_upload_activity(
                     cursor,
                     upload_id,
+                    "ai_extraction_completed",
+                    f"AI extraction returned {len(transactions):,} row(s) from {chunk_count:,} PDF chunk(s).",
+                    {"rawRows": len(transactions), "chunkCount": chunk_count},
+                )
+                _append_bank_statement_upload_activity(
+                    cursor,
+                    upload_id,
                     "saved",
                     f"Saved {inserted_count:,} new transaction(s); {duplicate_count:,} duplicate(s) skipped.",
                     {
@@ -10504,11 +10786,16 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
         error = _sync_error_message(exc)
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM bank_statement_transactions WHERE upload_id = %s", (upload_id,))
+                discarded_count = max(0, int(cursor.rowcount or 0))
                 cursor.execute(
                     """
                     UPDATE bank_statement_uploads
                     SET status = 'failed',
                         error_message = %s,
+                        extracted_count = 0,
+                        inserted_count = 0,
+                        duplicate_count = 0,
                         completed_at = %s
                     WHERE id = %s
                     """,
@@ -10519,7 +10806,7 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
                     upload_id,
                     "failed",
                     error,
-                    {"errorType": exc.__class__.__name__, "retryAvailable": True},
+                    {"errorType": exc.__class__.__name__, "retryAvailable": True, "partialRowsDiscarded": discarded_count},
                 )
             connection.commit()
         raise
@@ -11136,6 +11423,11 @@ def _is_renewal_proposal(row: dict) -> bool:
     return any(marker in text for marker in renewal_markers)
 
 
+def _is_accepted_ignition_proposal(row: dict) -> bool:
+    state = str(row.get("state") or row.get("status") or "").strip().lower()
+    return state == "accepted" or bool(row.get("accepted_at") or row.get("acceptedAt"))
+
+
 def _first_mapping_text(value, keys: tuple[str, ...]) -> str:
     if not isinstance(value, dict):
         return ""
@@ -11256,7 +11548,7 @@ def _ignition_client_rows(clients: list[dict], proposals: list[dict], outstandin
     for proposal in proposals:
         rollup = rollup_for(_ignition_record_client_name(proposal))
         state_value = str(proposal.get("state") or "").lower()
-        accepted_proposal = state_value == "accepted" or proposal.get("accepted_at")
+        accepted_proposal = _is_accepted_ignition_proposal(proposal)
         rollup["proposals"] += 1
         if accepted_proposal:
             rollup["accepted"] += 1
@@ -11436,7 +11728,7 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
     deals = _dataset_payloads(records, "deals")
 
     sent_mtd = [row for row in proposals if (_parse_optional_iso_date(row.get("sent_at") or row.get("created_at")) or date.min) >= month_start]
-    accepted = [row for row in proposals if str(row.get("state") or "").lower() == "accepted" or row.get("accepted_at")]
+    accepted = [row for row in proposals if _is_accepted_ignition_proposal(row)]
     accepted_mtd = [row for row in accepted if (_parse_optional_iso_date(row.get("accepted_at") or row.get("created_at")) or date.min) >= month_start]
     new_clients_mtd = [row for row in clients if (_parse_optional_iso_date(row.get("created_at")) or date.min) >= month_start]
     payments_mtd = [row for row in payments if (_parse_optional_iso_date(row.get("paid_at") or row.get("payment_date") or row.get("created_at")) or date.min) >= month_start]
@@ -11449,8 +11741,8 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
     awaiting = [row for row in proposals if str(row.get("state") or "").lower() in ("awaiting_acceptance", "sent")]
     renewal_proposals = [row for row in proposals if _is_renewal_proposal(row)]
     new_work_proposals = [row for row in proposals if not _is_renewal_proposal(row)]
-    accepted_renewals = [row for row in renewal_proposals if str(row.get("state") or "").lower() == "accepted" or row.get("accepted_at")]
-    accepted_new_work = [row for row in new_work_proposals if str(row.get("state") or "").lower() == "accepted" or row.get("accepted_at")]
+    accepted_renewals = [row for row in renewal_proposals if _is_accepted_ignition_proposal(row)]
+    accepted_new_work = [row for row in new_work_proposals if _is_accepted_ignition_proposal(row)]
     pipeline_value = sum(_money_from_ignition(row.get("value") or row.get("amount") or row.get("total_value")) for row in deals)
     collection_fees = sum(_money_from_ignition(row.get("fee") or row.get("fees") or row.get("processing_fee")) for row in collections)
     collection_clawbacks = sum(_money_from_ignition(row.get("clawback") or row.get("clawbacks")) for row in collections)
@@ -11464,7 +11756,7 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
         for label in labels:
             rollup = service_rollups.setdefault(label, {"name": label, "proposals": 0, "accepted": 0, "mrr": Decimal("0.00"), "contractValue": Decimal("0.00")})
             rollup["proposals"] += 1
-            if state_value == "accepted" or proposal.get("accepted_at"):
+            if _is_accepted_ignition_proposal(proposal):
                 rollup["accepted"] += 1
                 rollup["mrr"] += proposal_mrr
                 rollup["contractValue"] += _proposal_value(proposal)
@@ -11486,7 +11778,7 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
         manager = manager or "Unassigned"
         rollup = creator_rollups.setdefault(manager, {"name": manager, "proposals": 0, "accepted": 0, "value": Decimal("0.00")})
         rollup["proposals"] += 1
-        if str(proposal.get("state") or "").lower() == "accepted" or proposal.get("accepted_at"):
+        if _is_accepted_ignition_proposal(proposal):
             rollup["accepted"] += 1
             rollup["value"] += _proposal_value(proposal)
 
@@ -11741,7 +12033,7 @@ async def create_ignition_renewal_run(user: dict) -> dict:
     _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
 
     window_start = utcnow().date()
-    window_end = window_start + timedelta(weeks=5)
+    window_end = window_start + timedelta(weeks=8)
     with get_connection() as db:
         with db.cursor() as cursor:
             cursor.execute(
@@ -11756,8 +12048,13 @@ async def create_ignition_renewal_run(user: dict) -> dict:
             records = cursor.fetchall()
             candidates = []
             for record in records:
-                renewal_date = _ignition_proposal_end_date(record.get("payload") or {})
-                if renewal_date and window_start <= renewal_date <= window_end:
+                proposal_payload = record.get("payload") or {}
+                renewal_date = _ignition_proposal_end_date(proposal_payload)
+                if (
+                    _is_accepted_ignition_proposal(proposal_payload)
+                    and renewal_date
+                    and window_start <= renewal_date <= window_end
+                ):
                     candidates.append(_ignition_renewal_item_seed(record, renewal_date))
 
             cursor.execute("SELECT proposal_external_id FROM ignition_renewal_items WHERE user_id = %s", (user["id"],))
