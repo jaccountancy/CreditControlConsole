@@ -104,10 +104,13 @@
                 opacity: 0;
                 pointer-events: none;
                 transform: translateX(-14px);
-                padding: 14px 10px;
                 gap: 10px;
-                overflow-y: auto;
-                overflow-x: hidden;
+                padding: 0;
+                background: transparent;
+                border: 0;
+                box-shadow: none;
+                backdrop-filter: none;
+                overflow: hidden;
             }
             body.settings-sidebar-mode .app-sidebar,
             body.factory-reset-sidebar-mode .app-sidebar,
@@ -121,6 +124,37 @@
                 opacity: 1;
                 pointer-events: auto;
                 transform: translateX(0);
+            }
+            .settings-sidebar-top,
+            .settings-sidebar-card {
+                background: rgba(255, 255, 255, 0.96);
+                border: 1px solid rgba(61, 85, 130, 0.10);
+                box-shadow: 0 10px 28px rgba(30, 47, 77, 0.08);
+                backdrop-filter: blur(12px);
+            }
+            .settings-sidebar-top {
+                padding: 10px;
+                border-radius: 22px;
+            }
+            .settings-sidebar-card {
+                flex: 1 1 auto;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 12px 10px;
+                border-radius: 22px;
+                overflow: hidden;
+            }
+            .settings-sidebar-card .app-nav {
+                flex: 1 1 auto;
+                min-height: 0;
+                display: grid;
+                gap: 4px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding-right: 2px;
+                scrollbar-width: thin;
             }
             .settings-sidebar-title {
                 display: grid;
@@ -221,6 +255,7 @@
                 --settings-accent-soft: var(--green-soft);
             }
             .settings-sidebar-button[data-settings-nav="xero-connection"],
+            .settings-sidebar-button[data-settings-nav="ignition-connection"],
             .settings-sidebar-button[data-settings-nav="system-status"] {
                 --settings-accent: var(--purple);
                 --settings-accent-soft: var(--purple-soft);
@@ -293,9 +328,25 @@
             .app-sidebar-brand {
                 display: flex;
                 align-items: center;
+                width: 100%;
                 min-height: 78px;
                 padding: 14px;
                 border-radius: 22px;
+                color: inherit;
+                text-align: left;
+                transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+            }
+            .app-sidebar-brand:hover,
+            .app-sidebar-brand:focus-visible {
+                border-color: rgba(29, 103, 242, 0.24);
+                background: rgba(255, 255, 255, 0.99);
+                box-shadow: 0 16px 34px rgba(29, 103, 242, 0.12);
+                transform: translateY(-1px);
+                outline: none;
+            }
+            .app-sidebar-brand:active {
+                transform: translateY(1px) scale(0.985);
+                box-shadow: 0 8px 18px rgba(30, 47, 77, 0.08);
             }
             .app-sidebar-logo {
                 display: block;
@@ -1148,6 +1199,69 @@
                 font-size: 0.92rem;
                 font-weight: 950;
             }
+            .practice-pack-topbar-summary.is-generating {
+                border-color: rgba(var(--topbar-accent-rgb), 0.28);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 12px 28px rgba(var(--topbar-accent-rgb), 0.08);
+            }
+            .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating {
+                overflow: hidden;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 243, 223, 0.86), rgba(233, 241, 255, 0.78));
+            }
+            .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating::before {
+                opacity: 1;
+                transform: scaleY(1);
+                animation: practice-pack-status-pulse 1.65s ease-in-out infinite;
+            }
+            .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: 0;
+                pointer-events: none;
+                background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.68) 44%, transparent 72%);
+                transform: translateX(-120%);
+                animation: practice-pack-status-sheen 1.95s ease-in-out infinite;
+            }
+            .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating span,
+            .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating strong {
+                position: relative;
+                z-index: 1;
+            }
+            .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating strong {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--topbar-accent);
+            }
+            .practice-pack-loading-mark {
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                flex: 0 0 auto;
+                border-radius: 50%;
+                background: var(--topbar-accent);
+                box-shadow: 0 0 0 5px rgba(var(--topbar-accent-rgb), 0.14);
+                animation: practice-pack-status-dot 1.15s ease-in-out infinite;
+            }
+            @keyframes practice-pack-status-pulse {
+                0%, 100% { opacity: 0.74; }
+                50% { opacity: 1; }
+            }
+            @keyframes practice-pack-status-sheen {
+                0% { transform: translateX(-120%); }
+                54%, 100% { transform: translateX(130%); }
+            }
+            @keyframes practice-pack-status-dot {
+                0%, 100% { transform: scale(0.86); opacity: 0.74; }
+                50% { transform: scale(1); opacity: 1; }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating::before,
+                .practice-pack-topbar-summary.is-generating article.is-practice-pack-generating::after,
+                .practice-pack-loading-mark {
+                    animation: none;
+                }
+            }
             .bank-account-topbar-summary article.is-warning strong {
                 color: var(--orange);
             }
@@ -1498,27 +1612,12 @@
                 opacity: 0.78;
                 transform: scale(1) rotate(135deg);
             }
-            .global-activity-toggle svg {
+            .global-activity-count {
                 position: relative;
                 z-index: 1;
-                width: 19px;
-                height: 19px;
-                stroke: currentColor;
-                stroke-width: 2.4;
-                fill: none;
-                stroke-linecap: round;
-                stroke-linejoin: round;
-                transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
-            }
-            .ledger-topbar.is-activity-open .global-activity-toggle svg {
-                transform: rotate(180deg) scale(1.08);
-            }
-            .global-activity-count {
-                position: absolute;
-                z-index: 1;
-                min-width: 17px;
-                height: 17px;
-                margin: -25px -25px 0 0;
+                min-width: 22px;
+                height: 22px;
+                margin: 0;
                 display: grid;
                 place-items: center;
                 padding: 0 5px;
@@ -2017,20 +2116,7 @@
                 font-size: 0.78rem;
                 font-weight: 750;
             }
-            .connection-meta::before {
-                content: "";
-                display: inline-block;
-                width: 7px;
-                height: 7px;
-                margin-right: 7px;
-                border-radius: 999px;
-                background: var(--topbar-accent);
-                box-shadow: 0 0 0 4px rgba(var(--topbar-accent-rgb), 0.1);
-                vertical-align: 0.08em;
-            }
-            .ledger-topbar.is-topbar-live .connection-meta::before {
-                animation: topbar-status-dot 1.8s ease-in-out infinite;
-            }
+            .connection-meta::before { content: none; }
             @keyframes topbar-status-dot {
                 0%, 100% { box-shadow: 0 0 0 3px rgba(var(--topbar-accent-rgb), 0.1); transform: scale(0.92); }
                 50% { box-shadow: 0 0 0 7px rgba(var(--topbar-accent-rgb), 0.04); transform: scale(1.08); }
@@ -5212,12 +5298,13 @@
             }
             .me-report-calculation-row {
                 display: grid;
-                grid-template-columns: minmax(160px, 1.15fr) minmax(100px, 0.45fr) minmax(120px, 0.55fr) minmax(180px, 1fr);
+                grid-template-columns: minmax(160px, 1fr) minmax(100px, 0.38fr) minmax(120px, 0.48fr) minmax(280px, 1.45fr);
                 gap: 10px;
                 align-items: center;
                 padding: 10px 12px;
                 border-top: 1px solid var(--line);
                 font-size: 0.86rem;
+                transition: background 0.16s ease, box-shadow 0.16s ease;
             }
             .me-report-calculation-row:first-child {
                 border-top: 0;
@@ -5236,6 +5323,79 @@
                 font-weight: 850;
             }
             .me-report-calculation-row strong {
+                text-align: right;
+            }
+            .me-report-calculation-row.has-breakdown {
+                cursor: default;
+            }
+            .me-report-calculation-row.has-breakdown:hover,
+            .me-report-calculation-row.has-breakdown:focus {
+                background: rgba(233, 241, 255, 0.6);
+                box-shadow: inset 3px 0 0 var(--blue);
+                outline: none;
+            }
+            .me-report-step-breakdown {
+                grid-column: 1 / -1;
+                display: none;
+                gap: 10px;
+                padding: 12px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.96);
+                box-shadow: 0 18px 38px rgba(23, 37, 84, 0.12);
+            }
+            .me-report-calculation-row.has-breakdown:hover .me-report-step-breakdown,
+            .me-report-calculation-row.has-breakdown:focus .me-report-step-breakdown {
+                display: grid;
+            }
+            .me-report-step-breakdown-head,
+            .me-report-step-breakdown-row {
+                display: grid;
+                grid-template-columns: minmax(74px, 0.35fr) minmax(180px, 1.2fr) minmax(86px, 0.45fr) minmax(86px, 0.45fr) minmax(92px, 0.45fr) minmax(150px, 0.9fr);
+                gap: 10px;
+                align-items: center;
+            }
+            .me-report-step-breakdown-head {
+                grid-template-columns: minmax(0, 1fr) auto;
+                color: var(--ink);
+            }
+            .me-report-step-breakdown-head span {
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 850;
+                text-align: right;
+            }
+            .me-report-step-breakdown-row {
+                padding-top: 8px;
+                border-top: 1px solid var(--line);
+                color: var(--ink);
+                font-size: 0.78rem;
+            }
+            .me-report-step-breakdown-row.is-header {
+                padding-top: 0;
+                border-top: 0;
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .me-report-step-breakdown-row strong,
+            .me-report-step-breakdown-row small {
+                display: block;
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+            .me-report-step-breakdown-row small {
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 750;
+            }
+            .me-report-step-breakdown-row em {
+                color: var(--ink);
+                font-style: normal;
+                font-weight: 900;
                 text-align: right;
             }
             .me-report-help-notes {
@@ -5951,10 +6111,10 @@
             }
             #meReportScreen .me-report-report-row {
                 display: grid;
-                grid-template-columns: minmax(220px, 1.35fr) minmax(118px, 0.7fr) minmax(96px, 0.55fr) minmax(118px, 0.65fr) minmax(130px, 0.72fr) minmax(250px, max-content);
+                grid-template-columns: minmax(220px, 1.35fr) minmax(118px, 0.7fr) minmax(96px, 0.55fr) minmax(118px, 0.65fr) minmax(130px, 0.72fr) minmax(150px, max-content);
                 gap: 12px;
                 align-items: center;
-                min-width: 1040px;
+                min-width: 940px;
                 padding: 14px;
                 border: 1px solid var(--line);
                 border-radius: 14px;
@@ -6729,6 +6889,9 @@
                 display: grid;
                 gap: 12px;
                 min-width: 0;
+            }
+            .ignition-primary-actions {
+                justify-self: end;
             }
             .ignition-connection-bubble {
                 position: relative;
@@ -9337,6 +9500,14 @@
             .me-report-calculation-row strong,
             .me-report-tax-breakdown-row strong,
             .me-report-tax-breakdown-row em { text-align: left; }
+            .me-report-step-breakdown-head,
+            .me-report-step-breakdown-row {
+                grid-template-columns: 1fr;
+            }
+            .me-report-step-breakdown-head span,
+            .me-report-step-breakdown-row em {
+                text-align: left;
+            }
             }
             .jashflow-topbar-summary {
                 flex-basis: 940px;
@@ -9504,9 +9675,9 @@
             <body>
                 <div class="console-app">
                 <aside class="app-sidebar" aria-label="Main navigation">
-                    <div class="app-sidebar-brand">
+                    <button class="app-sidebar-brand" type="button" data-app-nav="home" aria-label="Open Home Insights">
                         <img class="app-sidebar-logo" src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy">
-                    </div>
+                    </button>
                     <div class="app-sidebar-card">
                         <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">
@@ -9563,76 +9734,88 @@
                     </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-main" aria-label="Settings navigation">
-                    <button class="settings-sidebar-back" id="settingsBackToMainSidebarButton" type="button">
-                        <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
-                        <span class="settings-sidebar-copy"><strong>Main sidebar</strong><span>Return to app nav</span></span>
-                    </button>
-                    <div class="settings-sidebar-title">
-                        <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
-                        <span class="settings-sidebar-title-copy"><strong>Settings</strong><span>Focused controls</span></span>
+                    <div class="settings-sidebar-top">
+                        <button class="settings-sidebar-back" id="settingsBackToMainSidebarButton" type="button">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Main sidebar</strong><span>Return to app nav</span></span>
+                        </button>
                     </div>
-                    <nav class="app-nav">
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="data-import">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="period-scope">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h3"></path><path d="M13 15h3"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Period Scope</strong><span>Invoice years</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="xero-connection">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Xero Link</strong><span>Connection</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="letters">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Letter Templates</strong><span>Reminder copy</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="gmail-connection">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path><path d="M16 14h4"></path><path d="M18 12v4"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Gmail Account</strong><span>Email connection</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
-                        </button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>System Status</strong><span>Database metrics</span></span>
-                        </button>
-                        <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
-                        </button>
-                    </nav>
+                    <div class="settings-sidebar-card">
+                        <div class="settings-sidebar-title">
+                            <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
+                            <span class="settings-sidebar-title-copy"><strong>Settings</strong><span>Focused controls</span></span>
+                        </div>
+                        <nav class="app-nav">
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="data-import">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="period-scope">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h3"></path><path d="M13 15h3"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Period Scope</strong><span>Invoice years</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="xero-connection">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Xero Link</strong><span>Connection</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="ignition-connection">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Ignition Link</strong><span>Connection</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="letters">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Letter Templates</strong><span>Reminder copy</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="gmail-connection">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path><path d="M16 14h4"></path><path d="M18 12v4"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Gmail Account</strong><span>Email connection</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>System Status</strong><span>Database metrics</span></span>
+                            </button>
+                            <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
+                            </button>
+                        </nav>
+                    </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-factory" aria-label="Factory reset navigation">
-                    <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">
-                        <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
-                        <span class="settings-sidebar-copy"><strong>Settings</strong><span>Back to controls</span></span>
-                    </button>
-                    <div class="settings-sidebar-title">
-                        <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
-                        <span class="settings-sidebar-title-copy"><strong>Factory Reset</strong><span>Protected reset area</span></span>
-                    </div>
-                    <nav class="app-nav">
-                        <button class="settings-sidebar-button danger-button" id="factoryOpenResetPageButton" type="button">
-                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
-                            <span class="settings-sidebar-copy"><strong>Open Reset</strong><span>Show controls</span></span>
+                    <div class="settings-sidebar-top">
+                        <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Settings</strong><span>Back to controls</span></span>
                         </button>
-                    </nav>
+                    </div>
+                    <div class="settings-sidebar-card">
+                        <div class="settings-sidebar-title">
+                            <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
+                            <span class="settings-sidebar-title-copy"><strong>Factory Reset</strong><span>Protected reset area</span></span>
+                        </div>
+                        <nav class="app-nav">
+                            <button class="settings-sidebar-button danger-button" id="factoryOpenResetPageButton" type="button">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Open Reset</strong><span>Show controls</span></span>
+                            </button>
+                        </nav>
+                    </div>
                 </aside>
                 <main class="ledger-shell">
                     <header class="ledger-topbar">
@@ -9697,7 +9880,7 @@
                             </button>
                         </div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
-                        <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" hidden>
+                        <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" role="status" aria-live="polite" hidden>
                             <article><span>Clients</span><strong>0</strong></article>
                             <article><span>Tasks</span><strong>0</strong></article>
                             <article><span>Service groups</span><strong>0</strong></article>
@@ -9871,7 +10054,6 @@
                         </button>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
                             <span class="global-activity-count" id="globalActivityCount">0</span>
-                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg>
                         </button>
                         <div class="global-activity-panel" id="globalActivityPanel" hidden>
                             <section class="global-activity-section">
@@ -10098,6 +10280,23 @@
                                     <button class="ghost-button danger-button" id="settingsDisconnectXeroButton" type="button">Disconnect Xero</button>
                                 </div>
                                 <p class="settings-help">Disconnect only when you need to connect a different Xero organisation. Imported ledger rows remain visible until the next sync replaces them.</p>
+                            </section>
+
+                            <section class="detail-panel settings-panel" data-settings-section="ignition-connection">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Ignition connection</p>
+                                        <h3>Reporting API connection</h3>
+                                    </div>
+                                    <button class="ghost-button" id="settingsConnectIgnitionButton" type="button">Connect Ignition</button>
+                                </div>
+                                <div class="sync-settings-panel">
+                                    <div class="sync-settings-status" id="settingsIgnitionConnectionStatus">
+                                        <span>Ignition connection not loaded</span>
+                                        <span>Open this panel to refresh the connection state.</span>
+                                    </div>
+                                    <p class="settings-help">Reconnect only when Ignition authorisation changes or the Reporting API token needs refreshing.</p>
+                                </div>
                             </section>
 
                             <section class="detail-panel settings-panel" data-settings-section="mapping">
@@ -10389,15 +10588,7 @@
 
                     <section class="late-charges-screen detail-card" id="ignitionScreen" hidden>
                         <div class="detail-hero">
-                            <div class="ignition-hero-copy">
-                                <div>
-                                    <p class="eyebrow">Ignition Reporting API</p>
-                                    <p class="detail-meta">Live practice intelligence for sales, onboarding, services, proposals, invoices, payments, collections, and deal pipeline data.</p>
-                                </div>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="ghost-button" id="refreshIgnitionButton" type="button">Refresh</button>
-                                <button class="ghost-button" id="connectIgnitionButton" type="button">Connect Ignition</button>
+                            <div class="detail-actions ignition-primary-actions">
                                 <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
                             </div>
                         </div>
@@ -10563,8 +10754,9 @@
                     <section class="late-charges-screen detail-card" id="meReportScreen" hidden>
                         <div class="detail-hero">
                             <div class="detail-actions">
-                                <button class="ghost-button" id="backMeReportClientsButton" type="button" hidden>Back to clients</button>
                                 <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send</button>
+                                <button class="ghost-button me-report-archive-button" id="archiveMeReportWorkspaceButton" type="button" hidden>Archive workspace</button>
+                                <button class="ghost-button danger-button" id="deleteMeReportWorkspaceButton" type="button" hidden>Delete workspace</button>
                             </div>
                         </div>
                         <section class="detail-panel" id="meReportClientFormPanel" hidden>
@@ -10641,7 +10833,7 @@
                                         <option value="December">December</option>
                                     </select>
                                 </label>
-                                <button class="primary-button" type="submit">Generate practice pack</button>
+                                <button class="primary-button" id="practicePackGenerateButton" type="submit">Generate PDFs</button>
                             </form>
                             <p class="late-charge-summary" id="practicePackSummary">Awaiting BM Client File CSV and BM Task File CSV.</p>
                             <div class="practice-pack-output-list" id="practicePackOutputList">
@@ -11469,6 +11661,34 @@
                 "practice-packs": "Practice Pack Generator",
                 settings: "Settings"
             };
+            const topbarViewSummaries = {
+                ledger: "Work the credit-control ledger, prioritise overdue accounts, and open client recovery actions.",
+                client: "Review invoices, notes, payment plans, letters, attachments, and recovery history for this client.",
+                insights: "Home dashboard for performance signals, risk trends, cash movement, and operational priorities.",
+                "late-charges": "Review overdue invoices that may qualify for late payment charges before posting them.",
+                "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
+                jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
+                "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
+                ignition: "Sync and analyse Ignition clients, proposals, fees, payments, collections, and renewal data.",
+                "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
+                "me-report": "Prepare month-end client snapshots, review reporting data, and manage ME Report emails.",
+                "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
+                settings: "Manage import scope, integrations, posting defaults, templates, logs, and system controls."
+            };
+            const settingsTopbarSummaries = {
+                "data-import": "Choose the invoice data depth for the next Xero import.",
+                "period-scope": "Limit imports to specific invoice years when you need a tighter sync window.",
+                "xero-connection": "Manage the linked Xero organisation and disconnect only when switching accounts.",
+                "ignition-connection": "Connect or reconnect the Ignition account used for Reporting API syncs.",
+                mapping: "Review posting defaults and chart-of-account assumptions.",
+                outbox: "Review queued Xero actions waiting for a successful push.",
+                letters: "Create and edit reminder templates used from client pages.",
+                "me-report-email": "Control client snapshot emails, required BCC, and report send wording.",
+                "gmail-connection": "Connect or reconnect the Gmail inbox used for report email sending.",
+                "developer-log": "Inspect sync events, backend errors, API calls, and user activity.",
+                "system-status": "Check stored record counts, database size, and backend health indicators.",
+                "factory-reset": "Protected destructive controls are isolated from day-to-day settings."
+            };
             let globalActivityOpen = false;
             let globalActivityCloseTimer = null;
             let systemActivityItems = loadSystemActivity();
@@ -11622,6 +11842,7 @@
             let meReportSyncStartedAt = 0;
             let meReportProgressTimer = null;
             let practicePackResult = null;
+            let practicePackGenerating = false;
             let practicePackAssignments = loadPracticePackAssignments();
             let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
                 ? persistedUIState.lateChargeFilter
@@ -13840,15 +14061,16 @@
                 return topbarViewTitles[activeView] || topbarViewTitles.ledger;
             }
 
-            function topbarConnectionMetaText() {
-                const organisationName = state.organisation.name || "Xero organisation not connected";
-                const lastSync = state.organisation.lastSync || "Waiting for first sync";
-                const syncCopy = isSyncing
-                    ? "Pulling in data from Xero"
-                    : lastSync.toLowerCase().startsWith("last sync") || lastSync.toLowerCase().startsWith("waiting")
-                    ? lastSync
-                    : `Last sync: ${lastSync}`;
-                return `${organisationName} · ${syncCopy}`;
+            function topbarPageSummaryText(topbarClient = null) {
+                const account = activeBankStatementAccountForTopbar();
+                if (account) return "Review extracted transactions, statement uploads, and matching for this bank account.";
+                const meReportInsight = activeMeReportInsightContext();
+                if (meReportInsight) return activeMeReportInsightMeta(meReportInsight) || topbarViewSummaries["me-report"];
+                if (topbarClient?.name) return topbarViewSummaries.client;
+                if (activeView === "settings") {
+                    return settingsTopbarSummaries[activeSettingsSection] || topbarViewSummaries.settings;
+                }
+                return topbarViewSummaries[activeView] || topbarViewSummaries.ledger;
             }
 
             function visibleTopbarStatusElements() {
@@ -14005,7 +14227,7 @@
                 const heading = document.getElementById("topbarPageTitle") || document.querySelector(".brand-lockup h1");
                 if (heading) heading.textContent = account ? bankAccountDisplayName(account) : activeTopbarTitle(topbarClient);
                 const connectionMeta = document.getElementById("ledgerConnectionMeta");
-                if (connectionMeta) connectionMeta.textContent = account ? bankAccountDetailLine(account) : meReportInsight ? activeMeReportInsightMeta(meReportInsight) : topbarConnectionMetaText();
+                if (connectionMeta) connectionMeta.textContent = topbarPageSummaryText(topbarClient);
             }
 
             function syncActiveViewShell() {
@@ -19938,14 +20160,14 @@
 
             function ignitionActiveDataset(run) {
                 const step = String(run?.currentStep || "").trim().toLowerCase();
-                const match = step.match(/^importing\s+(.+)$/);
+                const match = step.match(/^(?:importing|checking changed)\s+(.+)$/);
                 return match ? match[1].trim() : "";
             }
 
             function ignitionTopbarSummary(run, connected) {
                 if (!run) {
                     return connected
-                        ? "Manual sync imports clients, contacts, services, proposals, invoices, payments, collections and available deal pipeline data."
+                        ? "Manual sync checks Ignition for changed clients, contacts, services, proposals, invoices, payments, collections and available deal pipeline data."
                         : "Connect Ignition before syncing Reporting API datasets.";
                 }
                 if (!syncRunIsActive(run)) return run.summary || run.currentStep || "Ignition Reporting API import finished.";
@@ -20064,11 +20286,18 @@
                 const progressFill = document.getElementById("ignitionSyncProgressFill");
                 if (progressFill) progressFill.style.width = `${progress}%`;
 
-                const connectButton = document.getElementById("connectIgnitionButton");
-                if (connectButton) {
-                    connectButton.disabled = isIgnitionSyncing || ignitionLoading || !oauthConfigured;
-                    connectButton.textContent = connected ? "Reconnect Ignition" : "Connect Ignition";
-                    connectButton.title = oauthConfigured ? "Open Ignition OAuth authorisation" : "Configure Ignition OAuth variables on the backend first";
+                const settingsConnectButton = document.getElementById("settingsConnectIgnitionButton");
+                if (settingsConnectButton) {
+                    settingsConnectButton.disabled = isIgnitionSyncing || ignitionLoading || !oauthConfigured;
+                    settingsConnectButton.textContent = connected ? "Reconnect Ignition" : "Connect Ignition";
+                    settingsConnectButton.title = oauthConfigured ? "Open Ignition OAuth authorisation" : "Configure Ignition OAuth variables on the backend first";
+                }
+                const settingsConnectionStatus = document.getElementById("settingsIgnitionConnectionStatus");
+                if (settingsConnectionStatus) {
+                    const status = connected ? "Connected" : oauthConfigured ? "Not connected" : "OAuth not configured";
+                    const practice = connection.practiceName || connection.practiceId || "No practice selected";
+                    const lastSync = connection.lastSyncAt ? `Last sync ${formatDateTime(connection.lastSyncAt)}` : "No sync completed yet";
+                    settingsConnectionStatus.innerHTML = `<span>${escapeHTML(status)} · ${escapeHTML(practice)}</span><span>${escapeHTML(lastSync)}</span>`;
                 }
                 const syncButton = document.getElementById("runIgnitionSyncButton");
                 if (syncButton) {
@@ -20076,8 +20305,6 @@
                     syncButton.textContent = isIgnitionSyncing ? "Syncing changes..." : "Sync changes";
                     syncButton.title = connected ? "Import Ignition changes since the last completed sync" : "Connect Ignition before syncing";
                 }
-                const refreshButton = document.getElementById("refreshIgnitionButton");
-                if (refreshButton) refreshButton.disabled = ignitionLoading || isIgnitionSyncing;
                 const refreshClientsButton = document.getElementById("refreshIgnitionClientsButton");
                 if (refreshClientsButton) refreshClientsButton.disabled = ignitionLoading || isIgnitionSyncing;
                 const renewalsButton = document.getElementById("startIgnitionRenewalsButton");
@@ -20916,7 +21143,7 @@
                 startIgnitionSyncFeedback({
                     status: "running",
                     currentStep: "Starting Ignition sync",
-                    summary: "Preparing to import Reporting API datasets from Ignition.",
+                    summary: "Preparing to check Ignition Reporting API changes.",
                     progress: 4,
                     createdAt: new Date().toISOString(),
                     isActive: true
@@ -20959,7 +21186,7 @@
                     id: syncRunId,
                     status: initialStatus,
                     currentStep: initialStatus === "running" ? "Starting Ignition sync" : "Queued",
-                    summary: "Ignition is connected. Importing Reporting API datasets into Jenius.",
+                    summary: "Ignition is connected. Checking Reporting API changes into Jenius.",
                     progress: initialStatus === "running" ? 8 : 4,
                     createdAt: new Date().toISOString(),
                     isActive: true
@@ -21478,6 +21705,8 @@
                     bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
                     bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Upload JUK Overview Report";
                 }
+                const workspaceClient = meReportWorkspaceOpen ? selectedMeReportClient() : null;
+                const workspaceClientArchived = workspaceClient ? meReportClientStatus(workspaceClient) === "archived" : false;
                 const bulkSendButton = document.getElementById("bulkSendMeReportsButton");
                 const readyReportCount = activeClients.reduce((count, client) => (
                     count + (client.reports || []).filter((report) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail)).length
@@ -21485,6 +21714,17 @@
                 if (bulkSendButton) {
                     bulkSendButton.disabled = meReportEmailSending || readyReportCount === 0;
                     bulkSendButton.textContent = readyReportCount ? `Bulk send ${readyReportCount}` : "Bulk send";
+                }
+                const archiveWorkspaceButton = document.getElementById("archiveMeReportWorkspaceButton");
+                if (archiveWorkspaceButton) {
+                    archiveWorkspaceButton.hidden = !workspaceClient;
+                    archiveWorkspaceButton.disabled = meReportLoading || isMeReportProcessing;
+                    archiveWorkspaceButton.textContent = workspaceClientArchived ? "Restore workspace" : "Archive workspace";
+                }
+                const deleteWorkspaceButton = document.getElementById("deleteMeReportWorkspaceButton");
+                if (deleteWorkspaceButton) {
+                    deleteWorkspaceButton.hidden = !workspaceClient;
+                    deleteWorkspaceButton.disabled = meReportLoading || isMeReportProcessing;
                 }
 
                 const clientList = document.getElementById("meReportClientList");
@@ -21618,7 +21858,6 @@
 
                 const client = selectedMeReportClient();
                 if (!client) return;
-                const selectedClientArchived = meReportClientStatus(client) === "archived";
                 const tabs = [
                     ["overview", "Overview"],
                     ["submission-history", "Submission history"],
@@ -21633,15 +21872,11 @@
                     <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
                     <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
                     <button class="ghost-button" id="setMeReportTradingLossButton" type="button">Set B/F loss</button>
-                    <button class="ghost-button me-report-archive-button" id="archiveMeReportClientButton" type="button">${selectedClientArchived ? "Restore workspace" : "Archive workspace"}</button>
-                    <button class="ghost-button danger-button" id="deleteMeReportClientButton" type="button">Delete workspace</button>
                     ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                 `;
                 document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
                 document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
                 document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
-                document.getElementById("archiveMeReportClientButton")?.addEventListener("click", () => updateMeReportClientStatus(client.id, selectedClientArchived ? "active" : "archived"));
-                document.getElementById("deleteMeReportClientButton")?.addEventListener("click", () => deleteMeReportClient(client.id));
                 actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
                     button.addEventListener("click", () => {
                         activeMeReportTab = button.dataset.meReportTab;
@@ -21845,7 +22080,168 @@
                 ];
             }
 
-            function renderMeReportCalculationTable(title, rows) {
+            function meReportTrialBalanceAccountAmount(account = {}) {
+                return Math.abs(Number(account.debitYTD || 0) - Number(account.creditYTD || 0));
+            }
+
+            function meReportTrialBalanceAccountText(account = {}) {
+                return [account.accountCode, account.accountName, account.accountType].map((part) => String(part || "").toLowerCase()).join(" ");
+            }
+
+            function meReportTrialBalanceAccountIsBalanceSheet(account = {}) {
+                return ["asset", "liability", "equity", "bank", "current"].some((term) => String(account.accountType || "").toLowerCase().includes(term));
+            }
+
+            function meReportBreakdownRowsFromAccounts(summary = {}, predicate) {
+                const accounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
+                return accounts.filter((account) => account && predicate(account)).map((account) => ({
+                    code: account.accountCode || "",
+                    label: account.accountName || account.accountCode || "Nominal code",
+                    amount: meReportTrialBalanceAccountAmount(account),
+                    debit: account.debitYTD,
+                    credit: account.creditYTD,
+                    source: account.sourcePage ? `Trial Balance, page ${account.sourcePage}` : "Trial Balance",
+                    treatment: account.accountType || ""
+                })).filter((item) => Number(item.amount || 0) > 0);
+            }
+
+            function meReportFallbackStepBreakdown(row = {}, title = "", allRows = [], summary = {}) {
+                const label = String(row.label || "").toLowerCase();
+                if (label.includes("depreciation") && !label.includes("amortisation")) {
+                    return meReportBreakdownRowsFromAccounts(summary, (account) => {
+                        const text = meReportTrialBalanceAccountText(account);
+                        return text.includes("depreciation") && !text.includes("accumulated") && !meReportTrialBalanceAccountIsBalanceSheet(account);
+                    });
+                }
+                if (label.includes("amortisation")) {
+                    return meReportBreakdownRowsFromAccounts(summary, (account) => meReportTrialBalanceAccountText(account).includes("amortisation") && !meReportTrialBalanceAccountIsBalanceSheet(account));
+                }
+                if (label.includes("non-allowable")) {
+                    return meReportBreakdownRowsFromAccounts(summary, (account) => {
+                        const text = meReportTrialBalanceAccountText(account);
+                        return text.includes("non-allowable") || text.includes("tax adjustment");
+                    });
+                }
+                if (label.includes("fines") || label.includes("penalties") || label.includes("car fine")) {
+                    return meReportBreakdownRowsFromAccounts(summary, (account) => {
+                        const text = meReportTrialBalanceAccountText(account);
+                        return ["fine", "penalt", "car fine", "parking fine", "hmrc interest"].some((term) => text.includes(term));
+                    });
+                }
+                if (label.includes("entertaining") || label.includes("entertainment")) {
+                    return meReportBreakdownRowsFromAccounts(summary, (account) => {
+                        const text = meReportTrialBalanceAccountText(account);
+                        return text.includes("entertainment - 0%") || text.includes("client entertaining") || text.includes("client entertainment");
+                    });
+                }
+                if (label.includes("estimated taxable profit")) {
+                    return allRows
+                        .filter((candidate) => !String(candidate.label || "").toLowerCase().includes("estimated taxable profit") && !String(candidate.label || "").toLowerCase().includes("corporation tax estimate"))
+                        .map((candidate) => ({
+                            label: candidate.label || "",
+                            amount: candidate.amount || 0,
+                            source: candidate.source || "",
+                            treatment: candidate.treatment || ""
+                        }));
+                }
+                if (label.includes("corporation tax estimate")) {
+                    const detail = meReportTaxBreakdown(summary);
+                    return (detail.lines || []).map((line) => ({
+                        label: line.label || "CT line",
+                        amount: line.tax || 0,
+                        source: line.source || "GOV.UK Corporation Tax rates",
+                        treatment: `${line.rate || ""} on ${formatCurrency(line.amount || 0)}`
+                    }));
+                }
+                if (title === "Dividend availability") {
+                    const ytdProfit = Number(summary.yearToDateProfit || summary.accountingProfit || 0);
+                    const estimatedCt = Number(summary.estimatedCorporationTax || 0);
+                    const retained = Number(summary.openingRetainedReserves || 0);
+                    const dividends = Number(summary.dividendsTaken || 0);
+                    const postTax = Number.isFinite(Number(summary.currentYearEarnings)) ? Number(summary.currentYearEarnings) : ytdProfit - estimatedCt;
+                    if (label.includes("opening retained")) return [{ label: "Retained earnings", amount: retained, source: "Balance Sheet", treatment: "Start" }];
+                    if (label.includes("ytd profit")) return [{ label: "Profit before tax YTD", amount: ytdProfit, source: "Profit and Loss - YTD", treatment: "Add" }];
+                    if (label.includes("corporation tax provision")) return [{ label: "Corporation tax estimate", amount: -Math.abs(estimatedCt), source: "CT estimate", treatment: "Deduct" }];
+                    if (label.includes("post-tax")) return [
+                        { label: "YTD profit before tax", amount: ytdProfit, source: "Profit and Loss - YTD", treatment: "Add" },
+                        { label: "Estimated corporation tax provision", amount: -Math.abs(estimatedCt), source: "CT estimate", treatment: "Deduct" }
+                    ];
+                    if (label.includes("dividends declared")) return [{ label: "Dividends declared", amount: -Math.abs(dividends), source: "Balance Sheet dividends line", treatment: "Deduct" }];
+                    if (label.includes("period-end distributable")) return [
+                        { label: "Opening retained reserves", amount: retained, source: "Balance Sheet", treatment: "Start" },
+                        { label: "Post-tax YTD earnings", amount: postTax, source: "Calculated", treatment: "Add" },
+                        { label: "Dividends declared YTD", amount: -Math.abs(dividends), source: "Balance Sheet", treatment: "Deduct" }
+                    ];
+                    if (label.includes("further dividend")) return [{ label: "Period-end distributable reserves", amount: summary.periodEndDistributableReserves || row.amount || 0, source: "Calculated", treatment: "Available" }];
+                }
+                return [];
+            }
+
+            function meReportCalculationBreakdown(row = {}, title = "", allRows = [], summary = {}) {
+                const explicit = Array.isArray(row.breakdown) ? row.breakdown.filter(Boolean) : [];
+                return explicit.length ? explicit : meReportFallbackStepBreakdown(row, title, allRows, summary);
+            }
+
+            function meReportCalculationNote(row = {}) {
+                if (row.note) return row.note;
+                const text = `${row.label || ""} ${row.treatment || ""} ${row.source || ""}`.toLowerCase();
+                if (text.includes("profit before tax") || text.includes("ytd profit")) return "Used as the starting profit figure before CT adjustments are applied.";
+                if (text.includes("depreciation") && !text.includes("amortisation")) return "Added back because accounting depreciation is not corporation-tax deductible; capital allowances are reviewed separately.";
+                if (text.includes("amortisation")) return "Added back for review because the nominal code is amortisation and no separate qualifying intangible treatment has been confirmed.";
+                if (text.includes("non-allowable") || text.includes("tax adjustment")) return "Added back because the nominal code or source description marks the cost as non-allowable for tax.";
+                if (text.includes("fine") || text.includes("penalt")) return "Added back because fines, penalties and similar charges are normally disallowable for corporation tax.";
+                if (text.includes("entertain")) return "Added back because client entertaining is normally disallowable for corporation tax even when it is business-related.";
+                if (text.includes("capital allowance")) return "Deducted because qualifying fixed asset additions replace accounting depreciation in the CT estimate.";
+                if (text.includes("trading loss")) return "Deducted using the stored brought-forward loss, capped at the available taxable profit.";
+                if (text.includes("estimated taxable profit")) return "Calculated after adding back disallowable costs and deducting available allowances or losses.";
+                if (text.includes("corporation tax estimate") || text.includes("ct estimate")) return "Calculated from the estimated taxable profit using the current UK corporation tax rate bands.";
+                if (text.includes("retained")) return "Used as opening distributable reserves for the dividend availability calculation.";
+                if (text.includes("dividend")) return "Deducted because dividends already declared reduce the reserves available for further dividends.";
+                if (text.includes("current year earnings") || text.includes("post-tax")) return "Calculated as current year profit after the estimated corporation tax provision.";
+                return row.source || "Calculation source retained in the breakdown.";
+            }
+
+            function meReportBreakdownAmount(item = {}) {
+                return Number(item.amount ?? item.usedAmount ?? item.value ?? item.tax ?? 0) || 0;
+            }
+
+            function meReportBreakdownMoney(value) {
+                if (value === null || value === undefined || value === "") return "--";
+                const numeric = Number(value);
+                return Number.isFinite(numeric) ? formatCurrency(numeric) : "--";
+            }
+
+            function renderMeReportStepBreakdown(row = {}, breakdown = []) {
+                const total = breakdown.reduce((sum, item) => sum + meReportBreakdownAmount(item), 0);
+                return `
+                    <div class="me-report-step-breakdown">
+                        <div class="me-report-step-breakdown-head">
+                            <strong>${escapeHTML(row.breakdownTitle || "Figure breakdown")}</strong>
+                            <span>${breakdown.length.toLocaleString("en-GB")} line${breakdown.length === 1 ? "" : "s"} · total ${formatCurrency(total)}</span>
+                        </div>
+                        <div class="me-report-step-breakdown-row is-header">
+                            <span>Code</span>
+                            <span>Nominal / line</span>
+                            <span>Debit</span>
+                            <span>Credit</span>
+                            <span>Used</span>
+                            <span>Source</span>
+                        </div>
+                        ${breakdown.map((item) => `
+                            <div class="me-report-step-breakdown-row">
+                                <span>${escapeHTML(item.code || "--")}</span>
+                                <span><strong>${escapeHTML(item.label || item.name || "Calculation line")}</strong>${item.treatment ? `<small>${escapeHTML(item.treatment)}</small>` : ""}</span>
+                                <em>${meReportBreakdownMoney(item.debit)}</em>
+                                <em>${meReportBreakdownMoney(item.credit)}</em>
+                                <em>${formatCurrency(meReportBreakdownAmount(item))}</em>
+                                <span>${escapeHTML(item.source || "")}</span>
+                            </div>
+                        `).join("")}
+                    </div>
+                `;
+            }
+
+            function renderMeReportCalculationTable(title, rows, summary = {}) {
                 const safeRows = Array.isArray(rows) ? rows : [];
                 return `
                     <section>
@@ -21855,16 +22251,20 @@
                                 <span>Step</span>
                                 <span>Amount</span>
                                 <span>Treatment</span>
-                                <span>Source</span>
+                                <span>Note</span>
                             </div>
-                            ${safeRows.map((row) => `
-                                <div class="me-report-calculation-row" role="row">
-                                    <span>${escapeHTML(row.label || "")}</span>
-                                    <strong>${formatCurrency(row.amount || 0)}</strong>
-                                    <em>${escapeHTML(row.treatment || "")}</em>
-                                    <span>${escapeHTML(row.source || "")}</span>
-                                </div>
-                            `).join("")}
+                            ${safeRows.map((row) => {
+                                const breakdown = meReportCalculationBreakdown(row, title, safeRows, summary);
+                                return `
+                                    <div class="me-report-calculation-row${breakdown.length ? " has-breakdown" : ""}" role="row" ${breakdown.length ? "tabindex=\"0\"" : ""}>
+                                        <span>${escapeHTML(row.label || "")}</span>
+                                        <strong>${formatCurrency(row.amount || 0)}</strong>
+                                        <em>${escapeHTML(row.treatment || "")}</em>
+                                        <span>${escapeHTML(meReportCalculationNote(row))}</span>
+                                        ${breakdown.length ? renderMeReportStepBreakdown(row, breakdown) : ""}
+                                    </div>
+                                `;
+                            }).join("")}
                         </div>
                     </section>
                 `;
@@ -21898,11 +22298,11 @@
                         </summary>
                         <div class="me-report-ai-help-panel">
                             <p class="me-report-help-notes">${escapeHTML(pageText)} · ${escapeHTML(sections)}</p>
-                            ${mode !== "dividends" ? renderMeReportCalculationTable("CT estimate", taxRows) : ""}
+                            ${mode !== "dividends" ? renderMeReportCalculationTable("CT estimate", taxRows, summary) : ""}
                             ${mode !== "dividends" ? `<section><p class="eyebrow">CT rate breakdown</p>${renderMeReportTaxBreakdownTable(summary)}</section>` : ""}
-                            ${mode !== "tax" ? renderMeReportCalculationTable("Dividend availability", dividendRows) : ""}
-                            ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows) : ""}
-                            ${fixedAssetRows.length ? renderMeReportCalculationTable("Fixed asset review", fixedAssetRows) : ""}
+                            ${mode !== "tax" ? renderMeReportCalculationTable("Dividend availability", dividendRows, summary) : ""}
+                            ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows, summary) : ""}
+                            ${fixedAssetRows.length ? renderMeReportCalculationTable("Fixed asset review", fixedAssetRows, summary) : ""}
                             ${warnings.length ? `<p class="me-report-help-notes">${escapeHTML(warnings.slice(0, 4).join(" "))}</p>` : ""}
                         </div>
                     </details>
@@ -22061,7 +22461,6 @@
             function renderMeReportAiCheckedTab(summary = {}) {
                 const taxRows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
                 const dividendRows = Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary);
-                const balanceRows = Array.isArray(summary.balanceSheetChecks) ? summary.balanceSheetChecks : [];
                 const sourcePages = summary.sourcePagesReviewed || {};
                 const sections = Array.isArray(sourcePages.sectionsReviewed) && sourcePages.sectionsReviewed.length
                     ? sourcePages.sectionsReviewed.join(", ")
@@ -22075,15 +22474,15 @@
                         <h3>${escapeHTML(pageText)}</h3>
                         <p class="detail-meta">${escapeHTML(sections)}</p>
                     </article>
-                    ${renderMeReportCalculationTable("CT estimate", taxRows)}
+                    ${renderMeReportCalculationTable("CT estimate", taxRows, summary)}
                     <section><p class="eyebrow">CT rate breakdown</p>${renderMeReportTaxBreakdownTable(summary)}</section>
-                    ${renderMeReportCalculationTable("Dividend availability", dividendRows)}
-                    ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows) : ""}
+                    ${renderMeReportCalculationTable("Dividend availability", dividendRows, summary)}
                 `;
             }
 
             function renderMeReportChartOfAccountsTab(client = {}, summary = {}) {
                 const trialBalanceAccounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
+                const balanceRows = Array.isArray(summary.balanceSheetChecks) ? summary.balanceSheetChecks : [];
                 const mappings = Array.isArray(client.mappings) ? client.mappings : [];
                 const rows = trialBalanceAccounts.length
                     ? trialBalanceAccounts.map((account) => ({
@@ -22112,6 +22511,7 @@
                         <h3>${rows.length.toLocaleString("en-GB")} account${rows.length === 1 ? "" : "s"} stored</h3>
                         <p class="detail-meta">${trialBalanceAccounts.length ? "Trial Balance rows extracted from the uploaded overview report." : "Using stored account treatment mappings until a Trial Balance is extracted from an upload."}</p>
                     </article>
+                    ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows, summary) : ""}
                     ${renderMeReportQualityTables(client, summary)}
                     <article class="me-report-insight-card me-report-table-card">
                         <table>
@@ -22187,7 +22587,7 @@
                         <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
                         ${renderMeReportTaxBreakdownTable(summary)}
                     </article>
-                    ${renderMeReportCalculationTable("CT estimate", Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary))}
+                    ${renderMeReportCalculationTable("CT estimate", Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary), summary)}
                 `;
             }
 
@@ -22204,7 +22604,7 @@
                         ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
                         ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                     </div>
-                    ${renderMeReportCalculationTable("Dividend availability", Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary))}
+                    ${renderMeReportCalculationTable("Dividend availability", Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary), summary)}
                 `;
             }
 
@@ -22247,7 +22647,6 @@
                             ${renderMeReportInsightList("Priorities", insights.priorities, ["Approve exceptions, confirm tax treatment, then send the client report."])}
                         </div>
                         ${renderMeReportForecastBars(summary)}
-                        ${renderMeReportQualityTables(client, summary)}
                     `,
                     checked: renderMeReportAiCheckedTab(summary),
                     chart: renderMeReportChartOfAccountsTab(client, summary),
@@ -22375,19 +22774,12 @@
             function renderMeReportSubmissions(client) {
                 const submissions = client.submissions || [];
                 const grouped = groupedMeReportSubmissions(submissions);
-                const archived = meReportClientStatus(client) === "archived";
                 return `
                     <div class="jashflow-detail-head me-report-report-toolbar">
                         <div>
                             <p class="eyebrow">JUK Overview Reports</p>
                             <h3>${escapeHTML(client.clientName)}</h3>
                             <p class="detail-meta">Every uploaded overview report is grouped by month and year. Open a fully processed report to review Profit and Loss insights, priorities, data quality checks and forecasts.</p>
-                        </div>
-                        <div class="detail-actions">
-                            <button class="ghost-button" type="button" data-me-report-back-clients>Back to clients</button>
-                            <button class="ghost-button me-report-archive-button" type="button" data-me-report-status-toggle>${archived ? "Restore workspace" : "Archive workspace"}</button>
-                            <button class="ghost-button danger-button" type="button" data-me-report-delete-client>Delete workspace</button>
-                            <button class="primary-button" type="button" data-me-report-upload-trigger ${meReportUploadProcessing ? "disabled" : ""}>Upload JUK overview report</button>
                         </div>
                     </div>
                     <form class="bank-upload-form me-report-upload-form" id="meReportSubmissionForm">
@@ -22426,9 +22818,7 @@
                                             <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
                                             <span>${formatCurrency(submission.dividendCapacity || 0)}</span>
                                             <span class="detail-actions">
-                                                <button class="ghost-button" type="button" data-me-submission-preview="${escapeHTML(submission.id)}">Preview</button>
                                                 <button class="primary-button" type="button" data-me-submission-open="${escapeHTML(submission.id)}" ${processed ? "" : "disabled"}>${processed ? "Open insights" : "Processing"}</button>
-                                                <button class="ghost-button danger-button" type="button" data-me-submission-delete="${escapeHTML(submission.id)}">Delete</button>
                                             </span>
                                         </div>
                                     `;
@@ -23751,6 +24141,20 @@
                         value: syncRunIsActive(meRun) || isMeReportProcessing ? "Processing" : `${(meReportData.clients || []).length.toLocaleString("en-GB")} clients`,
                         detail: meReportData.summary?.latestSubmissionAt ? `Latest ${formatDate(meReportData.summary.latestSubmissionAt)}` : "Month-end workspace",
                         tone: syncRunIsActive(meRun) || isMeReportProcessing ? "warning" : "live"
+                    },
+                    {
+                        label: "Practice Pack",
+                        value: practicePackGenerating
+                            ? "Generating PDFs"
+                            : practicePackResult
+                                ? `${formatInteger(practicePackResult.staffPackCount || 0)} staff packs`
+                                : "Ready",
+                        detail: practicePackGenerating
+                            ? `${currentPracticePackMonth()} pack in progress`
+                            : practicePackResult?.generatedAt
+                                ? `Latest ${formatDate(practicePackResult.generatedAt)}`
+                                : "PDF pack generator",
+                        tone: practicePackGenerating ? "warning" : "live"
                     }
                 ];
             }
@@ -23761,7 +24165,8 @@
                     + (bankStatementUploading ? 1 : 0)
                     + (isSyncing ? 1 : 0)
                     + (isIgnitionSyncing ? 1 : 0)
-                    + (isMeReportProcessing || meReportUploadProcessing || meReportBulkUploading ? 1 : 0);
+                    + (isMeReportProcessing || meReportUploadProcessing || meReportBulkUploading ? 1 : 0)
+                    + (practicePackGenerating ? 1 : 0);
             }
 
             function setGlobalActivityOpen(isOpen) {
@@ -23779,9 +24184,11 @@
                 if (!topbar || !panel || !toggle || !count || !statusGrid || !activityList) return;
 
                 const activeCount = globalActiveCount();
+                if (activeCount <= 0 && globalActivityOpen) globalActivityOpen = false;
                 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
                 topbar.dataset.topbarTone = topbarToneForActiveView();
                 topbar.classList.toggle("is-topbar-live", activeCount > 0 || visibleTopbarStatusElements().length > 0);
+                toggle.hidden = activeCount <= 0;
                 count.hidden = activeCount <= 0;
                 count.textContent = activeCount > 9 ? "9+" : String(activeCount);
                 topbar.classList.toggle("is-activity-open", globalActivityOpen);
@@ -25191,16 +25598,26 @@
 
             async function generatePracticePack(event) {
                 event?.preventDefault();
+                if (practicePackGenerating) return;
                 const clientFile = document.getElementById("practicePackClientFile")?.files?.[0];
                 const taskFile = document.getElementById("practicePackTaskFile")?.files?.[0];
-                const generateButton = document.getElementById("practicePackGenerateButton");
+                const generateButton = document.getElementById("practicePackGenerateButton") || document.querySelector("#practicePackForm button[type='submit']");
+                const generateButtonLabel = generateButton?.textContent || "Generate PDFs";
                 if (!clientFile || !taskFile) {
                     showToast("Upload both BM CSV files before generating the practice pack.", "info");
                     return;
                 }
-                if (generateButton) generateButton.disabled = true;
+                const month = currentPracticePackMonth();
+                practicePackGenerating = true;
+                if (generateButton) {
+                    generateButton.disabled = true;
+                    generateButton.textContent = "Generating PDFs...";
+                    generateButton.setAttribute("aria-busy", "true");
+                }
+                renderPracticePackScreen();
+                renderGlobalActivityCard();
+                updateTopbarInlineStatusState();
                 try {
-                    const month = currentPracticePackMonth();
                     const formData = new FormData();
                     formData.append("clientFile", clientFile);
                     formData.append("taskFile", taskFile);
@@ -25242,7 +25659,15 @@
                     console.error("Unable to generate practice pack", error);
                     showToast(error.message || "Unable to generate the practice pack.", "error");
                 } finally {
-                    if (generateButton) generateButton.disabled = false;
+                    practicePackGenerating = false;
+                    if (generateButton) {
+                        generateButton.disabled = false;
+                        generateButton.textContent = generateButtonLabel;
+                        generateButton.removeAttribute("aria-busy");
+                    }
+                    renderPracticePackScreen();
+                    renderGlobalActivityCard();
+                    updateTopbarInlineStatusState();
                 }
             }
 
@@ -25260,33 +25685,50 @@
             }
 
             function practicePackTopbarCards(month = currentPracticePackMonth()) {
-                return [
-                    ["Clients", formatInteger(practicePackResult?.clientCount || 0)],
-                    ["Tasks", formatInteger(practicePackResult?.taskCount || 0)],
-                    ["Service groups", formatInteger(practicePackResult?.serviceCount || 0)],
-                    ["Staff packs", formatInteger(practicePackResult?.staffPackCount || 0)],
-                    ["Manager assignments", formatInteger(practicePackAssignmentRows().length)],
-                    ["Month", month]
+                const cards = [
+                    { label: "Clients", value: formatInteger(practicePackResult?.clientCount || 0) },
+                    { label: "Tasks", value: formatInteger(practicePackResult?.taskCount || 0) },
+                    { label: "Service groups", value: formatInteger(practicePackResult?.serviceCount || 0) },
+                    { label: "Staff packs", value: formatInteger(practicePackResult?.staffPackCount || 0) },
+                    { label: "Manager assignments", value: formatInteger(practicePackAssignmentRows().length) },
+                    { label: "Month", value: month }
                 ];
+                if (practicePackGenerating) {
+                    cards[0] = {
+                        label: "Generating PDFs",
+                        value: "Building pack",
+                        className: "is-practice-pack-generating",
+                        loading: true
+                    };
+                }
+                return cards;
             }
 
             function renderPracticePackTopbarSummary(month = currentPracticePackMonth()) {
                 const summary = document.getElementById("practicePackTopbarSummary");
                 if (!summary) return;
                 summary.hidden = activeView !== "practice-packs";
+                summary.classList.toggle("is-generating", practicePackGenerating);
+                summary.setAttribute("aria-busy", String(practicePackGenerating));
                 summary.innerHTML = practicePackTopbarCards(month)
-                    .map(([label, value]) => `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`)
+                    .map((card) => {
+                        const classAttribute = card.className ? ` class="${card.className}"` : "";
+                        const loadingMark = card.loading ? '<i class="practice-pack-loading-mark" aria-hidden="true"></i>' : "";
+                        return `<article${classAttribute}><span>${escapeHTML(card.label)}</span><strong>${loadingMark}${escapeHTML(card.value)}</strong></article>`;
+                    })
                     .join("");
             }
 
             function renderPracticePackScreen() {
                 initialisePracticePackMonth();
-                const month = practicePackResult?.month || currentPracticePackMonth();
+                const month = practicePackGenerating ? currentPracticePackMonth() : (practicePackResult?.month || currentPracticePackMonth());
                 renderPracticePackTopbarSummary(month);
 
                 const summary = document.getElementById("practicePackSummary");
                 if (summary) {
-                    if (practicePackResult) {
+                    if (practicePackGenerating) {
+                        summary.textContent = "Generating practice pack PDFs. This can take a minute while the tasks are grouped and the ZIP is built.";
+                    } else if (practicePackResult) {
                         const unmatched = Number(practicePackResult.unmatchedTaskCount || 0);
                         const grouping = practicePackResult.grouping?.engine === "openai"
                             ? " using Jenius AI service grouping"
@@ -25301,6 +25743,10 @@
 
                 const outputList = document.getElementById("practicePackOutputList");
                 if (!outputList) return;
+                if (practicePackGenerating && !practicePackResult) {
+                    outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">Generating PDFs</p><h4>Building the ZIP</h4><p>Keep this window open while the practice pack is prepared.</p></div>';
+                    return;
+                }
                 if (!practicePackResult) {
                     outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>';
                     return;
@@ -25328,7 +25774,9 @@
                 const generateButton = document.getElementById("practicePackGenerateButton");
                 if (generateButton && generateButton.dataset.practicePackWired !== "true") {
                     generateButton.dataset.practicePackWired = "true";
-                    generateButton.addEventListener("click", () => document.getElementById("practicePackForm")?.requestSubmit());
+                    if (generateButton.type !== "submit") {
+                        generateButton.addEventListener("click", () => document.getElementById("practicePackForm")?.requestSubmit());
+                    }
                 }
                 const clearButton = document.getElementById("practicePackClearButton");
                 if (clearButton && clearButton.dataset.practicePackWired !== "true") {
@@ -27017,6 +27465,11 @@
                     title: "Xero Connection / Disconnection",
                     meta: "Manage the linked Xero organisation without mixing it into other settings."
                 },
+                "ignition-connection": {
+                    eyebrow: "Ignition connection",
+                    title: "Ignition Reporting API Connection",
+                    meta: "Connect or reconnect the Ignition account used for Reporting API syncs."
+                },
                 mapping: {
                     eyebrow: "Mappings",
                     title: "Mapping Changes / COA",
@@ -27099,6 +27552,7 @@
                 loadPendingXeroActions();
                 loadDeveloperLog();
                 if (activeSettingsSection === "mapping") loadXeroPostingSettings();
+                if (activeSettingsSection === "ignition-connection") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
@@ -27803,8 +28257,6 @@
                 if (bankStatementUploadPanel) bankStatementUploadPanel.addEventListener("click", (event) => {
                     if (event.target.id === "bankStatementUploadPanel") closeBankStatementUploadPanel();
                 });
-                const refreshIgnitionButton = document.getElementById("refreshIgnitionButton");
-                if (refreshIgnitionButton) refreshIgnitionButton.addEventListener("click", () => loadIgnition(true));
                 document.querySelectorAll("[data-ignition-tab]").forEach((button) => {
                     button.addEventListener("click", () => activateIgnitionTab(button.dataset.ignitionTab || "overview"));
                 });
@@ -27814,8 +28266,8 @@
                 if (backIgnitionDashboardButton) backIgnitionDashboardButton.addEventListener("click", openIgnitionScreen);
                 const refreshIgnitionClientsButton = document.getElementById("refreshIgnitionClientsButton");
                 if (refreshIgnitionClientsButton) refreshIgnitionClientsButton.addEventListener("click", () => loadIgnition(true));
-                const connectIgnitionButton = document.getElementById("connectIgnitionButton");
-                if (connectIgnitionButton) connectIgnitionButton.addEventListener("click", openIgnitionConnection);
+                const settingsConnectIgnitionButton = document.getElementById("settingsConnectIgnitionButton");
+                if (settingsConnectIgnitionButton) settingsConnectIgnitionButton.addEventListener("click", openIgnitionConnection);
                 const runIgnitionSyncButton = document.getElementById("runIgnitionSyncButton");
                 if (runIgnitionSyncButton) runIgnitionSyncButton.addEventListener("click", runIgnitionSync);
                 const ignitionClientSearch = document.getElementById("ignitionClientSearch");
@@ -27868,6 +28320,22 @@
                 if (bulkUploadMeReportsButton) bulkUploadMeReportsButton.addEventListener("click", () => document.getElementById("meReportBulkSubmissionFiles")?.click());
                 const bulkSendMeReportsButton = document.getElementById("bulkSendMeReportsButton");
                 if (bulkSendMeReportsButton) bulkSendMeReportsButton.addEventListener("click", bulkSendReadyMeReports);
+                const archiveMeReportWorkspaceButton = document.getElementById("archiveMeReportWorkspaceButton");
+                if (archiveMeReportWorkspaceButton) {
+                    archiveMeReportWorkspaceButton.addEventListener("click", () => {
+                        const client = selectedMeReportClient();
+                        if (!client) return;
+                        updateMeReportClientStatus(client.id, meReportClientStatus(client) === "archived" ? "active" : "archived");
+                    });
+                }
+                const deleteMeReportWorkspaceButton = document.getElementById("deleteMeReportWorkspaceButton");
+                if (deleteMeReportWorkspaceButton) {
+                    deleteMeReportWorkspaceButton.addEventListener("click", () => {
+                        const client = selectedMeReportClient();
+                        if (!client) return;
+                        deleteMeReportClient(client.id);
+                    });
+                }
                 const bulkMeReportFiles = document.getElementById("meReportBulkSubmissionFiles");
                 if (bulkMeReportFiles) bulkMeReportFiles.addEventListener("change", (event) => uploadBulkMeReportSubmissions(event.target.files));
                 const reviewLateChargesButton = document.getElementById("reviewLateChargesButton");

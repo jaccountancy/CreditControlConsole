@@ -7325,13 +7325,87 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned ME Report extraction that was not valid JSON.") from exc
 
 
-def _me_report_step(label: str, amount: Decimal, treatment: str, source: str = "") -> dict:
-    return {
+def _me_report_step_note(label: str, treatment: str, source: str) -> str:
+    text = f"{label} {treatment} {source}".lower()
+    if "profit before tax" in text or "ytd profit" in text:
+        return "Used as the starting profit figure before CT adjustments are applied."
+    if "depreciation" in text and "amortisation" not in text:
+        return "Added back because accounting depreciation is not corporation-tax deductible; capital allowances are reviewed separately."
+    if "amortisation" in text:
+        return "Added back for review because the nominal code is amortisation and no separate qualifying intangible treatment has been confirmed."
+    if "non-allowable" in text or "tax adjustment" in text:
+        return "Added back because the nominal code or source description marks the cost as non-allowable for tax."
+    if "fine" in text or "penalt" in text:
+        return "Added back because fines, penalties and similar charges are normally disallowable for corporation tax."
+    if "entertain" in text:
+        return "Added back because client entertaining is normally disallowable for corporation tax even when it is business-related."
+    if "capital allowance" in text:
+        return "Deducted because qualifying fixed asset additions replace accounting depreciation in the CT estimate."
+    if "trading loss" in text:
+        return "Deducted using the stored brought-forward loss, capped at the available taxable profit."
+    if "estimated taxable profit" in text:
+        return "Calculated after adding back disallowable costs and deducting available allowances or losses."
+    if "corporation tax estimate" in text or "ct estimate" in text:
+        return "Calculated from the estimated taxable profit using the current UK corporation tax rate bands."
+    if "retained" in text:
+        return "Used as opening distributable reserves for the dividend availability calculation."
+    if "dividend" in text:
+        return "Deducted because dividends already declared reduce the reserves available for further dividends."
+    if "current year earnings" in text or "post-tax" in text:
+        return "Calculated as current year profit after the estimated corporation tax provision."
+    return str(source or "Calculation source retained in the breakdown.")
+
+
+def _me_report_step(label: str, amount: Decimal, treatment: str, source: str = "", breakdown: list[dict] | None = None, note: str = "") -> dict:
+    step = {
         "label": label,
         "amount": float(_money(amount)),
         "treatment": treatment,
         "source": source,
+        "note": note or _me_report_step_note(label, treatment, source),
     }
+    if breakdown:
+        step["breakdown"] = breakdown
+    return step
+
+
+def _me_report_breakdown_item(label: str, amount: Decimal, source: str = "", code: str = "", treatment: str = "", debit=None, credit=None) -> dict:
+    item = {
+        "code": str(code or ""),
+        "label": str(label or ""),
+        "amount": float(_money(amount)),
+        "source": str(source or ""),
+        "treatment": str(treatment or ""),
+    }
+    if debit is not None:
+        item["debit"] = float(_money(debit))
+    if credit is not None:
+        item["credit"] = float(_money(credit))
+    return item
+
+
+def _me_report_account_breakdown(accounts: list[dict]) -> list[dict]:
+    rows = []
+    for account in accounts or []:
+        if not isinstance(account, dict):
+            continue
+        amount = abs(_me_report_account_amount(account))
+        if amount <= 0:
+            continue
+        code = str(account.get("accountCode") or "").strip()
+        name = str(account.get("accountName") or code or "Nominal code").strip()
+        rows.append(
+            _me_report_breakdown_item(
+                name,
+                amount,
+                _me_report_source_page("Trial Balance", account.get("sourcePage")),
+                code,
+                str(account.get("accountType") or ""),
+                account.get("debitYTD"),
+                account.get("creditYTD"),
+            )
+        )
+    return rows
 
 
 def _me_report_account_amount(account: dict) -> Decimal:
@@ -7676,18 +7750,40 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         if source_code and source_code in included_account_codes:
             continue
         explicit_disallowed_total += amount
+        explicit_label = str(item.get("label") or "Disallowed expense")
+        explicit_source = _me_report_source_page("Uploaded PDF", item.get("sourcePage"))
         explicit_disallowed_steps.append(
             _me_report_step(
-                str(item.get("label") or "Disallowed expense"),
+                explicit_label,
                 amount,
                 str(item.get("reason") or "Added back for CT"),
-                _me_report_source_page("Uploaded PDF", item.get("sourcePage")),
+                explicit_source,
+                [
+                    _me_report_breakdown_item(
+                        explicit_label,
+                        amount,
+                        explicit_source,
+                        str(item.get("sourceAccountCode") or ""),
+                        str(item.get("reason") or "Added back for CT"),
+                    )
+                ],
             )
         )
 
     capital_allowances = _money(extracted.get("capitalAllowancesClaim"))
     capital_allowance_steps = []
+    capital_allowance_breakdown = []
     fixed_asset_checks = []
+    if capital_allowances > 0:
+        capital_allowance_breakdown.append(
+            _me_report_breakdown_item(
+                "Extracted capital allowances claim",
+                -capital_allowances,
+                "Uploaded PDF",
+                "",
+                "Deduct",
+            )
+        )
     if capital_allowances <= 0:
         qualifying_additions = Decimal("0.00")
         for row in fixed_asset_rows:
@@ -7697,6 +7793,15 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             if difference > 0 and any(term in asset_class.lower() for term in ME_REPORT_CAPITAL_ALLOWANCE_ASSET_TERMS):
                 qualifying_additions += difference
                 treatment = "Included as qualifying additions for capital allowance estimate"
+                capital_allowance_breakdown.append(
+                    _me_report_breakdown_item(
+                        asset_class,
+                        -difference,
+                        _me_report_source_page("Fixed Asset Reconciliation", row.get("sourcePage")),
+                        "",
+                        "Deduct",
+                    )
+                )
             elif difference > 0 and any(term in asset_class.lower() for term in ("website", "intangible", "motor", "car", "vehicle")):
                 treatment = "Flagged for review, excluded from automatic capital allowances"
                 warnings.append(f"{asset_class} has a fixed asset reconciliation difference of £{difference:,.2f}; review tax treatment before claiming allowances.")
@@ -7718,6 +7823,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
                 -capital_allowances,
                 "Deduct",
                 "Fixed Asset Reconciliation / extracted capital allowance claim",
+                capital_allowance_breakdown,
             )
         )
 
@@ -7742,19 +7848,42 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(estimated_taxable_profit)
 
     tax_steps = [
-        _me_report_step("Profit before tax YTD", accounting_profit, "Start", "Profit and Loss - YTD"),
-        _me_report_step("Depreciation add-back", depreciation_addback, "Add back", "Trial Balance depreciation expense"),
-        _me_report_step("Amortisation add-back", amortisation_addback, "Add back", "Trial Balance amortisation expense"),
-        _me_report_step("Non-allowable expense add-back", non_allowable_addback, "Add back", "Trial Balance non-allowable/tax adjustment accounts"),
-        _me_report_step("Fines, penalties and car fine add-back", penalties_addback, "Add back", "Trial Balance and uploaded PDF disallowed expense scan"),
-        _me_report_step("Client entertaining add-back", entertaining_addback, "Add back", "Trial Balance entertaining accounts"),
+        _me_report_step("Profit before tax YTD", accounting_profit, "Start", "Profit and Loss - YTD", [
+            _me_report_breakdown_item("Profit before tax YTD", accounting_profit, "Profit and Loss - YTD", "", "Start")
+        ]),
+        _me_report_step("Depreciation add-back", depreciation_addback, "Add back", "Trial Balance depreciation expense", _me_report_account_breakdown(depreciation_accounts)),
+        _me_report_step("Amortisation add-back", amortisation_addback, "Add back", "Trial Balance amortisation expense", _me_report_account_breakdown(amortisation_accounts)),
+        _me_report_step("Non-allowable expense add-back", non_allowable_addback, "Add back", "Trial Balance non-allowable/tax adjustment accounts", _me_report_account_breakdown(non_allowable_accounts)),
+        _me_report_step("Fines, penalties and car fine add-back", penalties_addback, "Add back", "Trial Balance and uploaded PDF disallowed expense scan", _me_report_account_breakdown(penalties_accounts)),
+        _me_report_step("Client entertaining add-back", entertaining_addback, "Add back", "Trial Balance entertaining accounts", _me_report_account_breakdown(entertaining_accounts)),
         *explicit_disallowed_steps,
         *capital_allowance_steps,
         *([
-            _me_report_step("Brought-forward trading loss utilised", -trading_loss_relief_used, "Deduct", "Stored client setting")
+            _me_report_step("Brought-forward trading loss utilised", -trading_loss_relief_used, "Deduct", "Stored client setting", [
+                _me_report_breakdown_item("Available brought-forward trading loss", -trading_loss_relief_used, "Stored client setting", "", "Deduct")
+            ])
         ] if brought_forward_trading_loss else []),
-        _me_report_step("Estimated taxable profit YTD", estimated_taxable_profit, "Result", "Calculated"),
-        _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds"),
+        _me_report_step("Estimated taxable profit YTD", estimated_taxable_profit, "Result", "Calculated", [
+            _me_report_breakdown_item("Profit before tax YTD", accounting_profit, "Profit and Loss - YTD", "", "Start"),
+            _me_report_breakdown_item("Depreciation add-back", depreciation_addback, "Trial Balance depreciation expense", "", "Add back"),
+            _me_report_breakdown_item("Amortisation add-back", amortisation_addback, "Trial Balance amortisation expense", "", "Add back"),
+            _me_report_breakdown_item("Disallowed expenses add-back", disallowed_expenses_addback, "Trial Balance and uploaded PDF", "", "Add back"),
+            _me_report_breakdown_item("Capital allowances", -capital_allowances, "Fixed Asset Reconciliation / extracted claim", "", "Deduct"),
+            *([
+                _me_report_breakdown_item("Brought-forward trading loss utilised", -trading_loss_relief_used, "Stored client setting", "", "Deduct")
+            ] if brought_forward_trading_loss else []),
+        ]),
+        _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds", [
+            _me_report_breakdown_item(
+                str(line.get("label") or "CT line"),
+                _money(line.get("tax")),
+                str(line.get("source") or "GOV.UK Corporation Tax rates"),
+                "",
+                f"{line.get('rate') or ''} on £{_money(line.get('amount')):,.2f}".strip(),
+            )
+            for line in corporation_tax_breakdown.get("lines", [])
+            if isinstance(line, dict)
+        ]),
     ]
 
     balance_sheet_current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
@@ -7769,23 +7898,53 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     period_end_distributable_reserves = _money(retained_earnings + current_year_earnings - dividends_declared)
     dividend_capacity = max(Decimal("0.00"), period_end_distributable_reserves)
     dividend_steps = [
-        _me_report_step("Opening retained reserves", retained_earnings, "Start", "Balance Sheet capital and reserves"),
-        _me_report_step("YTD profit before tax", current_year_profit_before_tax, "Add", "Profit and Loss - YTD"),
-        _me_report_step("Estimated corporation tax provision", -current_year_tax_provision, "Deduct", "CT estimate"),
-        _me_report_step("Post-tax YTD earnings", current_year_earnings, "Subtotal", "Calculated"),
-        _me_report_step("Dividends declared YTD", -dividends_declared, "Deduct", "Balance Sheet dividends line"),
-        _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated"),
-        _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated"),
+        _me_report_step("Opening retained reserves", retained_earnings, "Start", "Balance Sheet capital and reserves", [
+            _me_report_breakdown_item("Retained earnings", retained_earnings, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Start")
+        ]),
+        _me_report_step("YTD profit before tax", current_year_profit_before_tax, "Add", "Profit and Loss - YTD", [
+            _me_report_breakdown_item("Profit before tax YTD", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add")
+        ]),
+        _me_report_step("Estimated corporation tax provision", -current_year_tax_provision, "Deduct", "CT estimate", [
+            _me_report_breakdown_item("Corporation tax estimate", -current_year_tax_provision, "CT estimate", "", "Deduct")
+        ]),
+        _me_report_step("Post-tax YTD earnings", current_year_earnings, "Subtotal", "Calculated", [
+            _me_report_breakdown_item("YTD profit before tax", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add"),
+            _me_report_breakdown_item("Estimated corporation tax provision", -current_year_tax_provision, "CT estimate", "", "Deduct"),
+        ]),
+        _me_report_step("Dividends declared YTD", -dividends_declared, "Deduct", "Balance Sheet dividends line", [
+            _me_report_breakdown_item("Dividends declared", -dividends_declared, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Deduct")
+        ]),
+        _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated", [
+            _me_report_breakdown_item("Opening retained reserves", retained_earnings, "Balance Sheet capital and reserves", "", "Start"),
+            _me_report_breakdown_item("Post-tax YTD earnings", current_year_earnings, "Calculated", "", "Add"),
+            _me_report_breakdown_item("Dividends declared YTD", -dividends_declared, "Balance Sheet dividends line", "", "Deduct"),
+        ]),
+        _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated", [
+            _me_report_breakdown_item("Period-end distributable reserves", period_end_distributable_reserves, "Calculated", "", "Available"),
+            *([] if period_end_distributable_reserves >= 0 else [
+                _me_report_breakdown_item("Availability floor", -period_end_distributable_reserves, "Calculated", "", "Nil if reserves are negative")
+            ]),
+        ]),
     ]
     if period_end_distributable_reserves < 0:
         warnings.append("Dividend availability is nil because accumulated distributable reserves are negative at period end.")
 
     balance_sheet_checks = [
-        _me_report_step("Current year earnings", current_year_earnings, "Balance sheet code", "Balance Sheet"),
-        _me_report_step("Balance Sheet current year earnings", balance_sheet_current_year_earnings, "Source value", "Balance Sheet"),
-        _me_report_step("Retained earnings", retained_earnings, "Balance sheet code", "Balance Sheet"),
-        _me_report_step("Dividends declared", -dividends_declared, "Balance sheet code", "Balance Sheet"),
-        _me_report_step("Total equity", _money(balance_sheet.get("totalEquity")), "Balance sheet code", "Balance Sheet"),
+        _me_report_step("Current year earnings", current_year_earnings, "Balance sheet code", "Balance Sheet", [
+            _me_report_breakdown_item("Current year earnings", current_year_earnings, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Balance sheet code")
+        ]),
+        _me_report_step("Balance Sheet current year earnings", balance_sheet_current_year_earnings, "Source value", "Balance Sheet", [
+            _me_report_breakdown_item("Balance Sheet current year earnings", balance_sheet_current_year_earnings, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Source value")
+        ]),
+        _me_report_step("Retained earnings", retained_earnings, "Balance sheet code", "Balance Sheet", [
+            _me_report_breakdown_item("Retained earnings", retained_earnings, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Balance sheet code")
+        ]),
+        _me_report_step("Dividends declared", -dividends_declared, "Balance sheet code", "Balance Sheet", [
+            _me_report_breakdown_item("Dividends declared", -dividends_declared, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Balance sheet code")
+        ]),
+        _me_report_step("Total equity", _money(balance_sheet.get("totalEquity")), "Balance sheet code", "Balance Sheet", [
+            _me_report_breakdown_item("Total equity", _money(balance_sheet.get("totalEquity")), _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Balance sheet code")
+        ]),
     ]
     for account in trial_balance_accounts:
         if not _me_report_account_is_balance_sheet(account):
@@ -7798,6 +7957,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
                 _me_report_account_amount(account),
                 str(account.get("accountType") or "Balance sheet code"),
                 _me_report_source_page("Trial Balance", account.get("sourcePage")),
+                _me_report_account_breakdown([account]),
             )
         )
 
@@ -11306,32 +11466,34 @@ def _ignition_incremental_modified_since(user_id: str) -> datetime | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT MAX(COALESCE(source_updated_at, source_created_at)) AS cutoff
-                FROM ignition_reporting_records
+                SELECT started_at
+                FROM ignition_sync_runs
                 WHERE user_id = %s
+                  AND status = 'completed'
+                  AND started_at IS NOT NULL
+                ORDER BY started_at DESC
+                LIMIT 1
                 """,
                 (user_id,),
             )
-            cutoff = (cursor.fetchone() or {}).get("cutoff")
+            cutoff = (cursor.fetchone() or {}).get("started_at")
             if cutoff is None:
                 cursor.execute(
                     """
-                    SELECT started_at
-                    FROM ignition_sync_runs
+                    SELECT last_sync_at
+                    FROM ignition_connections
                     WHERE user_id = %s
-                      AND status = 'completed'
-                      AND started_at IS NOT NULL
-                    ORDER BY started_at DESC
+                      AND last_sync_at IS NOT NULL
+                    ORDER BY last_sync_at DESC
                     LIMIT 1
                     """,
                     (user_id,),
                 )
-                latest_run = cursor.fetchone() or {}
-                cutoff = latest_run.get("started_at")
+                cutoff = (cursor.fetchone() or {}).get("last_sync_at")
             if cutoff is None:
                 cursor.execute(
                     """
-                    SELECT MAX(synced_at) AS cutoff
+                    SELECT MAX(COALESCE(synced_at, source_updated_at, source_created_at)) AS cutoff
                     FROM ignition_reporting_records
                     WHERE user_id = %s
                     """,
@@ -12535,7 +12697,7 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
     total_processed = 0
     modified_since = _ignition_incremental_modified_since(user["id"])
     is_incremental_sync = modified_since is not None
-    incremental_filter_supported = True
+    full_refresh_datasets: set[str] = set()
     run_started_at = utcnow()
     start_summary = (
         f"Preparing incremental Reporting API sync for changes since {modified_since.isoformat()}."
@@ -12552,14 +12714,15 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
     )
     practice = {"id": connection.get("practice_id") or "", "name": connection.get("practice_name") or ""}
     for dataset, endpoint in IGNITION_DATASETS:
-        fetch_modified_since = modified_since if is_incremental_sync and incremental_filter_supported else None
+        dataset_label = dataset.replace("_", " ")
+        fetch_modified_since = modified_since if is_incremental_sync else None
         _update_ignition_sync_run(
             sync_run_id,
-            current_step=f"Importing {dataset.replace('_', ' ')}",
+            current_step=f"Checking changed {dataset_label}" if fetch_modified_since else f"Importing {dataset_label}",
             summary=(
-                f"Fetching changed {dataset.replace('_', ' ')} from Ignition Reporting API."
+                f"Fetching changed {dataset_label} from Ignition Reporting API."
                 if fetch_modified_since
-                else f"Fetching {dataset.replace('_', ' ')} from Ignition Reporting API."
+                else f"Fetching {dataset_label} from Ignition Reporting API."
             ),
             heartbeat_at=utcnow(),
             datasets_synced=dataset_counts,
@@ -12571,43 +12734,60 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         except HTTPException as exc:
             provider_status = _ignition_provider_status(exc)
             if fetch_modified_since and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
-                incremental_filter_supported = False
+                message = (
+                    f"Ignition rejected the incremental updated_since filter for {dataset_label}. "
+                    "A full Reporting API sync was not run."
+                )
                 record_audit_event(
                     "ignition_sync_run",
                     str(sync_run_id),
-                    "ignition.sync.incremental_filter_unavailable",
+                    "ignition.sync.incremental_filter_required",
                     {
                         "dataset": dataset,
                         "provider_status": provider_status,
                         "modified_since": modified_since.isoformat(),
-                        "message": "Ignition rejected the incremental updated_since filter; falling back to a full Reporting API sync.",
+                        "message": message,
                     },
                     user["id"],
                 )
-                _update_ignition_sync_run(
-                    sync_run_id,
-                    summary="Ignition rejected incremental filters; continuing with a full Reporting API sync.",
-                    heartbeat_at=utcnow(),
-                )
-                try:
+                if dataset == "proposals":
+                    full_refresh_datasets.add(dataset)
+                    _update_ignition_sync_run(
+                        sync_run_id,
+                        current_step="Refreshing proposals",
+                        summary="Ignition rejected changed-only proposal filtering; refreshing proposals so local proposal data stays current.",
+                        heartbeat_at=utcnow(),
+                        datasets_synced=dataset_counts,
+                        fetched_count=total_fetched,
+                        processed_count=total_processed,
+                    )
                     rows, meta = await fetch_ignition_collection(connection, endpoint)
-                except HTTPException as fallback_exc:
-                    fallback_status = _ignition_provider_status(fallback_exc)
-                    if dataset in OPTIONAL_IGNITION_DATASETS and fallback_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
-                        dataset_counts[dataset] = 0
-                        record_audit_event(
-                            "ignition_sync_run",
-                            str(sync_run_id),
-                            f"ignition.{dataset}.skipped",
-                            {
-                                "dataset": dataset,
-                                "provider_status": fallback_status,
-                                "message": "Optional Ignition Deals dataset is unavailable for this practice.",
-                            },
-                            user["id"],
-                        )
-                        continue
-                    raise fallback_exc
+                    fetch_modified_since = None
+                elif dataset in OPTIONAL_IGNITION_DATASETS:
+                    dataset_counts[dataset] = 0
+                    _update_ignition_sync_run(
+                        sync_run_id,
+                        summary=f"Skipped optional {dataset_label}; Ignition rejected incremental filtering for that endpoint.",
+                        heartbeat_at=utcnow(),
+                        datasets_synced=dataset_counts,
+                        fetched_count=total_fetched,
+                        processed_count=total_processed,
+                    )
+                    continue
+                else:
+                    return _update_ignition_sync_run(
+                        sync_run_id,
+                        status="failed",
+                        current_step="Incremental Ignition sync unavailable",
+                        summary=message,
+                        error_message=message,
+                        failed_count=1,
+                        heartbeat_at=utcnow(),
+                        completed_at=utcnow(),
+                        datasets_synced=dataset_counts,
+                        fetched_count=total_fetched,
+                        processed_count=total_processed,
+                    )
             elif dataset in OPTIONAL_IGNITION_DATASETS and provider_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
                 dataset_counts[dataset] = 0
                 record_audit_event(
@@ -12632,10 +12812,11 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         total_fetched += len(rows)
         total_processed += processed
         record_audit_event("ignition_sync_run", str(sync_run_id), f"ignition.{dataset}.synced", {"dataset": dataset, "records": processed}, user["id"])
-    if is_incremental_sync and incremental_filter_supported:
+    if is_incremental_sync:
         summary = f"Ignition incremental sync complete: imported {total_processed} changed records across {len(dataset_counts)} reporting datasets."
-    elif is_incremental_sync:
-        summary = f"Ignition sync complete: imported {total_processed} records across {len(dataset_counts)} reporting datasets after falling back to a full sync."
+        if full_refresh_datasets:
+            labels = ", ".join(dataset.replace("_", " ") for dataset in sorted(full_refresh_datasets))
+            summary += f" Refreshed {labels} fully because Ignition rejected changed-only filtering for that endpoint."
     else:
         summary = f"Ignition sync complete: imported {total_processed} records across {len(dataset_counts)} reporting datasets."
     completed = _update_ignition_sync_run(
