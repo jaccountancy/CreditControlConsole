@@ -7,6 +7,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -170,13 +171,13 @@ def panel_session_response(user: dict) -> JSONResponse:
     active_sync_run = active_sync_run_for_user(user)
     rate_limit = active_xero_rate_limit_for_user(user)
     response = JSONResponse(
-        {
+        jsonable_encoder({
             "status": "ok",
             "sessionToken": session_token,
             **panel_payload(user),
             "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
             "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
-        }
+        })
     )
     set_session_cookie(response, session_token)
     return response
