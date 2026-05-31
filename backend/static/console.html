@@ -1478,20 +1478,21 @@
             }
             .topbar-refresh-data-button {
                 position: absolute;
-                top: 10px;
-                right: 64px;
-                z-index: 5;
-                width: 42px;
-                max-width: 42px;
-                height: 42px;
+                top: 6px;
+                right: 6px;
+                bottom: 6px;
+                z-index: 7;
+                width: 48px;
+                max-width: 48px;
+                min-height: 42px;
                 display: inline-flex;
                 align-items: center;
-                justify-content: flex-start;
+                justify-content: center;
                 gap: 8px;
-                padding: 0 11px;
+                padding: 0;
                 overflow: hidden;
                 border: 1px solid rgba(29, 103, 242, 0.18);
-                border-radius: 999px;
+                border-radius: 999px 10px 10px 999px;
                 background: #ffffff;
                 color: var(--blue);
                 box-shadow: 0 8px 18px rgba(30, 47, 77, 0.08);
@@ -1503,7 +1504,6 @@
                 transition:
                     width 0.32s cubic-bezier(0.16, 1, 0.3, 1),
                     max-width 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-                    height 0.32s cubic-bezier(0.16, 1, 0.3, 1),
                     padding 0.32s cubic-bezier(0.16, 1, 0.3, 1),
                     transform 0.26s cubic-bezier(0.16, 1, 0.3, 1),
                     opacity 0.22s ease,
@@ -1527,19 +1527,23 @@
                 transition: transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .topbar-refresh-data-button span {
+                max-width: 0;
                 opacity: 0;
                 transform: translateX(-4px);
-                transition: opacity 0.18s ease, transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+                overflow: hidden;
+                transition:
+                    max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+                    opacity 0.18s ease,
+                    transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .topbar-refresh-data-button:hover,
             .topbar-refresh-data-button:focus-visible {
-                width: 134px;
-                max-width: 134px;
-                padding: 0 14px;
+                width: 174px;
+                max-width: 174px;
+                padding: 0 18px;
                 border-color: rgba(29, 103, 242, 0.28);
                 background: var(--blue-soft);
                 box-shadow: 0 12px 26px rgba(29, 103, 242, 0.16);
-                transform: translateY(-1px);
                 outline: none;
             }
             .topbar-refresh-data-button:hover svg,
@@ -1548,6 +1552,7 @@
             }
             .topbar-refresh-data-button:hover span,
             .topbar-refresh-data-button:focus-visible span {
+                max-width: 98px;
                 opacity: 1;
                 transform: translateX(0);
             }
@@ -1582,6 +1587,9 @@
                 order: 1000;
                 flex: 0 0 42px;
                 margin-left: 0;
+            }
+            .ledger-topbar.has-topbar-refresh-action .global-activity-toggle {
+                right: 64px;
             }
             .global-activity-toggle::before {
                 content: "";
@@ -2215,23 +2223,84 @@
                 border-radius: 999px;
                 padding: 12px 18px;
                 border: 1px solid transparent;
-                transition: 0.2s ease;
+                transition:
+                    transform 0.18s ease,
+                    box-shadow 0.18s ease,
+                    border-color 0.18s ease,
+                    background 0.18s ease,
+                    color 0.18s ease,
+                    opacity 0.18s ease;
             }
-            .action-link {
+            .primary-button,
+            .ghost-button,
+            .action-link,
+            .is-icon-enhanced {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
+                gap: 8px;
+                line-height: 1;
+                white-space: nowrap;
+            }
+            .primary-button,
+            .ghost-button {
+                min-height: 44px;
+                font-weight: 850;
+                letter-spacing: 0;
+            }
+            .action-link {
                 text-decoration: none;
             }
             .primary-button {
                 color: white;
                 background: linear-gradient(135deg, #1d67f2, #3b83ff);
-                box-shadow: 0 10px 24px rgba(29, 103, 242, 0.22);
+                box-shadow: 0 11px 24px rgba(29, 103, 242, 0.22);
             }
             .ghost-button {
-                background: rgba(255, 255, 255, 0.72);
+                background: rgba(255, 255, 255, 0.84);
                 border-color: var(--line);
                 color: var(--ink);
+                box-shadow: 0 8px 18px rgba(30, 47, 77, 0.05);
+            }
+            .primary-button:hover:not(:disabled),
+            .primary-button:focus-visible:not(:disabled),
+            .ghost-button:hover:not(:disabled),
+            .ghost-button:focus-visible:not(:disabled) {
+                transform: translateY(-1px);
+                outline: none;
+            }
+            .primary-button:hover:not(:disabled),
+            .primary-button:focus-visible:not(:disabled) {
+                background: linear-gradient(135deg, #165ce0, #2f78ff);
+                box-shadow: 0 15px 30px rgba(29, 103, 242, 0.28);
+            }
+            .ghost-button:hover:not(:disabled),
+            .ghost-button:focus-visible:not(:disabled) {
+                border-color: rgba(29, 103, 242, 0.24);
+                background: rgba(233, 241, 255, 0.92);
+                color: var(--blue);
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.11);
+            }
+            .primary-button:active:not(:disabled),
+            .ghost-button:active:not(:disabled) {
+                transform: translateY(0) scale(0.98);
+            }
+            .button-icon {
+                flex: 0 0 auto;
+                width: 16px;
+                height: 16px;
+                display: inline-grid;
+                place-items: center;
+                color: currentColor;
+            }
+            .button-icon svg {
+                width: 16px;
+                height: 16px;
+                stroke: currentColor;
+                stroke-width: 2.25;
+                fill: none;
+                stroke-linecap: round;
+                stroke-linejoin: round;
             }
             .text-button {
                 border: 0;
@@ -2784,6 +2853,9 @@
             }
             .ledger-section-button {
                 min-height: 38px;
+                align-items: center;
+                justify-content: center;
+                gap: 7px;
                 border: 1px solid var(--line);
                 border-radius: 999px;
                 background: #ffffff;
@@ -2795,13 +2867,16 @@
                 font-weight: 900;
                 line-height: 1;
                 white-space: nowrap;
-                transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+                transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
             }
             .ledger-section-button:hover,
+            .ledger-section-button:focus-visible,
             .ledger-section-button.is-active {
                 border-color: rgba(29, 103, 242, 0.26);
                 background: var(--blue-soft);
                 color: var(--blue);
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.12);
+                outline: none;
             }
             .ledger-section-button:active { transform: scale(0.97); }
             .table-icon-button {
@@ -2964,12 +3039,29 @@
                 gap: 10px;
             }
             .bulk-action-controls button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
                 border: 1px solid var(--line);
                 border-radius: 999px;
                 background: rgba(255, 255, 255, 0.84);
                 color: var(--ink);
                 padding: 10px 14px;
                 font-weight: 800;
+                line-height: 1;
+                white-space: nowrap;
+                box-shadow: 0 8px 18px rgba(30, 47, 77, 0.05);
+                transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+            }
+            .bulk-action-controls button:hover:not(:disabled),
+            .bulk-action-controls button:focus-visible:not(:disabled) {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.24);
+                background: var(--blue-soft);
+                color: var(--blue);
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.11);
+                outline: none;
             }
             .bulk-action-controls button.danger-button {
                 border-color: rgba(255, 83, 83, 0.26);
@@ -3756,6 +3848,10 @@
             }
             .table-open-button {
                 min-height: 34px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 7px;
                 padding: 8px 11px;
                 border-radius: 999px;
                 border: 1px solid var(--line);
@@ -3763,10 +3859,18 @@
                 color: var(--ink);
                 font-size: 0.82rem;
                 font-weight: 850;
+                line-height: 1;
+                box-shadow: 0 7px 16px rgba(30, 47, 77, 0.05);
+                transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
             }
-            .table-open-button:hover {
+            .table-open-button:hover,
+            .table-open-button:focus-visible {
                 border-color: rgba(29, 103, 242, 0.26);
+                background: var(--blue-soft);
                 color: var(--blue);
+                box-shadow: 0 10px 20px rgba(29, 103, 242, 0.1);
+                transform: translateY(-1px);
+                outline: none;
             }
             .note-snippet {
                 line-height: 1.35;
@@ -3972,7 +4076,10 @@
                 background: #fff;
             }
             .danger-button:hover {
+                border-color: rgba(255, 83, 83, 0.36);
                 background: var(--red-soft);
+                color: var(--red);
+                box-shadow: 0 12px 24px rgba(255, 83, 83, 0.12);
             }
             .factory-reset-panel {
                 margin-top: 10px;
@@ -6143,6 +6250,19 @@
                 border-radius: 16px;
                 background: rgba(255, 255, 255, 0.82);
             }
+            #meReportScreen .me-report-card-heading-row {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 16px;
+                flex-wrap: wrap;
+            }
+            #meReportScreen .me-report-card-heading-row h3 {
+                margin: 0;
+            }
+            #meReportScreen .me-report-card-heading-row h3:last-child {
+                text-align: right;
+            }
             #meReportScreen .me-report-insight-card ul {
                 margin: 0;
                 padding-left: 18px;
@@ -6173,6 +6293,141 @@
             #meReportScreen .me-report-quality-table {
                 display: grid;
                 gap: 8px;
+            }
+            #meReportScreen .me-report-quality-card summary {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 12px;
+                cursor: pointer;
+                list-style: none;
+            }
+            #meReportScreen .me-report-quality-card summary::-webkit-details-marker {
+                display: none;
+            }
+            #meReportScreen .me-report-quality-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+            #meReportScreen .me-report-quality-actions .ghost-button,
+            #meReportScreen .me-report-metric-mini-action {
+                min-height: 30px;
+                padding: 5px 10px;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 900;
+            }
+            #meReportScreen .me-report-metric-meta {
+                display: block;
+                margin-top: 6px;
+                color: var(--muted);
+                font-size: 0.75rem;
+                font-weight: 800;
+                letter-spacing: 0;
+                text-transform: none;
+            }
+            #meReportScreen .me-report-metric-action-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                margin-top: 8px;
+            }
+            #meReportScreen .me-report-figure-with-help {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+            }
+            #meReportScreen .me-report-figure-help-button {
+                display: inline-grid;
+                place-items: center;
+                width: 22px;
+                height: 22px;
+                border: 1px solid rgba(29, 103, 242, 0.24);
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                font: inherit;
+                font-size: 0.78rem;
+                font-weight: 950;
+                cursor: pointer;
+            }
+            #meReportScreen .me-report-vat-schedule {
+                display: grid;
+                gap: 8px;
+                margin-top: 14px;
+            }
+            #meReportScreen .me-report-vat-schedule-row {
+                display: grid;
+                grid-template-columns: 160px minmax(0, 1fr) 120px;
+                align-items: center;
+                gap: 12px;
+                font-weight: 850;
+            }
+            #meReportScreen .me-report-vat-schedule-row em {
+                display: block;
+                height: 10px;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.13);
+                overflow: hidden;
+            }
+            #meReportScreen .me-report-vat-schedule-row em span {
+                display: block;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, var(--blue), #74a5ff);
+            }
+            #meReportScreen .me-report-waterfall-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 12px;
+                margin-top: 12px;
+            }
+            #meReportScreen .me-report-waterfall-card {
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: rgba(248, 251, 255, 0.86);
+            }
+            #meReportScreen .me-report-waterfall-card strong,
+            #meReportScreen .me-report-waterfall-card span,
+            #meReportScreen .me-report-waterfall-card small {
+                display: block;
+            }
+            #meReportScreen .me-report-waterfall-card strong {
+                margin-top: 6px;
+                font-size: 1.15rem;
+            }
+            #meReportScreen .me-report-waterfall-card small {
+                margin-top: 6px;
+                color: var(--muted);
+                font-weight: 800;
+            }
+            .me-fixed-asset-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 120;
+                display: grid;
+                place-items: center;
+                padding: 24px;
+                background: rgba(30, 47, 77, 0.22);
+                backdrop-filter: blur(8px);
+            }
+            .me-fixed-asset-card {
+                width: min(780px, calc(100vw - 32px));
+                max-height: calc(100vh - 48px);
+                overflow: auto;
+                padding: 22px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 14px;
+                background: #ffffff;
+                box-shadow: 0 24px 70px rgba(30, 47, 77, 0.22);
+            }
+            .me-fixed-asset-card .detail-actions {
+                justify-content: flex-end;
             }
             #meReportScreen .me-report-report-summary-card {
                 display: grid;
@@ -9286,13 +9541,17 @@
                     transform: none;
                 }
                 .topbar-refresh-data-button {
-                    top: 10px;
-                    right: 62px;
+                    top: 6px;
+                    right: 6px;
+                    bottom: 6px;
                 }
                 .topbar-refresh-data-button:hover,
                 .topbar-refresh-data-button:focus-visible {
-                    width: 128px;
-                    max-width: 128px;
+                    width: 150px;
+                    max-width: 150px;
+                }
+                .ledger-topbar.has-topbar-refresh-action .global-activity-toggle {
+                    right: 60px;
                 }
                 .global-activity-panel {
                     grid-template-columns: 1fr;
@@ -11649,7 +11908,7 @@
             let activeSettingsSection = "data-import";
             const topbarViewTitles = {
                 ledger: "Credit Control",
-                client: "Client account",
+                client: "Client",
                 insights: "Insights",
                 "late-charges": "Late Payment Charges",
                 "bad-debt": "Bad Debt",
@@ -11919,11 +12178,155 @@
                 email: '<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path>',
                 note: '<path d="M4 4h16v16H4z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path>',
                 status: '<path d="M4 12h16"></path><path d="M4 6h10"></path><path d="M4 18h7"></path>',
-                xero: '<path d="M7 8h10"></path><path d="M7 16h10"></path><path d="m9 8-4 4 4 4"></path><path d="m15 8 4 4-4 4"></path>'
+                xero: '<path d="M7 8h10"></path><path d="M7 16h10"></path><path d="m9 8-4 4 4 4"></path><path d="m15 8 4 4-4 4"></path>',
+                "arrow-left": '<path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path>',
+                upload: '<path d="M12 3v12"></path><path d="m7 8 5-5 5 5"></path><path d="M5 15v4h14v-4"></path>',
+                edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>',
+                download: '<path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path>',
+                file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path>',
+                refresh: '<path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path>',
+                plus: '<path d="M12 5v14"></path><path d="M5 12h14"></path>',
+                close: '<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>',
+                send: '<path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path>',
+                "check-square": '<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m8 12 3 3 5-6"></path>',
+                "check-circle": '<circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path>',
+                filter: '<path d="M4 5h16l-6 7v5l-4 2v-7Z"></path>',
+                sort: '<path d="m7 7 3-3 3 3"></path><path d="M10 4v16"></path><path d="m17 17-3 3-3-3"></path><path d="M14 20V4"></path>',
+                columns: '<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M15 4v16"></path>',
+                actions: '<circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>',
+                external: '<path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path>',
+                eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path><circle cx="12" cy="12" r="3"></circle>',
+                trash: '<path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path>',
+                "user-plus": '<path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M19 8v6"></path><path d="M16 11h6"></path>',
+                package: '<path d="M4 7 12 3l8 4"></path><path d="M4 7v10l8 4 8-4V7"></path><path d="M12 11 4 7"></path><path d="m12 11 8-4"></path><path d="M12 11v10"></path>',
+                sparkles: '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6Z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"></path>',
+                calculator: '<rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 7h8"></path><path d="M8 11h2"></path><path d="M12 11h2"></path><path d="M16 11h.01"></path><path d="M8 15h2"></path><path d="M12 15h2"></path><path d="M16 15h.01"></path>',
+                receipt: '<path d="M6 3h12v18l-2-1-2 1-2-1-2 1-2-1-2 1Z"></path><path d="M9 8h6"></path><path d="M9 12h6"></path><path d="M9 16h3"></path>',
+                table: '<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 10h18"></path><path d="M9 10v10"></path><path d="M15 10v10"></path>',
+                settings: '<path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle>'
             };
 
             function iconSVG(name) {
                 return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${iconPaths[name] || iconPaths.all}</svg>`;
+            }
+
+            const buttonIconById = {
+                backBankAccountsButton: "arrow-left",
+                openBankStatementUploadButton: "upload",
+                editBankAccountButton: "edit",
+                exportBankTransactionsButton: "download",
+                exportBankTransactionsXeroButton: "file",
+                uploadMeReportOverviewButton: "upload",
+                generateMeReportButton: "sparkles",
+                setMeReportTradingLossButton: "calculator",
+                bulkApplyStatusButton: "check-circle",
+                bulkAddNoteButton: "note",
+                bulkAssignManagerButton: "user-plus",
+                bulkWriteOffButton: "trash",
+                bulkExportButton: "download",
+                bulkClearSelectionButton: "close",
+                denseModeButton: "table",
+                reviewLateChargesButton: "receipt",
+                clearFiltersButton: "close",
+                exportFilteredButton: "download",
+                practicePackDownloadZipButton: "download"
+            };
+
+            const ledgerOptionIcons = {
+                sort: "sort",
+                filter: "filter",
+                columns: "columns",
+                actions: "actions"
+            };
+
+            function buttonIconFromLabel(label) {
+                const text = String(label || "").trim().replace(/\s+/g, " ").toLowerCase();
+                if (!text) return "";
+                if (text.startsWith("back")) return "arrow-left";
+                if (text.includes("upload")) return "upload";
+                if (text.includes("download") || text.includes("export")) return text.includes("xero") || text.includes("csv") ? "file" : "download";
+                if (text.includes("generate")) return text.includes("pack") ? "package" : "sparkles";
+                if (text.includes("add ")) return "plus";
+                if (text.includes("edit") || text.includes("amend") || text.includes("set ")) return "edit";
+                if (text.includes("refresh") || text.includes("resync") || text.includes("recalculate") || text.includes("retry")) return "refresh";
+                if (text === "open" || text.startsWith("open ") || text.startsWith("view ") || text.includes("preview")) return "external";
+                if (text.includes("filter")) return "filter";
+                if (text.includes("sort")) return "sort";
+                if (text.includes("columns")) return "columns";
+                if (text.includes("actions")) return "actions";
+                if (text.includes("select all")) return "check-square";
+                if (text.includes("apply") || text.includes("approve") || text.includes("confirm") || text.includes("resolve")) return "check-circle";
+                if (text.includes("raise")) return "receipt";
+                if (text.includes("send")) return "send";
+                if (text.includes("clear") || text.includes("close") || text.includes("dismiss")) return "close";
+                if (text.includes("delete") || text.includes("write off") || text.includes("factory reset")) return "trash";
+                if (text.includes("assign")) return "user-plus";
+                if (text.includes("setup") || text.includes("settings")) return "settings";
+                return "";
+            }
+
+            function inferredButtonIcon(button) {
+                if (!button) return "";
+                if (button.dataset.buttonIcon) return button.dataset.buttonIcon;
+                if (button.id && buttonIconById[button.id]) return buttonIconById[button.id];
+                if (button.dataset.ledgerOptionsSection) return ledgerOptionIcons[button.dataset.ledgerOptionsSection] || "";
+                if (button.dataset.meReportOpenClient || button.dataset.meSubmissionOpen || button.dataset.meReportOpen) return "external";
+                if (button.dataset.meReportPdf) return "download";
+                if (button.dataset.meReportSend) return "send";
+                if (button.dataset.meGenerateReport) return "package";
+                if (button.dataset.meReportBackReports) return "arrow-left";
+                if (button.dataset.bankUploadRetry) return "refresh";
+                if (button.dataset.bankUploadExportReason) return "download";
+                if (button.dataset.bankUploadDelete) return "trash";
+                if (button.dataset.meMappingAction === "approved") return "check-circle";
+                if (button.dataset.meMappingAction === "amended") return "edit";
+                if (button.dataset.meMappingAction === "needs_review") return "overdue";
+                if (button.dataset.meExceptionAction === "resolved") return "check-circle";
+                if (button.dataset.meExceptionAction === "escalated") return "overdue";
+                return buttonIconFromLabel(button.textContent);
+            }
+
+            function shouldEnhanceButtonIcon(button) {
+                if (!button || button.querySelector(":scope > .button-icon")) return false;
+                if (button.querySelector(":scope > svg, :scope > .app-nav-icon, :scope > .settings-sidebar-icon, :scope > .summary-icon")) return false;
+                if (button.matches(".summary-chip, .table-icon-button, .row-action-trigger, .row-action-button, .app-nav-button, .settings-sidebar-button, .settings-sidebar-back, .global-activity-toggle")) return false;
+                if (button.closest(".toolbar-menu, .app-sidebar, .settings-sidebar, .bank-account-tabs, .ignition-tabs, .ignition-topbar-tabs, .jashflow-loan-tabs, .client-section-nav, .me-report-subtabs, .xero-client-tabs, .developer-log-filter, .me-report-client-filterbar")) return false;
+                return button.matches(".primary-button, .ghost-button, .ledger-section-button, .table-open-button, .legal-button, .bulk-action-controls button") || Boolean(inferredButtonIcon(button));
+            }
+
+            function enhanceConsoleButtons(root = document) {
+                root.querySelectorAll("button").forEach((button) => {
+                    if (!shouldEnhanceButtonIcon(button)) return;
+                    const iconName = inferredButtonIcon(button);
+                    if (!iconName) return;
+                    const icon = document.createElement("span");
+                    icon.className = "button-icon";
+                    icon.setAttribute("aria-hidden", "true");
+                    icon.innerHTML = iconSVG(iconName);
+                    button.classList.add("is-icon-enhanced");
+                    button.prepend(icon);
+                });
+            }
+
+            function wireButtonIconEnhancements() {
+                let queued = false;
+                const run = () => {
+                    queued = false;
+                    enhanceConsoleButtons();
+                };
+                const queue = () => {
+                    if (queued) return;
+                    queued = true;
+                    requestAnimationFrame(run);
+                };
+                const observer = new MutationObserver((mutations) => {
+                    const hasButtonChanges = mutations.some((mutation) => [...mutation.addedNodes].some((node) => {
+                        return node.nodeType === Node.ELEMENT_NODE && (node.matches?.("button") || node.querySelector?.("button"));
+                    }));
+                    if (hasButtonChanges) queue();
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+                queue();
             }
 
             function normaliseAPI(config) {
@@ -14055,6 +14458,10 @@
             }
 
             function activeTopbarTitle(topbarClient = null) {
+                if (activeView === "client") {
+                    const client = topbarClient || findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                    return client?.name || "Client";
+                }
                 if (topbarClient?.name) return topbarClient.name;
                 const meReportInsight = activeMeReportInsightContext();
                 if (meReportInsight?.title) return meReportInsight.title;
@@ -15211,6 +15618,14 @@
                 }
             }
 
+            function noteWithInvoiceReference(invoice, body) {
+                const cleanBody = String(body || "").trim();
+                const invoiceNumber = String(invoice?.invoiceNumber || "").trim();
+                if (!cleanBody || !invoiceNumber) return cleanBody;
+                if (cleanBody.toLowerCase().includes(invoiceNumber.toLowerCase())) return cleanBody;
+                return `Invoice ${invoiceNumber}: ${cleanBody}`;
+            }
+
             function openQuickNotePanel(invoice) {
                 quickNoteInvoiceId = invoice?.id || null;
                 const panel = document.getElementById("quickNotePanel");
@@ -15232,7 +15647,7 @@
             async function saveQuickInvoiceNote() {
                 const match = mutableInvoiceById(quickNoteInvoiceId);
                 const input = document.getElementById("quickNoteInput");
-                const body = input?.value.trim() || "";
+                const body = noteWithInvoiceReference(match?.invoice, input?.value);
                 if (!match || !body) return;
                 match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
                 match.invoice.notesSummary = body.slice(0, 200);
@@ -16600,20 +17015,24 @@
                 if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
                 const body = window.prompt(`Add the same invoice note to ${invoiceIds.length} selected invoice${invoiceIds.length === 1 ? "" : "s"}`);
                 if (!body?.trim()) return;
+                const rawBody = body.trim();
                 const stamp = new Date().toISOString();
                 invoiceIds.forEach((invoiceId) => {
                     const match = mutableInvoiceById(invoiceId);
                     if (!match) return;
-                    match.invoice.notes = [{ title: "Bulk invoice note", body: body.trim(), stamp }, ...(match.invoice.notes || [])];
-                    match.invoice.notesSummary = body.trim().slice(0, 200);
+                    const noteBody = noteWithInvoiceReference(match.invoice, rawBody);
+                    match.invoice.notes = [{ title: "Bulk invoice note", body: noteBody, stamp }, ...(match.invoice.notes || [])];
+                    match.invoice.notesSummary = noteBody.slice(0, 200);
                 });
                 persistState();
                 renderAll();
                 showToast("Invoice notes saved locally", "success");
                 try {
-                    const results = await Promise.allSettled(invoiceIds.map((invoiceId) =>
-                        requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body: body.trim() }) }, { invoiceId })
-                    ));
+                    const results = await Promise.allSettled(invoiceIds.map((invoiceId) => {
+                        const match = mutableInvoiceById(invoiceId);
+                        const noteBody = noteWithInvoiceReference(match?.invoice, rawBody);
+                        return requestJSON(api.endpoints.note, { method: "POST", body: JSON.stringify({ body: noteBody }) }, { invoiceId });
+                    }));
                     if (results.some((result) => result.status === "rejected")) throw new Error("One or more invoice notes failed to sync");
                     await hydrateFromAPI();
                     selectedClientInvoiceIds.clear();
@@ -21910,8 +22329,13 @@
                 return "";
             }
 
-            function renderMeReportMetric(label, value) {
-                return `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
+            function renderMeReportMetric(label, value, options = {}) {
+                const detail = options.detail ? `<small class="me-report-metric-meta">${escapeHTML(options.detail)}</small>` : "";
+                const action = options.actionLabel
+                    ? `<button class="ghost-button me-report-metric-mini-action" type="button" ${options.actionAttrs || ""}>${escapeHTML(options.actionLabel)}</button>`
+                    : "";
+                const actionRow = action ? `<div class="me-report-metric-action-row">${detail || "<span></span>"}${action}</div>` : detail;
+                return `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong>${actionRow}</article>`;
             }
 
             const meReportSubmissionTabs = [
@@ -21933,6 +22357,19 @@
             function meReportBroughtForwardTradingLoss(client = {}, summary = {}) {
                 const value = Number(client.broughtForwardTradingLoss ?? summary.broughtForwardTradingLoss ?? 0);
                 return Number.isFinite(value) ? Math.max(0, value) : 0;
+            }
+
+            function meReportBroughtForwardTradingLossUpdatedAt(client = {}, summary = {}) {
+                return client.broughtForwardTradingLossUpdatedAt || summary.broughtForwardTradingLossUpdatedAt || "";
+            }
+
+            function renderMeReportBroughtForwardLossMetric(client = {}, summary = {}, broughtForwardTradingLoss = 0) {
+                const updatedAt = meReportBroughtForwardTradingLossUpdatedAt(client, summary);
+                return renderMeReportMetric("B/F trading loss", formatCurrency(broughtForwardTradingLoss), {
+                    detail: updatedAt ? `Updated ${formatDate(updatedAt)}` : "No update date saved yet",
+                    actionLabel: "Update",
+                    actionAttrs: "data-me-report-loss"
+                });
             }
 
             function meReportRolling12MonthTurnover(summary = {}) {
@@ -22037,6 +22474,12 @@
 
             function renderMeReportTaxEstimateMetric(summary = {}) {
                 const detail = meReportTaxBreakdown(summary);
+                const section455 = Number(summary.section455Tax || 0);
+                const totalExposure = Number(summary.totalTaxExposure || 0);
+                const shownTax = section455 > 0 && totalExposure > 0 ? totalExposure : (detail.tax || summary.estimatedCorporationTax || 0);
+                const note = section455 > 0
+                    ? `CT ${formatCurrency(detail.tax || summary.estimatedCorporationTax || 0)} · s455 ${formatCurrency(section455)}`
+                    : `${escapeHTML(detail.rateBand)} · effective ${formatPercent(detail.effectiveRate)}`;
                 return `<article class="me-report-tax-estimate-card">
                     <div class="me-report-metric-head">
                         <span>CT estimate</span>
@@ -22047,13 +22490,13 @@
                             </div>
                         </details>
                     </div>
-                    <strong>${formatCurrency(detail.tax || summary.estimatedCorporationTax || 0)}</strong>
-                    <small>${escapeHTML(detail.rateBand)} · effective ${formatPercent(detail.effectiveRate)}</small>
+                    <strong>${formatCurrency(shownTax)}</strong>
+                    <small>${note}</small>
                 </article>`;
             }
 
             function meReportFallbackTaxSteps(summary) {
-                return [
+                const rows = [
                     { label: "Profit before tax YTD", amount: summary.accountingProfit || summary.yearToDateProfit || 0, treatment: "Start", source: "Profit and Loss - YTD" },
                     { label: "Depreciation add-back", amount: summary.depreciationAddBack || 0, treatment: "Add back", source: "Trial Balance" },
                     { label: "Amortisation add-back", amount: summary.amortisationAddBack || 0, treatment: "Add back", source: "Trial Balance" },
@@ -22063,6 +22506,13 @@
                     { label: "Estimated taxable profit YTD", amount: summary.estimatedTaxableProfit || 0, treatment: "Result", source: "Calculated" },
                     { label: "Corporation tax estimate", amount: summary.estimatedCorporationTax || 0, treatment: summary.corporationTaxRateBand || "Calculated", source: "CT rate engine" }
                 ];
+                if (Number(summary.section455Tax || 0) > 0) {
+                    rows.push(
+                        { label: "Section 455 exposure on overdrawn DLA", amount: summary.section455Tax || 0, treatment: "Add to CT cash exposure", source: "DLA balance" },
+                        { label: "Total CT and s455 exposure", amount: summary.totalTaxExposure || 0, treatment: "Result", source: "Corporation Tax plus Section 455" }
+                    );
+                }
+                return rows;
             }
 
             function meReportFallbackDividendSteps(summary) {
@@ -22166,7 +22616,18 @@
                         { label: "YTD profit before tax", amount: ytdProfit, source: "Profit and Loss - YTD", treatment: "Add" },
                         { label: "Estimated corporation tax provision", amount: -Math.abs(estimatedCt), source: "CT estimate", treatment: "Deduct" }
                     ];
-                    if (label.includes("dividends declared")) return [{ label: "Dividends declared", amount: -Math.abs(dividends), source: "Balance Sheet dividends line", treatment: "Deduct" }];
+                    if (label.includes("dividends declared")) {
+                        const transactions = Array.isArray(summary.dividendTransactions) ? summary.dividendTransactions : [];
+                        if (transactions.length) {
+                            return transactions.map((transaction) => ({
+                                label: [transaction.date, transaction.description || "Dividend"].filter(Boolean).join(" - "),
+                                amount: -Math.abs(Number(transaction.amount || 0)),
+                                source: transaction.source || "Dividend transaction",
+                                treatment: "Deduct"
+                            }));
+                        }
+                        return [{ label: "Dividends declared", amount: -Math.abs(dividends), source: "Balance Sheet dividends line", treatment: "Deduct" }];
+                    }
                     if (label.includes("period-end distributable")) return [
                         { label: "Opening retained reserves", amount: retained, source: "Balance Sheet", treatment: "Start" },
                         { label: "Post-tax YTD earnings", amount: postTax, source: "Calculated", treatment: "Add" },
@@ -22319,6 +22780,19 @@
                 const date = meReportSubmissionDate(submission);
                 if (!date) return "Undated reports";
                 return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(date);
+            }
+
+            function meReportPeriodRangeLabel(summary = {}) {
+                const start = summary.periodStart || summary.period?.start || summary.reportingPeriodStart || "";
+                const end = summary.periodEnd || summary.period?.end || summary.reportingPeriodEnd || "";
+                if (start && end) {
+                    const startLabel = formatDate(start);
+                    const endLabel = formatDate(end);
+                    if (startLabel === endLabel) return `Period ending ${endLabel}`;
+                    return `${startLabel} - ${endLabel}`;
+                }
+                if (end) return `Period ending ${formatDate(end)}`;
+                return "";
             }
 
             function meReportSubmissionProcessed(submission) {
@@ -22534,29 +23008,56 @@
                 `;
             }
 
+            function renderMeReportVatRollingSchedule(summary = {}) {
+                const rows = Array.isArray(summary.rollingVatTurnoverMonths) ? summary.rollingVatTurnoverMonths : [];
+                if (!rows.length) return "";
+                const max = Math.max(1, ...rows.map((row) => Math.abs(Number(row.turnover || 0))));
+                const total = rows.reduce((sum, row) => sum + Number(row.turnover || 0), 0);
+                return `<article class="me-report-insight-card">
+                    <p class="eyebrow">Rolling 12-month VAT turnover</p>
+                    <h3>${formatCurrency(total)} extracted from ${rows.length.toLocaleString("en-GB")} month${rows.length === 1 ? "" : "s"}</h3>
+                    <p class="detail-meta">These are the monthly figures pulled from the JUK Overview Report VAT section.</p>
+                    <div class="me-report-vat-schedule">
+                        ${rows.map((row) => {
+                            const width = Math.min(100, Math.max(2, Math.round(Math.abs(Number(row.turnover || 0)) / max * 100)));
+                            return `<div class="me-report-vat-schedule-row">
+                                <span>${escapeHTML(row.month || "Month")}</span>
+                                <em><span style="width: ${width}%"></span></em>
+                                <strong>${formatCurrency(row.turnover || 0)}</strong>
+                            </div>`;
+                        }).join("")}
+                    </div>
+                </article>`;
+            }
+
             function renderMeReportVatTab(client = {}, summary = {}) {
                 const rolling = meReportRolling12MonthTurnover(summary);
                 const threshold = Number(summary.vatThreshold || 90000);
                 const vatRegistered = Boolean(client.vatRegisteredConfirmed || summary.vatRegisteredConfirmed);
+                const vatConfirmedAt = client.vatRegisteredConfirmedAt || summary.vatRegisteredConfirmedAt || "";
                 const thresholdExceeded = rolling > threshold;
                 const warningVisible = meReportVatWarningVisible(client, summary);
                 const percentage = Math.min(140, Math.max(2, Math.round(Math.abs(rolling) / Math.max(1, threshold) * 100)));
+                const vatStatus = vatRegistered
+                    ? `VAT application/registration confirmed${vatConfirmedAt ? ` on ${formatDate(vatConfirmedAt)}` : ""}`
+                    : thresholdExceeded ? "registration review required" : "below threshold";
                 return `
                     <article class="me-report-insight-card ${warningVisible ? "me-report-alert-card" : ""}">
                         <p class="eyebrow">VAT registration</p>
                         <h3>${formatCurrency(rolling)} rolling 12-month turnover</h3>
-                        <p class="detail-meta">VAT threshold ${formatCurrency(threshold)} · ${vatRegistered ? "client confirmed VAT registered" : thresholdExceeded ? "registration review required" : "below threshold"}.</p>
+                        <p class="detail-meta">VAT threshold ${formatCurrency(threshold)} · ${escapeHTML(vatStatus)}.</p>
                         <div class="me-report-vat-gauge" aria-label="VAT threshold gauge">
                             <div class="me-report-vat-gauge-track"><span style="width: ${percentage}%"></span></div>
                         </div>
-                        ${warningVisible ? `<button class="primary-button" type="button" data-me-report-confirm-vat>Confirm client is VAT registered</button>` : ""}
+                        ${warningVisible ? `<button class="primary-button" type="button" data-me-report-confirm-vat>Confirm VAT application made</button>` : ""}
                     </article>
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Rolling 12m turnover", formatCurrency(rolling))}
                         ${renderMeReportMetric("VAT threshold", formatCurrency(threshold))}
                         ${renderMeReportMetric("Threshold status", thresholdExceeded ? "Exceeded" : "Below")}
-                        ${renderMeReportMetric("Client VAT registered", vatRegistered ? "Confirmed" : "Not confirmed")}
+                        ${renderMeReportMetric("VAT application", vatRegistered ? "Confirmed" : "Not confirmed", { detail: vatConfirmedAt ? `Confirmed ${formatDate(vatConfirmedAt)}` : "" })}
                     </div>
+                    ${renderMeReportVatRollingSchedule(summary)}
                 `;
             }
 
@@ -22572,23 +23073,64 @@
                 `;
             }
 
-            function renderMeReportTaxTab(summary = {}, broughtForwardTradingLoss = 0) {
+            function renderMeReportTaxTab(client = {}, summary = {}, broughtForwardTradingLoss = 0) {
+                const periodLabel = meReportPeriodRangeLabel(summary);
                 return `
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
                         ${renderMeReportMetric("Tax adjustments", formatCurrency(summary.taxAdjustments || 0))}
-                        ${renderMeReportMetric("B/F trading loss", formatCurrency(broughtForwardTradingLoss))}
+                        ${renderMeReportBroughtForwardLossMetric(client, summary, broughtForwardTradingLoss)}
                         ${renderMeReportMetric("Taxable profit", formatCurrency(summary.estimatedTaxableProfit || 0))}
                         ${renderMeReportTaxEstimateMetric(summary)}
                         ${renderMeReportMetric("Effective tax rate", formatPercent(summary.effectiveTaxRate || 0))}
                     </div>
                     <article class="me-report-insight-card">
                         <p class="eyebrow">CT rate breakdown</p>
-                        <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
+                        <div class="me-report-card-heading-row">
+                            <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
+                            ${periodLabel ? `<h3>${escapeHTML(periodLabel)}</h3>` : ""}
+                        </div>
                         ${renderMeReportTaxBreakdownTable(summary)}
                     </article>
                     ${renderMeReportCalculationTable("CT estimate", Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary), summary)}
                 `;
+            }
+
+            function renderMeReportWaterfall(title, rows = []) {
+                const safeRows = Array.isArray(rows) ? rows : [];
+                if (!safeRows.length) return "";
+                return `<article class="me-report-insight-card">
+                    <p class="eyebrow">${escapeHTML(title)}</p>
+                    <div class="me-report-waterfall-grid">
+                        ${safeRows.map((row) => `<div class="me-report-waterfall-card">
+                            <span>${escapeHTML(row.treatment || "")}</span>
+                            <strong>${formatCurrency(row.amount || 0)}</strong>
+                            <small>${escapeHTML(row.label || "")}</small>
+                            <small>${escapeHTML(row.note || "")}</small>
+                        </div>`).join("")}
+                    </div>
+                </article>`;
+            }
+
+            function renderMeReportDlaMitigation(summary = {}) {
+                const rows = Array.isArray(summary.dlaMitigationSchedule) ? summary.dlaMitigationSchedule : [];
+                if (Number(summary.dlaBalance || 0) >= 0 || !rows.length) return "";
+                return `<article class="me-report-insight-card me-report-alert-card me-report-table-card">
+                    <p class="eyebrow">Overdrawn DLA mitigation schedule</p>
+                    <h3>${formatCurrency(Math.abs(Number(summary.dlaBalance || 0)))} overdrawn · s455 exposure ${formatCurrency(summary.section455Tax || 0)}</h3>
+                    <p class="detail-meta">Work down this list before accepting the s455 cash exposure. Payroll figures are rough and need final payroll review.</p>
+                    <table>
+                        <thead><tr><th>Action</th><th>Amount</th><th>Treatment</th><th>What to do</th></tr></thead>
+                        <tbody>
+                            ${rows.map((row) => `<tr>
+                                <td>${escapeHTML(row.label || "")}</td>
+                                <td>${formatCurrency(row.amount || 0)}</td>
+                                <td>${escapeHTML(row.treatment || "")}</td>
+                                <td>${escapeHTML(row.note || "")}</td>
+                            </tr>`).join("")}
+                        </tbody>
+                    </table>
+                </article>`;
             }
 
             function renderMeReportDividendsTab(summary = {}) {
@@ -22604,6 +23146,8 @@
                         ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
                         ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                     </div>
+                    ${renderMeReportWaterfall("Maximum extraction order", summary.extractionWaterfall)}
+                    ${renderMeReportDlaMitigation(summary)}
                     ${renderMeReportCalculationTable("Dividend availability", Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary), summary)}
                 `;
             }
@@ -22652,7 +23196,7 @@
                     chart: renderMeReportChartOfAccountsTab(client, summary),
                     vat: renderMeReportVatTab(client, summary),
                     dla: renderMeReportDlaTab(summary),
-                    tax: renderMeReportTaxTab(summary, broughtForwardTradingLoss),
+                    tax: renderMeReportTaxTab(client, summary, broughtForwardTradingLoss),
                     dividends: renderMeReportDividendsTab(summary),
                     "fixed-assets": renderMeReportFixedAssetsTab(summary)
                 };
@@ -22703,7 +23247,7 @@
                         <div class="ignition-summary-grid">
                             ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
                             ${renderMeReportMetric("Tax adjustments", formatCurrency(summary.taxAdjustments || 0))}
-                            ${renderMeReportMetric("B/F trading loss", formatCurrency(broughtForwardTradingLoss))}
+                            ${renderMeReportBroughtForwardLossMetric(client, summary, broughtForwardTradingLoss)}
                             ${renderMeReportMetric("Loss relief used", formatCurrency(summary.tradingLossReliefUsed || 0))}
                             ${renderMeReportMetric("Taxable profit", formatCurrency(summary.estimatedTaxableProfit || 0))}
                             ${renderMeReportTaxEstimateMetric(summary)}
@@ -22715,7 +23259,10 @@
                         </div>
                         <article class="me-report-insight-card">
                             <p class="eyebrow">CT rate breakdown</p>
-                            <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
+                            <div class="me-report-card-heading-row">
+                                <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
+                                ${meReportPeriodRangeLabel(summary) ? `<h3>${escapeHTML(meReportPeriodRangeLabel(summary))}</h3>` : ""}
+                            </div>
                             ${renderMeReportTaxBreakdownTable(summary)}
                         </article>
                         ${renderMeReportAiHelp(summary, "tax")}
@@ -23089,8 +23636,8 @@
 
             function confirmMeReportVatRegistered(clientId) {
                 const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
-                if (!window.confirm(`Confirm ${client?.clientName || "this client"} is VAT registered? VAT threshold warnings will be hidden for this client on future uploads.`)) return;
-                updateMeReportClientPreferences(clientId, { vatRegisteredConfirmed: true }, "VAT registration confirmed for this client");
+                if (!window.confirm(`Confirm a VAT registration application has been made for ${client?.clientName || "this client"}? Today's date will be saved and VAT threshold warnings will be hidden for future uploads.`)) return;
+                updateMeReportClientPreferences(clientId, { vatRegisteredConfirmed: true }, "VAT application confirmation saved for this client");
             }
 
             async function updateMeReportClientStatus(clientId, statusValue) {
@@ -25831,6 +26378,7 @@
                 renderMeReportScreen();
                 renderPracticePackScreen();
                 renderClientScreen();
+                enhanceConsoleButtons();
             }
 
             function wireFilters() {
@@ -28001,12 +28549,15 @@
                 });
                 document.getElementById("bulkAddNoteButton")?.addEventListener("click", () => {
                     const body = window.prompt("Add a note to the selected invoices");
-                    if (!body) return;
+                    const rawBody = body?.trim() || "";
+                    if (!rawBody) return;
                     if (!window.confirm(`Add this note to ${selectedInvoiceIds.size} selected invoice${selectedInvoiceIds.size === 1 ? "" : "s"}?`)) return;
                     selectedInvoices().forEach((invoice) => {
                         const match = mutableInvoiceById(invoice.id);
                         if (!match) return;
-                        match.invoice.notes = [{ title: "Bulk invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
+                        const noteBody = noteWithInvoiceReference(match.invoice, rawBody);
+                        match.invoice.notes = [{ title: "Bulk invoice note", body: noteBody, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
+                        match.invoice.notesSummary = noteBody.slice(0, 200);
                     });
                     persistState();
                     renderAll();
@@ -28542,9 +29093,10 @@
                 document.getElementById("invoiceNoteForm")?.addEventListener("submit", async (event) => {
                     event.preventDefault();
                     const match = mutableInvoiceById(selectedInvoiceId);
-                    const body = document.getElementById("invoiceNoteInput")?.value.trim();
+                    const body = noteWithInvoiceReference(match?.invoice, document.getElementById("invoiceNoteInput")?.value);
                     if (!match || !body) return;
                     match.invoice.notes = [{ title: "Invoice note", body, stamp: new Date().toISOString() }, ...(match.invoice.notes || [])];
+                    match.invoice.notesSummary = body.slice(0, 200);
                     document.getElementById("invoiceNoteInput").value = "";
                     persistState();
                     renderAll();
@@ -28694,6 +29246,7 @@
                 const returnedFromIgnitionConnection = ignitionConnectionReturn.connected;
                 let panelPayload = null;
                 wireCriticalNavigation();
+                wireButtonIconEnhancements();
                 wireUserActivityLogging();
                 const initialSection = appNavSectionFromHash();
                 if (returnedFromIgnitionConnection) {

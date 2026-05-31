@@ -956,6 +956,7 @@ CREATE TABLE IF NOT EXISTS me_report_clients (
     report_recipient_email TEXT NOT NULL DEFAULT '',
     year_end_month INTEGER NOT NULL DEFAULT 3,
     brought_forward_trading_loss NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    brought_forward_trading_loss_updated_at TIMESTAMPTZ,
     xero_contact_id TEXT,
     xero_contact_name TEXT NOT NULL DEFAULT '',
     xero_contact_email TEXT NOT NULL DEFAULT '',
@@ -964,6 +965,7 @@ CREATE TABLE IF NOT EXISTS me_report_clients (
     xero_tenant_name TEXT,
     xero_connection_status TEXT NOT NULL DEFAULT 'not_connected',
     vat_registered_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+    vat_registered_confirmed_at TIMESTAMPTZ,
     dismissed_warning_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
     status TEXT NOT NULL DEFAULT 'active',
     last_sync_at TIMESTAMPTZ,
@@ -977,7 +979,9 @@ ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS xero_contact_id TEXT;
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS xero_contact_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS xero_contact_email TEXT NOT NULL DEFAULT '';
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS brought_forward_trading_loss NUMERIC(14, 2) NOT NULL DEFAULT 0;
+ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS brought_forward_trading_loss_updated_at TIMESTAMPTZ;
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS vat_registered_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS vat_registered_confirmed_at TIMESTAMPTZ;
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS dismissed_warning_keys JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 CREATE INDEX IF NOT EXISTS me_report_clients_user_status_idx

@@ -6516,10 +6516,13 @@ def _me_report_is_vat_registration_exception(item: dict) -> bool:
 
 def _me_report_summary_for_client(summary: dict, client: dict) -> dict:
     prepared = _me_report_apply_brought_forward_loss(summary if isinstance(summary, dict) else {}, client)
+    if client.get("brought_forward_trading_loss_updated_at"):
+        prepared["broughtForwardTradingLossUpdatedAt"] = _iso(client.get("brought_forward_trading_loss_updated_at")) or ""
     if bool(client.get("vat_registered_confirmed")):
         prepared = {
             **prepared,
             "vatRegisteredConfirmed": True,
+            "vatRegisteredConfirmedAt": _iso(client.get("vat_registered_confirmed_at")) or "",
             "vatWarningVisible": False,
         }
     return prepared
@@ -6563,12 +6566,14 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "reportRecipientEmail": row.get("report_recipient_email") or "",
         "yearEndMonth": int(row.get("year_end_month") or 3),
         "broughtForwardTradingLoss": float(_money(row.get("brought_forward_trading_loss"))),
+        "broughtForwardTradingLossUpdatedAt": _iso(row.get("brought_forward_trading_loss_updated_at")) or "",
         "xeroContactId": row.get("xero_contact_id") or "",
         "xeroContactName": row.get("xero_contact_name") or "",
         "xeroContactEmail": row.get("xero_contact_email") or "",
         "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
         "xeroTenantName": row.get("xero_tenant_name") or "",
         "vatRegisteredConfirmed": vat_registered_confirmed,
+        "vatRegisteredConfirmedAt": _iso(row.get("vat_registered_confirmed_at")) or "",
         "dismissedWarningKeys": [str(item) for item in dismissed_warning_keys if str(item).strip()][:200],
         "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
@@ -6837,11 +6842,12 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
                     user_id, client_name, internal_client_owner,
                     bookkeeping_frequency, report_recipient_email,
                     year_end_month, brought_forward_trading_loss,
+                    brought_forward_trading_loss_updated_at,
                     xero_contact_id, xero_contact_name,
                     xero_contact_email, xero_connection_id, xero_tenant_id,
                     xero_tenant_name, xero_connection_status, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -6852,6 +6858,7 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
                     recipient,
                     year_end_month,
                     brought_forward_trading_loss,
+                    utcnow() if brought_forward_trading_loss else None,
                     xero_contact["xeroContactId"] if xero_contact else None,
                     xero_contact["name"] if xero_contact else "",
                     xero_contact["email"] if xero_contact else "",
@@ -6877,11 +6884,18 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
 
 def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
     client = _me_report_client_row(user, client_id)
+    now = utcnow()
     if "broughtForwardTradingLoss" in payload:
         brought_forward_trading_loss = _non_negative_money(payload.get("broughtForwardTradingLoss") or 0, "Brought forward trading loss")
+        brought_forward_trading_loss_updated_at = now
     else:
         brought_forward_trading_loss = _money(client.get("brought_forward_trading_loss"))
+        brought_forward_trading_loss_updated_at = client.get("brought_forward_trading_loss_updated_at")
     vat_registered_confirmed = bool(payload.get("vatRegisteredConfirmed")) if "vatRegisteredConfirmed" in payload else bool(client.get("vat_registered_confirmed"))
+    if "vatRegisteredConfirmed" in payload:
+        vat_registered_confirmed_at = now if vat_registered_confirmed else None
+    else:
+        vat_registered_confirmed_at = client.get("vat_registered_confirmed_at")
     existing_dismissed = client.get("dismissed_warning_keys") or []
     if isinstance(existing_dismissed, str):
         try:
@@ -6895,14 +6909,15 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
             for item in payload.get("dismissedWarningKeys")
             if str(item).strip()
         ][:200]
-    now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE me_report_clients
                 SET brought_forward_trading_loss = %s,
+                    brought_forward_trading_loss_updated_at = %s,
                     vat_registered_confirmed = %s,
+                    vat_registered_confirmed_at = %s,
                     dismissed_warning_keys = %s::jsonb,
                     updated_at = %s
                 WHERE id = %s
@@ -6910,7 +6925,9 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                 """,
                 (
                     brought_forward_trading_loss,
+                    brought_forward_trading_loss_updated_at,
                     vat_registered_confirmed,
+                    vat_registered_confirmed_at,
                     json.dumps(dismissed_warning_keys, default=_json_default),
                     now,
                     client_id,
@@ -6943,7 +6960,9 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
         "me_report.client_updated",
         {
             "brought_forward_trading_loss": float(brought_forward_trading_loss),
+            "brought_forward_trading_loss_updated_at": _iso(brought_forward_trading_loss_updated_at) or "",
             "vat_registered_confirmed": vat_registered_confirmed,
+            "vat_registered_confirmed_at": _iso(vat_registered_confirmed_at) or "",
             "dismissed_warning_count": len(dismissed_warning_keys),
         },
         user["id"],
@@ -7087,8 +7106,10 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "yearToDateSales",
         "yearToDateProfit",
         "rolling12MonthTurnover",
+        "rollingVatTurnoverMonths",
         "trialBalanceAccounts",
         "balanceSheet",
+        "dividendTransactions",
         "fixedAssetReconciliation",
         "depreciationSchedule",
         "disallowedExpenses",
@@ -7113,6 +7134,19 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "yearToDateSales": {"type": "number"},
         "yearToDateProfit": {"type": "number"},
         "rolling12MonthTurnover": {"type": "number"},
+        "rollingVatTurnoverMonths": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["month", "turnover", "sourcePage"],
+                "properties": {
+                    "month": {"type": "string"},
+                    "turnover": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
         "trialBalanceAccounts": {
             "type": "array",
             "items": {
@@ -7147,6 +7181,20 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
                 "calledUpShareCapital": {"type": "number"},
                 "totalEquity": {"type": "number"},
                 "sourcePage": {"type": ["integer", "null"]},
+            },
+        },
+        "dividendTransactions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["date", "description", "amount", "sourcePage"],
+                "properties": {
+                    "date": {"type": ["string", "null"]},
+                    "description": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
             },
         },
         "fixedAssetReconciliation": {
@@ -7280,10 +7328,13 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         "Aged Payables, Aged Receivables and Trial Balance. Use GBP numbers without currency symbols. "
         "For accountingProfit and yearToDateProfit use Profit (loss) before taxation from Profit and Loss - YTD if present. "
         "Extract rolling12MonthTurnover from the VAT Registration check or rolling 12-month turnover/taxable turnover line if shown; return 0 only when it is not present. "
+        "Also extract the full rollingVatTurnoverMonths schedule when the report shows the 12 monthly taxable turnover figures. "
         "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
         "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
         "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved "
-        "when shown in brackets. Extract Fixed Asset Reconciliation differences by asset class, and report whether the Depreciation "
+        "when shown in brackets. Extract dividend transaction dates, descriptions and amounts where the report shows dividend "
+        "payments, dividends declared, journals, director drawings classified as dividends, or dividend lines in the transaction review. "
+        "Extract Fixed Asset Reconciliation differences by asset class, and report whether the Depreciation "
         "Schedule shows a nil depreciation column. Put clearly disallowable costs such as car fines, penalties and non-allowable "
         "tax adjustment accounts in disallowedExpenses. Do not make final tax judgements for ambiguous legal, bad debt or client "
         "remediation costs; include those in warnings instead. The backend will calculate CT and dividend availability from the "
@@ -7588,6 +7639,140 @@ def _me_report_forecast_summary(extracted: dict, client: dict, ytd_sales: Decima
 
 
 ME_REPORT_DEFAULT_VAT_THRESHOLD = Decimal("90000.00")
+ME_REPORT_S455_RATE_BEFORE_APRIL_2026 = Decimal("0.3375")
+ME_REPORT_S455_RATE_FROM_APRIL_2026 = Decimal("0.3575")
+ME_REPORT_PAYROLL_BASIC_PAYE_RATE = Decimal("0.20")
+ME_REPORT_PAYROLL_EMPLOYEE_NI_RATE = Decimal("0.08")
+ME_REPORT_PAYROLL_EMPLOYER_NI_RATE = Decimal("0.15")
+
+
+def _me_report_s455_rate(period_end: date | None) -> Decimal:
+    if period_end and period_end >= date(2026, 4, 6):
+        return ME_REPORT_S455_RATE_FROM_APRIL_2026
+    return ME_REPORT_S455_RATE_BEFORE_APRIL_2026
+
+
+def _me_report_rolling_vat_months(extracted: dict, period_end: date | None, rolling_total: Decimal) -> list[dict]:
+    rows = []
+    for item in extracted.get("rollingVatTurnoverMonths") or []:
+        if not isinstance(item, dict):
+            continue
+        month = str(item.get("month") or "").strip()
+        amount = _money(item.get("turnover"))
+        if not month and amount == 0:
+            continue
+        rows.append({
+            "month": month or "Month",
+            "turnover": float(amount),
+            "source": _me_report_source_page("VAT Registration check", item.get("sourcePage")),
+        })
+    if rows:
+        return rows[:12]
+    if period_end and rolling_total:
+        return [{
+            "month": f"12 months to {period_end.isoformat()}",
+            "turnover": float(rolling_total),
+            "source": "VAT Registration check total",
+        }]
+    return []
+
+
+def _me_report_extraction_summary(
+    *,
+    current_year_earnings: Decimal,
+    dividend_capacity: Decimal,
+    brought_forward_trading_loss: Decimal,
+    trading_loss_relief_used: Decimal,
+    dla_balance: Decimal,
+    estimated_ct: Decimal,
+    period_end: date | None,
+) -> dict:
+    credit_dla = max(dla_balance, Decimal("0.00"))
+    overdrawn_dla = max(-dla_balance, Decimal("0.00"))
+    s455_rate = _me_report_s455_rate(period_end)
+    section455_tax = _money(overdrawn_dla * s455_rate)
+    total_tax_exposure = _money(estimated_ct + section455_tax)
+    total_potential_extraction = _money(credit_dla + max(dividend_capacity, Decimal("0.00")) + trading_loss_relief_used)
+    payroll_deduction_rate = ME_REPORT_PAYROLL_BASIC_PAYE_RATE + ME_REPORT_PAYROLL_EMPLOYEE_NI_RATE
+    payroll_net_rate = max(Decimal("0.01"), Decimal("1.00") - payroll_deduction_rate)
+    payroll_gross_pay = _money(overdrawn_dla / payroll_net_rate) if overdrawn_dla else Decimal("0.00")
+    payroll_paye_ni = _money(payroll_gross_pay - overdrawn_dla)
+    payroll_employer_ni = _money(payroll_gross_pay * ME_REPORT_PAYROLL_EMPLOYER_NI_RATE)
+    dividend_offset = min(overdrawn_dla, max(dividend_capacity, Decimal("0.00")))
+    remaining_after_dividend = max(Decimal("0.00"), _money(overdrawn_dla - dividend_offset))
+    return {
+        "creditDlaAvailable": float(credit_dla),
+        "overdrawnDlaExposure": float(overdrawn_dla),
+        "broughtForwardTradingLossAvailable": float(brought_forward_trading_loss),
+        "broughtForwardTradingLossUsed": float(trading_loss_relief_used),
+        "postTaxProfits": float(current_year_earnings),
+        "taxableDividendCapacity": float(max(dividend_capacity, Decimal("0.00"))),
+        "totalPotentialExtraction": float(total_potential_extraction),
+        "section455Rate": float(s455_rate * 100),
+        "section455Tax": float(section455_tax),
+        "totalTaxExposure": float(total_tax_exposure),
+        "dividendOffsetAvailable": float(dividend_offset),
+        "dlaAfterDividendOffset": float(remaining_after_dividend),
+        "payrollMitigation": {
+            "grossPayRequired": float(payroll_gross_pay),
+            "employeePayeAndNi": float(payroll_paye_ni),
+            "employerNi": float(payroll_employer_ni),
+            "employerCost": float(_money(payroll_gross_pay + payroll_employer_ni)),
+            "note": "Rough basic-rate illustration only; director annual NI, tax code, other income and payroll timing can change the result.",
+        },
+        "waterfall": [
+            {
+                "label": "Credit DLA repayment",
+                "amount": float(credit_dla),
+                "treatment": "Use first",
+                "note": "Repay amounts owed by the company to the director before creating taxable dividends.",
+            },
+            {
+                "label": "B/F trading loss relief used",
+                "amount": float(trading_loss_relief_used),
+                "treatment": "Shelters profit before dividends",
+                "note": "Stored loss relief is applied to taxable profits before dividend capacity is assessed.",
+            },
+            {
+                "label": "Further taxable dividend capacity",
+                "amount": float(max(dividend_capacity, Decimal("0.00"))),
+                "treatment": "Use after DLA and loss relief",
+                "note": "Only use if equity and distributable reserves support it.",
+            },
+        ],
+        "mitigationSchedule": [
+            {
+                "label": "Director repayment",
+                "amount": float(overdrawn_dla),
+                "treatment": "Cleanest fix",
+                "note": "Repay the overdrawn balance into the company bank account before the s455 trigger date where possible.",
+            },
+            {
+                "label": "Reclaim expenses or mileage",
+                "amount": 0.0,
+                "treatment": "Offset if evidenced",
+                "note": "Post valid business expenses or mileage claims to the DLA only where receipts, mileage logs and approval exist.",
+            },
+            {
+                "label": "Dividend offset if reserves allow",
+                "amount": float(dividend_offset),
+                "treatment": "Use only with sufficient reserves",
+                "note": "Declare/document a dividend and credit it to the DLA only where distributable reserves and paperwork support it.",
+            },
+            {
+                "label": "Payroll bonus illustration",
+                "amount": float(payroll_gross_pay),
+                "treatment": "Rough PAYE/NIC cost",
+                "note": f"To net {overdrawn_dla:,.2f}, gross pay is roughly {payroll_gross_pay:,.2f}; employee PAYE/NIC about {payroll_paye_ni:,.2f} and employer NIC about {payroll_employer_ni:,.2f}.",
+            },
+            {
+                "label": "Section 455 exposure if still overdrawn",
+                "amount": float(section455_tax),
+                "treatment": f"{s455_rate * 100:.2f}% cash tax exposure",
+                "note": "s455 is repayable after the loan is repaid, but it is still a cash outflow to include with the CT estimate.",
+            },
+        ],
+    }
 
 
 def _me_report_summary_rolling_turnover(summary: dict) -> Decimal:
@@ -7614,6 +7799,7 @@ def _me_report_apply_brought_forward_loss(summary: dict, client: dict) -> dict:
     client_loss_value = client.get("brought_forward_trading_loss")
     brought_forward_loss = _money(client_loss_value if client_loss_value is not None else result.get("broughtForwardTradingLoss"))
     result["broughtForwardTradingLoss"] = float(brought_forward_loss)
+    result["broughtForwardTradingLossUpdatedAt"] = _iso(client.get("brought_forward_trading_loss_updated_at")) or result.get("broughtForwardTradingLossUpdatedAt") or ""
     has_loss_metadata = "taxableProfitBeforeLosses" in result or _money(result.get("tradingLossReliefUsed")) > 0
     if brought_forward_loss <= 0 and not has_loss_metadata:
         result.setdefault("tradingLossReliefUsed", 0.0)
@@ -7639,12 +7825,29 @@ def _me_report_apply_brought_forward_loss(summary: dict, client: dict) -> dict:
         - _money(result.get("dividendsTaken"))
     )
     dividend_capacity = max(Decimal("0.00"), period_end_reserves)
+    period_end = _parse_optional_iso_date(result.get("periodEnd"))
+    dla_balance = _money(result.get("dlaBalance"))
+    section455_rate = _me_report_s455_rate(period_end)
+    section455_tax = _money(max(-dla_balance, Decimal("0.00")) * section455_rate)
+    total_tax_exposure = _money(estimated_ct + section455_tax)
+    extraction_summary = _me_report_extraction_summary(
+        current_year_earnings=current_year_earnings,
+        dividend_capacity=dividend_capacity,
+        brought_forward_trading_loss=brought_forward_loss,
+        trading_loss_relief_used=trading_loss_relief_used,
+        dla_balance=dla_balance,
+        estimated_ct=estimated_ct,
+        period_end=period_end,
+    )
 
     result.update({
         "taxableProfitBeforeLosses": float(taxable_before_losses),
         "tradingLossReliefUsed": float(trading_loss_relief_used),
         "estimatedTaxableProfit": float(taxable_after_losses),
         "estimatedCorporationTax": float(estimated_ct),
+        "section455Tax": float(section455_tax),
+        "section455Rate": float(section455_rate * 100),
+        "totalTaxExposure": float(total_tax_exposure),
         "effectiveTaxRate": float(effective_rate),
         "corporationTaxRateBand": ct_rate_band,
         "corporationTaxBreakdown": corporation_tax_breakdown,
@@ -7652,7 +7855,12 @@ def _me_report_apply_brought_forward_loss(summary: dict, client: dict) -> dict:
         "currentYearEarnings": float(current_year_earnings),
         "periodEndDistributableReserves": float(period_end_reserves),
         "dividendCapacity": float(dividend_capacity),
-        "totalPotentialExtraction": float(_money(_money(result.get("directorLoanCreditBalance")) + dividend_capacity)),
+        "totalPotentialExtraction": extraction_summary["totalPotentialExtraction"],
+        "extractionWaterfall": extraction_summary["waterfall"],
+        "dlaMitigationSchedule": extraction_summary["mitigationSchedule"],
+        "payrollMitigation": extraction_summary["payrollMitigation"],
+        "overdrawnDlaExposure": extraction_summary["overdrawnDlaExposure"],
+        "creditDlaAvailable": extraction_summary["creditDlaAvailable"],
     })
 
     tax_steps = result.get("taxCalculationSteps") if isinstance(result.get("taxCalculationSteps"), list) else []
@@ -7685,9 +7893,11 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     warnings = [str(item).strip() for item in extracted.get("warnings") or [] if str(item).strip()]
     trial_balance_accounts = [item for item in extracted.get("trialBalanceAccounts") or [] if isinstance(item, dict)]
     balance_sheet = extracted.get("balanceSheet") if isinstance(extracted.get("balanceSheet"), dict) else {}
+    dividend_transactions = [item for item in extracted.get("dividendTransactions") or [] if isinstance(item, dict)]
     fixed_asset_rows = [item for item in extracted.get("fixedAssetReconciliation") or [] if isinstance(item, dict)]
     depreciation_schedule = extracted.get("depreciationSchedule") if isinstance(extracted.get("depreciationSchedule"), dict) else {}
     page_coverage = extracted.get("pageCoverage") if isinstance(extracted.get("pageCoverage"), dict) else {}
+    period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
 
     accounting_profit = _money(extracted.get("yearToDateProfit") or extracted.get("accountingProfit"))
     monthly_sales = _money(extracted.get("monthlySales"))
@@ -7846,6 +8056,10 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     trading_loss_relief_used = min(brought_forward_trading_loss, taxable_profit_before_losses)
     estimated_taxable_profit = max(Decimal("0.00"), _money(taxable_profit_before_losses - trading_loss_relief_used))
     estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(estimated_taxable_profit)
+    dla_balance = _money(extracted.get("dlaBalance"))
+    section455_rate = _me_report_s455_rate(period_end)
+    section455_tax = _money(max(-dla_balance, Decimal("0.00")) * section455_rate)
+    total_tax_exposure = _money(estimated_ct + section455_tax)
 
     tax_steps = [
         _me_report_step("Profit before tax YTD", accounting_profit, "Start", "Profit and Loss - YTD", [
@@ -7884,11 +8098,57 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             for line in corporation_tax_breakdown.get("lines", [])
             if isinstance(line, dict)
         ]),
+        *([
+            _me_report_step(
+                "Section 455 exposure on overdrawn DLA",
+                section455_tax,
+                "Add to CT cash exposure",
+                f"DLA overdrawn balance at {section455_rate * 100:.2f}%",
+                [
+                    _me_report_breakdown_item(
+                        "Overdrawn director loan account",
+                        max(-dla_balance, Decimal("0.00")),
+                        "Balance Sheet / DLA",
+                        "",
+                        f"s455 at {section455_rate * 100:.2f}%",
+                    )
+                ],
+                "Included because an overdrawn director loan account can create a repayable s455 corporation tax cash exposure.",
+            ),
+            _me_report_step(
+                "Total CT and s455 exposure",
+                total_tax_exposure,
+                "Result",
+                "Corporation Tax plus Section 455",
+                [
+                    _me_report_breakdown_item("Corporation tax estimate", estimated_ct, "CT estimate", "", "Charge"),
+                    _me_report_breakdown_item("Section 455 exposure", section455_tax, "DLA balance", "", "Add"),
+                ],
+                "This is the total cash exposure to show the user: corporation tax plus any current s455 exposure.",
+            ),
+        ] if section455_tax else []),
     ]
 
     balance_sheet_current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
     retained_earnings = _money(balance_sheet.get("retainedEarnings"))
     dividends_declared = abs(_money(balance_sheet.get("dividendsDeclared")))
+    dividend_transaction_breakdown = []
+    for item in dividend_transactions[:24]:
+        amount = abs(_money(item.get("amount")))
+        if amount <= 0:
+            continue
+        label_parts = [str(item.get("date") or "").strip(), str(item.get("description") or "Dividend").strip()]
+        dividend_transaction_breakdown.append(
+            _me_report_breakdown_item(
+                " - ".join(part for part in label_parts if part),
+                -amount,
+                _me_report_source_page("Dividend transaction", item.get("sourcePage")),
+                "",
+                "Deduct",
+            )
+        )
+    if dividend_transaction_breakdown:
+        dividends_declared = abs(_money(sum(_money(item.get("amount")) for item in dividend_transactions)))
     if not balance_sheet:
         retained_earnings = Decimal("0.00")
         dividends_declared = abs(_money(extracted.get("dividendsDeclared") or extracted.get("dividendsTaken")))
@@ -7911,9 +8171,15 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             _me_report_breakdown_item("YTD profit before tax", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add"),
             _me_report_breakdown_item("Estimated corporation tax provision", -current_year_tax_provision, "CT estimate", "", "Deduct"),
         ]),
-        _me_report_step("Dividends declared YTD", -dividends_declared, "Deduct", "Balance Sheet dividends line", [
-            _me_report_breakdown_item("Dividends declared", -dividends_declared, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Deduct")
-        ]),
+        _me_report_step(
+            "Dividends declared YTD",
+            -dividends_declared,
+            "Deduct",
+            "Extracted dividend transactions" if dividend_transaction_breakdown else "Balance Sheet dividends line",
+            dividend_transaction_breakdown or [
+                _me_report_breakdown_item("Dividends declared", -dividends_declared, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Deduct")
+            ],
+        ),
         _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated", [
             _me_report_breakdown_item("Opening retained reserves", retained_earnings, "Balance Sheet capital and reserves", "", "Start"),
             _me_report_breakdown_item("Post-tax YTD earnings", current_year_earnings, "Calculated", "", "Add"),
@@ -7980,7 +8246,6 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     warnings = list(dict.fromkeys(warnings))
     extracted_insights = extracted.get("profitAndLossInsights") if isinstance(extracted.get("profitAndLossInsights"), dict) else {}
     forecast = _me_report_forecast_summary(extracted, client, ytd_sales, ytd_profit, estimated_taxable_profit)
-    period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
     rolling_12_month_turnover = _money(extracted.get("rolling12MonthTurnover"))
     if not rolling_12_month_turnover:
         rolling_12_month_turnover = _me_report_summary_rolling_turnover({
@@ -7989,9 +8254,19 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             "yearToDateSales": float(ytd_sales),
             "forecast": forecast,
         })
+    rolling_vat_months = _me_report_rolling_vat_months(extracted, period_end, rolling_12_month_turnover)
     vat_threshold = ME_REPORT_DEFAULT_VAT_THRESHOLD
     vat_threshold_exceeded = rolling_12_month_turnover > vat_threshold
     vat_registered_confirmed = bool(client.get("vat_registered_confirmed"))
+    extraction_summary = _me_report_extraction_summary(
+        current_year_earnings=current_year_earnings,
+        dividend_capacity=dividend_capacity,
+        brought_forward_trading_loss=brought_forward_trading_loss,
+        trading_loss_relief_used=trading_loss_relief_used,
+        dla_balance=dla_balance,
+        estimated_ct=estimated_ct,
+        period_end=period_end,
+    )
     going_well_fallback = [
         f"Year-to-date profit is positive at £{ytd_profit:,.2f}." if ytd_profit > 0 else "Revenue has been extracted and is ready for trend review.",
         f"Current monthly profit is £{accounting_profit:,.2f}." if accounting_profit > 0 else "Month-end figures are now structured for review.",
@@ -8054,10 +8329,12 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "yearToDateExpenses": float(max(Decimal("0.00"), _money(ytd_sales - ytd_profit))),
         "yearToDateProfit": float(ytd_profit),
         "rolling12MonthTurnover": float(rolling_12_month_turnover),
+        "rollingVatTurnoverMonths": rolling_vat_months,
         "vatThreshold": float(vat_threshold),
         "vatThresholdExceeded": vat_threshold_exceeded,
         "vatThresholdFirstBreachedAt": period_end.isoformat() if vat_threshold_exceeded else "",
         "vatRegisteredConfirmed": vat_registered_confirmed,
+        "vatRegisteredConfirmedAt": _iso(client.get("vat_registered_confirmed_at")) or "",
         "vatWarningVisible": vat_threshold_exceeded and not vat_registered_confirmed,
         "accountingProfit": float(accounting_profit),
         "depreciationAddBack": float(depreciation_addback),
@@ -8067,9 +8344,13 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "taxAdjustments": float(tax_adjustments),
         "taxableProfitBeforeLosses": float(taxable_profit_before_losses),
         "broughtForwardTradingLoss": float(brought_forward_trading_loss),
+        "broughtForwardTradingLossUpdatedAt": _iso(client.get("brought_forward_trading_loss_updated_at")) or "",
         "tradingLossReliefUsed": float(trading_loss_relief_used),
         "estimatedTaxableProfit": float(estimated_taxable_profit),
         "estimatedCorporationTax": float(estimated_ct),
+        "section455Tax": float(section455_tax),
+        "section455Rate": float(section455_rate * 100),
+        "totalTaxExposure": float(total_tax_exposure),
         "effectiveTaxRate": float(effective_rate),
         "corporationTaxRateBand": ct_rate_band,
         "taxProvisionRequired": float(estimated_ct),
@@ -8077,12 +8358,27 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "balanceSheetCurrentYearEarnings": float(balance_sheet_current_year_earnings),
         "currentYearEarnings": float(current_year_earnings),
         "dividendsTaken": float(dividends_declared),
+        "dividendTransactions": [
+            {
+                "date": str(item.get("date") or ""),
+                "description": str(item.get("description") or ""),
+                "amount": float(_money(item.get("amount"))),
+                "source": _me_report_source_page("Dividend transaction", item.get("sourcePage")),
+            }
+            for item in dividend_transactions
+            if isinstance(item, dict) and (_money(item.get("amount")) or item.get("description") or item.get("date"))
+        ][:24],
         "periodEndDistributableReserves": float(period_end_distributable_reserves),
         "dividendCapacity": float(dividend_capacity),
         "directorLoanCreditBalance": float(max(_money(extracted.get("dlaBalance")), Decimal("0.00"))),
-        "totalPotentialExtraction": float(_money(max(_money(extracted.get("dlaBalance")), Decimal("0.00")) + dividend_capacity)),
-        "dlaBalance": float(_money(extracted.get("dlaBalance"))),
-        "dlaStatus": "red" if _money(extracted.get("dlaBalance")) < 0 else ("amber" if _money(extracted.get("dlaBalance")) == 0 else "green"),
+        "totalPotentialExtraction": extraction_summary["totalPotentialExtraction"],
+        "extractionWaterfall": extraction_summary["waterfall"],
+        "dlaMitigationSchedule": extraction_summary["mitigationSchedule"],
+        "payrollMitigation": extraction_summary["payrollMitigation"],
+        "overdrawnDlaExposure": extraction_summary["overdrawnDlaExposure"],
+        "creditDlaAvailable": extraction_summary["creditDlaAvailable"],
+        "dlaBalance": float(dla_balance),
+        "dlaStatus": "red" if dla_balance < 0 else ("amber" if dla_balance == 0 else "green"),
         "trafficLight": traffic_light,
         "source": "uploaded_pdf",
         "forecast": forecast,
@@ -13422,19 +13718,33 @@ def invoice_detail(invoice_id: str) -> dict:
     }
 
 
-def add_note(invoice_id: str, user: dict, body: str) -> None:
+def _invoice_referenced_note_body(body: str, invoice_number: str | None) -> str:
+    clean_body = str(body or "").strip()
+    clean_invoice_number = str(invoice_number or "").strip()
+    if not clean_body or not clean_invoice_number:
+        return clean_body
+    if clean_invoice_number.lower() in clean_body.lower():
+        return clean_body
+    return f"Invoice {clean_invoice_number}: {clean_body}"
+
+
+def add_note(invoice_id: str, user: dict, body: str) -> str:
     with get_connection() as connection:
         with connection.cursor() as cursor:
+            cursor.execute("SELECT invoice_number FROM invoices WHERE id = %s", (invoice_id,))
+            invoice = cursor.fetchone()
+            note_body = _invoice_referenced_note_body(body, invoice.get("invoice_number") if invoice else "")
             cursor.execute(
                 "INSERT INTO notes (invoice_id, user_id, body) VALUES (%s, %s, %s)",
-                (invoice_id, user["id"], body),
+                (invoice_id, user["id"], note_body),
             )
             cursor.execute(
                 "UPDATE invoices SET notes_summary = %s, updated_at = %s WHERE id = %s",
-                (body[:200], utcnow(), invoice_id),
+                (note_body[:200], utcnow(), invoice_id),
             )
         connection.commit()
-    record_audit_event("invoice", invoice_id, "note.added", {"body": body}, user["id"])
+    record_audit_event("invoice", invoice_id, "note.added", {"body": note_body}, user["id"])
+    return note_body
 
 
 def add_customer_note(customer_id: str, user: dict, body: str) -> None:
@@ -13457,7 +13767,6 @@ def _format_xero_note(user: dict, body: str) -> str:
 
 
 async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: str, event_type: str = "xero.workflow_note") -> dict:
-    note_body = _with_jenius_signature(body)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -13484,6 +13793,8 @@ async def sync_invoice_workflow_note_to_xero(invoice_id: str, user: dict, body: 
             "contactNoteSynced": False,
             "error": "Invoice not found.",
         }
+
+    note_body = _invoice_referenced_note_body(_with_jenius_signature(body), invoice.get("invoice_number"))
 
     targets = {
         "Invoices": invoice.get("xero_invoice_id"),

@@ -679,8 +679,8 @@ def invoice_page(invoice_id: str, request: Request, user: dict = Depends(require
 
 @app.post("/invoices/{invoice_id}/notes")
 async def invoice_add_note(invoice_id: str, user: dict = Depends(require_user), body: str = Form(...)):
-    add_note(invoice_id, user, body)
-    await sync_invoice_note_to_xero(invoice_id, user, body)
+    note_body = add_note(invoice_id, user, body)
+    await sync_invoice_note_to_xero(invoice_id, user, note_body)
     return RedirectResponse(f"/invoices/{invoice_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -1395,8 +1395,8 @@ async def api_invoice_add_note(invoice_id: str, request: Request, user: dict = D
     body = str(payload.get("body", "")).strip()
     if not body:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Note body is required.")
-    add_note(invoice_id, user, body)
-    xero_note = await sync_invoice_note_to_xero(invoice_id, user, body)
+    note_body = add_note(invoice_id, user, body)
+    xero_note = await sync_invoice_note_to_xero(invoice_id, user, note_body)
     return {
         "status": "ok",
         "xeroNoteSynced": xero_note["synced"],
