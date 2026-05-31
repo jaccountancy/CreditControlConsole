@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     xero_scopes: str = "openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read accounting.attachments"
     panel_allowed_origins: str = "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk"
     xero_state_ttl_seconds: int = 900
+    ignition_state_ttl_seconds: int = 3600
     device_code_ttl_minutes: int = 10
     session_ttl_days: int = 30
     statutory_interest_rate: float = 0.08

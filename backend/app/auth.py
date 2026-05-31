@@ -61,6 +61,13 @@ def allowed_panel_origins() -> set[str]:
     return origins
 
 
+def oauth_state_ttl_seconds(provider: str) -> int:
+    settings = get_settings()
+    if provider == "ignition":
+        return max(settings.ignition_state_ttl_seconds, settings.xero_state_ttl_seconds)
+    return settings.xero_state_ttl_seconds
+
+
 def current_user_from_request(request: Request) -> dict | None:
     token = session_token_from_request(request)
     if not token:
@@ -173,9 +180,8 @@ def start_oauth_state(
     provider: str = "xero",
     code_verifier: str | None = None,
 ) -> str:
-    settings = get_settings()
     state_token = random_token()
-    expires_at = utcnow() + timedelta(seconds=settings.xero_state_ttl_seconds)
+    expires_at = utcnow() + timedelta(seconds=oauth_state_ttl_seconds(provider))
 
     with get_connection() as connection:
         with connection.cursor() as cursor:

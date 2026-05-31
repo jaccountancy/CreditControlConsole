@@ -272,9 +272,13 @@ def xero_login_error_response(
     message: str,
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
     provider: str = "Xero",
+    action_href: str = "/login",
+    action_label: str = "Back to login",
 ) -> HTMLResponse:
     safe_message = escape(message)
     safe_provider = escape(provider)
+    safe_action_href = escape(action_href, quote=True)
+    safe_action_label = escape(action_label)
     return HTMLResponse(
         f"""
         <!doctype html>
@@ -317,7 +321,7 @@ def xero_login_error_response(
             <main>
                 <h1>{safe_provider} connection failed</h1>
                 <p>{safe_message}</p>
-                <a href="/login">Back to login</a>
+                <a href="{safe_action_href}">{safe_action_label}</a>
             </main>
         </body>
         </html>
@@ -451,6 +455,24 @@ def build_ignition_authorize_url(user: dict, redirect_to: str) -> str:
     return ignition_authorize_url(state_token, verifier)
 
 
+def recover_ignition_state_error(request: Request, message: str, status_code: int) -> HTMLResponse | RedirectResponse:
+    user = current_user_from_request(request)
+    if user:
+        try:
+            authorize_url = build_ignition_authorize_url(user, "/#credit-control-ignition")
+        except IgnitionConfigurationError as exc:
+            return xero_login_error_response(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Ignition")
+        return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+
+    return xero_login_error_response(
+        f"{message} Sign in again, then start Ignition from the panel.",
+        status_code,
+        provider="Ignition",
+        action_href="/login",
+        action_label="Sign in again",
+    )
+
+
 @app.get("/auth/ignition/start")
 def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
     try:
@@ -497,6 +519,8 @@ async def auth_ignition_callback(request: Request, code: str, state: str):
         logger.warning("Ignition callback failed: %s", exc.detail)
         detail = exc.detail
         message = str(detail.get("message") if isinstance(detail, dict) else detail)
+        if exc.status_code == status.HTTP_400_BAD_REQUEST and "state" in message.lower():
+            return recover_ignition_state_error(request, message, exc.status_code)
         return xero_login_error_response(message, exc.status_code, provider="Ignition")
     except IgnitionConfigurationError as exc:
         logger.warning("Ignition callback failed: %s", exc)
