@@ -7926,6 +7926,22 @@
                 color: var(--ink);
                 font-weight: 850;
             }
+            .payment-plan-page {
+                grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+                align-items: start;
+            }
+            .payment-plan-builder-panel,
+            .payment-plan-history-panel {
+                min-width: 0;
+            }
+            .payment-plan-builder-panel .panel-heading {
+                align-items: center;
+            }
+            .payment-plan-builder-panel .detail-meta {
+                margin: 4px 0 0;
+                color: var(--muted);
+                font-weight: 750;
+            }
             .payments-made-summary {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -8345,6 +8361,11 @@
                 width: 16px;
                 height: 16px;
                 accent-color: var(--green);
+            }
+            @media (max-width: 980px) {
+                .payment-plan-page {
+                    grid-template-columns: 1fr;
+                }
             }
             .mini-timeline { display: grid; gap: 12px; margin-top: 18px; }
             .timeline-item {
@@ -11299,7 +11320,8 @@
                                 </div>
                             </div>
                             <nav class="xero-client-tabs client-section-nav" aria-label="Client sections">
-                                <button type="button" class="is-active" data-client-section="overview">Activity</button>
+                                <button type="button" class="is-active" data-client-section="overview">Activity &amp; Workflow</button>
+                                <button type="button" data-client-section="payment-plans">Payment plans</button>
                                 <button type="button" data-client-section="notes">Contact details</button>
                                 <button type="button" data-client-section="invoices">Financial details</button>
                                 <button type="button" data-client-section="legal">Files</button>
@@ -11349,6 +11371,7 @@
                                     <button type="button" class="is-active" data-client-section="overview">Summary</button>
                                     <button type="button" data-client-section="invoices">Transactions</button>
                                     <button type="button" data-client-section="notes">Activity & Workflow</button>
+                                    <button type="button" data-client-section="payment-plans">Payment plans</button>
                                 </nav>
 
                                 <section class="client-section-pane" data-client-pane="overview">
@@ -11452,11 +11475,15 @@
                                     </section>
                                 </section>
 
-                                <section class="client-section-pane" data-client-pane="payment-plans">
-                                    <section class="detail-panel">
-                                        <div class="section-heading">
-                                            <p class="eyebrow">Payment plans</p>
-                                            <h4>Create and track commitments</h4>
+                                <section class="client-section-pane payment-plan-page" data-client-pane="payment-plans">
+                                    <section class="detail-panel payment-plan-builder-panel">
+                                        <div class="panel-heading">
+                                            <div>
+                                                <p class="eyebrow">Payment plans</p>
+                                                <h3>Create a payment plan</h3>
+                                                <p class="detail-meta">Select the invoices to include, choose the duration, then save the commitment against this client.</p>
+                                            </div>
+                                            <span class="status-badge" id="paymentPlanPageSummary">No active plans</span>
                                         </div>
                                         <form class="stack-form" id="paymentPlanForm">
                                             <div class="payment-plan-invoice-options" id="paymentPlanInvoiceOptions"></div>
@@ -11472,6 +11499,12 @@
                                             <textarea id="promiseNoteInput" rows="4" placeholder="Payment plan context"></textarea>
                                             <button class="primary-button" type="submit">Create payment plan</button>
                                         </form>
+                                    </section>
+                                    <section class="detail-panel payment-plan-history-panel">
+                                        <div class="section-heading">
+                                            <p class="eyebrow">Plan history</p>
+                                            <h4>Client payment commitments</h4>
+                                        </div>
                                         <div class="mini-timeline" id="paymentPlanTimeline"></div>
                                     </section>
                                 </section>
@@ -12293,7 +12326,7 @@
             const clientSections = new Set(["overview", "invoices", "payments", "notes", "payment-plans", "letters", "legal", "settings"]);
             const clientSectionNavGroups = {
                 overview: ["overview", "payments"],
-                invoices: ["invoices", "payment-plans"],
+                invoices: ["invoices"],
                 notes: ["notes", "settings"],
                 legal: ["letters", "legal"],
             };
@@ -16293,6 +16326,7 @@
 
                 renderClientInvoicePicker(invoices);
                 renderPaymentPlanInvoiceOptions(invoices);
+                renderPaymentPlanPageSummary(invoices);
                 renderPaymentsMade(client);
                 renderOutstandingTransactions(client, invoices);
                 ensureCustomerTransactions(client);
@@ -16301,7 +16335,7 @@
                 renderTimeline("statusTimeline", clientStatusItems(invoices), { eyebrow: "No status history", title: "Status changes will appear here", body: "Bulk updates will build the client credit-control history." });
                 renderClientNotesTable(client?.clientNotes || []);
                 renderTimeline("selectedInvoiceNotesList", selectedInvoice?.notes || [], { eyebrow: "No invoice notes", title: "Selected invoice notes will appear here", body: "Add invoice-level notes from this invoice workspace." });
-                renderTimeline("paymentPlanTimeline", selectedInvoice?.promises || [], { eyebrow: "No payment plans", title: "Payment commitments will appear here", body: "Record promised amounts, dates and context against this invoice." });
+                renderTimeline("paymentPlanTimeline", paymentPlanTimelineItems(invoices), { eyebrow: "No payment plans", title: "Payment commitments will appear here", body: "Record promised amounts, dates and context against this client." });
                 renderTimeline("attachmentTimeline", selectedInvoice?.attachments || [], { eyebrow: "No attachments", title: "Proof and correspondence will appear here", body: "Add attachment records for remittances, emails or supporting correspondence." });
                 renderTimeline("auditTrailTimeline", auditTrailItems(client, invoices), { eyebrow: "No audit activity", title: "Audit trail will appear here", body: "Sync, note, and status activity will be shown here for review." });
                 renderTimeline("activityTimeline", activityTimelineItems(client, invoices), { eyebrow: "No activity yet", title: "Account activity will appear here", body: "Notes, letters, payment promises, attachments and status changes will build the account timeline." });
@@ -24473,6 +24507,27 @@
                 return items
                     .sort((a, b) => dateSortValue(b.stamp) - dateSortValue(a.stamp))
                     .slice(0, 24);
+            }
+
+            function paymentPlanTimelineItems(invoices) {
+                return (invoices || [])
+                    .flatMap((invoice) => (invoice.promises || []).map((item) => ({
+                        title: `${invoice.invoiceNumber || "Invoice"} · ${item.title || "Payment plan"}`,
+                        body: item.body || "Payment commitment recorded.",
+                        stamp: item.stamp || item.createdAt || invoice.promisedDate || ""
+                    })))
+                    .sort((a, b) => dateSortValue(b.stamp) - dateSortValue(a.stamp))
+                    .slice(0, 24);
+            }
+
+            function renderPaymentPlanPageSummary(invoices) {
+                const target = document.getElementById("paymentPlanPageSummary");
+                if (!target) return;
+                const activePlanInvoices = (invoices || []).filter((invoice) => invoiceCategory(invoice) === "payment-plan");
+                const planValue = activePlanInvoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+                target.textContent = activePlanInvoices.length
+                    ? `${activePlanInvoices.length.toLocaleString("en-GB")} active · ${formatCurrency(planValue)}`
+                    : "No active plans";
             }
 
             function clientAttachmentTimelineItems(invoices) {
