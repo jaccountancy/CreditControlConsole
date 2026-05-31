@@ -9152,7 +9152,7 @@
                     <div class="app-sidebar-footer">
                         <button class="app-sidebar-connect" id="sidebarResyncButton" type="button">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg></span>
-                            <span class="app-nav-copy"><strong>Resync Data</strong></span>
+                            <span class="app-nav-copy"><strong>START</strong><span>Connect Xero</span></span>
                         </button>
                         <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
@@ -9324,8 +9324,8 @@
                             <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
                             <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload JUK Overview Report</button>
                         </div>
-                        <div class="header-xero-action" id="headerXeroAction" hidden>
-                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start" hidden>START</a>
+                        <div class="header-xero-action" id="headerXeroAction">
+                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">START</a>
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
                             <button class="topbar-contact-strip" id="topbarClientButton" type="button">
@@ -14071,6 +14071,10 @@
                         event.preventDefault();
                         event.stopPropagation();
                         closeClientActionMenu();
+                        if (syncAction.id === "sidebarResyncButton" && !isXeroConnected()) {
+                            handleSidebarConnectButton(event);
+                            return;
+                        }
                         if (syncAction.id === "syncRetryButton" && document.getElementById("syncInlineBanner")?.dataset.syncContext === "ignition") {
                             runIgnitionSync();
                             return;
@@ -23121,11 +23125,13 @@
                 }
                 const headerConnectButton = document.getElementById("headerConnectXeroButton");
                 const headerXeroAction = document.getElementById("headerXeroAction");
-                const hideHeaderConnectAction = true;
+                const showHeaderConnectAction = !hideConnectAction;
+                const hideHeaderConnectAction = !showHeaderConnectAction;
                 if (headerConnectButton) {
                     headerConnectButton.hidden = hideHeaderConnectAction;
                     headerConnectButton.textContent = "START";
                     headerConnectButton.href = loginURL();
+                    headerConnectButton.setAttribute("aria-disabled", String(hideHeaderConnectAction));
                 }
                 if (headerXeroAction) {
                     headerXeroAction.hidden = hideHeaderConnectAction;
@@ -23209,13 +23215,15 @@
                     sidebarResyncButton.disabled = isSyncing || syncBlockedByRateLimit;
                     const label = sidebarResyncButton.querySelector("strong");
                     const detail = sidebarResyncButton.querySelector(".app-sidebar-detail") || sidebarResyncButton.querySelector(".app-nav-copy > span");
-                    if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : "Resync Data";
-                    if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : "Refresh Xero";
+                    if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : connected ? "Resync Data" : "START";
+                    if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : connected ? "Refresh Xero" : "Connect Xero";
                     sidebarResyncButton.title = syncBlockedByRateLimit
                         ? rateLimitCopy
                         : isSyncing
                         ? "Please wait while Xero data is imported"
-                        : "Resume or refresh Xero data from the backend connection";
+                        : connected
+                        ? "Resume or refresh Xero data from the backend connection"
+                        : "Connect Xero to start importing invoices";
                 }
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget) {
@@ -26814,9 +26822,6 @@
                         window.alert("Unable to start the Xero login flow.");
                         return;
                     }
-                    if (event.currentTarget?.id === "headerConnectXeroButton") {
-                        dismissHeaderStartAction();
-                    }
                     console.info("Starting Xero login:", url);
                     showToast("Opening Xero connection", "info");
                     window.location.assign(url);
@@ -27161,7 +27166,15 @@
                 if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
                 const sidebarResyncButton = document.getElementById("sidebarResyncButton");
                 if (sidebarResyncButton && !sidebarResyncButton.onclick) {
-                    sidebarResyncButton.addEventListener("click", () => runXeroSync({ allowBackendConnectionCheck: true }));
+                    sidebarResyncButton.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (isXeroConnected()) {
+                            runXeroSync({ allowBackendConnectionCheck: true });
+                        } else {
+                            handleSidebarConnectButton(event);
+                        }
+                    });
                 }
                 const syncViewLogsButton = document.getElementById("syncViewLogsButton");
                 if (syncViewLogsButton && !syncViewLogsButton.onclick) syncViewLogsButton.addEventListener("click", openDeveloperLog);
