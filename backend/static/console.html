@@ -5656,13 +5656,16 @@
                 text-align: right;
             }
             .me-report-calculation-row.has-breakdown {
-                cursor: default;
+                cursor: pointer;
             }
             .me-report-calculation-row.has-breakdown:hover,
             .me-report-calculation-row.has-breakdown:focus {
+                background: rgba(233, 241, 255, 0.34);
+                outline: none;
+            }
+            .me-report-calculation-row.has-breakdown.is-expanded {
                 background: rgba(233, 241, 255, 0.6);
                 box-shadow: inset 3px 0 0 var(--blue);
-                outline: none;
             }
             .me-report-step-breakdown {
                 grid-column: 1 / -1;
@@ -5674,8 +5677,7 @@
                 background: rgba(255, 255, 255, 0.96);
                 box-shadow: 0 18px 38px rgba(23, 37, 84, 0.12);
             }
-            .me-report-calculation-row.has-breakdown:hover .me-report-step-breakdown,
-            .me-report-calculation-row.has-breakdown:focus .me-report-step-breakdown {
+            .me-report-calculation-row.has-breakdown.is-expanded .me-report-step-breakdown {
                 display: grid;
             }
             .me-report-step-breakdown-head,
@@ -5704,6 +5706,7 @@
                 pointer-events: none;
                 transition: opacity 0.16s ease, transform 0.16s ease;
             }
+            .me-report-calculation-row.is-expanded .me-report-breakdown-edit-button,
             .me-report-step-breakdown:hover .me-report-breakdown-edit-button,
             .me-report-calculation-row:focus-within .me-report-breakdown-edit-button {
                 opacity: 1;
@@ -9275,7 +9278,8 @@
             }
             .developer-log-panel[hidden] { display: none; }
             #bankAccountPanel,
-            #bankStatementUploadPanel {
+            #bankStatementUploadPanel,
+            #meReportLossPanel {
                 z-index: 260;
             }
             .developer-log-card {
@@ -9334,6 +9338,66 @@
             }
             .bank-statement-upload-body input[type="file"] {
                 padding: 12px;
+            }
+            .me-report-loss-card {
+                width: min(860px, 100%);
+            }
+            .me-report-loss-body {
+                display: grid;
+                gap: 18px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .me-report-loss-preview-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .me-report-loss-preview-grid article {
+                display: grid;
+                gap: 6px;
+                min-width: 0;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .me-report-loss-preview-grid span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .me-report-loss-preview-grid strong {
+                font-size: 1.08rem;
+                font-weight: 950;
+            }
+            .me-report-loss-preview-grid small {
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 800;
+            }
+            .me-report-loss-ct-comps {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 12px;
+                align-items: end;
+                padding: 14px;
+                border: 1px dashed rgba(29, 103, 242, 0.28);
+                border-radius: 16px;
+                background: rgba(233, 241, 255, 0.42);
+            }
+            .me-report-loss-evidence {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: #ffffff;
+                color: var(--muted);
+                font-size: 0.84rem;
+                font-weight: 750;
+                line-height: 1.45;
             }
             .bank-account-form-status {
                 padding: 12px 14px;
@@ -12105,6 +12169,39 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="meReportLossPanel" aria-modal="true" role="dialog" aria-labelledby="meReportLossTitle" hidden>
+                    <div class="developer-log-card me-report-loss-card">
+                        <form class="stack-form bank-account-dialog-form" id="meReportLossForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="meReportLossTitle">Brought forward trading loss</h3>
+                                    <p id="meReportLossSummary">Preview the corporation tax impact before saving the client loss figure.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeMeReportLossPanelButton" type="button">Close</button>
+                                    <button class="primary-button" id="saveMeReportLossButton" type="submit">Confirm changes</button>
+                                </div>
+                            </div>
+                            <div class="me-report-loss-body">
+                                <div class="me-report-loss-preview-grid" id="meReportLossPreviewGrid"></div>
+                                <label class="bank-account-field" for="meReportLossInput">
+                                    <span class="bank-field-label"><span>Trading loss carried forward</span><small>GBP</small></span>
+                                    <input id="meReportLossInput" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+                                    <span class="bank-field-error" id="meReportLossError"></span>
+                                </label>
+                                <div class="me-report-loss-ct-comps">
+                                    <label class="bank-account-field" for="meReportCtCompsInput">
+                                        <span class="bank-field-label"><span>Latest CT comps</span><small>PDF</small></span>
+                                        <input id="meReportCtCompsInput" type="file" accept="application/pdf,.pdf">
+                                    </label>
+                                    <button class="ghost-button" id="uploadMeReportCtCompsButton" type="button">Upload latest CT Comps</button>
+                                </div>
+                                <p class="me-report-loss-evidence" id="meReportLossEvidence">Upload the latest CT computation to let Jenius extract the trading loss carried forward, or enter the figure manually.</p>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="quickNotePanel" aria-modal="true" role="dialog" aria-labelledby="quickNoteTitle" hidden>
                     <div class="developer-log-card">
                         <form class="stack-form" id="quickNoteForm">
@@ -12589,6 +12686,9 @@
             let meReportUploadProcessing = false;
             let meReportEmailSending = false;
             let meReportBulkUploading = false;
+            let meReportLossDialogState = null;
+            let meReportCtCompsUploading = false;
+            let expandedMeReportCalculationKey = "";
             let activeMeReportSyncRunId = null;
             let latestMeReportSyncRun = null;
             let meReportSyncStartedAt = 0;
@@ -12878,6 +12978,7 @@
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
                         meReportClient: config.endpoints?.meReportClient || "/api/me-report/clients/:clientId",
                         meReportClientStatus: config.endpoints?.meReportClientStatus || "/api/me-report/clients/:clientId/status",
+                        meReportCtComps: config.endpoints?.meReportCtComps || "/api/me-report/clients/:clientId/ct-comps",
                         meReportBulkSubmissions: config.endpoints?.meReportBulkSubmissions || "/api/me-report/bulk-submissions",
                         meReportConnectXero: config.endpoints?.meReportConnectXero || "/api/me-report/clients/:clientId/connect-xero",
                         meReportSync: config.endpoints?.meReportSync || "/api/me-report/clients/:clientId/sync",
@@ -12963,6 +13064,7 @@
                     matchKey: record.matchKey || normalisePracticePackClientMatchName(clientName),
                     clientName,
                     manager,
+                    monthlyRevenue: Number(record.monthlyRevenue || record.mrr || record.monthlyFee || 0),
                     source: record.source || "BM Client File"
                 };
             }
@@ -23826,6 +23928,121 @@
                 };
             }
 
+            function meReportBaseSummaryForClient(client = {}) {
+                const selectedSubmission = (client.submissions || []).find((item) => item.id === selectedMeReportSubmissionId);
+                if (activeMeReportTab === "report-insights" && selectedSubmission?.calculation) return selectedSubmission.calculation;
+                return client.summary || {};
+            }
+
+            function meReportTaxableProfitBeforeLosses(summary = {}) {
+                const explicit = Number(summary.taxableProfitBeforeLosses);
+                if (Number.isFinite(explicit) && explicit > 0) return meReportMoneyValue(explicit);
+                const taxableAfter = Number(summary.estimatedTaxableProfit || 0);
+                const lossUsed = Number(summary.tradingLossReliefUsed || 0);
+                if (Number.isFinite(taxableAfter + lossUsed) && taxableAfter + lossUsed > 0) return meReportMoneyValue(taxableAfter + lossUsed);
+                return Math.max(0, meReportMoneyValue(Number(summary.accountingProfit || summary.yearToDateProfit || 0) + Number(summary.taxAdjustments || 0)));
+            }
+
+            function meReportUpdateTaxCalculationStepsForLoss(summary = {}, taxableBeforeLosses = 0, lossReliefUsed = 0, taxDetail = {}) {
+                const rows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
+                const lossAvailable = Number(summary.broughtForwardTradingLoss || 0);
+                const taxableAfterLosses = Math.max(0, meReportMoneyValue(taxableBeforeLosses - lossReliefUsed));
+                const lossStep = {
+                    label: "Brought-forward trading loss utilised",
+                    amount: -Math.abs(lossReliefUsed),
+                    treatment: "Deduct",
+                    source: "Stored client setting",
+                    breakdown: [
+                        { label: "Trading loss available", amount: lossAvailable, treatment: "Available", source: "Client setting / CT comps" },
+                        { label: "Relief used this period", amount: -Math.abs(lossReliefUsed), treatment: "Deduct", source: "Capped at taxable profit before losses" },
+                        { label: "Unused trading loss carried forward", amount: Math.max(0, meReportMoneyValue(lossAvailable - lossReliefUsed)), treatment: "Carry forward", source: "Calculated" }
+                    ]
+                };
+                const result = [];
+                let insertedLoss = false;
+                rows.forEach((row) => {
+                    const label = String(row.label || "").toLowerCase();
+                    if (label.includes("brought-forward trading loss")) {
+                        if (lossAvailable > 0) {
+                            result.push(lossStep);
+                            insertedLoss = true;
+                        }
+                        return;
+                    }
+                    if (label.includes("estimated taxable profit")) {
+                        if (!insertedLoss && lossAvailable > 0) {
+                            result.push(lossStep);
+                            insertedLoss = true;
+                        }
+                        result.push({
+                            ...row,
+                            amount: taxableAfterLosses,
+                            breakdown: [
+                                { label: "Taxable profit before losses", amount: taxableBeforeLosses, treatment: "Subtotal", source: "CT estimate" },
+                                ...(lossAvailable > 0 ? [{ label: "Brought-forward trading loss utilised", amount: -Math.abs(lossReliefUsed), treatment: "Deduct", source: "Stored client setting" }] : [])
+                            ]
+                        });
+                        return;
+                    }
+                    if (label.includes("corporation tax estimate")) {
+                        result.push({
+                            ...row,
+                            amount: taxDetail.tax || 0,
+                            treatment: taxDetail.rateBand || row.treatment || "Calculated",
+                            breakdown: (taxDetail.lines || []).map((line) => ({
+                                label: line.label || "CT line",
+                                amount: line.tax || 0,
+                                source: "GOV.UK Corporation Tax rates",
+                                treatment: `${line.rate || ""} on ${formatCurrency(line.amount || 0)}`
+                            }))
+                        });
+                        return;
+                    }
+                    if (label.includes("total ct") && label.includes("s455")) {
+                        result.push({ ...row, amount: meReportMoneyValue((taxDetail.tax || 0) + Number(summary.section455Tax || 0)) });
+                        return;
+                    }
+                    result.push(row);
+                });
+                if (!insertedLoss && lossAvailable > 0) {
+                    result.splice(Math.max(1, result.length - 2), 0, lossStep);
+                }
+                return result;
+            }
+
+            function meReportApplyBroughtForwardTradingLoss(summary = {}, client = {}, overrideLoss = null) {
+                const result = meReportClonePlain(summary);
+                const broughtForwardLoss = Math.max(0, meReportMoneyValue(overrideLoss ?? client.broughtForwardTradingLoss ?? result.broughtForwardTradingLoss ?? 0));
+                const taxableBeforeLosses = meReportTaxableProfitBeforeLosses(result);
+                const tradingLossReliefUsed = Math.min(broughtForwardLoss, taxableBeforeLosses);
+                const taxableAfterLosses = Math.max(0, meReportMoneyValue(taxableBeforeLosses - tradingLossReliefUsed));
+                const taxDetail = meReportCorporationTaxDetailFromProfit(taxableAfterLosses);
+                const estimatedCt = taxDetail.tax;
+                const currentYearProfit = meReportMoneyValue(result.yearToDateProfit || result.accountingProfit || 0);
+                const currentYearEarnings = meReportMoneyValue(currentYearProfit - estimatedCt);
+                const periodEndReserves = meReportMoneyValue(Number(result.openingRetainedReserves || 0) + currentYearEarnings - Number(result.dividendsTaken || 0));
+                const section455Tax = meReportMoneyValue(result.section455Tax || 0);
+                return {
+                    ...result,
+                    broughtForwardTradingLoss: broughtForwardLoss,
+                    broughtForwardTradingLossUpdatedAt: client.broughtForwardTradingLossUpdatedAt || result.broughtForwardTradingLossUpdatedAt || "",
+                    taxableProfitBeforeLosses,
+                    tradingLossReliefUsed,
+                    estimatedTaxableProfit: taxableAfterLosses,
+                    estimatedCorporationTax: estimatedCt,
+                    corporationTaxBreakdown: taxDetail,
+                    corporationTaxRateBand: taxDetail.rateBand,
+                    effectiveTaxRate: taxDetail.effectiveRate,
+                    taxProvisionRequired: estimatedCt,
+                    section455Tax,
+                    totalTaxExposure: meReportMoneyValue(estimatedCt + section455Tax),
+                    currentYearEarnings,
+                    periodEndDistributableReserves: periodEndReserves,
+                    dividendCapacity: Math.max(0, periodEndReserves),
+                    taxCalculationSteps: meReportUpdateTaxCalculationStepsForLoss({ ...result, broughtForwardTradingLoss: broughtForwardLoss }, taxableBeforeLosses, tradingLossReliefUsed, taxDetail)
+                };
+            }
+
             function meReportIsBaseTaxStep(row = {}) {
                 const label = String(row.label || "").toLowerCase();
                 return (
@@ -23961,7 +24178,8 @@
                 const overrides = meReportClientTaxOverrides(client);
                 summary.taxAdjustmentOverrides = overrides;
                 summary.taxAdjustmentOverrideClientId = client.id || "";
-                return meReportTaxOverridesHaveEntries(overrides) ? meReportApplyTaxAdjustmentOverrides(summary, client, overrides) : summary;
+                if (meReportTaxOverridesHaveEntries(overrides)) return meReportApplyTaxAdjustmentOverrides(summary, client, overrides);
+                return meReportApplyBroughtForwardTradingLoss(summary, client);
             }
 
             function meReportFallbackStepBreakdown(row = {}, title = "", allRows = [], summary = {}) {
@@ -24130,10 +24348,12 @@
                                 <span>Treatment</span>
                                 <span>Note</span>
                             </div>
-                            ${safeRows.map((row) => {
+                            ${safeRows.map((row, index) => {
                                 const breakdown = meReportCalculationBreakdown(row, title, safeRows, summary);
+                                const rowKey = `${title}:${index}:${row.label || ""}`;
+                                const expanded = breakdown.length && expandedMeReportCalculationKey === rowKey;
                                 return `
-                                    <div class="me-report-calculation-row${breakdown.length ? " has-breakdown" : ""}" role="row" ${breakdown.length ? "tabindex=\"0\"" : ""}>
+                                    <div class="me-report-calculation-row${breakdown.length ? " has-breakdown" : ""}${expanded ? " is-expanded" : ""}" role="row" ${breakdown.length ? `tabindex="0" data-me-calculation-row="${escapeHTML(rowKey)}"` : ""}>
                                         <span>${escapeHTML(row.label || "")}</span>
                                         <strong>${formatCurrency(row.amount || 0)}</strong>
                                         <em>${escapeHTML(row.treatment || "")}</em>
@@ -24583,7 +24803,7 @@
                             <tbody>
                                 ${fixedAssetRows.map((row) => `
                                     <tr>
-                                        <td>${escapeHTML(row.assetClass || "Fixed assets")}<br><small>${escapeHTML(row.source || "")}</small></td>
+                                        <td>${escapeHTML(row.assetClass || "Fixed assets")}</td>
                                         <td>${formatCurrency(row.balanceSheetClosingCost || 0)}</td>
                                         <td>${formatCurrency(row.assetRegisterClosingCost || 0)}</td>
                                         <td>${formatCurrency(row.difference || 0)}</td>
@@ -24974,6 +25194,22 @@
                 document.querySelectorAll("[data-me-report-loss]").forEach((button) => {
                     button.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
                 });
+                document.querySelectorAll("[data-me-calculation-row]").forEach((row) => {
+                    row.addEventListener("click", (event) => {
+                        if (event.target.closest?.("button, input, select, textarea, a")) return;
+                        if (event.target.closest?.(".me-report-step-breakdown")) return;
+                        const key = row.dataset.meCalculationRow || "";
+                        expandedMeReportCalculationKey = expandedMeReportCalculationKey === key ? "" : key;
+                        renderMeReportScreen();
+                    });
+                    row.addEventListener("keydown", (event) => {
+                        if (!["Enter", " "].includes(event.key)) return;
+                        event.preventDefault();
+                        const key = row.dataset.meCalculationRow || "";
+                        expandedMeReportCalculationKey = expandedMeReportCalculationKey === key ? "" : key;
+                        renderMeReportScreen();
+                    });
+                });
                 document.querySelectorAll("[data-me-tax-adjust]").forEach((button) => {
                     button.addEventListener("click", (event) => {
                         event.preventDefault();
@@ -25009,13 +25245,107 @@
                 }
             }
 
-            async function setMeReportBroughtForwardLoss(clientId = "") {
+            function setMeReportBroughtForwardLoss(clientId = "") {
                 const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
                 if (!client) return showToast("Select an ME Report client first", "error");
-                const currentValue = meReportBroughtForwardTradingLoss(client, client.summary || {});
-                const entered = window.prompt("Brought forward trading loss", currentValue ? String(currentValue) : "0");
-                if (entered === null) return;
-                const value = Number(String(entered).replace(/,/g, ""));
+                const baseSummary = meReportBaseSummaryForClient(client);
+                const currentValue = meReportBroughtForwardTradingLoss(client, baseSummary);
+                meReportLossDialogState = {
+                    clientId: client.id,
+                    value: currentValue,
+                    source: "",
+                    evidence: "",
+                    warnings: []
+                };
+                openMeReportLossPanel();
+            }
+
+            function openMeReportLossPanel() {
+                const panel = document.getElementById("meReportLossPanel");
+                if (!panel) return;
+                panel.hidden = false;
+                renderMeReportLossDialog();
+                window.setTimeout(() => document.getElementById("meReportLossInput")?.focus(), 0);
+            }
+
+            function closeMeReportLossPanel() {
+                const panel = document.getElementById("meReportLossPanel");
+                if (panel) panel.hidden = true;
+                meReportLossDialogState = null;
+                const fileInput = document.getElementById("meReportCtCompsInput");
+                if (fileInput) fileInput.value = "";
+            }
+
+            function meReportLossDialogClient() {
+                return (meReportData.clients || []).find((item) => item.id === meReportLossDialogState?.clientId) || selectedMeReportClient();
+            }
+
+            function meReportLossDialogPreview() {
+                const client = meReportLossDialogClient();
+                const baseSummary = meReportBaseSummaryForClient(client || {});
+                const currentSummary = meReportAdjustedSummary(client || {}, baseSummary);
+                const nextSummary = meReportApplyBroughtForwardTradingLoss(currentSummary, client || {}, meReportLossDialogState?.value || 0);
+                return { client, currentSummary, nextSummary };
+            }
+
+            function renderMeReportLossDialog() {
+                const state = meReportLossDialogState;
+                const panel = document.getElementById("meReportLossPanel");
+                if (!panel || !state) return;
+                const { client, currentSummary, nextSummary } = meReportLossDialogPreview();
+                const input = document.getElementById("meReportLossInput");
+                const title = document.getElementById("meReportLossTitle");
+                const summary = document.getElementById("meReportLossSummary");
+                const grid = document.getElementById("meReportLossPreviewGrid");
+                const evidence = document.getElementById("meReportLossEvidence");
+                const saveButton = document.getElementById("saveMeReportLossButton");
+                const uploadButton = document.getElementById("uploadMeReportCtCompsButton");
+                const error = document.getElementById("meReportLossError");
+                if (title) title.textContent = `Brought forward trading loss${client?.clientName ? ` · ${client.clientName}` : ""}`;
+                if (summary) summary.textContent = "Enter or extract the loss figure and review the corporation tax impact before saving.";
+                if (input && document.activeElement !== input) input.value = String(state.value || 0);
+                if (grid) {
+                    const ctMovement = Number(nextSummary.estimatedCorporationTax || 0) - Number(currentSummary.estimatedCorporationTax || 0);
+                    grid.innerHTML = `
+                        <article><span>Current taxable profit</span><strong>${formatCurrency(currentSummary.estimatedTaxableProfit || 0)}</strong><small>Before this change</small></article>
+                        <article><span>Current CT estimate</span><strong>${formatCurrency(currentSummary.estimatedCorporationTax || 0)}</strong><small>${escapeHTML(currentSummary.corporationTaxRateBand || "Calculated")}</small></article>
+                        <article><span>Revised taxable profit</span><strong>${formatCurrency(nextSummary.estimatedTaxableProfit || 0)}</strong><small>Loss relief used ${formatCurrency(nextSummary.tradingLossReliefUsed || 0)}</small></article>
+                        <article><span>Revised CT estimate</span><strong>${formatCurrency(nextSummary.estimatedCorporationTax || 0)}</strong><small>${ctMovement === 0 ? "No CT movement" : `${ctMovement > 0 ? "+" : ""}${formatCurrency(ctMovement)} movement`}</small></article>
+                    `;
+                }
+                if (evidence) {
+                    const warnings = Array.isArray(state.warnings) && state.warnings.length ? ` Warnings: ${state.warnings.join(" ")}` : "";
+                    evidence.textContent = state.evidence
+                        ? `${state.source || "CT comps"}: ${state.evidence}${warnings}`
+                        : "Upload the latest CT computation to let Jenius extract the trading loss carried forward, or enter the figure manually.";
+                }
+                if (error) error.textContent = "";
+                if (saveButton) saveButton.disabled = meReportCtCompsUploading;
+                if (uploadButton) {
+                    uploadButton.disabled = meReportCtCompsUploading;
+                    uploadButton.textContent = meReportCtCompsUploading ? "Analysing CT comps..." : "Upload latest CT Comps";
+                }
+            }
+
+            function syncMeReportLossInput() {
+                if (!meReportLossDialogState) return;
+                const input = document.getElementById("meReportLossInput");
+                const error = document.getElementById("meReportLossError");
+                const value = Number(String(input?.value || "0").replace(/,/g, ""));
+                if (!Number.isFinite(value) || value < 0) {
+                    if (error) error.textContent = "Enter a valid non-negative trading loss.";
+                    return;
+                }
+                meReportLossDialogState.value = value;
+                renderMeReportLossDialog();
+            }
+
+            async function saveMeReportBroughtForwardLoss(event) {
+                event.preventDefault();
+                if (!meReportLossDialogState) return;
+                const client = meReportLossDialogClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const value = Number(String(document.getElementById("meReportLossInput")?.value || "0").replace(/,/g, ""));
                 if (!Number.isFinite(value) || value < 0) return showToast("Enter a valid non-negative trading loss", "error");
                 try {
                     const response = await requestJSON(api.endpoints.meReportClient, {
@@ -25024,11 +25354,56 @@
                     }, { clientId: client.id });
                     meReportData = normaliseMeReportPayload(response);
                     selectedMeReportClientId = client.id;
+                    closeMeReportLossPanel();
                     showToast("Brought forward trading loss saved", "success");
                     renderMeReportScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save brought forward trading loss", "error");
+                }
+            }
+
+            async function uploadMeReportCtComps() {
+                const client = meReportLossDialogClient();
+                const file = document.getElementById("meReportCtCompsInput")?.files?.[0];
+                if (!client) return showToast("Select an ME Report client first", "error");
+                if (!file) return showToast("Choose a CT computation PDF first", "error");
+                const formData = new FormData();
+                formData.append("file", file);
+                meReportCtCompsUploading = true;
+                renderMeReportLossDialog();
+                try {
+                    const response = await fetch(endpointURL(api.endpoints.meReportCtComps, { clientId: client.id }), {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() },
+                        body: formData
+                    });
+                    const payload = await response.json().catch(() => null);
+                    if (response.status === 401 || response.status === 403) {
+                        throw new AuthRequiredError(payload?.detail || "Your session has expired. Sign in again before uploading CT comps.");
+                    }
+                    if (!response.ok) {
+                        const detail = payload?.detail || payload?.message || "Unable to analyse CT comps";
+                        throw new APIRequestError(detail, { statusCode: response.status, details: payload });
+                    }
+                    const extracted = payload?.ctComps || {};
+                    const value = Math.max(0, Number(extracted.tradingLossCarriedForward || 0));
+                    meReportLossDialogState = {
+                        ...(meReportLossDialogState || { clientId: client.id }),
+                        clientId: client.id,
+                        value,
+                        source: [extracted.sourceLabel || "CT computation", extracted.confidence ? `${extracted.confidence}% confidence` : ""].filter(Boolean).join(" · "),
+                        evidence: extracted.evidence || `Extracted from ${extracted.filename || file.name}`,
+                        warnings: Array.isArray(extracted.warnings) ? extracted.warnings : []
+                    };
+                    showToast("Trading loss extracted from CT comps", "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to analyse CT comps", "error");
+                } finally {
+                    meReportCtCompsUploading = false;
+                    renderMeReportLossDialog();
                 }
             }
 
@@ -27980,6 +28355,8 @@
                         clientCount: Number(result.clientCount || 0),
                         taskCount: Number(result.taskCount || 0),
                         serviceCount: Number(result.serviceCount || 0),
+                        totalMrr: Number(result.totalMrr || 0),
+                        serviceSummaries: Array.isArray(result.serviceSummaries) ? result.serviceSummaries : [],
                         unmatchedTaskCount: Number(result.unmatchedTaskCount || 0)
                     };
                     practicePackAssignments = {
@@ -28029,6 +28406,7 @@
                     { label: "Clients", value: formatInteger(practicePackResult?.clientCount || 0) },
                     { label: "Tasks", value: formatInteger(practicePackResult?.taskCount || 0) },
                     { label: "Service groups", value: formatInteger(practicePackResult?.serviceCount || 0) },
+                    { label: "Total MRR", value: formatCurrency(practicePackResult?.totalMrr || 0) },
                     { label: "Staff packs", value: formatInteger(practicePackResult?.staffPackCount || 0) },
                     { label: "Manager assignments", value: formatInteger(practicePackAssignmentRows().length) },
                     { label: "Month", value: month }
@@ -28076,7 +28454,8 @@
                             : practicePackResult.grouping?.engine === "openai_partial"
                                 ? " using Jenius AI with local fallback"
                                 : " using local service grouping";
-                        summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} PDF file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${grouping}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
+                        const totalMrr = Number(practicePackResult.totalMrr || 0);
+                        summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} PDF file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${grouping}${totalMrr ? `, total MRR ${formatCurrency(totalMrr)}` : ""}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
                     } else {
                         summary.textContent = "Awaiting BM Client File CSV and BM Task File CSV.";
                     }
@@ -28092,11 +28471,21 @@
                     outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>';
                     return;
                 }
+                const serviceRows = Array.isArray(practicePackResult.serviceSummaries) ? practicePackResult.serviceSummaries : [];
                 outputList.innerHTML = `
                     <div class="practice-pack-output-row">
-                        <div><span>ZIP ready</span><strong>${escapeHTML(practicePackResult.filename)}</strong><small>${formatBytes(practicePackResult.zipBlob?.size || 0)} generated ${new Date(practicePackResult.generatedAt).toLocaleString("en-GB")}</small></div>
+                        <div><span>ZIP ready</span><strong>${escapeHTML(practicePackResult.filename)}</strong><small>${formatBytes(practicePackResult.zipBlob?.size || 0)} generated ${new Date(practicePackResult.generatedAt).toLocaleString("en-GB")} · total MRR ${formatCurrency(practicePackResult.totalMrr || 0)}</small></div>
                         <button class="primary-button" id="practicePackDownloadZipButton" type="button">Download</button>
                     </div>
+                    ${serviceRows.length ? `
+                        <div class="practice-pack-output-row">
+                            <div>
+                                <span>AI reviewed service groups</span>
+                                <strong>${serviceRows.length.toLocaleString("en-GB")} grouped service section${serviceRows.length === 1 ? "" : "s"}</strong>
+                                <small>${serviceRows.map((row) => `${row.serviceName || "Other"}: ${Number(row.taskCount || 0).toLocaleString("en-GB")} tasks${Number(row.mrr || 0) ? ` · ${formatCurrency(row.mrr)} MRR` : ""}`).join(" · ")}</small>
+                            </div>
+                        </div>
+                    ` : ""}
                     ${practicePackResult.files.map((file) => `
                         <div class="practice-pack-output-row">
                             <div><span>${escapeHTML(file.contentType === "application/pdf" ? "PDF file" : "File")}</span><strong>${escapeHTML(file.name)}</strong><small>${formatBytes(Number(file.byteSize || 0))}</small></div>
@@ -30728,6 +31117,13 @@
                 if (meReportEmailSettingsForm) meReportEmailSettingsForm.addEventListener("submit", saveMeReportEmailSettings);
                 const reloadMeReportEmailSettingsButton = document.getElementById("reloadMeReportEmailSettingsButton");
                 if (reloadMeReportEmailSettingsButton) reloadMeReportEmailSettingsButton.addEventListener("click", () => loadMeReport(true));
+                document.getElementById("meReportLossForm")?.addEventListener("submit", saveMeReportBroughtForwardLoss);
+                document.getElementById("meReportLossInput")?.addEventListener("input", syncMeReportLossInput);
+                document.getElementById("uploadMeReportCtCompsButton")?.addEventListener("click", uploadMeReportCtComps);
+                document.getElementById("closeMeReportLossPanelButton")?.addEventListener("click", closeMeReportLossPanel);
+                document.getElementById("meReportLossPanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "meReportLossPanel") closeMeReportLossPanel();
+                });
                 const reloadGmailConnectionButton = document.getElementById("reloadGmailConnectionButton");
                 if (reloadGmailConnectionButton) reloadGmailConnectionButton.addEventListener("click", () => loadMeReport(true));
                 const connectGmailButton = document.getElementById("connectGmailButton");

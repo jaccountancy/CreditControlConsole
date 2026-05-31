@@ -52,6 +52,7 @@ from .services import (
     delete_bank_statement_upload,
     delete_me_report_client,
     delete_me_report_submission,
+    extract_me_report_ct_comps_loss,
     factory_reset_console,
     get_xero_connection_for_user,
     get_operation_run,
@@ -1185,6 +1186,24 @@ async def api_create_me_report_client(request: Request, user: dict = Depends(req
 async def api_update_me_report_client(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "meReport": update_me_report_client(user, client_id, payload)}
+
+
+@app.post("/api/me-report/clients/{client_id}/ct-comps")
+async def api_extract_me_report_ct_comps(
+    client_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    return {
+        "status": "ok",
+        "ctComps": await extract_me_report_ct_comps_loss(
+            user,
+            client_id,
+            file.filename or "ct-computation.pdf",
+            file.content_type or "application/pdf",
+            await file.read(),
+        ),
+    }
 
 
 @app.post("/api/me-report/clients/{client_id}/status")

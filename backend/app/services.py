@@ -7360,6 +7360,95 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
 }
 
 
+ME_REPORT_CT_COMPS_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "tradingLossCarriedForward",
+        "confidence",
+        "periodEnd",
+        "sourceLabel",
+        "evidence",
+        "warnings",
+    ],
+    "properties": {
+        "tradingLossCarriedForward": {"type": "number"},
+        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        "periodEnd": {"type": ["string", "null"]},
+        "sourceLabel": {"type": "string"},
+        "evidence": {"type": "string"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
+    },
+}
+
+
+async def extract_me_report_ct_comps_loss(user: dict, client_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+    client = _me_report_client_row(user, client_id)
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading CT comps.")
+    if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload the CT computation as a PDF.")
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
+
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+    prompt = (
+        "Review this Corporation Tax computation PDF and extract the trading loss carried forward or trading losses "
+        "available to carry forward for future periods. Prefer the final tax computation / losses memorandum figure, "
+        "not the current year loss before relief, group relief, capital losses, or non-trading loan relationship deficits. "
+        "If there are multiple loss pools, return the ordinary trading loss carried forward for the company. Return 0 "
+        "only if the document clearly states no trading loss is carried forward. Include a short evidence quote or line "
+        f"reference and any warnings. The client workspace is {client.get('client_name') or 'unknown'}."
+    )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_file",
+                        "filename": filename,
+                        "file_data": f"data:application/pdf;base64,{encoded}",
+                    },
+                    {"type": "input_text", "text": prompt},
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "me_report_ct_comps_loss_extraction",
+                "schema": ME_REPORT_CT_COMPS_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 2500,
+    }
+    text = _extract_response_text(await _post_openai_responses(request_body, "CT comps trading loss extraction"))
+    try:
+        extracted = json.loads(text) if text else {}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned CT comps extraction that was not valid JSON.") from exc
+    result = {
+        "filename": filename,
+        "tradingLossCarriedForward": float(_money(extracted.get("tradingLossCarriedForward"))),
+        "confidence": max(0, min(100, int(extracted.get("confidence") or 0))),
+        "periodEnd": str(extracted.get("periodEnd") or ""),
+        "sourceLabel": str(extracted.get("sourceLabel") or "CT computation"),
+        "evidence": str(extracted.get("evidence") or ""),
+        "warnings": [str(item).strip() for item in extracted.get("warnings") or [] if str(item).strip()][:8],
+    }
+    record_audit_event(
+        "me_report_client",
+        client_id,
+        "me_report.ct_comps_loss_extracted",
+        {"filename": filename, "trading_loss_carried_forward": result["tradingLossCarriedForward"], "confidence": result["confidence"]},
+        user["id"],
+    )
+    return result
+
+
 async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict) -> dict:
     settings = get_settings()
     if not settings.openai_api_key:
@@ -14649,6 +14738,13 @@ def _practice_pack_column_value(row: dict, candidates: list[str]) -> str:
     return str((row or {}).get(match) or "").strip() if match else ""
 
 
+def _practice_pack_money_value(row: dict, candidates: list[str]) -> Decimal:
+    value = _practice_pack_column_value(row, candidates)
+    if not value:
+        return Decimal("0.00")
+    return _money_from_report_cell(value)
+
+
 def _practice_pack_file_name_part(value: str | None) -> str:
     text = re.sub(r"[^a-z0-9]+", "-", str(value or "pack").lower()).strip("-")
     return text[:80] or "pack"
@@ -15306,6 +15402,19 @@ async def practice_pack_payload(
     due_columns = ["Due Date", "Deadline", "Date Due", "Target Date"]
     task_columns = ["Task", "Task Name", "Name", "Title", "Description", "Work Item"]
     service_columns = ["Service", "Service Name", "ServiceName", "Service Type", "Task Type", "Work Type", "Job", "Job Name", "Category", "Workflow"]
+    client_mrr_columns = [
+        "MRR",
+        "Monthly Revenue",
+        "Monthly Fee",
+        "Monthly Recurring Revenue",
+        "Recurring Revenue",
+        "Client MRR",
+        "Current MRR",
+        "Current Monthly",
+        "Current Monthly Fee",
+        "Fixed Fee",
+        "Fee",
+    ]
 
     client_index: dict[str, dict] = {}
     client_match_index: dict[str, dict] = {}
@@ -15314,6 +15423,7 @@ async def practice_pack_payload(
         name = _practice_pack_column_value(row, client_name_columns) or f"Client {index + 1}"
         manager = _practice_pack_column_value(row, client_manager_columns) or "Unassigned"
         entity_type = _practice_pack_column_value(row, client_entity_columns)
+        monthly_revenue = _practice_pack_money_value(row, client_mrr_columns)
         key = _practice_pack_normalise_header(name) or f"client{index + 1}"
         match_key = _practice_pack_client_match_key(name) or key
         record = {
@@ -15323,6 +15433,7 @@ async def practice_pack_payload(
             "manager": manager,
             "entityType": entity_type,
             "isLimitedCompany": _practice_pack_limited_company(name, entity_type),
+            "monthlyRevenue": monthly_revenue,
             "row": row,
         }
         client_index.setdefault(key, record)
@@ -15334,6 +15445,7 @@ async def practice_pack_payload(
             "openCount": 0,
             "completedCount": 0,
             "overdueCount": 0,
+            "monthlyRevenue": monthly_revenue,
             "owners": set([manager] if manager and manager != "Unassigned" else []),
             "source": "BM Client File",
         })
@@ -15366,6 +15478,7 @@ async def practice_pack_payload(
             "dueDate": due_date or "",
             "matchedClient": matched_client.get("name") if matched_client else "",
             "matchedClientKey": matched_client.get("key") if matched_client else "",
+            "monthlyRevenue": _money(matched_client.get("monthlyRevenue")) if matched_client else Decimal("0.00"),
             "sourceRow": index + 2,
         })
 
@@ -15373,6 +15486,7 @@ async def practice_pack_payload(
     staff_tasks: dict[str, list[dict]] = defaultdict(list)
     all_tasks = []
     service_stats: dict[str, dict] = {}
+    total_mrr = sum(_money(client.get("monthlyRevenue")) for client in client_index.values())
     for index, task in enumerate(prepared_tasks):
         service_name = _practice_pack_allowed_service_name(
             service_mapping.get(task["rawServiceName"]) or _practice_pack_local_service_name(task["rawServiceName"])
@@ -15389,6 +15503,7 @@ async def practice_pack_payload(
                 "openCount": 0,
                 "completedCount": 0,
                 "overdueCount": 0,
+                "monthlyRevenue": Decimal("0.00"),
                 "owners": set(),
                 "source": "BM Task File",
             }
@@ -15406,6 +15521,7 @@ async def practice_pack_payload(
             "overdueCount": 0,
             "owners": set(),
             "clients": set(),
+            "clientKeys": set(),
             "rawNames": set(),
         })
         service["taskCount"] += 1
@@ -15414,6 +15530,8 @@ async def practice_pack_payload(
         service["overdueCount"] += 1 if overdue else 0
         service["owners"].add(task["owner"])
         service["clients"].add(task["clientName"])
+        if task["matchedClientKey"]:
+            service["clientKeys"].add(task["matchedClientKey"])
         service["rawNames"].add(task["rawServiceName"])
 
         staff_tasks[task["owner"]].append(task)
@@ -15432,6 +15550,7 @@ async def practice_pack_payload(
         ("Clients", f"{len(client_data['rows']):,}"),
         ("Tasks", f"{len(task_data['rows']):,}"),
         ("Service groups", f"{len(service_stats):,}"),
+        ("Total MRR", f"£{_money(total_mrr):,.2f}"),
         ("Staff packs", f"{len(staff_tasks):,}"),
         ("Grouping", grouping_label),
     ]
@@ -15502,6 +15621,7 @@ async def practice_pack_payload(
             "matchKey": client["matchKey"],
             "clientName": client["name"],
             "manager": client["manager"] or "Unassigned",
+            "monthlyRevenue": float(_money(client.get("monthlyRevenue"))),
             "source": "BM Client File",
         }
         for client in client_index.values()
@@ -15542,6 +15662,7 @@ async def practice_pack_payload(
         "clientCount": len(client_data["rows"]),
         "taskCount": len(task_data["rows"]),
         "serviceCount": len(service_stats),
+        "totalMrr": float(_money(total_mrr)),
         "unmatchedTaskCount": sum(1 for task in all_tasks if not task["matchedClient"]),
         "grouping": grouping_meta,
         "serviceSummaries": [
@@ -15553,6 +15674,10 @@ async def practice_pack_payload(
                 "overdueCount": stats["overdueCount"],
                 "ownerCount": len(stats["owners"]),
                 "clientCount": len(stats["clients"]),
+                "mrr": float(_money(sum(
+                    _money(client_index.get(client_key, {}).get("monthlyRevenue"))
+                    for client_key in stats["clientKeys"]
+                ))),
                 "rawServiceNames": sorted(stats["rawNames"]),
             }
             for service_name, stats in sorted(service_stats.items(), key=lambda item: _practice_pack_service_sort_key(item[0]))
