@@ -6976,6 +6976,9 @@
                 border-collapse: collapse;
                 table-layout: fixed;
             }
+            .bank-transaction-table {
+                min-width: 1320px;
+            }
             .bank-upload-history-table tr.is-failed-upload {
                 background: rgba(255, 231, 231, 0.28);
             }
@@ -7024,6 +7027,10 @@
                 white-space: nowrap;
                 text-align: right;
                 font-weight: 850;
+            }
+            .bank-transaction-table th:nth-child(6),
+            .bank-transaction-table td:nth-child(6) {
+                width: 330px;
             }
             .bank-transaction-table strong,
             .bank-upload-history-table strong {
@@ -7167,6 +7174,87 @@
                 background: var(--blue);
                 color: #fff;
                 outline: none;
+            }
+            .bank-xero-suggestion {
+                display: grid;
+                grid-template-columns: 32px minmax(0, 1fr);
+                align-items: start;
+                gap: 9px;
+                min-width: 0;
+            }
+            .bank-xero-ai-mark {
+                width: 32px;
+                height: 32px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 12px;
+                color: #fff;
+                background: linear-gradient(135deg, var(--blue), var(--green));
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.18);
+                font-size: 0.64rem;
+                font-weight: 950;
+                letter-spacing: 0.03em;
+            }
+            .bank-xero-suggestion-copy {
+                min-width: 0;
+                display: grid;
+                gap: 3px;
+            }
+            .bank-xero-suggestion-code {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                min-width: 0;
+                color: var(--ink);
+                font-weight: 950;
+                line-height: 1.18;
+            }
+            .bank-xero-suggestion-code span {
+                flex: 0 0 auto;
+                padding: 2px 7px;
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                font-size: 0.76rem;
+                font-weight: 950;
+            }
+            .bank-xero-suggestion-code em {
+                font-style: normal;
+            }
+            .bank-xero-suggestion-name {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .bank-xero-suggestion-meta {
+                display: flex !important;
+                flex-wrap: wrap;
+                gap: 6px;
+                align-items: center;
+            }
+            .bank-xero-tag {
+                display: inline-flex;
+                align-items: center;
+                min-height: 22px;
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: rgba(232, 248, 238, 0.92);
+                color: #21834b;
+                font-size: 0.7rem;
+                font-weight: 950;
+            }
+            .bank-xero-confidence {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+            }
+            .bank-xero-reason {
+                color: #6d7d96 !important;
+                line-height: 1.3;
+                display: -webkit-box !important;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
             }
             .bank-upload-failure-advice {
                 margin-top: 7px;
@@ -12342,6 +12430,47 @@
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
+            const bankStatementChartOfAccountsFallback = [
+                { code: "200", name: "Sales", type: "Revenue", taxType: "20% (VAT on Income)" },
+                { code: "260", name: "Other Revenue", type: "Revenue", taxType: "20% (VAT on Income)" },
+                { code: "270", name: "Interest Income", type: "Revenue", taxType: "No VAT" },
+                { code: "300", name: "Purchases", type: "Direct Costs", taxType: "20% (VAT on Expenses)" },
+                { code: "400", name: "Advertising & Marketing", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "401", name: "Audit & Accountancy fees", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "404", name: "Bank Fees", type: "Overhead", taxType: "No VAT" },
+                { code: "408", name: "Cleaning", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "412", name: "Consulting", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "420", name: "Entertainment-100% business", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "425", name: "Postage, Freight & Courier", type: "Overhead", taxType: "Exempt Expenses" },
+                { code: "429", name: "General Expenses", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "433", name: "Insurance", type: "Overhead", taxType: "Exempt Expenses" },
+                { code: "437", name: "Interest Paid", type: "Overhead", taxType: "No VAT" },
+                { code: "441", name: "Legal Expenses", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "445", name: "Light, Power, Heating", type: "Overhead", taxType: "5% (VAT on Expenses)" },
+                { code: "449", name: "Motor Vehicle Expenses", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "461", name: "Printing & Stationery", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "463", name: "IT Software and Consumables", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "465", name: "Rates", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "469", name: "Rent", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "473", name: "Repairs & Maintenance", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "477", name: "Salaries", type: "Overhead", taxType: "No VAT" },
+                { code: "480", name: "Staff Training", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "485", name: "Subscriptions", type: "Overhead", taxType: "Exempt Expenses" },
+                { code: "489", name: "Telephone & Internet", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "493", name: "Travel - National", type: "Overhead", taxType: "20% (VAT on Expenses)" },
+                { code: "494", name: "Travel - International", type: "Overhead", taxType: "No VAT" },
+                { code: "500", name: "Corporation Tax", type: "Overhead", taxType: "No VAT" },
+                { code: "610", name: "Accounts Receivable", type: "Accounts Receivable", taxType: "No VAT" },
+                { code: "800", name: "Accounts Payable", type: "Accounts Payable", taxType: "No VAT" },
+                { code: "820", name: "VAT", type: "VAT", taxType: "No VAT" },
+                { code: "825", name: "PAYE Payable", type: "Current Liability", taxType: "No VAT" },
+                { code: "835", name: "Directors' Loan Account", type: "Current Liability", taxType: "No VAT" },
+                { code: "850", name: "Suspense", type: "Current Liability", taxType: "No VAT" },
+                { code: "877", name: "Tracking Transfers", type: "Tracking", taxType: "No VAT" },
+                { code: "900", name: "Loan", type: "Non-current Liability", taxType: "No VAT" },
+                { code: "970", name: "Owner A Funds Introduced", type: "Equity", taxType: "No VAT" },
+                { code: "980", name: "Owner A Drawings", type: "Equity", taxType: "No VAT" }
+            ];
             let postingSettingsSaving = false;
             let postingSettingsError = "";
             let activeAllocationSource = null;
@@ -19374,6 +19503,25 @@
                 renderAll();
                 scrollConsoleToTop();
                 loadBankStatements();
+                ensureXeroAccountsForBankSuggestions();
+            }
+
+            async function ensureXeroAccountsForBankSuggestions() {
+                if (!isXeroConnected() || xeroAccountsLoading || xeroAccountsLoaded) return;
+                xeroAccountsLoading = true;
+                try {
+                    const payload = await requestJSON(api.endpoints.xeroAccounts);
+                    xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || payload?.accounts || []);
+                    state.postingSettings = normalisePostingSettings(payload?.postingSettings || state.postingSettings);
+                    xeroAccountsLoaded = true;
+                    if (activeView === "bank-statements") renderBankStatementsScreen();
+                } catch (error) {
+                    console.warn("Unable to load Xero chart for bank statement AI suggestions", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                } finally {
+                    xeroAccountsLoading = false;
+                    if (activeView === "settings") renderPostingSettings();
+                }
             }
 
             function openBankAccountForm(account = null) {
@@ -19831,6 +19979,285 @@
                 return "Jenius check: balances reconcile with the surrounding extracted rows.";
             }
 
+            function bankStatementSuggestionAccounts() {
+                const accountsByCode = new Map();
+                bankStatementChartOfAccountsFallback.forEach((account) => {
+                    if (account.code) accountsByCode.set(String(account.code), { ...account, source: "asset" });
+                });
+                (xeroAccounts || []).forEach((account) => {
+                    if (account.code) accountsByCode.set(String(account.code), { ...account, source: "xero" });
+                });
+                return [...accountsByCode.values()];
+            }
+
+            function bankStatementFindSuggestedAccount(codes = [], nameNeedles = []) {
+                const accounts = bankStatementSuggestionAccounts();
+                for (const code of codes) {
+                    const account = accounts.find((item) => String(item.code || "") === String(code || ""));
+                    if (account) return account;
+                }
+                const needles = nameNeedles.map((item) => String(item || "").toLowerCase()).filter(Boolean);
+                for (const needle of needles) {
+                    const account = accounts.find((item) => String(item.name || "").toLowerCase().includes(needle));
+                    if (account) return account;
+                }
+                return null;
+            }
+
+            function bankStatementSuggestionText(transaction) {
+                return [
+                    transaction?.description,
+                    transaction?.type
+                ].map((part) => String(part || "").toLowerCase()).join(" ");
+            }
+
+            function bankStatementBuildSuggestion(transaction, options) {
+                const account = bankStatementFindSuggestedAccount(options.codes || [], options.names || []);
+                const fallbackCode = String(options.codes?.[0] || "");
+                return {
+                    code: account?.code || fallbackCode,
+                    name: account?.name || options.fallbackName || "Review account code",
+                    type: account?.type || "",
+                    taxType: account?.taxType || "",
+                    tag: options.tag || "Review",
+                    confidence: Math.min(99, Math.max(1, Number(options.confidence || 50))),
+                    reason: options.reason || "Suggested from transaction wording and signed amount.",
+                    source: account?.source === "xero" ? "Xero chart" : "asset chart"
+                };
+            }
+
+            function bankStatementSuggestedXeroMapping(transaction) {
+                const text = bankStatementSuggestionText(transaction);
+                const amount = bankTransactionAmount(transaction);
+                const isMoneyIn = amount > 0;
+                const has = (pattern) => pattern.test(text);
+                if (has(/\b(mcdonald|mcdonalds|greggs|starbucks|costa|pret|subway|kfc|burger king|nando|restaurant|cafe|coffee|deliveroo|just eat|uber eats|ubereats|meal|lunch|food)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["493"],
+                        names: ["travel - national", "travel"],
+                        fallbackName: "Travel - National",
+                        tag: "Food & drink",
+                        confidence: 86,
+                        reason: "Food or drink merchant detected; posted to Travel - National where it is business travel or subsistence."
+                    });
+                }
+                if (has(/\b(trainline|rail|taxi|uber|bolt|parking|tfl|transport|hotel|airline|flight|fuel|shell|bp|esso|petrol)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["493", "449"],
+                        names: ["travel - national", "motor vehicle"],
+                        fallbackName: "Travel - National",
+                        tag: "Travel",
+                        confidence: 84,
+                        reason: "Travel, parking, fuel, or accommodation wording found in the bank narrative."
+                    });
+                }
+                if (isMoneyIn && has(/\b(stripe|ignitionpay|payer|direct credit from|payment from|receipt|paid in|customer)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["200"],
+                        names: ["sales"],
+                        fallbackName: "Sales",
+                        tag: "Income receipt",
+                        confidence: 82,
+                        reason: "Money-in transaction looks like customer or payment processor income."
+                    });
+                }
+                if (isMoneyIn && has(/\b(interest|gross interest)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["270"],
+                        names: ["interest income"],
+                        fallbackName: "Interest Income",
+                        tag: "Interest",
+                        confidence: 82,
+                        reason: "Money-in transaction describes interest received."
+                    });
+                }
+                if (has(/\b(bank fee|bank charge|charges?|monthly account fee|service fee)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["404"],
+                        names: ["bank fees"],
+                        fallbackName: "Bank Fees",
+                        tag: "Bank fees",
+                        confidence: 88,
+                        reason: "Bank charge or fee wording detected."
+                    });
+                }
+                if (has(/\b(dext|xero|software|microsoft|adobe|openai|chatgpt|zoom|slack|dropbox|canva|notion|github|google workspace|aws|amazon web services|hosting)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["463"],
+                        names: ["it software", "software"],
+                        fallbackName: "IT Software and Consumables",
+                        tag: "Software",
+                        confidence: 87,
+                        reason: "Software, cloud tooling, or subscription technology supplier detected."
+                    });
+                }
+                if (has(/\b(vodafone|o2|ee|three|bt|virgin media|broadband|phone|telephone|internet)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["489"],
+                        names: ["telephone", "internet"],
+                        fallbackName: "Telephone & Internet",
+                        tag: "Comms",
+                        confidence: 84,
+                        reason: "Telecoms or internet supplier detected."
+                    });
+                }
+                if (has(/\b(hoults|rent|landlord|office rent|serviced office|workspace|wework)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["469"],
+                        names: ["rent"],
+                        fallbackName: "Rent",
+                        tag: "Premises",
+                        confidence: 80,
+                        reason: "Premises, workspace, or rent wording detected."
+                    });
+                }
+                if (has(/\b(accountancy|accountant|audit|bookkeep|payroll bureau)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["401"],
+                        names: ["accountancy", "audit"],
+                        fallbackName: "Audit & Accountancy fees",
+                        tag: "Professional fees",
+                        confidence: 85,
+                        reason: "Accounting, audit, or bookkeeping supplier detected."
+                    });
+                }
+                if (has(/\b(legal|solicitor|law firm|court fee)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["441"],
+                        names: ["legal"],
+                        fallbackName: "Legal Expenses",
+                        tag: "Legal",
+                        confidence: 83,
+                        reason: "Legal supplier wording detected."
+                    });
+                }
+                if (has(/\b(marketing|advert|facebook|meta ads|google ads|linkedin ads|mailchimp)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["400"],
+                        names: ["advertising", "marketing"],
+                        fallbackName: "Advertising & Marketing",
+                        tag: "Marketing",
+                        confidence: 83,
+                        reason: "Marketing platform or advertising wording detected."
+                    });
+                }
+                if (has(/\b(subscription|membership|professional body|licence|license)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["485"],
+                        names: ["subscription"],
+                        fallbackName: "Subscriptions",
+                        tag: "Subscription",
+                        confidence: 77,
+                        reason: "Subscription or membership wording detected."
+                    });
+                }
+                if (has(/\b(royal mail|postage|courier|fedex|ups|dhl|freight)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["425"],
+                        names: ["postage", "courier"],
+                        fallbackName: "Postage, Freight & Courier",
+                        tag: "Postage",
+                        confidence: 84,
+                        reason: "Postage, freight, or courier supplier detected."
+                    });
+                }
+                if (has(/\b(hmrc|vat)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: text.includes("vat") ? ["820"] : ["500", "825"],
+                        names: text.includes("vat") ? ["vat"] : ["corporation tax", "paye"],
+                        fallbackName: text.includes("vat") ? "VAT" : "Corporation Tax",
+                        tag: "Tax",
+                        confidence: 79,
+                        reason: "HMRC or tax wording detected."
+                    });
+                }
+                if (has(/\b(payroll|salary|salaries|wage|wages)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["477"],
+                        names: ["salaries"],
+                        fallbackName: "Salaries",
+                        tag: "Payroll",
+                        confidence: 83,
+                        reason: "Payroll or salary wording detected."
+                    });
+                }
+                if (has(/\b(insurance|insurer|aviva|axa|hiscox)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["433"],
+                        names: ["insurance"],
+                        fallbackName: "Insurance",
+                        tag: "Insurance",
+                        confidence: 83,
+                        reason: "Insurance supplier wording detected."
+                    });
+                }
+                if (has(/\b(loan|finance repayment|hire purchase)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["900", "910"],
+                        names: ["loan", "hire purchase"],
+                        fallbackName: "Loan",
+                        tag: "Finance",
+                        confidence: 70,
+                        reason: "Loan or finance repayment wording detected."
+                    });
+                }
+                if (has(/\b(transfer|internal transfer|sweep)\b/i)) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["877", "850"],
+                        names: ["tracking transfers", "suspense"],
+                        fallbackName: "Tracking Transfers",
+                        tag: "Transfer",
+                        confidence: 58,
+                        reason: "Transfer wording detected; review before posting."
+                    });
+                }
+                if (isMoneyIn) {
+                    return bankStatementBuildSuggestion(transaction, {
+                        codes: ["200"],
+                        names: ["sales"],
+                        fallbackName: "Sales",
+                        tag: "Income receipt",
+                        confidence: 58,
+                        reason: "Money-in transaction without a stronger supplier match."
+                    });
+                }
+                return bankStatementBuildSuggestion(transaction, {
+                    codes: ["429"],
+                    names: ["general expenses"],
+                    fallbackName: "General Expenses",
+                    tag: "Needs review",
+                    confidence: 44,
+                    reason: "No specific merchant rule matched; suggested as a general expense for review."
+                });
+            }
+
+            function bankStatementXeroSuggestionMarkup(transaction, upload) {
+                const suggestion = bankStatementSuggestedXeroMapping(transaction);
+                const title = [
+                    `${suggestion.code} ${suggestion.name}`,
+                    suggestion.reason,
+                    `AI tag: ${suggestion.tag}`,
+                    `Confidence: ${suggestion.confidence}%`,
+                    upload?.filename ? `Source upload: ${upload.filename}` : ""
+                ].filter(Boolean).join(" - ");
+                return `
+                    <span class="bank-xero-suggestion" title="${escapeHTML(title)}">
+                        <span class="bank-xero-ai-mark" aria-hidden="true">AI</span>
+                        <span class="bank-xero-suggestion-copy">
+                            <strong class="bank-xero-suggestion-code">
+                                <span>${escapeHTML(suggestion.code || "--")}</span>
+                                <em class="bank-xero-suggestion-name">${escapeHTML(suggestion.name || "Review account")}</em>
+                            </strong>
+                            <small class="bank-xero-suggestion-meta">
+                                <span class="bank-xero-tag">${escapeHTML(suggestion.tag || "Review")}</span>
+                                <span class="bank-xero-confidence">${Number(suggestion.confidence || 0)}% · ${escapeHTML(suggestion.source)}</span>
+                            </small>
+                            <small class="bank-xero-reason">${escapeHTML(suggestion.reason)}</small>
+                        </span>
+                    </span>
+                `;
+            }
+
             function bankDateFromISO(value) {
                 const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
                 if (!match) return null;
@@ -20025,13 +20452,17 @@
             function bankTransactionMatchesSearch(transaction, upload, term) {
                 const query = String(term || "").trim().toLowerCase();
                 if (!query) return true;
+                const suggestion = bankStatementSuggestedXeroMapping(transaction);
                 return [
                     transaction.date,
                     transaction.description,
                     transaction.type,
                     transaction.amount,
                     transaction.balance,
-                    upload?.filename
+                    upload?.filename,
+                    suggestion.code,
+                    suggestion.name,
+                    suggestion.tag
                 ].join(" ").toLowerCase().includes(query);
             }
 
@@ -20648,7 +21079,7 @@
                             <td>${amount > 0 ? formatCurrency(amount) : ""}</td>
                             <td>${amount < 0 ? formatCurrency(Math.abs(amount)) : ""}</td>
                             <td>${balance === null ? "No balance" : formatCurrency(balance)}</td>
-                            <td><strong>${escapeHTML(upload?.filename || "Unknown upload")}</strong><small>${escapeHTML(upload?.status || "")}</small></td>
+                            <td>${bankStatementXeroSuggestionMarkup(transaction, upload)}</td>
                         </tr>
                     `;
                 }).join("");
@@ -20706,7 +21137,7 @@
                         <div class="bank-account-toolbar">
                             <label class="search-wrap late-charge-search">
                                 <span class="search-icon">⌕</span>
-                                <input id="bankTransactionSearchInput" type="search" placeholder="Search transactions, type, amount or upload..." value="${escapeHTML(bankStatementTransactionSearchTerm)}">
+                                <input id="bankTransactionSearchInput" type="search" placeholder="Search transactions, type, amount, AI tag or code..." value="${escapeHTML(bankStatementTransactionSearchTerm)}">
                             </label>
                             <span class="detail-meta">Showing ${filteredTransactions.length.toLocaleString("en-GB")} of ${transactions.length.toLocaleString("en-GB")} transactions</span>
                         </div>
@@ -20719,7 +21150,7 @@
                                         <th>Money in</th>
                                         <th>Money out</th>
                                         <th>Balance</th>
-                                        <th>Source</th>
+                                        <th>AI Xero code</th>
                                     </tr>
                                 </thead>
                                 <tbody>${transactionRows || '<tr><td colspan="6">No transactions match the current search.</td></tr>'}</tbody>
@@ -21100,11 +21531,12 @@
                 if (!account) return;
                 const uploadById = bankUploadMap(account);
                 const rows = [
-                    ["Date", "Description", "Money In", "Money Out", "Signed Amount", "Running Balance", "Type", "Source Upload"],
+                    ["Date", "Description", "Money In", "Money Out", "Signed Amount", "Running Balance", "Type", "Suggested Xero Code", "Suggested Xero Account", "AI Tag", "AI Confidence", "Source Upload"],
                     ...bankAccountTransactionsAscending(account).map((row) => {
                         const amount = bankTransactionAmount(row);
                         const balance = bankTransactionBalance(row);
                         const upload = uploadById.get(String(row.uploadId || ""));
+                        const suggestion = bankStatementSuggestedXeroMapping(row);
                         return [
                         row.date || "",
                         row.description || "",
@@ -21113,6 +21545,10 @@
                         amount.toFixed(2),
                         balance === null ? "" : Number(balance || 0).toFixed(2),
                         row.type || "",
+                        suggestion.code || "",
+                        suggestion.name || "",
+                        suggestion.tag || "",
+                        `${Number(suggestion.confidence || 0)}%`,
                         upload?.filename || ""
                     ];
                     })
