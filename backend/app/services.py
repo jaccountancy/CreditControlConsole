@@ -11177,6 +11177,8 @@ def _ignition_client_rows(clients: list[dict], proposals: list[dict], outstandin
                 "outstandingInvoices": 0,
                 "overdueInvoices": 0,
                 "outstandingValue": Decimal("0.00"),
+                "monthlyRevenue": Decimal("0.00"),
+                "acceptedContractValue": Decimal("0.00"),
                 "lastActivityAt": "",
             },
         )
@@ -11184,9 +11186,12 @@ def _ignition_client_rows(clients: list[dict], proposals: list[dict], outstandin
     for proposal in proposals:
         rollup = rollup_for(_ignition_record_client_name(proposal))
         state_value = str(proposal.get("state") or "").lower()
+        accepted_proposal = state_value == "accepted" or proposal.get("accepted_at")
         rollup["proposals"] += 1
-        if state_value == "accepted" or proposal.get("accepted_at"):
+        if accepted_proposal:
             rollup["accepted"] += 1
+            rollup["monthlyRevenue"] += _proposal_mrr(proposal)
+            rollup["acceptedContractValue"] += _proposal_value(proposal)
         if state_value in ("awaiting_acceptance", "sent"):
             rollup["awaiting"] += 1
         activity_at = str(proposal.get("updated_at") or proposal.get("sent_at") or proposal.get("created_at") or "")
@@ -11226,6 +11231,10 @@ def _ignition_client_rows(clients: list[dict], proposals: list[dict], outstandin
                 "outstandingInvoiceCount": rollup["outstandingInvoices"],
                 "overdueInvoiceCount": rollup["overdueInvoices"],
                 "outstandingValue": float(_money(rollup["outstandingValue"])),
+                "monthlyRevenue": float(_money(rollup["monthlyRevenue"])),
+                "monthlyRevenueVat": float(_money(rollup["monthlyRevenue"] * Decimal("0.20"))),
+                "monthlyRevenueGross": float(_money(rollup["monthlyRevenue"] * Decimal("1.20"))),
+                "acceptedContractValue": float(_money(rollup["acceptedContractValue"])),
                 "link": str(client.get("link") or client.get("url") or client.get("app_url") or ""),
             }
         )
@@ -11248,6 +11257,10 @@ def _ignition_client_rows(clients: list[dict], proposals: list[dict], outstandin
                 "outstandingInvoiceCount": rollup["outstandingInvoices"],
                 "overdueInvoiceCount": rollup["overdueInvoices"],
                 "outstandingValue": float(_money(rollup["outstandingValue"])),
+                "monthlyRevenue": float(_money(rollup["monthlyRevenue"])),
+                "monthlyRevenueVat": float(_money(rollup["monthlyRevenue"] * Decimal("0.20"))),
+                "monthlyRevenueGross": float(_money(rollup["monthlyRevenue"] * Decimal("1.20"))),
+                "acceptedContractValue": float(_money(rollup["acceptedContractValue"])),
                 "link": "",
             }
         )

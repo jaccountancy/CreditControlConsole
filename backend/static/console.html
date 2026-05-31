@@ -502,6 +502,44 @@
                 gap: 12px;
             }
             .topbar-client-context[hidden] { display: none; }
+            .jashflow-topbar-summary {
+                flex: 1 1 720px;
+                min-width: min(760px, 100%);
+                display: grid;
+                grid-template-columns: repeat(5, minmax(92px, 1fr));
+                gap: 1px;
+                overflow: hidden;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: var(--line);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+            }
+            .jashflow-topbar-summary[hidden] { display: none; }
+            .jashflow-topbar-summary article {
+                min-width: 0;
+                padding: 10px 12px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .jashflow-topbar-summary span,
+            .jashflow-topbar-summary strong {
+                display: block;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .jashflow-topbar-summary span {
+                color: var(--muted);
+                font-size: 0.64rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .jashflow-topbar-summary strong {
+                margin-top: 4px;
+                color: var(--ink);
+                font-size: 0.92rem;
+                font-weight: 950;
+            }
             .global-activity-toggle {
                 position: relative;
                 width: 42px;
@@ -950,6 +988,19 @@
             body.is-client-view #topbarMenuButton {
                 min-height: 40px;
                 padding: 0 18px;
+            }
+            body.is-jashflow-view .ledger-topbar {
+                gap: 12px;
+                padding: 12px 16px;
+            }
+            body.is-jashflow-view .brand-lockup {
+                flex: 0 1 260px;
+            }
+            body.is-jashflow-view .header-xero-action {
+                flex: 0 0 auto;
+            }
+            body.is-jashflow-view .global-activity-toggle {
+                margin-left: 0;
             }
             body.is-client-view .stale-sync-warning {
                 grid-column: 1 / -1;
@@ -5227,7 +5278,8 @@
                 border-radius: 18px;
                 background: rgba(248, 251, 255, 0.88);
             }
-            #ignitionScreen > .detail-hero {
+            #ignitionScreen > .detail-hero,
+            #ignitionClientsScreen > .detail-hero {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) auto;
                 align-items: start;
@@ -5376,7 +5428,8 @@
                 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
             }
             @media (max-width: 900px) {
-                #ignitionScreen > .detail-hero {
+                #ignitionScreen > .detail-hero,
+                #ignitionClientsScreen > .detail-hero {
                     grid-template-columns: 1fr;
                 }
                 .ignition-connection-bubble {
@@ -5536,6 +5589,44 @@
                 display: block;
                 margin-top: 3px;
                 font-size: 0.84rem;
+            }
+            .ignition-staff-fee-panel {
+                display: grid;
+                gap: 12px;
+            }
+            .ignition-staff-fee-list {
+                display: grid;
+                gap: 10px;
+                min-width: 0;
+            }
+            .ignition-staff-fee-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto auto;
+                gap: 12px;
+                align-items: center;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.78);
+            }
+            .ignition-staff-fee-row strong,
+            .ignition-staff-fee-row span,
+            .ignition-staff-fee-row small {
+                display: block;
+            }
+            .ignition-staff-fee-row span,
+            .ignition-staff-fee-row small {
+                color: var(--muted);
+                font-weight: 750;
+                line-height: 1.35;
+            }
+            .ignition-staff-fee-row span {
+                margin-top: 3px;
+                font-size: 0.84rem;
+            }
+            .ignition-staff-fee-row small {
+                text-align: right;
+                font-size: 0.78rem;
             }
             .ignition-dataset-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7231,6 +7322,11 @@
                     justify-items: start;
                 }
                 .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
+                body.is-jashflow-view .jashflow-topbar-summary {
+                    width: 100%;
+                    flex-basis: 100%;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                }
                 .ignition-topbar-widget {
                     width: 100%;
                 }
@@ -7335,6 +7431,7 @@
                 .ignition-summary-grid,
                 .ignition-dataset-grid,
                 .ignition-report-row,
+                .ignition-staff-fee-row,
                 .detail-grid { grid-template-columns: 1fr; }
                 .client-sidebar,
                 .selected-invoice-panel,
@@ -7364,9 +7461,13 @@
                 .jashflow-payment-form,
                 .jashflow-statement-row,
                 .bank-transaction-row,
-                .ignition-report-row {
+                .ignition-report-row,
+                .ignition-staff-fee-row {
                     grid-template-columns: 1fr;
                     align-items: start;
+                }
+                .ignition-staff-fee-row small {
+                    text-align: left;
                 }
                 #jashflowScreen .detail-hero {
                     grid-template-columns: 1fr;
@@ -7399,6 +7500,9 @@
             }
             @media (max-width: 560px) {
                 .summary-bar { grid-template-columns: 1fr; }
+                body.is-jashflow-view .jashflow-topbar-summary {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
                 .jashflow-summary-grid,
                 .bank-account-summary-grid,
                 .practice-pack-output-grid,
@@ -7547,6 +7651,28 @@
                                 <h1 id="topbarPageTitle">Credit Control</h1>
                                 <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                             </div>
+                        </div>
+                        <div class="jashflow-topbar-summary" id="jashflowTopbarSummary" aria-label="Jashflow loan summary" hidden>
+                            <article>
+                                <span>Active loans</span>
+                                <strong id="jashflowActiveLoans">0</strong>
+                            </article>
+                            <article>
+                                <span>Principal</span>
+                                <strong id="jashflowPrincipalTotal">£0.00</strong>
+                            </article>
+                            <article>
+                                <span>Interest accrued</span>
+                                <strong id="jashflowInterestTotal">£0.00</strong>
+                            </article>
+                            <article>
+                                <span>Uninvoiced interest</span>
+                                <strong id="jashflowUninvoicedInterestTotal">£0.00</strong>
+                            </article>
+                            <article>
+                                <span>Balance</span>
+                                <strong id="jashflowBalanceTotal">£0.00</strong>
+                            </article>
                         </div>
                         <div class="header-xero-action" id="headerXeroAction">
                             <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">START</a>
@@ -8105,28 +8231,6 @@
                                 <button class="ghost-button" id="toggleJashflowSetupButton" type="button">Xero posting setup</button>
                                 <button class="primary-button" id="addJashflowClientButton" type="button">Add new loan</button>
                             </div>
-                            <div class="jashflow-summary-grid jashflow-hero-summary" aria-label="Jashflow loan summary">
-                                <article>
-                                    <span>Active loans</span>
-                                    <strong id="jashflowActiveLoans">0</strong>
-                                </article>
-                                <article>
-                                    <span>Principal</span>
-                                    <strong id="jashflowPrincipalTotal">£0.00</strong>
-                                </article>
-                                <article>
-                                    <span>Interest accrued</span>
-                                    <strong id="jashflowInterestTotal">£0.00</strong>
-                                </article>
-                                <article>
-                                    <span>Uninvoiced interest</span>
-                                    <strong id="jashflowUninvoicedInterestTotal">£0.00</strong>
-                                </article>
-                                <article>
-                                    <span>Balance</span>
-                                    <strong id="jashflowBalanceTotal">£0.00</strong>
-                                </article>
-                            </div>
                         </div>
                         <section class="detail-panel jashflow-panel">
                             <form class="jashflow-settings-form" id="jashflowSettingsForm" hidden>
@@ -8137,7 +8241,6 @@
                                 <button class="ghost-button" type="submit">Save setup</button>
                                 <button class="primary-button" id="postJashflowInterestButton" type="button">Post uninvoiced interest</button>
                             </form>
-                            <p class="late-charge-summary" id="jashflowPostingSummary">Save the Xero interest account code before posting interest.</p>
                             <form class="jashflow-loan-form" id="jashflowLoanForm" hidden>
                                 <input id="jashflowLoanIdInput" type="hidden">
                                 <label>
@@ -8195,6 +8298,7 @@
                                 </div>
                             </div>
                             <div class="detail-actions">
+                                <button class="ghost-button" id="openIgnitionClientsButton" type="button">Client register</button>
                                 <button class="ghost-button" id="refreshIgnitionButton" type="button">Refresh</button>
                                 <button class="ghost-button" id="connectIgnitionButton" type="button">Connect Ignition</button>
                                 <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync Ignition</button>
@@ -8216,41 +8320,15 @@
                                 <article><span>Net collections</span><strong id="ignitionCollectionDisbursements">£0</strong></article>
                             </div>
                         </section>
-                        <section class="detail-panel ignition-client-panel">
-                            <div class="ignition-client-toolbar">
+                        <section class="detail-panel ignition-staff-fee-panel">
+                            <div class="ignition-report-head">
                                 <div>
-                                    <p class="eyebrow">Clients</p>
-                                    <h3>Ignition client register</h3>
-                                    <p class="detail-meta" id="ignitionClientTableSummary">Synced client rows will appear after the Reporting API import.</p>
-                                </div>
-                                <div class="ignition-client-controls">
-                                    <label class="search-wrap ignition-client-search">
-                                        <span class="search-icon">⌕</span>
-                                        <input id="ignitionClientSearch" type="search" placeholder="Search client, owner, status...">
-                                    </label>
-                                    <label class="ignition-client-control">
-                                        Sort
-                                        <select id="ignitionClientSortSelect" aria-label="Sort Ignition clients">
-                                            <option value="activity-desc">Latest activity</option>
-                                            <option value="name-asc">Client A-Z</option>
-                                            <option value="proposals-desc">Proposals</option>
-                                            <option value="accepted-desc">Accepted</option>
-                                            <option value="outstanding-desc">Outstanding</option>
-                                        </select>
-                                    </label>
-                                    <label class="ignition-client-control">
-                                        Filter
-                                        <select id="ignitionClientFilterSelect" aria-label="Filter Ignition clients">
-                                            <option value="all">All clients</option>
-                                            <option value="active">Active</option>
-                                            <option value="awaiting">Awaiting acceptance</option>
-                                            <option value="overdue">Overdue</option>
-                                            <option value="new">New this month</option>
-                                        </select>
-                                    </label>
+                                    <span>Practice Pack</span>
+                                    <strong>Monthly fees by staff</strong>
+                                    <p class="detail-meta" id="ignitionStaffFeeSummary">Upload the latest BM Client CSV in Practice Pack to map clients to managers.</p>
                                 </div>
                             </div>
-                            <div class="ignition-client-table-wrap" id="ignitionClientTableWrap"></div>
+                            <div class="ignition-staff-fee-list" id="ignitionStaffFeeWidget"></div>
                         </section>
                         <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel" hidden>
                             <div class="ignition-renewals-toolbar">
@@ -8318,6 +8396,55 @@
                                     <div class="ignition-dataset-grid" id="ignitionDatasetCounts"></div>
                                 </div>
                             </div>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="ignitionClientsScreen" hidden>
+                        <div class="detail-hero">
+                            <div>
+                                <p class="eyebrow">Ignition Reporting API</p>
+                                <p class="detail-meta">Search, sort, and review every synced Ignition client without crowding the main Reporting API dashboard.</p>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="backIgnitionDashboardButton" type="button">Back to Ignition</button>
+                                <button class="ghost-button" id="refreshIgnitionClientsButton" type="button">Refresh</button>
+                            </div>
+                        </div>
+                        <section class="detail-panel ignition-client-panel">
+                            <div class="ignition-client-toolbar">
+                                <div>
+                                    <p class="eyebrow">Clients</p>
+                                    <h3>Ignition client register</h3>
+                                    <p class="detail-meta" id="ignitionClientTableSummary">Synced client rows will appear after the Reporting API import.</p>
+                                </div>
+                                <div class="ignition-client-controls">
+                                    <label class="search-wrap ignition-client-search">
+                                        <span class="search-icon">⌕</span>
+                                        <input id="ignitionClientSearch" type="search" placeholder="Search client, owner, status...">
+                                    </label>
+                                    <label class="ignition-client-control">
+                                        Sort
+                                        <select id="ignitionClientSortSelect" aria-label="Sort Ignition clients">
+                                            <option value="activity-desc">Latest activity</option>
+                                            <option value="name-asc">Client A-Z</option>
+                                            <option value="proposals-desc">Proposals</option>
+                                            <option value="accepted-desc">Accepted</option>
+                                            <option value="outstanding-desc">Outstanding</option>
+                                        </select>
+                                    </label>
+                                    <label class="ignition-client-control">
+                                        Filter
+                                        <select id="ignitionClientFilterSelect" aria-label="Filter Ignition clients">
+                                            <option value="all">All clients</option>
+                                            <option value="active">Active</option>
+                                            <option value="awaiting">Awaiting acceptance</option>
+                                            <option value="overdue">Overdue</option>
+                                            <option value="new">New this month</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="ignition-client-table-wrap" id="ignitionClientTableWrap"></div>
                         </section>
                     </section>
 
@@ -9122,6 +9249,7 @@
             const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
             const ACTIVITY_KEY = `${STORAGE_KEY}:system-activity`;
             const USER_ACTIVITY_KEY = `${STORAGE_KEY}:user-activity-log`;
+            const PRACTICE_PACK_ASSIGNMENTS_KEY = `${STORAGE_KEY}:practice-pack-assignments`;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
@@ -9158,6 +9286,7 @@
                 full_history: "Full invoice history"
             };
             const LATE_PAYMENT_CHARGE_VAT_RATE = 0.2;
+            const PRACTICE_PACK_VAT_RATE = 0.2;
             const LATE_PAYMENT_CHARGE_OPTIONS = [
                 { baseAmount: 20, label: "£20 + VAT" },
                 { baseAmount: 30, label: "£30 + VAT" },
@@ -9238,6 +9367,7 @@
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 ignition: "Ignition",
+                "ignition-clients": "Ignition Client Register",
                 "me-report": "ME Report",
                 "practice-packs": "Practice Pack Generator",
                 settings: "Settings"
@@ -9381,6 +9511,7 @@
             let meReportSyncStartedAt = 0;
             let meReportProgressTimer = null;
             let practicePackResult = null;
+            let practicePackAssignments = loadPracticePackAssignments();
             let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
                 ? persistedUIState.lateChargeFilter
                 : "active";
@@ -9589,6 +9720,54 @@
                         // Ignore storage cleanup failures; live API data still loads normally.
                     }
                     return {};
+                }
+            }
+
+            function normalisePracticePackAssignmentRecord(record) {
+                if (!record || typeof record !== "object") return null;
+                const clientName = String(record.clientName || record.name || "").trim();
+                if (!clientName) return null;
+                const manager = String(record.manager || record.owner || record.assignedManager || "").trim() || "Unassigned";
+                return {
+                    key: record.key || normalisePracticePackName(clientName),
+                    matchKey: record.matchKey || normalisePracticePackClientMatchName(clientName),
+                    clientName,
+                    manager,
+                    source: record.source || "BM Client File"
+                };
+            }
+
+            function loadPracticePackAssignments() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(PRACTICE_PACK_ASSIGNMENTS_KEY) || "{}");
+                    const assignments = Array.isArray(stored.assignments)
+                        ? stored.assignments.map((record) => normalisePracticePackAssignmentRecord(record)).filter(Boolean)
+                        : [];
+                    return {
+                        month: stored.month || "",
+                        generatedAt: stored.generatedAt || "",
+                        clientCount: Number(stored.clientCount || assignments.length || 0),
+                        assignments
+                    };
+                } catch {
+                    try {
+                        localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
+                    } catch {
+                        // Practice Pack manager mapping is rebuilt on the next BM Client CSV upload.
+                    }
+                    return { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+                }
+            }
+
+            function persistPracticePackAssignments() {
+                try {
+                    if (!practicePackAssignments?.assignments?.length) {
+                        localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
+                        return;
+                    }
+                    localStorage.setItem(PRACTICE_PACK_ASSIGNMENTS_KEY, JSON.stringify(practicePackAssignments));
+                } catch (error) {
+                    console.warn("Unable to persist Practice Pack manager assignments", error);
                 }
             }
 
@@ -11448,12 +11627,16 @@
                 if (activeView === "bad-debt") return "bad-debt";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank-statements";
-                if (activeView === "ignition") return "ignition";
+                if (activeView === "ignition" || activeView === "ignition-clients") return "ignition";
                 if (activeView === "me-report") return "me-report";
                 if (activeView === "practice-packs") return "practice-packs";
                 if (activeView === "settings") return "settings";
                 if (activeView === "client") return "clients";
                 return "clients";
+            }
+
+            function isIgnitionView(view = activeView) {
+                return view === "ignition" || view === "ignition-clients";
             }
 
             function activeTopbarTitle(topbarClient = null) {
@@ -11471,15 +11654,16 @@
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
+                setElementVisible(document.getElementById("ignitionClientsScreen"), activeView === "ignition-clients");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
                 setElementVisible(document.getElementById("practicePackScreen"), activeView === "practice-packs");
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "jashflow", "bank-statements", "ignition", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
-                if (ignitionTopbarWidget && activeView !== "ignition") ignitionTopbarWidget.hidden = true;
+                if (ignitionTopbarWidget && !isIgnitionView()) ignitionTopbarWidget.hidden = true;
                 if (activeView !== "settings") closeSettingsSidebar();
                 const activeNav = activeNavForView();
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
@@ -14488,7 +14672,6 @@
                     accountInput.disabled = !accountOptions.length && !currentCode;
                 }
                 const postButton = document.getElementById("postJashflowInterestButton");
-                const postingSummary = document.getElementById("jashflowPostingSummary");
                 const setupComplete = Boolean(settings.interestAccountCode);
                 const uninvoicedAmount = Number(summary.uninvoicedInterestTotal || 0);
                 if (postButton) {
@@ -14498,13 +14681,6 @@
                         : uninvoicedAmount >= 0.01
                         ? `Post ${formatCurrency(uninvoicedAmount)} interest`
                         : "No interest to post";
-                }
-                if (postingSummary) {
-                    postingSummary.textContent = !setupComplete
-                        ? "Choose the Xero interest received account code from the latest synced account list before posting interest."
-                        : uninvoicedAmount >= 0.01
-                        ? `${formatCurrency(uninvoicedAmount)} of accrued Jashflow interest will post as individual Xero invoices against each loan client.`
-                        : "All accrued Jashflow interest has already been posted to Xero.";
                 }
                 const startDateInput = document.getElementById("jashflowStartDateInput");
                 if (startDateInput && !startDateInput.value) startDateInput.value = localDateKey();
@@ -16382,6 +16558,43 @@
                 if (element) element.textContent = value;
             }
 
+            function ignitionSyncElapsedSeconds(run = null) {
+                const startedAt = ignitionSyncStartedAt || syncRunTimestamp(run);
+                return startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0;
+            }
+
+            function ignitionActiveDataset(run) {
+                const step = String(run?.currentStep || "").trim().toLowerCase();
+                const match = step.match(/^importing\s+(.+)$/);
+                return match ? match[1].trim() : "";
+            }
+
+            function ignitionTopbarSummary(run, connected) {
+                if (!run) {
+                    return connected
+                        ? "Manual sync imports clients, contacts, services, proposals, invoices, payments, collections and available deal pipeline data."
+                        : "Connect Ignition before syncing Reporting API datasets.";
+                }
+                if (!syncRunIsActive(run)) return run.summary || run.currentStep || "Ignition Reporting API import finished.";
+
+                const elapsed = formatSyncDuration(ignitionSyncElapsedSeconds(run));
+                const dataset = ignitionActiveDataset(run);
+                if (dataset === "proposals") {
+                    return `Still working on proposals. This stage can take a few minutes while Ignition pages the proposal list. Elapsed ${elapsed}.`;
+                }
+                if (dataset) {
+                    return `Still working on ${dataset}. Elapsed ${elapsed}.`;
+                }
+                return `${run.summary || run.currentStep || "Ignition sync is still running."} Elapsed ${elapsed}.`;
+            }
+
+            function ignitionTopbarCounts(run) {
+                if (!run) return "";
+                const counts = `${Number(run.processedCount || 0).toLocaleString("en-GB")} processed · ${Number(run.fetchedCount || 0).toLocaleString("en-GB")} fetched${run.failedCount ? ` · ${Number(run.failedCount).toLocaleString("en-GB")} failed` : ""}`;
+                if (!syncRunIsActive(run)) return counts;
+                return `${counts} · elapsed ${formatSyncDuration(ignitionSyncElapsedSeconds(run))}`;
+            }
+
             function ignitionRunForDisplay() {
                 return latestIgnitionSyncRun || ignitionData.activeSyncRun || ignitionData.syncRun || null;
             }
@@ -16438,13 +16651,11 @@
                     "ignitionSyncSummary",
                     ignitionLoading
                         ? "Reading persisted Reporting API data and latest sync status."
-                        : run?.summary || (connected ? "Manual sync imports clients, contacts, services, proposals, invoices, payments, collections and available deal pipeline data." : "Connect Ignition before syncing Reporting API datasets.")
+                        : ignitionTopbarSummary(run, connected)
                 );
                 setIgnitionText(
                     "ignitionSyncCounts",
-                    run
-                        ? `${Number(run.processedCount || 0).toLocaleString("en-GB")} processed · ${Number(run.fetchedCount || 0).toLocaleString("en-GB")} fetched${run.failedCount ? ` · ${Number(run.failedCount).toLocaleString("en-GB")} failed` : ""}`
-                        : ""
+                    ignitionTopbarCounts(run)
                 );
                 const progressFill = document.getElementById("ignitionSyncProgressFill");
                 if (progressFill) progressFill.style.width = `${progress}%`;
@@ -16486,6 +16697,7 @@
 
                 renderIgnitionServicePerformance();
                 renderIgnitionManagerPerformance();
+                renderIgnitionStaffFeeWidget();
                 renderIgnitionAwaitingProposals();
                 renderIgnitionRenewalAnalysis();
                 renderIgnitionDatasetCounts();
@@ -16540,6 +16752,156 @@
                         <small>${formatCurrency(row.value || 0)}</small>
                     </div>
                 `).join("");
+            }
+
+            function practicePackAssignmentRows() {
+                const source = Array.isArray(practicePackResult?.clientAssignments)
+                    ? practicePackResult.clientAssignments
+                    : practicePackAssignments?.assignments || [];
+                return source.map((record) => normalisePracticePackAssignmentRecord(record)).filter(Boolean);
+            }
+
+            function practicePackAssignmentMeta() {
+                if (practicePackResult) {
+                    return {
+                        month: practicePackResult.month || "",
+                        generatedAt: practicePackResult.generatedAt || "",
+                        clientCount: practicePackResult.clientCount || practicePackAssignmentRows().length
+                    };
+                }
+                return practicePackAssignments || { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+            }
+
+            function practicePackAssignmentIndexes(assignments) {
+                const byKey = new Map();
+                const byMatchKey = new Map();
+                assignments.forEach((assignment) => {
+                    const key = assignment.key || normalisePracticePackName(assignment.clientName);
+                    const matchKey = assignment.matchKey || normalisePracticePackClientMatchName(assignment.clientName);
+                    if (key && !byKey.has(key)) byKey.set(key, assignment);
+                    if (matchKey && !byMatchKey.has(matchKey)) byMatchKey.set(matchKey, assignment);
+                });
+                return { assignments, byKey, byMatchKey };
+            }
+
+            function practicePackAssignmentForClient(clientName, indexes) {
+                const key = normalisePracticePackName(clientName);
+                if (key && indexes.byKey.has(key)) return indexes.byKey.get(key);
+                const matchKey = normalisePracticePackClientMatchName(clientName);
+                if (matchKey && indexes.byMatchKey.has(matchKey)) return indexes.byMatchKey.get(matchKey);
+                if (!matchKey || matchKey.length < 4) return null;
+                return indexes.assignments.find((assignment) => {
+                    const candidate = assignment.matchKey || normalisePracticePackClientMatchName(assignment.clientName);
+                    return candidate.length >= 4 && (candidate.includes(matchKey) || matchKey.includes(candidate));
+                }) || null;
+            }
+
+            function ignitionClientMonthlyFee(client) {
+                const fields = ["monthlyRevenue", "monthlyFee", "mrr", "expectedMrr", "recurringRevenue", "monthlyRecurringRevenue"];
+                for (const field of fields) {
+                    const value = Number(client?.[field] || 0);
+                    if (Number.isFinite(value) && value > 0) return value;
+                }
+                const acceptedContractValue = Number(client?.acceptedContractValue || 0);
+                return Number.isFinite(acceptedContractValue) && acceptedContractValue > 0 ? acceptedContractValue / 12 : 0;
+            }
+
+            function buildIgnitionStaffFeeRows() {
+                const assignments = practicePackAssignmentRows();
+                const clients = Array.isArray(ignitionData.dashboard?.clients) ? ignitionData.dashboard.clients : [];
+                const indexes = practicePackAssignmentIndexes(assignments);
+                const staffRows = new Map();
+                let matchedClients = 0;
+                let unmatchedClients = 0;
+                let feeClientCount = 0;
+
+                clients.forEach((client) => {
+                    const monthlyFee = ignitionClientMonthlyFee(client);
+                    if (!monthlyFee) return;
+                    feeClientCount += 1;
+                    const assignment = practicePackAssignmentForClient(client.name, indexes);
+                    const manager = assignment?.manager || "Unassigned";
+                    if (assignment) matchedClients += 1;
+                    else unmatchedClients += 1;
+                    if (!staffRows.has(manager)) {
+                        staffRows.set(manager, {
+                            manager,
+                            clientCount: 0,
+                            matchedClients: 0,
+                            unmatchedClients: 0,
+                            net: 0,
+                            vat: 0,
+                            gross: 0
+                        });
+                    }
+                    const row = staffRows.get(manager);
+                    row.clientCount += 1;
+                    row.matchedClients += assignment ? 1 : 0;
+                    row.unmatchedClients += assignment ? 0 : 1;
+                    row.net += monthlyFee;
+                    row.vat += monthlyFee * PRACTICE_PACK_VAT_RATE;
+                    row.gross += monthlyFee * (1 + PRACTICE_PACK_VAT_RATE);
+                });
+
+                const rows = [...staffRows.values()].sort((left, right) => right.gross - left.gross || left.manager.localeCompare(right.manager));
+                return {
+                    rows,
+                    assignments,
+                    clients,
+                    feeClientCount,
+                    matchedClients,
+                    unmatchedClients,
+                    totalNet: rows.reduce((sum, row) => sum + row.net, 0),
+                    totalVat: rows.reduce((sum, row) => sum + row.vat, 0),
+                    totalGross: rows.reduce((sum, row) => sum + row.gross, 0)
+                };
+            }
+
+            function renderIgnitionStaffFeeWidget() {
+                const target = document.getElementById("ignitionStaffFeeWidget");
+                if (!target) return;
+                const summary = document.getElementById("ignitionStaffFeeSummary");
+                if (ignitionLoading) {
+                    if (summary) summary.textContent = "Loading Ignition client fees and Practice Pack manager assignments.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Building staff fee totals</h4><p>Reading synced Ignition clients and the latest Practice Pack manager map.</p></div>';
+                    return;
+                }
+
+                const report = buildIgnitionStaffFeeRows();
+                const meta = practicePackAssignmentMeta();
+                if (!report.assignments.length) {
+                    if (summary) summary.textContent = "Upload the latest BM Client CSV in Practice Pack to map clients to managers.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Waiting for Practice Pack</p><h4>No client manager map is loaded</h4><p>Generate the Practice Pack from the BM Client CSV and BM Task CSV, then this widget will update automatically.</p></div>';
+                    return;
+                }
+                if (!report.clients.length) {
+                    if (summary) summary.textContent = "Practice Pack managers are loaded; sync Ignition to bring in client fees.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Waiting for Ignition</p><h4>No Ignition client rows are stored yet</h4><p>Connect and sync Ignition to calculate monthly fees by staff member.</p></div>';
+                    return;
+                }
+                if (!report.rows.length) {
+                    if (summary) summary.textContent = "No monthly fee values were found in accepted Ignition proposals yet.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">No monthly fees</p><h4>No accepted monthly fee values are available</h4><p>Run an Ignition sync after accepted proposals are available so each client can be valued.</p></div>';
+                    return;
+                }
+
+                const sourceTime = meta.generatedAt ? ` · Practice Pack ${formatDateTime(meta.generatedAt)}` : "";
+                if (summary) {
+                    summary.textContent = `${report.rows.length.toLocaleString("en-GB")} staff member${report.rows.length === 1 ? "" : "s"} · ${formatCurrency(report.totalGross)} inc VAT per month from ${report.feeClientCount.toLocaleString("en-GB")} Ignition client${report.feeClientCount === 1 ? "" : "s"}${sourceTime}.`;
+                }
+                target.innerHTML = report.rows.map((row) => {
+                    const unmatched = row.unmatchedClients ? ` · ${row.unmatchedClients.toLocaleString("en-GB")} unmatched` : "";
+                    return `
+                        <div class="ignition-staff-fee-row">
+                            <div>
+                                <strong>${escapeHTML(row.manager || "Unassigned")}</strong>
+                                <span>${row.clientCount.toLocaleString("en-GB")} client${row.clientCount === 1 ? "" : "s"} · ${row.matchedClients.toLocaleString("en-GB")} matched to Practice Pack${unmatched}</span>
+                            </div>
+                            <strong>${formatCurrency(row.gross)} / month</strong>
+                            <small>${formatCurrency(row.net)} fees<br>${formatCurrency(row.vat)} VAT</small>
+                        </div>
+                    `;
+                }).join("");
             }
 
             function renderIgnitionAwaitingProposals() {
@@ -19581,6 +19943,7 @@
 
             function renderChrome() {
                 document.body.classList.toggle("is-syncing", isSyncing);
+                document.body.classList.toggle("is-jashflow-view", activeView === "jashflow");
                 if (activeView === "insights") activeNavSection = "home";
                 else if (activeView === "late-charges") activeNavSection = "lpcs";
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
@@ -19626,6 +19989,8 @@
                 if (headerXeroAction) {
                     headerXeroAction.hidden = hideConnectAction;
                 }
+                const jashflowTopbarSummary = document.getElementById("jashflowTopbarSummary");
+                if (jashflowTopbarSummary) jashflowTopbarSummary.hidden = activeView !== "jashflow";
                 const disconnectButton = document.getElementById("disconnectXeroButton");
                 if (disconnectButton) disconnectButton.hidden = !connected;
                 const settingsDisconnectButton = document.getElementById("settingsDisconnectXeroButton");
@@ -20487,6 +20852,13 @@
                 return normalisePracticePackHeader(value);
             }
 
+            function normalisePracticePackClientMatchName(value) {
+                const withoutEntitySuffix = String(value || "")
+                    .toLowerCase()
+                    .replace(/\b(limited|ltd|llp|plc|inc|incorporated|company|co|the)\b/g, "");
+                return normalisePracticePackHeader(withoutEntitySuffix) || normalisePracticePackName(value);
+            }
+
             function practicePackColumnValue(row, candidates) {
                 const candidateKeys = candidates.map(normalisePracticePackHeader);
                 const keys = Object.keys(row || {});
@@ -20567,6 +20939,7 @@
                 const clientNameColumns = ["Client Name", "Client", "Name", "ClientName", "Company Name", "Company", "Contact"];
                 const taskClientColumns = ["Client Name", "Client", "ClientName", "Customer", "Company Name", "Company", "Contact"];
                 const ownerColumns = ["Assigned To", "Assignee", "Owner", "Staff", "Manager", "Bookkeeper", "Task Owner"];
+                const clientManagerColumns = ["Client Manager", "Manager", "Account Manager", "Client Owner", "Owner", "Assigned Manager", "Partner", "Staff"];
                 const statusColumns = ["Status", "Task Status", "State"];
                 const dueColumns = ["Due Date", "Deadline", "Date Due", "Target Date"];
                 const taskColumns = ["Task", "Task Name", "Name", "Title", "Description"];
@@ -20575,16 +20948,18 @@
 
                 clientData.rows.forEach((row, index) => {
                     const name = practicePackColumnValue(row, clientNameColumns) || `Client ${index + 1}`;
+                    const manager = practicePackColumnValue(row, clientManagerColumns) || "Unassigned";
                     const key = normalisePracticePackName(name) || `client${index + 1}`;
-                    if (!clientIndex.has(key)) clientIndex.set(key, { name, row });
+                    if (!clientIndex.has(key)) clientIndex.set(key, { name, manager, row });
                     if (!clientStats.has(key)) {
                         clientStats.set(key, {
                             name,
+                            manager,
                             taskCount: 0,
                             openCount: 0,
                             completedCount: 0,
                             overdueCount: 0,
-                            owners: new Set(),
+                            owners: new Set(manager && manager !== "Unassigned" ? [manager] : []),
                             source: "BM Client File"
                         });
                     }
@@ -20603,6 +20978,7 @@
                     if (!clientStats.has(statsKey)) {
                         clientStats.set(statsKey, {
                             name: clientName,
+                            manager: matchedClient?.manager || "",
                             taskCount: 0,
                             openCount: 0,
                             completedCount: 0,
@@ -20612,6 +20988,7 @@
                         });
                     }
                     const stats = clientStats.get(statsKey);
+                    if (matchedClient?.manager && matchedClient.manager !== "Unassigned") stats.owners.add(matchedClient.manager);
                     const complete = practicePackTaskComplete(status);
                     const overdue = practicePackTaskOverdue(status, dueDate);
                     stats.taskCount += 1;
@@ -20634,12 +21011,13 @@
                 });
 
                 const managementRows = [
-                    ["Month", "Client", "Task count", "Open tasks", "Completed tasks", "Overdue tasks", "Assigned owners", "Source"],
+                    ["Month", "Client", "Client manager", "Task count", "Open tasks", "Completed tasks", "Overdue tasks", "Assigned owners", "Source"],
                     ...[...clientStats.values()]
                         .sort((a, b) => a.name.localeCompare(b.name))
                         .map((stats) => [
                             month,
                             stats.name,
+                            stats.manager || "Unassigned",
                             stats.taskCount,
                             stats.openCount,
                             stats.completedCount,
@@ -20668,9 +21046,20 @@
                         });
                     });
 
+                const clientAssignments = [...clientIndex.values()]
+                    .map((client) => ({
+                        key: normalisePracticePackName(client.name),
+                        matchKey: normalisePracticePackClientMatchName(client.name),
+                        clientName: client.name,
+                        manager: client.manager || "Unassigned",
+                        source: "BM Client File"
+                    }))
+                    .filter((client) => client.clientName);
+
                 return {
                     files,
                     taskSummaries,
+                    clientAssignments,
                     staffPackCount: Math.max(files.length - 1, 0),
                     clientCount: clientData.rows.length,
                     taskCount: taskData.rows.length,
@@ -20816,7 +21205,15 @@
                         month,
                         generatedAt: new Date().toISOString()
                     };
+                    practicePackAssignments = {
+                        month,
+                        generatedAt: practicePackResult.generatedAt,
+                        clientCount: result.clientCount,
+                        assignments: (result.clientAssignments || []).map((record) => normalisePracticePackAssignmentRecord(record)).filter(Boolean)
+                    };
+                    persistPracticePackAssignments();
                     renderPracticePackScreen();
+                    renderIgnitionStaffFeeWidget();
                     downloadPracticePackZip();
                     showToast("Practice pack ZIP generated.", "success");
                 } catch (error) {
@@ -20829,11 +21226,14 @@
 
             function clearPracticePackScreen() {
                 practicePackResult = null;
+                practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+                persistPracticePackAssignments();
                 ["practicePackClientFile", "practicePackTaskFile"].forEach((id) => {
                     const input = document.getElementById(id);
                     if (input) input.value = "";
                 });
                 renderPracticePackScreen();
+                renderIgnitionStaffFeeWidget();
                 showToast("Practice pack cleared.", "info");
             }
 
@@ -20846,6 +21246,7 @@
                         ["Clients", formatInteger(practicePackResult?.clientCount || 0)],
                         ["Tasks", formatInteger(practicePackResult?.taskCount || 0)],
                         ["Staff packs", formatInteger(practicePackResult?.staffPackCount || 0)],
+                        ["Manager assignments", formatInteger(practicePackAssignmentRows().length)],
                         ["Month", month]
                     ];
                     metrics.innerHTML = cards.map(([label, value]) => `<article class="practice-pack-output-card"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`).join("");
@@ -22771,9 +23172,11 @@
                 localStorage.removeItem(STORAGE_KEY);
                 localStorage.removeItem(SYNC_SETTINGS_KEY);
                 localStorage.removeItem(LETTER_TEMPLATES_KEY);
+                localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
                 statePersistenceDisabled = false;
                 syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
                 letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
+                practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, assignments: [] };
                 selectedLetterTemplateId = letterTemplates[0]?.id || "";
                 selectedFilter = "all";
                 lateChargeFilter = "active";
