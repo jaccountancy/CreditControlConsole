@@ -25771,6 +25771,76 @@
                     .slice(0, 12);
             }
 
+            function insightMonthKey(value) {
+                if (!value) return "";
+                const parsed = new Date(value);
+                if (Number.isNaN(parsed.getTime())) return "";
+                return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+            }
+
+            function localMonthlyInsightCounts() {
+                const counts = new Map();
+                const ensure = (key) => {
+                    if (!counts.has(key)) {
+                        counts.set(key, {
+                            turnover: 0,
+                            cashCollected: 0,
+                            outstanding: 0,
+                            raisedCount: 0,
+                            paidCount: 0,
+                            outstandingCount: 0
+                        });
+                    }
+                    return counts.get(key);
+                };
+                allInvoices().forEach((invoice) => {
+                    const invoiceKey = insightMonthKey(invoice.invoiceDate || invoice.date || invoice.dueDate);
+                    const invoiceTotal = Number(invoice.total || invoice.amountDue || 0);
+                    const amountDue = Number(invoice.amountDue || 0);
+                    if (invoiceKey) {
+                        const row = ensure(invoiceKey);
+                        row.turnover += invoiceTotal;
+                        row.outstanding += amountDue;
+                        row.raisedCount += 1;
+                        if (amountDue > 0) row.outstandingCount += 1;
+                    }
+                    const paidAmount = Number(invoicePaidAmount(invoice) || invoice.amountPaid || Math.max(Number(invoice.total || 0) - amountDue, 0));
+                    const paidKey = insightMonthKey(invoice.fullyPaidOnDate || invoice.paidDate || invoice.updatedDate || invoice.invoiceDate || invoice.dueDate);
+                    if (paidKey && paidAmount > 0) {
+                        const row = ensure(paidKey);
+                        row.cashCollected += paidAmount;
+                        if (invoiceCategory(invoice) === "paid" || amountDue <= 0) row.paidCount += 1;
+                    }
+                });
+                return counts;
+            }
+
+            function insightMonthlyRows(analytics) {
+                const rows = Array.isArray(analytics.monthly) ? analytics.monthly : [];
+                const localCounts = localMonthlyInsightCounts();
+                return rows.map((row) => {
+                    const local = localCounts.get(row.month || "") || {};
+                    const turnover = Number(row.turnover ?? row.invoiced ?? local.turnover ?? 0);
+                    const cashCollected = Number(row.cashCollected ?? row.paid ?? local.cashCollected ?? 0);
+                    const raisedCount = Number(row.raisedCount ?? local.raisedCount ?? 0);
+                    const paidCount = Number(row.paidCount ?? local.paidCount ?? 0);
+                    const outstandingCount = Number(row.outstandingCount ?? local.outstandingCount ?? 0);
+                    return {
+                        ...row,
+                        invoiced: Number(row.invoiced ?? turnover),
+                        turnover,
+                        paid: Number(row.paid ?? cashCollected),
+                        cashCollected,
+                        raisedCount,
+                        paidCount,
+                        outstanding: Number(row.outstanding ?? local.outstanding ?? 0),
+                        outstandingCount,
+                        averageInvoice: Number(row.averageInvoice ?? (raisedCount ? turnover / raisedCount : 0)),
+                        collectionRatio: Number(row.collectionRatio ?? (turnover ? (cashCollected / turnover) * 100 : 0)),
+                    };
+                });
+            }
+
             function overviewInsights(analytics, ai) {
                 const totals = insightTotals(analytics);
                 const riskInvoices = insightRiskInvoices(analytics);
@@ -25822,7 +25892,7 @@
             }
 
             function trendsInsights(analytics) {
-                const monthly = analytics.monthly || [];
+                const monthly = insightMonthlyRows(analytics);
                 const latest = monthly[monthly.length - 1] || {};
                 const previous = monthly[monthly.length - 2] || {};
                 const outstandingMovement = Number(latest.outstanding || 0) - Number(previous.outstanding || 0);

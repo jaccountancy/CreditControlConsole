@@ -14162,7 +14162,23 @@ def _build_insights_analytics(user: dict) -> dict:
         )
     top_customers = sorted(customer_rollups, key=lambda item: (item["totalDue"], item["maxDaysOverdue"]), reverse=True)[:10]
 
-    month_rows = {month: {"month": _month_key(month), "label": _month_label(month), "invoiced": 0.0, "paid": 0.0, "outstanding": 0.0} for month in _last_months(12)}
+    month_rows = {
+        month: {
+            "month": _month_key(month),
+            "label": _month_label(month),
+            "invoiced": 0.0,
+            "turnover": 0.0,
+            "paid": 0.0,
+            "cashCollected": 0.0,
+            "outstanding": 0.0,
+            "raisedCount": 0,
+            "paidCount": 0,
+            "outstandingCount": 0,
+            "averageInvoice": 0.0,
+            "collectionRatio": 0.0,
+        }
+        for month in _last_months(12)
+    }
     month_lookup = {_month_key(month): month for month in month_rows}
     for invoice in invoices:
         invoice_date = _parse_optional_iso_date(invoice["invoiceDate"])
@@ -14173,14 +14189,29 @@ def _build_insights_analytics(user: dict) -> dict:
         if not month:
             continue
         month_rows[month]["invoiced"] += invoice["total"]
-        month_rows[month]["paid"] += invoice["amountPaid"]
+        month_rows[month]["turnover"] += invoice["total"]
         month_rows[month]["outstanding"] += invoice["amountDue"]
+        month_rows[month]["raisedCount"] += 1
+        if invoice["amountDue"] > 0:
+            month_rows[month]["outstandingCount"] += 1
+        if invoice["amountPaid"] > 0:
+            month_rows[month]["paid"] += invoice["amountPaid"]
+            month_rows[month]["cashCollected"] += invoice["amountPaid"]
+            if invoice["category"] == "paid" or invoice["amountDue"] <= 0:
+                month_rows[month]["paidCount"] += 1
+    for row in month_rows.values():
+        row["averageInvoice"] = row["turnover"] / row["raisedCount"] if row["raisedCount"] else 0.0
+        row["collectionRatio"] = (row["cashCollected"] / row["turnover"]) * 100 if row["turnover"] else 0.0
     monthly = [
         {
             **row,
             "invoiced": round(row["invoiced"], 2),
+            "turnover": round(row["turnover"], 2),
             "paid": round(row["paid"], 2),
+            "cashCollected": round(row["cashCollected"], 2),
             "outstanding": round(row["outstanding"], 2),
+            "averageInvoice": round(row["averageInvoice"], 2),
+            "collectionRatio": round(row["collectionRatio"], 2),
         }
         for _, row in sorted(month_rows.items())
     ]
