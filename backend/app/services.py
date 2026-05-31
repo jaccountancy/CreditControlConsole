@@ -3941,12 +3941,13 @@ def _database_metrics(cursor, tenant_id: str | None = None) -> dict:
     database_row = cursor.fetchone() or {}
     cursor.execute(
         """
-        SELECT table_name,
-               pg_total_relation_size(('public.' || quote_ident(table_name))::regclass) AS size_bytes
-        FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name::text = ANY(%s)
-        ORDER BY array_position(%s::text[], table_name::text)
+        SELECT relname AS table_name,
+               pg_total_relation_size(oid) AS size_bytes
+        FROM pg_class
+        WHERE relnamespace = 'public'::regnamespace
+          AND relkind IN ('r', 'p')
+          AND relname = ANY(%s::text[])
+        ORDER BY array_position(%s::text[], relname)
         """,
         (table_names, table_names),
     )
@@ -4067,6 +4068,20 @@ def _database_metrics(cursor, tenant_id: str | None = None) -> dict:
             }
             for row in tenant_rows
         ],
+    }
+
+
+def _database_metrics_unavailable(error: Exception | None = None) -> dict:
+    return {
+        "generatedAt": _iso(utcnow()),
+        "databaseName": "",
+        "databaseSizeBytes": 0,
+        "totalRecords": 0,
+        "visibleTenantId": "",
+        "tables": [],
+        "ledger": {},
+        "tenants": [],
+        "error": str(error or "") or "Database metrics are unavailable.",
     }
 
 
@@ -4205,7 +4220,12 @@ def panel_payload(user: dict | None = None) -> dict:
                 len(customer_rows),
                 len(invoice_rows),
             )
-            database_metrics = _database_metrics(cursor, tenant_id)
+            try:
+                database_metrics = _database_metrics(cursor, tenant_id)
+            except Exception as exc:
+                logger.exception("Unable to build database metrics")
+                connection.rollback()
+                database_metrics = _database_metrics_unavailable(exc)
         connection.commit()
 
     invoices_by_customer: dict[str, list[dict]] = {}
