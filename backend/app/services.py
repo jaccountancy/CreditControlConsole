@@ -9422,7 +9422,7 @@ def _send_me_report_smtp(email_content: dict, pdf_bytes: bytes, pdf_filename: st
 async def _send_me_report_gmail(user: dict, email_content: dict, pdf_bytes: bytes, pdf_filename: str) -> None:
     connection_row = gmail_connection_for_user(user)
     if not connection_row:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Gmail in ME Report email settings before using Gmail to send reports.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Gmail in Settings > Gmail Account before using Gmail to send reports.")
     connection_row = await refresh_gmail_connection(connection_row)
     if not email_content["recipient"]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The selected ME Report client does not have a report recipient email.")

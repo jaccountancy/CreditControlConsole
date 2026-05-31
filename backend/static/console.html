@@ -225,6 +225,7 @@
                 --settings-accent: var(--purple);
                 --settings-accent-soft: var(--purple-soft);
             }
+            .settings-sidebar-button[data-settings-nav="gmail-connection"],
             .settings-sidebar-button[data-settings-nav="letters"],
             .settings-sidebar-button[data-settings-nav="me-report-email"] {
                 --settings-accent: var(--orange);
@@ -502,7 +503,8 @@
                 gap: 12px;
             }
             .topbar-client-context[hidden] { display: none; }
-            .jashflow-topbar-summary {
+            .jashflow-topbar-summary,
+            .credit-control-topbar-summary {
                 flex: 1 1 720px;
                 min-width: min(760px, 100%);
                 display: grid;
@@ -514,31 +516,60 @@
                 background: var(--line);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
             }
-            .jashflow-topbar-summary[hidden] { display: none; }
-            .jashflow-topbar-summary article {
+            .jashflow-topbar-summary[hidden],
+            .credit-control-topbar-summary[hidden] { display: none; }
+            .jashflow-topbar-summary article,
+            .credit-control-topbar-summary article,
+            .credit-control-topbar-summary button {
                 min-width: 0;
                 padding: 10px 12px;
                 background: rgba(248, 251, 255, 0.92);
             }
+            .credit-control-topbar-summary button {
+                border: 0;
+                color: inherit;
+                cursor: pointer;
+                font: inherit;
+                text-align: left;
+            }
             .jashflow-topbar-summary span,
-            .jashflow-topbar-summary strong {
+            .jashflow-topbar-summary strong,
+            .credit-control-topbar-summary span,
+            .credit-control-topbar-summary strong,
+            .credit-control-topbar-summary p {
                 display: block;
                 overflow: hidden;
                 text-overflow: ellipsis;
                 white-space: nowrap;
             }
-            .jashflow-topbar-summary span {
+            .jashflow-topbar-summary span,
+            .credit-control-topbar-summary span {
                 color: var(--muted);
                 font-size: 0.64rem;
                 font-weight: 950;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
             }
-            .jashflow-topbar-summary strong {
+            .jashflow-topbar-summary strong,
+            .credit-control-topbar-summary strong {
                 margin-top: 4px;
                 color: var(--ink);
                 font-size: 0.92rem;
                 font-weight: 950;
+            }
+            .credit-control-topbar-summary p {
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 0.66rem;
+                font-weight: 800;
+                line-height: 1.2;
+            }
+            .credit-control-topbar-summary .late-charge-review-card strong {
+                color: var(--red);
+            }
+            .credit-control-topbar-summary .notice-card:focus-visible {
+                outline: 3px solid rgba(29, 103, 242, 0.28);
+                outline-offset: -3px;
             }
             .global-activity-toggle {
                 position: relative;
@@ -989,16 +1020,20 @@
                 min-height: 40px;
                 padding: 0 18px;
             }
+            body.is-ledger-view .ledger-topbar,
             body.is-jashflow-view .ledger-topbar {
                 gap: 12px;
                 padding: 12px 16px;
             }
+            body.is-ledger-view .brand-lockup,
             body.is-jashflow-view .brand-lockup {
                 flex: 0 1 260px;
             }
+            body.is-ledger-view .header-xero-action,
             body.is-jashflow-view .header-xero-action {
                 flex: 0 0 auto;
             }
+            body.is-ledger-view .global-activity-toggle,
             body.is-jashflow-view .global-activity-toggle {
                 margin-left: 0;
             }
@@ -5454,39 +5489,7 @@
                     white-space: normal;
                 }
             }
-            .ignition-topbar-widget {
-                flex: 1 1 440px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 12px;
-                width: min(620px, 100%);
-                max-width: 640px;
-                margin: 0 auto;
-                padding: 12px 16px;
-                border: 1px solid rgba(29, 103, 242, 0.16);
-                border-radius: 999px;
-                background: rgba(255, 255, 255, 0.96);
-                box-shadow: 0 16px 42px rgba(30, 47, 77, 0.14);
-                animation: ignition-topbar-enter 0.24s ease both;
-            }
             .ignition-topbar-widget[hidden] { display: none; }
-            .ignition-topbar-widget.is-syncing {
-                border-color: rgba(29, 103, 242, 0.28);
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(233, 241, 255, 0.82), rgba(232, 248, 238, 0.72));
-                box-shadow: 0 14px 38px rgba(29, 103, 242, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-            }
-            .ignition-topbar-widget.is-syncing .ignition-progress-track {
-                position: relative;
-            }
-            .ignition-topbar-widget.is-syncing .ignition-progress-track::before {
-                content: "";
-                position: absolute;
-                inset: 0;
-                width: 42%;
-                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.82), transparent);
-                animation: sync-inline-shimmer 1.4s linear infinite;
-            }
             .ignition-sync-head {
                 display: flex;
                 justify-content: space-between;
@@ -7373,6 +7376,7 @@
                     justify-items: start;
                 }
                 .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
+                body.is-ledger-view .credit-control-topbar-summary,
                 body.is-jashflow-view .jashflow-topbar-summary {
                     width: 100%;
                     flex-basis: 100%;
@@ -7551,6 +7555,7 @@
             }
             @media (max-width: 560px) {
                 .summary-bar { grid-template-columns: 1fr; }
+                body.is-ledger-view .credit-control-topbar-summary,
                 body.is-jashflow-view .jashflow-topbar-summary {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
@@ -7661,6 +7666,10 @@
                             <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span>
                             <span class="settings-sidebar-copy"><strong>Letter Templates</strong><span>Reminder copy</span></span>
                         </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="gmail-connection">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path><path d="M16 14h4"></path><path d="M18 12v4"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Gmail Account</strong><span>Email connection</span></span>
+                        </button>
                         <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">
                             <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                             <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
@@ -7725,6 +7734,33 @@
                                 <strong id="jashflowBalanceTotal">£0.00</strong>
                             </article>
                         </div>
+                        <div class="credit-control-topbar-summary" id="creditControlTopbarSummary" aria-label="Credit control summary" hidden>
+                            <article>
+                                <span>Invoiced</span>
+                                <strong id="heroTotalInvoiced">£0</strong>
+                                <p id="heroTotalInvoicedCount">0 invoices synced</p>
+                            </article>
+                            <article>
+                                <span>Accounts Receivable</span>
+                                <strong id="heroTotalOutstanding">£0</strong>
+                                <p id="heroOpenInvoices">0 open invoices</p>
+                            </article>
+                            <button class="notice-card late-charge-review-card" id="lateChargeReviewCard" type="button">
+                                <span>Late Charges Due</span>
+                                <strong id="heroLateChargeCount">0</strong>
+                                <p id="heroLateChargeSummary">No charges need review</p>
+                            </button>
+                            <article>
+                                <span>Paid</span>
+                                <strong id="heroPaidInvoicesValue">£0</strong>
+                                <p id="heroPaidInvoices">0 invoices paid</p>
+                            </article>
+                            <button class="notice-card" id="sevenDayNoticeCard" type="button">
+                                <span>7 Day Notices Sent</span>
+                                <strong id="heroClientsAction">0</strong>
+                                <p id="heroNoticesSummary">No active 7 day notices</p>
+                            </button>
+                        </div>
                         <div class="header-xero-action" id="headerXeroAction">
                             <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">START</a>
                         </div>
@@ -7786,8 +7822,27 @@
                                 <span id="aiInlineDetail">Building the insights dashboard</span>
                             </div>
                         </div>
-                        <div class="ignition-topbar-widget" id="ignitionTopbarWidget" role="status" aria-live="polite" aria-atomic="true" hidden>
-                            <span class="sync-inline-spinner" aria-hidden="true"></span>
+                        <div class="sync-inline-banner ignition-topbar-widget" id="ignitionTopbarWidget" role="status" aria-live="polite" aria-atomic="true" hidden>
+                            <span class="sync-inline-spinner sync-logo-loader" aria-hidden="true">
+                                <svg viewBox="0 0 98.53 98.28" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                                    <defs>
+                                        <linearGradient id="ignitionInlineLoaderGradient1" x1="22.13" y1="22.14" x2="82.38" y2="87.41">
+                                            <stop offset="0" stop-color="#2a8dcd"/>
+                                            <stop offset="1" stop-color="#3e7ec1"/>
+                                        </linearGradient>
+                                        <linearGradient id="ignitionInlineLoaderGradient2" x1="24.15" y1="20.28" x2="84.4" y2="85.55">
+                                            <stop offset="0" stop-color="#2a8dcd"/>
+                                            <stop offset="1" stop-color="#3e7ec1"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <g class="shape-1-diagonal">
+                                        <path fill="url(#ignitionInlineLoaderGradient1)" d="M36,59.36a7.18,7.18,0,0,1-6.06-2.63c-1.34-1.76-2-4.71-2-8.87V39.28L0,44.07,44.07,0V44.18q0,8-2,11.57A6.5,6.5,0,0,1,36,59.36Z"/>
+                                    </g>
+                                    <g class="shape-2-diagonal">
+                                        <path fill="url(#ignitionInlineLoaderGradient2)" d="M98.53,53.92,54.17,98.28,36.63,80.74q16.57-.55,25.93-8.95,10.05-9,10-25.52V28Z"/>
+                                    </g>
+                                </svg>
+                            </span>
                             <div class="sync-inline-copy">
                                 <strong id="ignitionSyncStep">Ignition syncing</strong>
                                 <span id="ignitionSyncSummary">Preparing Ignition Reporting API import</span>
@@ -8155,6 +8210,23 @@
                                 </form>
                             </section>
 
+                            <section class="detail-panel settings-panel" data-settings-section="gmail-connection">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Gmail account</p>
+                                        <h3>Email sending connection</h3>
+                                    </div>
+                                    <button class="ghost-button" id="reloadGmailConnectionButton" type="button">Reload from backend</button>
+                                </div>
+                                <div class="sync-settings-panel">
+                                    <div class="sync-settings-status" id="gmailConnectionStatus">
+                                        <span>Gmail not connected</span>
+                                        <a class="ghost-button action-link" id="connectGmailButton" href="/auth/gmail/start">Connect Gmail</a>
+                                    </div>
+                                    <p class="settings-help">Connect the Gmail account used when Gmail is selected as the ME Report email provider.</p>
+                                </div>
+                            </section>
+
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="me-report-email">
                                 <div class="panel-heading">
                                     <div>
@@ -8170,10 +8242,6 @@
                                     <input id="meReportEmailSubjectTemplateInput" type="text" placeholder="Email subject">
                                     <textarea id="meReportEmailBodyTemplateInput" rows="12" placeholder="Email body"></textarea>
                                     <input id="meReportEmailBccInput" type="email" placeholder="BCC email">
-                                    <div class="sync-settings-status" id="meReportGmailStatus">
-                                        <span>Gmail not connected</span>
-                                        <a class="ghost-button action-link" id="connectMeReportGmailButton" href="/auth/gmail/start">Connect Gmail</a>
-                                    </div>
                                     <p class="settings-help">Available fields: {{client_name}}, {{contact_name}}, {{estimated_corporation_tax}}, {{dividend_availability}}, {{dla_position}}, {{dla_balance}}, {{dla_credit_note}}, {{commentary}}, {{period_start}}, {{period_end}}, {{traffic_light}}.</p>
                                     <div class="letter-action-row">
                                         <button class="primary-button" type="submit">Save ME email template</button>
@@ -8641,34 +8709,6 @@
                                 <button class="ghost-button" id="refreshInsightsButton" type="button">Refresh with Jenius AI</button>
                             </div>
                         </div>
-
-                        <section class="dashboard-hero hero-summary-grid" id="dashboardHero">
-                            <article class="hero-summary-card">
-                                <span>Invoiced </span>
-                                <strong id="heroTotalInvoiced">£0</strong>
-                                <p id="heroTotalInvoicedCount">0 invoices synced</p>
-                            </article>
-                            <article class="hero-summary-card">
-                                <span>Accounts Receivable</span>
-                                <strong id="heroTotalOutstanding">£0</strong>
-                                <p id="heroOpenInvoices">0 open invoices</p>
-                            </article>
-                            <button class="hero-summary-card notice-card late-charge-review-card" id="lateChargeReviewCard" type="button">
-                                <span>Late Charges Due</span>
-                                <strong id="heroLateChargeCount">0</strong>
-                                <p id="heroLateChargeSummary">No charges need review</p>
-                            </button>
-                            <article class="hero-summary-card">
-                                <span>Paid</span>
-                                <strong id="heroPaidInvoicesValue">£0</strong>
-                                <p id="heroPaidInvoices">0 invoices paid</p>
-                            </article>
-                            <article class="hero-summary-card notice-card" id="sevenDayNoticeCard" role="button" tabindex="0">
-                                <span>7 Day Notices Sent</span>
-                                <strong id="heroClientsAction">0</strong>
-                                <p id="heroNoticesSummary">No active 7 day notices</p>
-                            </article>
-                        </section>
 
                         <div class="insights-layout">
                             <aside class="insights-sidebar" aria-label="Insights navigation">
@@ -14710,9 +14750,9 @@
                     .filter((row) => jashflowDateInRange(row, jashflowTransactionFromDate, jashflowTransactionToDate));
             }
 
-            function jashflowLoanExportFilename(loan, suffix) {
+            function jashflowLoanExportFilename(loan, suffix, extension = "csv") {
                 const name = (loan?.customerName || "jashflow-loan").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "jashflow-loan";
-                return `${name}-${suffix}.csv`;
+                return `${name}-${suffix}.${extension}`;
             }
 
             function jashflowRangeControls(mode) {
@@ -14729,7 +14769,7 @@
                             To
                             <input id="jashflow${mode === "statement" ? "Statement" : "Transaction"}ToDateInput" type="date" value="${escapeHTML(toValue)}">
                         </label>
-                        <button class="ghost-button" id="${exportButtonId}" type="button">Export ${mode}</button>
+                        <button class="ghost-button" id="${exportButtonId}" type="button">${mode === "statement" ? "Export PDF statement" : `Export ${mode}`}</button>
                     </div>
                 `;
             }
@@ -14930,6 +14970,7 @@
                 const validLoanTabs = ["details", "future-schedule", "payments", "fees-interest", "statement", "transactions", "history"];
                 if (!validLoanTabs.includes(activeJashflowLoanTab)) activeJashflowLoanTab = "details";
                 const loanCustomer = jashflowLoanCustomer(loan);
+                const loanStatementClientName = loan.customerName || loanCustomer?.name || loanCustomer?.customerName || loan.borrowerName || "this client";
                 const loanXeroUrl = contactXeroURL(loanCustomer || loan);
                 const xeroTab = loanXeroUrl === "#"
                     ? '<button type="button" title="No Xero contact link is available for this loan" disabled>Xero</button>'
@@ -15090,7 +15131,7 @@
                     ${jashflowRangeControls("statement")}
                     <section class="jashflow-detail-section">
                         <span>Statement</span>
-                        <h4>Loan statement</h4>
+                        <h4>Loan Statement for ${escapeHTML(loanStatementClientName)}</h4>
                         <div class="jashflow-table-wrap">
                             <table class="jashflow-statement-table">
                                 <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running balance</th></tr></thead>
@@ -15349,21 +15390,388 @@
                 }
             }
 
+            function pdfPlainText(value) {
+                const replacements = {
+                    163: "GBP",
+                    169: "(c)",
+                    174: "(r)",
+                    176: " degrees",
+                    183: "-",
+                    8211: "-",
+                    8212: "-",
+                    8216: "'",
+                    8217: "'",
+                    8220: "\"",
+                    8221: "\"",
+                    8230: "...",
+                    8364: "EUR"
+                };
+                return String(value ?? "")
+                    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, (character) => replacements[character.charCodeAt(0)] || " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+            }
+
+            function pdfEscapeText(value) {
+                return pdfPlainText(value)
+                    .replace(/\\/g, "\\\\")
+                    .replace(/\(/g, "\\(")
+                    .replace(/\)/g, "\\)");
+            }
+
+            function pdfPoint(value) {
+                const number = Number(value || 0);
+                if (!Number.isFinite(number)) return "0";
+                return number.toFixed(2).replace(/\.?0+$/, "");
+            }
+
+            function pdfColor(hex) {
+                const value = String(hex || "#000000").replace("#", "");
+                const normalized = value.length === 3
+                    ? value.split("").map((character) => `${character}${character}`).join("")
+                    : value.padEnd(6, "0").slice(0, 6);
+                const red = parseInt(normalized.slice(0, 2), 16) || 0;
+                const green = parseInt(normalized.slice(2, 4), 16) || 0;
+                const blue = parseInt(normalized.slice(4, 6), 16) || 0;
+                return [red, green, blue].map((channel) => (channel / 255).toFixed(3)).join(" ");
+            }
+
+            function pdfTextWidth(value, size, font = "F1") {
+                const weight = font === "F2" ? 0.56 : 0.51;
+                return pdfPlainText(value).length * Number(size || 10) * weight;
+            }
+
+            function pdfWrapText(value, maxWidth, size, font = "F1") {
+                const words = pdfPlainText(value).split(/\s+/).filter(Boolean);
+                const lines = [];
+                let line = "";
+                words.forEach((word) => {
+                    const candidate = line ? `${line} ${word}` : word;
+                    if (pdfTextWidth(candidate, size, font) <= maxWidth) {
+                        line = candidate;
+                        return;
+                    }
+                    if (line) lines.push(line);
+                    if (pdfTextWidth(word, size, font) <= maxWidth) {
+                        line = word;
+                        return;
+                    }
+                    let chunk = "";
+                    Array.from(word).forEach((character) => {
+                        const nextChunk = `${chunk}${character}`;
+                        if (chunk && pdfTextWidth(nextChunk, size, font) > maxWidth) {
+                            lines.push(chunk);
+                            chunk = character;
+                        } else {
+                            chunk = nextChunk;
+                        }
+                    });
+                    line = chunk;
+                });
+                if (line) lines.push(line);
+                return lines.length ? lines : [""];
+            }
+
+            function createPdfBuilder() {
+                const pageWidth = 595.28;
+                const pageHeight = 841.89;
+                const pages = [];
+                let page = null;
+                const yPoint = (topY) => pageHeight - topY;
+                const addPage = () => {
+                    page = [];
+                    pages.push(page);
+                    return page;
+                };
+                const push = (command) => {
+                    if (!page) addPage();
+                    page.push(command);
+                };
+                const builder = {
+                    pageWidth,
+                    pageHeight,
+                    pages,
+                    addPage,
+                    withPage(index, callback) {
+                        const previous = page;
+                        page = pages[index];
+                        callback();
+                        page = previous;
+                    },
+                    fillRect(x, y, width, height, fill) {
+                        push(`q ${pdfColor(fill)} rg ${pdfPoint(x)} ${pdfPoint(pageHeight - y - height)} ${pdfPoint(width)} ${pdfPoint(height)} re f Q`);
+                    },
+                    strokeRect(x, y, width, height, stroke = "#d8e1f1", lineWidth = 0.75) {
+                        push(`q ${pdfPoint(lineWidth)} w ${pdfColor(stroke)} RG ${pdfPoint(x)} ${pdfPoint(pageHeight - y - height)} ${pdfPoint(width)} ${pdfPoint(height)} re S Q`);
+                    },
+                    line(x1, y1, x2, y2, stroke = "#d8e1f1", lineWidth = 0.75) {
+                        push(`q ${pdfPoint(lineWidth)} w ${pdfColor(stroke)} RG ${pdfPoint(x1)} ${pdfPoint(yPoint(y1))} m ${pdfPoint(x2)} ${pdfPoint(yPoint(y2))} l S Q`);
+                    },
+                    text(value, x, y, size = 10, font = "F1", fill = "#1e2f4d") {
+                        push(`BT /${font} ${pdfPoint(size)} Tf ${pdfColor(fill)} rg 1 0 0 1 ${pdfPoint(x)} ${pdfPoint(yPoint(y))} Tm (${pdfEscapeText(value)}) Tj ET`);
+                    },
+                    textRight(value, rightX, y, size = 10, font = "F1", fill = "#1e2f4d") {
+                        this.text(value, rightX - pdfTextWidth(value, size, font), y, size, font, fill);
+                    },
+                    toBlob(title = "statement") {
+                        return pdfBlobFromPages(pages, pageWidth, pageHeight, title);
+                    }
+                };
+                addPage();
+                return builder;
+            }
+
+            function pdfBlobFromPages(pageStreams, pageWidth, pageHeight, title = "statement") {
+                const objects = [
+                    null,
+                    "<< /Type /Catalog /Pages 2 0 R >>",
+                    "",
+                    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+                    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+                    `<< /Title (${pdfEscapeText(title)}) /Creator (Credit Control Console) /Producer (Credit Control Console) >>`
+                ];
+                const pageIds = [];
+                pageStreams.forEach((commands) => {
+                    const stream = commands.join("\n");
+                    const contentId = objects.length;
+                    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+                    const pageId = objects.length;
+                    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pdfPoint(pageWidth)} ${pdfPoint(pageHeight)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`);
+                    pageIds.push(pageId);
+                });
+                objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+
+                let pdf = "%PDF-1.4\n";
+                const offsets = [0];
+                for (let index = 1; index < objects.length; index += 1) {
+                    offsets[index] = pdf.length;
+                    pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
+                }
+                const xrefOffset = pdf.length;
+                pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+                for (let index = 1; index < objects.length; index += 1) {
+                    pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+                }
+                pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R /Info 5 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+                return new Blob([pdf], { type: "application/pdf" });
+            }
+
+            function formatPdfMoney(value) {
+                const amount = Number(value || 0);
+                const prefix = amount < 0 ? "-GBP " : "GBP ";
+                return `${prefix}${Math.abs(amount).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
+
+            function formatPdfMoneyOrBlank(value) {
+                const amount = Number(value || 0);
+                return Math.abs(amount) < 0.005 ? "" : formatPdfMoney(amount);
+            }
+
+            function jashflowStatementDebit(row) {
+                return Number(row?.debit || Math.max(Number(row?.amount || 0), 0));
+            }
+
+            function jashflowStatementCredit(row) {
+                return Number(row?.credit || Math.max(Number(row?.amount || 0) * -1, 0));
+            }
+
+            function jashflowLoanReference(loan) {
+                const reference = String(loan?.reference || loan?.loanNumber || loan?.id || "").trim();
+                return reference ? reference.slice(0, 18).toUpperCase() : "JASHFLOW-LOAN";
+            }
+
+            function jashflowStatementPeriodLabel() {
+                const from = jashflowStatementFromDate ? formatDate(jashflowStatementFromDate) : "Loan inception";
+                const to = jashflowStatementToDate ? formatDate(jashflowStatementToDate) : formatDate(localDateKey());
+                return `${from} to ${to}`;
+            }
+
+            function jashflowStatementOpeningBalance(loan, rows) {
+                const allRows = jashflowTransactionRows(loan);
+                const beforeRows = jashflowStatementFromDate
+                    ? allRows.filter((row) => String(row?.date || "") < jashflowStatementFromDate)
+                    : [];
+                if (beforeRows.length) return Number(beforeRows[beforeRows.length - 1].balance || 0);
+                if (rows.length) return Number(rows[0].balance || 0) - jashflowStatementDebit(rows[0]) + jashflowStatementCredit(rows[0]);
+                return Number(loan?.balance || 0);
+            }
+
+            function downloadPdfBlob(blob, filename) {
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            }
+
+            function buildJashflowStatementPdf(loan, rows) {
+                const doc = createPdfBuilder();
+                const customer = jashflowLoanCustomer(loan) || {};
+                const organisationName = state.organisation?.name || "J Accountancy";
+                const borrowerName = loan?.customerName || customer.name || "Unnamed borrower";
+                const securityAddress = loan?.propertyAddress || loan?.securityAddress || clientAddressLine(customer) || "Property security not recorded";
+                const loanReference = jashflowLoanReference(loan);
+                const periodLabel = jashflowStatementPeriodLabel();
+                const issueDate = formatDate(localDateKey());
+                const openingBalance = jashflowStatementOpeningBalance(loan, rows);
+                const closingBalance = rows.length ? Number(rows[rows.length - 1].balance || 0) : openingBalance;
+                const bottomLimit = 770;
+                const left = 38;
+                const right = 557;
+                let y = 118;
+
+                function drawHeader(isContinuation = false) {
+                    const headerHeight = isContinuation ? 72 : 100;
+                    doc.fillRect(0, 0, doc.pageWidth, headerHeight, "#1e2f4d");
+                    doc.fillRect(0, headerHeight, doc.pageWidth, 4, "#1d67f2");
+                    doc.text(organisationName, left, isContinuation ? 31 : 36, isContinuation ? 13 : 17, "F2", "#ffffff");
+                    doc.text("Jashflow property finance ledger", left, isContinuation ? 50 : 56, 8.5, "F1", "#d8e6ff");
+                    doc.textRight("PROPERTY LOAN STATEMENT", right, isContinuation ? 31 : 36, isContinuation ? 12 : 15, "F2", "#ffffff");
+                    doc.textRight(`Issued ${issueDate}`, right, isContinuation ? 50 : 56, 8.5, "F1", "#d8e6ff");
+                    if (isContinuation) {
+                        doc.text(`${borrowerName} - ${loanReference}`, left, 91, 9.5, "F2", "#1e2f4d");
+                        doc.textRight(periodLabel, right, 91, 8.5, "F1", "#536782");
+                    }
+                }
+
+                function drawInfoLine(label, value, x, lineY, width = 150) {
+                    doc.text(label, x, lineY, 7.5, "F2", "#8593ad");
+                    pdfWrapText(value, width, 8.5, "F2").slice(0, 2).forEach((line, index) => {
+                        doc.text(line, x, lineY + 15 + (index * 10), 8.5, "F2", "#1e2f4d");
+                    });
+                }
+
+                function drawSummaryCard(label, value, x, cardY, width) {
+                    doc.fillRect(x, cardY, width, 52, "#f8fbff");
+                    doc.strokeRect(x, cardY, width, 52, "#d8e1f1", 0.75);
+                    doc.text(label, x + 10, cardY + 17, 7.25, "F2", "#8593ad");
+                    doc.text(value, x + 10, cardY + 38, 11.25, "F2", "#1e2f4d");
+                }
+
+                function drawTableHeader() {
+                    doc.fillRect(left, y, right - left, 24, "#e9f1ff");
+                    doc.strokeRect(left, y, right - left, 24, "#d8e1f1", 0.75);
+                    doc.text("Date", left + 8, y + 16, 7.5, "F2", "#536782");
+                    doc.text("Narrative", left + 70, y + 16, 7.5, "F2", "#536782");
+                    doc.textRight("Debit", 405, y + 16, 7.5, "F2", "#536782");
+                    doc.textRight("Credit", 475, y + 16, 7.5, "F2", "#536782");
+                    doc.textRight("Balance", right - 8, y + 16, 7.5, "F2", "#536782");
+                    y += 24;
+                }
+
+                function newStatementPage() {
+                    doc.addPage();
+                    drawHeader(true);
+                    y = 112;
+                    drawTableHeader();
+                }
+
+                function ensureTableSpace(height) {
+                    if (y + height > bottomLimit) newStatementPage();
+                }
+
+                function drawBalanceRow(label, balance, dateLabel = "") {
+                    ensureTableSpace(28);
+                    doc.fillRect(left, y, right - left, 28, "#f4f6f9");
+                    doc.strokeRect(left, y, right - left, 28, "#d8e1f1", 0.75);
+                    doc.text(dateLabel, left + 8, y + 18, 8, "F1", "#536782");
+                    doc.text(label, left + 70, y + 18, 8.5, "F2", "#1e2f4d");
+                    doc.textRight(formatPdfMoney(balance), right - 8, y + 18, 8.5, "F2", "#1e2f4d");
+                    y += 28;
+                }
+
+                function drawStatementRow(row) {
+                    const description = [
+                        row?.description || row?.type || "Loan transaction",
+                        row?.isVirtual ? "calculated accrual" : "",
+                        row?.type && row.type !== row.description ? row.type : ""
+                    ].filter(Boolean).join(" - ");
+                    const descriptionLines = pdfWrapText(description, 205, 8.2, "F1").slice(0, 4);
+                    const rowHeight = Math.max(28, 16 + descriptionLines.length * 9.5);
+                    ensureTableSpace(rowHeight);
+                    if (row?.isVirtual) doc.fillRect(left, y, right - left, rowHeight, "#f8fbff");
+                    doc.line(left, y + rowHeight, right, y + rowHeight, "#d8e1f1", 0.65);
+                    doc.text(formatDate(row?.date), left + 8, y + 17, 8, "F1", "#536782");
+                    descriptionLines.forEach((line, index) => {
+                        doc.text(line, left + 70, y + 17 + (index * 9.5), 8.2, index === 0 ? "F2" : "F1", "#1e2f4d");
+                    });
+                    doc.textRight(formatPdfMoneyOrBlank(jashflowStatementDebit(row)), 405, y + 17, 8, "F1", "#1e2f4d");
+                    doc.textRight(formatPdfMoneyOrBlank(jashflowStatementCredit(row)), 475, y + 17, 8, "F1", "#1e2f4d");
+                    doc.textRight(formatPdfMoney(row?.balance || 0), right - 8, y + 17, 8, "F2", "#1e2f4d");
+                    y += rowHeight;
+                }
+
+                drawHeader(false);
+                doc.fillRect(left, 124, 322, 80, "#ffffff");
+                doc.strokeRect(left, 124, 322, 80, "#d8e1f1", 0.75);
+                doc.text("Borrower", left + 12, 143, 7.5, "F2", "#8593ad");
+                doc.text(borrowerName, left + 12, 163, 14, "F2", "#1e2f4d");
+                pdfWrapText(securityAddress, 292, 8.5).slice(0, 2).forEach((line, index) => {
+                    doc.text(line, left + 12, 181 + (index * 10), 8.5, "F1", "#536782");
+                });
+
+                doc.fillRect(380, 124, 177, 80, "#f8fbff");
+                doc.strokeRect(380, 124, 177, 80, "#d8e1f1", 0.75);
+                drawInfoLine("Loan account", loanReference, 392, 143);
+                drawInfoLine("Statement period", periodLabel, 392, 174);
+
+                const summaryCards = [
+                    ["Principal advanced", formatPdfMoney(loan?.principalAmount || 0)],
+                    ["Arrangement fee", formatPdfMoney(loan?.arrangementFee || 0)],
+                    ["Interest accrued", formatPdfMoney(loan?.accruedInterest || 0)],
+                    ["Payments received", formatPdfMoney(loan?.paymentsTotal || 0)],
+                    ["Statement balance", formatPdfMoney(closingBalance)],
+                    ["Monthly repayment", formatPdfMoney(loan?.monthlyRepayment || 0)]
+                ];
+                summaryCards.forEach(([label, value], index) => {
+                    const cardX = left + ((index % 3) * 173);
+                    const cardY = 216 + (Math.floor(index / 3) * 62);
+                    drawSummaryCard(label, value, cardX, cardY, 160);
+                });
+
+                doc.text("Loan terms", left, 362, 8, "F2", "#8593ad");
+                doc.text(`${Number(loan?.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}% compound interest`, left, 380, 9.5, "F2", "#1e2f4d");
+                doc.text(`${Number(loan?.durationMonths || 0).toLocaleString("en-GB")} month term starting ${formatDate(loan?.startDate)}`, 238, 380, 9.5, "F1", "#536782");
+                doc.textRight(`Status: ${loan?.status || "active"}`, right, 380, 9.5, "F2", "#1e2f4d");
+
+                y = 414;
+                doc.text("Statement activity", left, y, 10.5, "F2", "#1e2f4d");
+                doc.textRight(`${rows.length.toLocaleString("en-GB")} movement${rows.length === 1 ? "" : "s"}`, right, y, 8.5, "F1", "#536782");
+                y += 14;
+                drawTableHeader();
+                drawBalanceRow("Opening balance", openingBalance, jashflowStatementFromDate ? formatDate(jashflowStatementFromDate) : formatDate(loan?.startDate));
+                if (rows.length) {
+                    rows.forEach(drawStatementRow);
+                } else {
+                    ensureTableSpace(34);
+                    doc.fillRect(left, y, right - left, 34, "#ffffff");
+                    doc.strokeRect(left, y, right - left, 34, "#d8e1f1", 0.75);
+                    doc.text("No statement movement in the selected period.", left + 8, y + 22, 8.5, "F1", "#536782");
+                    y += 34;
+                }
+                drawBalanceRow("Closing balance", closingBalance, jashflowStatementToDate ? formatDate(jashflowStatementToDate) : issueDate);
+
+                doc.pages.forEach((_, index) => {
+                    doc.withPage(index, () => {
+                        doc.line(left, 797, right, 797, "#d8e1f1", 0.65);
+                        doc.text("Generated from the Jashflow loan ledger. Calculated rows indicate accrued interest not yet posted as a saved transaction.", left, 814, 7.2, "F1", "#8593ad");
+                        doc.textRight(`Page ${index + 1} of ${doc.pages.length}`, right, 814, 7.2, "F1", "#8593ad");
+                    });
+                });
+
+                return doc.toBlob(`${borrowerName} property loan statement`);
+            }
+
             function exportJashflowStatement() {
                 const loan = selectedJashflowLoan();
                 if (!loan) return;
-                const rows = [
-                    ["Date", "Type", "Description", "Debit", "Credit", "Balance"],
-                    ...jashflowStatementRowsForExport(loan).map((row) => [
-                        row.date || "",
-                        row.type || "",
-                        row.description || "",
-                        Number(row.debit || Math.max(Number(row.amount || 0), 0)).toFixed(2),
-                        Number(row.credit || Math.max(Number(row.amount || 0) * -1, 0)).toFixed(2),
-                        Number(row.balance || 0).toFixed(2)
-                    ])
-                ];
-                downloadBankCsv(jashflowLoanExportFilename(loan, "jashflow-statement"), rows);
+                const rows = jashflowStatementRowsForExport(loan);
+                const statement = buildJashflowStatementPdf(loan, rows);
+                downloadPdfBlob(statement, jashflowLoanExportFilename(loan, "property-loan-statement", "pdf"));
+                showToast("Property loan statement PDF created", "success");
             }
 
             function exportJashflowTransactions() {
@@ -16835,11 +17243,13 @@
                     topbarWidget.hidden = !isIgnitionView() || !runActive;
                     topbarWidget.classList.toggle("is-syncing", runActive);
                 }
-                setIgnitionText("ignitionSyncStep", ignitionLoading ? "Loading Ignition dashboard" : run?.currentStep || (connected ? "Ready to sync Ignition changes" : "Waiting for Ignition connection"));
+                setIgnitionText("ignitionSyncStep", runActive ? "Ignition syncing" : ignitionLoading ? "Loading Ignition dashboard" : (connected ? "Ready to sync Ignition changes" : "Waiting for Ignition connection"));
                 setIgnitionText(
                     "ignitionSyncSummary",
                     ignitionLoading
                         ? "Reading persisted Reporting API data and latest sync status."
+                        : runActive
+                        ? run?.currentStep || ignitionTopbarSummary(run, connected)
                         : ignitionTopbarSummary(run, connected)
                 );
                 setIgnitionText(
@@ -18046,7 +18456,7 @@
                 if (subjectInput && document.activeElement !== subjectInput) subjectInput.value = settings.emailSubjectTemplate || "Month-end bookkeeping snapshot for {{client_name}}";
                 if (bodyInput && document.activeElement !== bodyInput) bodyInput.value = settings.emailBodyTemplate || "";
                 if (bccInput && document.activeElement !== bccInput) bccInput.value = settings.bccEmail || "fmfhdkgaptpyubgms@accountancymanager.co.uk";
-                const gmailStatus = document.getElementById("meReportGmailStatus");
+                const gmailStatus = document.getElementById("gmailConnectionStatus");
                 const gmail = settings.gmail || {};
                 if (gmailStatus) {
                     const statusText = gmail.connected
@@ -18054,9 +18464,10 @@
                         : gmail.configured
                             ? "Gmail ready to connect"
                             : "Gmail OAuth credentials not configured";
-                    gmailStatus.querySelector("span").textContent = statusText;
+                    const statusLabel = gmailStatus.querySelector("span");
+                    if (statusLabel) statusLabel.textContent = statusText;
                 }
-                const gmailLink = document.getElementById("connectMeReportGmailButton");
+                const gmailLink = document.getElementById("connectGmailButton");
                 if (gmailLink) {
                     gmailLink.href = endpointURL("/auth/gmail/start?redirect_to=/");
                     gmailLink.textContent = gmail.connected ? "Reconnect Gmail" : "Connect Gmail";
@@ -20057,7 +20468,7 @@
                     {
                         label: "Gmail",
                         value: !gmailKnown ? "Not loaded" : gmail.connected ? "Connected" : gmail.configured ? "Ready" : "Not configured",
-                        detail: gmail.email || "ME Report email connection",
+                        detail: gmail.email || "Email sending connection",
                         tone: !gmailKnown ? "warning" : gmail.connected ? "live" : gmail.configured ? "warning" : "error"
                     },
                     {
@@ -20200,6 +20611,8 @@
                 }
                 const jashflowTopbarSummary = document.getElementById("jashflowTopbarSummary");
                 if (jashflowTopbarSummary) jashflowTopbarSummary.hidden = activeView !== "jashflow";
+                const creditControlTopbarSummary = document.getElementById("creditControlTopbarSummary");
+                if (creditControlTopbarSummary) creditControlTopbarSummary.hidden = activeView !== "ledger";
                 const disconnectButton = document.getElementById("disconnectXeroButton");
                 if (disconnectButton) disconnectButton.hidden = !connected;
                 const settingsDisconnectButton = document.getElementById("settingsDisconnectXeroButton");
@@ -23259,6 +23672,11 @@
                     title: "ME Report Email Templates",
                     meta: "Control the client snapshot email, required BCC, and report send wording."
                 },
+                "gmail-connection": {
+                    eyebrow: "Gmail account",
+                    title: "Gmail Account",
+                    meta: "Connect or reconnect the Gmail inbox used for report email sending."
+                },
                 "developer-log": {
                     eyebrow: "Developer log",
                     title: "Developer Log / Activity Audit",
@@ -23316,7 +23734,7 @@
                 loadPendingXeroActions();
                 loadDeveloperLog();
                 if (activeSettingsSection === "mapping") loadXeroPostingSettings();
-                if (activeSettingsSection === "me-report-email") loadMeReport(true);
+                if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
             }
@@ -24130,9 +24548,11 @@
                 if (meReportEmailSettingsForm) meReportEmailSettingsForm.addEventListener("submit", saveMeReportEmailSettings);
                 const reloadMeReportEmailSettingsButton = document.getElementById("reloadMeReportEmailSettingsButton");
                 if (reloadMeReportEmailSettingsButton) reloadMeReportEmailSettingsButton.addEventListener("click", () => loadMeReport(true));
-                const connectMeReportGmailButton = document.getElementById("connectMeReportGmailButton");
-                if (connectMeReportGmailButton) connectMeReportGmailButton.addEventListener("click", (event) => {
-                    if (connectMeReportGmailButton.getAttribute("aria-disabled") === "true") {
+                const reloadGmailConnectionButton = document.getElementById("reloadGmailConnectionButton");
+                if (reloadGmailConnectionButton) reloadGmailConnectionButton.addEventListener("click", () => loadMeReport(true));
+                const connectGmailButton = document.getElementById("connectGmailButton");
+                if (connectGmailButton) connectGmailButton.addEventListener("click", (event) => {
+                    if (connectGmailButton.getAttribute("aria-disabled") === "true") {
                         event.preventDefault();
                         showToast("Add Gmail OAuth credentials before connecting Gmail", "error");
                     }
