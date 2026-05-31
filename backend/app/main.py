@@ -85,6 +85,7 @@ from .services import (
     practice_pack_payload,
     process_pending_xero_actions,
     override_bank_statement_transaction,
+    bank_statement_upload_source_file,
     get_sync_run,
     me_report_payload,
     me_report_report_html,
@@ -1396,6 +1397,17 @@ async def api_retry_bank_statement_upload(
 @app.delete("/api/bank-statements/uploads/{upload_id}")
 def api_delete_bank_statement_upload(upload_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", "bankStatements": delete_bank_statement_upload(user, upload_id)}
+
+
+@app.get("/api/bank-statements/uploads/{upload_id}/source")
+def api_bank_statement_upload_source(upload_id: str, user: dict = Depends(require_panel_user)):
+    file_bytes, filename, content_type = bank_statement_upload_source_file(user, upload_id)
+    safe_filename = str(filename or "bank-statement.pdf").replace('"', "")
+    return Response(
+        content=file_bytes,
+        media_type=content_type or "application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}"'},
+    )
 
 
 @app.post("/api/bank-statements/transactions/{transaction_id}/override")

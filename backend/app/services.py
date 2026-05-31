@@ -10551,6 +10551,7 @@ def _bank_statement_quality_summary(transactions: list[dict]) -> dict:
 
 
 def _serialize_bank_statement_transaction(row: dict) -> dict:
+    raw_payload = row.get("raw") if isinstance(row.get("raw"), dict) else {}
     raw_amount = _money(row.get("amount"))
     raw_balance = _money(row.get("balance")) if row.get("balance") is not None else None
     manual_amount = _money(row.get("manual_amount")) if row.get("manual_amount") is not None else None
@@ -10572,6 +10573,9 @@ def _serialize_bank_statement_transaction(row: dict) -> dict:
         "manualOverrideAt": _iso(row.get("manual_override_at")) or "",
         "type": row.get("transaction_type") or "",
         "createdAt": _iso(row.get("created_at")) or "",
+        "sourceChunk": raw_payload.get("_sourceChunk") or "",
+        "sourceChunkIndex": raw_payload.get("_sourceChunkIndex"),
+        "sourceRowIndex": raw_payload.get("_sourceRowIndex"),
     }
 
 
@@ -10965,6 +10969,33 @@ def override_bank_statement_transaction(user: dict, transaction_id: str, payload
         user["id"],
     )
     return bank_statement_payload(user)
+
+
+def bank_statement_upload_source_file(user: dict, upload_id: str) -> tuple[bytes, str, str]:
+    tenant_id = _bank_statement_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT uploads.filename, uploads.content_type, uploads.source_file
+                FROM bank_statement_uploads AS uploads
+                JOIN bank_statement_accounts AS accounts ON accounts.id = uploads.bank_account_id
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                WHERE uploads.id = %s
+                  AND clients.tenant_id = %s
+                  AND clients.status = 'active'
+                """,
+                (upload_id, tenant_id),
+            )
+            row = cursor.fetchone()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement submission not found.")
+    source_file = bytes(row.get("source_file") or b"")
+    if not source_file:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The original PDF is no longer available for this submission.")
+    filename = row.get("filename") or "bank-statement.pdf"
+    content_type = row.get("content_type") or "application/pdf"
+    return source_file, filename, content_type
 
 
 def _bank_statement_upload_activity(event_type: str, message: str, detail: dict | None = None) -> dict:

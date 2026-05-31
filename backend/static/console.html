@@ -6858,8 +6858,7 @@
             }
             .bank-account-page-header,
             .bank-account-toolbar,
-            .bank-account-tabs,
-            .bank-warning-row {
+            .bank-account-tabs {
                 display: flex;
                 align-items: flex-start;
                 justify-content: space-between;
@@ -6909,15 +6908,13 @@
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 10px;
             }
-            .bank-account-summary-card,
-            .bank-warning-card {
+            .bank-account-summary-card {
                 padding: 11px 12px;
                 border-radius: 14px;
                 border: 1px solid var(--line);
                 background: rgba(255, 255, 255, 0.78);
             }
             .bank-account-summary-card span,
-            .bank-warning-card span,
             .bank-upload-history-table small {
                 display: block;
                 color: var(--muted);
@@ -6930,47 +6927,6 @@
                 display: block;
                 margin-top: 4px;
                 font-size: 0.96rem;
-            }
-            .bank-warning-panel {
-                display: grid;
-                gap: 6px;
-            }
-            .bank-warning-card {
-                border-color: rgba(255, 159, 47, 0.34);
-                background: rgba(255, 243, 223, 0.9);
-            }
-            .bank-warning-card.is-high {
-                border-color: rgba(255, 83, 83, 0.36);
-                background: rgba(255, 231, 231, 0.9);
-            }
-            .bank-warning-row {
-                justify-content: flex-start;
-            }
-            .bank-warning-icon {
-                display: inline-grid;
-                place-items: center;
-                flex: 0 0 auto;
-                width: 28px;
-                height: 28px;
-                border-radius: 999px;
-                background: rgba(255, 159, 47, 0.18);
-                color: #9d6414;
-                font-weight: 950;
-            }
-            .bank-warning-card.is-high .bank-warning-icon {
-                background: rgba(255, 83, 83, 0.18);
-                color: #ad3434;
-            }
-            .bank-warning-card strong,
-            .bank-warning-card p {
-                display: block;
-                margin: 0;
-            }
-            .bank-warning-card p {
-                margin-top: 2px;
-                color: var(--muted);
-                font-size: 0.86rem;
-                font-weight: 750;
             }
             .bank-account-tabs {
                 justify-content: flex-start;
@@ -9313,6 +9269,10 @@
             .bank-statement-upload-card {
                 width: min(620px, 100%);
             }
+            .bank-transaction-review-card {
+                width: min(1080px, 100%);
+                max-height: 92vh;
+            }
             .bank-account-dialog-form {
                 min-height: 0;
                 margin: 0;
@@ -9338,6 +9298,88 @@
             }
             .bank-statement-upload-body input[type="file"] {
                 padding: 12px;
+            }
+            .bank-transaction-review-body {
+                display: grid;
+                grid-template-columns: minmax(340px, 1fr) minmax(320px, 0.8fr);
+                gap: 18px;
+                padding: 20px 24px 24px;
+                min-height: 0;
+                overflow: auto;
+            }
+            .bank-source-preview {
+                min-height: 520px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                overflow: hidden;
+                background: #eef3fb;
+            }
+            .bank-source-preview iframe {
+                display: block;
+                width: 100%;
+                height: 100%;
+                min-height: 520px;
+                border: 0;
+                background: #fff;
+            }
+            .bank-source-preview-empty {
+                display: grid;
+                place-items: center;
+                min-height: 360px;
+                padding: 24px;
+                color: var(--muted);
+                font-weight: 800;
+                text-align: center;
+            }
+            .bank-review-choice-panel {
+                display: grid;
+                align-content: start;
+                gap: 14px;
+            }
+            .bank-review-row-summary {
+                display: grid;
+                gap: 8px;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: var(--surface-soft);
+            }
+            .bank-review-row-summary strong {
+                color: var(--ink);
+            }
+            .bank-review-row-summary span {
+                color: #5a6f8c;
+                font-size: 0.86rem;
+                font-weight: 800;
+            }
+            .bank-review-options {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .bank-review-options button {
+                justify-content: center;
+                min-height: 44px;
+            }
+            .bank-review-other {
+                display: grid;
+                gap: 10px;
+                padding-top: 4px;
+            }
+            .bank-review-other input {
+                width: 100%;
+                min-height: 44px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 10px 12px;
+                color: var(--ink);
+                font: inherit;
+                font-weight: 800;
+            }
+            @media (max-width: 900px) {
+                .bank-transaction-review-body {
+                    grid-template-columns: 1fr;
+                }
             }
             .me-report-loss-card {
                 width: min(860px, 100%);
@@ -12169,6 +12211,24 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="bankTransactionReviewPanel" aria-modal="true" role="dialog" aria-labelledby="bankTransactionReviewTitle" hidden>
+                    <div class="developer-log-card bank-transaction-review-card">
+                        <div class="developer-log-head">
+                            <div>
+                                <h3 id="bankTransactionReviewTitle">Review statement row</h3>
+                                <p id="bankTransactionReviewSummary">Confirm whether the extracted amount is money in or money out.</p>
+                            </div>
+                            <div class="developer-log-actions">
+                                <button class="ghost-button" id="closeBankTransactionReviewPanelButton" type="button">Close</button>
+                            </div>
+                        </div>
+                        <div class="bank-transaction-review-body">
+                            <div class="bank-source-preview" id="bankTransactionReviewPreview"></div>
+                            <div class="bank-review-choice-panel" id="bankTransactionReviewChoices"></div>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="meReportLossPanel" aria-modal="true" role="dialog" aria-labelledby="meReportLossTitle" hidden>
                     <div class="developer-log-card me-report-loss-card">
                         <form class="stack-form bank-account-dialog-form" id="meReportLossForm" novalidate>
@@ -12639,6 +12699,7 @@
             let editingBankAccountId = "";
             let bankAccountFormOpen = false;
             let bankStatementUploadPanelOpen = false;
+            let bankStatementReviewTransactionId = "";
             let bankStatementClientFormOpen = false;
             let bankStatementWorkspaceOpen = false;
             let bankStatementAccountOpen = false;
@@ -12962,6 +13023,7 @@
                         bankStatementAccount: config.endpoints?.bankStatementAccount || "/api/bank-statements/accounts/:accountId",
                         bankStatementUploads: config.endpoints?.bankStatementUploads || "/api/bank-statements/accounts/:accountId/uploads",
                         bankStatementUpload: config.endpoints?.bankStatementUpload || "/api/bank-statements/uploads/:uploadId",
+                        bankStatementUploadSource: config.endpoints?.bankStatementUploadSource || "/api/bank-statements/uploads/:uploadId/source",
                         bankStatementUploadRetry: config.endpoints?.bankStatementUploadRetry || "/api/bank-statements/uploads/:uploadId/retry",
                         bankStatementTransactionOverride: config.endpoints?.bankStatementTransactionOverride || "/api/bank-statements/transactions/:transactionId/override",
                         ignition: config.endpoints?.ignition || "/api/ignition",
@@ -19703,6 +19765,118 @@
                 renderBankStatementUploadPanel();
             }
 
+            function closeBankTransactionReviewPanel() {
+                bankStatementReviewTransactionId = "";
+                renderBankTransactionReviewPanel();
+            }
+
+            function bankStatementReviewContext() {
+                const account = selectedBankAccount();
+                const transactions = bankAccountTransactionsAscending(account);
+                const transaction = transactions.find((row) => String(row.id || "") === String(bankStatementReviewTransactionId || ""));
+                if (!account || !transaction) return { account: null, transactions: [], transaction: null, issue: null, upload: null };
+                const upload = (account.uploads || []).find((item) => String(item.id || "") === String(transaction.uploadId || "")) || null;
+                return {
+                    account,
+                    transactions,
+                    transaction,
+                    issue: bankTransactionIssue(transactions, transactions.indexOf(transaction)),
+                    upload
+                };
+            }
+
+            function openBankTransactionReviewPanel(transactionId) {
+                if (!transactionId) return;
+                bankStatementReviewTransactionId = transactionId;
+                renderBankTransactionReviewPanel();
+            }
+
+            function bankStatementSourcePageFragment(transaction) {
+                const match = String(transaction?.sourceChunk || "").match(/pages?\s+(\d+)/i);
+                return match ? `#page=${encodeURIComponent(match[1])}` : "";
+            }
+
+            function renderBankTransactionReviewPanel() {
+                const panel = document.getElementById("bankTransactionReviewPanel");
+                if (!panel) return;
+                const closeButton = document.getElementById("closeBankTransactionReviewPanelButton");
+                if (closeButton) closeButton.onclick = closeBankTransactionReviewPanel;
+                const { transaction, issue, upload } = bankStatementReviewContext();
+                const shouldShow = activeView === "bank-statements" && bankStatementAccountOpen && Boolean(transaction);
+                panel.hidden = !shouldShow;
+                if (!shouldShow) {
+                    const preview = document.getElementById("bankTransactionReviewPreview");
+                    const choices = document.getElementById("bankTransactionReviewChoices");
+                    if (preview) preview.innerHTML = "";
+                    if (choices) choices.innerHTML = "";
+                    return;
+                }
+
+                const rawAmount = bankTransactionRawAmount(transaction);
+                const currentAmount = bankTransactionAmount(transaction);
+                const suggestedAmount = bankStatementNumber(issue?.suggestedAmount);
+                const optionBaseAmount = Math.abs(bankStatementNumber(rawAmount) ?? suggestedAmount ?? currentAmount);
+                const moneyInAmount = bankStatementRoundMoney(optionBaseAmount);
+                const moneyOutAmount = bankStatementRoundMoney(-optionBaseAmount);
+                const title = document.getElementById("bankTransactionReviewTitle");
+                if (title) title.textContent = `Review ${formatDate(transaction.date)} transaction`;
+                const summary = document.getElementById("bankTransactionReviewSummary");
+                if (summary) summary.textContent = upload?.filename || transaction.sourceChunk || "Use the statement preview to confirm the signed amount.";
+
+                const preview = document.getElementById("bankTransactionReviewPreview");
+                if (preview) {
+                    if (upload?.id) {
+                        const sourceUrl = `${endpointURL(api.endpoints.bankStatementUploadSource, { uploadId: upload.id })}${bankStatementSourcePageFragment(transaction)}`;
+                        preview.innerHTML = `<iframe title="Uploaded bank statement source" src="${escapeHTML(sourceUrl)}"></iframe>`;
+                    } else {
+                        preview.innerHTML = `<div class="bank-source-preview-empty">The original PDF is not available for this row.</div>`;
+                    }
+                }
+
+                const choices = document.getElementById("bankTransactionReviewChoices");
+                if (!choices) return;
+                const suggestedCopy = suggestedAmount !== null
+                    ? `<span>Running balances imply ${escapeHTML(formatCurrency(suggestedAmount))} for this row.</span>`
+                    : `<span>Choose the sign shown by the statement row.</span>`;
+                const inferredButton = suggestedAmount !== null && Math.abs(Math.abs(suggestedAmount) - optionBaseAmount) > 0.02
+                    ? `<button class="ghost-button" type="button" data-bank-review-amount="${escapeHTML(String(suggestedAmount))}">Use ${escapeHTML(formatCurrency(suggestedAmount))}</button>`
+                    : "";
+                choices.innerHTML = `
+                    <div class="bank-review-row-summary">
+                        <strong>${escapeHTML(transaction.description || "Statement transaction")}</strong>
+                        <span>Date: ${escapeHTML(formatDate(transaction.date))}</span>
+                        <span>Extracted amount: ${escapeHTML(formatCurrency(rawAmount))}</span>
+                        <span>Running balance: ${escapeHTML(bankTransactionBalance(transaction) === null ? "No balance read" : formatCurrency(bankTransactionBalance(transaction)))}</span>
+                        ${suggestedCopy}
+                    </div>
+                    <div class="bank-review-options">
+                        <button class="${suggestedAmount === moneyInAmount ? "primary-button" : "ghost-button"}" type="button" data-bank-review-amount="${escapeHTML(String(moneyInAmount))}">Money in ${escapeHTML(formatCurrency(moneyInAmount))}</button>
+                        <button class="${suggestedAmount === moneyOutAmount ? "primary-button" : "ghost-button"}" type="button" data-bank-review-amount="${escapeHTML(String(moneyOutAmount))}">Money out ${escapeHTML(formatCurrency(Math.abs(moneyOutAmount)))}</button>
+                        ${inferredButton}
+                    </div>
+                    <form class="bank-review-other" id="bankTransactionReviewOtherForm">
+                        <label class="bank-account-field" for="bankTransactionReviewOtherAmount">
+                            <span class="bank-field-label"><span>Other signed amount</span><small>Use negative for money out</small></span>
+                            <input id="bankTransactionReviewOtherAmount" inputmode="decimal" autocomplete="off" placeholder="-123.45">
+                        </label>
+                        <button class="ghost-button" type="submit">Save other amount</button>
+                    </form>
+                `;
+                choices.querySelectorAll("[data-bank-review-amount]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const amount = parseBankStatementOverrideAmount(button.dataset.bankReviewAmount || "");
+                        if (amount === null) return showToast("Choose a valid amount", "error");
+                        saveBankStatementTransactionAmountOverride(transaction.id, amount, bankTransactionReviewNote(transaction, amount));
+                    });
+                });
+                choices.querySelector("#bankTransactionReviewOtherForm")?.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    const amount = parseBankStatementOverrideAmount(document.getElementById("bankTransactionReviewOtherAmount")?.value || "");
+                    if (amount === null) return showToast("Enter a valid signed amount", "error");
+                    saveBankStatementTransactionAmountOverride(transaction.id, amount, bankTransactionReviewNote(transaction, amount));
+                });
+            }
+
             function renderBankAccountPanel() {
                 const panel = document.getElementById("bankAccountPanel");
                 if (!panel) return;
@@ -20087,11 +20261,14 @@
                 if (previousBalance !== null) {
                     const expectedBalance = bankStatementRoundMoney(previousBalance + amount);
                     if (expectedBalance !== null && Math.abs(expectedBalance - balance) > 0.02) {
+                        const inferredCopy = inference.suggestedAmount !== null
+                            ? ` The running balances imply ${formatCurrency(inference.suggestedAmount)} for this row.`
+                            : "";
                         return {
                             severity: "high",
                             title: "Running balance mismatch",
-                            message: `Extracted amount ${formatCurrency(rawAmount)} makes the balance ${formatCurrency(expectedBalance)}, but the statement balance reads ${formatCurrency(balance)}. Based purely on the running balances either side, Jenius thinks the signed amount is ${formatCurrency(inference.suggestedAmount)}.`,
-                            basis: inference.basis || "Previous and current running balances were used.",
+                            message: `${formatCurrency(previousBalance)} plus the extracted amount ${formatCurrency(rawAmount)} gives ${formatCurrency(expectedBalance)}, but the statement shows ${formatCurrency(balance)}.${inferredCopy}`,
+                            basis: "Open the row review, check the statement preview, then choose Money in, Money out, or Other.",
                             suggestedAmount: inference.suggestedAmount
                         };
                     }
@@ -20514,11 +20691,13 @@
                             const expected = previousBalance + bankTransactionAmount(transaction);
                             const actual = balance;
                             if (Math.abs(expected - actual) > 0.02) {
+                                const description = String(transaction.description || "statement row").replace(/\s+/g, " ").trim();
+                                const shortDescription = description.length > 86 ? `${description.slice(0, 83)}...` : description;
                                 addWarning(
                                 "balance-mismatch",
                                 "high",
-                                "Running balance mismatch",
-                                `${formatDate(transaction.date)} expected ${formatCurrency(expected)} from the extracted amount, but the statement running balance was read as ${formatCurrency(actual)}. Review this PDF before exporting.`
+                                "Review transaction amount",
+                                `${formatDate(transaction.date)} ${shortDescription}: extracted amount gives ${formatCurrency(expected)}, but the statement shows ${formatCurrency(actual)}. Open the row marker and confirm the amount from the PDF.`
                             );
                         }
                         }
@@ -20565,6 +20744,7 @@
                 }
 
                 (account?.flags || []).forEach((flag) => {
+                    if (flag.type === "balance_mismatch") return;
                     addWarning(
                         flag.type || "saved-flag",
                         flag.severity || "medium",
@@ -21142,30 +21322,12 @@
                     .slice()
                     .reverse();
                 const uploads = (account.uploads || []).slice().sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
-                const warnings = bankStatementWarnings(account);
                 const balanceQuality = bankStatementBalanceQuality(account);
                 const dateRange = bankAccountDateRange(account);
                 const latestBalance = latestBankAccountBalance(account);
                 const activeUpload = activeBankUploadForAccount(account);
                 const localUploadActive = bankStatementUploading && bankStatementUploadingAccountId === account.id;
                 const accountProcessing = localUploadActive || Boolean(activeUpload);
-                const warningsMarkup = warnings.length
-                    ? warnings.map((warning) => `
-                        <article class="bank-warning-card ${warning.severity === "high" ? "is-high" : ""}">
-                            <div class="bank-warning-row">
-                                <span class="bank-warning-icon">!</span>
-                                <div>
-                                    <span>${escapeHTML(warning.severity || "review")}</span>
-                                    <strong>${escapeHTML(warning.title || "Statement warning")}</strong>
-                                    <p>${escapeHTML(warning.message || "Review this account before importing to Xero.")}</p>
-                                </div>
-                            </div>
-                        </article>
-                    `).join("")
-                    : "";
-                const warningsPanelMarkup = warningsMarkup
-                    ? `<div class="bank-warning-panel" role="alert">${warningsMarkup}</div>`
-                    : "";
                 const transactionRows = filteredTransactions.map((transaction) => {
                     const transactionIndex = transactions.indexOf(transaction);
                     const issue = bankTransactionIssue(transactions, transactionIndex);
@@ -21188,7 +21350,7 @@
                                 <strong>${escapeHTML(issue.title)}</strong>
                                 <span>${escapeHTML(issue.message)}</span>
                                 <span>${escapeHTML(issue.basis || "Running balance context unavailable.")}</span>
-                                ${canOverrideAmount ? `<button class="bank-transaction-override-button" type="button" data-bank-transaction-override="${escapeHTML(transaction.id || "")}" data-bank-override-suggested="${escapeHTML(String(suggestedAmount))}">Override with ${escapeHTML(formatCurrency(suggestedAmount))}</button>` : ""}
+                                ${canOverrideAmount ? `<button class="bank-transaction-override-button" type="button" data-bank-transaction-review="${escapeHTML(transaction.id || "")}" data-bank-override-suggested="${escapeHTML(String(suggestedAmount))}">Review PDF and confirm</button>` : ""}
                             </span>
                         </span>
                     ` : "";
@@ -21299,7 +21461,6 @@
                             <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
                         </div>
                     </div>
-                    ${warningsPanelMarkup}
                     <nav class="bank-account-tabs" aria-label="Bank account sections">
                         <button type="button" class="${bankStatementAccountTab === "transactions" ? "is-active" : ""}" data-bank-account-tab="transactions">Transactions</button>
                         <button type="button" class="${bankStatementAccountTab === "history" ? "is-active" : ""}" data-bank-account-tab="history">Submission history</button>
@@ -21353,8 +21514,16 @@
                         overrideBankStatementTransactionAmount(button.dataset.bankTransactionOverride || "", button.dataset.bankOverrideSuggested || "");
                     });
                 });
+                detail.querySelectorAll("[data-bank-transaction-review]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openBankTransactionReviewPanel(button.dataset.bankTransactionReview || "");
+                    });
+                });
                 renderBankStatementUploadPanel();
                 renderBankAccountPanel();
+                renderBankTransactionReviewPanel();
             }
 
             async function addBankStatementClient(event) {
@@ -21611,6 +21780,40 @@
                 return Number.isFinite(amount) ? bankStatementRoundMoney(amount) : null;
             }
 
+            function bankTransactionReviewNote(transaction, amount) {
+                const parts = [`Confirmed from statement preview as ${formatCurrency(amount)}.`];
+                if (transaction?.description) parts.push(`Reviewed row: ${transaction.description}`);
+                return parts.join(" ");
+            }
+
+            async function saveBankStatementTransactionAmountOverride(transactionId, manualAmount, note = "") {
+                if (!transactionId || manualAmount === null) return;
+                const account = selectedBankAccount();
+                try {
+                    const response = await requestJSON(
+                        api.endpoints.bankStatementTransactionOverride,
+                        {
+                            method: "POST",
+                            body: JSON.stringify({
+                                amount: manualAmount,
+                                note
+                            })
+                        },
+                        { transactionId }
+                    );
+                    bankStatementData = normaliseBankStatementPayload(response);
+                    selectedBankAccountId = account?.id || selectedBankAccountId;
+                    bankStatementReviewTransactionId = "";
+                    ensureBankStatementSelection();
+                    showToast("Transaction amount confirmed", "success");
+                    renderBankStatementsScreen();
+                    renderBankTransactionReviewPanel();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to save transaction override", "error");
+                }
+            }
+
             async function overrideBankStatementTransactionAmount(transactionId, suggestedAmountValue = "") {
                 if (!transactionId) return;
                 const account = selectedBankAccount();
@@ -21630,27 +21833,7 @@
                 const noteParts = [];
                 if (suggestedAmount !== null) noteParts.push(`Jenius inferred ${formatCurrency(suggestedAmount)} from surrounding running balances.`);
                 if (transaction?.description) noteParts.push(`Reviewed row: ${transaction.description}`);
-                try {
-                    const response = await requestJSON(
-                        api.endpoints.bankStatementTransactionOverride,
-                        {
-                            method: "POST",
-                            body: JSON.stringify({
-                                amount: manualAmount,
-                                note: noteParts.join(" ")
-                            })
-                        },
-                        { transactionId }
-                    );
-                    bankStatementData = normaliseBankStatementPayload(response);
-                    selectedBankAccountId = account?.id || selectedBankAccountId;
-                    ensureBankStatementSelection();
-                    showToast("Transaction amount override saved", "success");
-                    renderBankStatementsScreen();
-                } catch (error) {
-                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to save transaction override", "error");
-                }
+                await saveBankStatementTransactionAmountOverride(transactionId, manualAmount, noteParts.join(" "));
             }
 
             function exportBankTransactions() {
@@ -23354,6 +23537,56 @@
                     return;
                 }
 
+                if (meReportWorkspaceOpen) {
+                    const client = selectedMeReportClient();
+                    if (!client) {
+                        meReportWorkspaceOpen = false;
+                        clientList.hidden = false;
+                        actionList.hidden = true;
+                        detail.hidden = true;
+                        renderMeReportScreen();
+                        return;
+                    }
+                    const tabs = [
+                        ["overview", "Overview"],
+                        ["submission-history", "Submission history"],
+                        ["tax", "Tax"],
+                        ["dividends", "Dividends"],
+                        ["dla", "DLA"],
+                        ["alerts", "AI Alerts"],
+                        ["mappings", "Mappings"],
+                        ["reports", "Reports"]
+                    ];
+                    actionList.innerHTML = `
+                        <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
+                        <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
+                        <button class="ghost-button" id="setMeReportTradingLossButton" type="button">Set B/F loss</button>
+                        ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
+                    `;
+                    document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
+                    document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
+                    document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
+                    actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            activeMeReportTab = button.dataset.meReportTab;
+                            renderMeReportScreen();
+                        });
+                    });
+                    try {
+                        detail.innerHTML = renderMeReportTab(client, activeMeReportTab);
+                    } catch (error) {
+                        console.error("Unable to render ME Report workspace", error);
+                        detail.innerHTML = '<div class="empty-state"><p class="eyebrow">ME Report workspace</p><h4>Unable to render this uploaded report</h4><p>Refresh the page, or delete the latest submission from this workspace and upload it again.</p></div>';
+                        return;
+                    }
+                    try {
+                        wireMeReportDynamicActions(client);
+                    } catch (error) {
+                        console.error("Unable to wire ME Report workspace actions", error);
+                    }
+                    return;
+                }
+
                 const filterOptions = [
                     ["active", `Active (${activeClients.length.toLocaleString("en-GB")})`],
                     ["archived", `Archived (${archivedClients.length.toLocaleString("en-GB")})`],
@@ -23448,37 +23681,6 @@
                     });
                 });
                 renderMeReportClientTableRows();
-                if (!meReportWorkspaceOpen) return;
-
-                const client = selectedMeReportClient();
-                if (!client) return;
-                const tabs = [
-                    ["overview", "Overview"],
-                    ["submission-history", "Submission history"],
-                    ["tax", "Tax"],
-                    ["dividends", "Dividends"],
-                    ["dla", "DLA"],
-                    ["alerts", "AI Alerts"],
-                    ["mappings", "Mappings"],
-                    ["reports", "Reports"]
-                ];
-                actionList.innerHTML = `
-                    <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
-                    <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
-                    <button class="ghost-button" id="setMeReportTradingLossButton" type="button">Set B/F loss</button>
-                    ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
-                `;
-                document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
-                document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
-                document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
-                actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        activeMeReportTab = button.dataset.meReportTab;
-                        renderMeReportScreen();
-                    });
-                });
-                detail.innerHTML = renderMeReportTab(client, activeMeReportTab);
-                wireMeReportDynamicActions(client);
             }
 
             function openMeReportSubmissionUpload(clientId = "") {
