@@ -5288,7 +5288,21 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
     }
 
 
-ME_REPORT_TAX_RATE = Decimal("0.19")
+ME_REPORT_CT_SMALL_PROFITS_RATE = Decimal("0.19")
+ME_REPORT_CT_MAIN_RATE = Decimal("0.25")
+ME_REPORT_CT_LOWER_LIMIT = Decimal("50000.00")
+ME_REPORT_CT_UPPER_LIMIT = Decimal("250000.00")
+ME_REPORT_CT_MARGINAL_RELIEF_FRACTION = Decimal("0.015")
+ME_REPORT_TAX_RATE = ME_REPORT_CT_SMALL_PROFITS_RATE
+ME_REPORT_CAPITAL_ALLOWANCE_ASSET_TERMS = (
+    "computer",
+    "office equipment",
+    "plant",
+    "machinery",
+    "fixture",
+    "fitting",
+    "equipment",
+)
 ME_REPORT_CATEGORIES = [
     {"group": "Income", "items": ["Sales", "Other income", "Bank interest", "Grants", "Tax refunds", "Directors' income items needing review"]},
     {"group": "Normal allowable expenses", "items": ["Software", "Subscriptions", "Accountancy fees", "Office costs", "Telephone and internet", "Staff wages", "Employer pension", "Employer NIC", "Insurance", "Travel", "Training", "Bank charges"]},
@@ -5348,6 +5362,8 @@ def _serialize_me_report_sync_run(row: dict | None) -> dict | None:
 
 
 def _serialize_me_report_submission(row: dict) -> dict:
+    extracted_payload = row.get("extracted_payload") if isinstance(row.get("extracted_payload"), dict) else {}
+    calculation = extracted_payload.get("calculationSummary") if isinstance(extracted_payload.get("calculationSummary"), dict) else {}
     return {
         "id": str(row["id"]),
         "filename": row.get("filename") or "",
@@ -5357,6 +5373,7 @@ def _serialize_me_report_submission(row: dict) -> dict:
         "summary": row.get("summary") or "",
         "estimatedCorporationTax": float(row.get("estimated_corporation_tax") or 0),
         "dividendCapacity": float(row.get("dividend_capacity") or 0),
+        "calculation": calculation,
         "createdAt": _iso(row.get("created_at")) or "",
         "completedAt": _iso(row.get("completed_at")) or "",
     }
@@ -5679,27 +5696,141 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "required": [
+        "periodStart",
         "periodEnd",
         "summary",
         "monthlySales",
         "monthlyExpenses",
         "accountingProfit",
+        "yearToDateSales",
+        "yearToDateProfit",
+        "trialBalanceAccounts",
+        "balanceSheet",
+        "fixedAssetReconciliation",
+        "depreciationSchedule",
+        "disallowedExpenses",
+        "capitalAllowancesClaim",
         "estimatedCorporationTax",
         "dividendCapacity",
         "dlaBalance",
         "trafficLight",
+        "pageCoverage",
         "warnings",
     ],
     "properties": {
+        "periodStart": {"type": ["string", "null"]},
         "periodEnd": {"type": ["string", "null"]},
         "summary": {"type": "string"},
         "monthlySales": {"type": "number"},
         "monthlyExpenses": {"type": "number"},
         "accountingProfit": {"type": "number"},
+        "yearToDateSales": {"type": "number"},
+        "yearToDateProfit": {"type": "number"},
+        "trialBalanceAccounts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["accountCode", "accountName", "accountType", "debitYTD", "creditYTD", "sourcePage"],
+                "properties": {
+                    "accountCode": {"type": "string"},
+                    "accountName": {"type": "string"},
+                    "accountType": {"type": "string"},
+                    "debitYTD": {"type": "number"},
+                    "creditYTD": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
+        "balanceSheet": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "currentYearEarnings",
+                "retainedEarnings",
+                "dividendsDeclared",
+                "calledUpShareCapital",
+                "totalEquity",
+                "sourcePage",
+            ],
+            "properties": {
+                "currentYearEarnings": {"type": "number"},
+                "retainedEarnings": {"type": "number"},
+                "dividendsDeclared": {"type": "number"},
+                "calledUpShareCapital": {"type": "number"},
+                "totalEquity": {"type": "number"},
+                "sourcePage": {"type": ["integer", "null"]},
+            },
+        },
+        "fixedAssetReconciliation": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "assetClass",
+                    "balanceSheetClosingCost",
+                    "assetRegisterClosingCost",
+                    "closingCostDifference",
+                    "closingBookDifference",
+                    "sourcePage",
+                ],
+                "properties": {
+                    "assetClass": {"type": "string"},
+                    "balanceSheetClosingCost": {"type": "number"},
+                    "assetRegisterClosingCost": {"type": "number"},
+                    "closingCostDifference": {"type": "number"},
+                    "closingBookDifference": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
+        "depreciationSchedule": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["depreciationPosted", "depreciationColumnTotal", "reviewWarning", "sourcePageStart", "sourcePageEnd"],
+            "properties": {
+                "depreciationPosted": {"type": "boolean"},
+                "depreciationColumnTotal": {"type": "number"},
+                "reviewWarning": {"type": "string"},
+                "sourcePageStart": {"type": ["integer", "null"]},
+                "sourcePageEnd": {"type": ["integer", "null"]},
+            },
+        },
+        "disallowedExpenses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["label", "amount", "reason", "sourceAccountCode", "sourcePage"],
+                "properties": {
+                    "label": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "reason": {"type": "string"},
+                    "sourceAccountCode": {"type": "string"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
+        "capitalAllowancesClaim": {"type": "number"},
         "estimatedCorporationTax": {"type": "number"},
         "dividendCapacity": {"type": "number"},
         "dlaBalance": {"type": "number"},
         "trafficLight": {"type": "string"},
+        "pageCoverage": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["pageCount", "firstPageReviewed", "lastPageReviewed", "sectionsReviewed"],
+            "properties": {
+                "pageCount": {"type": ["integer", "null"]},
+                "firstPageReviewed": {"type": ["integer", "null"]},
+                "lastPageReviewed": {"type": ["integer", "null"]},
+                "sectionsReviewed": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+        },
         "warnings": {
             "type": "array",
             "items": {"type": "string"},
@@ -5716,11 +5847,19 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
     encoded = base64.b64encode(file_bytes).decode("ascii")
     prompt = (
-        "Extract a month-end bookkeeping summary from this Xero JUK Overview report or management accounts PDF. "
-        "Return JSON only. Use GBP numbers without currency symbols. "
-        "Estimate corporation tax from the document's profit/tax lines where available, otherwise use the clearest CT estimate shown. "
-        "Extract dividend availability or distributable reserves where shown. "
-        "Summarise any assumptions, missing pages or review warnings. "
+        "Extract a month-end bookkeeping summary from this Xero JUK Overview report PDF. "
+        "Review every page before returning JSON. The format is expected to include: Review of Transactions, Profit and Loss - YTD, "
+        "Profit and Loss (and VAT Registration check), Balance Sheet, Fixed Asset Reconciliation, Depreciation Schedule, "
+        "Aged Payables, Aged Receivables and Trial Balance. Use GBP numbers without currency symbols. "
+        "For accountingProfit and yearToDateProfit use Profit (loss) before taxation from Profit and Loss - YTD if present. "
+        "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
+        "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
+        "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved "
+        "when shown in brackets. Extract Fixed Asset Reconciliation differences by asset class, and report whether the Depreciation "
+        "Schedule shows a nil depreciation column. Put clearly disallowable costs such as car fines, penalties and non-allowable "
+        "tax adjustment accounts in disallowedExpenses. Do not make final tax judgements for ambiguous legal, bad debt or client "
+        "remediation costs; include those in warnings instead. The backend will calculate CT and dividend availability from the "
+        "extracted figures, so return the source figures as exactly as possible. "
         f"The client workspace is {client.get('client_name') or 'unknown'}."
     )
     request_body = {
@@ -5745,13 +5884,320 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
                 "strict": True,
             }
         },
-        "max_output_tokens": 4000,
+        "max_output_tokens": 12000,
     }
     text = _extract_response_text(await _post_openai_responses(request_body, "ME Report PDF extraction"))
     try:
         return json.loads(text) if text else {}
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned ME Report extraction that was not valid JSON.") from exc
+
+
+def _me_report_step(label: str, amount: Decimal, treatment: str, source: str = "") -> dict:
+    return {
+        "label": label,
+        "amount": float(_money(amount)),
+        "treatment": treatment,
+        "source": source,
+    }
+
+
+def _me_report_account_amount(account: dict) -> Decimal:
+    return _money(_money(account.get("debitYTD")) - _money(account.get("creditYTD")))
+
+
+def _me_report_account_text(account: dict) -> str:
+    return " ".join(
+        str(account.get(key) or "")
+        for key in ("accountCode", "accountName", "accountType")
+    ).lower()
+
+
+def _me_report_account_is_balance_sheet(account: dict) -> bool:
+    account_type = str(account.get("accountType") or "").lower()
+    return any(term in account_type for term in ("asset", "liability", "equity", "bank", "current"))
+
+
+def _me_report_sum_accounts(accounts: list[dict], predicate) -> tuple[Decimal, list[dict]]:
+    total = Decimal("0.00")
+    matches = []
+    for account in accounts:
+        if not isinstance(account, dict) or not predicate(account):
+            continue
+        amount = abs(_me_report_account_amount(account))
+        if amount <= 0:
+            continue
+        total += amount
+        matches.append(account)
+    return _money(total), matches
+
+
+def _me_report_corporation_tax(taxable_profit: Decimal) -> tuple[Decimal, Decimal, str]:
+    profit = max(Decimal("0.00"), _money(taxable_profit))
+    if profit <= 0:
+        return Decimal("0.00"), Decimal("0.0"), "No taxable profit"
+    if profit <= ME_REPORT_CT_LOWER_LIMIT:
+        tax = _money(profit * ME_REPORT_CT_SMALL_PROFITS_RATE)
+        return tax, ME_REPORT_CT_SMALL_PROFITS_RATE * 100, "Small profits rate"
+    if profit >= ME_REPORT_CT_UPPER_LIMIT:
+        tax = _money(profit * ME_REPORT_CT_MAIN_RATE)
+        return tax, ME_REPORT_CT_MAIN_RATE * 100, "Main rate"
+    marginal_relief = _money((ME_REPORT_CT_UPPER_LIMIT - profit) * ME_REPORT_CT_MARGINAL_RELIEF_FRACTION)
+    tax = max(Decimal("0.00"), _money((profit * ME_REPORT_CT_MAIN_RATE) - marginal_relief))
+    effective_rate = (tax / profit * 100).quantize(Decimal("0.1")) if profit else Decimal("0.0")
+    return tax, effective_rate, "Main rate less marginal relief"
+
+
+def _me_report_source_page(prefix: str, page) -> str:
+    if page in (None, ""):
+        return prefix
+    return f"{prefix}, page {page}"
+
+
+def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
+    warnings = [str(item).strip() for item in extracted.get("warnings") or [] if str(item).strip()]
+    trial_balance_accounts = [item for item in extracted.get("trialBalanceAccounts") or [] if isinstance(item, dict)]
+    balance_sheet = extracted.get("balanceSheet") if isinstance(extracted.get("balanceSheet"), dict) else {}
+    fixed_asset_rows = [item for item in extracted.get("fixedAssetReconciliation") or [] if isinstance(item, dict)]
+    depreciation_schedule = extracted.get("depreciationSchedule") if isinstance(extracted.get("depreciationSchedule"), dict) else {}
+    page_coverage = extracted.get("pageCoverage") if isinstance(extracted.get("pageCoverage"), dict) else {}
+
+    accounting_profit = _money(extracted.get("yearToDateProfit") or extracted.get("accountingProfit"))
+    monthly_sales = _money(extracted.get("monthlySales"))
+    monthly_expenses = _money(extracted.get("monthlyExpenses"))
+    ytd_sales = _money(extracted.get("yearToDateSales") or extracted.get("monthlySales"))
+    ytd_profit = accounting_profit
+
+    depreciation_addback, depreciation_accounts = _me_report_sum_accounts(
+        trial_balance_accounts,
+        lambda account: (
+            "depreciation" in _me_report_account_text(account)
+            and "accumulated" not in _me_report_account_text(account)
+            and not _me_report_account_is_balance_sheet(account)
+        ),
+    )
+    amortisation_addback, amortisation_accounts = _me_report_sum_accounts(
+        trial_balance_accounts,
+        lambda account: (
+            "amortisation" in _me_report_account_text(account)
+            and not _me_report_account_is_balance_sheet(account)
+        ),
+    )
+    non_allowable_addback, non_allowable_accounts = _me_report_sum_accounts(
+        trial_balance_accounts,
+        lambda account: "non-allowable" in _me_report_account_text(account) or "tax adjustment" in _me_report_account_text(account),
+    )
+    penalties_addback, penalties_accounts = _me_report_sum_accounts(
+        trial_balance_accounts,
+        lambda account: any(term in _me_report_account_text(account) for term in ("fine", "penalt", "car fine", "parking fine", "hmrc interest")),
+    )
+    entertaining_addback, entertaining_accounts = _me_report_sum_accounts(
+        trial_balance_accounts,
+        lambda account: (
+            "entertainment - 0%" in _me_report_account_text(account)
+            or "client entertaining" in _me_report_account_text(account)
+            or "client entertainment" in _me_report_account_text(account)
+        ),
+    )
+
+    included_account_codes = {
+        str(account.get("accountCode") or "").strip().lower()
+        for account in (
+            depreciation_accounts
+            + amortisation_accounts
+            + non_allowable_accounts
+            + penalties_accounts
+            + entertaining_accounts
+        )
+        if str(account.get("accountCode") or "").strip()
+    }
+    explicit_disallowed_total = Decimal("0.00")
+    explicit_disallowed_steps = []
+    for item in extracted.get("disallowedExpenses") or []:
+        if not isinstance(item, dict):
+            continue
+        amount = abs(_money(item.get("amount")))
+        if amount <= 0:
+            continue
+        source_code = str(item.get("sourceAccountCode") or "").strip().lower()
+        if source_code and source_code in included_account_codes:
+            continue
+        explicit_disallowed_total += amount
+        explicit_disallowed_steps.append(
+            _me_report_step(
+                str(item.get("label") or "Disallowed expense"),
+                amount,
+                str(item.get("reason") or "Added back for CT"),
+                _me_report_source_page("Uploaded PDF", item.get("sourcePage")),
+            )
+        )
+
+    capital_allowances = _money(extracted.get("capitalAllowancesClaim"))
+    capital_allowance_steps = []
+    fixed_asset_checks = []
+    if capital_allowances <= 0:
+        qualifying_additions = Decimal("0.00")
+        for row in fixed_asset_rows:
+            asset_class = str(row.get("assetClass") or "Fixed assets").strip()
+            difference = _money(row.get("closingCostDifference") or row.get("closingBookDifference"))
+            treatment = "No adjustment"
+            if difference > 0 and any(term in asset_class.lower() for term in ME_REPORT_CAPITAL_ALLOWANCE_ASSET_TERMS):
+                qualifying_additions += difference
+                treatment = "Included as qualifying additions for capital allowance estimate"
+            elif difference > 0 and any(term in asset_class.lower() for term in ("website", "intangible", "motor", "car", "vehicle")):
+                treatment = "Flagged for review, excluded from automatic capital allowances"
+                warnings.append(f"{asset_class} has a fixed asset reconciliation difference of £{difference:,.2f}; review tax treatment before claiming allowances.")
+            elif abs(difference) > Decimal("1.00"):
+                treatment = "Flagged for fixed asset reconciliation review"
+            fixed_asset_checks.append({
+                "assetClass": asset_class,
+                "balanceSheetClosingCost": float(_money(row.get("balanceSheetClosingCost"))),
+                "assetRegisterClosingCost": float(_money(row.get("assetRegisterClosingCost"))),
+                "difference": float(_money(difference)),
+                "treatment": treatment,
+                "source": _me_report_source_page("Fixed Asset Reconciliation", row.get("sourcePage")),
+            })
+        capital_allowances = _money(qualifying_additions)
+    if capital_allowances > 0:
+        capital_allowance_steps.append(
+            _me_report_step(
+                "Capital allowances from qualifying fixed asset additions",
+                -capital_allowances,
+                "Deduct",
+                "Fixed Asset Reconciliation / extracted capital allowance claim",
+            )
+        )
+
+    if depreciation_schedule:
+        depreciation_column_total = abs(_money(depreciation_schedule.get("depreciationColumnTotal")))
+        if not depreciation_schedule.get("depreciationPosted") or depreciation_column_total == 0:
+            warnings.append(
+                str(depreciation_schedule.get("reviewWarning") or "Depreciation Schedule shows nil depreciation posted; review before approval.")
+            )
+
+    if page_coverage.get("pageCount") and page_coverage.get("lastPageReviewed"):
+        if int(page_coverage.get("lastPageReviewed") or 0) < int(page_coverage.get("pageCount") or 0):
+            warnings.append("The AI did not confirm that every page of the uploaded PDF was reviewed.")
+
+    disallowed_expenses_addback = _money(non_allowable_addback + penalties_addback + entertaining_addback + explicit_disallowed_total)
+    depreciation_total_addback = _money(depreciation_addback + amortisation_addback)
+    tax_adjustments = _money(depreciation_total_addback + disallowed_expenses_addback - capital_allowances)
+    estimated_taxable_profit = max(Decimal("0.00"), _money(accounting_profit + tax_adjustments))
+    estimated_ct, effective_rate, ct_rate_band = _me_report_corporation_tax(estimated_taxable_profit)
+
+    tax_steps = [
+        _me_report_step("Profit before tax YTD", accounting_profit, "Start", "Profit and Loss - YTD"),
+        _me_report_step("Depreciation add-back", depreciation_addback, "Add back", "Trial Balance depreciation expense"),
+        _me_report_step("Amortisation add-back", amortisation_addback, "Add back", "Trial Balance amortisation expense"),
+        _me_report_step("Non-allowable expense add-back", non_allowable_addback, "Add back", "Trial Balance non-allowable/tax adjustment accounts"),
+        _me_report_step("Fines, penalties and car fine add-back", penalties_addback, "Add back", "Trial Balance and uploaded PDF disallowed expense scan"),
+        _me_report_step("Client entertaining add-back", entertaining_addback, "Add back", "Trial Balance entertaining accounts"),
+        *explicit_disallowed_steps,
+        *capital_allowance_steps,
+        _me_report_step("Estimated taxable profit YTD", estimated_taxable_profit, "Result", "Calculated"),
+        _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds"),
+    ]
+
+    current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
+    retained_earnings = _money(balance_sheet.get("retainedEarnings"))
+    dividends_declared = abs(_money(balance_sheet.get("dividendsDeclared")))
+    if not balance_sheet:
+        current_year_earnings = _money(accounting_profit - estimated_ct)
+        retained_earnings = Decimal("0.00")
+        dividends_declared = abs(_money(extracted.get("dividendCapacity"))) if _money(extracted.get("dividendCapacity")) < 0 else Decimal("0.00")
+    period_end_distributable_reserves = _money(retained_earnings + current_year_earnings - dividends_declared)
+    dividend_capacity = max(Decimal("0.00"), period_end_distributable_reserves)
+    dividend_steps = [
+        _me_report_step("Retained earnings brought forward", retained_earnings, "Start", "Balance Sheet capital and reserves"),
+        _me_report_step("Current year earnings", current_year_earnings, "Add", "Balance Sheet capital and reserves"),
+        _me_report_step("Dividends declared YTD", -dividends_declared, "Deduct", "Balance Sheet dividends line"),
+        _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated"),
+        _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated"),
+    ]
+    if period_end_distributable_reserves < 0:
+        warnings.append("Dividend availability is nil because accumulated distributable reserves are negative at period end.")
+
+    balance_sheet_checks = [
+        _me_report_step("Current year earnings", current_year_earnings, "Balance sheet code", "Balance Sheet"),
+        _me_report_step("Retained earnings", retained_earnings, "Balance sheet code", "Balance Sheet"),
+        _me_report_step("Dividends declared", -dividends_declared, "Balance sheet code", "Balance Sheet"),
+        _me_report_step("Total equity", _money(balance_sheet.get("totalEquity")), "Balance sheet code", "Balance Sheet"),
+    ]
+    for account in trial_balance_accounts:
+        if not _me_report_account_is_balance_sheet(account):
+            continue
+        code = str(account.get("accountCode") or "").strip()
+        name = str(account.get("accountName") or "").strip()
+        balance_sheet_checks.append(
+            _me_report_step(
+                " ".join(part for part in (code, name) if part),
+                _me_report_account_amount(account),
+                str(account.get("accountType") or "Balance sheet code"),
+                _me_report_source_page("Trial Balance", account.get("sourcePage")),
+            )
+        )
+
+    traffic_light = str(extracted.get("trafficLight") or "amber").lower()
+    if period_end_distributable_reserves < 0 and dividends_declared > 0:
+        traffic_light = "red"
+    elif traffic_light not in {"green", "amber", "red"}:
+        traffic_light = "amber" if warnings else "green"
+    elif traffic_light == "green" and warnings:
+        traffic_light = "amber"
+
+    sections_reviewed = page_coverage.get("sectionsReviewed") or []
+    source_pages = {
+        "pageCount": page_coverage.get("pageCount"),
+        "firstPageReviewed": page_coverage.get("firstPageReviewed"),
+        "lastPageReviewed": page_coverage.get("lastPageReviewed"),
+        "sectionsReviewed": [str(item) for item in sections_reviewed],
+    }
+    warnings.append("CT estimate assumes non-ring-fence profits, no associated company threshold reduction, and no unextracted reliefs or losses.")
+    warnings = list(dict.fromkeys(warnings))
+
+    return {
+        "periodStart": extracted.get("periodStart") or "",
+        "periodEnd": extracted.get("periodEnd") or "",
+        "monthlySales": float(monthly_sales),
+        "monthlyExpenses": float(monthly_expenses),
+        "monthlyProfit": float(accounting_profit),
+        "yearToDateSales": float(ytd_sales),
+        "yearToDateExpenses": float(max(Decimal("0.00"), _money(ytd_sales - ytd_profit))),
+        "yearToDateProfit": float(ytd_profit),
+        "accountingProfit": float(accounting_profit),
+        "depreciationAddBack": float(depreciation_addback),
+        "amortisationAddBack": float(amortisation_addback),
+        "disallowedExpensesAddBack": float(disallowed_expenses_addback),
+        "capitalAllowances": float(capital_allowances),
+        "taxAdjustments": float(tax_adjustments),
+        "estimatedTaxableProfit": float(estimated_taxable_profit),
+        "estimatedCorporationTax": float(estimated_ct),
+        "effectiveTaxRate": float(effective_rate),
+        "corporationTaxRateBand": ct_rate_band,
+        "taxProvisionRequired": float(estimated_ct),
+        "openingRetainedReserves": float(retained_earnings),
+        "currentYearEarnings": float(current_year_earnings),
+        "dividendsTaken": float(dividends_declared),
+        "periodEndDistributableReserves": float(period_end_distributable_reserves),
+        "dividendCapacity": float(dividend_capacity),
+        "directorLoanCreditBalance": float(max(_money(extracted.get("dlaBalance")), Decimal("0.00"))),
+        "totalPotentialExtraction": float(_money(max(_money(extracted.get("dlaBalance")), Decimal("0.00")) + dividend_capacity)),
+        "dlaBalance": float(_money(extracted.get("dlaBalance"))),
+        "dlaStatus": "red" if _money(extracted.get("dlaBalance")) < 0 else ("amber" if _money(extracted.get("dlaBalance")) == 0 else "green"),
+        "trafficLight": traffic_light,
+        "source": "uploaded_pdf",
+        "commentary": (
+            f"Uploaded PDF reviewed for {client.get('client_name') or 'client'}. "
+            f"Profit before tax YTD is £{accounting_profit:,.2f}; estimated taxable profit is £{estimated_taxable_profit:,.2f}; "
+            f"estimated CT is £{estimated_ct:,.2f}. Dividend availability at period end is £{dividend_capacity:,.2f}."
+        ),
+        "warnings": warnings,
+        "taxCalculationSteps": tax_steps,
+        "dividendCalculationSteps": dividend_steps,
+        "balanceSheetChecks": balance_sheet_checks,
+        "fixedAssetChecks": fixed_asset_checks,
+        "sourcePagesReviewed": source_pages,
+    }
 
 
 async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
@@ -5775,30 +6221,18 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
 
     try:
         extracted = await _extract_me_report_pdf(file_bytes, filename, client)
-        estimated_ct = _money(extracted.get("estimatedCorporationTax"))
-        dividend_capacity = _money(extracted.get("dividendCapacity"))
-        period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
-        period_start = date(period_end.year, period_end.month, 1)
-        traffic_light = str(extracted.get("trafficLight") or "amber").lower()
+        review_summary = _build_me_report_pdf_summary(extracted, client)
+        estimated_ct = _money(review_summary.get("estimatedCorporationTax"))
+        dividend_capacity = _money(review_summary.get("dividendCapacity"))
+        period_end = _parse_optional_iso_date(review_summary.get("periodEnd") or extracted.get("periodEnd")) or utcnow().date()
+        period_start = _parse_optional_iso_date(review_summary.get("periodStart") or extracted.get("periodStart")) or date(period_end.year, period_end.month, 1)
+        traffic_light = str(review_summary.get("trafficLight") or "amber").lower()
         if traffic_light not in {"green", "amber", "red"}:
             traffic_light = "amber"
-        warnings = [str(item) for item in extracted.get("warnings") or [] if str(item).strip()]
-        summary_text = str(extracted.get("summary") or "Management accounts PDF processed by Jenius AI.").strip()[:1200]
-        review_summary = {
-            "monthlySales": float(_money(extracted.get("monthlySales"))),
-            "monthlyExpenses": float(_money(extracted.get("monthlyExpenses"))),
-            "monthlyProfit": float(_money(extracted.get("accountingProfit"))),
-            "yearToDateProfit": float(_money(extracted.get("accountingProfit"))),
-            "accountingProfit": float(_money(extracted.get("accountingProfit"))),
-            "taxAdjustments": 0.0,
-            "estimatedTaxableProfit": float(_money(extracted.get("accountingProfit"))),
-            "estimatedCorporationTax": float(estimated_ct),
-            "dividendCapacity": float(dividend_capacity),
-            "dlaBalance": float(_money(extracted.get("dlaBalance"))),
-            "trafficLight": traffic_light,
-            "commentary": summary_text,
-            "source": "uploaded_pdf",
-            "warnings": warnings,
+        summary_text = str(review_summary.get("commentary") or extracted.get("summary") or "Management accounts PDF processed by Jenius AI.").strip()[:1200]
+        enriched_payload = {
+            **extracted,
+            "calculationSummary": review_summary,
         }
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -5815,7 +6249,7 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
                     """,
                     (
                         summary_text,
-                        json.dumps(extracted, default=_json_default),
+                        json.dumps(enriched_payload, default=_json_default),
                         estimated_ct,
                         dividend_capacity,
                         utcnow(),
@@ -5836,7 +6270,7 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
                         period_end,
                         traffic_light,
                         json.dumps(review_summary, default=_json_default),
-                        json.dumps({"source": "uploaded_pdf", "submissionId": str(submission_id), "extracted": extracted}, default=_json_default),
+                        json.dumps({"source": "uploaded_pdf", "submissionId": str(submission_id), "extracted": enriched_payload}, default=_json_default),
                         user["id"],
                         utcnow(),
                         utcnow(),

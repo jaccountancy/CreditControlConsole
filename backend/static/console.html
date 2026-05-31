@@ -3086,6 +3086,86 @@
                 justify-content: space-between;
                 gap: 14px;
             }
+            .me-report-ai-help {
+                width: 100%;
+                margin: 14px 0;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.78);
+                overflow: hidden;
+            }
+            .me-report-ai-help summary {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                min-height: 38px;
+                padding: 9px 12px;
+                color: var(--blue);
+                cursor: pointer;
+                font-size: 0.86rem;
+                font-weight: 900;
+                list-style: none;
+            }
+            .me-report-ai-help summary::-webkit-details-marker {
+                display: none;
+            }
+            .me-report-help-icon {
+                display: inline-grid;
+                place-items: center;
+                width: 22px;
+                height: 22px;
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                font-size: 0.78rem;
+                font-weight: 950;
+            }
+            .me-report-ai-help-panel {
+                display: grid;
+                gap: 14px;
+                padding: 0 14px 14px;
+            }
+            .me-report-calculation-table {
+                display: grid;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                overflow: hidden;
+                background: #ffffff;
+            }
+            .me-report-calculation-row {
+                display: grid;
+                grid-template-columns: minmax(160px, 1.15fr) minmax(100px, 0.45fr) minmax(120px, 0.55fr) minmax(180px, 1fr);
+                gap: 10px;
+                align-items: center;
+                padding: 10px 12px;
+                border-top: 1px solid var(--line);
+                font-size: 0.86rem;
+            }
+            .me-report-calculation-row:first-child {
+                border-top: 0;
+            }
+            .me-report-calculation-row.is-header {
+                color: var(--muted);
+                background: var(--surface-soft);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .me-report-calculation-row strong,
+            .me-report-calculation-row em {
+                font-style: normal;
+                font-weight: 850;
+            }
+            .me-report-calculation-row strong {
+                text-align: right;
+            }
+            .me-report-help-notes {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.86rem;
+                font-weight: 750;
+            }
             .jashflow-metrics {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3390,9 +3470,24 @@
             .bank-transaction-table,
             .bank-upload-history-table {
                 width: 100%;
-                min-width: 880px;
+                min-width: 1040px;
                 border-collapse: collapse;
                 table-layout: fixed;
+            }
+            .bank-upload-history-row {
+                display: grid;
+                grid-template-columns: minmax(92px, 0.7fr) minmax(150px, 1fr) minmax(104px, 0.65fr) minmax(112px, 0.7fr) minmax(112px, 0.7fr) minmax(110px, 0.7fr) minmax(180px, 1.2fr);
+                gap: 10px;
+                align-items: center;
+                padding: 12px 14px;
+                border-bottom: 1px solid var(--line);
+            }
+            .bank-upload-history-row.is-header {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
             }
             .bank-transaction-table th,
             .bank-transaction-table td,
@@ -5172,8 +5267,10 @@
                 .jashflow-summary-grid,
                 .bank-account-summary-grid,
                 .ignition-summary-grid,
+                .me-report-calculation-row,
                 .payments-made-summary,
                 .allocation-form { grid-template-columns: 1fr; }
+                .me-report-calculation-row strong { text-align: left; }
             }
                 </style>
             </head>
@@ -13217,6 +13314,91 @@
                 return `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
             }
 
+            function meReportFallbackTaxSteps(summary) {
+                return [
+                    { label: "Profit before tax YTD", amount: summary.accountingProfit || summary.yearToDateProfit || 0, treatment: "Start", source: "Profit and Loss - YTD" },
+                    { label: "Depreciation add-back", amount: summary.depreciationAddBack || 0, treatment: "Add back", source: "Trial Balance" },
+                    { label: "Amortisation add-back", amount: summary.amortisationAddBack || 0, treatment: "Add back", source: "Trial Balance" },
+                    { label: "Disallowed expenses", amount: summary.disallowedExpensesAddBack || 0, treatment: "Add back", source: "Disallowed expense scan" },
+                    { label: "Capital allowances", amount: -Math.abs(Number(summary.capitalAllowances || 0)), treatment: "Deduct", source: "Fixed Asset Reconciliation" },
+                    { label: "Estimated taxable profit YTD", amount: summary.estimatedTaxableProfit || 0, treatment: "Result", source: "Calculated" },
+                    { label: "Corporation tax estimate", amount: summary.estimatedCorporationTax || 0, treatment: summary.corporationTaxRateBand || "Calculated", source: "CT rate engine" }
+                ];
+            }
+
+            function meReportFallbackDividendSteps(summary) {
+                return [
+                    { label: "Retained earnings brought forward", amount: summary.openingRetainedReserves || 0, treatment: "Start", source: "Balance Sheet" },
+                    { label: "Current year earnings", amount: summary.currentYearEarnings || ((summary.accountingProfit || 0) - (summary.estimatedCorporationTax || 0)), treatment: "Add", source: "Balance Sheet" },
+                    { label: "Dividends declared YTD", amount: -Math.abs(Number(summary.dividendsTaken || 0)), treatment: "Deduct", source: "Balance Sheet" },
+                    { label: "Period-end distributable reserves", amount: summary.periodEndDistributableReserves || 0, treatment: "Result", source: "Calculated" },
+                    { label: "Further dividend availability", amount: summary.dividendCapacity || 0, treatment: "Available", source: "Calculated" }
+                ];
+            }
+
+            function renderMeReportCalculationTable(title, rows) {
+                const safeRows = Array.isArray(rows) ? rows : [];
+                return `
+                    <section>
+                        <p class="eyebrow">${escapeHTML(title)}</p>
+                        <div class="me-report-calculation-table" role="table" aria-label="${escapeHTML(title)}">
+                            <div class="me-report-calculation-row is-header" role="row">
+                                <span>Step</span>
+                                <span>Amount</span>
+                                <span>Treatment</span>
+                                <span>Source</span>
+                            </div>
+                            ${safeRows.map((row) => `
+                                <div class="me-report-calculation-row" role="row">
+                                    <span>${escapeHTML(row.label || "")}</span>
+                                    <strong>${formatCurrency(row.amount || 0)}</strong>
+                                    <em>${escapeHTML(row.treatment || "")}</em>
+                                    <span>${escapeHTML(row.source || "")}</span>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </section>
+                `;
+            }
+
+            function renderMeReportAiHelp(summary = {}, mode = "all") {
+                const taxRows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
+                const dividendRows = Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary);
+                const balanceRows = Array.isArray(summary.balanceSheetChecks) ? summary.balanceSheetChecks : [];
+                const fixedAssetRows = Array.isArray(summary.fixedAssetChecks)
+                    ? summary.fixedAssetChecks.map((row) => ({
+                        label: row.assetClass || "Fixed assets",
+                        amount: row.difference || 0,
+                        treatment: row.treatment || "Review",
+                        source: row.source || "Fixed Asset Reconciliation"
+                    }))
+                    : [];
+                const sourcePages = summary.sourcePagesReviewed || {};
+                const sections = Array.isArray(sourcePages.sectionsReviewed) && sourcePages.sectionsReviewed.length
+                    ? sourcePages.sectionsReviewed.join(", ")
+                    : "P&L, Balance Sheet, Fixed Asset Reconciliation, Depreciation Schedule and Trial Balance";
+                const pageText = sourcePages.pageCount
+                    ? `Pages ${sourcePages.firstPageReviewed || 1}-${sourcePages.lastPageReviewed || sourcePages.pageCount} of ${sourcePages.pageCount}`
+                    : "Uploaded report pages reviewed";
+                const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+                return `
+                    <details class="me-report-ai-help">
+                        <summary title="Show AI calculation">
+                            <span class="me-report-help-icon">?</span>
+                            <span>What AI checked</span>
+                        </summary>
+                        <div class="me-report-ai-help-panel">
+                            <p class="me-report-help-notes">${escapeHTML(pageText)} · ${escapeHTML(sections)}</p>
+                            ${mode !== "dividends" ? renderMeReportCalculationTable("CT estimate", taxRows) : ""}
+                            ${mode !== "tax" ? renderMeReportCalculationTable("Dividend availability", dividendRows) : ""}
+                            ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows) : ""}
+                            ${fixedAssetRows.length ? renderMeReportCalculationTable("Fixed asset review", fixedAssetRows) : ""}
+                            ${warnings.length ? `<p class="me-report-help-notes">${escapeHTML(warnings.slice(0, 4).join(" "))}</p>` : ""}
+                        </div>
+                    </details>
+                `;
+            }
+
             function renderMeReportTab(client, tab) {
                 const summary = client.summary || {};
                 if (tab === "mappings") return renderMeReportMappings(client);
@@ -13247,6 +13429,7 @@
                             ${renderMeReportMetric("VAT threshold", formatCurrency(summary.vatThreshold || 90000))}
                             ${renderMeReportMetric("VAT warning", summary.vatWarningVisible ? "Visible" : "Clear")}
                         </div>
+                        ${renderMeReportAiHelp(summary, "tax")}
                         <div class="empty-state"><p class="eyebrow">Accountant review</p><h4>CT and VAT estimates are not final tax advice</h4><p>Staff should review losses, R&D, capital allowances, associated companies, accruals/prepayments, prior-year adjustments and whether rolling taxable turnover has breached the VAT registration threshold.</p></div>
                     `;
                 }
@@ -13261,6 +13444,7 @@
                             ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                             ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
                         </div>
+                        ${renderMeReportAiHelp(summary, "dividends")}
                         <div class="empty-state"><p class="eyebrow">Recommended wording</p><h4>DLA first, then dividends</h4><p>The director loan account appears to be ${Number(summary.dlaBalance || 0) >= 0 ? "in credit" : "overdrawn"} by ${formatCurrency(Math.abs(Number(summary.dlaBalance || 0)))}. After allowing for estimated corporation tax and dividends already taken, estimated further dividend capacity is ${formatCurrency(summary.dividendCapacity || 0)}.</p></div>
                     `;
                 }
@@ -13287,6 +13471,7 @@
                         </div>
                     </div>
                     <div class="ignition-summary-grid">${metrics.map(([label, value]) => renderMeReportMetric(label, value)).join("")}</div>
+                    ${renderMeReportAiHelp(summary, "all")}
                     <div class="empty-state"><p class="eyebrow">Commentary</p><h4>${escapeHTML(summary.commentary ? "Draft accountant commentary" : "Run calculation to draft commentary")}</h4><p>${escapeHTML(summary.commentary || "Once synced, Jenius will summarise the month, tax provision, dividend capacity, DLA position and review points for staff approval.")}</p></div>
                 `;
             }
@@ -13315,6 +13500,7 @@
                             <span>Status</span>
                             <span>CT estimate</span>
                             <span>Dividend availability</span>
+                            <span>AI detail</span>
                             <span>Notes</span>
                         </div>
                         ${submissions.map((submission) => `
@@ -13324,6 +13510,7 @@
                                 <span><mark class="bank-status-pill is-${escapeHTML(String(submission.status || "saved").toLowerCase())}">${escapeHTML(submission.status || "saved")}</mark></span>
                                 <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
                                 <span>${formatCurrency(submission.dividendCapacity || 0)}</span>
+                                <span>${renderMeReportAiHelp(submission.calculation || {}, "all")}</span>
                                 <span>${escapeHTML(submission.errorMessage || submission.summary || "Processed by Jenius AI")}</span>
                             </div>
                         `).join("") || '<div class="empty-state"><p class="eyebrow">No submissions</p><h4>No management accounts uploaded yet</h4><p>Upload the latest Xero JUK Overview report PDF to build CT and dividend estimates from the source document.</p></div>'}
