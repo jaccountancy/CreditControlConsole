@@ -8,7 +8,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,6 +76,7 @@ from .services import (
     get_sync_run,
     me_report_payload,
     me_report_report_html,
+    me_report_report_pdf,
     record_sync_start_failure,
     request_me_report_sync_run,
     request_sync_run,
@@ -98,13 +99,22 @@ from .services import (
     sync_invoice_status_to_xero,
     sync_payment_plan_to_xero,
     sync_run_has_working_data,
+    send_me_report_email,
     update_control_status,
     update_bank_statement_account,
     update_me_report_exception,
     update_me_report_mapping,
+    update_me_report_settings,
     bank_statement_payload,
     bulk_update_invoice_status,
+    bulk_send_me_report_emails,
+    bulk_upload_me_report_submission_pdfs,
+    exchange_gmail_code_for_tokens,
+    fetch_gmail_profile,
+    gmail_authorize_url,
+    gmail_oauth_configured,
     merge_me_report_duplicate_contact,
+    store_gmail_connection,
     upload_me_report_submission_pdf,
     upload_bank_statement_pdf,
     retry_bank_statement_upload,
@@ -354,6 +364,37 @@ def auth_xero_start(request: Request, redirect_to: str = "/", force: int = 0):
 @app.get("/auth/xero/connected")
 def auth_xero_connected():
     return RedirectResponse(add_query_params("/", {"xero": "connected"}), status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/gmail/start")
+def auth_gmail_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
+    redirect_to = normalise_oauth_redirect(redirect_to)
+    if not gmail_oauth_configured():
+        return xero_login_error_response("Gmail OAuth is not configured. Add Google OAuth credentials before connecting Gmail.", status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Gmail")
+    state_token = start_oauth_state(redirect_to=redirect_to, user_id=user["id"], provider="gmail")
+    return RedirectResponse(gmail_authorize_url(state_token), status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/auth/gmail/callback")
+async def auth_gmail_callback(request: Request, code: str, state: str):
+    try:
+        state_row = consume_oauth_state(state)
+        if state_row.get("provider") not in ("gmail",):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OAuth state was not created for Gmail.")
+        user = current_user_or_oauth_state_user(request, state_row)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in before connecting Gmail.")
+        token_payload = await exchange_gmail_code_for_tokens(code)
+        profile = await fetch_gmail_profile(token_payload["access_token"])
+        store_gmail_connection(user, token_payload, profile)
+        redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
+        return RedirectResponse(add_query_params(redirect_to, {"gmail": "connected"}), status_code=status.HTTP_302_FOUND)
+    except HTTPException as exc:
+        logger.warning("Gmail callback failed: %s", exc.detail)
+        return xero_login_error_response(str(exc.detail), exc.status_code, provider="Gmail")
+    except Exception:
+        logger.exception("Unhandled Gmail callback failure")
+        return xero_login_error_response("An unexpected server error occurred while completing the Gmail connection.", provider="Gmail")
 
 
 def queue_ignition_sync(user: dict) -> tuple[dict | None, bool]:
@@ -941,6 +982,29 @@ def api_me_report(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": me_report_payload(user)}
 
 
+@app.post("/api/me-report/settings")
+async def api_update_me_report_settings(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **update_me_report_settings(user, payload)}
+
+
+@app.post("/api/me-report/bulk-submissions")
+async def api_bulk_upload_me_report_submissions(
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    file_payloads = []
+    for file in files:
+        file_payloads.append(
+            {
+                "filename": file.filename or "overview-report.pdf",
+                "content_type": file.content_type or "application/pdf",
+                "content": await file.read(),
+            }
+        )
+    return {"status": "ok", **await bulk_upload_me_report_submission_pdfs(user, file_payloads)}
+
+
 @app.post("/api/me-report/clients")
 async def api_create_me_report_client(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
@@ -992,6 +1056,19 @@ async def api_generate_me_report(client_id: str, request: Request, user: dict = 
     return {"status": "ok", **generate_me_report(user, client_id, payload)}
 
 
+@app.post("/api/me-report/reports/{report_id}/send")
+async def api_send_me_report(report_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", **await send_me_report_email(user, report_id, payload)}
+
+
+@app.post("/api/me-report/reports/bulk-send")
+async def api_bulk_send_me_report(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    report_ids = payload.get("reportIds") if isinstance(payload, dict) else []
+    return {"status": "ok", **await bulk_send_me_report_emails(user, report_ids if isinstance(report_ids, list) else [])}
+
+
 @app.post("/api/me-report/clients/{client_id}/submissions")
 async def api_upload_me_report_submission(
     client_id: str,
@@ -1014,6 +1091,16 @@ async def api_upload_me_report_submission(
 @app.get("/api/me-report/reports/{report_id}/download", response_class=HTMLResponse)
 def api_download_me_report(report_id: str, user: dict = Depends(require_panel_user)):
     return HTMLResponse(me_report_report_html(user, report_id))
+
+
+@app.get("/api/me-report/reports/{report_id}/download.pdf")
+def api_download_me_report_pdf(report_id: str, user: dict = Depends(require_panel_user)):
+    pdf_bytes, filename = me_report_report_pdf(user, report_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/bank-statements")

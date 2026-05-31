@@ -5601,6 +5601,7 @@
                         <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">Mapping Changes / COA<span>Posting defaults</span></button>
                         <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">Xero Outbox / Pending<span>Queued actions</span></button>
                         <button class="settings-sidebar-button" type="button" data-settings-nav="letters">Letter Templates<span>Reminder copy</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">ME Report Emails<span>Snapshot templates</span></button>
                         <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">Developer Log / Audit<span>Sync events</span></button>
                         <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">System Status<span>Database metrics</span></button>
                         <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">Factory Reset<span>Protected reset area</span></button>
@@ -5997,6 +5998,33 @@
                                 </form>
                             </section>
 
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="me-report-email">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">ME Report emails</p>
+                                        <h3>Snapshot email template</h3>
+                                    </div>
+                                </div>
+                                <form class="stack-form letter-template-fields" id="meReportEmailSettingsForm">
+                                    <select id="meReportEmailProviderInput" aria-label="ME Report email provider">
+                                        <option value="smtp">SMTP sending account</option>
+                                        <option value="gmail">Connected Gmail inbox</option>
+                                    </select>
+                                    <input id="meReportEmailSubjectTemplateInput" type="text" placeholder="Email subject">
+                                    <textarea id="meReportEmailBodyTemplateInput" rows="12" placeholder="Email body"></textarea>
+                                    <input id="meReportEmailBccInput" type="email" placeholder="BCC email">
+                                    <div class="sync-settings-status" id="meReportGmailStatus">
+                                        <span>Gmail not connected</span>
+                                        <a class="ghost-button action-link" id="connectMeReportGmailButton" href="/auth/gmail/start">Connect Gmail</a>
+                                    </div>
+                                    <p class="settings-help">Available fields: {{client_name}}, {{contact_name}}, {{estimated_corporation_tax}}, {{dividend_availability}}, {{dla_position}}, {{dla_balance}}, {{dla_credit_note}}, {{commentary}}, {{period_start}}, {{period_end}}, {{traffic_light}}.</p>
+                                    <div class="letter-action-row">
+                                        <button class="primary-button" type="submit">Save ME email template</button>
+                                        <button class="ghost-button" id="reloadMeReportEmailSettingsButton" type="button">Reload from backend</button>
+                                    </div>
+                                </form>
+                            </section>
+
                             <section class="detail-panel settings-panel danger-panel factory-reset-panel" data-settings-section="factory-reset">
                                 <div class="panel-heading">
                                     <div>
@@ -6292,6 +6320,8 @@
                             <div class="detail-actions">
                                 <button class="ghost-button" id="backMeReportClientsButton" type="button" hidden>Back to clients</button>
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
+                                <button class="ghost-button" id="bulkUploadMeReportsButton" type="button">Bulk upload</button>
+                                <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send</button>
                                 <button class="ghost-button" id="addMeReportClientButton" type="button">Add client</button>
                             </div>
                         </div>
@@ -6330,8 +6360,8 @@
                         <section class="detail-panel" id="meReportClientFormPanel" hidden>
                             <form class="bank-account-form" id="meReportClientForm">
                                 <label>
-                                    Client name
-                                    <input id="meReportClientNameInput" type="text" autocomplete="off" required>
+                                    Xero contact
+                                    <select id="meReportXeroContactSelect" required></select>
                                 </label>
                                 <label>
                                     Internal owner
@@ -6356,6 +6386,7 @@
                                 <button class="primary-button" type="submit">Save client</button>
                             </form>
                         </section>
+                        <input id="meReportBulkSubmissionFiles" type="file" accept="application/pdf,.pdf" multiple hidden>
                         <section class="detail-panel bank-statement-workspace">
                             <div class="bank-extraction-client-list" id="meReportClientList"></div>
                             <div class="bank-account-list" id="meReportActionList"></div>
@@ -7213,7 +7244,7 @@
             let latestIgnitionSyncRun = null;
             let ignitionSyncStartedAt = 0;
             let ignitionSyncProgressTimer = null;
-            let meReportData = { clients: [], summary: {}, treatmentCategories: [], xero: {}, syncRun: null, activeSyncRun: null };
+            let meReportData = { clients: [], summary: {}, treatmentCategories: [], settings: {}, xero: {}, syncRun: null, activeSyncRun: null };
             let meReportLoading = false;
             let meReportClientFormOpen = false;
             let selectedMeReportClientId = "";
@@ -7221,6 +7252,8 @@
             let activeMeReportTab = "overview";
             let isMeReportProcessing = false;
             let meReportUploadProcessing = false;
+            let meReportEmailSending = false;
+            let meReportBulkUploading = false;
             let activeMeReportSyncRunId = null;
             let latestMeReportSyncRun = null;
             let meReportSyncStartedAt = 0;
@@ -7349,6 +7382,7 @@
                         ignitionLogin: config.endpoints?.ignitionLogin || "/auth/ignition/start",
                         meReport: config.endpoints?.meReport || "/api/me-report",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
+                        meReportBulkSubmissions: config.endpoints?.meReportBulkSubmissions || "/api/me-report/bulk-submissions",
                         meReportConnectXero: config.endpoints?.meReportConnectXero || "/api/me-report/clients/:clientId/connect-xero",
                         meReportSync: config.endpoints?.meReportSync || "/api/me-report/clients/:clientId/sync",
                         meReportSyncStatus: config.endpoints?.meReportSyncStatus || "/api/me-report/sync/:syncId",
@@ -7357,6 +7391,9 @@
                         meReportExceptions: config.endpoints?.meReportExceptions || "/api/me-report/exceptions/:exceptionId",
                         meReportMergeContact: config.endpoints?.meReportMergeContact || "/api/me-report/exceptions/:exceptionId/merge-contact",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
+                        meReportSendReport: config.endpoints?.meReportSendReport || "/api/me-report/reports/:reportId/send",
+                        meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
+                        meReportSettings: config.endpoints?.meReportSettings || "/api/me-report/settings",
                         insights: config.endpoints?.insights || "/api/insights",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
@@ -13773,6 +13810,7 @@
                     clients: Array.isArray(source.clients) ? source.clients : [],
                     summary: source.summary || {},
                     treatmentCategories: Array.isArray(source.treatmentCategories) ? source.treatmentCategories : [],
+                    settings: source.settings || {},
                     xero: source.xero || {},
                     syncRun: source.syncRun || null,
                     activeSyncRun: source.activeSyncRun || null
@@ -13834,6 +13872,75 @@
                 if (element) element.textContent = value;
             }
 
+            function meReportContactOptions() {
+                return Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
+            }
+
+            function selectedMeReportFormContact() {
+                const contactId = document.getElementById("meReportXeroContactSelect")?.value || "";
+                return meReportContactOptions().find((contact) => contact.xeroContactId === contactId) || null;
+            }
+
+            function syncMeReportSelectedContactFields() {
+                const contact = selectedMeReportFormContact();
+                const emailInput = document.getElementById("meReportEmailInput");
+                if (emailInput && contact) emailInput.value = contact.email || "";
+            }
+
+            function renderMeReportClientForm() {
+                const select = document.getElementById("meReportXeroContactSelect");
+                const emailInput = document.getElementById("meReportEmailInput");
+                if (!select) return;
+                const contacts = meReportContactOptions();
+                const currentValue = select.value;
+                if (!contacts.length) {
+                    select.innerHTML = '<option value="">Sync Xero contacts before adding clients</option>';
+                    select.disabled = true;
+                    if (emailInput && !emailInput.value) emailInput.placeholder = "Email will pull from Xero";
+                    return;
+                }
+                select.disabled = false;
+                select.innerHTML = contacts.map((contact) => {
+                    const label = `${contact.name || "Unnamed contact"}${contact.email ? ` - ${contact.email}` : ""}`;
+                    return `<option value="${escapeHTML(contact.xeroContactId || "")}">${escapeHTML(label)}</option>`;
+                }).join("");
+                if (contacts.some((contact) => contact.xeroContactId === currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    select.value = contacts[0]?.xeroContactId || "";
+                }
+                if (emailInput && !emailInput.value) syncMeReportSelectedContactFields();
+            }
+
+            function renderMeReportEmailSettings() {
+                const settings = meReportData.settings || {};
+                const providerInput = document.getElementById("meReportEmailProviderInput");
+                const subjectInput = document.getElementById("meReportEmailSubjectTemplateInput");
+                const bodyInput = document.getElementById("meReportEmailBodyTemplateInput");
+                const bccInput = document.getElementById("meReportEmailBccInput");
+                if (providerInput && document.activeElement !== providerInput) providerInput.value = settings.emailProvider || "smtp";
+                if (subjectInput && document.activeElement !== subjectInput) subjectInput.value = settings.emailSubjectTemplate || "Month-end bookkeeping snapshot for {{client_name}}";
+                if (bodyInput && document.activeElement !== bodyInput) bodyInput.value = settings.emailBodyTemplate || "";
+                if (bccInput && document.activeElement !== bccInput) bccInput.value = settings.bccEmail || "fmfhdkgaptpyubgms@accountancymanager.co.uk";
+                const gmailStatus = document.getElementById("meReportGmailStatus");
+                const gmail = settings.gmail || {};
+                if (gmailStatus) {
+                    const statusText = gmail.connected
+                        ? `Gmail connected: ${gmail.email || "connected account"}`
+                        : gmail.configured
+                            ? "Gmail ready to connect"
+                            : "Gmail OAuth credentials not configured";
+                    gmailStatus.querySelector("span").textContent = statusText;
+                }
+                const gmailLink = document.getElementById("connectMeReportGmailButton");
+                if (gmailLink) {
+                    gmailLink.href = endpointURL("/auth/gmail/start?redirect_to=/");
+                    gmailLink.textContent = gmail.connected ? "Reconnect Gmail" : "Connect Gmail";
+                    gmailLink.classList.toggle("is-disabled", !gmail.configured);
+                    gmailLink.setAttribute("aria-disabled", String(!gmail.configured));
+                }
+            }
+
             function renderMeReportScreen() {
                 const screen = document.getElementById("meReportScreen");
                 if (!screen) return;
@@ -13868,12 +13975,26 @@
 
                 const formPanel = document.getElementById("meReportClientFormPanel");
                 if (formPanel) formPanel.hidden = !meReportClientFormOpen;
+                if (meReportClientFormOpen) renderMeReportClientForm();
                 const addButton = document.getElementById("addMeReportClientButton");
                 if (addButton) addButton.textContent = meReportClientFormOpen ? "Close form" : "Add client";
                 const backButton = document.getElementById("backMeReportClientsButton");
                 if (backButton) backButton.hidden = !meReportWorkspaceOpen;
                 const refreshButton = document.getElementById("refreshMeReportButton");
                 if (refreshButton) refreshButton.disabled = meReportLoading || isMeReportProcessing;
+                const bulkUploadButton = document.getElementById("bulkUploadMeReportsButton");
+                if (bulkUploadButton) {
+                    bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
+                    bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Bulk upload";
+                }
+                const bulkSendButton = document.getElementById("bulkSendMeReportsButton");
+                const readyReportCount = clients.reduce((count, client) => (
+                    count + (client.reports || []).filter((report) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail)).length
+                ), 0);
+                if (bulkSendButton) {
+                    bulkSendButton.disabled = meReportEmailSending || readyReportCount === 0;
+                    bulkSendButton.textContent = readyReportCount ? `Bulk send ${readyReportCount}` : "Bulk send";
+                }
 
                 const clientList = document.getElementById("meReportClientList");
                 const actionList = document.getElementById("meReportActionList");
@@ -13912,7 +14033,7 @@
                     button.className = `bank-client-card${client.id === selectedMeReportClientId ? " is-active" : ""}`;
                     button.innerHTML = `
                         <strong>${escapeHTML(client.clientName || "Unnamed client")}</strong>
-                        <span>${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.bookkeepingFrequency || "Monthly")}</span>
+                        <span>${escapeHTML(client.xeroContactEmail || client.reportRecipientEmail || "No Xero email")} · ${escapeHTML(client.bookkeepingFrequency || "Monthly")}</span>
                         <span>${escapeHTML(light.toUpperCase())} · ${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"} · ${(client.submissions || []).length.toLocaleString("en-GB")} submission${(client.submissions || []).length === 1 ? "" : "s"}</span>
                     `;
                     button.addEventListener("click", () => {
@@ -14133,7 +14254,7 @@
                         <div>
                             <p class="eyebrow">Client detail</p>
                             <h3>${escapeHTML(client.clientName)}</h3>
-                            <p class="detail-meta">${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.reportRecipientEmail || "No report email")} · overview report workflow</p>
+                            <p class="detail-meta">${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.xeroContactName || client.clientName || "Xero contact")} · ${escapeHTML(client.reportRecipientEmail || client.xeroContactEmail || "No report email")} · overview report workflow</p>
                         </div>
                     </div>
                     <div class="ignition-summary-grid">${metrics.map(([label, value]) => renderMeReportMetric(label, value)).join("")}</div>
@@ -14232,10 +14353,11 @@
                     <div class="bank-flag-list">
                         ${reports.map((report) => `
                             <div class="bank-flag-row">
-                                <strong>${escapeHTML(formatDate(report.createdAt))} · ${escapeHTML(report.status || "draft")}</strong>
-                                <small>${escapeHTML(report.commentary || "No commentary saved")}<br>${escapeHTML(report.recipientEmail || client.reportRecipientEmail || "No recipient email")}</small>
+                                <strong>${escapeHTML(formatDate(report.createdAt))} · ${escapeHTML(report.status || "draft")}${report.sentAt ? ` · Sent ${escapeHTML(formatDate(report.sentAt))}` : ""}</strong>
+                                <small>${escapeHTML(report.commentary || "No commentary saved")}<br>${escapeHTML(report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail || "No recipient email")}${report.xeroHistoryNoteError ? `<br>Xero note warning: ${escapeHTML(report.xeroHistoryNoteError)}` : ""}</small>
                                 <button class="ghost-button" type="button" data-me-report-open="${escapeHTML(report.id)}">Open report</button>
-                                <button class="ghost-button" type="button" data-me-report-email="${escapeHTML(report.id)}">Email draft</button>
+                                <button class="ghost-button" type="button" data-me-report-pdf="${escapeHTML(report.id)}">Download PDF</button>
+                                <button class="primary-button" type="button" data-me-report-send="${escapeHTML(report.id)}" ${meReportEmailSending || String(report.status || "").startsWith("sent") ? "disabled" : ""}>${String(report.status || "").startsWith("sent") ? "Sent" : "Approve & send"}</button>
                             </div>
                         `).join("") || '<div class="empty-state"><p class="eyebrow">No reports</p><h4>No month-end report generated yet</h4><p>Upload an overview report, resolve required review points, then generate a report.</p></div>'}
                     </div>
@@ -14256,21 +14378,21 @@
                 document.querySelectorAll("[data-me-report-open]").forEach((button) => {
                     button.addEventListener("click", () => window.open(endpointURL("/api/me-report/reports/:reportId/download", { reportId: button.dataset.meReportOpen }), "_blank", "noopener"));
                 });
-                document.querySelectorAll("[data-me-report-email]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        const report = (client.reports || []).find((item) => item.id === button.dataset.meReportEmail) || {};
-                        const recipient = report.recipientEmail || client.reportRecipientEmail || "";
-                        const subject = encodeURIComponent(`Month-end bookkeeping report - ${client.clientName || "Client"}`);
-                        const body = encodeURIComponent(`Hi,\n\nYour month-end bookkeeping report has been prepared for review.\n\nKind regards,\nJaccountancy`);
-                        window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${subject}&body=${body}`;
-                    });
+                document.querySelectorAll("[data-me-report-pdf]").forEach((button) => {
+                    button.addEventListener("click", () => window.open(endpointURL("/api/me-report/reports/:reportId/download.pdf", { reportId: button.dataset.meReportPdf }), "_blank", "noopener"));
+                });
+                document.querySelectorAll("[data-me-report-send]").forEach((button) => {
+                    button.addEventListener("click", () => sendMeReportEmail(button.dataset.meReportSend));
                 });
             }
 
             async function createMeReportClient(event) {
                 event.preventDefault();
+                const contact = selectedMeReportFormContact();
+                if (!contact) return showToast("Choose a Xero contact before saving this ME Report client", "error");
                 const payload = {
-                    clientName: document.getElementById("meReportClientNameInput")?.value || "",
+                    xeroContactId: contact.xeroContactId || "",
+                    clientName: contact.name || "",
                     internalClientOwner: document.getElementById("meReportOwnerInput")?.value || "",
                     bookkeepingFrequency: document.getElementById("meReportFrequencyInput")?.value || "Monthly",
                     reportRecipientEmail: document.getElementById("meReportEmailInput")?.value || "",
@@ -14315,6 +14437,36 @@
                 } finally {
                     meReportUploadProcessing = false;
                     setAiLoading(false);
+                    renderMeReportScreen();
+                }
+            }
+
+            async function uploadBulkMeReportSubmissions(files) {
+                const selectedFiles = Array.from(files || []).filter((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""));
+                if (!selectedFiles.length) return showToast("Choose at least one PDF to bulk upload", "error");
+                const formData = new FormData();
+                selectedFiles.forEach((file) => formData.append("files", file));
+                meReportBulkUploading = true;
+                setAiLoading(true, `Jenius AI is processing ${selectedFiles.length} month-end PDF${selectedFiles.length === 1 ? "" : "s"}.`);
+                renderMeReportScreen();
+                try {
+                    const response = await requestFormData(api.endpoints.meReportBulkSubmissions, formData);
+                    meReportData = normaliseMeReportPayload(response);
+                    meReportWorkspaceOpen = false;
+                    const results = response?.bulk?.results || [];
+                    const processed = results.filter((item) => item.status === "processed").length;
+                    const needsReview = results.filter((item) => item.status !== "processed").length;
+                    showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review` : ""}.`, needsReview ? "warning" : "success");
+                    showToast(`${processed} ME Report PDF${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to bulk upload ME Report PDFs", "error");
+                } finally {
+                    meReportBulkUploading = false;
+                    setAiLoading(false);
+                    const input = document.getElementById("meReportBulkSubmissionFiles");
+                    if (input) input.value = "";
                     renderMeReportScreen();
                 }
             }
@@ -14560,6 +14712,86 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to generate ME Report", "error");
+                }
+            }
+
+            async function sendMeReportEmail(reportId) {
+                if (!reportId || meReportEmailSending) return;
+                const client = selectedMeReportClient();
+                const report = (client?.reports || []).find((item) => item.id === reportId) || {};
+                const recipient = report.recipientEmail || client?.reportRecipientEmail || client?.xeroContactEmail || "";
+                if (!recipient) return showToast("Add a report recipient email before sending this ME Report", "error");
+                const bcc = meReportData.settings?.bccEmail || "fmfhdkgaptpyubgms@accountancymanager.co.uk";
+                if (!window.confirm(`Send this month-end snapshot to ${recipient}? ${bcc ? `It will BCC ${bcc}.` : ""}`)) return;
+                meReportEmailSending = true;
+                renderMeReportScreen();
+                try {
+                    const response = await requestJSON(api.endpoints.meReportSendReport, {
+                        method: "POST",
+                        body: JSON.stringify({})
+                    }, { reportId });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportClientId = client?.id || selectedMeReportClientId;
+                    activeMeReportTab = "reports";
+                    renderMeReportScreen();
+                    const warning = response?.email?.warning || "";
+                    showToast(warning ? "Email sent, but Xero history note needs review" : "ME Report emailed to client", warning ? "error" : "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to send ME Report email", "error");
+                } finally {
+                    meReportEmailSending = false;
+                    renderMeReportScreen();
+                }
+            }
+
+            async function bulkSendReadyMeReports() {
+                const reportRows = (meReportData.clients || []).flatMap((client) => (client.reports || []).map((report) => ({ client, report })));
+                const ready = reportRows.filter(({ client, report }) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail));
+                if (!ready.length) return showToast("No generated ME Reports are ready to send", "error");
+                if (!window.confirm(`Send ${ready.length} generated ME Report email${ready.length === 1 ? "" : "s"} now? Each email will include the required BCC from settings.`)) return;
+                meReportEmailSending = true;
+                renderMeReportScreen();
+                try {
+                    const response = await requestJSON(api.endpoints.meReportBulkSend, {
+                        method: "POST",
+                        body: JSON.stringify({ reportIds: ready.map(({ report }) => report.id) })
+                    });
+                    meReportData = normaliseMeReportPayload(response);
+                    const results = response?.bulk?.results || [];
+                    const sent = results.filter((item) => item.status === "sent").length;
+                    const failed = results.filter((item) => item.status !== "sent").length;
+                    showTopbarNotice("Bulk ME send complete", `${sent} sent${failed ? `, ${failed} failed` : ""}.`, failed ? "warning" : "success");
+                    showToast(`${sent} ME Report email${sent === 1 ? "" : "s"} sent${failed ? `; ${failed} failed` : ""}`, failed ? "error" : "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to bulk send ME Report emails", "error");
+                } finally {
+                    meReportEmailSending = false;
+                    renderMeReportScreen();
+                }
+            }
+
+            async function saveMeReportEmailSettings(event) {
+                event.preventDefault();
+                const payload = {
+                    emailProvider: document.getElementById("meReportEmailProviderInput")?.value || "smtp",
+                    emailSubjectTemplate: document.getElementById("meReportEmailSubjectTemplateInput")?.value || "",
+                    emailBodyTemplate: document.getElementById("meReportEmailBodyTemplateInput")?.value || "",
+                    bccEmail: document.getElementById("meReportEmailBccInput")?.value || ""
+                };
+                try {
+                    const response = await requestJSON(api.endpoints.meReportSettings, {
+                        method: "POST",
+                        body: JSON.stringify(payload)
+                    });
+                    meReportData = normaliseMeReportPayload(response);
+                    renderMeReportEmailSettings();
+                    showToast("ME Report email template saved", "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to save ME Report email settings", "error");
                 }
             }
 
@@ -15879,6 +16111,7 @@
                 renderPendingXeroActions();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
+                renderMeReportEmailSettings();
                 renderDashboardHero();
                 renderSummaryCounts();
                 renderToolbarControls();
@@ -17164,6 +17397,11 @@
                     title: "Letter Templates",
                     meta: "Create and edit reminder templates used from client pages."
                 },
+                "me-report-email": {
+                    eyebrow: "ME Report emails",
+                    title: "ME Report Email Templates",
+                    meta: "Control the client snapshot email, required BCC, and report send wording."
+                },
                 "developer-log": {
                     eyebrow: "Developer log",
                     title: "Developer Log / Audit",
@@ -17220,6 +17458,7 @@
                 renderAll();
                 loadPendingXeroActions();
                 loadDeveloperLog();
+                if (activeSettingsSection === "me-report-email") loadMeReport(true);
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
             }
@@ -17892,7 +18131,7 @@
                 if (addMeReportClientButton) addMeReportClientButton.addEventListener("click", () => {
                     meReportClientFormOpen = !meReportClientFormOpen;
                     renderMeReportScreen();
-                    if (meReportClientFormOpen) setTimeout(() => document.getElementById("meReportClientNameInput")?.focus(), 0);
+                    if (meReportClientFormOpen) setTimeout(() => document.getElementById("meReportXeroContactSelect")?.focus(), 0);
                 });
                 const backMeReportClientsButton = document.getElementById("backMeReportClientsButton");
                 if (backMeReportClientsButton) backMeReportClientsButton.addEventListener("click", () => {
@@ -17902,8 +18141,16 @@
                 });
                 const meReportClientForm = document.getElementById("meReportClientForm");
                 if (meReportClientForm) meReportClientForm.addEventListener("submit", createMeReportClient);
+                const meReportXeroContactSelect = document.getElementById("meReportXeroContactSelect");
+                if (meReportXeroContactSelect) meReportXeroContactSelect.addEventListener("change", syncMeReportSelectedContactFields);
                 const refreshMeReportButton = document.getElementById("refreshMeReportButton");
                 if (refreshMeReportButton) refreshMeReportButton.addEventListener("click", () => loadMeReport(true));
+                const bulkUploadMeReportsButton = document.getElementById("bulkUploadMeReportsButton");
+                if (bulkUploadMeReportsButton) bulkUploadMeReportsButton.addEventListener("click", () => document.getElementById("meReportBulkSubmissionFiles")?.click());
+                const bulkSendMeReportsButton = document.getElementById("bulkSendMeReportsButton");
+                if (bulkSendMeReportsButton) bulkSendMeReportsButton.addEventListener("click", bulkSendReadyMeReports);
+                const bulkMeReportFiles = document.getElementById("meReportBulkSubmissionFiles");
+                if (bulkMeReportFiles) bulkMeReportFiles.addEventListener("change", (event) => uploadBulkMeReportSubmissions(event.target.files));
                 const reviewLateChargesButton = document.getElementById("reviewLateChargesButton");
                 if (reviewLateChargesButton) reviewLateChargesButton.addEventListener("click", () => {
                     closeToolbarMenus();
@@ -17961,6 +18208,17 @@
                 });
                 const deleteLetterTemplateButton = document.getElementById("deleteLetterTemplateButton");
                 if (deleteLetterTemplateButton) deleteLetterTemplateButton.addEventListener("click", deleteSelectedLetterTemplate);
+                const meReportEmailSettingsForm = document.getElementById("meReportEmailSettingsForm");
+                if (meReportEmailSettingsForm) meReportEmailSettingsForm.addEventListener("submit", saveMeReportEmailSettings);
+                const reloadMeReportEmailSettingsButton = document.getElementById("reloadMeReportEmailSettingsButton");
+                if (reloadMeReportEmailSettingsButton) reloadMeReportEmailSettingsButton.addEventListener("click", () => loadMeReport(true));
+                const connectMeReportGmailButton = document.getElementById("connectMeReportGmailButton");
+                if (connectMeReportGmailButton) connectMeReportGmailButton.addEventListener("click", (event) => {
+                    if (connectMeReportGmailButton.getAttribute("aria-disabled") === "true") {
+                        event.preventDefault();
+                        showToast("Add Gmail OAuth credentials before connecting Gmail", "error");
+                    }
+                });
                 const menuSyncButton = document.getElementById("menuSyncButton");
                 if (menuSyncButton) menuSyncButton.addEventListener("click", () => runXeroSync());
                 const clientRunImportButton = document.getElementById("clientRunImportButton");

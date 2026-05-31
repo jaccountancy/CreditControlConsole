@@ -839,6 +839,9 @@ CREATE TABLE IF NOT EXISTS me_report_clients (
     bookkeeping_frequency TEXT NOT NULL DEFAULT 'Monthly',
     report_recipient_email TEXT NOT NULL DEFAULT '',
     year_end_month INTEGER NOT NULL DEFAULT 3,
+    xero_contact_id TEXT,
+    xero_contact_name TEXT NOT NULL DEFAULT '',
+    xero_contact_email TEXT NOT NULL DEFAULT '',
     xero_connection_id UUID REFERENCES xero_connections(id) ON DELETE SET NULL,
     xero_tenant_id TEXT,
     xero_tenant_name TEXT,
@@ -851,8 +854,15 @@ CREATE TABLE IF NOT EXISTS me_report_clients (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS xero_contact_id TEXT;
+ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS xero_contact_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS xero_contact_email TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS me_report_clients_user_status_idx
 ON me_report_clients (user_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS me_report_clients_xero_contact_idx
+ON me_report_clients (xero_contact_id);
 
 CREATE TABLE IF NOT EXISTS me_report_account_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -922,16 +932,70 @@ CREATE TABLE IF NOT EXISTS me_report_reports (
     review_id UUID REFERENCES me_report_reviews(id) ON DELETE SET NULL,
     status TEXT NOT NULL DEFAULT 'draft',
     recipient_email TEXT NOT NULL DEFAULT '',
+    email_subject TEXT NOT NULL DEFAULT '',
+    email_body TEXT NOT NULL DEFAULT '',
+    bcc_email TEXT NOT NULL DEFAULT '',
     report_html TEXT NOT NULL DEFAULT '',
     commentary TEXT NOT NULL DEFAULT '',
     created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    sent_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    xero_history_note_status TEXT NOT NULL DEFAULT 'not_sent',
+    xero_history_note_error TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     approved_at TIMESTAMPTZ,
     sent_at TIMESTAMPTZ
 );
 
+ALTER TABLE me_report_reports ADD COLUMN IF NOT EXISTS email_subject TEXT NOT NULL DEFAULT '';
+ALTER TABLE me_report_reports ADD COLUMN IF NOT EXISTS email_body TEXT NOT NULL DEFAULT '';
+ALTER TABLE me_report_reports ADD COLUMN IF NOT EXISTS bcc_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE me_report_reports ADD COLUMN IF NOT EXISTS sent_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE me_report_reports ADD COLUMN IF NOT EXISTS xero_history_note_status TEXT NOT NULL DEFAULT 'not_sent';
+ALTER TABLE me_report_reports ADD COLUMN IF NOT EXISTS xero_history_note_error TEXT NOT NULL DEFAULT '';
+
 CREATE INDEX IF NOT EXISTS me_report_reports_client_idx
 ON me_report_reports (client_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS me_report_settings (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    email_provider TEXT NOT NULL DEFAULT 'smtp',
+    email_subject_template TEXT NOT NULL DEFAULT 'Month-end bookkeeping snapshot for {{client_name}}',
+    email_body_template TEXT NOT NULL DEFAULT '',
+    bcc_email TEXT NOT NULL DEFAULT 'fmfhdkgaptpyubgms@accountancymanager.co.uk',
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS email_provider TEXT NOT NULL DEFAULT 'smtp';
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS email_subject_template TEXT NOT NULL DEFAULT 'Month-end bookkeeping snapshot for {{client_name}}';
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS email_body_template TEXT NOT NULL DEFAULT '';
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS bcc_email TEXT NOT NULL DEFAULT 'fmfhdkgaptpyubgms@accountancymanager.co.uk';
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE me_report_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS gmail_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    gmail_email TEXT NOT NULL DEFAULT '',
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL DEFAULT '',
+    scope TEXT NOT NULL DEFAULT '',
+    token_expires_at TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'connected',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS gmail_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS access_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS refresh_token TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT '';
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'connected';
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE gmail_connections ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE TABLE IF NOT EXISTS me_report_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

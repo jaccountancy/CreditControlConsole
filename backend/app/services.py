@@ -6,11 +6,15 @@ import json
 import logging
 import re
 import signal
+import smtplib
 import zipfile
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from email.message import EmailMessage
+from email.utils import formataddr
+from urllib.parse import urlencode
 from uuid import UUID
 from xml.sax.saxutils import escape as xml_escape
 
@@ -124,6 +128,7 @@ DATABASE_METRIC_TABLES = {
     "me_report_reports": "ME report reports",
     "me_report_submissions": "ME report submissions",
     "me_report_sync_runs": "ME report sync runs",
+    "gmail_connections": "Gmail connections",
 }
 _PREVIOUS_SIGTERM_HANDLER = None
 _SYNC_SIGNAL_HANDLERS_INSTALLED = False
@@ -5539,6 +5544,27 @@ ME_REPORT_CATEGORIES = [
     {"group": "Balance sheet", "items": ["Bank", "Trade debtors", "Trade creditors", "VAT", "PAYE/NIC", "Corporation tax creditor", "Director loan account", "Dividends", "Retained earnings", "Share capital"]},
     {"group": "Special tax categories", "items": ["R&D costs", "Losses", "Accruals", "Prepayments", "Associated company adjustment", "s455/director loan risk", "Illegal dividend risk"]},
 ]
+ME_REPORT_DEFAULT_BCC_EMAIL = "fmfhdkgaptpyubgms@accountancymanager.co.uk"
+ME_REPORT_DEFAULT_EMAIL_SUBJECT = "Month-end bookkeeping snapshot for {{client_name}}"
+ME_REPORT_DEFAULT_EMAIL_BODY = """Hi {{contact_name}},
+
+Please find attached your month-end bookkeeping snapshot for {{client_name}}.
+
+Headline figures from the current review:
+- Estimated YTD Corporation Tax: {{estimated_corporation_tax}}
+- Further dividend availability: {{dividend_availability}}
+- Director loan account position: {{dla_position}}
+
+{{dla_credit_note}}
+
+{{commentary}}
+
+Kind regards,
+Jaccountancy"""
+GMAIL_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GMAIL_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 
 
 def _me_report_xero_connection(user: dict, client: dict | None = None) -> dict:
@@ -5567,6 +5593,311 @@ def _me_report_empty_summary() -> dict:
         "dividendCapacity": 0,
         "dlaRedCount": 0,
     }
+
+
+def _me_report_contact_email(row: dict) -> str:
+    email = str(row.get("email") or "").strip()
+    if email:
+        return email
+    people = row.get("contact_people") if isinstance(row.get("contact_people"), list) else []
+    included = [person for person in people if person.get("includeInEmails") and person.get("email")]
+    fallback = included[0] if included else next((person for person in people if person.get("email")), None)
+    return str((fallback or {}).get("email") or "").strip()
+
+
+def _me_report_contact_options(user: dict) -> list[dict]:
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        return []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_contact_id, name, email, primary_person, contact_people
+                FROM customers
+                WHERE tenant_id = %s
+                  AND status = 'active'
+                ORDER BY LOWER(name) ASC
+                LIMIT 2500
+                """,
+                (connection_row.get("tenant_id"),),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+    return [
+        {
+            "customerId": str(row.get("id") or ""),
+            "xeroContactId": row.get("xero_contact_id") or "",
+            "name": row.get("name") or "Unnamed Xero contact",
+            "email": _me_report_contact_email(row),
+            "primaryPerson": row.get("primary_person") or "",
+            "contactPeople": row.get("contact_people") if isinstance(row.get("contact_people"), list) else [],
+        }
+        for row in rows
+        if row.get("xero_contact_id")
+    ]
+
+
+def _me_report_contact_for_user(user: dict, xero_contact_id: str) -> dict | None:
+    xero_contact_id = str(xero_contact_id or "").strip()
+    if not xero_contact_id:
+        return None
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        return None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_contact_id, name, email, primary_person, contact_people
+                FROM customers
+                WHERE tenant_id = %s
+                  AND xero_contact_id = %s
+                LIMIT 1
+                """,
+                (connection_row.get("tenant_id"), xero_contact_id),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        return None
+    return {
+        "customerId": str(row.get("id") or ""),
+        "xeroContactId": row.get("xero_contact_id") or "",
+        "name": row.get("name") or "Unnamed Xero contact",
+        "email": _me_report_contact_email(row),
+        "primaryPerson": row.get("primary_person") or "",
+        "contactPeople": row.get("contact_people") if isinstance(row.get("contact_people"), list) else [],
+    }
+
+
+def gmail_oauth_configured() -> bool:
+    settings = get_settings()
+    placeholders = {"", "replace-me", "changeme", "change-me", "your-client-id", "your-client-secret"}
+    client_id = str(settings.gmail_client_id or "").strip()
+    client_secret = str(settings.gmail_client_secret or "").strip()
+    return client_id.lower() not in placeholders and client_secret.lower() not in placeholders
+
+
+def gmail_redirect_uri() -> str:
+    settings = get_settings()
+    return str(settings.gmail_redirect_uri or f"{settings.base_url.rstrip('/')}/auth/gmail/callback").strip()
+
+
+def gmail_authorize_url(state_token: str) -> str:
+    settings = get_settings()
+    if not gmail_oauth_configured():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Gmail OAuth is not configured. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET and GMAIL_REDIRECT_URI.")
+    query = urlencode(
+        {
+            "response_type": "code",
+            "client_id": settings.gmail_client_id,
+            "redirect_uri": gmail_redirect_uri(),
+            "scope": settings.gmail_scopes,
+            "state": state_token,
+            "access_type": "offline",
+            "prompt": "consent",
+            "include_granted_scopes": "true",
+        }
+    )
+    return f"{GMAIL_AUTHORIZE_URL}?{query}"
+
+
+async def exchange_gmail_code_for_tokens(code: str) -> dict:
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            GMAIL_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": settings.gmail_client_id,
+                "client_secret": settings.gmail_client_secret,
+                "redirect_uri": gmail_redirect_uri(),
+            },
+        )
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail token exchange failed: {response.text[:500]}")
+    return response.json()
+
+
+async def fetch_gmail_profile(access_token: str) -> dict:
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(GMAIL_USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail profile fetch failed: {response.text[:500]}")
+    return response.json()
+
+
+def store_gmail_connection(user: dict, token_payload: dict, profile: dict) -> dict:
+    expires_in = int(token_payload.get("expires_in") or 3600)
+    expires_at = utcnow() + timedelta(seconds=max(60, expires_in - 60))
+    gmail_email = profile.get("email") or user.get("email") or ""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO gmail_connections (
+                    user_id, gmail_email, access_token, refresh_token,
+                    scope, token_expires_at, status, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, 'connected', %s, %s)
+                ON CONFLICT (user_id) DO UPDATE
+                SET gmail_email = EXCLUDED.gmail_email,
+                    access_token = EXCLUDED.access_token,
+                    refresh_token = COALESCE(NULLIF(EXCLUDED.refresh_token, ''), gmail_connections.refresh_token),
+                    scope = EXCLUDED.scope,
+                    token_expires_at = EXCLUDED.token_expires_at,
+                    status = 'connected',
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (
+                    user["id"],
+                    gmail_email,
+                    token_payload.get("access_token") or "",
+                    token_payload.get("refresh_token") or "",
+                    token_payload.get("scope") or "",
+                    expires_at,
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    record_audit_event("gmail_connection", str(row["id"]), "gmail.connected", {"gmail_email": gmail_email}, user["id"])
+    return row
+
+
+def gmail_connection_for_user(user: dict | str) -> dict | None:
+    user_id = user.get("id") if isinstance(user, dict) else user
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM gmail_connections WHERE user_id = %s AND status = 'connected'", (user_id,))
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+async def refresh_gmail_connection(row: dict) -> dict:
+    if row.get("token_expires_at") and row["token_expires_at"] > utcnow() + timedelta(minutes=2):
+        return row
+    if not row.get("refresh_token"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail needs to be reconnected before sending ME Report emails.")
+    settings = get_settings()
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            GMAIL_TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": row["refresh_token"],
+                "client_id": settings.gmail_client_id,
+                "client_secret": settings.gmail_client_secret,
+            },
+        )
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail token refresh failed: {response.text[:500]}")
+    payload = response.json()
+    expires_at = utcnow() + timedelta(seconds=max(60, int(payload.get("expires_in") or 3600) - 60))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE gmail_connections
+                SET access_token = %s,
+                    token_expires_at = %s,
+                    updated_at = %s
+                WHERE id = %s
+                RETURNING *
+                """,
+                (payload.get("access_token") or "", expires_at, utcnow(), row["id"]),
+            )
+            updated = cursor.fetchone()
+        connection.commit()
+    return updated
+
+
+def _serialize_me_report_settings(row: dict | None) -> dict:
+    settings = get_settings()
+    gmail_connection = gmail_connection_for_user(row["user_id"]) if row and row.get("user_id") else None
+    return {
+        "emailProvider": (row or {}).get("email_provider") or "smtp",
+        "emailSubjectTemplate": (row or {}).get("email_subject_template") or ME_REPORT_DEFAULT_EMAIL_SUBJECT,
+        "emailBodyTemplate": (row or {}).get("email_body_template") or ME_REPORT_DEFAULT_EMAIL_BODY,
+        "bccEmail": (row or {}).get("bcc_email") or settings.me_report_bcc_email or ME_REPORT_DEFAULT_BCC_EMAIL,
+        "gmail": {
+            "configured": gmail_oauth_configured(),
+            "connected": bool(gmail_connection),
+            "email": gmail_connection.get("gmail_email") if gmail_connection else "",
+        },
+        "updatedAt": _iso((row or {}).get("updated_at")) or "",
+    }
+
+
+def _me_report_settings_row(user: dict, create: bool = True) -> dict | None:
+    settings = get_settings()
+    default_bcc = settings.me_report_bcc_email or ME_REPORT_DEFAULT_BCC_EMAIL
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if create:
+                cursor.execute(
+                    """
+                    INSERT INTO me_report_settings (
+                        user_id, email_provider, email_subject_template, email_body_template,
+                        bcc_email, updated_by_user_id, created_at, updated_at
+                    )
+                    VALUES (%s, 'smtp', %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    (
+                        user["id"],
+                        ME_REPORT_DEFAULT_EMAIL_SUBJECT,
+                        ME_REPORT_DEFAULT_EMAIL_BODY,
+                        default_bcc,
+                        user["id"],
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+            cursor.execute("SELECT * FROM me_report_settings WHERE user_id = %s", (user["id"],))
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
+def update_me_report_settings(user: dict, payload: dict) -> dict:
+    provider = str(payload.get("emailProvider") or "smtp").strip().lower()
+    if provider not in ("smtp", "gmail"):
+        provider = "smtp"
+    subject = str(payload.get("emailSubjectTemplate") or "").strip() or ME_REPORT_DEFAULT_EMAIL_SUBJECT
+    body = str(payload.get("emailBodyTemplate") or "").strip() or ME_REPORT_DEFAULT_EMAIL_BODY
+    bcc = str(payload.get("bccEmail") or "").strip() or get_settings().me_report_bcc_email or ME_REPORT_DEFAULT_BCC_EMAIL
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO me_report_settings (
+                    user_id, email_provider, email_subject_template, email_body_template,
+                    bcc_email, updated_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE
+                SET email_provider = EXCLUDED.email_provider,
+                    email_subject_template = EXCLUDED.email_subject_template,
+                    email_body_template = EXCLUDED.email_body_template,
+                    bcc_email = EXCLUDED.bcc_email,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (user["id"], provider, subject, body, bcc, user["id"], utcnow(), utcnow()),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    record_audit_event("me_report_settings", user["id"], "me_report.settings_updated", {"bcc_email": bcc, "email_provider": provider}, user["id"])
+    return {"settings": _serialize_me_report_settings(row), "meReport": me_report_payload(user)}
 
 
 def _serialize_me_report_sync_run(row: dict | None) -> dict | None:
@@ -5624,6 +5955,9 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "bookkeepingFrequency": row.get("bookkeeping_frequency") or "Monthly",
         "reportRecipientEmail": row.get("report_recipient_email") or "",
         "yearEndMonth": int(row.get("year_end_month") or 3),
+        "xeroContactId": row.get("xero_contact_id") or "",
+        "xeroContactName": row.get("xero_contact_name") or "",
+        "xeroContactEmail": row.get("xero_contact_email") or "",
         "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
         "xeroTenantName": row.get("xero_tenant_name") or "",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
@@ -5683,8 +6017,14 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
                 "reviewId": str(report.get("review_id") or ""),
                 "status": report.get("status") or "draft",
                 "recipientEmail": report.get("recipient_email") or "",
+                "emailSubject": report.get("email_subject") or "",
+                "bccEmail": report.get("bcc_email") or "",
                 "commentary": report.get("commentary") or "",
                 "createdAt": _iso(report.get("created_at")) or "",
+                "approvedAt": _iso(report.get("approved_at")) or "",
+                "sentAt": _iso(report.get("sent_at")) or "",
+                "xeroHistoryNoteStatus": report.get("xero_history_note_status") or "not_sent",
+                "xeroHistoryNoteError": report.get("xero_history_note_error") or "",
             }
             for report in reports
         ],
@@ -5837,14 +6177,18 @@ def me_report_payload(user: dict) -> dict:
         xero_connection = get_xero_connection_for_user(user["id"])
     except HTTPException:
         xero_connection = None
+    settings_row = _me_report_settings_row(user)
+    contact_options = _me_report_contact_options(user)
     return {
         "summary": summary,
         "clients": clients,
+        "settings": _serialize_me_report_settings(settings_row),
         "treatmentCategories": ME_REPORT_CATEGORIES,
         "xero": {
             "connected": bool(xero_connection),
             "tenantName": xero_connection.get("tenant_name") if xero_connection else "",
             "tenantId": xero_connection.get("tenant_id") if xero_connection else "",
+            "contacts": contact_options,
         },
         "syncRun": _serialize_me_report_sync_run(active_run or latest_run),
         "activeSyncRun": _serialize_me_report_sync_run(active_run),
@@ -5852,17 +6196,27 @@ def me_report_payload(user: dict) -> dict:
 
 
 def create_me_report_client(user: dict, payload: dict) -> dict:
+    xero_contact_id = str(payload.get("xeroContactId") or "").strip()
+    xero_contact = _me_report_contact_for_user(user, xero_contact_id) if xero_contact_id else None
+    if xero_contact_id and not xero_contact:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a valid Xero contact from the ME Report client dropdown.")
     client_name = str(payload.get("clientName") or "").strip()
+    if xero_contact:
+        client_name = xero_contact["name"]
     if not client_name:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client name is required.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client name is required. Sync Xero contacts, then choose a contact from the dropdown.")
     owner = str(payload.get("internalClientOwner") or "").strip()
     frequency = str(payload.get("bookkeepingFrequency") or "Monthly").strip() or "Monthly"
-    recipient = str(payload.get("reportRecipientEmail") or "").strip()
+    recipient = str(payload.get("reportRecipientEmail") or (xero_contact or {}).get("email") or "").strip()
     try:
         year_end_month = int(payload.get("yearEndMonth") or 3)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year end month must be a number from 1 to 12.") from exc
     year_end_month = min(12, max(1, year_end_month))
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        connection_row = {}
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -5870,16 +6224,40 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
                 INSERT INTO me_report_clients (
                     user_id, client_name, internal_client_owner,
                     bookkeeping_frequency, report_recipient_email,
-                    year_end_month, created_at, updated_at
+                    year_end_month, xero_contact_id, xero_contact_name,
+                    xero_contact_email, xero_connection_id, xero_tenant_id,
+                    xero_tenant_name, xero_connection_status, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (user["id"], client_name, owner, frequency, recipient, year_end_month, utcnow(), utcnow()),
+                (
+                    user["id"],
+                    client_name,
+                    owner,
+                    frequency,
+                    recipient,
+                    year_end_month,
+                    xero_contact["xeroContactId"] if xero_contact else None,
+                    xero_contact["name"] if xero_contact else "",
+                    xero_contact["email"] if xero_contact else "",
+                    connection_row.get("id"),
+                    connection_row.get("tenant_id"),
+                    connection_row.get("tenant_name") or "",
+                    "connected" if connection_row else "not_connected",
+                    utcnow(),
+                    utcnow(),
+                ),
             )
             client_id = cursor.fetchone()["id"]
         connection.commit()
-    record_audit_event("me_report_client", str(client_id), "me_report.client_created", {"client_name": client_name}, user["id"])
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.client_created",
+        {"client_name": client_name, "xero_contact_id": xero_contact_id},
+        user["id"],
+    )
     return me_report_payload(user)
 
 
@@ -7616,6 +7994,492 @@ def me_report_report_html(user: dict, report_id: str) -> str:
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report output not found.")
     return row.get("report_html") or ""
+
+
+def _me_report_report_context(user: dict, report_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT reports.*,
+                       clients.user_id,
+                       clients.client_name,
+                       clients.report_recipient_email,
+                       clients.xero_contact_id,
+                       clients.xero_contact_name,
+                       clients.xero_contact_email,
+                       clients.xero_connection_id,
+                       clients.xero_tenant_id,
+                       clients.xero_tenant_name,
+                       reviews.summary AS review_summary,
+                       reviews.period_start,
+                       reviews.period_end,
+                       reviews.traffic_light
+                FROM me_report_reports AS reports
+                JOIN me_report_clients AS clients ON clients.id = reports.client_id
+                LEFT JOIN me_report_reviews AS reviews ON reviews.id = reports.review_id
+                WHERE reports.id = %s
+                  AND clients.user_id = %s
+                """,
+                (report_id, user["id"]),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report output not found.")
+    summary = row.get("review_summary") or {}
+    if isinstance(summary, str):
+        try:
+            summary = json.loads(summary)
+        except ValueError:
+            summary = {}
+    return {
+        "report": row,
+        "client": {
+            "id": row.get("client_id"),
+            "client_name": row.get("client_name") or "",
+            "report_recipient_email": row.get("report_recipient_email") or "",
+            "xero_contact_id": row.get("xero_contact_id") or "",
+            "xero_contact_name": row.get("xero_contact_name") or "",
+            "xero_contact_email": row.get("xero_contact_email") or "",
+            "xero_connection_id": row.get("xero_connection_id"),
+            "xero_tenant_id": row.get("xero_tenant_id") or "",
+            "xero_tenant_name": row.get("xero_tenant_name") or "",
+        },
+        "summary": summary,
+    }
+
+
+def _format_me_report_money(value) -> str:
+    return f"£{_money(value):,.2f}"
+
+
+def _me_report_template_context(client: dict, report: dict, summary: dict) -> dict:
+    dla_balance = _money(summary.get("dlaBalance"))
+    dla_in_credit = dla_balance > 0
+    contact_name = client.get("xero_contact_name") or client.get("client_name") or "there"
+    return {
+        "client_name": client.get("client_name") or "Client",
+        "contact_name": contact_name,
+        "recipient_email": report.get("recipient_email") or client.get("report_recipient_email") or client.get("xero_contact_email") or "",
+        "estimated_corporation_tax": _format_me_report_money(summary.get("estimatedCorporationTax")),
+        "dividend_availability": _format_me_report_money(summary.get("dividendCapacity")),
+        "dla_balance": _format_me_report_money(dla_balance),
+        "dla_position": f"in credit by {_format_me_report_money(abs(dla_balance))}" if dla_in_credit else f"overdrawn by {_format_me_report_money(abs(dla_balance))}",
+        "dla_credit_note": (
+            "As the director loan account is in credit, we will look to use that first because it can be repaid tax-free before dividends are considered."
+            if dla_in_credit
+            else ""
+        ),
+        "commentary": report.get("commentary") or summary.get("commentary") or "",
+        "period_start": _iso(summary.get("periodStart") or "") or str(summary.get("periodStart") or ""),
+        "period_end": _iso(summary.get("periodEnd") or "") or str(summary.get("periodEnd") or ""),
+        "traffic_light": str(summary.get("trafficLight") or report.get("traffic_light") or "").upper(),
+    }
+
+
+def _render_me_report_template(template: str, context: dict) -> str:
+    rendered = str(template or "")
+    for key, value in context.items():
+        rendered = rendered.replace("{{" + key + "}}", str(value or ""))
+    return rendered
+
+
+def _me_report_email_content(user: dict, report_context: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    settings = _serialize_me_report_settings(_me_report_settings_row(user))
+    client = report_context["client"]
+    report = report_context["report"]
+    summary = report_context["summary"]
+    context = _me_report_template_context(client, report, summary)
+    recipient = str(payload.get("recipientEmail") or context["recipient_email"]).strip()
+    subject_template = str(payload.get("emailSubject") or settings["emailSubjectTemplate"] or ME_REPORT_DEFAULT_EMAIL_SUBJECT)
+    body_template = str(payload.get("emailBody") or settings["emailBodyTemplate"] or ME_REPORT_DEFAULT_EMAIL_BODY)
+    bcc_email = str(payload.get("bccEmail") or settings["bccEmail"] or get_settings().me_report_bcc_email or ME_REPORT_DEFAULT_BCC_EMAIL).strip()
+    subject = _render_me_report_template(subject_template, context).strip()
+    body = _render_me_report_template(body_template, context).strip()
+    return {"recipient": recipient, "subject": subject, "body": body, "bccEmail": bcc_email}
+
+
+def _pdf_escape(value: str) -> str:
+    return str(value).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _minimal_me_report_pdf(lines: list[str]) -> bytes:
+    y = 780
+    content_lines = ["BT /F1 16 Tf 72 810 Td (Jaccountancy Month-End Bookkeeping Snapshot) Tj ET"]
+    for line in lines[:34]:
+        clean = _pdf_escape(line[:96])
+        content_lines.append(f"BT /F1 10 Tf 72 {y} Td ({clean}) Tj ET")
+        y -= 20
+    stream = "\n".join(content_lines).encode("latin-1", "replace")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+    ]
+    output = io.BytesIO()
+    output.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for index, obj in enumerate(objects, start=1):
+        offsets.append(output.tell())
+        output.write(f"{index} 0 obj\n".encode("ascii"))
+        output.write(obj)
+        output.write(b"\nendobj\n")
+    xref_at = output.tell()
+    output.write(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    output.write(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.write(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.write(f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n".encode("ascii"))
+    return output.getvalue()
+
+
+def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
+    lines = [
+        client.get("client_name") or "Client",
+        f"Period: {summary.get('periodStart') or ''} to {summary.get('periodEnd') or ''}",
+        f"Monthly sales: {_format_me_report_money(summary.get('monthlySales'))}",
+        f"Monthly profit: {_format_me_report_money(summary.get('monthlyProfit'))}",
+        f"YTD sales: {_format_me_report_money(summary.get('yearToDateSales'))}",
+        f"YTD profit: {_format_me_report_money(summary.get('yearToDateProfit'))}",
+        f"Estimated Corporation Tax: {_format_me_report_money(summary.get('estimatedCorporationTax'))}",
+        f"Dividend availability: {_format_me_report_money(summary.get('dividendCapacity'))}",
+        f"DLA balance: {_format_me_report_money(summary.get('dlaBalance'))}",
+        "",
+        "Commentary:",
+        report.get("commentary") or summary.get("commentary") or "Month-end bookkeeping review completed.",
+        "",
+        "DLA note:",
+        _me_report_template_context(client, report, summary)["dla_credit_note"] or "No director loan account credit reminder applies.",
+    ]
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError:
+        return _minimal_me_report_pdf(lines)
+
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("Jaccountancy Month-End Bookkeeping Snapshot", styles["Title"]),
+        Paragraph(xml_escape(client.get("client_name") or "Client"), styles["Heading1"]),
+        Paragraph(xml_escape(f"Period {summary.get('periodStart') or ''} to {summary.get('periodEnd') or ''}"), styles["Normal"]),
+        Spacer(1, 16),
+    ]
+    metric_rows = [
+        ["Monthly sales", _format_me_report_money(summary.get("monthlySales")), "Monthly profit", _format_me_report_money(summary.get("monthlyProfit"))],
+        ["YTD sales", _format_me_report_money(summary.get("yearToDateSales")), "YTD profit", _format_me_report_money(summary.get("yearToDateProfit"))],
+        ["Estimated CT", _format_me_report_money(summary.get("estimatedCorporationTax")), "Dividend availability", _format_me_report_money(summary.get("dividendCapacity"))],
+        ["DLA balance", _format_me_report_money(summary.get("dlaBalance")), "Traffic light", str(summary.get("trafficLight") or report.get("traffic_light") or "").upper()],
+    ]
+    table = Table(metric_rows, colWidths=[96, 132, 120, 132])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f4f6f9")),
+        ("BOX", (0, 0), (-1, -1), 0.75, colors.HexColor("#d8e2f2")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8e2f2")),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#1e2f4d")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+        ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
+        ("PADDING", (0, 0), (-1, -1), 8),
+    ]))
+    story.extend([table, Spacer(1, 18)])
+    story.append(Paragraph("Bookkeeping commentary", styles["Heading2"]))
+    story.append(Paragraph(xml_escape(report.get("commentary") or summary.get("commentary") or "Month-end bookkeeping review completed."), styles["BodyText"]))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Tax and extraction note", styles["Heading2"]))
+    story.append(Paragraph(xml_escape(_me_report_template_context(client, report, summary)["dla_credit_note"] or "No director loan account credit reminder applies."), styles["BodyText"]))
+    document.build(story)
+    return buffer.getvalue()
+
+
+def me_report_report_pdf(user: dict, report_id: str) -> tuple[bytes, str]:
+    context = _me_report_report_context(user, report_id)
+    client = context["client"]
+    filename_client = re.sub(r"[^A-Za-z0-9]+", "-", client.get("client_name") or "client").strip("-").lower() or "client"
+    return _me_report_pdf_bytes(client, context["report"], context["summary"]), f"{filename_client}-month-end-bookkeeping-snapshot.pdf"
+
+
+def _send_me_report_smtp(email_content: dict, pdf_bytes: bytes, pdf_filename: str) -> None:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending ME Report emails.")
+    if not email_content["recipient"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The selected ME Report client does not have a report recipient email.")
+    message = EmailMessage()
+    message["Subject"] = email_content["subject"]
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+    message["To"] = email_content["recipient"]
+    message.set_content(email_content["body"])
+    message.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename)
+    recipients = [email_content["recipient"]]
+    bcc_recipients = [item.strip() for item in str(email_content.get("bccEmail") or "").split(",") if item.strip()]
+    recipients.extend(bcc_recipients)
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message, to_addrs=recipients)
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+
+
+async def _send_me_report_gmail(user: dict, email_content: dict, pdf_bytes: bytes, pdf_filename: str) -> None:
+    connection_row = gmail_connection_for_user(user)
+    if not connection_row:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Gmail in ME Report email settings before using Gmail to send reports.")
+    connection_row = await refresh_gmail_connection(connection_row)
+    if not email_content["recipient"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The selected ME Report client does not have a report recipient email.")
+    message = EmailMessage()
+    message["Subject"] = email_content["subject"]
+    message["From"] = formataddr(("Jaccountancy", connection_row.get("gmail_email") or user.get("email") or ""))
+    message["To"] = email_content["recipient"]
+    bcc_recipients = [item.strip() for item in str(email_content.get("bccEmail") or "").split(",") if item.strip()]
+    if bcc_recipients:
+        message["Bcc"] = ", ".join(bcc_recipients)
+    message.set_content(email_content["body"])
+    message.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename)
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            GMAIL_SEND_URL,
+            headers={"Authorization": f'Bearer {connection_row["access_token"]}', "Content-Type": "application/json"},
+            json={"raw": raw},
+        )
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail send failed: {response.text[:500]}")
+
+
+async def send_me_report_email(user: dict, report_id: str, payload: dict | None = None) -> dict:
+    context = _me_report_report_context(user, report_id)
+    client = context["client"]
+    report = context["report"]
+    summary = context["summary"]
+    email_content = _me_report_email_content(user, context, payload)
+    pdf_bytes, pdf_filename = me_report_report_pdf(user, report_id)
+    settings_row = _me_report_settings_row(user)
+    provider = str((payload or {}).get("emailProvider") or (settings_row or {}).get("email_provider") or "smtp").lower()
+    if provider == "gmail":
+        await _send_me_report_gmail(user, email_content, pdf_bytes, pdf_filename)
+    else:
+        _send_me_report_smtp(email_content, pdf_bytes, pdf_filename)
+
+    note_status = "not_applicable"
+    note_error = ""
+    if client.get("xero_contact_id"):
+        note_details = (
+            f"Month-end bookkeeping report sent to {email_content['recipient']}. "
+            f"Estimated YTD Corporation Tax {_format_me_report_money(summary.get('estimatedCorporationTax'))}; "
+            f"Dividend availability {_format_me_report_money(summary.get('dividendCapacity'))}; "
+            f"DLA balance {_format_me_report_money(summary.get('dlaBalance'))}."
+        )
+        try:
+            await create_history_record(_me_report_xero_connection(user, client), "Contacts", client["xero_contact_id"], note_details)
+            note_status = "created"
+        except Exception as exc:  # The email has already gone; keep the send audit and surface the warning.
+            note_status = "failed"
+            note_error = str(getattr(exc, "detail", exc))[:1000]
+            logger.exception("Unable to write ME Report send history note to Xero")
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE me_report_reports
+                SET status = %s,
+                    recipient_email = %s,
+                    email_subject = %s,
+                    email_body = %s,
+                    bcc_email = %s,
+                    sent_by_user_id = %s,
+                    approved_at = COALESCE(approved_at, %s),
+                    sent_at = %s,
+                    xero_history_note_status = %s,
+                    xero_history_note_error = %s
+                WHERE id = %s
+                """,
+                (
+                    "sent" if note_status != "failed" else "sent_with_xero_note_error",
+                    email_content["recipient"],
+                    email_content["subject"],
+                    email_content["body"],
+                    email_content["bccEmail"],
+                    user["id"],
+                    now,
+                    now,
+                    note_status,
+                    note_error,
+                    report_id,
+                ),
+            )
+            cursor.execute("UPDATE me_report_clients SET last_report_at = %s, updated_at = %s WHERE id = %s", (now, now, report["client_id"]))
+        connection.commit()
+    record_audit_event(
+        "me_report_report",
+        report_id,
+        "me_report.email_sent",
+        {"client_id": str(report["client_id"]), "recipient": email_content["recipient"], "bcc": email_content["bccEmail"], "xero_history_note_status": note_status},
+        user["id"],
+    )
+    return {
+        "email": {"sent": True, "recipient": email_content["recipient"], "bccEmail": email_content["bccEmail"], "xeroHistoryNoteStatus": note_status, "warning": note_error},
+        "meReport": me_report_payload(user),
+    }
+
+
+def _normalise_contact_match_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _extract_me_report_bulk_client_name(file_bytes: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(file_bytes))
+        text = reader.pages[0].extract_text() if reader.pages else ""
+    except Exception:
+        text = ""
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    if len(lines) >= 2:
+        return lines[1]
+    for line in lines:
+        if "overview" not in line.lower() and "report" not in line.lower():
+            return line
+    return ""
+
+
+def _me_report_contact_match_for_name(user: dict, client_name: str) -> dict | None:
+    wanted = _normalise_contact_match_text(client_name)
+    if not wanted:
+        return None
+    contacts = _me_report_contact_options(user)
+    exact = [contact for contact in contacts if _normalise_contact_match_text(contact.get("name") or "") == wanted]
+    if exact:
+        return exact[0]
+    contains = [
+        contact
+        for contact in contacts
+        if wanted in _normalise_contact_match_text(contact.get("name") or "")
+        or _normalise_contact_match_text(contact.get("name") or "") in wanted
+    ]
+    return contains[0] if contains else None
+
+
+def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
+    xero_contact_id = contact.get("xeroContactId") or ""
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM me_report_clients
+                WHERE user_id = %s
+                  AND xero_contact_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user["id"], xero_contact_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                client_id = str(row["id"])
+            else:
+                try:
+                    connection_row = get_xero_connection_for_user(user["id"])
+                except HTTPException:
+                    connection_row = {}
+                cursor.execute(
+                    """
+                    INSERT INTO me_report_clients (
+                        user_id, client_name, bookkeeping_frequency,
+                        report_recipient_email, year_end_month,
+                        xero_contact_id, xero_contact_name, xero_contact_email,
+                        xero_connection_id, xero_tenant_id, xero_tenant_name,
+                        xero_connection_status, created_at, updated_at
+                    )
+                    VALUES (%s, %s, 'Monthly', %s, 3, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        user["id"],
+                        contact.get("name") or "Unnamed Xero contact",
+                        contact.get("email") or "",
+                        xero_contact_id,
+                        contact.get("name") or "",
+                        contact.get("email") or "",
+                        connection_row.get("id"),
+                        connection_row.get("tenant_id"),
+                        connection_row.get("tenant_name") or "",
+                        "connected" if connection_row else "not_connected",
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+                client_id = str(cursor.fetchone()["id"])
+        connection.commit()
+    return client_id
+
+
+async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -> dict:
+    semaphore = asyncio.Semaphore(4)
+
+    async def process_file(file_item: dict) -> dict:
+        async with semaphore:
+            filename = file_item.get("filename") or "overview-report.pdf"
+            content = file_item.get("content") or b""
+            detected_name = _extract_me_report_bulk_client_name(content)
+            contact = _me_report_contact_match_for_name(user, detected_name)
+            if not contact:
+                return {"filename": filename, "status": "needs_review", "detectedClientName": detected_name, "message": "No matching Xero contact found from the second PDF line."}
+            client_id = _me_report_client_id_for_contact(user, contact)
+            try:
+                await upload_me_report_submission_pdf(user, client_id, filename, file_item.get("content_type") or "application/pdf", content)
+                report_result = generate_me_report(user, client_id, {})
+                return {
+                    "filename": filename,
+                    "status": "processed",
+                    "detectedClientName": detected_name,
+                    "clientId": client_id,
+                    "reportId": (report_result.get("report") or {}).get("id") or "",
+                    "clientName": contact.get("name") or detected_name,
+                    "recipientEmail": contact.get("email") or "",
+                }
+            except Exception as exc:
+                logger.exception("Bulk ME Report upload failed for %s", filename)
+                return {"filename": filename, "status": "failed", "detectedClientName": detected_name, "clientName": contact.get("name") or "", "message": str(getattr(exc, "detail", exc))[:1000]}
+
+    results = await asyncio.gather(*(process_file(file_item) for file_item in files))
+    record_audit_event("me_report_bulk_upload", user["id"], "me_report.bulk_upload", {"count": len(files), "results": results}, user["id"])
+    return {"bulk": {"results": results}, "meReport": me_report_payload(user)}
+
+
+async def bulk_send_me_report_emails(user: dict, report_ids: list[str]) -> dict:
+    clean_ids = [str(report_id) for report_id in report_ids if str(report_id or "").strip()]
+    semaphore = asyncio.Semaphore(4)
+
+    async def send_one(report_id: str) -> dict:
+        async with semaphore:
+            try:
+                result = await send_me_report_email(user, report_id, {})
+                return {"reportId": report_id, "status": "sent", "recipient": result.get("email", {}).get("recipient") or "", "warning": result.get("email", {}).get("warning") or ""}
+            except Exception as exc:
+                logger.exception("Bulk ME Report send failed for %s", report_id)
+                return {"reportId": report_id, "status": "failed", "message": str(getattr(exc, "detail", exc))[:1000]}
+
+    results = await asyncio.gather(*(send_one(report_id) for report_id in clean_ids))
+    record_audit_event("me_report_bulk_send", user["id"], "me_report.bulk_send", {"count": len(clean_ids), "results": results}, user["id"])
+    return {"bulk": {"results": results}, "meReport": me_report_payload(user)}
 
 
 BANK_STATEMENT_EXTRACTION_SCHEMA = {

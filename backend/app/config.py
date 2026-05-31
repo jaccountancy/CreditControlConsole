@@ -32,6 +32,18 @@ class Settings(BaseSettings):
     ignition_authorize_url: str = "https://developers.ignitionapp.com/oauth2/authorize"
     ignition_token_url: str = "https://developers.ignitionapp.com/oauth2/token"
     ignition_api_base_url: str = "https://developers.ignitionapp.com/external/api/v1"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "Jaccountancy"
+    smtp_use_tls: bool = True
+    me_report_bcc_email: str = "fmfhdkgaptpyubgms@accountancymanager.co.uk"
+    gmail_client_id: str | None = None
+    gmail_client_secret: str | None = None
+    gmail_redirect_uri: str | None = None
+    gmail_scopes: str = "openid email https://www.googleapis.com/auth/gmail.send"
 
     model_config = SettingsConfigDict(
         env_file=".env",
