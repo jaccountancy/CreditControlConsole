@@ -46,6 +46,27 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS xero_posting_settings (
+    tenant_id TEXT PRIMARY KEY,
+    late_payment_charge_account_code TEXT NOT NULL DEFAULT '1222',
+    late_payment_charge_account_name TEXT NOT NULL DEFAULT '',
+    late_payment_charge_tax_type TEXT NOT NULL DEFAULT 'OUTPUT2',
+    bad_debt_write_off_account_code TEXT NOT NULL DEFAULT '402',
+    bad_debt_write_off_account_name TEXT NOT NULL DEFAULT '',
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS late_payment_charge_account_code TEXT NOT NULL DEFAULT '1222';
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS late_payment_charge_account_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS late_payment_charge_tax_type TEXT NOT NULL DEFAULT 'OUTPUT2';
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS bad_debt_write_off_account_code TEXT NOT NULL DEFAULT '402';
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS bad_debt_write_off_account_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE xero_posting_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE TABLE IF NOT EXISTS oauth_states (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     state_token TEXT NOT NULL UNIQUE,

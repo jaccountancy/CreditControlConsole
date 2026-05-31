@@ -50,7 +50,7 @@ def allowed_panel_origins() -> set[str]:
     base_url = os.getenv("BASE_URL", "https://creditcontrolconsole-production.up.railway.app")
     panel_allowed_origins = os.getenv(
         "PANEL_ALLOWED_ORIGINS",
-        "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk",
+        "https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk",
     )
     origins = {base_url.rstrip("/")}
     origins.update(

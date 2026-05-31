@@ -25,6 +25,7 @@ from .config import get_settings
 from .database import get_connection, utcnow
 from .ignition import IGNITION_DATASETS, fetch_ignition_collection, get_ignition_connection_for_user, ignition_oauth_configured
 from .xero import (
+    ACCOUNTS_URL,
     CONTACTS_URL,
     CREDIT_NOTES_URL,
     INVOICES_URL,
@@ -110,6 +111,7 @@ DATABASE_METRIC_TABLES = {
     "sync_runs": "Sync runs",
     "sync_checkpoints": "Sync checkpoints",
     "operation_runs": "Operation runs",
+    "xero_posting_settings": "Xero posting settings",
     "xero_pending_actions": "Xero outbox",
     "audit_events": "Audit events",
     "jashflow_loans": "Jashflow loans",
@@ -320,6 +322,168 @@ def disconnect_xero(user: dict) -> dict:
             user["id"],
         )
     return {"disconnected": bool(row), "tenant_name": row.get("tenant_name") if row else None}
+
+
+def _default_posting_settings(tenant_id: str | None = None) -> dict:
+    settings = get_settings()
+    return {
+        "tenantId": tenant_id or "",
+        "latePaymentChargeAccountCode": str(settings.late_payment_charge_account_code or "1222").strip(),
+        "latePaymentChargeAccountName": "",
+        "latePaymentChargeTaxType": str(settings.late_payment_charge_tax_type or "OUTPUT2").strip(),
+        "badDebtWriteOffAccountCode": str(settings.bad_debt_write_off_account_code or "402").strip(),
+        "badDebtWriteOffAccountName": "",
+        "updatedAt": "",
+    }
+
+
+def _serialize_posting_settings(row: dict | None, tenant_id: str | None = None) -> dict:
+    defaults = _default_posting_settings(tenant_id or (row or {}).get("tenant_id"))
+    if not row:
+        return defaults
+    return {
+        "tenantId": row.get("tenant_id") or defaults["tenantId"],
+        "latePaymentChargeAccountCode": row.get("late_payment_charge_account_code") or defaults["latePaymentChargeAccountCode"],
+        "latePaymentChargeAccountName": row.get("late_payment_charge_account_name") or "",
+        "latePaymentChargeTaxType": row.get("late_payment_charge_tax_type") or defaults["latePaymentChargeTaxType"],
+        "badDebtWriteOffAccountCode": row.get("bad_debt_write_off_account_code") or defaults["badDebtWriteOffAccountCode"],
+        "badDebtWriteOffAccountName": row.get("bad_debt_write_off_account_name") or "",
+        "updatedAt": _iso(row.get("updated_at")) or "",
+    }
+
+
+def _posting_settings_for_tenant_with_cursor(cursor, tenant_id: str | None) -> dict:
+    tenant_id = str(tenant_id or "").strip()
+    if not tenant_id:
+        return _default_posting_settings()
+    cursor.execute("SELECT * FROM xero_posting_settings WHERE tenant_id = %s", (tenant_id,))
+    return _serialize_posting_settings(cursor.fetchone(), tenant_id)
+
+
+def posting_settings_for_tenant(tenant_id: str | None) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_id)
+        connection.commit()
+    return settings
+
+
+def _account_sort_key(account: dict) -> tuple:
+    code = str(account.get("code") or "").strip()
+    if code.isdigit():
+        return (0, int(code), account.get("name") or "")
+    return (1, code.lower(), account.get("name") or "")
+
+
+def _normalise_xero_account(account: dict) -> dict | None:
+    status_value = str(account.get("Status") or "ACTIVE").strip().upper()
+    if status_value and status_value != "ACTIVE":
+        return None
+    code = str(account.get("Code") or "").strip()
+    if not code:
+        return None
+    return {
+        "id": str(account.get("AccountID") or account.get("ID") or ""),
+        "code": code,
+        "name": str(account.get("Name") or "").strip(),
+        "type": str(account.get("Type") or "").strip(),
+        "taxType": str(account.get("TaxType") or "").strip(),
+        "class": str(account.get("Class") or "").strip(),
+        "status": status_value or "ACTIVE",
+    }
+
+
+async def _fetch_xero_chart_of_accounts(connection_row: dict) -> list[dict]:
+    payload = await xero_api_get(connection_row, ACCOUNTS_URL)
+    accounts = [
+        normalised
+        for normalised in (_normalise_xero_account(account) for account in payload.get("Accounts", []))
+        if normalised
+    ]
+    return sorted(accounts, key=_account_sort_key)
+
+
+async def xero_chart_of_accounts_payload(user: dict) -> dict:
+    connection_row = get_xero_connection_for_user(user["id"])
+    accounts = await _fetch_xero_chart_of_accounts(connection_row)
+    return {
+        "postingSettings": posting_settings_for_tenant(connection_row.get("tenant_id")),
+        "xeroAccounts": accounts,
+    }
+
+
+async def save_posting_settings(user: dict, payload: dict) -> dict:
+    connection_row = get_xero_connection_for_user(user["id"])
+    accounts = await _fetch_xero_chart_of_accounts(connection_row)
+    account_by_code = {str(account.get("code") or "").strip().lower(): account for account in accounts}
+    late_payment_code = str(payload.get("latePaymentChargeAccountCode") or "").strip()
+    bad_debt_code = str(payload.get("badDebtWriteOffAccountCode") or "").strip()
+    if not late_payment_code or not bad_debt_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose both Xero posting accounts before saving.")
+    late_payment_account = account_by_code.get(late_payment_code.lower())
+    bad_debt_account = account_by_code.get(bad_debt_code.lower())
+    if late_payment_account is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a late payment charge account from the connected Xero chart of accounts.")
+    if bad_debt_account is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a bad debt write-off account from the connected Xero chart of accounts.")
+
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    tax_type = str(payload.get("latePaymentChargeTaxType") or get_settings().late_payment_charge_tax_type or "OUTPUT2").strip()
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO xero_posting_settings (
+                    tenant_id,
+                    late_payment_charge_account_code,
+                    late_payment_charge_account_name,
+                    late_payment_charge_tax_type,
+                    bad_debt_write_off_account_code,
+                    bad_debt_write_off_account_name,
+                    updated_by_user_id,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET late_payment_charge_account_code = EXCLUDED.late_payment_charge_account_code,
+                    late_payment_charge_account_name = EXCLUDED.late_payment_charge_account_name,
+                    late_payment_charge_tax_type = EXCLUDED.late_payment_charge_tax_type,
+                    bad_debt_write_off_account_code = EXCLUDED.bad_debt_write_off_account_code,
+                    bad_debt_write_off_account_name = EXCLUDED.bad_debt_write_off_account_name,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    tenant_id,
+                    late_payment_account["code"],
+                    late_payment_account.get("name") or "",
+                    tax_type,
+                    bad_debt_account["code"],
+                    bad_debt_account.get("name") or "",
+                    user["id"],
+                    now,
+                    now,
+                ),
+            )
+            settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_id)
+        connection.commit()
+
+    record_audit_event(
+        "xero_posting_settings",
+        tenant_id,
+        "posting_settings.updated",
+        {
+            "late_payment_charge_account_code": late_payment_account["code"],
+            "late_payment_charge_account_name": late_payment_account.get("name") or "",
+            "late_payment_charge_tax_type": tax_type,
+            "bad_debt_write_off_account_code": bad_debt_account["code"],
+            "bad_debt_write_off_account_name": bad_debt_account.get("name") or "",
+        },
+        user["id"],
+    )
+    return {"postingSettings": settings, "xeroAccounts": accounts}
 
 
 def factory_reset_console(user: dict) -> dict:
@@ -3605,7 +3769,7 @@ def dashboard_payload(tenant_id: str | None = None) -> dict:
                     COALESCE(SUM(CASE WHEN due_date < CURRENT_DATE - INTERVAL '90 days' THEN amount_due ELSE 0 END), 0) AS overdue_90_plus
                 FROM invoices
                 JOIN customers ON customers.id = invoices.customer_id
-                WHERE (%s IS NULL OR customers.tenant_id = %s)
+                WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
                 """,
                 (tenant_id, tenant_id),
             )
@@ -3624,7 +3788,7 @@ def dashboard_payload(tenant_id: str | None = None) -> dict:
                     WHERE remaining_credit > 0
                     GROUP BY customer_id
                 ) AS credits ON credits.customer_id = customers.id
-                WHERE (%s IS NULL OR customers.tenant_id = %s)
+                WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
                 """,
                 (tenant_id, tenant_id),
             )
@@ -3637,7 +3801,7 @@ def dashboard_payload(tenant_id: str | None = None) -> dict:
                 FROM customers
                 LEFT JOIN invoices ON invoices.customer_id = customers.id
                 WHERE customers.total_due > 0
-                  AND (%s IS NULL OR customers.tenant_id = %s)
+                  AND (%s::text IS NULL OR customers.tenant_id = %s::text)
                 GROUP BY customers.id, customers.name, customers.total_due
                 ORDER BY customers.total_due DESC, due_date ASC NULLS LAST
                 LIMIT 5
@@ -3895,7 +4059,7 @@ def _xero_cache_status(cursor, user_id: str | None, tenant_id: str | None, store
         WHERE provider = 'xero'
           AND initiated_by_user_id = %s
           AND (customers_synced > 0 OR invoices_synced > 0 OR contacts_total > 0 OR invoices_total > 0)
-          AND (%s IS NULL OR tenant_id = %s OR tenant_id IS NULL OR tenant_id = '')
+          AND (%s::text IS NULL OR tenant_id = %s::text OR tenant_id IS NULL OR tenant_id = '')
         ORDER BY COALESCE(completed_at, created_at) DESC
         LIMIT 1
         """,
@@ -3988,7 +4152,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                COALESCE(SUM(overdue_amount), 0) AS overdue_amount,
                MAX(updated_at) AS latest_customer_update
         FROM customers
-        WHERE (%s IS NULL OR tenant_id = %s)
+        WHERE (%s::text IS NULL OR tenant_id = %s::text)
         """,
         (tenant_id, tenant_id),
     )
@@ -4003,7 +4167,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                MAX(invoices.synced_at) AS latest_invoice_sync
         FROM invoices
         JOIN customers ON customers.id = invoices.customer_id
-        WHERE (%s IS NULL OR customers.tenant_id = %s)
+        WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
         """,
         (tenant_id, tenant_id),
     )
@@ -4015,7 +4179,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                COUNT(*) FILTER (WHERE status = 'failed') AS failed_actions,
                COUNT(*) FILTER (WHERE status = 'completed') AS completed_actions
         FROM xero_pending_actions
-        WHERE (%s IS NULL OR tenant_id = %s OR tenant_id IS NULL)
+        WHERE (%s::text IS NULL OR tenant_id = %s::text OR tenant_id IS NULL)
         """,
         (tenant_id, tenant_id),
     )
@@ -4042,8 +4206,8 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         """
         SELECT tenant_name, tenant_id, expires_at, updated_at, created_at
         FROM xero_connections
-        WHERE (%s IS NULL OR user_id = %s)
-          AND (%s IS NULL OR tenant_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
+          AND (%s::text IS NULL OR tenant_id = %s::text)
         ORDER BY updated_at DESC
         LIMIT 1
         """,
@@ -4057,7 +4221,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                rate_limit_until, retry_after_seconds, started_at, heartbeat_at, completed_at, created_at
         FROM sync_runs
         WHERE provider = 'xero'
-          AND (%s IS NULL OR initiated_by_user_id = %s)
+          AND (%s::uuid IS NULL OR initiated_by_user_id = %s::uuid)
         ORDER BY created_at DESC
         LIMIT 1
         """,
@@ -4069,7 +4233,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         SELECT status, current_step, summary, error_message, fetched_count, processed_count,
                failed_count, heartbeat_at, completed_at, created_at
         FROM ignition_sync_runs
-        WHERE (%s IS NULL OR user_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
         ORDER BY created_at DESC
         LIMIT 1
         """,
@@ -4080,7 +4244,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         """
         SELECT status, practice_name, practice_id, expires_at, last_sync_at, error_message, updated_at
         FROM ignition_connections
-        WHERE (%s IS NULL OR user_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
         ORDER BY updated_at DESC
         LIMIT 1
         """,
@@ -4091,7 +4255,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         """
         SELECT dataset, COUNT(*) AS record_count, MAX(synced_at) AS latest_sync
         FROM ignition_reporting_records
-        WHERE (%s IS NULL OR user_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
         GROUP BY dataset
         ORDER BY dataset ASC
         """,
@@ -4106,7 +4270,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                MAX(created_at) AS latest_upload_at,
                MAX(completed_at) AS latest_completed_at
         FROM bank_statement_uploads
-        WHERE (%s IS NULL OR bank_account_id IN (
+        WHERE (%s::text IS NULL OR bank_account_id IN (
             SELECT accounts.id
             FROM bank_statement_accounts AS accounts
             JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
@@ -4123,7 +4287,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                MAX(completed_at) AS latest_me_completed_at,
                MAX(heartbeat_at) AS latest_me_heartbeat_at
         FROM me_report_sync_runs
-        WHERE (%s IS NULL OR user_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
         """,
         (user_id, user_id),
     )
@@ -4134,7 +4298,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                COUNT(*) AS total_loans,
                MAX(updated_at) AS latest_loan_update
         FROM jashflow_loans
-        WHERE (%s IS NULL OR tenant_id = %s)
+        WHERE (%s::text IS NULL OR tenant_id = %s::text)
         """,
         (tenant_id, tenant_id),
     )
@@ -4144,7 +4308,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         SELECT COUNT(*) FILTER (WHERE expires_at > NOW()) AS active_sessions,
                MAX(last_seen_at) AS latest_seen_at
         FROM sessions
-        WHERE (%s IS NULL OR user_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
         """,
         (user_id, user_id),
     )
@@ -4153,7 +4317,7 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         """
         SELECT COUNT(*) AS log_count, MAX(created_at) AS latest_event_at
         FROM audit_events
-        WHERE (%s IS NULL OR user_id = %s)
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
         """,
         (user_id, user_id),
     )
@@ -4312,7 +4476,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
                 SELECT *
                 FROM customers
-                WHERE (%s IS NULL OR tenant_id = %s)
+                WHERE (%s::text IS NULL OR tenant_id = %s::text)
                 ORDER BY overdue_amount DESC, total_due DESC, name ASC
                 """,
                 (tenant_id, tenant_id),
@@ -4323,7 +4487,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 SELECT invoices.*
                 FROM invoices
                 JOIN customers ON customers.id = invoices.customer_id
-                WHERE (%s IS NULL OR customers.tenant_id = %s)
+                WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
                 ORDER BY due_date ASC NULLS LAST, invoice_number ASC
                 """,
                 (tenant_id, tenant_id),
@@ -4344,7 +4508,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 FROM customer_notes
                 JOIN customers ON customers.id = customer_notes.customer_id
                 LEFT JOIN users ON users.id = customer_notes.user_id
-                WHERE (%s IS NULL OR customers.tenant_id = %s)
+                WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
                 ORDER BY customer_notes.created_at DESC
                 """,
                 (tenant_id, tenant_id),
@@ -4394,7 +4558,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 """
                 SELECT *
                 FROM payments
-                WHERE (%s IS NULL OR customer_id IN (
+                WHERE (%s::text IS NULL OR customer_id IN (
                     SELECT id FROM customers WHERE tenant_id = %s
                 ))
                 ORDER BY payment_date DESC NULLS LAST, created_at DESC
@@ -4410,7 +4574,7 @@ def panel_payload(user: dict | None = None) -> dict:
                        COUNT(*) AS credit_count
                 FROM customer_credits
                 WHERE remaining_credit > 0
-                  AND (%s IS NULL OR customer_id IN (
+                  AND (%s::text IS NULL OR customer_id IN (
                       SELECT id FROM customers WHERE tenant_id = %s
                   ))
                 GROUP BY customer_id
@@ -4425,6 +4589,7 @@ def panel_payload(user: dict | None = None) -> dict:
                 len(customer_rows),
                 len(invoice_rows),
             )
+            posting_settings = _posting_settings_for_tenant_with_cursor(cursor, tenant_id)
             try:
                 database_metrics = _database_metrics(cursor, tenant_id, user["id"] if user and user.get("id") else None)
             except Exception as exc:
@@ -4536,6 +4701,7 @@ def panel_payload(user: dict | None = None) -> dict:
         },
         "customers": customers,
         "cacheStatus": cache_status,
+        "postingSettings": posting_settings,
         "databaseMetrics": database_metrics,
         "audit": [
             {
@@ -6530,6 +6696,63 @@ def update_me_report_client_status(user: dict, client_id: str, payload: dict) ->
     return me_report_payload(user)
 
 
+def delete_me_report_client(user: dict, client_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT clients.id,
+                       clients.client_name,
+                       (
+                           SELECT COUNT(*)
+                           FROM me_report_submissions
+                           WHERE client_id = clients.id
+                       ) AS submission_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM me_report_reports
+                           WHERE client_id = clients.id
+                       ) AS report_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM me_report_sync_runs
+                           WHERE client_id = clients.id
+                             AND status IN ('queued', 'running')
+                       ) AS active_sync_count
+                FROM me_report_clients AS clients
+                WHERE clients.id = %s
+                  AND clients.user_id = %s
+                """,
+                (client_id, user["id"]),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report client not found.")
+            if int(row.get("active_sync_count") or 0) > 0:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Wait for the active ME Report sync to finish before deleting this client.")
+            cursor.execute(
+                """
+                DELETE FROM me_report_clients
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (client_id, user["id"]),
+            )
+        connection.commit()
+    record_audit_event(
+        "me_report_client",
+        client_id,
+        "me_report.client_deleted",
+        {
+            "client_name": row.get("client_name") or "",
+            "submission_count": int(row.get("submission_count") or 0),
+            "report_count": int(row.get("report_count") or 0),
+        },
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
 def connect_me_report_client_to_current_xero(user: dict, client_id: str) -> dict:
     _me_report_client_row(user, client_id)
     connection_row = get_xero_connection_for_user(user["id"])
@@ -6854,20 +7077,100 @@ def _me_report_sum_accounts(accounts: list[dict], predicate) -> tuple[Decimal, l
     return _money(total), matches
 
 
-def _me_report_corporation_tax(taxable_profit: Decimal) -> tuple[Decimal, Decimal, str]:
+def _me_report_corporation_tax_detail(taxable_profit: Decimal) -> tuple[Decimal, Decimal, str, dict]:
     profit = max(Decimal("0.00"), _money(taxable_profit))
+    source = "GOV.UK Corporation Tax rates"
+
+    def line(label: str, amount: Decimal, rate: str, tax: Decimal, treatment: str) -> dict:
+        return {
+            "label": label,
+            "amount": float(_money(amount)),
+            "rate": rate,
+            "tax": float(_money(tax)),
+            "treatment": treatment,
+            "source": source,
+        }
+
     if profit <= 0:
-        return Decimal("0.00"), Decimal("0.0"), "No taxable profit"
+        tax = Decimal("0.00")
+        effective_rate = Decimal("0.0")
+        rate_band = "No taxable profit"
+        detail = {
+            "taxableProfit": float(profit),
+            "tax": float(tax),
+            "effectiveRate": float(effective_rate),
+            "rateBand": rate_band,
+            "smallProfitsRate": float(ME_REPORT_CT_SMALL_PROFITS_RATE * 100),
+            "mainRate": float(ME_REPORT_CT_MAIN_RATE * 100),
+            "lowerLimit": float(ME_REPORT_CT_LOWER_LIMIT),
+            "upperLimit": float(ME_REPORT_CT_UPPER_LIMIT),
+            "marginalReliefFraction": "3/200",
+            "lines": [line("No taxable profit", profit, "0%", tax, "No CT due")],
+        }
+        return tax, effective_rate, rate_band, detail
     if profit <= ME_REPORT_CT_LOWER_LIMIT:
         tax = _money(profit * ME_REPORT_CT_SMALL_PROFITS_RATE)
-        return tax, ME_REPORT_CT_SMALL_PROFITS_RATE * 100, "Small profits rate"
+        effective_rate = ME_REPORT_CT_SMALL_PROFITS_RATE * 100
+        rate_band = "Small profits rate"
+        detail = {
+            "taxableProfit": float(profit),
+            "tax": float(tax),
+            "effectiveRate": float(effective_rate),
+            "rateBand": rate_band,
+            "smallProfitsRate": float(ME_REPORT_CT_SMALL_PROFITS_RATE * 100),
+            "mainRate": float(ME_REPORT_CT_MAIN_RATE * 100),
+            "lowerLimit": float(ME_REPORT_CT_LOWER_LIMIT),
+            "upperLimit": float(ME_REPORT_CT_UPPER_LIMIT),
+            "marginalReliefFraction": "3/200",
+            "lines": [line("Taxable profit at small profits rate", profit, "19%", tax, "Charge")],
+        }
+        return tax, effective_rate, rate_band, detail
     if profit >= ME_REPORT_CT_UPPER_LIMIT:
         tax = _money(profit * ME_REPORT_CT_MAIN_RATE)
-        return tax, ME_REPORT_CT_MAIN_RATE * 100, "Main rate"
+        effective_rate = ME_REPORT_CT_MAIN_RATE * 100
+        rate_band = "Main rate"
+        detail = {
+            "taxableProfit": float(profit),
+            "tax": float(tax),
+            "effectiveRate": float(effective_rate),
+            "rateBand": rate_band,
+            "smallProfitsRate": float(ME_REPORT_CT_SMALL_PROFITS_RATE * 100),
+            "mainRate": float(ME_REPORT_CT_MAIN_RATE * 100),
+            "lowerLimit": float(ME_REPORT_CT_LOWER_LIMIT),
+            "upperLimit": float(ME_REPORT_CT_UPPER_LIMIT),
+            "marginalReliefFraction": "3/200",
+            "lines": [line("Taxable profit at main rate", profit, "25%", tax, "Charge")],
+        }
+        return tax, effective_rate, rate_band, detail
+    small_profit_reference = _money(ME_REPORT_CT_LOWER_LIMIT * ME_REPORT_CT_SMALL_PROFITS_RATE)
+    main_rate_tax = _money(profit * ME_REPORT_CT_MAIN_RATE)
     marginal_relief = _money((ME_REPORT_CT_UPPER_LIMIT - profit) * ME_REPORT_CT_MARGINAL_RELIEF_FRACTION)
-    tax = max(Decimal("0.00"), _money((profit * ME_REPORT_CT_MAIN_RATE) - marginal_relief))
+    tax = max(Decimal("0.00"), _money(main_rate_tax - marginal_relief))
     effective_rate = (tax / profit * 100).quantize(Decimal("0.1")) if profit else Decimal("0.0")
-    return tax, effective_rate, "Main rate less marginal relief"
+    rate_band = "Main rate less marginal relief"
+    detail = {
+        "taxableProfit": float(profit),
+        "tax": float(tax),
+        "effectiveRate": float(effective_rate),
+        "rateBand": rate_band,
+        "smallProfitsRate": float(ME_REPORT_CT_SMALL_PROFITS_RATE * 100),
+        "mainRate": float(ME_REPORT_CT_MAIN_RATE * 100),
+        "lowerLimit": float(ME_REPORT_CT_LOWER_LIMIT),
+        "upperLimit": float(ME_REPORT_CT_UPPER_LIMIT),
+        "marginalReliefFraction": "3/200",
+        "lines": [
+            line("Small profits rate threshold", ME_REPORT_CT_LOWER_LIMIT, "19%", small_profit_reference, "Reference"),
+            line("Main rate tax before relief", profit, "25%", main_rate_tax, "Charge"),
+            line("Marginal relief", ME_REPORT_CT_UPPER_LIMIT - profit, "3/200", -marginal_relief, "Deduct"),
+            line("Corporation tax estimate", profit, f"{effective_rate}%", tax, "Result"),
+        ],
+    }
+    return tax, effective_rate, rate_band, detail
+
+
+def _me_report_corporation_tax(taxable_profit: Decimal) -> tuple[Decimal, Decimal, str]:
+    tax, effective_rate, rate_band, _ = _me_report_corporation_tax_detail(taxable_profit)
+    return tax, effective_rate, rate_band
 
 
 def _me_report_source_page(prefix: str, page) -> str:
@@ -7052,7 +7355,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     depreciation_total_addback = _money(depreciation_addback + amortisation_addback)
     tax_adjustments = _money(depreciation_total_addback + disallowed_expenses_addback - capital_allowances)
     estimated_taxable_profit = max(Decimal("0.00"), _money(accounting_profit + tax_adjustments))
-    estimated_ct, effective_rate, ct_rate_band = _me_report_corporation_tax(estimated_taxable_profit)
+    estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(estimated_taxable_profit)
 
     tax_steps = [
         _me_report_step("Profit before tax YTD", accounting_profit, "Start", "Profit and Loss - YTD"),
@@ -7067,18 +7370,22 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds"),
     ]
 
-    current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
+    balance_sheet_current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
     retained_earnings = _money(balance_sheet.get("retainedEarnings"))
     dividends_declared = abs(_money(balance_sheet.get("dividendsDeclared")))
     if not balance_sheet:
-        current_year_earnings = _money(accounting_profit - estimated_ct)
         retained_earnings = Decimal("0.00")
-        dividends_declared = abs(_money(extracted.get("dividendCapacity"))) if _money(extracted.get("dividendCapacity")) < 0 else Decimal("0.00")
+        dividends_declared = abs(_money(extracted.get("dividendsDeclared") or extracted.get("dividendsTaken")))
+    current_year_profit_before_tax = accounting_profit
+    current_year_tax_provision = estimated_ct
+    current_year_earnings = _money(current_year_profit_before_tax - current_year_tax_provision)
     period_end_distributable_reserves = _money(retained_earnings + current_year_earnings - dividends_declared)
     dividend_capacity = max(Decimal("0.00"), period_end_distributable_reserves)
     dividend_steps = [
-        _me_report_step("Retained earnings brought forward", retained_earnings, "Start", "Balance Sheet capital and reserves"),
-        _me_report_step("Current year earnings", current_year_earnings, "Add", "Balance Sheet capital and reserves"),
+        _me_report_step("Opening retained reserves", retained_earnings, "Start", "Balance Sheet capital and reserves"),
+        _me_report_step("YTD profit before tax", current_year_profit_before_tax, "Add", "Profit and Loss - YTD"),
+        _me_report_step("Estimated corporation tax provision", -current_year_tax_provision, "Deduct", "CT estimate"),
+        _me_report_step("Post-tax YTD earnings", current_year_earnings, "Subtotal", "Calculated"),
         _me_report_step("Dividends declared YTD", -dividends_declared, "Deduct", "Balance Sheet dividends line"),
         _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated"),
         _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated"),
@@ -7088,6 +7395,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
 
     balance_sheet_checks = [
         _me_report_step("Current year earnings", current_year_earnings, "Balance sheet code", "Balance Sheet"),
+        _me_report_step("Balance Sheet current year earnings", balance_sheet_current_year_earnings, "Source value", "Balance Sheet"),
         _me_report_step("Retained earnings", retained_earnings, "Balance sheet code", "Balance Sheet"),
         _me_report_step("Dividends declared", -dividends_declared, "Balance sheet code", "Balance Sheet"),
         _me_report_step("Total equity", _money(balance_sheet.get("totalEquity")), "Balance sheet code", "Balance Sheet"),
@@ -7185,6 +7493,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "corporationTaxRateBand": ct_rate_band,
         "taxProvisionRequired": float(estimated_ct),
         "openingRetainedReserves": float(retained_earnings),
+        "balanceSheetCurrentYearEarnings": float(balance_sheet_current_year_earnings),
         "currentYearEarnings": float(current_year_earnings),
         "dividendsTaken": float(dividends_declared),
         "periodEndDistributableReserves": float(period_end_distributable_reserves),
@@ -7210,6 +7519,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             f"estimated CT is £{estimated_ct:,.2f}. Dividend availability at period end is £{dividend_capacity:,.2f}."
         ),
         "warnings": warnings,
+        "corporationTaxBreakdown": corporation_tax_breakdown,
         "taxCalculationSteps": tax_steps,
         "dividendCalculationSteps": dividend_steps,
         "balanceSheetChecks": balance_sheet_checks,
@@ -7326,6 +7636,68 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
         str(submission_id),
         "me_report.submission_extracted",
         {"client_id": client_id, "filename": filename, "estimated_ct": str(estimated_ct), "dividend_capacity": str(dividend_capacity)},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+def delete_me_report_submission(user: dict, submission_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT submissions.id,
+                       submissions.client_id,
+                       submissions.filename,
+                       clients.client_name
+                FROM me_report_submissions AS submissions
+                JOIN me_report_clients AS clients ON clients.id = submissions.client_id
+                WHERE submissions.id = %s
+                  AND clients.user_id = %s
+                """,
+                (submission_id, user["id"]),
+            )
+            submission = cursor.fetchone()
+            if submission is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ME Report submission not found.")
+            cursor.execute(
+                """
+                SELECT id
+                FROM me_report_reviews
+                WHERE client_id = %s
+                  AND raw_payload ->> 'submissionId' = %s
+                """,
+                (submission["client_id"], submission_id),
+            )
+            review_ids = [row["id"] for row in cursor.fetchall()]
+            if review_ids:
+                cursor.execute("DELETE FROM me_report_reports WHERE review_id = ANY(%s)", (review_ids,))
+                cursor.execute("DELETE FROM me_report_reviews WHERE id = ANY(%s)", (review_ids,))
+            cursor.execute("DELETE FROM me_report_submissions WHERE id = %s", (submission_id,))
+            cursor.execute(
+                """
+                UPDATE me_report_clients
+                SET last_calculated_at = (
+                        SELECT MAX(created_at)
+                        FROM me_report_reviews
+                        WHERE client_id = %s
+                    ),
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (submission["client_id"], utcnow(), submission["client_id"]),
+            )
+        connection.commit()
+    record_audit_event(
+        "me_report_submission",
+        submission_id,
+        "me_report.submission_deleted",
+        {
+            "client_id": str(submission["client_id"]),
+            "client_name": submission.get("client_name") or "",
+            "filename": submission.get("filename") or "",
+            "review_count": len(review_ids),
+        },
         user["id"],
     )
     return me_report_payload(user)
@@ -7812,18 +8184,34 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
     monthly_expenses = max(Decimal("0.00"), monthly_sales - monthly_profit)
     retained_earnings = _report_amount(bs_lines, ("retained",))
     dla_balance = _report_amount(bs_lines, ("director", "loan"))
-    dividends_taken = abs(_report_amount(pl_lines, ("dividend",)))
+    dividends_taken = abs(_report_amount(bs_lines, ("dividend",), _report_amount(ytd_pl_lines, ("dividend",), _report_amount(pl_lines, ("dividend",)))))
     disallowable_addbacks = sum(
         Decimal("100.00")
         for row in mapping_rows
         if row.get("category") in ("Client entertaining", "Fines and penalties", "Depreciation", "Non-business expenses", "Private use items")
     )
     capital_allowance_review = sum(1 for row in mapping_rows if row.get("category") in ("Computer equipment", "Plant and machinery", "Office equipment", "Assets needing review"))
-    taxable_profit = max(Decimal("0.00"), _money(monthly_profit + disallowable_addbacks))
-    estimated_ct = _money(taxable_profit * ME_REPORT_TAX_RATE)
-    post_tax_profit = _money(monthly_profit - estimated_ct)
-    dividend_capacity = max(Decimal("0.00"), _money(retained_earnings + post_tax_profit - dividends_taken))
+    taxable_profit = max(Decimal("0.00"), _money(ytd_profit + disallowable_addbacks))
+    estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(taxable_profit)
+    post_tax_profit = _money(ytd_profit - estimated_ct)
+    period_end_distributable_reserves = _money(retained_earnings + post_tax_profit - dividends_taken)
+    dividend_capacity = max(Decimal("0.00"), period_end_distributable_reserves)
     total_extractable = _money(max(dla_balance, Decimal("0.00")) + dividend_capacity)
+    tax_steps = [
+        _me_report_step("Profit before tax YTD", ytd_profit, "Start", "Xero Profit and Loss - YTD"),
+        _me_report_step("Estimated disallowable add-backs", disallowable_addbacks, "Add back", "Account treatment review"),
+        _me_report_step("Estimated taxable profit YTD", taxable_profit, "Result", "Calculated"),
+        _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds"),
+    ]
+    dividend_steps = [
+        _me_report_step("Opening retained reserves", retained_earnings, "Start", "Xero Balance Sheet"),
+        _me_report_step("YTD profit before tax", ytd_profit, "Add", "Xero Profit and Loss - YTD"),
+        _me_report_step("Estimated corporation tax provision", -estimated_ct, "Deduct", "CT estimate"),
+        _me_report_step("Post-tax YTD earnings", post_tax_profit, "Subtotal", "Calculated"),
+        _me_report_step("Dividends declared YTD", -dividends_taken, "Deduct", "Xero Balance Sheet / Profit and Loss"),
+        _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated"),
+        _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated"),
+    ]
     low_confidence = [row for row in mapping_rows if int(row.get("confidence") or 0) < 80 or row.get("review_required")]
     reports_with_errors = [
         ("Profit and loss", profit_loss_payload.get("_error")),
@@ -7926,7 +8314,7 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
             "detail": f"Closing DLA balance appears to be £{abs(dla_balance):,.2f} overdrawn.",
             "suggested_action": "Review possible s455 tax and dividend legality before report issue.",
         })
-    if dividends_taken > retained_earnings + post_tax_profit:
+    if period_end_distributable_reserves < Decimal("0.00") and dividends_taken > 0:
         open_exceptions.append({
             "severity": "red",
             "title": "Possible illegal dividend risk",
@@ -7960,9 +8348,12 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "taxAdjustments": float(_money(disallowable_addbacks)),
         "estimatedTaxableProfit": float(_money(taxable_profit)),
         "estimatedCorporationTax": float(estimated_ct),
-        "effectiveTaxRate": float((estimated_ct / taxable_profit * 100).quantize(Decimal("0.1"))) if taxable_profit else 0,
+        "effectiveTaxRate": float(effective_rate),
+        "corporationTaxRateBand": ct_rate_band,
         "taxProvisionRequired": float(estimated_ct),
         "openingRetainedReserves": float(_money(retained_earnings)),
+        "currentYearEarnings": float(_money(post_tax_profit)),
+        "periodEndDistributableReserves": float(_money(period_end_distributable_reserves)),
         "dividendsTaken": float(_money(dividends_taken)),
         "dividendCapacity": float(_money(dividend_capacity)),
         "directorLoanCreditBalance": float(_money(max(dla_balance, Decimal("0.00")))),
@@ -7978,6 +8369,9 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "mappingReviewCount": len(low_confidence),
         "exceptionCount": len(open_exceptions),
         "trafficLight": traffic_light,
+        "corporationTaxBreakdown": corporation_tax_breakdown,
+        "taxCalculationSteps": tax_steps,
+        "dividendCalculationSteps": dividend_steps,
         "commentary": (
             f"This month shows estimated profit of £{_money(monthly_profit):,.2f}. "
             f"Year-to-date profit is £{_money(ytd_profit):,.2f}. "
@@ -9273,6 +9667,74 @@ def add_bank_statement_client(user: dict, payload: dict) -> dict:
     return bank_statement_payload(user)
 
 
+def delete_bank_statement_client(user: dict, extraction_client_id: str) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT clients.id,
+                       customers.name AS customer_name,
+                       (
+                           SELECT COUNT(*)
+                           FROM bank_statement_accounts
+                           WHERE extraction_client_id = clients.id
+                       ) AS account_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM bank_statement_uploads AS uploads
+                           JOIN bank_statement_accounts AS accounts ON accounts.id = uploads.bank_account_id
+                           WHERE accounts.extraction_client_id = clients.id
+                       ) AS upload_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM bank_statement_transactions AS transactions
+                           JOIN bank_statement_accounts AS accounts ON accounts.id = transactions.bank_account_id
+                           WHERE accounts.extraction_client_id = clients.id
+                       ) AS transaction_count,
+                       (
+                           SELECT COUNT(*)
+                           FROM bank_statement_uploads AS uploads
+                           JOIN bank_statement_accounts AS accounts ON accounts.id = uploads.bank_account_id
+                           WHERE accounts.extraction_client_id = clients.id
+                             AND uploads.status IN ('queued', 'processing')
+                       ) AS active_upload_count
+                FROM bank_statement_clients AS clients
+                JOIN customers ON customers.id = clients.customer_id
+                WHERE clients.id = %s
+                  AND clients.tenant_id = %s
+                """,
+                (extraction_client_id, tenant_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement extraction client not found.")
+            if int(row.get("active_upload_count") or 0) > 0:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Wait for active bank statement extraction to finish before deleting this client.")
+            cursor.execute(
+                """
+                DELETE FROM bank_statement_clients
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (extraction_client_id, tenant_id),
+            )
+        connection.commit()
+    record_audit_event(
+        "bank_statement_client",
+        extraction_client_id,
+        "bank_statement.client_deleted",
+        {
+            "customer_name": row.get("customer_name") or "",
+            "account_count": int(row.get("account_count") or 0),
+            "upload_count": int(row.get("upload_count") or 0),
+            "transaction_count": int(row.get("transaction_count") or 0),
+        },
+        user["id"],
+    )
+    return bank_statement_payload(user)
+
+
 def create_bank_statement_account(user: dict, extraction_client_id: str, payload: dict) -> dict:
     tenant_id = _bank_statement_tenant_id(user)
     account_name = str(payload.get("accountName") or "Bank account").strip()[:160]
@@ -9873,6 +10335,53 @@ def queue_bank_statement_retry(user: dict, upload_id: str) -> tuple[dict, dict, 
         row.get("content_type") or "application/pdf",
         file_bytes,
     )
+
+
+def delete_bank_statement_upload(user: dict, upload_id: str) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT uploads.id,
+                       uploads.filename,
+                       uploads.status,
+                       uploads.bank_account_id,
+                       accounts.extraction_client_id,
+                       (
+                           SELECT COUNT(*)
+                           FROM bank_statement_transactions
+                           WHERE upload_id = uploads.id
+                       ) AS transaction_count
+                FROM bank_statement_uploads AS uploads
+                JOIN bank_statement_accounts AS accounts ON accounts.id = uploads.bank_account_id
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                WHERE uploads.id = %s
+                  AND clients.tenant_id = %s
+                """,
+                (upload_id, tenant_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement submission not found.")
+            if row.get("status") in ("queued", "processing"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Wait for this bank statement extraction to finish before deleting the submission.")
+            cursor.execute("DELETE FROM bank_statement_transactions WHERE upload_id = %s", (upload_id,))
+            cursor.execute("DELETE FROM bank_statement_uploads WHERE id = %s", (upload_id,))
+        connection.commit()
+    record_audit_event(
+        "bank_statement_upload",
+        upload_id,
+        "bank_statement.upload_deleted",
+        {
+            "filename": row.get("filename") or "",
+            "bank_account_id": str(row.get("bank_account_id") or ""),
+            "extraction_client_id": str(row.get("extraction_client_id") or ""),
+            "transaction_count": int(row.get("transaction_count") or 0),
+        },
+        user["id"],
+    )
+    return bank_statement_payload(user)
 
 
 async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
@@ -12667,7 +13176,6 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
     charge_selection_lookup = _late_payment_charge_selection_lookup(unique_invoice_refs, charge_selections)
 
     today = utcnow().date()
-    settings = get_settings()
     local_invoice_ids = [UUID(invoice_ref) for invoice_ref in unique_invoice_refs]
     xero_invoice_ids = [invoice_ref.lower() for invoice_ref in unique_invoice_refs]
     with get_connection() as connection:
@@ -12754,6 +13262,9 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected invoices are eligible for late payment charges.")
 
     connection_row = get_xero_connection_for_user(user["id"])
+    posting_settings = posting_settings_for_tenant(connection_row.get("tenant_id"))
+    late_payment_charge_account_code = posting_settings["latePaymentChargeAccountCode"]
+    late_payment_charge_tax_type = posting_settings["latePaymentChargeTaxType"]
     created = []
     for invoice, overdue_days, charge_base_amount, charge_amount in chargeable:
         with get_connection() as connection:
@@ -12816,12 +13327,12 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                 invoice = locked_invoice
                 currency_code = invoice.get("currency_code") or "GBP"
                 description = _late_payment_charge_description(invoice, overdue_days, charge_base_amount, charge_amount)
-                tax_type = (settings.late_payment_charge_tax_type or "").strip()
+                tax_type = (late_payment_charge_tax_type or "").strip()
                 line_item = {
                     "Description": description,
                     "Quantity": 1,
                     "UnitAmount": float(charge_base_amount),
-                    "AccountCode": settings.late_payment_charge_account_code,
+                    "AccountCode": late_payment_charge_account_code,
                 }
                 if tax_type:
                     line_item["TaxType"] = tax_type
@@ -12869,7 +13380,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                             "base_amount": float(charge_base_amount),
                             "vat_rate": float(LATE_PAYMENT_CHARGE_VAT_RATE),
                             "currency_code": currency_code,
-                            "account_code": settings.late_payment_charge_account_code,
+                            "account_code": late_payment_charge_account_code,
                             "tax_type": tax_type,
                             "error": error,
                             "detail": _sync_error_payload(exc),
@@ -12970,7 +13481,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                 "base_amount": float(charge_base_amount),
                 "vat_rate": float(LATE_PAYMENT_CHARGE_VAT_RATE),
                 "currency_code": currency_code,
-                "account_code": settings.late_payment_charge_account_code,
+                "account_code": late_payment_charge_account_code,
                 "tax_type": tax_type,
                 "created_invoice_id": created_invoice_id,
                 "created_invoice_number": created_invoice_number,
@@ -12989,7 +13500,7 @@ async def create_late_payment_charges(user: dict, invoice_ids: list[str], charge
                 "baseAmount": float(charge_base_amount),
                 "vatRate": float(LATE_PAYMENT_CHARGE_VAT_RATE),
                 "currencyCode": currency_code,
-                "accountCode": settings.late_payment_charge_account_code,
+                "accountCode": late_payment_charge_account_code,
                 "taxType": tax_type,
                 "createdInvoiceId": created_invoice_id,
                 "createdInvoiceNumber": created_invoice_number,
@@ -13013,7 +13524,6 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one invoice.")
 
     today = utcnow().date()
-    settings = get_settings()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -13066,7 +13576,8 @@ async def create_bad_debt_write_offs(user: dict, invoice_ids: list[str]) -> dict
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected invoices are eligible for write-off.")
 
     connection_row = get_xero_connection_for_user(user["id"])
-    account_code = settings.bad_debt_write_off_account_code
+    posting_settings = posting_settings_for_tenant(connection_row.get("tenant_id"))
+    account_code = posting_settings["badDebtWriteOffAccountCode"]
     created = []
     for invoice, amount_due in writable:
         now = utcnow()

@@ -104,6 +104,10 @@
                 opacity: 0;
                 pointer-events: none;
                 transform: translateX(-14px);
+                padding: 14px 10px;
+                gap: 10px;
+                overflow-y: auto;
+                overflow-x: hidden;
             }
             body.settings-sidebar-mode .app-sidebar,
             body.factory-reset-sidebar-mode .app-sidebar,
@@ -120,44 +124,155 @@
             }
             .settings-sidebar-title {
                 display: grid;
-                gap: 4px;
-                padding: 6px 9px 10px;
+                grid-template-columns: 32px minmax(0, 1fr);
+                align-items: center;
+                gap: 8px;
+                padding: 4px 8px 6px;
             }
-            .settings-sidebar-title strong {
+            .settings-sidebar-title-icon {
+                width: 32px;
+                height: 32px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 12px;
+                color: #fff;
+                background: linear-gradient(135deg, var(--blue), var(--purple));
+                box-shadow: 0 10px 18px rgba(29, 103, 242, 0.18);
+            }
+            .settings-sidebar-title-icon svg,
+            .settings-sidebar-icon svg {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .settings-sidebar-title-copy,
+            .settings-sidebar-copy {
+                min-width: 0;
+                display: grid;
+                gap: 2px;
+            }
+            .settings-sidebar-title-copy strong {
                 font-size: 0.98rem;
                 font-weight: 950;
+                line-height: 1.05;
             }
-            .settings-sidebar-title span {
+            .settings-sidebar-title-copy span {
                 color: var(--muted);
                 font-size: 0.72rem;
                 font-weight: 800;
             }
             .settings-sidebar-back,
             .settings-sidebar-button {
+                --settings-accent: var(--blue);
+                --settings-accent-soft: rgba(233, 241, 255, 0.84);
+                position: relative;
                 width: 100%;
-                min-height: 38px;
+                min-height: 44px;
+                display: grid;
+                grid-template-columns: 30px minmax(0, 1fr);
+                align-items: center;
+                gap: 8px;
                 border: 1px solid transparent;
-                border-radius: 8px;
-                background: transparent;
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.74);
                 color: var(--ink);
-                padding: 6px 9px;
+                padding: 7px 8px;
                 text-align: left;
+                font: inherit;
                 font-weight: 900;
                 line-height: 1.18;
+                cursor: pointer;
+                transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+            }
+            .settings-sidebar-back {
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .settings-sidebar-icon {
+                width: 30px;
+                height: 30px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 11px;
+                color: var(--settings-accent);
+                background: var(--settings-accent-soft);
+                border: 1px solid rgba(61, 85, 130, 0.10);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 6px 12px rgba(30, 47, 77, 0.06);
+                transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+            }
+            .settings-sidebar-copy strong {
+                overflow-wrap: anywhere;
+                font-size: 0.78rem;
+                font-weight: 950;
+                line-height: 1.08;
+            }
+            .settings-sidebar-copy span {
+                color: var(--muted);
+                font-size: 0.62rem;
+                font-weight: 800;
+                line-height: 1.1;
+            }
+            .settings-sidebar-button[data-settings-nav="period-scope"],
+            .settings-sidebar-button[data-settings-nav="outbox"] {
+                --settings-accent: var(--green);
+                --settings-accent-soft: var(--green-soft);
+            }
+            .settings-sidebar-button[data-settings-nav="xero-connection"],
+            .settings-sidebar-button[data-settings-nav="system-status"] {
+                --settings-accent: var(--purple);
+                --settings-accent-soft: var(--purple-soft);
+            }
+            .settings-sidebar-button[data-settings-nav="letters"],
+            .settings-sidebar-button[data-settings-nav="me-report-email"] {
+                --settings-accent: var(--orange);
+                --settings-accent-soft: var(--orange-soft);
+            }
+            .settings-sidebar-button[data-settings-nav="developer-log"] {
+                --settings-accent: #1e2f4d;
+                --settings-accent-soft: rgba(30, 47, 77, 0.08);
+            }
+            .settings-sidebar-button.danger-button {
+                --settings-accent: var(--red);
+                --settings-accent-soft: var(--red-soft);
+                border-color: rgba(255, 83, 83, 0.22);
+                color: var(--red);
+                background: rgba(255, 247, 247, 0.86);
             }
             .settings-sidebar-back:hover,
             .settings-sidebar-button:hover,
             .settings-sidebar-button.is-active {
                 border-color: rgba(29, 103, 242, 0.20);
-                background: rgba(233, 241, 255, 0.72);
-                color: var(--blue);
+                background: rgba(255, 255, 255, 0.98);
+                color: var(--settings-accent);
+                transform: translateY(-1px);
             }
-            .settings-sidebar-button span {
-                display: block;
-                margin-top: 2px;
-                color: var(--muted);
-                font-size: 0.68rem;
-                font-weight: 800;
+            .settings-sidebar-button.danger-button:hover,
+            .settings-sidebar-button.danger-button.is-active {
+                border-color: rgba(255, 83, 83, 0.34);
+                background: var(--red-soft);
+                color: var(--red);
+            }
+            .settings-sidebar-back:hover .settings-sidebar-icon,
+            .settings-sidebar-button:hover .settings-sidebar-icon,
+            .settings-sidebar-button.is-active .settings-sidebar-icon {
+                color: #fff;
+                background: var(--settings-accent);
+                box-shadow: 0 8px 16px rgba(30, 47, 77, 0.14);
+                transform: translateY(-1px);
+            }
+            .settings-sidebar-button.is-active::before {
+                content: "";
+                width: 3px;
+                height: 24px;
+                border-radius: 999px;
+                background: var(--settings-accent);
+                position: absolute;
+                left: 0;
+                top: 50%;
+                transform: translateY(-50%);
             }
             .app-sidebar-brand {
                 display: block;
@@ -318,7 +433,10 @@
                 .app-nav-button,
                 .app-sidebar-link,
                 .app-sidebar-connect,
-                .app-nav-icon {
+                .app-nav-icon,
+                .settings-sidebar-back,
+                .settings-sidebar-button,
+                .settings-sidebar-icon {
                     transition: none;
                 }
                 .app-nav-button:hover .app-nav-icon,
@@ -326,7 +444,13 @@
                 .app-sidebar-connect:not(:disabled):hover .app-nav-icon,
                 .app-nav-button:active .app-nav-icon,
                 .app-sidebar-link:active .app-nav-icon,
-                .app-sidebar-connect:not(:disabled):active .app-nav-icon {
+                .app-sidebar-connect:not(:disabled):active .app-nav-icon,
+                .settings-sidebar-back:hover,
+                .settings-sidebar-button:hover,
+                .settings-sidebar-button.is-active,
+                .settings-sidebar-back:hover .settings-sidebar-icon,
+                .settings-sidebar-button:hover .settings-sidebar-icon,
+                .settings-sidebar-button:active .settings-sidebar-icon {
                     transform: none;
                 }
             }
@@ -2755,6 +2879,47 @@
                 font-weight: 700;
                 line-height: 1.45;
             }
+            .posting-settings-form {
+                display: grid;
+                gap: 14px;
+                margin-top: 14px;
+            }
+            .posting-settings-fields {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .posting-settings-field {
+                display: grid;
+                gap: 7px;
+                min-width: 0;
+            }
+            .posting-settings-field span,
+            .posting-settings-status span {
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 900;
+                letter-spacing: 0;
+                text-transform: uppercase;
+            }
+            .posting-settings-field select {
+                width: 100%;
+                min-height: 44px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: white;
+                color: var(--ink);
+                padding: 10px 12px;
+                font-weight: 800;
+            }
+            .posting-settings-status {
+                display: grid;
+                gap: 6px;
+                color: var(--muted);
+                font-size: 0.84rem;
+                font-weight: 750;
+                line-height: 1.45;
+            }
             .settings-template-controls,
             .letter-action-row {
                 display: flex;
@@ -3807,6 +3972,121 @@
                 font-size: 0.86rem;
                 font-weight: 750;
             }
+            .me-report-tax-breakdown-table {
+                display: grid;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                overflow: hidden;
+                background: #ffffff;
+            }
+            .me-report-tax-breakdown-row {
+                display: grid;
+                grid-template-columns: minmax(150px, 1.2fr) minmax(90px, 0.55fr) minmax(70px, 0.35fr) minmax(90px, 0.55fr);
+                gap: 10px;
+                align-items: center;
+                padding: 10px 12px;
+                border-top: 1px solid var(--line);
+                font-size: 0.86rem;
+            }
+            .me-report-tax-breakdown-row:first-child {
+                border-top: 0;
+            }
+            .me-report-tax-breakdown-row.is-header {
+                color: var(--muted);
+                background: var(--surface-soft);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .me-report-tax-breakdown-row strong,
+            .me-report-tax-breakdown-row em {
+                font-style: normal;
+                font-weight: 850;
+            }
+            .me-report-tax-breakdown-row strong,
+            .me-report-tax-breakdown-row em {
+                text-align: right;
+            }
+            .me-report-tax-estimate-card,
+            .me-report-status-card {
+                position: relative;
+                overflow: visible;
+            }
+            .me-report-metric-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .me-report-metric-head span {
+                margin: 0;
+            }
+            .me-report-metric-help {
+                position: relative;
+                margin: 0;
+            }
+            .me-report-metric-help summary {
+                display: inline-flex;
+                cursor: pointer;
+                list-style: none;
+            }
+            .me-report-metric-help summary::-webkit-details-marker {
+                display: none;
+            }
+            .me-report-metric-popover {
+                position: absolute;
+                right: 0;
+                top: calc(100% + 8px);
+                z-index: 20;
+                width: min(560px, 82vw);
+                padding: 12px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 8px;
+                background: #ffffff;
+                box-shadow: var(--shadow);
+            }
+            .me-report-tax-estimate-card small,
+            .me-report-status-card small {
+                display: block;
+                margin-top: 6px;
+                color: var(--muted);
+                font-size: 0.8rem;
+                font-weight: 800;
+            }
+            .me-report-light-line,
+            .me-report-light-value {
+                display: flex !important;
+                align-items: center;
+                gap: 8px;
+            }
+            .me-report-light-line {
+                flex-wrap: wrap;
+            }
+            .me-report-light-icon {
+                display: inline-grid;
+                place-items: center;
+                flex: 0 0 auto;
+                width: 18px;
+                height: 18px;
+                border-radius: 999px;
+                color: #ffffff;
+                font-size: 0.72rem;
+                font-style: normal;
+                font-weight: 950;
+                line-height: 1;
+                box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+            }
+            .me-report-light-icon.is-green {
+                background: var(--green);
+            }
+            .me-report-light-icon.is-amber {
+                background: #f2c94c;
+                color: #5c4300;
+            }
+            .me-report-light-icon.is-red {
+                background: var(--red);
+            }
             .jashflow-metrics {
                 display: grid;
                 grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4144,6 +4424,17 @@
             #meReportScreen .me-report-client-status.is-archived {
                 background: var(--orange-soft);
                 color: #a66b10;
+            }
+            #meReportScreen .me-report-light-line {
+                margin-top: 6px;
+                color: var(--ink);
+                font-size: 0.86rem;
+                font-weight: 850;
+            }
+            #meReportScreen .me-report-light-line small {
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 800;
             }
             #meReportScreen .me-report-archive-button {
                 border-color: rgba(255, 159, 47, 0.34);
@@ -6349,6 +6640,34 @@
             .developer-log-filter button:hover {
                 background: var(--blue-soft);
             }
+            .developer-log-filter-bar {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .developer-log-mode {
+                display: inline-flex;
+                gap: 4px;
+                padding: 4px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.86);
+            }
+            .developer-log-mode button {
+                border: 0;
+                border-radius: 999px;
+                padding: 8px 12px;
+                background: transparent;
+                color: var(--muted);
+                font-weight: 850;
+                cursor: pointer;
+            }
+            .developer-log-mode button[aria-pressed="true"] {
+                background: var(--blue);
+                color: #ffffff;
+                box-shadow: 0 8px 18px rgba(29, 103, 242, 0.18);
+            }
             .developer-log-list {
                 display: grid;
                 gap: 10px;
@@ -6366,6 +6685,14 @@
             .developer-log-entry.is-error {
                 border-color: rgba(255, 83, 83, 0.28);
                 background: var(--red-soft);
+            }
+            .developer-log-entry.is-warning {
+                border-color: rgba(255, 159, 47, 0.28);
+                background: var(--orange-soft);
+            }
+            .developer-log-entry.is-user-activity {
+                border-color: rgba(29, 103, 242, 0.20);
+                background: var(--blue-soft);
             }
             .developer-log-meta {
                 display: flex;
@@ -6812,6 +7139,7 @@
                 .detail-stats,
                 .client-sidebar-metrics,
                 .assignment-grid,
+                .posting-settings-fields,
                 .jashflow-settings-form,
                 .jashflow-loan-form,
                 .jashflow-workspace,
@@ -6895,9 +7223,12 @@
                 .practice-pack-output-grid,
                 .ignition-summary-grid,
                 .me-report-calculation-row,
+                .me-report-tax-breakdown-row,
                 .payments-made-summary,
                 .allocation-form { grid-template-columns: 1fr; }
-                .me-report-calculation-row strong { text-align: left; }
+                .me-report-calculation-row strong,
+                .me-report-tax-breakdown-row strong,
+                .me-report-tax-breakdown-row em { text-align: left; }
             }
                 </style>
             </head>
@@ -6961,32 +7292,71 @@
                     </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-main" aria-label="Settings navigation">
-                    <button class="settings-sidebar-back" id="settingsBackToMainSidebarButton" type="button">← Back to Main Sidebar</button>
+                    <button class="settings-sidebar-back" id="settingsBackToMainSidebarButton" type="button">
+                        <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
+                        <span class="settings-sidebar-copy"><strong>Main sidebar</strong><span>Return to app nav</span></span>
+                    </button>
                     <div class="settings-sidebar-title">
-                        <strong>Settings</strong>
-                        <span>Focused controls</span>
+                        <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
+                        <span class="settings-sidebar-title-copy"><strong>Settings</strong><span>Focused controls</span></span>
                     </div>
                     <nav class="app-nav">
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="data-import">Data Import Preferences<span>Invoice import filter</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="period-scope">Period Scope Syncs<span>Invoice years</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="xero-connection">Xero Connection / Disconnection<span>Organisation link</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">Mapping Changes / COA<span>Posting defaults</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">Xero Outbox / Pending<span>Queued actions</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="letters">Letter Templates<span>Reminder copy</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">ME Report Emails<span>Snapshot templates</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">Developer Log / Audit<span>Sync events</span></button>
-                        <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">System Status<span>Database metrics</span></button>
-                        <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">Factory Reset<span>Protected reset area</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="data-import">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="period-scope">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h3"></path><path d="M13 15h3"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Period Scope</strong><span>Invoice years</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="xero-connection">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Xero Link</strong><span>Connection</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="letters">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Letter Templates</strong><span>Reminder copy</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
+                        </button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>System Status</strong><span>Database metrics</span></span>
+                        </button>
+                        <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
+                        </button>
                     </nav>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-factory" aria-label="Factory reset navigation">
-                    <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">← Back to Settings Sidebar</button>
+                    <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">
+                        <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
+                        <span class="settings-sidebar-copy"><strong>Settings</strong><span>Back to controls</span></span>
+                    </button>
                     <div class="settings-sidebar-title">
-                        <strong>Factory Reset</strong>
-                        <span>Protected reset area</span>
+                        <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
+                        <span class="settings-sidebar-title-copy"><strong>Factory Reset</strong><span>Protected reset area</span></span>
                     </div>
                     <nav class="app-nav">
-                        <button class="settings-sidebar-button danger-button" id="factoryOpenResetPageButton" type="button">Open Factory Reset<span>Show reset controls</span></button>
+                        <button class="settings-sidebar-button danger-button" id="factoryOpenResetPageButton" type="button">
+                            <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
+                            <span class="settings-sidebar-copy"><strong>Open Reset</strong><span>Show controls</span></span>
+                        </button>
                     </nav>
                 </aside>
                 <main class="ledger-shell">
@@ -7326,8 +7696,28 @@
                                         <p class="eyebrow">Accounting codes</p>
                                         <h3>Xero posting defaults</h3>
                                     </div>
+                                    <button class="ghost-button" id="reloadXeroAccountsButton" type="button">Reload COA</button>
                                 </div>
-                                <p class="settings-help">Late payment charges post to account code 1222 with OUTPUT2 VAT. Bad debt write-offs post credit notes to account code 402 with no VAT and allocate them to the original invoice.</p>
+                                <p class="settings-help" id="postingSettingsHelp">Choose the Xero accounts used when the console posts late payment charge invoices and bad debt credit notes.</p>
+                                <form class="posting-settings-form" id="postingSettingsForm">
+                                    <div class="posting-settings-fields">
+                                        <label class="posting-settings-field" for="latePaymentChargeAccountSelect">
+                                            <span>Late payment charges</span>
+                                            <select id="latePaymentChargeAccountSelect"></select>
+                                        </label>
+                                        <label class="posting-settings-field" for="badDebtWriteOffAccountSelect">
+                                            <span>Bad debt write-offs</span>
+                                            <select id="badDebtWriteOffAccountSelect"></select>
+                                        </label>
+                                    </div>
+                                    <div class="posting-settings-status" id="postingSettingsStatus">
+                                        <span>Chart of accounts</span>
+                                        Connect Xero to load available accounts.
+                                    </div>
+                                    <div class="letter-action-row">
+                                        <button class="primary-button" id="savePostingSettingsButton" type="submit">Save codes</button>
+                                    </div>
+                                </form>
                             </section>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="outbox">
@@ -7351,22 +7741,29 @@
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Developer log</p>
-                                        <h3>Sync and Xero events</h3>
+                                        <h3>System and user activity</h3>
                                     </div>
                                     <div class="developer-log-actions">
                                         <button class="ghost-button" id="settingsCopyDeveloperLogButton" type="button">Copy logs</button>
                                         <button class="ghost-button" id="settingsRefreshDeveloperLogButton" type="button">Refresh</button>
                                     </div>
                                 </div>
-                                <div class="developer-log-filter">
-                                    <label for="settingsDeveloperLogDateFilter">
-                                        Date
-                                        <input id="settingsDeveloperLogDateFilter" type="date">
-                                    </label>
-                                    <button id="settingsDeveloperLogTodayButton" type="button">Today</button>
-                                    <button id="settingsDeveloperLogClearDateButton" type="button">Clear</button>
+                                <div class="developer-log-filter-bar">
+                                    <div class="developer-log-filter">
+                                        <label for="settingsDeveloperLogDateFilter">
+                                            Date
+                                            <input id="settingsDeveloperLogDateFilter" type="date">
+                                        </label>
+                                        <button id="settingsDeveloperLogTodayButton" type="button">Today</button>
+                                        <button id="settingsDeveloperLogClearDateButton" type="button">Clear</button>
+                                    </div>
+                                    <div class="developer-log-mode" role="group" aria-label="Developer log type">
+                                        <button type="button" data-developer-log-mode="all" aria-pressed="true">All</button>
+                                        <button type="button" data-developer-log-mode="system" aria-pressed="false">System</button>
+                                        <button type="button" data-developer-log-mode="user" aria-pressed="false">User activity</button>
+                                    </div>
                                 </div>
-                                <p class="settings-help" id="settingsDeveloperLogSummary">Recent sync events and backend errors will appear here.</p>
+                                <p class="settings-help" id="settingsDeveloperLogSummary">Backend sync events, API calls, browser errors and user actions will appear here.</p>
                                 <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperLogList">
                                     <div class="empty-state">Open Settings after a failed sync to see the exact backend response.</div>
                                 </div>
@@ -8451,17 +8848,24 @@
                     <div class="developer-log-card">
                         <div class="developer-log-head">
                             <div>
-                                <h3 id="developerLogTitle">Developer log</h3>
-                                <p id="developerLogSummary">Recent Xero sync events and backend errors</p>
+                                <h3 id="developerLogTitle">System and user activity log</h3>
+                                <p id="developerLogSummary">Backend sync events, API calls, browser errors and user actions</p>
                             </div>
                             <div class="developer-log-actions">
-                                <div class="developer-log-filter">
-                                    <label for="developerLogDateFilter">
-                                        Date
-                                        <input id="developerLogDateFilter" type="date">
-                                    </label>
-                                    <button id="developerLogTodayButton" type="button">Today</button>
-                                    <button id="developerLogClearDateButton" type="button">Clear</button>
+                                <div class="developer-log-filter-bar">
+                                    <div class="developer-log-filter">
+                                        <label for="developerLogDateFilter">
+                                            Date
+                                            <input id="developerLogDateFilter" type="date">
+                                        </label>
+                                        <button id="developerLogTodayButton" type="button">Today</button>
+                                        <button id="developerLogClearDateButton" type="button">Clear</button>
+                                    </div>
+                                    <div class="developer-log-mode" role="group" aria-label="Developer log type">
+                                        <button type="button" data-developer-log-mode="all" aria-pressed="true">All</button>
+                                        <button type="button" data-developer-log-mode="system" aria-pressed="false">System</button>
+                                        <button type="button" data-developer-log-mode="user" aria-pressed="false">User activity</button>
+                                    </div>
                                 </div>
                                 <button class="ghost-button" id="copyDeveloperLogButton" type="button">Copy logs</button>
                                 <button class="ghost-button" id="refreshDeveloperLogButton" type="button">Refresh</button>
@@ -8554,12 +8958,23 @@
             const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
             const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
             const ACTIVITY_KEY = `${STORAGE_KEY}:system-activity`;
+            const USER_ACTIVITY_KEY = `${STORAGE_KEY}:user-activity-log`;
+            const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
             const DEFAULT_API_BASE_URL = window.location.protocol === "file:" || /(^|\.)team\.jaccountancy\.co\.uk$/i.test(window.location.hostname)
                 ? PRODUCTION_API_BASE_URL
                 : window.location.origin;
             const api = normaliseAPI(window.HYMN_PANEL_API || {});
+            const defaultPostingSettings = {
+                tenantId: "",
+                latePaymentChargeAccountCode: "1222",
+                latePaymentChargeAccountName: "",
+                latePaymentChargeTaxType: "OUTPUT2",
+                badDebtWriteOffAccountCode: "402",
+                badDebtWriteOffAccountName: "",
+                updatedAt: ""
+            };
             const emptyData = {
                 organisation: { name: "", status: "Awaiting live connection", lastSync: "Waiting for first sync", xeroConnected: false },
                 dashboard: { totalReceivables: 0, totalOverdue: 0, openInvoices: 0, accountsNeedingAction: 0, potentialInterest: 0 },
@@ -8567,6 +8982,7 @@
                 audit: [],
                 selectedInvoice: null,
                 cacheStatus: {},
+                postingSettings: defaultPostingSettings,
                 databaseMetrics: {}
             };
             const persistedUIState = loadPersistedUIState();
@@ -8682,6 +9098,12 @@
             let topbarNoticeTimer = null;
             let developerLogEntries = [];
             let developerLogDateFilter = "";
+            let developerLogModeFilter = "all";
+            let userActivityEntries = loadUserActivityLog();
+            let lastUserActivitySignature = "";
+            let lastUserActivityAt = 0;
+            let inputActivityThrottle = new WeakMap();
+            let userActivityLoggingWired = false;
             let insightsData = null;
             let insightsLoading = false;
             let activeInsightsSection = persistedUIState.activeInsightsSection || "overview";
@@ -8702,6 +9124,11 @@
             let pendingXeroActionsData = { summary: {}, actions: [] };
             let pendingXeroActionsLoading = false;
             let pendingXeroActionsSyncing = false;
+            let xeroAccounts = [];
+            let xeroAccountsLoading = false;
+            let xeroAccountsLoaded = false;
+            let postingSettingsSaving = false;
+            let postingSettingsError = "";
             let activeAllocationSource = null;
             const jashflowLoanStatusFilterLabels = {
                 active: "Active loans",
@@ -8891,6 +9318,8 @@
                         writeOffRun: config.endpoints?.writeOffRun || "/api/write-offs/run",
                         pendingXeroActions: config.endpoints?.pendingXeroActions || "/api/xero/pending-actions",
                         pendingXeroActionsSync: config.endpoints?.pendingXeroActionsSync || "/api/xero/pending-actions/sync",
+                        xeroAccounts: config.endpoints?.xeroAccounts || "/api/xero/chart-of-accounts",
+                        postingSettings: config.endpoints?.postingSettings || "/api/xero/posting-settings",
                         jashflow: config.endpoints?.jashflow || "/api/jashflow",
                         jashflowLoans: config.endpoints?.jashflowLoans || "/api/jashflow/loans",
                         jashflowLoan: config.endpoints?.jashflowLoan || "/api/jashflow/loans/:loanId",
@@ -8900,13 +9329,16 @@
                         jashflowInterestPosts: config.endpoints?.jashflowInterestPosts || "/api/jashflow/interest-posts",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
                         bankStatementClients: config.endpoints?.bankStatementClients || "/api/bank-statements/clients",
+                        bankStatementClient: config.endpoints?.bankStatementClient || "/api/bank-statements/clients/:clientId",
                         bankStatementAccounts: config.endpoints?.bankStatementAccounts || "/api/bank-statements/clients/:clientId/accounts",
                         bankStatementAccount: config.endpoints?.bankStatementAccount || "/api/bank-statements/accounts/:accountId",
                         bankStatementUploads: config.endpoints?.bankStatementUploads || "/api/bank-statements/accounts/:accountId/uploads",
+                        bankStatementUpload: config.endpoints?.bankStatementUpload || "/api/bank-statements/uploads/:uploadId",
                         bankStatementUploadRetry: config.endpoints?.bankStatementUploadRetry || "/api/bank-statements/uploads/:uploadId/retry",
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
+                        ignitionConnect: config.endpoints?.ignitionConnect || "/api/ignition/connect?redirect_to=:redirectTo",
                         ignitionLogin: config.endpoints?.ignitionLogin || "/auth/ignition/start",
                         ignitionRenewals: config.endpoints?.ignitionRenewals || "/api/ignition/renewals",
                         ignitionRenewalsRun: config.endpoints?.ignitionRenewalsRun || "/api/ignition/renewals/run",
@@ -8915,12 +9347,14 @@
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
                         meReport: config.endpoints?.meReport || "/api/me-report",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
+                        meReportClient: config.endpoints?.meReportClient || "/api/me-report/clients/:clientId",
                         meReportClientStatus: config.endpoints?.meReportClientStatus || "/api/me-report/clients/:clientId/status",
                         meReportBulkSubmissions: config.endpoints?.meReportBulkSubmissions || "/api/me-report/bulk-submissions",
                         meReportConnectXero: config.endpoints?.meReportConnectXero || "/api/me-report/clients/:clientId/connect-xero",
                         meReportSync: config.endpoints?.meReportSync || "/api/me-report/clients/:clientId/sync",
                         meReportSyncStatus: config.endpoints?.meReportSyncStatus || "/api/me-report/sync/:syncId",
                         meReportSubmissions: config.endpoints?.meReportSubmissions || "/api/me-report/clients/:clientId/submissions",
+                        meReportSubmission: config.endpoints?.meReportSubmission || "/api/me-report/submissions/:submissionId",
                         meReportMappings: config.endpoints?.meReportMappings || "/api/me-report/mappings/:mappingId",
                         meReportExceptions: config.endpoints?.meReportExceptions || "/api/me-report/exceptions/:exceptionId",
                         meReportMergeContact: config.endpoints?.meReportMergeContact || "/api/me-report/exceptions/:exceptionId/merge-contact",
@@ -8938,6 +9372,18 @@
                 };
             }
 
+            function normalisePostingSettings(settings = {}) {
+                return {
+                    tenantId: String(settings?.tenantId || defaultPostingSettings.tenantId),
+                    latePaymentChargeAccountCode: String(settings?.latePaymentChargeAccountCode || defaultPostingSettings.latePaymentChargeAccountCode),
+                    latePaymentChargeAccountName: String(settings?.latePaymentChargeAccountName || ""),
+                    latePaymentChargeTaxType: String(settings?.latePaymentChargeTaxType || defaultPostingSettings.latePaymentChargeTaxType),
+                    badDebtWriteOffAccountCode: String(settings?.badDebtWriteOffAccountCode || defaultPostingSettings.badDebtWriteOffAccountCode),
+                    badDebtWriteOffAccountName: String(settings?.badDebtWriteOffAccountName || ""),
+                    updatedAt: String(settings?.updatedAt || "")
+                };
+            }
+
             function normaliseState(payload) {
                 return {
                     organisation: payload.organisation || emptyData.organisation,
@@ -8946,6 +9392,7 @@
                     audit: Array.isArray(payload.audit) ? payload.audit : [],
                     selectedInvoice: payload.selectedInvoice || null,
                     cacheStatus: payload.cacheStatus || {},
+                    postingSettings: normalisePostingSettings(payload.postingSettings || emptyData.postingSettings),
                     databaseMetrics: payload.databaseMetrics || {}
                 };
             }
@@ -9011,6 +9458,296 @@
                 systemActivityItems = [activity, ...systemActivityItems].slice(0, 40);
                 persistSystemActivity();
                 renderGlobalActivityCard();
+            }
+
+            function loadUserActivityLog() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(USER_ACTIVITY_KEY) || "[]");
+                    if (!Array.isArray(stored)) return [];
+                    return stored
+                        .map((entry) => normaliseUserActivityEntry(entry))
+                        .filter(Boolean)
+                        .sort((left, right) => activityTimestamp(right) - activityTimestamp(left))
+                        .slice(0, USER_ACTIVITY_LIMIT);
+                } catch {
+                    return [];
+                }
+            }
+
+            function persistUserActivityLog() {
+                try {
+                    localStorage.setItem(USER_ACTIVITY_KEY, JSON.stringify(userActivityEntries.slice(0, USER_ACTIVITY_LIMIT)));
+                } catch {
+                    // Activity logging should never block the console if storage is unavailable.
+                }
+            }
+
+            function normaliseUserActivityEntry(entry) {
+                if (!entry || typeof entry !== "object") return null;
+                const message = String(entry.message || "").trim();
+                if (!message) return null;
+                return {
+                    id: entry.id || `user-activity-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    level: entry.level || "info",
+                    source: "user-activity",
+                    eventType: entry.eventType || "user.activity",
+                    message,
+                    payload: entry.payload && typeof entry.payload === "object" ? entry.payload : {},
+                    createdAt: entry.createdAt || entry.at || new Date().toISOString(),
+                    syncRunId: "",
+                    syncStatus: ""
+                };
+            }
+
+            function clipActivityText(value, maxLength = 180) {
+                const text = String(value ?? "").replace(/\s+/g, " ").trim();
+                return text.length > maxLength ? `${text.slice(0, maxLength - 1)}...` : text;
+            }
+
+            function redactActivityString(value) {
+                const text = String(value ?? "");
+                return text ? `[redacted ${text.length.toLocaleString("en-GB")} character${text.length === 1 ? "" : "s"}]` : "";
+            }
+
+            function sanitiseActivityValue(value, depth = 0, seen = new WeakSet(), keyHint = "") {
+                const key = String(keyHint || "").toLowerCase();
+                if (/password|token|secret|authorization|cookie|session|api[_-]?key|access[_-]?key|refresh[_-]?key/.test(key)) {
+                    return "[redacted]";
+                }
+                if (/^(body|note|notes|letter|content|description|html|text)$/i.test(key)) {
+                    return redactActivityString(value);
+                }
+                if (value == null || typeof value === "boolean" || typeof value === "number") return value;
+                if (typeof value === "string") return clipActivityText(value, 240);
+                if (value instanceof Date) return value.toISOString();
+                if (typeof File !== "undefined" && value instanceof File) {
+                    return { name: value.name, type: value.type || "", size: value.size };
+                }
+                if (typeof FormData !== "undefined" && value instanceof FormData) {
+                    const formRows = {};
+                    value.forEach((item, itemKey) => {
+                        formRows[itemKey] = sanitiseActivityValue(item, depth + 1, seen, itemKey);
+                    });
+                    return formRows;
+                }
+                if (typeof value !== "object") return String(value);
+                if (seen.has(value)) return "[circular]";
+                if (depth >= 3) return Array.isArray(value) ? `[array ${value.length}]` : `[object ${Object.keys(value).length} keys]`;
+                seen.add(value);
+                if (Array.isArray(value)) {
+                    const rows = value.slice(0, 12).map((item) => sanitiseActivityValue(item, depth + 1, seen));
+                    if (value.length > rows.length) rows.push(`... ${value.length - rows.length} more`);
+                    return rows;
+                }
+                return Object.fromEntries(
+                    Object.entries(value)
+                        .slice(0, 30)
+                        .map(([objectKey, item]) => [objectKey, sanitiseActivityValue(item, depth + 1, seen, objectKey)])
+                );
+            }
+
+            function summariseActivityBody(body) {
+                if (body == null) return {};
+                if (typeof body === "string") {
+                    try {
+                        const parsed = JSON.parse(body);
+                        return { type: "json", value: sanitiseActivityValue(parsed) };
+                    } catch {
+                        return { type: "text", value: redactActivityString(body) };
+                    }
+                }
+                return { type: body?.constructor?.name || typeof body, value: sanitiseActivityValue(body) };
+            }
+
+            function activityPageContext() {
+                return {
+                    view: viewDisplayLabel(activeView),
+                    section: activeView === "settings" ? activeSettingsSection : activeView === "client" ? activeClientSection : activeNavSection,
+                    path: window.location.pathname,
+                    hash: window.location.hash || "",
+                    viewport: `${window.innerWidth || 0}x${window.innerHeight || 0}`
+                };
+            }
+
+            function pushUserActivity(entry) {
+                const normalised = normaliseUserActivityEntry({
+                    ...entry,
+                    payload: {
+                        ...activityPageContext(),
+                        ...(entry.payload || {})
+                    },
+                    createdAt: entry.createdAt || new Date().toISOString()
+                });
+                if (!normalised) return;
+                const signature = `${normalised.eventType}|${normalised.message}|${JSON.stringify(normalised.payload?.target || {})}`;
+                const now = Date.now();
+                if (signature === lastUserActivitySignature && now - lastUserActivityAt < 800) return;
+                lastUserActivitySignature = signature;
+                lastUserActivityAt = now;
+                userActivityEntries = [normalised, ...userActivityEntries].slice(0, USER_ACTIVITY_LIMIT);
+                persistUserActivityLog();
+                if (developerLogPanelIsOpen() || activeSettingsSection === "developer-log") renderDeveloperLogs();
+            }
+
+            function developerLogPanelIsOpen() {
+                const panel = document.getElementById("developerLogPanel");
+                return Boolean(panel && !panel.hidden);
+            }
+
+            function requestActivityContext(template, options = {}, params = {}) {
+                const method = String(options.method || "GET").toUpperCase();
+                const url = endpointURL(template, params);
+                return {
+                    method,
+                    endpoint: template,
+                    path: responsePath(url) || template,
+                    params: sanitiseActivityValue(params),
+                    requestBody: summariseActivityBody(options.body)
+                };
+            }
+
+            function logAPIActivity(eventType, context, details = {}) {
+                const level = eventType.endsWith("failed") ? "error" : "info";
+                const action = eventType.endsWith("failed")
+                    ? "failed"
+                    : eventType.endsWith("completed")
+                        ? "completed"
+                        : "started";
+                pushUserActivity({
+                    level,
+                    eventType: `api.${action}`,
+                    message: `${context.method} ${context.path} ${action}`,
+                    payload: {
+                        action: "api_request",
+                        ...context,
+                        ...sanitiseActivityValue(details)
+                    }
+                });
+            }
+
+            function visibleElementText(element) {
+                if (!element) return "";
+                const tag = String(element.tagName || "").toLowerCase();
+                const type = String(element.type || "").toLowerCase();
+                const labelledControl = element.getAttribute?.("aria-label")
+                    || element.getAttribute?.("title")
+                    || element.labels?.[0]?.textContent
+                    || element.getAttribute?.("placeholder")
+                    || element.getAttribute?.("name")
+                    || element.id
+                    || "";
+                if (tag === "textarea" || tag === "select" || (tag === "input" && !["button", "submit", "reset"].includes(type))) {
+                    return clipActivityText(labelledControl, 90);
+                }
+                return clipActivityText(
+                    labelledControl
+                    || element.textContent
+                    || element.value
+                    || "",
+                    90
+                );
+            }
+
+            function closestActivityElement(target, eventType) {
+                if (!target?.closest) return null;
+                if (eventType === "submit") return target.closest("form");
+                return target.closest("button, a, input, select, textarea, form, summary, [role='button'], [data-app-nav], [data-client-section], [data-settings-nav], [data-filter-shortcut], [data-open-client], .summary-chip, .client-group-row, .late-charge-review-card, .action-card");
+            }
+
+            function describeActivityElement(element, eventType) {
+                if (!element) return {};
+                const dataset = {};
+                Object.entries(element.dataset || {}).slice(0, 12).forEach(([key, value]) => {
+                    dataset[key] = clipActivityText(value, 90);
+                });
+                const form = element.closest?.("form");
+                const settingsSection = element.closest?.("[data-settings-section]")?.dataset?.settingsSection || "";
+                const clientSection = element.closest?.("[data-client-section]")?.dataset?.clientSection || "";
+                const type = String(element.type || element.getAttribute?.("role") || element.tagName || "").toLowerCase();
+                const detail = {
+                    tag: String(element.tagName || "").toLowerCase(),
+                    id: element.id || "",
+                    type,
+                    label: visibleElementText(element),
+                    dataset,
+                    formId: form?.id || "",
+                    settingsSection,
+                    clientSection
+                };
+                if (eventType === "change" || eventType === "input") {
+                    if (element.matches?.("select")) {
+                        detail.selected = clipActivityText(element.selectedOptions?.[0]?.textContent || element.value, 120);
+                    } else if (element.matches?.("input[type='checkbox'], input[type='radio']")) {
+                        detail.checked = Boolean(element.checked);
+                        detail.value = clipActivityText(element.value, 80);
+                    } else if (element.matches?.("input[type='date'], input[type='month'], input[type='number']")) {
+                        detail.value = clipActivityText(element.value, 80);
+                    } else if (element.matches?.("input, textarea")) {
+                        detail.valueLength = String(element.value || "").length;
+                        detail.hasValue = Boolean(String(element.value || "").trim());
+                    }
+                }
+                return detail;
+            }
+
+            function trackUserInteraction(event) {
+                if (!event?.isTrusted) return;
+                const element = closestActivityElement(event.target, event.type);
+                if (!element) return;
+                if (event.type === "input") {
+                    const previous = inputActivityThrottle.get(element) || 0;
+                    if (Date.now() - previous < 2500) return;
+                    inputActivityThrottle.set(element, Date.now());
+                }
+                const target = describeActivityElement(element, event.type);
+                const label = target.label || target.id || target.tag || "control";
+                const verb = event.type === "submit" ? "Submitted" : event.type === "change" ? "Changed" : event.type === "input" ? "Edited" : "Clicked";
+                pushUserActivity({
+                    eventType: `user.${event.type}`,
+                    message: `${verb} ${label}`,
+                    payload: {
+                        action: event.type,
+                        target
+                    }
+                });
+            }
+
+            function wireUserActivityLogging() {
+                if (userActivityLoggingWired) return;
+                userActivityLoggingWired = true;
+                document.addEventListener("click", trackUserInteraction, true);
+                document.addEventListener("change", trackUserInteraction, true);
+                document.addEventListener("submit", trackUserInteraction, true);
+                document.addEventListener("input", trackUserInteraction, true);
+                window.addEventListener("error", (event) => {
+                    pushUserActivity({
+                        level: "error",
+                        eventType: "browser.error",
+                        message: event.message || "Browser error",
+                        payload: {
+                            source: event.filename || "",
+                            line: event.lineno || "",
+                            column: event.colno || "",
+                            error: event.error?.stack || event.error?.message || ""
+                        }
+                    });
+                });
+                window.addEventListener("unhandledrejection", (event) => {
+                    const reason = event.reason || {};
+                    pushUserActivity({
+                        level: "error",
+                        eventType: "browser.unhandled_rejection",
+                        message: reason.message || String(reason || "Unhandled promise rejection"),
+                        payload: {
+                            reason: sanitiseActivityValue(reason)
+                        }
+                    });
+                });
+                pushUserActivity({
+                    eventType: "user.session.opened",
+                    message: "Console session opened",
+                    payload: { action: "session_opened" }
+                });
             }
 
             function loadState() {
@@ -9134,6 +9871,7 @@
                 state.audit = next.audit;
                 state.selectedInvoice = next.selectedInvoice;
                 state.cacheStatus = next.cacheStatus || {};
+                state.postingSettings = normalisePostingSettings(next.postingSettings || state.postingSettings);
                 state.databaseMetrics = next.databaseMetrics || {};
                 const nextInvoiceId = next.selectedInvoice?.id || next.selectedInvoice?.invoiceId;
                 const invoice = findInvoiceById(preservedInvoiceId) || findInvoiceById(nextInvoiceId) || allInvoices()[0] || null;
@@ -9214,12 +9952,16 @@
                 }
             }
 
-            function ignitionLoginURL() {
-                const loginEndpoint = endpointURL(api.endpoints.ignitionLogin);
+            function ignitionStartURL(endpointTemplate) {
+                const loginEndpoint = endpointURL(endpointTemplate);
                 const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
                 if (!isHostedPage) return loginEndpoint;
-                const separator = api.endpoints.ignitionLogin.includes("?") ? "&" : "?";
+                const separator = endpointTemplate.includes("?") ? "&" : "?";
                 return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(ignitionConnectionReturnURL())}`;
+            }
+
+            function ignitionLoginURL() {
+                return ignitionStartURL(api.endpoints.ignitionLogin);
             }
 
             function consumeIgnitionConnectionReturn() {
@@ -9274,11 +10016,23 @@
             }
 
             async function requestJSON(template, options = {}, params = {}) {
-                const response = await fetch(endpointURL(template, params), {
-                    credentials: "include",
-                    ...options,
-                    headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(options.headers || {}) }
-                });
+                const activityContext = requestActivityContext(template, options, params);
+                const startedAt = performance.now();
+                logAPIActivity("api.started", activityContext);
+                let response;
+                try {
+                    response = await fetch(endpointURL(template, params), {
+                        credentials: "include",
+                        ...options,
+                        headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(options.headers || {}) }
+                    });
+                } catch (error) {
+                    logAPIActivity("api.failed", activityContext, {
+                        durationMs: Math.round(performance.now() - startedAt),
+                        error: error?.message || String(error || "Network request failed")
+                    });
+                    throw error;
+                }
                 const contentType = response.headers.get("content-type") || "";
                 const payload = contentType.includes("application/json")
                     ? await response.json().catch(() => null)
@@ -9289,6 +10043,12 @@
                     const message = typeof detail === "string"
                         ? detail
                         : detail?.message || "Your session has expired. Sign in with Xero again before syncing.";
+                    logAPIActivity("api.failed", activityContext, {
+                        statusCode: response.status,
+                        durationMs: Math.round(performance.now() - startedAt),
+                        error: message,
+                        response: sanitiseActivityValue(payload)
+                    });
                     throw new AuthRequiredError(message);
                 }
                 if (!response.ok) {
@@ -9303,22 +10063,46 @@
                     const message = diagnostic && !messageText.includes(diagnostic)
                         ? `${messageText} ${diagnostic}`
                         : messageText;
+                    logAPIActivity("api.failed", activityContext, {
+                        statusCode: response.status,
+                        durationMs: Math.round(performance.now() - startedAt),
+                        error: message,
+                        response: sanitiseActivityValue(payload)
+                    });
                     throw new APIRequestError(message, { statusCode: response.status, details: detail || payload });
                 }
+                logAPIActivity("api.completed", activityContext, {
+                    statusCode: response.status,
+                    durationMs: Math.round(performance.now() - startedAt),
+                    responseType: contentType.includes("application/json") ? "json" : "text",
+                    responseSummary: sanitiseActivityValue(payload, 2)
+                });
                 return contentType.includes("application/json") ? payload : null;
             }
 
             async function requestFormData(template, formData, params = {}) {
+                const activityContext = requestActivityContext(template, { method: "POST", body: formData }, params);
+                const startedAt = performance.now();
+                logAPIActivity("api.started", activityContext);
                 const headers = Object.fromEntries(
                     Object.entries({ ...api.headers, ...panelAuthHeaders() })
                         .filter(([key]) => key.toLowerCase() !== "content-type")
                 );
-                const response = await fetch(endpointURL(template, params), {
-                    method: "POST",
-                    credentials: "include",
-                    headers,
-                    body: formData
-                });
+                let response;
+                try {
+                    response = await fetch(endpointURL(template, params), {
+                        method: "POST",
+                        credentials: "include",
+                        headers,
+                        body: formData
+                    });
+                } catch (error) {
+                    logAPIActivity("api.failed", activityContext, {
+                        durationMs: Math.round(performance.now() - startedAt),
+                        error: error?.message || String(error || "Network request failed")
+                    });
+                    throw error;
+                }
                 const contentType = response.headers.get("content-type") || "";
                 const payload = contentType.includes("application/json")
                     ? await response.json().catch(() => null)
@@ -9329,6 +10113,12 @@
                     const message = typeof detail === "string"
                         ? detail
                         : detail?.message || "Your session has expired. Sign in with Xero again before uploading statements.";
+                    logAPIActivity("api.failed", activityContext, {
+                        statusCode: response.status,
+                        durationMs: Math.round(performance.now() - startedAt),
+                        error: message,
+                        response: sanitiseActivityValue(payload)
+                    });
                     throw new AuthRequiredError(message);
                 }
                 if (!response.ok) {
@@ -9336,8 +10126,20 @@
                     const baseMessage = typeof detail === "string"
                         ? detail
                         : detail?.message || payload?.message || `API request failed with status ${response.status}`;
+                    logAPIActivity("api.failed", activityContext, {
+                        statusCode: response.status,
+                        durationMs: Math.round(performance.now() - startedAt),
+                        error: String(baseMessage),
+                        response: sanitiseActivityValue(payload)
+                    });
                     throw new APIRequestError(String(baseMessage), { statusCode: response.status, details: detail || payload });
                 }
+                logAPIActivity("api.completed", activityContext, {
+                    statusCode: response.status,
+                    durationMs: Math.round(performance.now() - startedAt),
+                    responseType: contentType.includes("application/json") ? "json" : "text",
+                    responseSummary: sanitiseActivityValue(payload, 2)
+                });
                 return contentType.includes("application/json") ? payload : null;
             }
 
@@ -10533,6 +11335,15 @@
                 scrollConsoleToTop();
             }
 
+            function openPracticePackScreen() {
+                activeView = "practice-packs";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+            }
+
             function navigateApp(section) {
                 if (section === "home") return openInsightsScreen();
                 if (section === "clients") return openLedgerSection("clients");
@@ -10841,6 +11652,16 @@
                         event.preventDefault();
                         event.stopPropagation();
                         developerLogDateFilter = "";
+                        renderDeveloperLogs();
+                        return;
+                    }
+                    const developerLogModeButton = event.target.closest?.("[data-developer-log-mode]");
+                    if (developerLogModeButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        developerLogModeFilter = ["all", "system", "user"].includes(developerLogModeButton.dataset.developerLogMode)
+                            ? developerLogModeButton.dataset.developerLogMode
+                            : "all";
                         renderDeveloperLogs();
                         return;
                     }
@@ -14699,7 +15520,12 @@
                                                 <td>${transactionTotal.toLocaleString("en-GB")}</td>
                                                 <td>${flagTotal ? `${flagTotal.toLocaleString("en-GB")} to review` : "Clear"}</td>
                                                 <td>${lastUsed ? `<strong>${formatDate(lastUsed.at)}</strong><small>${escapeHTML(lastUsed.label || "Workspace activity")}</small>` : "No activity yet"}</td>
-                                                <td><button class="primary-button" type="button" data-open-bank-client="${escapeHTML(client.id)}">Access Workspace</button></td>
+                                                <td>
+                                                    <div class="detail-actions">
+                                                        <button class="primary-button" type="button" data-open-bank-client="${escapeHTML(client.id)}">Access Workspace</button>
+                                                        <button class="ghost-button danger-button" type="button" data-delete-bank-client="${escapeHTML(client.id)}">Delete</button>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         `;
                                     }).join("")}
@@ -14723,6 +15549,9 @@
                             if (!(client?.accounts || []).length) openBankAccountForm();
                         });
                     });
+                    clientList.querySelectorAll("[data-delete-bank-client]").forEach((button) => {
+                        button.addEventListener("click", () => deleteBankStatementClient(button.dataset.deleteBankClient || ""));
+                    });
                     return;
                 }
 
@@ -14743,6 +15572,7 @@
                         </div>
                         <div class="detail-actions">
                             <button class="ghost-button" id="backBankStatementClientsButton" type="button">Back to clients</button>
+                            <button class="ghost-button danger-button" id="deleteBankStatementClientButton" type="button">Delete client</button>
                             <button class="primary-button" id="addBankAccountButton" type="button">Add bank account</button>
                         </div>
                     </div>
@@ -14756,6 +15586,7 @@
                         bankStatementTransactionSearchTerm = "";
                         renderBankStatementsScreen();
                     });
+                    document.getElementById("deleteBankStatementClientButton")?.addEventListener("click", () => deleteBankStatementClient(client.id));
                     document.getElementById("addBankAccountButton")?.addEventListener("click", () => openBankAccountForm());
                     accountList.querySelectorAll("[data-open-bank-account]").forEach((row) => {
                         const openAccount = () => {
@@ -14922,6 +15753,7 @@
                     const failed = String(upload.status || "").toLowerCase() === "failed";
                     const canRetry = Boolean(upload.canRetry) && !accountProcessing;
                     const advice = bankUploadFailureAdvice(upload);
+                    const uploadActive = ["queued", "processing"].includes(String(upload.status || "").toLowerCase());
                     return `
                         <tr class="${failed ? "is-failed-upload" : ""}">
                             <td>
@@ -14940,6 +15772,7 @@
                             </td>
                             <td>
                                 ${failed ? `<button class="ghost-button bank-retry-button" type="button" data-bank-upload-retry="${escapeHTML(upload.id || "")}" ${canRetry ? "" : "disabled"}>${canRetry ? "Retry" : "Upload again"}</button>` : ""}
+                                <button class="ghost-button danger-button" type="button" data-bank-upload-delete="${escapeHTML(upload.id || "")}" ${uploadActive ? "disabled" : ""}>Delete</button>
                             </td>
                         </tr>
                     `;
@@ -15059,6 +15892,9 @@
                 detail.querySelectorAll("[data-bank-upload-retry]").forEach((button) => {
                     button.addEventListener("click", () => retryBankStatementUpload(button.dataset.bankUploadRetry || ""));
                 });
+                detail.querySelectorAll("[data-bank-upload-delete]").forEach((button) => {
+                    button.addEventListener("click", () => deleteBankStatementUpload(button.dataset.bankUploadDelete || ""));
+                });
                 renderBankAccountPanel();
             }
 
@@ -15084,6 +15920,33 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to add extraction client", "error");
+                }
+            }
+
+            async function deleteBankStatementClient(clientId) {
+                if (!clientId) return;
+                const client = (bankStatementData.clients || []).find((item) => item.id === clientId);
+                const accountCount = (client?.accounts || []).length;
+                const uploadCount = (client?.accounts || []).reduce((sum, account) => sum + (account.uploads || []).length, 0);
+                const transactionCount = (client?.accounts || []).reduce((sum, account) => sum + (account.transactions || []).length, 0);
+                const message = `Delete ${client?.customerName || "this extraction client"}? This removes ${accountCount.toLocaleString("en-GB")} bank account${accountCount === 1 ? "" : "s"}, ${uploadCount.toLocaleString("en-GB")} submission${uploadCount === 1 ? "" : "s"} and ${transactionCount.toLocaleString("en-GB")} transaction${transactionCount === 1 ? "" : "s"}.`;
+                if (!window.confirm(message)) return;
+                try {
+                    const response = await requestJSON(api.endpoints.bankStatementClient, { method: "DELETE" }, { clientId });
+                    bankStatementData = normaliseBankStatementPayload(response);
+                    if (selectedBankStatementClientId === clientId) {
+                        selectedBankStatementClientId = "";
+                        selectedBankAccountId = "";
+                        bankStatementWorkspaceOpen = false;
+                        bankStatementAccountOpen = false;
+                        bankAccountFormOpen = false;
+                    }
+                    ensureBankStatementSelection();
+                    showToast("Bank statement extraction client deleted", "success");
+                    renderBankStatementsScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete extraction client", "error");
                 }
             }
 
@@ -15232,6 +16095,24 @@
                         syncBankStatementBackgroundActivity();
                         renderBankStatementsScreen();
                     }
+                }
+            }
+
+            async function deleteBankStatementUpload(uploadId) {
+                const account = selectedBankAccount();
+                if (!account || !uploadId) return;
+                const upload = (account.uploads || []).find((item) => String(item.id || "") === String(uploadId));
+                if (!window.confirm(`Delete ${upload?.filename || "this bank statement submission"}? Transactions extracted from this submission will also be removed.`)) return;
+                try {
+                    const response = await requestJSON(api.endpoints.bankStatementUpload, { method: "DELETE" }, { uploadId });
+                    bankStatementData = normaliseBankStatementPayload(response);
+                    selectedBankAccountId = account.id;
+                    ensureBankStatementSelection();
+                    showToast("Bank statement submission deleted", "success");
+                    renderBankStatementsScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete bank statement submission", "error");
                 }
             }
 
@@ -15879,11 +16760,22 @@
                 }
             }
 
-            function openIgnitionConnection() {
-                const url = ignitionLoginURL();
-                if (!url) return showToast("Unable to start Ignition login flow", "error");
+            async function openIgnitionConnection() {
+                const fallbackUrl = ignitionLoginURL();
+                if (!fallbackUrl) return showToast("Unable to start Ignition login flow", "error");
                 showToast("Opening Ignition connection", "info");
-                window.location.assign(url);
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionConnect, {}, { redirectTo: ignitionConnectionReturnURL() });
+                    const authorizationUrl = payload?.authorizationUrl || payload?.loginUri || payload?.login_uri || payload?.url || "";
+                    window.location.assign(authorizationUrl || fallbackUrl);
+                } catch (error) {
+                    console.error("Unable to create Ignition OAuth state", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message || "Sign in with Xero again before connecting Ignition.");
+                        return;
+                    }
+                    window.location.assign(fallbackUrl);
+                }
             }
 
             function updateIgnitionSyncProgress() {
@@ -16349,7 +17241,8 @@
                 }
 
                 clients.forEach((client) => {
-                    const light = client.trafficLight || "amber";
+                    const light = meReportNormalisedTrafficLight(client.trafficLight || "amber");
+                    const lightLabel = meReportTrafficLightLabel(light);
                     const clientStatus = meReportClientStatus(client);
                     const exceptionCount = (client.exceptions || []).filter((item) => item.status === "open").length;
                     const button = document.createElement("button");
@@ -16358,7 +17251,7 @@
                     button.innerHTML = `
                         <strong>${escapeHTML(client.clientName || "Unnamed client")}</strong>
                         <span>${escapeHTML(client.xeroContactEmail || client.reportRecipientEmail || "No Xero email")} · ${escapeHTML(client.bookkeepingFrequency || "Monthly")}</span>
-                        <span>${escapeHTML(light.toUpperCase())} · ${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"} · ${(client.submissions || []).length.toLocaleString("en-GB")} submission${(client.submissions || []).length === 1 ? "" : "s"}</span>
+                        <span class="me-report-light-line">${meReportTrafficLightIcon(light)}<small>${escapeHTML(lightLabel)} status · ${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"} · ${(client.submissions || []).length.toLocaleString("en-GB")} submission${(client.submissions || []).length === 1 ? "" : "s"}</small></span>
                         <span class="me-report-client-status is-${clientStatus}">${clientStatus}</span>
                     `;
                     button.addEventListener("click", () => {
@@ -16389,11 +17282,13 @@
                     <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
                     <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
                     <button class="ghost-button me-report-archive-button" id="archiveMeReportClientButton" type="button">${selectedClientArchived ? "Restore workspace" : "Archive workspace"}</button>
+                    <button class="ghost-button danger-button" id="deleteMeReportClientButton" type="button">Delete workspace</button>
                     ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                 `;
                 document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
                 document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
                 document.getElementById("archiveMeReportClientButton")?.addEventListener("click", () => updateMeReportClientStatus(client.id, selectedClientArchived ? "active" : "archived"));
+                document.getElementById("deleteMeReportClientButton")?.addEventListener("click", () => deleteMeReportClient(client.id));
                 actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
                     button.addEventListener("click", () => {
                         activeMeReportTab = button.dataset.meReportTab;
@@ -16431,6 +17326,105 @@
                 return `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
             }
 
+            function meReportNormalisedTrafficLight(value) {
+                const light = String(value || "").toLowerCase();
+                if (light === "green" || light === "red") return light;
+                return "amber";
+            }
+
+            function meReportTrafficLightLabel(value) {
+                const light = meReportNormalisedTrafficLight(value);
+                if (light === "green") return "Green";
+                if (light === "red") return "Red";
+                return "Yellow";
+            }
+
+            function meReportTrafficLightIcon(value) {
+                const light = meReportNormalisedTrafficLight(value);
+                const symbol = light === "green" ? "" : "!";
+                const label = meReportTrafficLightLabel(light);
+                return `<i class="me-report-light-icon is-${escapeHTML(light)}" role="img" aria-label="${escapeHTML(label)} status">${symbol}</i>`;
+            }
+
+            function renderMeReportTrafficMetric(client, summary = {}) {
+                const light = meReportNormalisedTrafficLight(summary.trafficLight || client.trafficLight || "amber");
+                const label = meReportTrafficLightLabel(light);
+                const exceptionCount = (client.exceptions || []).filter((item) => item.status === "open").length;
+                const detail = light === "green"
+                    ? "No open red or yellow review points"
+                    : `${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"}`;
+                return `<article class="me-report-status-card">
+                    <span>Traffic light</span>
+                    <strong class="me-report-light-value">${meReportTrafficLightIcon(light)}${escapeHTML(label)}</strong>
+                    <small>${escapeHTML(detail)}</small>
+                </article>`;
+            }
+
+            function meReportTaxBreakdown(summary = {}) {
+                const detail = summary.corporationTaxBreakdown || {};
+                const lines = Array.isArray(detail.lines) && detail.lines.length
+                    ? detail.lines
+                    : [{
+                        label: summary.corporationTaxRateBand || "Corporation tax estimate",
+                        amount: summary.estimatedTaxableProfit || 0,
+                        rate: summary.effectiveTaxRate ? formatPercent(summary.effectiveTaxRate) : "",
+                        tax: summary.estimatedCorporationTax || 0,
+                    }];
+                return {
+                    ...detail,
+                    lines,
+                    taxableProfit: Number(detail.taxableProfit ?? summary.estimatedTaxableProfit ?? 0),
+                    tax: Number(detail.tax ?? summary.estimatedCorporationTax ?? 0),
+                    effectiveRate: Number(detail.effectiveRate ?? summary.effectiveTaxRate ?? 0),
+                    rateBand: detail.rateBand || summary.corporationTaxRateBand || "Calculated",
+                    lowerLimit: Number(detail.lowerLimit ?? 50000),
+                    upperLimit: Number(detail.upperLimit ?? 250000),
+                    smallProfitsRate: Number(detail.smallProfitsRate ?? 19),
+                    mainRate: Number(detail.mainRate ?? 25),
+                    marginalReliefFraction: detail.marginalReliefFraction || "3/200",
+                };
+            }
+
+            function renderMeReportTaxBreakdownTable(summary = {}) {
+                const detail = meReportTaxBreakdown(summary);
+                return `
+                    <div class="me-report-tax-breakdown-table" role="table" aria-label="Corporation tax rate calculation">
+                        <div class="me-report-tax-breakdown-row is-header" role="row">
+                            <span>Line</span>
+                            <span>Profit basis</span>
+                            <span>Rate</span>
+                            <span>CT impact</span>
+                        </div>
+                        ${detail.lines.map((row) => `
+                            <div class="me-report-tax-breakdown-row" role="row">
+                                <span>${escapeHTML(row.label || "")}</span>
+                                <strong>${formatCurrency(row.amount || 0)}</strong>
+                                <span>${escapeHTML(row.rate || "")}</span>
+                                <em>${formatCurrency(row.tax || 0)}</em>
+                            </div>
+                        `).join("")}
+                    </div>
+                    <p class="me-report-help-notes">Small profits rate ${formatPercent(detail.smallProfitsRate)} up to ${formatCurrency(detail.lowerLimit)}. Main rate ${formatPercent(detail.mainRate)} above ${formatCurrency(detail.upperLimit)}. Between those limits the calculation uses main rate less marginal relief at ${escapeHTML(detail.marginalReliefFraction)}.</p>
+                `;
+            }
+
+            function renderMeReportTaxEstimateMetric(summary = {}) {
+                const detail = meReportTaxBreakdown(summary);
+                return `<article class="me-report-tax-estimate-card">
+                    <div class="me-report-metric-head">
+                        <span>CT estimate</span>
+                        <details class="me-report-metric-help">
+                            <summary title="Show full CT calculation"><span class="me-report-help-icon">?</span></summary>
+                            <div class="me-report-metric-popover">
+                                ${renderMeReportTaxBreakdownTable(summary)}
+                            </div>
+                        </details>
+                    </div>
+                    <strong>${formatCurrency(detail.tax || summary.estimatedCorporationTax || 0)}</strong>
+                    <small>${escapeHTML(detail.rateBand)} · effective ${formatPercent(detail.effectiveRate)}</small>
+                </article>`;
+            }
+
             function meReportFallbackTaxSteps(summary) {
                 return [
                     { label: "Profit before tax YTD", amount: summary.accountingProfit || summary.yearToDateProfit || 0, treatment: "Start", source: "Profit and Loss - YTD" },
@@ -16444,9 +17438,14 @@
             }
 
             function meReportFallbackDividendSteps(summary) {
+                const postTaxEarnings = Number.isFinite(Number(summary.currentYearEarnings))
+                    ? Number(summary.currentYearEarnings)
+                    : Number(summary.yearToDateProfit || summary.accountingProfit || 0) - Number(summary.estimatedCorporationTax || 0);
                 return [
-                    { label: "Retained earnings brought forward", amount: summary.openingRetainedReserves || 0, treatment: "Start", source: "Balance Sheet" },
-                    { label: "Current year earnings", amount: summary.currentYearEarnings || ((summary.accountingProfit || 0) - (summary.estimatedCorporationTax || 0)), treatment: "Add", source: "Balance Sheet" },
+                    { label: "Opening retained reserves", amount: summary.openingRetainedReserves || 0, treatment: "Start", source: "Balance Sheet" },
+                    { label: "YTD profit before tax", amount: summary.yearToDateProfit || summary.accountingProfit || 0, treatment: "Add", source: "Profit and Loss - YTD" },
+                    { label: "Estimated corporation tax provision", amount: -Math.abs(Number(summary.estimatedCorporationTax || 0)), treatment: "Deduct", source: "CT estimate" },
+                    { label: "Post-tax YTD earnings", amount: postTaxEarnings, treatment: "Subtotal", source: "Calculated" },
                     { label: "Dividends declared YTD", amount: -Math.abs(Number(summary.dividendsTaken || 0)), treatment: "Deduct", source: "Balance Sheet" },
                     { label: "Period-end distributable reserves", amount: summary.periodEndDistributableReserves || 0, treatment: "Result", source: "Calculated" },
                     { label: "Further dividend availability", amount: summary.dividendCapacity || 0, treatment: "Available", source: "Calculated" }
@@ -16507,6 +17506,7 @@
                         <div class="me-report-ai-help-panel">
                             <p class="me-report-help-notes">${escapeHTML(pageText)} · ${escapeHTML(sections)}</p>
                             ${mode !== "dividends" ? renderMeReportCalculationTable("CT estimate", taxRows) : ""}
+                            ${mode !== "dividends" ? `<section><p class="eyebrow">CT rate breakdown</p>${renderMeReportTaxBreakdownTable(summary)}</section>` : ""}
                             ${mode !== "tax" ? renderMeReportCalculationTable("Dividend availability", dividendRows) : ""}
                             ${balanceRows.length ? renderMeReportCalculationTable("Balance sheet codes", balanceRows) : ""}
                             ${fixedAssetRows.length ? renderMeReportCalculationTable("Fixed asset review", fixedAssetRows) : ""}
@@ -16626,7 +17626,7 @@
                             ${renderMeReportMetric("YTD turnover", formatCurrency(summary.yearToDateSales || 0))}
                             ${renderMeReportMetric("YTD profit", formatCurrency(summary.yearToDateProfit || 0))}
                             ${renderMeReportMetric("Monthly profit", formatCurrency(summary.monthlyProfit || summary.accountingProfit || 0))}
-                            ${renderMeReportMetric("Estimated CT", formatCurrency(summary.estimatedCorporationTax || 0))}
+                            ${renderMeReportTaxEstimateMetric(summary)}
                             ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
                             ${renderMeReportMetric("DLA balance", formatCurrency(summary.dlaBalance || 0))}
                         </div>
@@ -16644,6 +17644,9 @@
 
             function renderMeReportTab(client, tab) {
                 const summary = client.summary || {};
+                const postTaxYtdEarnings = Number.isFinite(Number(summary.currentYearEarnings))
+                    ? Number(summary.currentYearEarnings)
+                    : Number(summary.yearToDateProfit || summary.accountingProfit || 0) - Number(summary.estimatedCorporationTax || 0);
                 if (tab === "mappings") return renderMeReportMappings(client);
                 if (tab === "alerts") return renderMeReportExceptions(client);
                 if (tab === "reports") return renderMeReportReports(client);
@@ -16659,10 +17662,8 @@
                     ["Monthly expenses", formatCurrency(summary.monthlyExpenses || 0)],
                     ["Monthly profit", formatCurrency(summary.monthlyProfit || 0)],
                     ["YTD profit", formatCurrency(summary.yearToDateProfit || 0)],
-                    ["Estimated CT", formatCurrency(summary.estimatedCorporationTax || 0)],
                     ["Dividend capacity", formatCurrency(summary.dividendCapacity || 0)],
-                    ["DLA balance", formatCurrency(summary.dlaBalance || 0)],
-                    ["Traffic light", String(summary.trafficLight || client.trafficLight || "amber").toUpperCase()]
+                    ["DLA balance", formatCurrency(summary.dlaBalance || 0)]
                 ];
                 if (tab === "tax") {
                     return `
@@ -16671,13 +17672,18 @@
                             ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
                             ${renderMeReportMetric("Tax adjustments", formatCurrency(summary.taxAdjustments || 0))}
                             ${renderMeReportMetric("Taxable profit", formatCurrency(summary.estimatedTaxableProfit || 0))}
-                            ${renderMeReportMetric("Estimated CT", formatCurrency(summary.estimatedCorporationTax || 0))}
+                            ${renderMeReportTaxEstimateMetric(summary)}
                             ${renderMeReportMetric("Effective tax rate", formatPercent(summary.effectiveTaxRate || 0))}
                             ${renderMeReportMetric("Provision required", formatCurrency(summary.taxProvisionRequired || 0))}
                             ${renderMeReportMetric("12m turnover", formatCurrency(summary.rolling12MonthTurnover || 0))}
                             ${renderMeReportMetric("VAT threshold", formatCurrency(summary.vatThreshold || 90000))}
                             ${renderMeReportMetric("VAT warning", summary.vatWarningVisible ? "Visible" : "Clear")}
                         </div>
+                        <article class="me-report-insight-card">
+                            <p class="eyebrow">CT rate breakdown</p>
+                            <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
+                            ${renderMeReportTaxBreakdownTable(summary)}
+                        </article>
                         ${renderMeReportAiHelp(summary, "tax")}
                         <div class="empty-state"><p class="eyebrow">Accountant review</p><h4>CT and VAT estimates are not final tax advice</h4><p>Staff should review losses, R&D, capital allowances, associated companies, accruals/prepayments, prior-year adjustments and whether rolling taxable turnover has breached the VAT registration threshold.</p></div>
                     `;
@@ -16687,8 +17693,9 @@
                         <div class="jashflow-detail-head"><div><p class="eyebrow">Dividend availability</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">DLA credit should normally be repaid before dividends are considered.</p></div></div>
                         <div class="ignition-summary-grid">
                             ${renderMeReportMetric("Opening reserves", formatCurrency(summary.openingRetainedReserves || 0))}
-                            ${renderMeReportMetric("Post-tax profit", formatCurrency((summary.monthlyProfit || 0) - (summary.estimatedCorporationTax || 0)))}
+                            ${renderMeReportMetric("Post-tax YTD earnings", formatCurrency(postTaxYtdEarnings))}
                             ${renderMeReportMetric("Dividends taken", formatCurrency(summary.dividendsTaken || 0))}
+                            ${renderMeReportMetric("Period-end reserves", formatCurrency(summary.periodEndDistributableReserves || 0))}
                             ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
                             ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                             ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
@@ -16719,7 +17726,12 @@
                             <p class="detail-meta">${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.xeroContactName || client.clientName || "Xero contact")} · ${escapeHTML(client.reportRecipientEmail || client.xeroContactEmail || "No report email")} · overview report workflow</p>
                         </div>
                     </div>
-                    <div class="ignition-summary-grid">${metrics.map(([label, value]) => renderMeReportMetric(label, value)).join("")}</div>
+                    <div class="ignition-summary-grid">
+                        ${metrics.slice(0, 4).map(([label, value]) => renderMeReportMetric(label, value)).join("")}
+                        ${renderMeReportTaxEstimateMetric(summary)}
+                        ${metrics.slice(4).map(([label, value]) => renderMeReportMetric(label, value)).join("")}
+                        ${renderMeReportTrafficMetric(client, summary)}
+                    </div>
                     ${renderMeReportAiHelp(summary, "all")}
                     <div class="empty-state"><p class="eyebrow">Commentary</p><h4>${escapeHTML(summary.commentary ? "Draft accountant commentary" : "Upload overview report to draft commentary")}</h4><p>${escapeHTML(summary.commentary || "Once the overview report has been processed, Jenius will summarise the month, tax provision, dividend capacity, DLA position and review points for staff approval.")}</p></div>
                 `;
@@ -16739,6 +17751,7 @@
                         <div class="detail-actions">
                             <button class="ghost-button" type="button" data-me-report-back-clients>Back to clients</button>
                             <button class="ghost-button me-report-archive-button" type="button" data-me-report-status-toggle>${archived ? "Restore workspace" : "Archive workspace"}</button>
+                            <button class="ghost-button danger-button" type="button" data-me-report-delete-client>Delete workspace</button>
                             <button class="primary-button" type="button" data-me-report-upload-trigger ${meReportUploadProcessing ? "disabled" : ""}>Upload JUK overview report</button>
                         </div>
                     </div>
@@ -16780,6 +17793,7 @@
                                             <span class="detail-actions">
                                                 <button class="ghost-button" type="button" data-me-submission-preview="${escapeHTML(submission.id)}">Preview</button>
                                                 <button class="primary-button" type="button" data-me-submission-open="${escapeHTML(submission.id)}" ${processed ? "" : "disabled"}>${processed ? "Open insights" : "Processing"}</button>
+                                                <button class="ghost-button danger-button" type="button" data-me-submission-delete="${escapeHTML(submission.id)}">Delete</button>
                                             </span>
                                         </div>
                                     `;
@@ -16907,6 +17921,9 @@
                         renderMeReportScreen();
                     });
                 });
+                document.querySelectorAll("[data-me-submission-delete]").forEach((button) => {
+                    button.addEventListener("click", () => deleteMeReportSubmission(button.dataset.meSubmissionDelete || ""));
+                });
                 document.querySelectorAll("[data-me-report-back-reports]").forEach((button) => {
                     button.addEventListener("click", () => {
                         activeMeReportTab = "submission-history";
@@ -16927,6 +17944,9 @@
                 });
                 document.querySelectorAll("[data-me-report-status-toggle]").forEach((button) => {
                     button.addEventListener("click", () => updateMeReportClientStatus(client.id, meReportClientStatus(client) === "archived" ? "active" : "archived"));
+                });
+                document.querySelectorAll("[data-me-report-delete-client]").forEach((button) => {
+                    button.addEventListener("click", () => deleteMeReportClient(client.id));
                 });
                 document.querySelectorAll("[data-me-generate-report]").forEach((button) => {
                     button.addEventListener("click", generateSelectedMeReport);
@@ -16996,6 +18016,49 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to update ME Report workspace", "error");
+                }
+            }
+
+            async function deleteMeReportClient(clientId) {
+                if (!clientId) return;
+                const client = (meReportData.clients || []).find((item) => item.id === clientId);
+                const submissionCount = (client?.submissions || []).length;
+                const reportCount = (client?.reports || []).length;
+                const message = `Delete ${client?.clientName || "this ME Report workspace"}? This removes ${submissionCount.toLocaleString("en-GB")} submission${submissionCount === 1 ? "" : "s"}, ${reportCount.toLocaleString("en-GB")} generated report${reportCount === 1 ? "" : "s"} and saved review history for this client.`;
+                if (!window.confirm(message)) return;
+                try {
+                    const response = await requestJSON(api.endpoints.meReportClient, { method: "DELETE" }, { clientId });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportClientId = "";
+                    selectedMeReportSubmissionId = "";
+                    meReportWorkspaceOpen = false;
+                    activeMeReportTab = "overview";
+                    ensureMeReportSelection();
+                    showToast("ME Report workspace deleted", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete ME Report workspace", "error");
+                }
+            }
+
+            async function deleteMeReportSubmission(submissionId) {
+                if (!submissionId) return;
+                const client = selectedMeReportClient();
+                const submission = (client?.submissions || []).find((item) => item.id === submissionId);
+                if (!window.confirm(`Delete ${submission?.filename || "this ME Report submission"}? Any review and generated report linked to this upload will also be removed.`)) return;
+                try {
+                    const response = await requestJSON(api.endpoints.meReportSubmission, { method: "DELETE" }, { submissionId });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportSubmissionId = "";
+                    meReportWorkspaceOpen = true;
+                    activeMeReportTab = "submission-history";
+                    ensureMeReportSelection();
+                    showToast("ME Report submission deleted", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete ME Report submission", "error");
                 }
             }
 
@@ -18945,6 +20008,443 @@
                 ${insightDataTable("Settled invoices by month", ["Month", "Cash collected", "Paid invoices", "Average settled", "Collection ratio"], monthlyRows, "No settled invoice trend data is currently available.")}`;
             }
 
+            function currentPracticePackMonth() {
+                return document.getElementById("practicePackMonthSelect")?.value || new Date().toLocaleString("en-GB", { month: "long" });
+            }
+
+            function initialisePracticePackMonth() {
+                const select = document.getElementById("practicePackMonthSelect");
+                if (!select || select.dataset.initialised === "true") return;
+                const currentMonth = new Date().toLocaleString("en-GB", { month: "long" });
+                if ([...select.options].some((option) => option.value === currentMonth)) select.value = currentMonth;
+                select.dataset.initialised = "true";
+            }
+
+            function normalisePracticePackHeader(value) {
+                return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            }
+
+            function normalisePracticePackName(value) {
+                return normalisePracticePackHeader(value);
+            }
+
+            function practicePackColumnValue(row, candidates) {
+                const candidateKeys = candidates.map(normalisePracticePackHeader);
+                const keys = Object.keys(row || {});
+                let match = keys.find((key) => candidateKeys.includes(normalisePracticePackHeader(key)));
+                if (!match) {
+                    match = keys.find((key) => {
+                        const normalisedKey = normalisePracticePackHeader(key);
+                        return candidateKeys.some((candidate) => normalisedKey.includes(candidate) || candidate.includes(normalisedKey));
+                    });
+                }
+                return match ? String(row[match] || "").trim() : "";
+            }
+
+            function parsePracticePackCsv(text) {
+                const rawRows = [];
+                let row = [];
+                let cell = "";
+                let inQuotes = false;
+                const source = String(text || "");
+                for (let index = 0; index < source.length; index += 1) {
+                    const character = source[index];
+                    const next = source[index + 1];
+                    if (character === '"') {
+                        if (inQuotes && next === '"') {
+                            cell += '"';
+                            index += 1;
+                        } else {
+                            inQuotes = !inQuotes;
+                        }
+                    } else if (character === "," && !inQuotes) {
+                        row.push(cell);
+                        cell = "";
+                    } else if ((character === "\n" || character === "\r") && !inQuotes) {
+                        if (character === "\r" && next === "\n") index += 1;
+                        row.push(cell);
+                        if (row.some((value) => String(value || "").trim())) rawRows.push(row);
+                        row = [];
+                        cell = "";
+                    } else {
+                        cell += character;
+                    }
+                }
+                if (cell || row.length) {
+                    row.push(cell);
+                    if (row.some((value) => String(value || "").trim())) rawRows.push(row);
+                }
+                const headers = (rawRows.shift() || []).map((value) => String(value || "").trim());
+                const rows = rawRows.map((values) => headers.reduce((record, header, index) => {
+                    record[header || `Column ${index + 1}`] = String(values[index] || "").trim();
+                    return record;
+                }, {}));
+                return { headers, rows };
+            }
+
+            function practicePackCsv(rows) {
+                return rows.map((row) => row.map(bankCsvEscape).join(",")).join("\n");
+            }
+
+            function practicePackFileNamePart(value) {
+                return String(value || "pack")
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/^-+|-+$/g, "")
+                    .slice(0, 80) || "pack";
+            }
+
+            function practicePackTaskComplete(status) {
+                return /complete|completed|done|closed|filed|submitted/i.test(String(status || ""));
+            }
+
+            function practicePackTaskOverdue(status, dueDate) {
+                if (practicePackTaskComplete(status)) return false;
+                const time = Date.parse(dueDate);
+                return Number.isFinite(time) && time < Date.now();
+            }
+
+            function buildPracticePackFiles(clientData, taskData, month) {
+                const clientNameColumns = ["Client Name", "Client", "Name", "ClientName", "Company Name", "Company", "Contact"];
+                const taskClientColumns = ["Client Name", "Client", "ClientName", "Customer", "Company Name", "Company", "Contact"];
+                const ownerColumns = ["Assigned To", "Assignee", "Owner", "Staff", "Manager", "Bookkeeper", "Task Owner"];
+                const statusColumns = ["Status", "Task Status", "State"];
+                const dueColumns = ["Due Date", "Deadline", "Date Due", "Target Date"];
+                const taskColumns = ["Task", "Task Name", "Name", "Title", "Description"];
+                const clientIndex = new Map();
+                const clientStats = new Map();
+
+                clientData.rows.forEach((row, index) => {
+                    const name = practicePackColumnValue(row, clientNameColumns) || `Client ${index + 1}`;
+                    const key = normalisePracticePackName(name) || `client${index + 1}`;
+                    if (!clientIndex.has(key)) clientIndex.set(key, { name, row });
+                    if (!clientStats.has(key)) {
+                        clientStats.set(key, {
+                            name,
+                            taskCount: 0,
+                            openCount: 0,
+                            completedCount: 0,
+                            overdueCount: 0,
+                            owners: new Set(),
+                            source: "BM Client File"
+                        });
+                    }
+                });
+
+                const staffTasks = new Map();
+                const taskSummaries = taskData.rows.map((row, index) => {
+                    const clientName = practicePackColumnValue(row, taskClientColumns) || "No client";
+                    const owner = practicePackColumnValue(row, ownerColumns) || "Unassigned";
+                    const status = practicePackColumnValue(row, statusColumns);
+                    const dueDate = practicePackColumnValue(row, dueColumns);
+                    const taskName = practicePackColumnValue(row, taskColumns) || `Task ${index + 1}`;
+                    const clientKey = normalisePracticePackName(clientName) || `taskclient${index + 1}`;
+                    const matchedClient = clientIndex.get(clientKey);
+                    const statsKey = matchedClient ? clientKey : `taskonly-${clientKey}`;
+                    if (!clientStats.has(statsKey)) {
+                        clientStats.set(statsKey, {
+                            name: clientName,
+                            taskCount: 0,
+                            openCount: 0,
+                            completedCount: 0,
+                            overdueCount: 0,
+                            owners: new Set(),
+                            source: "BM Task File"
+                        });
+                    }
+                    const stats = clientStats.get(statsKey);
+                    const complete = practicePackTaskComplete(status);
+                    const overdue = practicePackTaskOverdue(status, dueDate);
+                    stats.taskCount += 1;
+                    stats.completedCount += complete ? 1 : 0;
+                    stats.openCount += complete ? 0 : 1;
+                    stats.overdueCount += overdue ? 1 : 0;
+                    stats.owners.add(owner);
+                    if (!staffTasks.has(owner)) staffTasks.set(owner, []);
+                    const summary = {
+                        owner,
+                        clientName,
+                        taskName,
+                        status: status || "No status",
+                        dueDate: dueDate || "",
+                        matchedClient: matchedClient?.name || "",
+                        sourceRow: index + 2
+                    };
+                    staffTasks.get(owner).push(summary);
+                    return summary;
+                });
+
+                const managementRows = [
+                    ["Month", "Client", "Task count", "Open tasks", "Completed tasks", "Overdue tasks", "Assigned owners", "Source"],
+                    ...[...clientStats.values()]
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((stats) => [
+                            month,
+                            stats.name,
+                            stats.taskCount,
+                            stats.openCount,
+                            stats.completedCount,
+                            stats.overdueCount,
+                            [...stats.owners].sort((a, b) => a.localeCompare(b)).join("; "),
+                            stats.source
+                        ])
+                ];
+                const files = [{
+                    name: `${practicePackFileNamePart(month)}-management-pack.csv`,
+                    content: practicePackCsv(managementRows)
+                }];
+
+                [...staffTasks.entries()]
+                    .sort(([left], [right]) => left.localeCompare(right))
+                    .forEach(([owner, tasks]) => {
+                        const rows = [
+                            ["Month", "Owner", "Client", "Task", "Status", "Due date", "Matched client", "Source row"],
+                            ...tasks
+                                .sort((a, b) => a.clientName.localeCompare(b.clientName) || a.taskName.localeCompare(b.taskName))
+                                .map((task) => [month, owner, task.clientName, task.taskName, task.status, task.dueDate, task.matchedClient, task.sourceRow])
+                        ];
+                        files.push({
+                            name: `${practicePackFileNamePart(month)}-${practicePackFileNamePart(owner)}-practice-pack.csv`,
+                            content: practicePackCsv(rows)
+                        });
+                    });
+
+                return {
+                    files,
+                    taskSummaries,
+                    staffPackCount: Math.max(files.length - 1, 0),
+                    clientCount: clientData.rows.length,
+                    taskCount: taskData.rows.length,
+                    unmatchedTaskCount: taskSummaries.filter((task) => !task.matchedClient).length
+                };
+            }
+
+            let practicePackCrcTable = null;
+
+            function practicePackCrc32(bytes) {
+                if (!practicePackCrcTable) {
+                    practicePackCrcTable = new Uint32Array(256);
+                    for (let index = 0; index < 256; index += 1) {
+                        let crc = index;
+                        for (let bit = 0; bit < 8; bit += 1) {
+                            crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
+                        }
+                        practicePackCrcTable[index] = crc >>> 0;
+                    }
+                }
+                let crc = 0xffffffff;
+                bytes.forEach((byte) => {
+                    crc = practicePackCrcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+                });
+                return (crc ^ 0xffffffff) >>> 0;
+            }
+
+            function practicePackDosDateTime(date = new Date()) {
+                const year = Math.max(1980, date.getFullYear());
+                return {
+                    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+                    date: ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
+                };
+            }
+
+            function practicePackZipBlob(files) {
+                const encoder = new TextEncoder();
+                const localParts = [];
+                const centralParts = [];
+                const { time, date } = practicePackDosDateTime();
+                let offset = 0;
+
+                files.forEach((file) => {
+                    const nameBytes = encoder.encode(file.name);
+                    const data = encoder.encode(file.content);
+                    const crc = practicePackCrc32(data);
+                    const localHeader = new Uint8Array(30);
+                    const localView = new DataView(localHeader.buffer);
+                    localView.setUint32(0, 0x04034b50, true);
+                    localView.setUint16(4, 20, true);
+                    localView.setUint16(6, 0x0800, true);
+                    localView.setUint16(8, 0, true);
+                    localView.setUint16(10, time, true);
+                    localView.setUint16(12, date, true);
+                    localView.setUint32(14, crc, true);
+                    localView.setUint32(18, data.byteLength, true);
+                    localView.setUint32(22, data.byteLength, true);
+                    localView.setUint16(26, nameBytes.byteLength, true);
+                    localView.setUint16(28, 0, true);
+
+                    const centralHeader = new Uint8Array(46);
+                    const centralView = new DataView(centralHeader.buffer);
+                    centralView.setUint32(0, 0x02014b50, true);
+                    centralView.setUint16(4, 20, true);
+                    centralView.setUint16(6, 20, true);
+                    centralView.setUint16(8, 0x0800, true);
+                    centralView.setUint16(10, 0, true);
+                    centralView.setUint16(12, time, true);
+                    centralView.setUint16(14, date, true);
+                    centralView.setUint32(16, crc, true);
+                    centralView.setUint32(20, data.byteLength, true);
+                    centralView.setUint32(24, data.byteLength, true);
+                    centralView.setUint16(28, nameBytes.byteLength, true);
+                    centralView.setUint16(30, 0, true);
+                    centralView.setUint16(32, 0, true);
+                    centralView.setUint16(34, 0, true);
+                    centralView.setUint16(36, 0, true);
+                    centralView.setUint32(38, 0, true);
+                    centralView.setUint32(42, offset, true);
+
+                    localParts.push(localHeader, nameBytes, data);
+                    centralParts.push(centralHeader, nameBytes);
+                    offset += localHeader.byteLength + nameBytes.byteLength + data.byteLength;
+                });
+
+                const centralOffset = offset;
+                const centralSize = centralParts.reduce((sum, part) => sum + part.byteLength, 0);
+                const endHeader = new Uint8Array(22);
+                const endView = new DataView(endHeader.buffer);
+                endView.setUint32(0, 0x06054b50, true);
+                endView.setUint16(4, 0, true);
+                endView.setUint16(6, 0, true);
+                endView.setUint16(8, files.length, true);
+                endView.setUint16(10, files.length, true);
+                endView.setUint32(12, centralSize, true);
+                endView.setUint32(16, centralOffset, true);
+                endView.setUint16(20, 0, true);
+                return new Blob([...localParts, ...centralParts, endHeader], { type: "application/zip" });
+            }
+
+            function downloadPracticePackBlob(blob, filename) {
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.setTimeout(() => URL.revokeObjectURL(url), 250);
+            }
+
+            function downloadPracticePackZip() {
+                if (!practicePackResult?.zipBlob) {
+                    showToast("Generate the practice pack ZIP first.", "info");
+                    return;
+                }
+                downloadPracticePackBlob(practicePackResult.zipBlob, practicePackResult.filename);
+            }
+
+            async function generatePracticePack(event) {
+                event?.preventDefault();
+                const clientFile = document.getElementById("practicePackClientFile")?.files?.[0];
+                const taskFile = document.getElementById("practicePackTaskFile")?.files?.[0];
+                const generateButton = document.getElementById("practicePackGenerateButton");
+                if (!clientFile || !taskFile) {
+                    showToast("Upload both BM CSV files before generating the practice pack.", "info");
+                    return;
+                }
+                if (generateButton) generateButton.disabled = true;
+                try {
+                    const [clientText, taskText] = await Promise.all([clientFile.text(), taskFile.text()]);
+                    const month = currentPracticePackMonth();
+                    const clientData = parsePracticePackCsv(clientText);
+                    const taskData = parsePracticePackCsv(taskText);
+                    if (!clientData.headers.length || !taskData.headers.length) throw new Error("One or both CSV files do not contain a header row.");
+                    const result = buildPracticePackFiles(clientData, taskData, month);
+                    const filename = `${practicePackFileNamePart(month)}-practice-pack.zip`;
+                    const zipBlob = practicePackZipBlob(result.files);
+                    practicePackResult = {
+                        ...result,
+                        filename,
+                        zipBlob,
+                        month,
+                        generatedAt: new Date().toISOString()
+                    };
+                    renderPracticePackScreen();
+                    downloadPracticePackZip();
+                    showToast("Practice pack ZIP generated.", "success");
+                } catch (error) {
+                    console.error("Unable to generate practice pack", error);
+                    showToast(error.message || "Unable to generate the practice pack.", "error");
+                } finally {
+                    if (generateButton) generateButton.disabled = false;
+                }
+            }
+
+            function clearPracticePackScreen() {
+                practicePackResult = null;
+                ["practicePackClientFile", "practicePackTaskFile"].forEach((id) => {
+                    const input = document.getElementById(id);
+                    if (input) input.value = "";
+                });
+                renderPracticePackScreen();
+                showToast("Practice pack cleared.", "info");
+            }
+
+            function renderPracticePackScreen() {
+                initialisePracticePackMonth();
+                const month = practicePackResult?.month || currentPracticePackMonth();
+                const metrics = document.getElementById("practicePackMetrics");
+                if (metrics) {
+                    const cards = [
+                        ["Clients", formatInteger(practicePackResult?.clientCount || 0)],
+                        ["Tasks", formatInteger(practicePackResult?.taskCount || 0)],
+                        ["Staff packs", formatInteger(practicePackResult?.staffPackCount || 0)],
+                        ["Month", month]
+                    ];
+                    metrics.innerHTML = cards.map(([label, value]) => `<article class="practice-pack-output-card"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`).join("");
+                }
+
+                const summary = document.getElementById("practicePackSummary");
+                if (summary) {
+                    if (practicePackResult) {
+                        const unmatched = Number(practicePackResult.unmatchedTaskCount || 0);
+                        summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} CSV file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
+                    } else {
+                        summary.textContent = "Awaiting BM Client File CSV and BM Task File CSV.";
+                    }
+                }
+
+                const outputList = document.getElementById("practicePackOutputList");
+                if (!outputList) return;
+                if (!practicePackResult) {
+                    outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management CSV and one individual staff CSV per assigned owner.</p></div>';
+                    return;
+                }
+                outputList.innerHTML = `
+                    <div class="practice-pack-output-row">
+                        <div><span>ZIP ready</span><strong>${escapeHTML(practicePackResult.filename)}</strong><small>${formatBytes(practicePackResult.zipBlob?.size || 0)} generated ${new Date(practicePackResult.generatedAt).toLocaleString("en-GB")}</small></div>
+                        <button class="primary-button" id="practicePackDownloadZipButton" type="button">Download</button>
+                    </div>
+                    ${practicePackResult.files.map((file) => `
+                        <div class="practice-pack-output-row">
+                            <div><span>CSV file</span><strong>${escapeHTML(file.name)}</strong><small>${formatBytes(new TextEncoder().encode(file.content).byteLength)}</small></div>
+                        </div>
+                    `).join("")}
+                `;
+                document.getElementById("practicePackDownloadZipButton")?.addEventListener("click", downloadPracticePackZip);
+            }
+
+            function wirePracticePackControls() {
+                const form = document.getElementById("practicePackForm");
+                if (form && form.dataset.practicePackWired !== "true") {
+                    form.dataset.practicePackWired = "true";
+                    form.addEventListener("submit", generatePracticePack);
+                }
+                const generateButton = document.getElementById("practicePackGenerateButton");
+                if (generateButton && generateButton.dataset.practicePackWired !== "true") {
+                    generateButton.dataset.practicePackWired = "true";
+                    generateButton.addEventListener("click", () => document.getElementById("practicePackForm")?.requestSubmit());
+                }
+                const clearButton = document.getElementById("practicePackClearButton");
+                if (clearButton && clearButton.dataset.practicePackWired !== "true") {
+                    clearButton.dataset.practicePackWired = "true";
+                    clearButton.addEventListener("click", clearPracticePackScreen);
+                }
+                const monthSelect = document.getElementById("practicePackMonthSelect");
+                if (monthSelect && monthSelect.dataset.practicePackWired !== "true") {
+                    monthSelect.dataset.practicePackWired = "true";
+                    monthSelect.addEventListener("change", renderPracticePackScreen);
+                }
+            }
+
             function renderAll() {
                 syncActiveViewShell();
                 renderChrome();
@@ -18952,6 +20452,7 @@
                 renderSettingsNavigation();
                 renderDatabaseMetrics();
                 renderPendingXeroActions();
+                renderPostingSettings();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
                 renderMeReportEmailSettings();
@@ -18969,6 +20470,7 @@
                 renderBankAccountPanel();
                 renderIgnitionScreen();
                 renderMeReportScreen();
+                renderPracticePackScreen();
                 renderClientScreen();
             }
 
@@ -19287,9 +20789,47 @@
                 return `${year}-${month}-${day}`;
             }
 
+            function systemActivityDeveloperLogEntries() {
+                return (systemActivityItems || []).map((item) => ({
+                    id: item.id || `system-activity-${item.at || ""}-${item.message || ""}`,
+                    level: item.type === "error" ? "error" : "info",
+                    source: "browser",
+                    eventType: `notification.${item.type || "info"}`,
+                    message: item.message || "System notification",
+                    payload: {
+                        label: item.label || "System",
+                        detail: item.detail || ""
+                    },
+                    createdAt: item.at || "",
+                    syncRunId: "",
+                    syncStatus: ""
+                }));
+            }
+
+            function combinedDeveloperLogEntries() {
+                return [
+                    ...developerLogEntries,
+                    ...systemActivityDeveloperLogEntries(),
+                    ...userActivityEntries
+                ]
+                    .filter((entry) => entry?.message || entry?.eventType)
+                    .sort((left, right) => activityTimestamp({ at: right.createdAt }) - activityTimestamp({ at: left.createdAt }))
+                    .slice(0, 500);
+            }
+
+            function developerLogEntryMatchesMode(entry) {
+                const isUserActivity = entry?.source === "user-activity" || String(entry?.eventType || "").startsWith("user.");
+                if (developerLogModeFilter === "user") return isUserActivity;
+                if (developerLogModeFilter === "system") return !isUserActivity;
+                return true;
+            }
+
             function developerLogVisibleEntries() {
-                if (!developerLogDateFilter) return developerLogEntries;
-                return developerLogEntries.filter((entry) => localDateKey(entry.createdAt) === developerLogDateFilter);
+                return combinedDeveloperLogEntries().filter((entry) => {
+                    if (!developerLogEntryMatchesMode(entry)) return false;
+                    if (!developerLogDateFilter) return true;
+                    return localDateKey(entry.createdAt) === developerLogDateFilter;
+                });
             }
 
             function formatDuration(seconds) {
@@ -19345,6 +20885,19 @@
                 if (payload.timeout_seconds) {
                     highlights.push(`Timeout after ${payload.timeout_seconds}s`);
                 }
+                if (entry.source === "user-activity") {
+                    if (payload.action) highlights.push(`Action: ${payload.action}`);
+                    if (payload.view) highlights.push(`View: ${payload.view}${payload.section ? ` · ${payload.section}` : ""}`);
+                    if (payload.target?.label || payload.target?.id) {
+                        highlights.push(`Target: ${payload.target.label || payload.target.id}`);
+                    }
+                    if (payload.method && payload.path) {
+                        highlights.push(`${payload.method} ${payload.path}${payload.statusCode ? ` · HTTP ${payload.statusCode}` : ""}`);
+                    }
+                    if (payload.durationMs != null) {
+                        highlights.push(`Duration: ${payload.durationMs}ms`);
+                    }
+                }
                 return highlights;
             }
 
@@ -19353,18 +20906,26 @@
                 if (!visibleLogs.length) {
                     const empty = document.createElement("div");
                     empty.className = "empty-state";
-                    empty.textContent = developerLogDateFilter ? "No developer log entries for the selected date." : "No developer log entries yet.";
+                    empty.textContent = developerLogDateFilter
+                        ? "No log entries match the selected date and type."
+                        : developerLogModeFilter === "user"
+                            ? "No user activity has been captured yet."
+                            : "No developer log entries yet.";
                     list.appendChild(empty);
                     return;
                 }
                 visibleLogs.forEach((entry) => {
                     const article = document.createElement("article");
                     const isStalled = entry.eventType === "sync.stalled";
-                    article.className = `developer-log-entry ${entry.level === "error" || isStalled ? "is-error" : ""}`;
+                    const classes = ["developer-log-entry"];
+                    if (entry.level === "error" || isStalled) classes.push("is-error");
+                    else if (entry.level === "warning") classes.push("is-warning");
+                    if (entry.source === "user-activity") classes.push("is-user-activity");
+                    article.className = classes.join(" ");
 
                     const meta = document.createElement("div");
                     meta.className = "developer-log-meta";
-                    [formatDeveloperLogStamp(entry.createdAt), entry.level, entry.eventType, entry.syncStatus].filter(Boolean).forEach((value) => {
+                    [formatDeveloperLogStamp(entry.createdAt), entry.source, entry.level, entry.eventType, entry.syncStatus].filter(Boolean).forEach((value) => {
                         const span = document.createElement("span");
                         span.textContent = value;
                         meta.appendChild(span);
@@ -19405,11 +20966,21 @@
                 });
             }
 
+            function syncDeveloperLogModeButtons() {
+                document.querySelectorAll("[data-developer-log-mode]").forEach((button) => {
+                    button.setAttribute("aria-pressed", String(button.dataset.developerLogMode === developerLogModeFilter));
+                });
+            }
+
             function renderDeveloperLogs(logs = developerLogEntries) {
                 developerLogEntries = Array.isArray(logs) ? logs : [];
                 const visibleLogs = developerLogVisibleEntries();
+                const allLogs = combinedDeveloperLogEntries();
+                const userCount = allLogs.filter((entry) => entry.source === "user-activity").length;
+                const systemCount = Math.max(0, allLogs.length - userCount);
                 const suffix = developerLogDateFilter ? ` for ${developerLogDateFilter}` : "";
-                const summaryText = `${visibleLogs.length} of ${developerLogEntries.length} recent sync event${developerLogEntries.length === 1 ? "" : "s"}${suffix}`;
+                const modeLabel = developerLogModeFilter === "user" ? " user activity" : developerLogModeFilter === "system" ? " system" : "";
+                const summaryText = `${visibleLogs.length} of ${allLogs.length} recent${modeLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${userCount} user`;
                 document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
                     summary.textContent = summaryText;
                 });
@@ -19417,13 +20988,14 @@
                     renderDeveloperLogList(list, visibleLogs);
                 });
                 syncDeveloperLogDateInputs();
+                syncDeveloperLogModeButtons();
                 renderGlobalActivityCard();
             }
 
             function developerLogCopyText() {
                 return developerLogVisibleEntries().map((entry) => {
                     const lines = [
-                        `[${formatDeveloperLogStamp(entry.createdAt)}] ${entry.level || ""} ${entry.eventType || ""} ${entry.syncStatus || ""}`.trim(),
+                        `[${formatDeveloperLogStamp(entry.createdAt)}] ${entry.source || ""} ${entry.level || ""} ${entry.eventType || ""} ${entry.syncStatus || ""}`.trim(),
                         entry.message || "",
                     ];
                     if (entry.payload && Object.keys(entry.payload).length) {
@@ -19461,7 +21033,7 @@
 
             async function loadDeveloperLog() {
                 document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
-                    summary.textContent = "Loading sync events...";
+                    summary.textContent = "Loading log entries...";
                 });
                 try {
                     const payload = await requestJSON(api.endpoints.developerLogs);
@@ -19667,6 +21239,183 @@
                     <span>Imported locally: ${openCount.toLocaleString("en-GB")} open, ${paidCount.toLocaleString("en-GB")} paid</span>
                     <span>Remaining: run the next stage when ready</span>
                 `;
+            }
+
+            function normaliseXeroAccounts(accounts = []) {
+                if (!Array.isArray(accounts)) return [];
+                return accounts
+                    .map((account) => ({
+                        id: String(account?.id || ""),
+                        code: String(account?.code || "").trim(),
+                        name: String(account?.name || "").trim(),
+                        type: String(account?.type || "").trim(),
+                        taxType: String(account?.taxType || "").trim(),
+                        class: String(account?.class || "").trim(),
+                        status: String(account?.status || "").trim()
+                    }))
+                    .filter((account) => account.code);
+            }
+
+            function postingAccountLabel(account) {
+                const parts = [
+                    account.code,
+                    account.name || "Unnamed account",
+                    account.type ? `(${account.type})` : ""
+                ].filter(Boolean);
+                return parts.join(" ");
+            }
+
+            function postingAccountDescription(code, name) {
+                const account = xeroAccounts.find((item) => item.code === code);
+                if (account) return postingAccountLabel(account);
+                return [code, name].filter(Boolean).join(" ") || "Not set";
+            }
+
+            function postingAccountOptions(selectedCode, selectedName) {
+                const selected = String(selectedCode || "").trim();
+                const accounts = [...xeroAccounts];
+                if (selected && !accounts.some((account) => account.code === selected)) {
+                    accounts.unshift({
+                        id: `saved-${selected}`,
+                        code: selected,
+                        name: selectedName || "Current saved account",
+                        type: "Saved",
+                        taxType: "",
+                        class: "",
+                        status: ""
+                    });
+                }
+                if (!accounts.length) {
+                    return `<option value="">${isXeroConnected() ? "Load Xero COA to choose an account" : "Connect Xero to load accounts"}</option>`;
+                }
+                return [
+                    '<option value="">Choose an account</option>',
+                    ...accounts.map((account) => `<option value="${escapeHTML(account.code)}">${escapeHTML(postingAccountLabel(account))}</option>`)
+                ].join("");
+            }
+
+            function renderPostingAccountSelect(select, selectedCode, selectedName) {
+                if (!select) return;
+                const value = String(selectedCode || "").trim();
+                select.innerHTML = postingAccountOptions(value, selectedName);
+                select.value = value;
+                select.disabled = !isXeroConnected() || xeroAccountsLoading || postingSettingsSaving || !xeroAccountsLoaded || !xeroAccounts.length;
+            }
+
+            function renderPostingSettings() {
+                const settings = normalisePostingSettings(state.postingSettings || {});
+                const lateSelect = document.getElementById("latePaymentChargeAccountSelect");
+                const badDebtSelect = document.getElementById("badDebtWriteOffAccountSelect");
+                const status = document.getElementById("postingSettingsStatus");
+                const help = document.getElementById("postingSettingsHelp");
+                const saveButton = document.getElementById("savePostingSettingsButton");
+                const reloadButton = document.getElementById("reloadXeroAccountsButton");
+
+                renderPostingAccountSelect(lateSelect, settings.latePaymentChargeAccountCode, settings.latePaymentChargeAccountName);
+                renderPostingAccountSelect(badDebtSelect, settings.badDebtWriteOffAccountCode, settings.badDebtWriteOffAccountName);
+
+                if (help) {
+                    help.textContent = `Late payment charges use ${settings.latePaymentChargeTaxType || "OUTPUT2"} VAT. Bad debt write-offs create no-VAT credit notes and allocate them to the original invoice.`;
+                }
+                if (status) {
+                    const lateAccount = postingAccountDescription(settings.latePaymentChargeAccountCode, settings.latePaymentChargeAccountName);
+                    const badDebtAccount = postingAccountDescription(settings.badDebtWriteOffAccountCode, settings.badDebtWriteOffAccountName);
+                    const loadedCopy = xeroAccountsLoaded
+                        ? `${xeroAccounts.length.toLocaleString("en-GB")} active Xero account${xeroAccounts.length === 1 ? "" : "s"} loaded.`
+                        : isXeroConnected()
+                        ? "Load the connected Xero chart of accounts to change these codes."
+                        : "Connect Xero before changing posting accounts.";
+                    const stateCopy = postingSettingsError || (xeroAccountsLoading ? "Loading Xero chart of accounts..." : loadedCopy);
+                    status.innerHTML = `
+                        <span>Current codes</span>
+                        <div>Late payment charges: ${escapeHTML(lateAccount)}</div>
+                        <div>Bad debt write-offs: ${escapeHTML(badDebtAccount)}</div>
+                        <div>${escapeHTML(stateCopy)}</div>
+                    `;
+                }
+                if (saveButton) {
+                    saveButton.disabled = !isXeroConnected() || !xeroAccountsLoaded || !xeroAccounts.length || xeroAccountsLoading || postingSettingsSaving;
+                    saveButton.textContent = postingSettingsSaving ? "Saving codes..." : "Save codes";
+                }
+                if (reloadButton) {
+                    reloadButton.disabled = !isXeroConnected() || xeroAccountsLoading || postingSettingsSaving;
+                    reloadButton.textContent = xeroAccountsLoading ? "Loading COA..." : "Reload COA";
+                }
+            }
+
+            async function loadXeroPostingSettings(force = false) {
+                if (!isXeroConnected()) {
+                    postingSettingsError = "";
+                    renderPostingSettings();
+                    return;
+                }
+                if (xeroAccountsLoading || (xeroAccountsLoaded && !force)) return;
+                xeroAccountsLoading = true;
+                postingSettingsError = "";
+                renderPostingSettings();
+                try {
+                    const payload = await requestJSON(api.endpoints.xeroAccounts);
+                    xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || payload?.accounts || []);
+                    state.postingSettings = normalisePostingSettings(payload?.postingSettings || state.postingSettings);
+                    xeroAccountsLoaded = true;
+                } catch (error) {
+                    console.error("Unable to load Xero chart of accounts", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        postingSettingsError = error.message || "Unable to load the Xero chart of accounts.";
+                        showToast(postingSettingsError, "error");
+                    }
+                } finally {
+                    xeroAccountsLoading = false;
+                    renderPostingSettings();
+                }
+            }
+
+            async function savePostingSettings(event) {
+                event?.preventDefault();
+                if (!isXeroConnected()) return showToast("Connect Xero before saving posting accounts", "error");
+                const latePaymentChargeAccountCode = document.getElementById("latePaymentChargeAccountSelect")?.value || "";
+                const badDebtWriteOffAccountCode = document.getElementById("badDebtWriteOffAccountSelect")?.value || "";
+                if (!latePaymentChargeAccountCode || !badDebtWriteOffAccountCode) {
+                    return showToast("Choose both Xero posting accounts before saving", "error");
+                }
+                postingSettingsSaving = true;
+                postingSettingsError = "";
+                const saveButton = document.getElementById("savePostingSettingsButton");
+                const reloadButton = document.getElementById("reloadXeroAccountsButton");
+                if (saveButton) {
+                    saveButton.disabled = true;
+                    saveButton.textContent = "Saving codes...";
+                }
+                if (reloadButton) reloadButton.disabled = true;
+                try {
+                    const payload = await requestJSON(api.endpoints.postingSettings, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            latePaymentChargeAccountCode,
+                            badDebtWriteOffAccountCode,
+                            latePaymentChargeTaxType: state.postingSettings?.latePaymentChargeTaxType || defaultPostingSettings.latePaymentChargeTaxType
+                        })
+                    });
+                    xeroAccounts = normaliseXeroAccounts(payload?.xeroAccounts || xeroAccounts);
+                    xeroAccountsLoaded = true;
+                    state.postingSettings = normalisePostingSettings(payload?.postingSettings || state.postingSettings);
+                    if (payload?.panel) replaceState(normaliseState(payload.panel));
+                    renderAll();
+                    showToast("Posting codes saved", "success");
+                } catch (error) {
+                    console.error("Unable to save posting settings", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        postingSettingsError = error.message || "Unable to save posting codes.";
+                        showToast(postingSettingsError, "error");
+                    }
+                } finally {
+                    postingSettingsSaving = false;
+                    renderPostingSettings();
+                }
             }
 
             function renderDatabaseMetrics() {
@@ -20254,8 +22003,8 @@
                 },
                 "developer-log": {
                     eyebrow: "Developer log",
-                    title: "Developer Log / Audit",
-                    meta: "Inspect sync events, backend errors, and audit activity."
+                    title: "Developer Log / Activity Audit",
+                    meta: "Inspect sync events, backend errors, API calls, and user activity."
                 },
                 "system-status": {
                     eyebrow: "System status",
@@ -20308,6 +22057,7 @@
                 renderAll();
                 loadPendingXeroActions();
                 loadDeveloperLog();
+                if (activeSettingsSection === "mapping") loadXeroPostingSettings();
                 if (activeSettingsSection === "me-report-email") loadMeReport(true);
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
@@ -20498,6 +22248,7 @@
                 state.audit = Array.isArray(panel?.audit) ? panel.audit : [];
                 state.selectedInvoice = panel?.selectedInvoice || null;
                 state.cacheStatus = panel?.cacheStatus || {};
+                state.postingSettings = normalisePostingSettings(panel?.postingSettings || emptyData.postingSettings);
                 state.databaseMetrics = panel?.databaseMetrics || {};
                 persistState();
                 persistSyncSettings();
@@ -20858,6 +22609,14 @@
                         renderDeveloperLogs();
                     });
                 });
+                document.querySelectorAll("[data-developer-log-mode]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        developerLogModeFilter = ["all", "system", "user"].includes(button.dataset.developerLogMode)
+                            ? button.dataset.developerLogMode
+                            : "all";
+                        renderDeveloperLogs();
+                    });
+                });
                 const closeDeveloperLogButton = document.getElementById("closeDeveloperLogButton");
                 if (closeDeveloperLogButton) closeDeveloperLogButton.addEventListener("click", closeDeveloperLog);
                 const developerLogPanel = document.getElementById("developerLogPanel");
@@ -20901,6 +22660,8 @@
                     renderSettingsNavigation();
                 });
                 document.getElementById("factoryOpenResetPageButton")?.addEventListener("click", () => openSettingsScreen("factory-reset", "factory"));
+                document.getElementById("postingSettingsForm")?.addEventListener("submit", savePostingSettings);
+                document.getElementById("reloadXeroAccountsButton")?.addEventListener("click", () => loadXeroPostingSettings(true));
                 const menuInsightsButton = document.getElementById("menuInsightsButton");
                 if (menuInsightsButton) menuInsightsButton.addEventListener("click", openInsightsScreen);
                 const menuLateChargesButton = document.getElementById("menuLateChargesButton");
@@ -20915,6 +22676,7 @@
                 if (menuIgnitionButton) menuIgnitionButton.addEventListener("click", openIgnitionScreen);
                 const menuMeReportButton = document.getElementById("menuMeReportButton");
                 if (menuMeReportButton) menuMeReportButton.addEventListener("click", openMeReportScreen);
+                wirePracticePackControls();
                 const toggleJashflowSetupButton = document.getElementById("toggleJashflowSetupButton");
                 if (toggleJashflowSetupButton) toggleJashflowSetupButton.addEventListener("click", () => {
                     jashflowSettingsOpen = !jashflowSettingsOpen;
@@ -21382,6 +23144,7 @@
                 const returnedFromIgnitionConnection = ignitionConnectionReturn.connected;
                 let panelPayload = null;
                 wireCriticalNavigation();
+                wireUserActivityLogging();
                 const initialSection = appNavSectionFromHash();
                 if (returnedFromIgnitionConnection) {
                     activeView = "ignition";

@@ -13,6 +13,7 @@ from .database import get_connection, utcnow
 
 TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
+ACCOUNTS_URL = "https://api.xero.com/api.xro/2.0/Accounts"
 CONTACTS_URL = "https://api.xero.com/api.xro/2.0/Contacts"
 INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices"
 CREDIT_NOTES_URL = "https://api.xero.com/api.xro/2.0/CreditNotes"

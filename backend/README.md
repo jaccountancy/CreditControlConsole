@@ -34,7 +34,7 @@ Required variables:
 - `IGNITION_SCOPES=reporting`
 - `IGNITION_RENEWALS_RECIPIENT_EMAIL=amie@jaccountancy.co.uk`
 - `IGNITION_RENEWALS_ZAPIER_WEBHOOK_URL`
-- `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
+- `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk,https://my.jaccountancy.co.uk`
 - `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
 - `LATE_PAYMENT_CHARGE_TAX_TYPE=OUTPUT2`
 - `BAD_DEBT_WRITE_OFF_ACCOUNT_CODE=402`
@@ -57,6 +57,7 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - `/auth/xero/start` login with Xero
 - `/auth/xero/callback` OAuth callback
 - `/auth/ignition/start` login with Ignition
+- `/api/ignition/connect` authenticated Ignition OAuth start endpoint
 - `/api/ignition/callback` Ignition OAuth callback
 - `/auth/ignition/callback` legacy Ignition OAuth callback alias
 - `/customers` customer list

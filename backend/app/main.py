@@ -48,6 +48,10 @@ from .services import (
     customer_xero_transactions,
     dashboard_payload,
     disconnect_xero,
+    delete_bank_statement_client,
+    delete_bank_statement_upload,
+    delete_me_report_client,
+    delete_me_report_submission,
     factory_reset_console,
     get_xero_connection_for_user,
     get_operation_run,
@@ -91,6 +95,7 @@ from .services import (
     run_invoice_operation_job,
     run_sync,
     run_sync_job,
+    save_posting_settings,
     serialize_sync_run,
     serialize_xero_rate_limit,
     serialize_ignition_sync_run,
@@ -111,6 +116,7 @@ from .services import (
     update_me_report_exception,
     update_me_report_mapping,
     update_me_report_settings,
+    xero_chart_of_accounts_payload,
     bank_statement_payload,
     bulk_update_invoice_status,
     bulk_send_me_report_emails,
@@ -143,7 +149,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=sorted(allowed_panel_origins()),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
@@ -432,8 +438,7 @@ def current_user_or_oauth_state_user(request: Request, state_row: dict) -> dict 
     return row
 
 
-@app.get("/auth/ignition/start")
-def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
+def build_ignition_authorize_url(user: dict, redirect_to: str) -> str:
     redirect_to = normalise_oauth_redirect(redirect_to)
     verifier = create_pkce_verifier()
     state_token = start_oauth_state(
@@ -442,10 +447,29 @@ def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_pan
         provider="ignition",
         code_verifier=verifier,
     )
+    return ignition_authorize_url(state_token, verifier)
+
+
+@app.get("/auth/ignition/start")
+def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
     try:
-        authorize_url = ignition_authorize_url(state_token, verifier)
+        authorize_url = build_ignition_authorize_url(user, redirect_to)
     except IgnitionConfigurationError as exc:
         return xero_login_error_response(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Ignition")
+    return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/api/ignition/connect")
+def api_ignition_connect(request: Request, redirect_to: str = "/", user: dict = Depends(require_panel_user)):
+    try:
+        authorize_url = build_ignition_authorize_url(user, redirect_to)
+    except IgnitionConfigurationError as exc:
+        if wants_json(request):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"message": str(exc)}) from exc
+        return xero_login_error_response(str(exc), status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Ignition")
+
+    if wants_json(request):
+        return {"status": "ok", "authorizationUrl": authorize_url}
     return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
 
 
@@ -826,6 +850,18 @@ def api_xero_disconnect(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **disconnect_xero(user)}
 
 
+@app.get("/api/xero/chart-of-accounts")
+async def api_xero_chart_of_accounts(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await xero_chart_of_accounts_payload(user)}
+
+
+@app.post("/api/xero/posting-settings")
+async def api_xero_posting_settings(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    settings_payload = await save_posting_settings(user, payload)
+    return {"status": "ok", **settings_payload, "panel": panel_payload(user)}
+
+
 @app.post("/api/panel/factory-reset")
 def api_panel_factory_reset(user: dict = Depends(require_panel_user)):
     reset = factory_reset_console(user)
@@ -1053,6 +1089,11 @@ async def api_update_me_report_client_status(client_id: str, request: Request, u
     return {"status": "ok", "meReport": update_me_report_client_status(user, client_id, payload)}
 
 
+@app.delete("/api/me-report/clients/{client_id}")
+def api_delete_me_report_client(client_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": delete_me_report_client(user, client_id)}
+
+
 @app.post("/api/me-report/clients/{client_id}/connect-xero")
 def api_connect_me_report_client_xero(client_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": connect_me_report_client_to_current_xero(user, client_id)}
@@ -1130,6 +1171,11 @@ async def api_upload_me_report_submission(
     }
 
 
+@app.delete("/api/me-report/submissions/{submission_id}")
+def api_delete_me_report_submission(submission_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": delete_me_report_submission(user, submission_id)}
+
+
 @app.get("/api/me-report/reports/{report_id}/download", response_class=HTMLResponse)
 def api_download_me_report(report_id: str, user: dict = Depends(require_panel_user)):
     return HTMLResponse(me_report_report_html(user, report_id))
@@ -1154,6 +1200,11 @@ def api_bank_statements(user: dict = Depends(require_panel_user)):
 async def api_add_bank_statement_client(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "bankStatements": add_bank_statement_client(user, payload)}
+
+
+@app.delete("/api/bank-statements/clients/{client_id}")
+def api_delete_bank_statement_client(client_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "bankStatements": delete_bank_statement_client(user, client_id)}
 
 
 @app.post("/api/bank-statements/clients/{client_id}/accounts")
@@ -1217,6 +1268,11 @@ async def api_retry_bank_statement_upload(
         True,
     )
     return {"status": "ok", "bankStatements": result}
+
+
+@app.delete("/api/bank-statements/uploads/{upload_id}")
+def api_delete_bank_statement_upload(upload_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "bankStatements": delete_bank_statement_upload(user, upload_id)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")
