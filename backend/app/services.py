@@ -134,6 +134,7 @@ DATABASE_METRIC_TABLES = {
 }
 _PREVIOUS_SIGTERM_HANDLER = None
 _SYNC_SIGNAL_HANDLERS_INSTALLED = False
+DEVELOPER_LOG_CLEAR_EVENT_TYPE = "developer.logs.cleared"
 
 
 def _json_default(value):
@@ -2482,21 +2483,123 @@ def active_sync_run_for_user(user: dict | None) -> dict | None:
     return row
 
 
+def _developer_log_cutoff_for_user(user_id: str) -> datetime | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT created_at
+                FROM audit_events
+                WHERE user_id = %s
+                  AND event_type = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user_id, DEVELOPER_LOG_CLEAR_EVENT_TYPE),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row.get("created_at") if row else None
+
+
+def clear_developer_logs(user: dict) -> dict:
+    previous_cutoff = _developer_log_cutoff_for_user(user["id"])
+    cleared_at = utcnow()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM audit_events
+                WHERE (user_id = %s OR user_id IS NULL)
+                  AND (
+                      entity_type = 'sync_run'
+                      OR entity_type = 'ignition_sync_run'
+                      OR entity_type = 'xero_connection'
+                      OR event_type LIKE 'sync.%%'
+                      OR event_type LIKE 'xero.%%'
+                      OR event_type LIKE 'ignition.%%'
+                  )
+                  AND (%s::timestamptz IS NULL OR created_at > %s::timestamptz)
+                """,
+                (user["id"], previous_cutoff, previous_cutoff),
+            )
+            audit_count = int((cursor.fetchone() or {}).get("count") or 0)
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM sync_runs
+                WHERE provider = %s
+                  AND initiated_by_user_id = %s
+                  AND (%s::timestamptz IS NULL OR created_at > %s::timestamptz)
+                """,
+                ("xero", user["id"], previous_cutoff, previous_cutoff),
+            )
+            sync_run_count = int((cursor.fetchone() or {}).get("count") or 0)
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM ignition_sync_runs
+                WHERE user_id = %s
+                  AND (%s::timestamptz IS NULL OR created_at > %s::timestamptz)
+                """,
+                (user["id"], previous_cutoff, previous_cutoff),
+            )
+            ignition_sync_run_count = int((cursor.fetchone() or {}).get("count") or 0)
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id, created_at)
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                """,
+                (
+                    "developer_log",
+                    str(user["id"]),
+                    DEVELOPER_LOG_CLEAR_EVENT_TYPE,
+                    json.dumps(
+                        {
+                            "previous_cutoff": _iso(previous_cutoff),
+                            "cleared_at": _iso(cleared_at),
+                            "audit_events": audit_count,
+                            "sync_runs": sync_run_count,
+                            "ignition_sync_runs": ignition_sync_run_count,
+                        },
+                        default=_json_default,
+                    ),
+                    user["id"],
+                    cleared_at,
+                ),
+            )
+        connection.commit()
+
+    logs_cleared = audit_count + sync_run_count + ignition_sync_run_count
+    return {
+        "clearedAt": _iso(cleared_at),
+        "logsCleared": logs_cleared,
+        "breakdown": {
+            "auditEvents": audit_count,
+            "syncRuns": sync_run_count,
+            "ignitionSyncRuns": ignition_sync_run_count,
+        },
+    }
+
+
 def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     bounded_limit = max(1, min(int(limit or 120), 300))
+    cutoff = _developer_log_cutoff_for_user(user["id"])
     logs: list[dict] = []
     try:
-        logs.extend(_list_audit_developer_logs(user, bounded_limit))
+        logs.extend(_list_audit_developer_logs(user, bounded_limit, cutoff))
     except Exception as exc:
         logger.exception("Unable to load audit developer logs")
         logs.append(_developer_log_error_entry("developer.log.query.failed", exc))
     try:
-        logs.extend(_list_sync_run_developer_logs(user, bounded_limit))
+        logs.extend(_list_sync_run_developer_logs(user, bounded_limit, cutoff))
     except Exception as exc:
         logger.exception("Unable to load sync run developer logs")
         logs.append(_developer_log_error_entry("developer.log.sync_runs.failed", exc))
     try:
-        logs.extend(_list_ignition_sync_run_developer_logs(user, bounded_limit))
+        logs.extend(_list_ignition_sync_run_developer_logs(user, bounded_limit, cutoff))
     except Exception as exc:
         logger.exception("Unable to load Ignition sync run developer logs")
         logs.append(_developer_log_error_entry("developer.log.ignition_sync_runs.failed", exc))
@@ -2505,7 +2608,7 @@ def list_developer_logs(user: dict, limit: int = 120) -> list[dict]:
     return logs[:bounded_limit]
 
 
-def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
+def _list_audit_developer_logs(user: dict, limit: int, cutoff: datetime | None = None) -> list[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -2521,10 +2624,11 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
                       OR audit_events.event_type LIKE 'xero.%%'
                       OR audit_events.event_type LIKE 'ignition.%%'
                   )
+                  AND (%s::timestamptz IS NULL OR audit_events.created_at > %s::timestamptz)
                 ORDER BY audit_events.created_at DESC
                 LIMIT %s
                 """,
-                (user["id"], limit),
+                (user["id"], cutoff, cutoff, limit),
             )
             rows = cursor.fetchall()
         connection.commit()
@@ -2545,7 +2649,7 @@ def _list_audit_developer_logs(user: dict, limit: int) -> list[dict]:
     ]
 
 
-def _list_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
+def _list_sync_run_developer_logs(user: dict, limit: int, cutoff: datetime | None = None) -> list[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -2554,10 +2658,11 @@ def _list_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
                 FROM sync_runs
                 WHERE provider = %s
                   AND initiated_by_user_id = %s
+                  AND (%s::timestamptz IS NULL OR created_at > %s::timestamptz)
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
-                ("xero", user["id"], limit),
+                ("xero", user["id"], cutoff, cutoff, limit),
             )
             rows = cursor.fetchall()
         connection.commit()
@@ -2581,7 +2686,7 @@ def _list_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
     return logs
 
 
-def _list_ignition_sync_run_developer_logs(user: dict, limit: int) -> list[dict]:
+def _list_ignition_sync_run_developer_logs(user: dict, limit: int, cutoff: datetime | None = None) -> list[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -2589,10 +2694,11 @@ def _list_ignition_sync_run_developer_logs(user: dict, limit: int) -> list[dict]
                 SELECT *
                 FROM ignition_sync_runs
                 WHERE user_id = %s
+                  AND (%s::timestamptz IS NULL OR created_at > %s::timestamptz)
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
-                (user["id"], limit),
+                (user["id"], cutoff, cutoff, limit),
             )
             rows = cursor.fetchall()
         connection.commit()

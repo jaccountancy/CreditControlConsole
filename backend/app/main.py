@@ -71,6 +71,7 @@ from .services import (
     save_jashflow_settings,
     update_jashflow_loan,
     list_customers,
+    clear_developer_logs,
     list_developer_logs,
     connect_me_report_client_to_current_xero,
     create_me_report_client,
@@ -868,6 +869,11 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
 @app.get("/api/developer/logs")
 def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depends(require_panel_user)):
     return {"logs": list_developer_logs(user, limit)}
+
+
+@app.post("/api/developer/logs/clear")
+def api_developer_logs_clear(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **clear_developer_logs(user)}
 
 
 @app.post("/api/xero/disconnect")
