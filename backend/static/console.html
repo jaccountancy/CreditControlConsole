@@ -327,6 +327,7 @@
                 backdrop-filter: blur(12px);
             }
             .app-sidebar-brand {
+                position: relative;
                 display: flex;
                 align-items: center;
                 width: 100%;
@@ -335,7 +336,17 @@
                 border-radius: 22px;
                 color: inherit;
                 text-align: left;
-                transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+                overflow: hidden;
+                transition: min-height 0.34s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+            }
+            .app-sidebar-brand::before {
+                content: "";
+                position: absolute;
+                inset: -30% -70%;
+                background: linear-gradient(110deg, transparent 34%, rgba(255, 255, 255, 0.66) 48%, transparent 62%);
+                opacity: 0;
+                transform: translateX(-45%);
+                pointer-events: none;
             }
             .app-sidebar-brand:hover,
             .app-sidebar-brand:focus-visible {
@@ -354,6 +365,169 @@
                 width: 100%;
                 height: auto;
                 object-fit: contain;
+                transition: opacity 0.22s ease, transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .app-sidebar-brand.is-support-active {
+                min-height: 142px;
+                align-items: stretch;
+                padding: 12px;
+                border-color: rgba(29, 103, 242, 0.26);
+                background:
+                    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.9)),
+                    linear-gradient(90deg, rgba(29, 103, 242, 0.12), rgba(39, 176, 95, 0.1));
+                box-shadow: 0 18px 38px rgba(29, 103, 242, 0.14), 0 10px 24px rgba(30, 47, 77, 0.1);
+                animation: sidebar-support-pulse 2.8s ease-in-out infinite;
+            }
+            .app-sidebar-brand.is-support-active::before {
+                opacity: 1;
+                animation: sidebar-support-sheen 2.8s ease-in-out infinite;
+            }
+            .app-sidebar-brand.is-support-active .app-sidebar-logo {
+                position: absolute;
+                inset: 14px;
+                width: calc(100% - 28px);
+                opacity: 0;
+                transform: translateY(-8px) scale(0.92);
+            }
+            .sidebar-support-bubble {
+                position: relative;
+                z-index: 1;
+                width: 100%;
+                display: grid;
+                align-content: center;
+                gap: 7px;
+                opacity: 0;
+                transform: translateY(9px) scale(0.98);
+                animation: sidebar-support-arrive 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+            .sidebar-support-bubble[hidden] {
+                display: none;
+            }
+            .sidebar-support-head {
+                min-width: 0;
+                display: grid;
+                grid-template-columns: 34px minmax(0, 1fr);
+                align-items: center;
+                gap: 8px;
+            }
+            .sidebar-support-mark {
+                position: relative;
+                width: 34px;
+                height: 34px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 12px;
+                background: linear-gradient(135deg, var(--blue), #2a8dcd);
+                color: #ffffff;
+                box-shadow: 0 10px 18px rgba(29, 103, 242, 0.2);
+            }
+            .sidebar-support-mark::after {
+                content: "";
+                position: absolute;
+                inset: -5px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 16px;
+                animation: sidebar-support-ring 1.6s ease-out infinite;
+            }
+            .sidebar-support-mark svg {
+                width: 18px;
+                height: 18px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2.4;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .sidebar-support-copy {
+                min-width: 0;
+                display: grid;
+                gap: 1px;
+            }
+            .sidebar-support-kicker,
+            .sidebar-support-title,
+            .sidebar-support-detail,
+            .sidebar-support-meta {
+                display: block;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .sidebar-support-kicker {
+                color: var(--blue);
+                font-size: 0.56rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                white-space: nowrap;
+            }
+            .sidebar-support-title {
+                color: var(--ink);
+                font-size: 0.82rem;
+                font-weight: 950;
+                line-height: 1.08;
+                white-space: nowrap;
+            }
+            .sidebar-support-detail {
+                color: #536782;
+                font-size: 0.68rem;
+                font-weight: 800;
+                line-height: 1.22;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                white-space: normal;
+            }
+            .sidebar-support-progress {
+                position: relative;
+                height: 6px;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.12);
+                overflow: hidden;
+            }
+            .sidebar-support-progress::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                width: 42%;
+                background: linear-gradient(90deg, transparent, rgba(29, 103, 242, 0.46), transparent);
+                animation: sync-inline-shimmer 1.6s linear infinite;
+            }
+            .sidebar-support-progress span {
+                position: relative;
+                z-index: 1;
+                display: block;
+                width: 0%;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #2a8dcd, var(--blue), var(--green));
+                transition: width 0.45s ease;
+            }
+            .sidebar-support-meta {
+                color: var(--blue);
+                font-size: 0.58rem;
+                font-weight: 950;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+                white-space: nowrap;
+            }
+            body.has-sidebar-support-bubble .ledger-topbar #syncInlineBanner:not(.is-dismissible):not(.is-error):not(.is-success):not(.is-warning),
+            body.has-sidebar-support-bubble .ledger-topbar #aiInlineBanner,
+            body.has-sidebar-support-bubble .ledger-topbar #ignitionTopbarWidget {
+                display: none !important;
+            }
+            @keyframes sidebar-support-arrive {
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            @keyframes sidebar-support-pulse {
+                0%, 100% { box-shadow: 0 18px 38px rgba(29, 103, 242, 0.14), 0 10px 24px rgba(30, 47, 77, 0.1); }
+                50% { box-shadow: 0 22px 46px rgba(29, 103, 242, 0.2), 0 12px 28px rgba(39, 176, 95, 0.12); }
+            }
+            @keyframes sidebar-support-sheen {
+                0% { transform: translateX(-45%); }
+                52%, 100% { transform: translateX(48%); }
+            }
+            @keyframes sidebar-support-ring {
+                0% { opacity: 0.55; transform: scale(0.84); }
+                100% { opacity: 0; transform: scale(1.18); }
             }
             .app-sidebar-card {
                 flex: 1 1 auto;
@@ -524,10 +698,23 @@
                 .app-sidebar-link,
                 .app-sidebar-connect,
                 .app-nav-icon,
+                .app-sidebar-brand,
+                .app-sidebar-logo,
                 .settings-sidebar-back,
                 .settings-sidebar-button,
                 .settings-sidebar-icon {
                     transition: none;
+                }
+                .app-sidebar-brand.is-support-active,
+                .app-sidebar-brand.is-support-active::before,
+                .sidebar-support-bubble,
+                .sidebar-support-mark::after,
+                .sidebar-support-progress::before {
+                    animation: none;
+                }
+                .sidebar-support-bubble {
+                    opacity: 1;
+                    transform: none;
                 }
                 .app-nav-button:hover .app-nav-icon,
                 .app-sidebar-link:hover .app-nav-icon,
@@ -5240,6 +5427,14 @@
             }
             .jashflow-list-toolbar {
                 align-items: flex-start;
+                justify-content: flex-end;
+            }
+            .jashflow-toolbar-actions {
+                display: flex;
+                align-items: flex-end;
+                justify-content: flex-end;
+                gap: 8px;
+                flex-wrap: wrap;
             }
             .jashflow-loan-controls {
                 display: flex;
@@ -5247,7 +5442,6 @@
                 justify-content: flex-end;
                 gap: 10px;
                 flex-wrap: wrap;
-                margin-left: auto;
             }
             .jashflow-loan-control {
                 display: grid;
@@ -6973,60 +7167,6 @@
                 border-color: rgba(29, 103, 242, 0.28);
                 background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(233, 241, 255, 0.78), rgba(232, 248, 238, 0.68));
                 box-shadow: 0 18px 46px rgba(29, 103, 242, 0.11);
-            }
-            .bank-upload-processing-card {
-                position: relative;
-                overflow: hidden;
-                padding: 16px;
-                border: 1px solid rgba(29, 103, 242, 0.2);
-                border-radius: 16px;
-                background: rgba(233, 241, 255, 0.72);
-                box-shadow: 0 14px 40px rgba(29, 103, 242, 0.10);
-                animation: bank-processing-enter 0.42s ease both, bank-processing-pulse 2.6s ease-in-out infinite;
-            }
-            .bank-upload-processing-card::before {
-                content: "";
-                position: absolute;
-                inset: 0;
-                background: linear-gradient(115deg, transparent 0%, rgba(255, 255, 255, 0.62) 42%, transparent 70%);
-                transform: translateX(-120%);
-                animation: bank-processing-sheen 2.4s ease-in-out infinite;
-                pointer-events: none;
-            }
-            .bank-upload-processing-card .sync-progress-head {
-                position: relative;
-                margin-bottom: 12px;
-                z-index: 1;
-            }
-            .bank-upload-processing-card .sync-progress-track,
-            .bank-upload-processing-card .sync-progress-meta {
-                position: relative;
-                z-index: 1;
-            }
-            .bank-upload-processing-card h3,
-            .bank-upload-processing-card p {
-                margin: 0;
-            }
-            .bank-upload-processing-card p {
-                margin-top: 3px;
-                color: var(--muted);
-                font-weight: 750;
-            }
-            .bank-processing-view-button {
-                margin-top: 10px;
-                padding: 9px 14px;
-            }
-            @keyframes bank-processing-enter {
-                from { opacity: 0; transform: translateY(-8px) scale(0.985); }
-                to { opacity: 1; transform: translateY(0) scale(1); }
-            }
-            @keyframes bank-processing-pulse {
-                0%, 100% { box-shadow: 0 14px 40px rgba(29, 103, 242, 0.10); }
-                50% { box-shadow: 0 18px 48px rgba(39, 176, 95, 0.14); }
-            }
-            @keyframes bank-processing-sheen {
-                0% { transform: translateX(-120%); }
-                48%, 100% { transform: translateX(130%); }
             }
             .bank-client-table,
             .bank-account-table {
@@ -9699,6 +9839,7 @@
                 #jashflowScreen .detail-hero {
                     grid-template-columns: 1fr;
                 }
+                .jashflow-toolbar-actions,
                 .jashflow-loan-controls,
                 .jashflow-loan-control,
                 .jashflow-loan-search input {
@@ -9776,21 +9917,11 @@
             }
             }
             .jashflow-topbar-summary {
-                flex-basis: 940px;
-                min-width: min(900px, 100%);
-                grid-template-columns: repeat(5, minmax(86px, 1fr)) minmax(210px, 0.9fr);
+                flex-basis: 760px;
+                min-width: min(740px, 100%);
+                grid-template-columns: repeat(5, minmax(86px, 1fr));
             }
-            .jashflow-topbar-actions {
-                min-width: 0;
-                padding: 6px;
-                display: flex;
-                align-items: center;
-                justify-content: flex-end;
-                gap: 6px;
-                flex-wrap: wrap;
-                background: rgba(248, 251, 255, 0.92);
-            }
-            .jashflow-topbar-action {
+            .jashflow-action-button {
                 min-height: 34px;
                 min-width: 0;
                 padding: 7px 11px;
@@ -9808,31 +9939,31 @@
                 white-space: nowrap;
                 transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease, background 0.22s ease, color 0.22s ease, box-shadow 0.22s ease;
             }
-            .jashflow-topbar-action:hover,
-            .jashflow-topbar-action:focus-visible {
+            .jashflow-action-button:hover,
+            .jashflow-action-button:focus-visible {
                 border-color: rgba(29, 103, 242, 0.28);
                 background: #ffffff;
                 box-shadow: 0 8px 18px rgba(30, 47, 77, 0.08);
                 outline: none;
                 transform: translateY(-1px);
             }
-            .jashflow-topbar-action.is-primary {
+            .jashflow-action-button.is-primary {
                 border-color: rgba(29, 103, 242, 0.2);
                 background: var(--blue);
                 color: #ffffff;
                 box-shadow: 0 10px 22px rgba(29, 103, 242, 0.18);
             }
-            .jashflow-topbar-action.is-secondary.is-active {
+            .jashflow-action-button.is-secondary.is-active {
                 border-color: rgba(39, 176, 95, 0.26);
                 background: var(--green-soft);
                 color: #168246;
             }
-            .jashflow-topbar-action.is-primary.is-active {
+            .jashflow-action-button.is-primary.is-active {
                 border-color: rgba(39, 176, 95, 0.28);
                 background: var(--green);
                 box-shadow: 0 10px 22px rgba(39, 176, 95, 0.18);
             }
-            .jashflow-topbar-action[hidden] { display: none; }
+            .jashflow-action-button[hidden] { display: none; }
             .ledger-topbar.has-inline-status,
             .ledger-topbar.has-inline-status.has-topbar-refresh-action,
             body.is-ledger-view .ledger-topbar.has-inline-status,
@@ -9915,20 +10046,12 @@
                 .jashflow-topbar-summary {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
                 }
-                .jashflow-topbar-actions {
-                    grid-column: 1 / -1;
-                    justify-content: flex-end;
-                }
             }
             @media (max-width: 560px) {
                 .jashflow-topbar-summary {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
-                .jashflow-topbar-actions {
-                    grid-column: 1 / -1;
-                    justify-content: stretch;
-                }
-                .jashflow-topbar-action {
+                .jashflow-action-button {
                     flex: 1 1 140px;
                 }
                 .ledger-topbar.has-inline-status .sync-inline-banner:not([hidden]) {
@@ -9943,6 +10066,20 @@
                 <aside class="app-sidebar" aria-label="Main navigation">
                     <button class="app-sidebar-brand" type="button" data-app-nav="home" aria-label="Open Home Insights">
                         <img class="app-sidebar-logo" src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy">
+                        <span class="sidebar-support-bubble" id="sidebarSupportBubble" role="status" aria-live="polite" aria-atomic="true" hidden>
+                            <span class="sidebar-support-head">
+                                <span class="sidebar-support-mark" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3v4"></path><path d="M12 17v4"></path><path d="M4.9 4.9l2.8 2.8"></path><path d="M16.3 16.3l2.8 2.8"></path><path d="M3 12h4"></path><path d="M17 12h4"></path><path d="M4.9 19.1l2.8-2.8"></path><path d="M16.3 7.7l2.8-2.8"></path></svg>
+                                </span>
+                                <span class="sidebar-support-copy">
+                                    <span class="sidebar-support-kicker" id="sidebarSupportKicker">Working</span>
+                                    <strong class="sidebar-support-title" id="sidebarSupportTitle">Jenius is working</strong>
+                                </span>
+                            </span>
+                            <span class="sidebar-support-detail" id="sidebarSupportDetail">Preparing the background task.</span>
+                            <span class="sidebar-support-progress" aria-hidden="true"><span id="sidebarSupportProgressFill"></span></span>
+                            <small class="sidebar-support-meta" id="sidebarSupportMeta">Starting</small>
+                        </span>
                     </button>
                     <div class="app-sidebar-card">
                         <nav class="app-nav">
@@ -10089,30 +10226,25 @@
                         </div>
                         <div class="jashflow-topbar-summary" id="jashflowTopbarSummary" aria-label="Jashflow loan summary" hidden>
                             <article>
-                                <span>Total Loaned</span>
+                                <span>Loaned</span>
                                 <strong id="jashflowPrincipalTotal">£0.00</strong>
                             </article>
                             <article>
-                                <span>Total Interest Earned</span>
+                                <span>Interest Earned</span>
                                 <strong id="jashflowInterestTotal">£0.00</strong>
                             </article>
                             <article>
-                                <span>Total Fees Charged</span>
+                                <span>Fees Charged</span>
                                 <strong id="jashflowChargesTotal">£0.00</strong>
                             </article>
                             <article>
-                                <span>Total Payments Received</span>
+                                <span>Payments Received</span>
                                 <strong id="jashflowPaymentsTotal">£0.00</strong>
                             </article>
                             <article>
-                                <span>Total Balance Owed</span>
+                                <span>Balance Owed</span>
                                 <strong id="jashflowBalanceTotal">£0.00</strong>
                             </article>
-                            <div class="jashflow-topbar-actions" aria-label="Jashflow actions">
-                                <button class="jashflow-topbar-action is-secondary" id="backJashflowLoansButton" type="button" hidden>Back to loans</button>
-                                <button class="jashflow-topbar-action is-secondary" id="toggleJashflowSetupButton" type="button">Xero posting setup</button>
-                                <button class="jashflow-topbar-action is-primary" id="addJashflowClientButton" type="button">Add new loan</button>
-                            </div>
                         </div>
                         <div class="credit-control-topbar-summary" id="creditControlTopbarSummary" aria-label="Credit control summary" hidden>
                             <article>
@@ -14487,7 +14619,7 @@
             function visibleTopbarStatusElements() {
                 return ["syncInlineBanner", "aiInlineBanner", "ignitionTopbarWidget"]
                     .map((id) => document.getElementById(id))
-                    .filter((element) => element && !element.hidden);
+                    .filter((element) => element && !element.hidden && !document.body.classList.contains("has-sidebar-support-bubble"));
             }
 
             function shouldShowIgnitionTopbarWidget() {
@@ -14509,6 +14641,7 @@
                     ".bank-account-topbar-summary",
                     ".practice-pack-topbar-summary",
                     ".bank-continuity-topbar-pill",
+                    ".sidebar-support-bubble",
                     ".ignition-topbar-tabs",
                     ".me-report-topbar-actions",
                     ".topbar-client-context"
@@ -17693,11 +17826,53 @@
                                 <select id="jashflowLoanSortSelect">${sortOptions}</select>
                             </label>
                         </div>
+                        <div class="jashflow-toolbar-actions" aria-label="Jashflow actions">
+                            <button class="jashflow-action-button is-secondary" id="toggleJashflowSetupButton" type="button">Xero posting setup</button>
+                            <button class="jashflow-action-button is-primary" id="addJashflowClientButton" type="button">Add new loan</button>
+                        </div>
                     </div>
                 `;
             }
 
+            function syncJashflowToolbarActions() {
+                const setupButton = document.getElementById("toggleJashflowSetupButton");
+                if (setupButton) {
+                    setupButton.textContent = jashflowSettingsOpen ? "Hide Xero posting setup" : "Xero posting setup";
+                    setupButton.classList.toggle("is-active", jashflowSettingsOpen);
+                    setupButton.setAttribute("aria-pressed", String(jashflowSettingsOpen));
+                    setupButton.title = jashflowSettingsOpen ? "Hide Xero posting setup" : "Open Xero posting setup";
+                }
+                const addButton = document.getElementById("addJashflowClientButton");
+                if (addButton) {
+                    addButton.textContent = jashflowFormOpen ? "Close loan form" : "Add new loan";
+                    addButton.classList.toggle("is-active", jashflowFormOpen);
+                    addButton.setAttribute("aria-pressed", String(jashflowFormOpen));
+                    addButton.title = jashflowFormOpen ? "Close loan form" : "Add a new loan";
+                }
+            }
+
+            function bindJashflowToolbarActions() {
+                const setupButton = document.getElementById("toggleJashflowSetupButton");
+                if (setupButton) setupButton.addEventListener("click", () => {
+                    jashflowSettingsOpen = !jashflowSettingsOpen;
+                    renderJashflowScreen();
+                });
+                const addButton = document.getElementById("addJashflowClientButton");
+                if (addButton) addButton.addEventListener("click", () => {
+                    if (jashflowFormOpen) {
+                        closeJashflowLoanForm();
+                    } else {
+                        editingJashflowLoanId = "";
+                        clearJashflowLoanForm();
+                        openJashflowLoanForm();
+                        loadJashflow();
+                    }
+                });
+            }
+
             function bindJashflowLoanBookControls() {
+                syncJashflowToolbarActions();
+                bindJashflowToolbarActions();
                 document.getElementById("jashflowLoanSearchInput")?.addEventListener("input", (event) => {
                     jashflowLoanSearchTerm = event.target.value;
                     renderJashflowScreen();
@@ -17803,26 +17978,11 @@
 
                 const settingsForm = document.getElementById("jashflowSettingsForm");
                 if (settingsForm) settingsForm.hidden = !jashflowSettingsOpen;
-                const setupButton = document.getElementById("toggleJashflowSetupButton");
-                if (setupButton) {
-                    setupButton.textContent = jashflowSettingsOpen ? "Hide Xero posting setup" : "Xero posting setup";
-                    setupButton.classList.toggle("is-active", jashflowSettingsOpen);
-                    setupButton.setAttribute("aria-pressed", String(jashflowSettingsOpen));
-                    setupButton.title = jashflowSettingsOpen ? "Hide Xero posting setup" : "Open Xero posting setup";
-                }
                 const form = document.getElementById("jashflowLoanForm");
                 if (form) form.hidden = !jashflowFormOpen;
                 const formsPanel = document.getElementById("jashflowFormsPanel");
                 if (formsPanel) formsPanel.hidden = !(jashflowSettingsOpen || jashflowFormOpen);
-                const addButton = document.getElementById("addJashflowClientButton");
-                if (addButton) {
-                    addButton.textContent = jashflowFormOpen ? "Close loan form" : "Add new loan";
-                    addButton.classList.toggle("is-active", jashflowFormOpen);
-                    addButton.setAttribute("aria-pressed", String(jashflowFormOpen));
-                    addButton.title = jashflowFormOpen ? "Close loan form" : "Add a new loan";
-                }
-                const backLoansButton = document.getElementById("backJashflowLoansButton");
-                if (backLoansButton) backLoansButton.hidden = !jashflowDetailOpen;
+                syncJashflowToolbarActions();
                 const submitButton = document.getElementById("jashflowLoanSubmitButton");
                 if (submitButton) submitButton.textContent = editingJashflowLoanId ? "Save and recalculate" : "Save loan";
                 const deleteLoanButton = document.getElementById("deleteJashflowLoanButton");
@@ -19718,11 +19878,13 @@
                 if (bankStatementUploading || bankStatementsHaveActiveUploads()) {
                     startBankStatementUploadTimer();
                     startBankStatementPolling();
+                    renderSidebarSupportBubble();
                     renderGlobalActivityCard();
                     return;
                 }
                 stopBankStatementUploadTimer();
                 stopBankStatementPolling();
+                renderSidebarSupportBubble();
                 renderGlobalActivityCard();
             }
 
@@ -19774,6 +19936,7 @@
                 }
                 ensureBankStatementSelection();
                 renderBankStatementContinuityTopbar();
+                renderSidebarSupportBubble();
                 if (activeView === "bank-statements") {
                     renderBankAccountTopbarSummary();
                     renderTopbarIdentity();
@@ -20051,29 +20214,6 @@
                 const activeUpload = activeBankUploadForAccount(account);
                 const localUploadActive = bankStatementUploading && bankStatementUploadingAccountId === account.id;
                 const accountProcessing = localUploadActive || Boolean(activeUpload);
-                const uploadElapsedSeconds = localUploadActive
-                    ? Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000))
-                    : bankUploadElapsedSeconds(activeUpload);
-                const processingFilename = localUploadActive ? bankStatementUploadingFilename : activeUpload?.filename;
-                const uploadProcessingMarkup = accountProcessing ? `
-                    <article class="bank-upload-processing-card" role="status" aria-live="polite">
-                        <div class="sync-progress-head">
-                            <span class="sync-inline-spinner" aria-hidden="true"></span>
-                            <div>
-                                <h3>${escapeHTML(bankUploadProcessingTitle(activeUpload, localUploadActive))}</h3>
-                                <p>${escapeHTML(bankUploadProcessingSummary(activeUpload, processingFilename, localUploadActive))}</p>
-                                ${transactions.length ? `<button class="ghost-button bank-processing-view-button" type="button" data-bank-account-tab="transactions">View populated transactions</button>` : ""}
-                            </div>
-                        </div>
-                        <div class="sync-progress-track" aria-hidden="true">
-                            <span class="sync-progress-bar"></span>
-                        </div>
-                        <div class="sync-progress-meta">
-                            <span id="bankStatementUploadElapsed">Elapsed ${formatSyncDuration(uploadElapsedSeconds)}</span>
-                            <span id="bankStatementUploadCountdown">${localUploadActive ? bankStatementUploadCountdownText() : bankUploadBackgroundStatusText(activeUpload)}</span>
-                        </div>
-                    </article>
-                ` : "";
                 const warningsMarkup = warnings.length
                     ? warnings.map((warning) => `
                         <article class="bank-warning-card ${warning.severity === "high" ? "is-high" : ""}">
@@ -20194,7 +20334,6 @@
                             <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
                         </div>
                     </div>
-                        ${uploadProcessingMarkup}
                     ${warningsPanelMarkup}
                     <nav class="bank-account-tabs" aria-label="Bank account sections">
                         <button type="button" class="${bankStatementAccountTab === "transactions" ? "is-active" : ""}" data-bank-account-tab="transactions">Transactions</button>
@@ -20367,6 +20506,7 @@
                     }
                     const countdown = document.getElementById("bankStatementUploadCountdown");
                     if (countdown) countdown.textContent = localUploadActive ? bankStatementUploadCountdownText() : bankUploadBackgroundStatusText(activeUpload);
+                    renderSidebarSupportBubble();
                 }, 1000);
             }
 
@@ -21189,6 +21329,7 @@
                 if (inlineProgressFill) inlineProgressFill.style.width = `${progress}%`;
                 const inlineEta = document.getElementById("syncInlineEta");
                 if (inlineEta) inlineEta.textContent = `${ignitionRenewalsEtaText()} · elapsed ${formatSyncDuration(elapsed)}`;
+                renderSidebarSupportBubble();
                 updateTopbarInlineStatusState();
             }
 
@@ -21199,6 +21340,7 @@
                     inlineBanner.classList.remove("is-error", "is-success", "is-warning");
                     inlineBanner.dataset.syncContext = "";
                 }
+                renderSidebarSupportBubble();
                 updateTopbarInlineStatusState();
             }
 
@@ -21459,6 +21601,7 @@
                         summary: run.summary || `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${completedDatasets.toLocaleString("en-GB")} datasets · ${progress}% complete`
                     };
                 }
+                renderSidebarSupportBubble();
                 renderIgnitionScreen();
             }
 
@@ -22104,6 +22247,7 @@
                 ensureMeReportSelection();
                 renderMeReportTopbarSummary();
                 renderTopbarIdentity();
+                renderSidebarSupportBubble();
 
                 setMeReportText("meReportClientCount", Number(summary.clientCount || 0).toLocaleString("en-GB"));
                 setMeReportText("meReportGreenCount", Number(summary.green || 0).toLocaleString("en-GB"));
@@ -23784,6 +23928,7 @@
                 if (inlineProgressFill) inlineProgressFill.style.width = `${progress}%`;
                 const inlineEta = document.getElementById("syncInlineEta");
                 if (inlineEta) inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${progress}% complete`;
+                renderSidebarSupportBubble();
                 renderMeReportScreen();
             }
 
@@ -24720,6 +24865,174 @@
                     + (practicePackGenerating ? 1 : 0);
             }
 
+            function supportBubblePercent(value, fallback = 42) {
+                const percent = Number(value);
+                return Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : fallback));
+            }
+
+            function supportBubbleElapsed(startedAt) {
+                const timestamp = Number(startedAt || 0);
+                if (!timestamp) return "";
+                return `Elapsed ${formatSyncDuration(Math.max(0, Math.floor((Date.now() - timestamp) / 1000)))}`;
+            }
+
+            function bankUploadForSupportBubble() {
+                const activeAccounts = [];
+                (bankStatementData.clients || []).forEach((client) => {
+                    (client.accounts || []).forEach((account) => {
+                        const activeUpload = activeBankUploadForAccount(account);
+                        if (activeUpload) activeAccounts.push({ account, upload: activeUpload, isLocal: false });
+                    });
+                });
+                const localAccount = bankStatementUploadingAccountId
+                    ? activeAccounts.find((entry) => entry.account?.id === bankStatementUploadingAccountId)?.account
+                        || (bankStatementData.clients || [])
+                            .flatMap((client) => client.accounts || [])
+                            .find((account) => account.id === bankStatementUploadingAccountId)
+                    : null;
+                if (bankStatementUploading) {
+                    return {
+                        account: localAccount || selectedBankAccount(),
+                        upload: activeAccounts.find((entry) => entry.account?.id === bankStatementUploadingAccountId)?.upload || null,
+                        isLocal: true
+                    };
+                }
+                return activeAccounts[0] || null;
+            }
+
+            function activeSidebarSupportBubbleState() {
+                if (isOperationRunning) {
+                    const run = latestOperationRun || {};
+                    const progress = supportBubblePercent(run.progress, 34);
+                    const processed = Number(run.processedCount || 0);
+                    const total = Number(run.totalCount || 0);
+                    return {
+                        kicker: "Xero operation",
+                        title: run.label || "Processing Xero action",
+                        detail: run.currentStep || run.summary || "Preparing invoices and posting updates.",
+                        meta: total ? `${processed.toLocaleString("en-GB")}/${total.toLocaleString("en-GB")} invoices - ${progress}%` : `${supportBubbleElapsed(operationStartedAt)} - ${progress}%`,
+                        progress
+                    };
+                }
+                if (isSyncing || syncRunIsActive(latestSyncRun)) {
+                    const progress = supportBubblePercent(latestSyncRun?.progress, 26);
+                    const detail = syncRunLiveDetail(latestSyncRun) || latestSyncRun?.summary || "Pulling invoices, contacts and payment activity from Xero.";
+                    const elapsed = supportBubbleElapsed(syncStartedAt || syncRunTimestamp(latestSyncRun));
+                    return {
+                        kicker: "Syncing",
+                        title: "Xero syncing",
+                        detail,
+                        meta: `${elapsed || "Working"} - ${progress}%`,
+                        progress
+                    };
+                }
+                const ignitionRun = ignitionRunForDisplay?.() || null;
+                if (isIgnitionSyncing || syncRunIsActive(ignitionRun)) {
+                    const progress = supportBubblePercent(ignitionRun?.progress, 38);
+                    return {
+                        kicker: "Syncing",
+                        title: "Ignition syncing",
+                        detail: ignitionRun?.currentStep || ignitionTopbarSummary(ignitionRun, isIgnitionConnected()),
+                        meta: ignitionTopbarCounts(ignitionRun) || `${supportBubbleElapsed(ignitionSyncStartedAt)} - ${progress}%`,
+                        progress
+                    };
+                }
+                const bankUpload = bankUploadForSupportBubble();
+                if (bankUpload) {
+                    const upload = bankUpload.upload || {};
+                    const account = bankUpload.account || {};
+                    const elapsed = bankUpload.isLocal
+                        ? Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000))
+                        : bankUploadElapsedSeconds(upload);
+                    const localProgress = bankUpload.isLocal && bankStatementUploadEstimatedSeconds
+                        ? Math.min(92, Math.max(12, Math.round((elapsed / bankStatementUploadEstimatedSeconds) * 100)))
+                        : null;
+                    const status = bankUploadStatus(upload);
+                    const progress = supportBubblePercent(upload.progress, localProgress ?? (status === "queued" ? 18 : 58));
+                    return {
+                        kicker: "Extraction",
+                        title: bankUploadProcessingTitle(upload, bankUpload.isLocal),
+                        detail: bankUploadProcessingSummary(upload, bankStatementUploadingFilename || upload.filename || bankAccountDisplayName(account), bankUpload.isLocal),
+                        meta: `Elapsed ${formatSyncDuration(elapsed)} - ${bankUpload.isLocal ? bankStatementUploadCountdownText() : bankUploadBackgroundStatusText(upload)}`,
+                        progress
+                    };
+                }
+                const meRun = meReportRunForDisplay?.() || null;
+                if (isMeReportProcessing || syncRunIsActive(meRun)) {
+                    const progress = supportBubblePercent(meRun?.progress, 46);
+                    return {
+                        kicker: "Processing",
+                        title: progress >= 60 ? "ME Report calculating" : "ME Report processing",
+                        detail: meRun?.summary || meRun?.currentStep || "Processing source report data and calculating month-end review.",
+                        meta: `${supportBubbleElapsed(meReportSyncStartedAt || syncRunTimestamp(meRun)) || "Working"} - ${progress}%`,
+                        progress
+                    };
+                }
+                if (meReportUploadProcessing || meReportBulkUploading) {
+                    return {
+                        kicker: "Processing",
+                        title: meReportBulkUploading ? "Uploading ME reports" : "Extracting ME report",
+                        detail: meReportBulkUploading ? "Uploading overview reports and preparing client workspaces." : "Jenius AI is reading the uploaded overview report.",
+                        meta: "Working with Jenius AI",
+                        progress: 48
+                    };
+                }
+                if (insightsLoading) {
+                    const detail = document.getElementById("aiInlineDetail")?.textContent || "Building the insights dashboard.";
+                    return {
+                        kicker: "Analysing",
+                        title: aiInlineTitleForDetail(detail),
+                        detail,
+                        meta: "Working with Jenius AI",
+                        progress: 54
+                    };
+                }
+                if (ignitionRenewalsLoading) {
+                    const elapsed = ignitionRenewalsElapsedSeconds();
+                    const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
+                    return {
+                        kicker: "Processing",
+                        title: "Preparing proposal list",
+                        detail: "Checking accepted proposals expiring in the coming 8 weeks.",
+                        meta: ignitionRenewalsEtaText(),
+                        progress
+                    };
+                }
+                if (practicePackGenerating) {
+                    return {
+                        kicker: "Processing",
+                        title: "Building practice pack",
+                        detail: "Generating management and staff PDFs for the selected month.",
+                        meta: `${currentPracticePackMonth()} pack in progress`,
+                        progress: 44
+                    };
+                }
+                return null;
+            }
+
+            function renderSidebarSupportBubble() {
+                const brand = document.querySelector(".app-sidebar-brand");
+                const bubble = document.getElementById("sidebarSupportBubble");
+                if (!brand || !bubble) return;
+                const state = activeSidebarSupportBubbleState();
+                document.body.classList.toggle("has-sidebar-support-bubble", Boolean(state));
+                brand.classList.toggle("is-support-active", Boolean(state));
+                bubble.hidden = !state;
+                brand.setAttribute("aria-label", state ? `${state.title}. ${state.detail}` : "Open Home Insights");
+                brand.title = state ? `${state.title} - ${state.detail}` : "";
+                if (!state) return;
+                const kicker = document.getElementById("sidebarSupportKicker");
+                const title = document.getElementById("sidebarSupportTitle");
+                const detail = document.getElementById("sidebarSupportDetail");
+                const meta = document.getElementById("sidebarSupportMeta");
+                const progressFill = document.getElementById("sidebarSupportProgressFill");
+                if (kicker) kicker.textContent = state.kicker || "Working";
+                if (title) title.textContent = state.title || "Jenius is working";
+                if (detail) detail.textContent = state.detail || "Preparing the background task.";
+                if (meta) meta.textContent = state.meta || "Working";
+                if (progressFill) progressFill.style.width = `${supportBubblePercent(state.progress, 42)}%`;
+            }
+
             function setGlobalActivityOpen(isOpen) {
                 globalActivityOpen = Boolean(isOpen);
                 renderGlobalActivityCard();
@@ -24913,6 +25226,7 @@
                 if (ignitionTopbarWidget) {
                     ignitionTopbarWidget.hidden = !shouldShowIgnitionTopbarWidget();
                 }
+                renderSidebarSupportBubble();
                 updateTopbarInlineStatusState();
                 renderTopbarClientContext();
                 renderGlobalActivityCard();
@@ -24975,6 +25289,7 @@
                 if (etaTarget) etaTarget.textContent = loading
                     ? (String(detail || "").toLowerCase().includes("extract") ? "Extracting source document" : "Working with Jenius AI")
                     : "Working with Jenius AI";
+                renderSidebarSupportBubble();
                 updateTopbarInlineStatusState();
                 const refreshButton = document.getElementById("refreshInsightsButton");
                 if (refreshButton) {
@@ -26276,6 +26591,7 @@
                         return `<article${classAttribute}><span>${escapeHTML(card.label)}</span><strong>${loadingMark}${escapeHTML(card.value)}</strong></article>`;
                     })
                     .join("");
+                renderSidebarSupportBubble();
             }
 
             function renderPracticePackScreen() {
@@ -27675,6 +27991,7 @@
                     inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${etaText}`;
                 }
 
+                renderSidebarSupportBubble();
                 renderSyncSettings();
             }
 
@@ -27705,6 +28022,7 @@
                     const countLabel = total ? `${processed.toLocaleString("en-GB")}/${total.toLocaleString("en-GB")} invoices` : "Preparing invoices";
                     inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${countLabel} · ${progress}% complete`;
                 }
+                renderSidebarSupportBubble();
             }
 
             function startOperationFeedback(operationRun) {
@@ -28746,22 +29064,6 @@
                 const menuMeReportButton = document.getElementById("menuMeReportButton");
                 if (menuMeReportButton) menuMeReportButton.addEventListener("click", openMeReportScreen);
                 wirePracticePackControls();
-                const toggleJashflowSetupButton = document.getElementById("toggleJashflowSetupButton");
-                if (toggleJashflowSetupButton) toggleJashflowSetupButton.addEventListener("click", () => {
-                    jashflowSettingsOpen = !jashflowSettingsOpen;
-                    renderJashflowScreen();
-                });
-                const addJashflowClientButton = document.getElementById("addJashflowClientButton");
-                if (addJashflowClientButton) addJashflowClientButton.addEventListener("click", () => {
-                    if (jashflowFormOpen) {
-                        closeJashflowLoanForm();
-                    } else {
-                        editingJashflowLoanId = "";
-                        clearJashflowLoanForm();
-                        openJashflowLoanForm();
-                        loadJashflow();
-                    }
-                });
                 const cancelJashflowLoanFormButton = document.getElementById("cancelJashflowLoanFormButton");
                 if (cancelJashflowLoanFormButton) cancelJashflowLoanFormButton.addEventListener("click", closeJashflowLoanForm);
                 const deleteJashflowLoanButton = document.getElementById("deleteJashflowLoanButton");
@@ -28772,12 +29074,6 @@
                 if (jashflowSettingsForm) jashflowSettingsForm.addEventListener("submit", saveJashflowSettings);
                 const postJashflowInterestButton = document.getElementById("postJashflowInterestButton");
                 if (postJashflowInterestButton) postJashflowInterestButton.addEventListener("click", postJashflowInterest);
-                const backJashflowLoansButton = document.getElementById("backJashflowLoansButton");
-                if (backJashflowLoansButton) backJashflowLoansButton.addEventListener("click", () => {
-                    jashflowDetailOpen = false;
-                    activeJashflowLoanTab = "details";
-                    renderJashflowScreen();
-                });
                 const refreshBankStatementsButton = document.getElementById("refreshBankStatementsButton");
                 if (refreshBankStatementsButton) refreshBankStatementsButton.addEventListener("click", () => loadBankStatements(true));
                 const toggleBankStatementClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
