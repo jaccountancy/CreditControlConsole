@@ -29,16 +29,32 @@ class IgnitionConfigurationError(RuntimeError):
     pass
 
 
+def _settings_text(value: str | None) -> str:
+    return str(value or "").strip()
+
+
+def _ignition_client_id() -> str:
+    return _settings_text(get_settings().ignition_client_id)
+
+
+def _ignition_client_secret() -> str:
+    return _settings_text(get_settings().ignition_client_secret)
+
+
+def _ignition_scopes() -> str:
+    return _settings_text(get_settings().ignition_scopes) or "reporting"
+
+
 def ignition_redirect_uri() -> str:
     settings = get_settings()
-    return settings.ignition_redirect_uri or f"{settings.base_url.rstrip('/')}/auth/ignition/callback"
+    configured = _settings_text(settings.ignition_redirect_uri)
+    return configured or f"{settings.base_url.rstrip('/')}/auth/ignition/callback"
 
 
 def ignition_oauth_configured() -> bool:
-    settings = get_settings()
     placeholders = {"", "replace-me", "changeme", "change-me", "your-client-id", "your-client-secret"}
-    client_id = str(settings.ignition_client_id or "").strip()
-    client_secret = str(settings.ignition_client_secret or "").strip()
+    client_id = _ignition_client_id()
+    client_secret = _ignition_client_secret()
     return client_id.lower() not in placeholders and client_secret.lower() not in placeholders
 
 
@@ -55,18 +71,19 @@ def ignition_authorize_url(state_token: str, code_verifier: str) -> str:
     settings = get_settings()
     if not ignition_oauth_configured():
         raise IgnitionConfigurationError("Ignition OAuth is not configured. Add real IGNITION_CLIENT_ID, IGNITION_CLIENT_SECRET and IGNITION_REDIRECT_URI values.")
+    authorize_url = _settings_text(settings.ignition_authorize_url)
     query = urlencode(
         {
-            "client_id": settings.ignition_client_id,
+            "client_id": _ignition_client_id(),
             "redirect_uri": ignition_redirect_uri(),
             "response_type": "code",
-            "scope": settings.ignition_scopes,
+            "scope": _ignition_scopes(),
             "state": state_token,
             "code_challenge": pkce_challenge(code_verifier),
             "code_challenge_method": "S256",
         }
     )
-    return f"{settings.ignition_authorize_url}?{query}"
+    return f"{authorize_url}?{query}"
 
 
 def _token_secret_label(user_id: str, name: str) -> str:
@@ -124,11 +141,13 @@ async def exchange_ignition_code_for_tokens(code: str, code_verifier: str) -> di
     settings = get_settings()
     if not ignition_oauth_configured():
         raise IgnitionConfigurationError("Ignition OAuth is not configured.")
+    token_url = _settings_text(settings.ignition_token_url)
     async with httpx.AsyncClient(timeout=IGNITION_TIMEOUT_SECONDS) as client:
         response = await client.post(
-            settings.ignition_token_url,
-            auth=(settings.ignition_client_id or "", settings.ignition_client_secret or ""),
+            token_url,
             data={
+                "client_id": _ignition_client_id(),
+                "client_secret": _ignition_client_secret(),
                 "code": code,
                 "code_verifier": code_verifier,
                 "grant_type": "authorization_code",
@@ -176,7 +195,7 @@ def store_ignition_connection(user: dict, token_payload: dict, practice: dict | 
                     encrypt_secret(token_payload["access_token"], _token_secret_label(user["id"], "access")),
                     encrypt_secret(token_payload["refresh_token"], _token_secret_label(user["id"], "refresh")),
                     expires_at,
-                    token_payload.get("scope") or get_settings().ignition_scopes,
+                    token_payload.get("scope") or _ignition_scopes(),
                     utcnow(),
                     utcnow(),
                 ),
@@ -210,11 +229,13 @@ async def refresh_ignition_connection(connection_row: dict) -> dict:
         }
     settings = get_settings()
     refresh_token = decrypt_secret(connection_row["refresh_token"], _token_secret_label(user_id, "refresh"))
+    token_url = _settings_text(settings.ignition_token_url)
     async with httpx.AsyncClient(timeout=IGNITION_TIMEOUT_SECONDS) as client:
         response = await client.post(
-            settings.ignition_token_url,
-            auth=(settings.ignition_client_id or "", settings.ignition_client_secret or ""),
+            token_url,
             data={
+                "client_id": _ignition_client_id(),
+                "client_secret": _ignition_client_secret(),
                 "grant_type": "refresh_token",
                 "refresh_token": refresh_token,
             },
@@ -235,7 +256,7 @@ async def refresh_ignition_connection(connection_row: dict) -> dict:
 async def ignition_api_get(connection_row: dict, endpoint: str, params: dict | None = None) -> dict:
     settings = get_settings()
     connection_row = await refresh_ignition_connection(connection_row)
-    url = f"{settings.ignition_api_base_url.rstrip('/')}{endpoint}"
+    url = f"{_settings_text(settings.ignition_api_base_url).rstrip('/')}{endpoint}"
     async with httpx.AsyncClient(timeout=IGNITION_TIMEOUT_SECONDS) as client:
         response = await client.get(
             url,
