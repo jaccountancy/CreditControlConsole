@@ -169,6 +169,7 @@ def clear_session_cookie(response) -> None:
 def start_oauth_state(
     redirect_to: str | None = None,
     device_code: str | None = None,
+    user_id: str | None = None,
     provider: str = "xero",
     code_verifier: str | None = None,
 ) -> str:
@@ -180,10 +181,10 @@ def start_oauth_state(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO oauth_states (state_token, redirect_to, device_code, provider, code_verifier, expires_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO oauth_states (state_token, redirect_to, device_code, user_id, provider, code_verifier, expires_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (state_token, redirect_to, device_code, provider, code_verifier, expires_at),
+                (state_token, redirect_to, device_code, user_id, provider, code_verifier, expires_at),
             )
         connection.commit()
 

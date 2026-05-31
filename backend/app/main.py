@@ -157,7 +157,6 @@ def reusable_xero_user(request: Request) -> dict | None:
                 SELECT users.*
                 FROM xero_connections
                 JOIN users ON users.id = xero_connections.user_id
-                WHERE (SELECT COUNT(*) FROM xero_connections) = 1
                 ORDER BY xero_connections.updated_at DESC NULLS LAST, xero_connections.created_at DESC
                 LIMIT 1
                 """
@@ -366,11 +365,33 @@ def queue_ignition_sync(user: dict) -> tuple[dict | None, bool]:
         return None, False
 
 
+def current_user_or_oauth_state_user(request: Request, state_row: dict) -> dict | None:
+    user = current_user_from_request(request)
+    if user:
+        return user
+
+    user_id = state_row.get("user_id")
+    if not user_id:
+        return None
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()
+        connection.commit()
+    return row
+
+
 @app.get("/auth/ignition/start")
 def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
     redirect_to = normalise_oauth_redirect(redirect_to)
     verifier = create_pkce_verifier()
-    state_token = start_oauth_state(redirect_to=redirect_to, provider="ignition", code_verifier=verifier)
+    state_token = start_oauth_state(
+        redirect_to=redirect_to,
+        user_id=user["id"],
+        provider="ignition",
+        code_verifier=verifier,
+    )
     try:
         authorize_url = ignition_authorize_url(state_token, verifier)
     except IgnitionConfigurationError as exc:
@@ -378,15 +399,16 @@ def auth_ignition_start(redirect_to: str = "/", user: dict = Depends(require_pan
     return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
 
 
+@app.get("/api/ignition/callback")
 @app.get("/auth/ignition/callback")
 async def auth_ignition_callback(request: Request, code: str, state: str):
     try:
-        user = current_user_from_request(request)
-        if not user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to Jenius before connecting Ignition.")
         state_row = consume_oauth_state(state)
         if state_row.get("provider") not in ("ignition",):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Ignition OAuth state.")
+        user = current_user_or_oauth_state_user(request, state_row)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to Jenius before connecting Ignition.")
         token_payload = await exchange_ignition_code_for_tokens(code, state_row.get("code_verifier") or "")
         store_ignition_connection(user, token_payload)
         sync_run, sync_started = queue_ignition_sync(user)

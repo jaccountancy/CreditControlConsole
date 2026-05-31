@@ -240,7 +240,6 @@ def get_xero_connection_for_user(user_id: str) -> dict:
                     """
                     SELECT *
                     FROM xero_connections
-                    WHERE (SELECT COUNT(*) FROM xero_connections) = 1
                     ORDER BY updated_at DESC NULLS LAST, created_at DESC
                     LIMIT 1
                     """

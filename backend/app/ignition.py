@@ -48,7 +48,7 @@ def _ignition_scopes() -> str:
 def ignition_redirect_uri() -> str:
     settings = get_settings()
     configured = _settings_text(settings.ignition_redirect_uri)
-    return configured or f"{settings.base_url.rstrip('/')}/auth/ignition/callback"
+    return configured or f"{settings.base_url.rstrip('/')}/api/ignition/callback"
 
 
 def ignition_oauth_configured() -> bool:

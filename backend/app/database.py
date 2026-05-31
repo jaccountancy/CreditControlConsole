@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS oauth_states (
     state_token TEXT NOT NULL UNIQUE,
     redirect_to TEXT,
     device_code TEXT,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     provider TEXT NOT NULL DEFAULT 'xero',
     code_verifier TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS oauth_states (
 
 ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'xero';
 ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS code_verifier TEXT;
+ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS device_logins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

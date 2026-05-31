@@ -5278,7 +5278,7 @@
                 <div class="console-app">
                 <aside class="app-sidebar" aria-label="Main navigation">
                     <div class="app-sidebar-brand">
-                        <img class="app-sidebar-logo" src="/static/JaccountancyBlueStacked.png" alt="Jaccountancy">
+                        <img class="app-sidebar-logo" src="https://creditcontrolconsole-production.up.railway.app/static/JaccountancyBlueStacked.png" alt="Jaccountancy">
                     </div>
                     <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
@@ -8755,7 +8755,13 @@
                 const now = Date.now();
                 if (lastSidebarNavigation.section === section && now - lastSidebarNavigation.at < 250) return false;
                 lastSidebarNavigation = { section, at: now };
-                navigateApp(section);
+                try {
+                    navigateApp(section);
+                } catch (error) {
+                    console.error(`Unable to open ${section} section`, error);
+                    syncActiveViewShell();
+                    showToast("That section could not finish loading. Try refreshing the panel.", "error");
+                }
                 return false;
             }
 

@@ -29,7 +29,7 @@ Required variables:
 - `XERO_SCOPES=openid profile email offline_access accounting.invoices accounting.payments accounting.contacts accounting.settings.read accounting.attachments accounting.reports.read accounting.transactions.read accounting.journals.read assets`
 - `IGNITION_CLIENT_ID`
 - `IGNITION_CLIENT_SECRET`
-- `IGNITION_REDIRECT_URI=https://creditcontrolconsole-production.up.railway.app/auth/ignition/callback`
+- `IGNITION_REDIRECT_URI=https://<your-api-domain>/api/ignition/callback`
 - `IGNITION_SCOPES=reporting`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 - `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
@@ -54,7 +54,8 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - `/auth/xero/start` login with Xero
 - `/auth/xero/callback` OAuth callback
 - `/auth/ignition/start` login with Ignition
-- `/auth/ignition/callback` Ignition OAuth callback
+- `/api/ignition/callback` Ignition OAuth callback
+- `/auth/ignition/callback` legacy Ignition OAuth callback alias
 - `/customers` customer list
 - `/customers/{customer_id}` customer detail
 - `/invoices/{invoice_id}` invoice detail
