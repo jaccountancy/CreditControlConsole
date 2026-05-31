@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import csv
 import hashlib
 import io
 import json
@@ -55,6 +56,7 @@ JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 BANK_STATEMENT_CHUNK_MAX_PAGES = 1
 BANK_STATEMENT_MAX_OUTPUT_TOKENS = 12000
+PRACTICE_PACK_MAX_CSV_BYTES = 12 * 1024 * 1024
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
@@ -5295,6 +5297,7 @@ def jashflow_payload(user: dict) -> dict:
             "invoicedInterestTotal": round(sum(loan["invoicedInterest"] for loan in active_loans), 2),
             "uninvoicedInterestTotal": round(sum(loan["uninvoicedInterest"] for loan in active_loans), 2),
             "chargesTotal": round(sum(loan["chargesTotal"] for loan in active_loans), 2),
+            "paymentsTotal": round(sum(loan["paymentsTotal"] for loan in active_loans), 2),
             "balanceTotal": round(sum(loan["balance"] for loan in active_loans), 2),
         },
         "settings": {
@@ -13304,6 +13307,1056 @@ def _extract_response_text(payload: dict) -> str:
             if text:
                 parts.append(str(text))
     return "\n".join(parts).strip()
+
+
+PRACTICE_PACK_SERVICE_GROUP_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["services"],
+    "properties": {
+        "services": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["rawName", "canonicalService"],
+                "properties": {
+                    "rawName": {"type": "string"},
+                    "canonicalService": {
+                        "type": "string",
+                        "enum": [
+                            "Self Assessment",
+                            "Year End and Corporation Tax",
+                            "Confirmation Statements",
+                            "Payroll",
+                            "Bookkeeping",
+                            "Other",
+                        ],
+                    },
+                },
+            },
+        }
+    },
+}
+
+PRACTICE_PACK_OWNER_COMMENTARY_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["owners"],
+    "properties": {
+        "owners": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["owner", "summary", "bullets"],
+                "properties": {
+                    "owner": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "bullets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                },
+            },
+        }
+    },
+}
+
+PRACTICE_PACK_SERVICE_ORDER = [
+    "Self Assessment",
+    "Year End and Corporation Tax",
+    "Confirmation Statements",
+    "Payroll",
+    "Bookkeeping",
+    "Other",
+]
+PRACTICE_PACK_SERVICE_ORDER_INDEX = {name: index for index, name in enumerate(PRACTICE_PACK_SERVICE_ORDER)}
+
+
+def _practice_pack_decode_csv(file_bytes: bytes, filename: str) -> str:
+    if len(file_bytes or b"") > PRACTICE_PACK_MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{filename or 'CSV file'} is too large. Upload files under 12 MB.",
+        )
+    for encoding in ("utf-8-sig", "utf-8", "cp1252"):
+        try:
+            return (file_bytes or b"").decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"{filename or 'CSV file'} could not be decoded as CSV text.",
+    )
+
+
+def _practice_pack_parse_csv(file_bytes: bytes, filename: str) -> dict:
+    text = _practice_pack_decode_csv(file_bytes, filename)
+    sample = text[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except Exception:
+        dialect = csv.excel
+    rows = [
+        [str(cell or "").strip() for cell in row]
+        for row in csv.reader(io.StringIO(text), dialect)
+        if any(str(cell or "").strip() for cell in row)
+    ]
+    headers = [str(value or "").strip() for value in (rows.pop(0) if rows else [])]
+    records = []
+    for values in rows:
+        record = {}
+        for index, header in enumerate(headers):
+            key = header or f"Column {index + 1}"
+            record[key] = str(values[index] if index < len(values) else "").strip()
+        records.append(record)
+    return {"headers": headers, "rows": records}
+
+
+def _practice_pack_normalise_header(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+def _practice_pack_client_match_key(value: str | None) -> str:
+    without_entity_suffix = re.sub(
+        r"\b(limited|ltd|llp|plc|inc|incorporated|company|co|the)\b",
+        "",
+        str(value or "").lower(),
+    )
+    return _practice_pack_normalise_header(without_entity_suffix) or _practice_pack_normalise_header(value)
+
+
+def _practice_pack_limited_company(value: str | None, entity_type: str | None = "") -> bool:
+    text = f"{value or ''} {entity_type or ''}".lower()
+    return bool(re.search(r"\b(ltd|limited|plc)\b", text))
+
+
+def _practice_pack_column_value(row: dict, candidates: list[str]) -> str:
+    candidate_keys = [_practice_pack_normalise_header(candidate) for candidate in candidates]
+    keys = list((row or {}).keys())
+    match = next(
+        (key for key in keys if _practice_pack_normalise_header(key) in candidate_keys),
+        "",
+    )
+    if not match:
+        for key in keys:
+            normalised_key = _practice_pack_normalise_header(key)
+            if any(normalised_key and (normalised_key in candidate or candidate in normalised_key) for candidate in candidate_keys):
+                match = key
+                break
+    return str((row or {}).get(match) or "").strip() if match else ""
+
+
+def _practice_pack_file_name_part(value: str | None) -> str:
+    text = re.sub(r"[^a-z0-9]+", "-", str(value or "pack").lower()).strip("-")
+    return text[:80] or "pack"
+
+
+def _practice_pack_allowed_service_name(value: str | None) -> str:
+    text = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+    aliases = {
+        "self assessment": "Self Assessment",
+        "sa": "Self Assessment",
+        "sa100": "Self Assessment",
+        "satr": "Self Assessment",
+        "personal tax": "Self Assessment",
+        "personal tax return": "Self Assessment",
+        "tax return": "Self Assessment",
+        "year end and corporation tax": "Year End and Corporation Tax",
+        "year end corporation tax": "Year End and Corporation Tax",
+        "year end and corp tax": "Year End and Corporation Tax",
+        "year end corp tax": "Year End and Corporation Tax",
+        "year end": "Year End and Corporation Tax",
+        "accounts": "Year End and Corporation Tax",
+        "annual accounts": "Year End and Corporation Tax",
+        "statutory accounts": "Year End and Corporation Tax",
+        "company accounts": "Year End and Corporation Tax",
+        "final accounts": "Year End and Corporation Tax",
+        "corporation tax": "Year End and Corporation Tax",
+        "corp tax": "Year End and Corporation Tax",
+        "ct600": "Year End and Corporation Tax",
+        "company tax": "Year End and Corporation Tax",
+        "confirmation statement": "Confirmation Statements",
+        "confirmation statements": "Confirmation Statements",
+        "companies house": "Confirmation Statements",
+        "cs01": "Confirmation Statements",
+        "payroll": "Payroll",
+        "paye": "Payroll",
+        "workplace pension": "Payroll",
+        "bookkeeping": "Bookkeeping",
+        "book keeping": "Bookkeeping",
+        "other": "Other",
+    }
+    if text in aliases:
+        return aliases[text]
+    for allowed in PRACTICE_PACK_SERVICE_ORDER:
+        if text == allowed.lower():
+            return allowed
+    return "Other"
+
+
+def _practice_pack_local_service_name(value: str | None) -> str:
+    original = str(value or "").strip()
+    lowered = original.lower()
+    known_services = [
+        (("self", "assessment"), "Self Assessment"),
+        (("sa100",), "Self Assessment"),
+        (("satr",), "Self Assessment"),
+        (("personal", "tax"), "Self Assessment"),
+        (("corporation", "tax"), "Year End and Corporation Tax"),
+        (("corp", "tax"), "Year End and Corporation Tax"),
+        (("company", "tax"), "Year End and Corporation Tax"),
+        (("ct600",), "Year End and Corporation Tax"),
+        (("tax", "return"), "Self Assessment"),
+        (("bookkeeping",), "Bookkeeping"),
+        (("book", "keeping"), "Bookkeeping"),
+        (("payroll",), "Payroll"),
+        (("paye",), "Payroll"),
+        (("workplace", "pension"), "Payroll"),
+        (("confirmation", "statement"), "Confirmation Statements"),
+        (("companies", "house"), "Confirmation Statements"),
+        (("cs01",), "Confirmation Statements"),
+        (("annual", "accounts"), "Year End and Corporation Tax"),
+        (("statutory", "accounts"), "Year End and Corporation Tax"),
+        (("company", "accounts"), "Year End and Corporation Tax"),
+        (("final", "accounts"), "Year End and Corporation Tax"),
+        (("management", "accounts"), "Year End and Corporation Tax"),
+        (("year", "end"), "Year End and Corporation Tax"),
+    ]
+    for tokens, service in known_services:
+        if all(token in lowered for token in tokens):
+            return service
+    return "Other"
+
+
+def _practice_pack_task_complete(status_text: str | None) -> bool:
+    return bool(re.search(r"complete|completed|done|closed|filed|submitted", str(status_text or ""), re.IGNORECASE))
+
+
+def _practice_pack_due_date(value: str | None) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%d %B %Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(text[:24], fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _practice_pack_task_overdue(status_text: str | None, due_date: str | None) -> bool:
+    parsed = _practice_pack_due_date(due_date)
+    return bool(parsed and not _practice_pack_task_complete(status_text) and parsed < date.today())
+
+
+def _practice_pack_percentage(part: int | float, whole: int | float) -> float:
+    return round((float(part) / float(whole)) * 100, 1) if whole else 0.0
+
+
+def _practice_pack_history_records(history_payload: str | dict | list | None) -> list[dict]:
+    if not history_payload:
+        return []
+    try:
+        payload = json.loads(history_payload) if isinstance(history_payload, str) else history_payload
+    except ValueError:
+        return []
+    records = payload.get("records") if isinstance(payload, dict) else payload
+    if not isinstance(records, list):
+        return []
+    cleaned = []
+    for record in records[:24]:
+        if not isinstance(record, dict):
+            continue
+        owner_summaries = record.get("ownerSummaries")
+        if not isinstance(owner_summaries, list):
+            continue
+        cleaned.append({
+            "month": str(record.get("month") or ""),
+            "generatedAt": str(record.get("generatedAt") or ""),
+            "ownerSummaries": [item for item in owner_summaries if isinstance(item, dict)],
+        })
+    return sorted(cleaned, key=lambda item: item.get("generatedAt") or "", reverse=True)
+
+
+def _practice_pack_previous_owner_summary(history_records: list[dict], owner: str, month_label: str) -> dict | None:
+    owner_key = _practice_pack_normalise_header(owner)
+    for record in history_records:
+        if str(record.get("month") or "").casefold() == month_label.casefold():
+            continue
+        for summary in record.get("ownerSummaries") or []:
+            if _practice_pack_normalise_header(summary.get("owner")) == owner_key:
+                return summary
+    return None
+
+
+def _practice_pack_owner_commentary_fallback(summary: dict) -> dict:
+    owner = summary["owner"]
+    client_count = int(summary.get("clientCount") or 0)
+    task_count = int(summary.get("taskCount") or 0)
+    limited_percent = float(summary.get("limitedCompanyPercent") or 0)
+    previous_count = summary.get("previousClientCount")
+    previous_month = summary.get("previousMonth") or "the previous generated pack"
+    change = summary.get("clientCountChange")
+    change_percent = summary.get("clientCountChangePercent")
+    busiest = summary.get("busiestService") or "Other"
+    other_count = int(summary.get("otherTaskCount") or 0)
+    overdue_count = int(summary.get("overdueCount") or 0)
+    movement = ""
+    if previous_count not in (None, ""):
+        direction = "increase" if int(change or 0) > 0 else "decrease" if int(change or 0) < 0 else "no movement"
+        movement = f" {previous_month} was {int(previous_count):,} clients, so this is {direction} of {abs(int(change or 0)):,} ({abs(float(change_percent or 0)):.1f}%)."
+    else:
+        movement = " No previous generated pack is available for comparison yet."
+    bullets = [
+        f"{client_count:,} client{'s' if client_count != 1 else ''} and {task_count:,} task{'s' if task_count != 1 else ''} are included for {owner}.{movement}",
+        f"{limited_percent:.1f}% of these clients are limited companies, based on the BM client names and entity data.",
+        f"The largest section is {busiest}; {overdue_count:,} task{'s are' if overdue_count != 1 else ' is'} currently overdue.",
+    ]
+    if other_count:
+        bullets.append(f"{other_count:,} task{'s' if other_count != 1 else ''} sit in Other and may need a manual category check.")
+    return {
+        "summary": f"{owner}'s practice pack is weighted toward {busiest} work and covers {client_count:,} active client{'s' if client_count != 1 else ''} this month.",
+        "bullets": bullets[:4],
+    }
+
+
+def _practice_pack_owner_summaries(staff_tasks: dict[str, list[dict]], history_records: list[dict], month_label: str) -> list[dict]:
+    summaries = []
+    for owner, tasks in sorted(staff_tasks.items(), key=lambda item: str(item[0]).casefold()):
+        clients = {}
+        service_counts = {service: 0 for service in PRACTICE_PACK_SERVICE_ORDER}
+        open_count = 0
+        completed_count = 0
+        overdue_count = 0
+        for task in tasks:
+            client_key = task.get("clientKey") or _practice_pack_client_match_key(task.get("clientName")) or task.get("clientName") or "client"
+            clients.setdefault(client_key, {
+                "name": task.get("matchedClient") or task.get("clientName") or "Client",
+                "isLimitedCompany": bool(task.get("isLimitedCompany")),
+            })
+            service = _practice_pack_allowed_service_name(task.get("serviceName"))
+            service_counts[service] = service_counts.get(service, 0) + 1
+            complete = _practice_pack_task_complete(task.get("status"))
+            completed_count += 1 if complete else 0
+            open_count += 0 if complete else 1
+            overdue_count += 1 if _practice_pack_task_overdue(task.get("status"), task.get("dueDate")) else 0
+
+        client_count = len(clients)
+        limited_count = sum(1 for client in clients.values() if client.get("isLimitedCompany"))
+        previous = _practice_pack_previous_owner_summary(history_records, owner, month_label)
+        previous_count = int(previous.get("clientCount") or 0) if previous else None
+        previous_month = str(previous.get("month") or "") if previous else ""
+        change = client_count - previous_count if previous_count is not None else None
+        change_percent = round((change / previous_count) * 100, 1) if previous_count else None
+        busiest_service = max(
+            service_counts.items(),
+            key=lambda item: (item[1], -PRACTICE_PACK_SERVICE_ORDER_INDEX.get(item[0], 99)),
+        )[0] if service_counts else "Other"
+        summary = {
+            "owner": owner,
+            "month": month_label,
+            "clientCount": client_count,
+            "taskCount": len(tasks),
+            "openCount": open_count,
+            "completedCount": completed_count,
+            "overdueCount": overdue_count,
+            "limitedCompanyCount": limited_count,
+            "limitedCompanyPercent": _practice_pack_percentage(limited_count, client_count),
+            "serviceCounts": service_counts,
+            "busiestService": busiest_service,
+            "otherTaskCount": int(service_counts.get("Other") or 0),
+            "previousClientCount": previous_count,
+            "previousMonth": previous_month,
+            "clientCountChange": change,
+            "clientCountChangePercent": change_percent,
+        }
+        summary["commentary"] = _practice_pack_owner_commentary_fallback(summary)
+        summaries.append(summary)
+    return summaries
+
+
+async def _practice_pack_owner_commentaries(owner_summaries: list[dict]) -> dict[str, dict]:
+    settings = get_settings()
+    fallback = {summary["owner"]: summary["commentary"] for summary in owner_summaries}
+    if not owner_summaries or not settings.openai_api_key:
+        return fallback
+
+    compact = []
+    for summary in owner_summaries:
+        compact.append({
+            "owner": summary["owner"],
+            "month": summary["month"],
+            "clientCount": summary["clientCount"],
+            "taskCount": summary["taskCount"],
+            "openCount": summary["openCount"],
+            "completedCount": summary["completedCount"],
+            "overdueCount": summary["overdueCount"],
+            "limitedCompanyCount": summary["limitedCompanyCount"],
+            "limitedCompanyPercent": summary["limitedCompanyPercent"],
+            "serviceCounts": summary["serviceCounts"],
+            "busiestService": summary["busiestService"],
+            "otherTaskCount": summary["otherTaskCount"],
+            "previousClientCount": summary["previousClientCount"],
+            "previousMonth": summary["previousMonth"],
+            "clientCountChange": summary["clientCountChange"],
+            "clientCountChangePercent": summary["clientCountChangePercent"],
+        })
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You write concise first-page commentary for staff practice-pack PDFs. "
+                            "Return JSON only. Use only the supplied figures. Do not invent last-month values when previousClientCount is null. "
+                            "Mention client count, meaningful month-on-month movement where available, limited-company percentage, the busiest service section, overdue work, and Other-category review points when relevant. "
+                            "Use a professional UK accountancy operations tone. Keep each summary to one sentence and each bullet under 28 words."
+                        ),
+                    }
+                ],
+            },
+            {"role": "user", "content": [{"type": "input_text", "text": json.dumps({"owners": compact})}]},
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "practice_pack_owner_commentary",
+                "schema": PRACTICE_PACK_OWNER_COMMENTARY_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": min(12000, max(1200, len(owner_summaries) * 220)),
+    }
+    try:
+        text = _extract_response_text(await _post_openai_responses(request_body, "practice pack owner commentary"))
+        parsed = json.loads(text) if text else {}
+        for item in parsed.get("owners") or []:
+            owner = str(item.get("owner") or "").strip()
+            if not owner:
+                continue
+            summary = str(item.get("summary") or "").strip()
+            bullets = [str(value).strip() for value in item.get("bullets") or [] if str(value).strip()]
+            if summary and bullets:
+                fallback[owner] = {"summary": summary[:500], "bullets": bullets[:4]}
+    except Exception as exc:
+        logger.exception("OpenAI practice pack owner commentary failed")
+        for summary in owner_summaries:
+            summary["commentaryStatus"] = "openai_error"
+            summary["commentaryError"] = str(exc) or exc.__class__.__name__
+    return fallback
+
+
+async def _practice_pack_service_mapping(raw_names: list[str]) -> tuple[dict[str, str], dict]:
+    unique_names = [name for name in dict.fromkeys(str(item or "").strip() for item in raw_names) if name]
+    mapping = {name: _practice_pack_local_service_name(name) for name in unique_names}
+    settings = get_settings()
+    if not unique_names:
+        return mapping, {"engine": "local", "status": "empty", "serviceNameCount": 0}
+    if not settings.openai_api_key:
+        return mapping, {
+            "engine": "local",
+            "status": "openai_not_configured",
+            "serviceNameCount": len(unique_names),
+        }
+
+    used_ai = False
+    try:
+        for start in range(0, len(unique_names), 120):
+            chunk = unique_names[start : start + 120]
+            request_body = {
+                "input": [
+                    {
+                        "role": "system",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": (
+                                    "You group accountancy practice task names into exactly these Practice Pack sections: "
+                                    "Self Assessment; Year End and Corporation Tax; Confirmation Statements; Payroll; Bookkeeping; Other. "
+                                    "Return JSON only and return exactly one mapping for every rawName supplied. "
+                                    "Self Assessment includes SA, personal tax, and individual tax returns, including different tax years. "
+                                    "Year End and Corporation Tax includes year-end accounts, annual accounts, statutory accounts, CT600, and corporation tax tasks. "
+                                    "Confirmation Statements includes confirmation statement and Companies House annual confirmation tasks. "
+                                    "Payroll includes PAYE and payroll tasks. Bookkeeping includes bookkeeping and book keeping tasks. "
+                                    "Any task that cannot confidently fit those sections must be Other. "
+                                    "Do not create new categories. Keep year-specific tasks distinct in the task name; only group the section. "
+                                    "For example, Self Assessment 2024 and Self Assessment 2025 both map to Self Assessment."
+                                ),
+                            }
+                        ],
+                    },
+                    {
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": json.dumps({"rawNames": chunk})}],
+                    },
+                ],
+                "text": {
+                    "format": {
+                        "type": "json_schema",
+                        "name": "practice_pack_service_groups",
+                        "schema": PRACTICE_PACK_SERVICE_GROUP_SCHEMA,
+                        "strict": True,
+                    }
+                },
+                "max_output_tokens": min(12000, max(1400, len(chunk) * 80)),
+            }
+            text = _extract_response_text(await _post_openai_responses(request_body, "practice pack service grouping"))
+            parsed = json.loads(text) if text else {}
+            for item in parsed.get("services") or []:
+                raw_name = str(item.get("rawName") or "").strip()
+                canonical = str(item.get("canonicalService") or "").strip()
+                if raw_name in mapping and canonical:
+                    mapping[raw_name] = _practice_pack_allowed_service_name(canonical)
+            used_ai = True
+    except Exception as exc:
+        logger.exception("OpenAI practice pack service grouping failed")
+        return mapping, {
+            "engine": "openai_partial" if used_ai else "local",
+            "status": "openai_error",
+            "error": str(exc) or exc.__class__.__name__,
+            "serviceNameCount": len(unique_names),
+        }
+
+    return mapping, {
+        "engine": "openai",
+        "status": "ready",
+        "serviceNameCount": len(unique_names),
+    }
+
+
+def _practice_pack_pdf_cell(value, style):
+    from reportlab.platypus import Paragraph
+
+    text = str(value if value is not None else "").strip() or " "
+    return Paragraph(xml_escape(text), style)
+
+
+def _practice_pack_pdf_charts(summary: dict):
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing, Rect, String
+    from reportlab.lib import colors
+
+    drawing = Drawing(744, 186)
+    palette = [
+        colors.HexColor("#1D67F2"),
+        colors.HexColor("#27B05F"),
+        colors.HexColor("#FF9F2F"),
+        colors.HexColor("#8D62FF"),
+        colors.HexColor("#FF5353"),
+        colors.HexColor("#8593AD"),
+    ]
+
+    drawing.add(String(0, 170, "Service mix", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
+    service_counts = summary.get("serviceCounts") if isinstance(summary.get("serviceCounts"), dict) else {}
+    service_rows = [
+        (service, int(service_counts.get(service) or 0))
+        for service in PRACTICE_PACK_SERVICE_ORDER
+        if int(service_counts.get(service) or 0) > 0
+    ] or [("Other", 1)]
+    pie = Pie()
+    pie.x = 8
+    pie.y = 38
+    pie.width = 116
+    pie.height = 116
+    pie.data = [count for _, count in service_rows]
+    pie.labels = ["" for _ in service_rows]
+    for index, _ in enumerate(service_rows):
+        pie.slices[index].fillColor = palette[index % len(palette)]
+        pie.slices[index].strokeColor = colors.white
+        pie.slices[index].strokeWidth = 0.5
+    drawing.add(pie)
+
+    for index, (service, count) in enumerate(service_rows):
+        y = 145 - (index * 17)
+        drawing.add(Rect(140, y, 8, 8, fillColor=palette[index % len(palette)], strokeColor=None))
+        drawing.add(String(153, y + 1, f"{service}: {count:,}", fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
+
+    drawing.add(String(360, 170, "Task status", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
+    status_rows = [
+        ("Open", int(summary.get("openCount") or 0), colors.HexColor("#1D67F2")),
+        ("Completed", int(summary.get("completedCount") or 0), colors.HexColor("#27B05F")),
+        ("Overdue", int(summary.get("overdueCount") or 0), colors.HexColor("#FF5353")),
+    ]
+    max_status = max([value for _, value, _ in status_rows] + [1])
+    for index, (label, value, colour) in enumerate(status_rows):
+        y = 135 - (index * 30)
+        width = 220 * (value / max_status) if max_status else 0
+        drawing.add(String(360, y + 4, label, fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#5F6F89")))
+        drawing.add(Rect(430, y, 220, 13, fillColor=colors.HexColor("#EDF2F8"), strokeColor=None))
+        if width:
+            drawing.add(Rect(430, y, width, 13, fillColor=colour, strokeColor=None))
+        drawing.add(String(660, y + 3, f"{value:,}", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
+
+    drawing.add(String(360, 38, "Client mix", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
+    client_count = int(summary.get("clientCount") or 0)
+    limited_count = int(summary.get("limitedCompanyCount") or 0)
+    non_limited_count = max(client_count - limited_count, 0)
+    limited_width = 220 * (limited_count / client_count) if client_count else 0
+    drawing.add(Rect(430, 14, 220, 14, fillColor=colors.HexColor("#EDF2F8"), strokeColor=None))
+    if limited_width:
+        drawing.add(Rect(430, 14, limited_width, 14, fillColor=colors.HexColor("#8D62FF"), strokeColor=None))
+    drawing.add(String(360, 17, "Limited", fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#5F6F89")))
+    drawing.add(String(660, 17, f"{limited_count:,} / {client_count:,}", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
+    drawing.add(String(430, 3, f"{non_limited_count:,} other client{'s' if non_limited_count != 1 else ''}", fontName="Helvetica", fontSize=6.5, fillColor=colors.HexColor("#5F6F89")))
+    return drawing
+
+
+def _practice_pack_pdf_bytes(
+    title: str,
+    subtitle: str,
+    metrics: list[tuple[str, str]],
+    sections: list[dict],
+    columns: list[str],
+    widths: list[int],
+    commentary: dict | None = None,
+    charts: dict | None = None,
+) -> bytes:
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except ImportError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="ReportLab is required to build Practice Pack PDFs.") from exc
+
+    buffer = io.BytesIO()
+    styles = getSampleStyleSheet()
+    body_style = ParagraphStyle("PracticePackBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=8, leading=10)
+    title_style = ParagraphStyle("PracticePackTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=17, leading=20, textColor=colors.HexColor("#1E2F4D"))
+    subtitle_style = ParagraphStyle("PracticePackSubtitle", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#5F6F89"))
+    section_style = ParagraphStyle("PracticePackSection", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#1E2F4D"), spaceBefore=8, spaceAfter=4)
+    small_style = ParagraphStyle("PracticePackSmall", parent=body_style, fontSize=7, leading=9, textColor=colors.HexColor("#5F6F89"))
+    commentary_heading_style = ParagraphStyle("PracticePackCommentaryHeading", parent=body_style, fontName="Helvetica-Bold", fontSize=10, leading=12, textColor=colors.HexColor("#1E2F4D"))
+    commentary_style = ParagraphStyle("PracticePackCommentary", parent=body_style, fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#1E2F4D"))
+
+    document = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=26, bottomMargin=24)
+    story = [
+        Paragraph(xml_escape(title), title_style),
+        Paragraph(xml_escape(subtitle), subtitle_style),
+        Spacer(1, 10),
+    ]
+
+    if metrics:
+        metric_rows = []
+        for index in range(0, len(metrics), 3):
+            group = metrics[index : index + 3]
+            row = []
+            for label, value in group:
+                row.append(_practice_pack_pdf_cell(f"{label}: {value}", small_style))
+            while len(row) < 3:
+                row.append("")
+            metric_rows.append(row)
+        metric_table = Table(metric_rows, colWidths=[248, 248, 248])
+        metric_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F1F5FB")),
+            ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#D6E0EE")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D6E0EE")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.extend([metric_table, Spacer(1, 8)])
+
+    if commentary:
+        commentary_rows = [[_practice_pack_pdf_cell("Jenius AI commentary", commentary_heading_style)]]
+        summary = str(commentary.get("summary") or "").strip()
+        if summary:
+            commentary_rows.append([_practice_pack_pdf_cell(summary, commentary_style)])
+        for bullet in [str(value).strip() for value in commentary.get("bullets") or [] if str(value).strip()][:4]:
+            commentary_rows.append([_practice_pack_pdf_cell(f"- {bullet}", commentary_style)])
+        commentary_table = Table(commentary_rows, colWidths=[744])
+        commentary_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EEF5FF")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#BFD4F7")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.extend([commentary_table, Spacer(1, 8)])
+
+    if charts:
+        story.extend([_practice_pack_pdf_charts(charts), Spacer(1, 8)])
+
+    header_style = ParagraphStyle("PracticePackHeader", parent=body_style, fontName="Helvetica-Bold", textColor=colors.white)
+    for section in sections:
+        story.append(Paragraph(xml_escape(section["heading"]), section_style))
+        table_data = [[_practice_pack_pdf_cell(column, header_style) for column in columns]]
+        rows = section.get("rows") or []
+        if rows:
+            table_data.extend([[_practice_pack_pdf_cell(cell, body_style) for cell in row] for row in rows])
+        else:
+            table_data.append([_practice_pack_pdf_cell("No rows in this section.", body_style), *["" for _ in columns[1:]]])
+        table = Table(table_data, colWidths=widths, repeatRows=1, splitByRow=1)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E67F2")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FBFF")]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.extend([table, Spacer(1, 6)])
+
+    document.build(story)
+    return buffer.getvalue()
+
+
+def _practice_pack_unique_filename(filename: str, used: set[str]) -> str:
+    if filename not in used:
+        used.add(filename)
+        return filename
+    stem, separator, extension = filename.rpartition(".")
+    stem = stem or filename
+    extension = f"{separator}{extension}" if separator else ""
+    suffix = 2
+    while f"{stem}-{suffix}{extension}" in used:
+        suffix += 1
+    unique = f"{stem}-{suffix}{extension}"
+    used.add(unique)
+    return unique
+
+
+def _practice_pack_service_sort_key(service_name: str) -> tuple[int, str]:
+    name = _practice_pack_allowed_service_name(service_name)
+    return (PRACTICE_PACK_SERVICE_ORDER_INDEX.get(name, len(PRACTICE_PACK_SERVICE_ORDER)), name.casefold())
+
+
+def _practice_pack_task_sort_key(task: dict) -> tuple:
+    due = _practice_pack_due_date(task.get("dueDate")) or date.max
+    complete = _practice_pack_task_complete(task.get("status"))
+    overdue_rank = 0 if _practice_pack_task_overdue(task.get("status"), task.get("dueDate")) else 1
+    return (
+        complete,
+        overdue_rank,
+        due,
+        str(task.get("clientName") or "").casefold(),
+        str(task.get("taskName") or "").casefold(),
+        int(task.get("sourceRow") or 0),
+    )
+
+
+def _practice_pack_sections(tasks: list[dict], include_owner: bool) -> list[dict]:
+    by_service: dict[str, list[dict]] = defaultdict(list)
+    for task in tasks:
+        by_service[task["serviceName"]].append(task)
+    sections = []
+    for service_name in sorted(by_service, key=_practice_pack_service_sort_key):
+        service_tasks = sorted(by_service[service_name], key=_practice_pack_task_sort_key)
+        rows = []
+        for task in service_tasks:
+            if include_owner:
+                rows.append([
+                    task.get("owner") or "Unassigned",
+                    task.get("clientName") or "No client",
+                    task.get("taskName") or "",
+                    task.get("status") or "No status",
+                    task.get("dueDate") or "",
+                    task.get("matchedClient") or "Unmatched",
+                ])
+            else:
+                rows.append([
+                    task.get("clientName") or "No client",
+                    task.get("taskName") or "",
+                    task.get("status") or "No status",
+                    task.get("dueDate") or "",
+                ])
+        sections.append({"heading": f"{service_name} ({len(service_tasks):,} task{'s' if len(service_tasks) != 1 else ''})", "rows": rows})
+    return sections or [{"heading": "No tasks", "rows": []}]
+
+
+async def practice_pack_payload(
+    user: dict,
+    client_file_bytes: bytes,
+    task_file_bytes: bytes,
+    month: str,
+    client_filename: str = "",
+    task_filename: str = "",
+    history_payload: str | dict | list | None = None,
+) -> dict:
+    client_data = _practice_pack_parse_csv(client_file_bytes, client_filename or "BM Client File CSV")
+    task_data = _practice_pack_parse_csv(task_file_bytes, task_filename or "BM Task File CSV")
+    if not client_data["headers"] or not task_data["headers"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or both CSV files do not contain a header row.")
+
+    month_label = re.sub(r"\s+", " ", str(month or "")).strip() or date.today().strftime("%B")
+    history_records = _practice_pack_history_records(history_payload)
+    client_name_columns = ["Client Name", "Client", "Name", "ClientName", "Company Name", "Company", "Contact"]
+    task_client_columns = ["Client Name", "Client", "ClientName", "Customer", "Company Name", "Company", "Contact"]
+    owner_columns = ["Assigned To", "Assignee", "Owner", "Staff", "Manager", "Bookkeeper", "Task Owner", "Allocated To", "Responsible"]
+    client_manager_columns = ["Client Manager", "Manager", "Account Manager", "Client Owner", "Owner", "Assigned Manager", "Partner", "Staff"]
+    client_entity_columns = ["Entity Type", "Client Type", "Business Type", "Legal Type", "Company Type", "Organisation Type", "Organization Type", "Type"]
+    status_columns = ["Status", "Task Status", "State"]
+    due_columns = ["Due Date", "Deadline", "Date Due", "Target Date"]
+    task_columns = ["Task", "Task Name", "Name", "Title", "Description", "Work Item"]
+    service_columns = ["Service", "Service Name", "ServiceName", "Service Type", "Task Type", "Work Type", "Job", "Job Name", "Category", "Workflow"]
+
+    client_index: dict[str, dict] = {}
+    client_match_index: dict[str, dict] = {}
+    client_stats: dict[str, dict] = {}
+    for index, row in enumerate(client_data["rows"]):
+        name = _practice_pack_column_value(row, client_name_columns) or f"Client {index + 1}"
+        manager = _practice_pack_column_value(row, client_manager_columns) or "Unassigned"
+        entity_type = _practice_pack_column_value(row, client_entity_columns)
+        key = _practice_pack_normalise_header(name) or f"client{index + 1}"
+        match_key = _practice_pack_client_match_key(name) or key
+        record = {
+            "key": key,
+            "matchKey": match_key,
+            "name": name,
+            "manager": manager,
+            "entityType": entity_type,
+            "isLimitedCompany": _practice_pack_limited_company(name, entity_type),
+            "row": row,
+        }
+        client_index.setdefault(key, record)
+        client_match_index.setdefault(match_key, record)
+        client_stats.setdefault(key, {
+            "name": name,
+            "manager": manager,
+            "taskCount": 0,
+            "openCount": 0,
+            "completedCount": 0,
+            "overdueCount": 0,
+            "owners": set([manager] if manager and manager != "Unassigned" else []),
+            "source": "BM Client File",
+        })
+
+    prepared_tasks = []
+    for index, row in enumerate(task_data["rows"]):
+        client_name = _practice_pack_column_value(row, task_client_columns) or "No client"
+        key = _practice_pack_normalise_header(client_name)
+        match_key = _practice_pack_client_match_key(client_name)
+        matched_client = client_index.get(key) or client_match_index.get(match_key)
+        explicit_owner = _practice_pack_column_value(row, owner_columns)
+        owner = explicit_owner or (matched_client.get("manager") if matched_client else "") or "Unassigned"
+        status_text = _practice_pack_column_value(row, status_columns)
+        due_date = _practice_pack_column_value(row, due_columns)
+        task_name = _practice_pack_column_value(row, task_columns) or f"Task {index + 1}"
+        source_service = _practice_pack_column_value(row, service_columns)
+        raw_service = (
+            f"{source_service} - {task_name}"
+            if source_service and source_service.casefold() != task_name.casefold()
+            else task_name
+        )
+        prepared_tasks.append({
+            "owner": owner,
+            "clientName": client_name,
+            "clientKey": matched_client.get("key") if matched_client else (match_key or key or f"taskclient{index + 1}"),
+            "isLimitedCompany": bool(matched_client.get("isLimitedCompany")) if matched_client else _practice_pack_limited_company(client_name),
+            "taskName": task_name,
+            "rawServiceName": raw_service,
+            "status": status_text or "No status",
+            "dueDate": due_date or "",
+            "matchedClient": matched_client.get("name") if matched_client else "",
+            "matchedClientKey": matched_client.get("key") if matched_client else "",
+            "sourceRow": index + 2,
+        })
+
+    service_mapping, grouping_meta = await _practice_pack_service_mapping([task["rawServiceName"] for task in prepared_tasks])
+    staff_tasks: dict[str, list[dict]] = defaultdict(list)
+    all_tasks = []
+    service_stats: dict[str, dict] = {}
+    for index, task in enumerate(prepared_tasks):
+        service_name = _practice_pack_allowed_service_name(
+            service_mapping.get(task["rawServiceName"]) or _practice_pack_local_service_name(task["rawServiceName"])
+        )
+        task["serviceName"] = service_name
+        complete = _practice_pack_task_complete(task["status"])
+        overdue = _practice_pack_task_overdue(task["status"], task["dueDate"])
+        stats_key = task["matchedClientKey"] or f"taskonly-{_practice_pack_client_match_key(task['clientName']) or index}"
+        if stats_key not in client_stats:
+            client_stats[stats_key] = {
+                "name": task["clientName"],
+                "manager": "",
+                "taskCount": 0,
+                "openCount": 0,
+                "completedCount": 0,
+                "overdueCount": 0,
+                "owners": set(),
+                "source": "BM Task File",
+            }
+        stats = client_stats[stats_key]
+        stats["taskCount"] += 1
+        stats["completedCount"] += 1 if complete else 0
+        stats["openCount"] += 0 if complete else 1
+        stats["overdueCount"] += 1 if overdue else 0
+        stats["owners"].add(task["owner"])
+
+        service = service_stats.setdefault(service_name, {
+            "taskCount": 0,
+            "openCount": 0,
+            "completedCount": 0,
+            "overdueCount": 0,
+            "owners": set(),
+            "clients": set(),
+            "rawNames": set(),
+        })
+        service["taskCount"] += 1
+        service["completedCount"] += 1 if complete else 0
+        service["openCount"] += 0 if complete else 1
+        service["overdueCount"] += 1 if overdue else 0
+        service["owners"].add(task["owner"])
+        service["clients"].add(task["clientName"])
+        service["rawNames"].add(task["rawServiceName"])
+
+        staff_tasks[task["owner"]].append(task)
+        all_tasks.append(task)
+
+    owner_summaries = _practice_pack_owner_summaries(staff_tasks, history_records, month_label)
+    owner_commentaries = await _practice_pack_owner_commentaries(owner_summaries)
+    for summary in owner_summaries:
+        summary["commentary"] = owner_commentaries.get(summary["owner"]) or summary["commentary"]
+
+    grouping_label = "Jenius AI" if grouping_meta.get("engine") == "openai" else "Local grouping"
+    if grouping_meta.get("engine") == "openai_partial":
+        grouping_label = "Jenius AI + local fallback"
+    metrics = [
+        ("Month", month_label),
+        ("Clients", f"{len(client_data['rows']):,}"),
+        ("Tasks", f"{len(task_data['rows']):,}"),
+        ("Service groups", f"{len(service_stats):,}"),
+        ("Staff packs", f"{len(staff_tasks):,}"),
+        ("Grouping", grouping_label),
+    ]
+
+    management_pdf = _practice_pack_pdf_bytes(
+        f"Management Practice Pack - {month_label}",
+        "All BM tasks grouped into the practice-pack sections, with uncategorised tasks shown under Other at the end.",
+        metrics,
+        _practice_pack_sections(all_tasks, include_owner=True),
+        ["Owner", "Client", "Task", "Status", "Due date", "Match"],
+        [105, 140, 250, 90, 75, 84],
+    )
+
+    used_names: set[str] = set()
+    files = [{
+        "name": _practice_pack_unique_filename(f"{_practice_pack_file_name_part(month_label)}-management-pack.pdf", used_names),
+        "content_type": "application/pdf",
+        "kind": "management",
+        "bytes": management_pdf,
+    }]
+    owner_summary_by_name = {summary["owner"]: summary for summary in owner_summaries}
+    for owner, tasks in sorted(staff_tasks.items(), key=lambda item: str(item[0]).casefold()):
+        owner_summary = owner_summary_by_name.get(owner) or {}
+        previous_count = owner_summary.get("previousClientCount")
+        previous_month = owner_summary.get("previousMonth") or "Prior pack"
+        change = owner_summary.get("clientCountChange")
+        change_percent = owner_summary.get("clientCountChangePercent")
+        movement = "No prior pack"
+        if previous_count is not None:
+            sign = "+" if int(change or 0) > 0 else ""
+            movement = f"{previous_month}: {sign}{int(change or 0):,} ({sign}{float(change_percent or 0):.1f}%)"
+        owner_metrics = [
+            ("Manager", owner),
+            ("Month", month_label),
+            ("Clients", f"{int(owner_summary.get('clientCount') or 0):,}"),
+            ("Tasks", f"{int(owner_summary.get('taskCount') or len(tasks)):,}"),
+            ("Open tasks", f"{int(owner_summary.get('openCount') or 0):,}"),
+            ("Overdue tasks", f"{int(owner_summary.get('overdueCount') or 0):,}"),
+            ("Limited companies", f"{float(owner_summary.get('limitedCompanyPercent') or 0):.1f}%"),
+            ("Client movement", movement),
+        ]
+        staff_pdf = _practice_pack_pdf_bytes(
+            f"Practice Pack - {owner} - {month_label}",
+            "Tasks assigned to this owner, grouped into the practice-pack sections with Other shown last.",
+            owner_metrics,
+            _practice_pack_sections(tasks, include_owner=False),
+            ["Client", "Task", "Status", "Due date"],
+            [170, 370, 110, 90],
+            commentary=owner_summary.get("commentary"),
+            charts=owner_summary,
+        )
+        files.append({
+            "name": _practice_pack_unique_filename(f"{_practice_pack_file_name_part(month_label)}-{_practice_pack_file_name_part(owner)}-practice-pack.pdf", used_names),
+            "content_type": "application/pdf",
+            "kind": "staff",
+            "owner": owner,
+            "bytes": staff_pdf,
+        })
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for file_item in files:
+            archive.writestr(file_item["name"], file_item["bytes"])
+
+    client_assignments = [
+        {
+            "key": client["key"],
+            "matchKey": client["matchKey"],
+            "clientName": client["name"],
+            "manager": client["manager"] or "Unassigned",
+            "source": "BM Client File",
+        }
+        for client in client_index.values()
+        if client.get("name")
+    ]
+    task_summaries = [
+        {
+            "owner": task["owner"],
+            "clientName": task["clientName"],
+            "serviceName": task["serviceName"],
+            "rawServiceName": task["rawServiceName"],
+            "taskName": task["taskName"],
+            "status": task["status"],
+            "dueDate": task["dueDate"],
+            "matchedClient": task["matchedClient"],
+            "sourceRow": task["sourceRow"],
+        }
+        for task in all_tasks
+    ]
+    return {
+        "status": "ok",
+        "filename": f"{_practice_pack_file_name_part(month_label)}-practice-pack.zip",
+        "zipBase64": base64.b64encode(zip_buffer.getvalue()).decode("ascii"),
+        "files": [
+            {
+                "name": file_item["name"],
+                "contentType": file_item["content_type"],
+                "byteSize": len(file_item["bytes"]),
+                "kind": file_item["kind"],
+                "owner": file_item.get("owner", ""),
+            }
+            for file_item in files
+        ],
+        "taskSummaries": task_summaries,
+        "clientAssignments": client_assignments,
+        "ownerSummaries": owner_summaries,
+        "staffPackCount": max(len(files) - 1, 0),
+        "clientCount": len(client_data["rows"]),
+        "taskCount": len(task_data["rows"]),
+        "serviceCount": len(service_stats),
+        "unmatchedTaskCount": sum(1 for task in all_tasks if not task["matchedClient"]),
+        "grouping": grouping_meta,
+        "serviceSummaries": [
+            {
+                "serviceName": service_name,
+                "taskCount": stats["taskCount"],
+                "openCount": stats["openCount"],
+                "completedCount": stats["completedCount"],
+                "overdueCount": stats["overdueCount"],
+                "ownerCount": len(stats["owners"]),
+                "clientCount": len(stats["clients"]),
+                "rawServiceNames": sorted(stats["rawNames"]),
+            }
+            for service_name, stats in sorted(service_stats.items(), key=lambda item: _practice_pack_service_sort_key(item[0]))
+        ],
+    }
 
 
 async def _generate_openai_insights(analytics: dict) -> dict:

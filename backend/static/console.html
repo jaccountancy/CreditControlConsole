@@ -7654,10 +7654,6 @@
                         </div>
                         <div class="jashflow-topbar-summary" id="jashflowTopbarSummary" aria-label="Jashflow loan summary" hidden>
                             <article>
-                                <span>Active loans</span>
-                                <strong id="jashflowActiveLoans">0</strong>
-                            </article>
-                            <article>
                                 <span>Principal</span>
                                 <strong id="jashflowPrincipalTotal">£0.00</strong>
                             </article>
@@ -7666,8 +7662,12 @@
                                 <strong id="jashflowInterestTotal">£0.00</strong>
                             </article>
                             <article>
-                                <span>Uninvoiced interest</span>
-                                <strong id="jashflowUninvoicedInterestTotal">£0.00</strong>
+                                <span>Charges applied</span>
+                                <strong id="jashflowChargesTotal">£0.00</strong>
+                            </article>
+                            <article>
+                                <span>Payments received</span>
+                                <strong id="jashflowPaymentsTotal">£0.00</strong>
                             </article>
                             <article>
                                 <span>Balance</span>
@@ -8232,7 +8232,7 @@
                                 <button class="primary-button" id="addJashflowClientButton" type="button">Add new loan</button>
                             </div>
                         </div>
-                        <section class="detail-panel jashflow-panel">
+                        <section class="detail-panel jashflow-panel" id="jashflowFormsPanel" hidden>
                             <form class="jashflow-settings-form" id="jashflowSettingsForm" hidden>
                                 <label>
                                     Interest received account code
@@ -8507,11 +8507,11 @@
                         <div class="detail-hero">
                             <div>
                                 <p class="eyebrow">Bookkeeping month end</p>
-                                <p class="detail-meta">Build the management pack and individual staff practice packs from the BM client and task exports.</p>
+                                <p class="detail-meta">Build PDF management and staff practice packs grouped into Self Assessment, Year End and Corporation Tax, Confirmation Statements, Payroll, Bookkeeping, and Other.</p>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="practicePackClearButton" type="button">Clear</button>
-                                <button class="primary-button" id="practicePackGenerateButton" type="button">Generate ZIP</button>
+                                <button class="primary-button" id="practicePackGenerateButton" type="button">Generate PDF ZIP</button>
                             </div>
                         </div>
                         <section class="detail-panel practice-pack-panel">
@@ -8541,17 +8541,18 @@
                                         <option value="December">December</option>
                                     </select>
                                 </label>
-                                <button class="primary-button" type="submit">Generate</button>
+                                <button class="primary-button" type="submit">Generate PDFs</button>
                             </form>
                             <p class="late-charge-summary" id="practicePackSummary">Awaiting BM Client File CSV and BM Task File CSV.</p>
                             <div class="practice-pack-output-grid" id="practicePackMetrics">
                                 <article class="practice-pack-output-card"><span>Clients</span><strong>0</strong></article>
                                 <article class="practice-pack-output-card"><span>Tasks</span><strong>0</strong></article>
+                                <article class="practice-pack-output-card"><span>Service groups</span><strong>0</strong></article>
                                 <article class="practice-pack-output-card"><span>Staff packs</span><strong>0</strong></article>
                                 <article class="practice-pack-output-card"><span>Month</span><strong>May</strong></article>
                             </div>
                             <div class="practice-pack-output-list" id="practicePackOutputList">
-                                <div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management CSV and one individual staff CSV per assigned owner.</p></div>
+                                <div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>
                             </div>
                         </section>
                     </section>
@@ -9250,6 +9251,7 @@
             const ACTIVITY_KEY = `${STORAGE_KEY}:system-activity`;
             const USER_ACTIVITY_KEY = `${STORAGE_KEY}:user-activity-log`;
             const PRACTICE_PACK_ASSIGNMENTS_KEY = `${STORAGE_KEY}:practice-pack-assignments`;
+            const PRACTICE_PACK_HISTORY_KEY = `${STORAGE_KEY}:practice-pack-history`;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
@@ -9663,6 +9665,7 @@
                         meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
                         meReportSettings: config.endpoints?.meReportSettings || "/api/me-report/settings",
                         insights: config.endpoints?.insights || "/api/insights",
+                        practicePackGenerate: config.endpoints?.practicePackGenerate || "/api/practice-packs/generate",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
                         factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -9768,6 +9771,69 @@
                     localStorage.setItem(PRACTICE_PACK_ASSIGNMENTS_KEY, JSON.stringify(practicePackAssignments));
                 } catch (error) {
                     console.warn("Unable to persist Practice Pack manager assignments", error);
+                }
+            }
+
+            function loadPracticePackHistory() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(PRACTICE_PACK_HISTORY_KEY) || "{}");
+                    const records = Array.isArray(stored.records) ? stored.records : [];
+                    return {
+                        records: records
+                            .filter((record) => record && typeof record === "object" && Array.isArray(record.ownerSummaries))
+                            .slice(0, 18)
+                    };
+                } catch {
+                    try {
+                        localStorage.removeItem(PRACTICE_PACK_HISTORY_KEY);
+                    } catch {
+                        // Practice Pack history is optional and will rebuild after future generations.
+                    }
+                    return { records: [] };
+                }
+            }
+
+            function normalisePracticePackOwnerSummary(summary) {
+                if (!summary || typeof summary !== "object") return null;
+                const owner = String(summary.owner || "").trim();
+                if (!owner) return null;
+                const serviceCounts = summary.serviceCounts && typeof summary.serviceCounts === "object"
+                    ? Object.fromEntries(Object.entries(summary.serviceCounts).map(([key, value]) => [String(key), Number(value || 0)]))
+                    : {};
+                return {
+                    owner,
+                    clientCount: Number(summary.clientCount || 0),
+                    taskCount: Number(summary.taskCount || 0),
+                    openCount: Number(summary.openCount || 0),
+                    completedCount: Number(summary.completedCount || 0),
+                    overdueCount: Number(summary.overdueCount || 0),
+                    limitedCompanyCount: Number(summary.limitedCompanyCount || 0),
+                    limitedCompanyPercent: Number(summary.limitedCompanyPercent || 0),
+                    serviceCounts,
+                    busiestService: String(summary.busiestService || ""),
+                    otherTaskCount: Number(summary.otherTaskCount || 0)
+                };
+            }
+
+            function persistPracticePackHistory(result) {
+                const ownerSummaries = Array.isArray(result?.ownerSummaries)
+                    ? result.ownerSummaries.map(normalisePracticePackOwnerSummary).filter(Boolean)
+                    : [];
+                if (!ownerSummaries.length) return;
+                const current = {
+                    month: String(result.month || currentPracticePackMonth() || ""),
+                    generatedAt: String(result.generatedAt || new Date().toISOString()),
+                    ownerSummaries
+                };
+                try {
+                    const history = loadPracticePackHistory();
+                    const records = [
+                        current,
+                        ...history.records.filter((record) => record.generatedAt !== current.generatedAt)
+                    ].slice(0, 18);
+                    localStorage.setItem(PRACTICE_PACK_HISTORY_KEY, JSON.stringify({ records }));
+                } catch (error) {
+                    console.warn("Unable to persist Practice Pack history", error);
                 }
             }
 
@@ -14613,15 +14679,15 @@
                 if (!screen) return;
                 screen.classList.toggle("is-loan-detail-open", jashflowDetailOpen);
                 const summary = jashflowData.summary || {};
-                const activeLoans = document.getElementById("jashflowActiveLoans");
                 const principalTotal = document.getElementById("jashflowPrincipalTotal");
                 const interestTotal = document.getElementById("jashflowInterestTotal");
-                const uninvoicedInterestTotal = document.getElementById("jashflowUninvoicedInterestTotal");
+                const chargesTotal = document.getElementById("jashflowChargesTotal");
+                const paymentsTotal = document.getElementById("jashflowPaymentsTotal");
                 const balanceTotal = document.getElementById("jashflowBalanceTotal");
-                if (activeLoans) activeLoans.textContent = Number(summary.activeLoans || 0).toLocaleString("en-GB");
                 if (principalTotal) principalTotal.textContent = formatCurrency(summary.principalTotal || 0);
                 if (interestTotal) interestTotal.textContent = formatCurrency(summary.accruedInterestTotal || 0);
-                if (uninvoicedInterestTotal) uninvoicedInterestTotal.textContent = formatCurrency(summary.uninvoicedInterestTotal || 0);
+                if (chargesTotal) chargesTotal.textContent = formatCurrency(summary.chargesTotal || 0);
+                if (paymentsTotal) paymentsTotal.textContent = formatCurrency(summary.paymentsTotal || 0);
                 if (balanceTotal) balanceTotal.textContent = formatCurrency(summary.balanceTotal || 0);
 
                 const settingsForm = document.getElementById("jashflowSettingsForm");
@@ -14630,6 +14696,8 @@
                 if (setupButton) setupButton.textContent = jashflowSettingsOpen ? "Hide Xero posting setup" : "Xero posting setup";
                 const form = document.getElementById("jashflowLoanForm");
                 if (form) form.hidden = !jashflowFormOpen;
+                const formsPanel = document.getElementById("jashflowFormsPanel");
+                if (formsPanel) formsPanel.hidden = !(jashflowSettingsOpen || jashflowFormOpen);
                 const addButton = document.getElementById("addJashflowClientButton");
                 if (addButton) addButton.textContent = jashflowFormOpen ? "Close loan form" : "Add new loan";
                 const backLoansButton = document.getElementById("backJashflowLoansButton");
@@ -21193,6 +21261,20 @@
                 window.setTimeout(() => URL.revokeObjectURL(url), 250);
             }
 
+            function practicePackBlobFromBase64(value, type = "application/zip") {
+                const binary = atob(String(value || ""));
+                const chunks = [];
+                for (let offset = 0; offset < binary.length; offset += 8192) {
+                    const slice = binary.slice(offset, offset + 8192);
+                    const bytes = new Uint8Array(slice.length);
+                    for (let index = 0; index < slice.length; index += 1) {
+                        bytes[index] = slice.charCodeAt(index);
+                    }
+                    chunks.push(bytes);
+                }
+                return new Blob(chunks, { type });
+            }
+
             function downloadPracticePackZip() {
                 if (!practicePackResult?.zipBlob) {
                     showToast("Generate the practice pack ZIP first.", "info");
@@ -21212,32 +21294,43 @@
                 }
                 if (generateButton) generateButton.disabled = true;
                 try {
-                    const [clientText, taskText] = await Promise.all([clientFile.text(), taskFile.text()]);
                     const month = currentPracticePackMonth();
-                    const clientData = parsePracticePackCsv(clientText);
-                    const taskData = parsePracticePackCsv(taskText);
-                    if (!clientData.headers.length || !taskData.headers.length) throw new Error("One or both CSV files do not contain a header row.");
-                    const result = buildPracticePackFiles(clientData, taskData, month);
-                    const filename = `${practicePackFileNamePart(month)}-practice-pack.zip`;
-                    const zipBlob = practicePackZipBlob(result.files);
+                    const formData = new FormData();
+                    formData.append("clientFile", clientFile);
+                    formData.append("taskFile", taskFile);
+                    formData.append("month", month);
+                    formData.append("history", JSON.stringify(loadPracticePackHistory()));
+                    const result = await requestFormData(api.endpoints.practicePackGenerate, formData);
+                    if (!result?.zipBase64) throw new Error("The backend did not return a practice pack ZIP.");
+                    const filename = result.filename || `${practicePackFileNamePart(month)}-practice-pack.zip`;
+                    const zipBlob = practicePackBlobFromBase64(result.zipBase64, "application/zip");
                     practicePackResult = {
                         ...result,
                         filename,
                         zipBlob,
                         month,
-                        generatedAt: new Date().toISOString()
+                        generatedAt: new Date().toISOString(),
+                        files: Array.isArray(result.files) ? result.files : [],
+                        taskSummaries: Array.isArray(result.taskSummaries) ? result.taskSummaries : [],
+                        clientAssignments: Array.isArray(result.clientAssignments) ? result.clientAssignments : [],
+                        staffPackCount: Number(result.staffPackCount || 0),
+                        clientCount: Number(result.clientCount || 0),
+                        taskCount: Number(result.taskCount || 0),
+                        serviceCount: Number(result.serviceCount || 0),
+                        unmatchedTaskCount: Number(result.unmatchedTaskCount || 0)
                     };
                     practicePackAssignments = {
                         month,
                         generatedAt: practicePackResult.generatedAt,
-                        clientCount: result.clientCount,
-                        assignments: (result.clientAssignments || []).map((record) => normalisePracticePackAssignmentRecord(record)).filter(Boolean)
+                        clientCount: practicePackResult.clientCount,
+                        assignments: practicePackResult.clientAssignments.map((record) => normalisePracticePackAssignmentRecord(record)).filter(Boolean)
                     };
                     persistPracticePackAssignments();
+                    persistPracticePackHistory(practicePackResult);
                     renderPracticePackScreen();
                     renderIgnitionStaffFeeWidget();
                     downloadPracticePackZip();
-                    showToast("Practice pack ZIP generated.", "success");
+                    showToast("Practice pack PDF ZIP generated.", "success");
                 } catch (error) {
                     console.error("Unable to generate practice pack", error);
                     showToast(error.message || "Unable to generate the practice pack.", "error");
@@ -21267,6 +21360,7 @@
                     const cards = [
                         ["Clients", formatInteger(practicePackResult?.clientCount || 0)],
                         ["Tasks", formatInteger(practicePackResult?.taskCount || 0)],
+                        ["Service groups", formatInteger(practicePackResult?.serviceCount || 0)],
                         ["Staff packs", formatInteger(practicePackResult?.staffPackCount || 0)],
                         ["Manager assignments", formatInteger(practicePackAssignmentRows().length)],
                         ["Month", month]
@@ -21278,7 +21372,12 @@
                 if (summary) {
                     if (practicePackResult) {
                         const unmatched = Number(practicePackResult.unmatchedTaskCount || 0);
-                        summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} CSV file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
+                        const grouping = practicePackResult.grouping?.engine === "openai"
+                            ? " using Jenius AI service grouping"
+                            : practicePackResult.grouping?.engine === "openai_partial"
+                                ? " using Jenius AI with local fallback"
+                                : " using local service grouping";
+                        summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} PDF file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${grouping}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
                     } else {
                         summary.textContent = "Awaiting BM Client File CSV and BM Task File CSV.";
                     }
@@ -21287,7 +21386,7 @@
                 const outputList = document.getElementById("practicePackOutputList");
                 if (!outputList) return;
                 if (!practicePackResult) {
-                    outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management CSV and one individual staff CSV per assigned owner.</p></div>';
+                    outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>';
                     return;
                 }
                 outputList.innerHTML = `
@@ -21297,7 +21396,7 @@
                     </div>
                     ${practicePackResult.files.map((file) => `
                         <div class="practice-pack-output-row">
-                            <div><span>CSV file</span><strong>${escapeHTML(file.name)}</strong><small>${formatBytes(new TextEncoder().encode(file.content).byteLength)}</small></div>
+                            <div><span>${escapeHTML(file.contentType === "application/pdf" ? "PDF file" : "File")}</span><strong>${escapeHTML(file.name)}</strong><small>${formatBytes(Number(file.byteSize || 0))}</small></div>
                         </div>
                     `).join("")}
                 `;
@@ -23195,6 +23294,7 @@
                 localStorage.removeItem(SYNC_SETTINGS_KEY);
                 localStorage.removeItem(LETTER_TEMPLATES_KEY);
                 localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
+                localStorage.removeItem(PRACTICE_PACK_HISTORY_KEY);
                 statePersistenceDisabled = false;
                 syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
                 letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));

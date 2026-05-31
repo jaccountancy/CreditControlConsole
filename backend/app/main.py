@@ -80,6 +80,7 @@ from .services import (
     normalise_sync_options,
     panel_payload,
     pending_xero_actions_payload,
+    practice_pack_payload,
     process_pending_xero_actions,
     get_sync_run,
     me_report_payload,
@@ -808,6 +809,26 @@ def api_panel_session(request: Request):
 @app.get("/api/insights")
 async def api_insights(user: dict = Depends(require_panel_user)):
     return await insights_payload(user)
+
+
+@app.post("/api/practice-packs/generate")
+async def api_practice_pack_generate(
+    month: str = Form(""),
+    history: str = Form(""),
+    client_file: UploadFile = File(..., alias="clientFile"),
+    task_file: UploadFile = File(..., alias="taskFile"),
+    user: dict = Depends(require_panel_user),
+):
+    client_bytes, task_bytes = await asyncio.gather(client_file.read(), task_file.read())
+    return await practice_pack_payload(
+        user,
+        client_bytes,
+        task_bytes,
+        month,
+        client_file.filename or "BM Client File CSV",
+        task_file.filename or "BM Task File CSV",
+        history,
+    )
 
 
 @app.post("/api/panel/sync")
