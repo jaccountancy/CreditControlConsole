@@ -161,11 +161,11 @@
             }
             .app-sidebar-brand {
                 display: block;
-                padding: 4px 2px 8px;
+                padding: 8px 0 12px;
             }
             .app-sidebar-logo {
                 display: block;
-                width: min(142px, 100%);
+                width: 100%;
                 height: auto;
                 object-fit: contain;
             }
@@ -351,11 +351,12 @@
                 padding: 10px 14px;
                 border-radius: 12px;
                 margin-bottom: 10px;
-                transition: box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+                transition: box-shadow 0.36s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.36s ease, background 0.36s ease;
             }
             .ledger-topbar.is-activity-open {
-                border-color: rgba(29, 103, 242, 0.16);
-                box-shadow: 0 18px 48px rgba(30, 47, 77, 0.13);
+                border-color: rgba(29, 103, 242, 0.24);
+                background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.94));
+                box-shadow: 0 24px 64px rgba(30, 47, 77, 0.16);
             }
             .brand-lockup { display: flex; align-items: center; min-width: 0; }
             .brand-lockup h1 {
@@ -378,6 +379,7 @@
             }
             .topbar-client-context[hidden] { display: none; }
             .global-activity-toggle {
+                position: relative;
                 width: 42px;
                 height: 42px;
                 margin-left: auto;
@@ -388,7 +390,19 @@
                 background: #ffffff;
                 color: var(--ink);
                 box-shadow: 0 8px 18px rgba(30, 47, 77, 0.08);
-                transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+                overflow: hidden;
+                isolation: isolate;
+                transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s ease, color 0.28s ease, background 0.28s ease, box-shadow 0.28s ease;
+            }
+            .global-activity-toggle::before {
+                content: "";
+                position: absolute;
+                inset: -58%;
+                z-index: 0;
+                background: conic-gradient(from 90deg, rgba(29, 103, 242, 0), rgba(29, 103, 242, 0.32), rgba(141, 98, 255, 0.28), rgba(39, 176, 95, 0.18), rgba(29, 103, 242, 0));
+                opacity: 0;
+                transform: scale(0.62) rotate(-40deg);
+                transition: opacity 0.34s ease, transform 0.56s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .global-activity-toggle:hover,
             .global-activity-toggle:focus-visible {
@@ -398,7 +412,20 @@
                 transform: translateY(-1px);
                 outline: none;
             }
+            .ledger-topbar.is-activity-open .global-activity-toggle {
+                color: #ffffff;
+                border-color: rgba(29, 103, 242, 0.4);
+                background: var(--blue);
+                box-shadow: 0 14px 30px rgba(29, 103, 242, 0.26);
+                transform: translateY(-1px) scale(1.03);
+            }
+            .ledger-topbar.is-activity-open .global-activity-toggle::before {
+                opacity: 0.78;
+                transform: scale(1) rotate(135deg);
+            }
             .global-activity-toggle svg {
+                position: relative;
+                z-index: 1;
                 width: 19px;
                 height: 19px;
                 stroke: currentColor;
@@ -406,13 +433,14 @@
                 fill: none;
                 stroke-linecap: round;
                 stroke-linejoin: round;
-                transition: transform 0.24s ease;
+                transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
             }
             .ledger-topbar.is-activity-open .global-activity-toggle svg {
-                transform: rotate(180deg);
+                transform: rotate(180deg) scale(1.08);
             }
             .global-activity-count {
                 position: absolute;
+                z-index: 1;
                 min-width: 17px;
                 height: 17px;
                 margin: -25px -25px 0 0;
@@ -426,25 +454,69 @@
                 font-weight: 900;
                 line-height: 1;
             }
+            .ignition-renewals-topbar-button {
+                flex: 0 0 auto;
+                min-height: 42px;
+                margin-left: auto;
+                padding: 10px 16px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                box-shadow: 0 8px 18px rgba(29, 103, 242, 0.08);
+                font: inherit;
+                font-weight: 900;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            .ignition-renewals-topbar-button[hidden] {
+                display: none;
+            }
+            .ignition-renewals-topbar-button:not([hidden]) + .global-activity-toggle {
+                margin-left: 0;
+            }
+            .ignition-renewals-topbar-button:disabled {
+                cursor: not-allowed;
+                opacity: 0.58;
+            }
+            .ledger-topbar.is-activity-open .global-activity-count {
+                background: #ffffff;
+                color: var(--blue);
+            }
             .global-activity-panel {
+                --activity-panel-max-height: min(58vh, 560px);
                 flex: 1 0 100%;
                 display: grid;
                 grid-template-columns: minmax(250px, 0.72fr) minmax(320px, 1.28fr);
                 gap: 12px;
-                max-height: min(58vh, 560px);
+                max-height: var(--activity-panel-max-height);
                 overflow: auto;
                 padding: 12px;
                 border: 1px solid rgba(61, 85, 130, 0.12);
                 border-radius: 10px;
                 background: rgba(248, 251, 255, 0.94);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-                animation: global-activity-open 0.24s ease both;
+                transform-origin: top right;
+                will-change: opacity, transform, max-height, clip-path, filter;
+                animation: global-activity-open 0.48s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             .global-activity-panel[hidden] { display: none; }
+            .global-activity-panel.is-collapsing {
+                pointer-events: none;
+                overflow: hidden;
+                animation: global-activity-close 0.34s cubic-bezier(0.4, 0, 0.2, 1) both;
+            }
             .global-activity-section {
                 display: grid;
                 gap: 8px;
                 align-content: start;
+                animation: global-activity-content-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            .global-activity-section:nth-child(2) {
+                animation-delay: 0.08s;
+            }
+            .global-activity-panel.is-collapsing .global-activity-section {
+                animation: global-activity-content-out 0.18s ease both;
             }
             .global-activity-section h3 {
                 font-size: 0.8rem;
@@ -536,20 +608,113 @@
                 background: var(--red-soft);
             }
             @keyframes global-activity-open {
-                from { opacity: 0; transform: translateY(-8px); }
+                0% {
+                    opacity: 0;
+                    max-height: 0;
+                    padding-top: 0;
+                    padding-bottom: 0;
+                    transform: translateY(-18px) scale(0.985);
+                    clip-path: inset(0 0 100% 0 round 10px);
+                    filter: blur(8px);
+                }
+                62% {
+                    opacity: 1;
+                    transform: translateY(2px) scale(1.002);
+                    filter: blur(0);
+                }
+                100% {
+                    opacity: 1;
+                    max-height: var(--activity-panel-max-height);
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    transform: translateY(0) scale(1);
+                    clip-path: inset(0 0 0 0 round 10px);
+                    filter: none;
+                }
+            }
+            @keyframes global-activity-close {
+                0% {
+                    opacity: 1;
+                    max-height: var(--activity-panel-max-height);
+                    padding-top: 12px;
+                    padding-bottom: 12px;
+                    transform: translateY(0) scale(1);
+                    clip-path: inset(0 0 0 0 round 10px);
+                    filter: none;
+                }
+                100% {
+                    opacity: 0;
+                    max-height: 0;
+                    padding-top: 0;
+                    padding-bottom: 0;
+                    transform: translateY(-14px) scale(0.985);
+                    clip-path: inset(0 0 100% 0 round 10px);
+                    filter: blur(7px);
+                }
+            }
+            @keyframes global-activity-content-in {
+                from { opacity: 0; transform: translateY(12px); }
                 to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes global-activity-content-out {
+                to { opacity: 0; transform: translateY(-5px); }
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .ledger-topbar,
+                .global-activity-toggle,
+                .global-activity-toggle::before,
+                .global-activity-toggle svg,
+                .global-activity-panel,
+                .global-activity-panel.is-collapsing,
+                .global-activity-section {
+                    transition: none;
+                    animation: none;
+                }
             }
             .header-xero-action {
                 margin-left: auto;
                 display: flex;
                 align-items: center;
+                justify-content: flex-end;
+                flex: 1 1 auto;
             }
             .header-xero-action[hidden] { display: none; }
             .header-connect-button {
-                min-height: 40px;
-                padding: 10px 16px;
+                position: relative;
+                min-width: 112px;
+                min-height: 44px;
+                padding: 11px 22px;
+                overflow: hidden;
+                isolation: isolate;
+                font-weight: 900;
+                letter-spacing: 0;
                 white-space: nowrap;
-                box-shadow: none;
+                box-shadow: 0 10px 24px rgba(29, 103, 242, 0.22);
+                transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.26s ease, filter 0.26s ease;
+            }
+            .header-connect-button::after {
+                content: "";
+                position: absolute;
+                inset: -70% -40%;
+                z-index: -1;
+                background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.6) 44%, transparent 68%);
+                opacity: 0;
+                transform: translateX(-65%) rotate(10deg);
+                transition: opacity 0.26s ease, transform 0.56s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .header-connect-button:hover,
+            .header-connect-button:focus-visible {
+                transform: translateY(-2px) scale(1.035);
+                filter: saturate(1.08);
+                box-shadow: 0 16px 34px rgba(29, 103, 242, 0.32);
+            }
+            .header-connect-button:hover::after,
+            .header-connect-button:focus-visible::after {
+                opacity: 1;
+                transform: translateX(62%) rotate(10deg);
+            }
+            .header-connect-button:active {
+                transform: translateY(0) scale(0.99);
             }
             .topbar-back-button,
             .topbar-contact-strip {
@@ -3893,6 +4058,10 @@
             #meReportScreen .bank-statement-workspace.is-extraction-detail {
                 grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
             }
+            #meReportScreen .bank-statement-workspace.is-report-table,
+            #meReportScreen .bank-statement-workspace.is-report-insights {
+                grid-template-columns: minmax(0, 1fr);
+            }
             #bankStatementsScreen #bankAccountList,
             #meReportScreen #meReportActionList {
                 align-self: start;
@@ -3916,6 +4085,189 @@
             }
             #meReportScreen .bank-statement-workspace.is-client-list #meReportClientList {
                 grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            }
+            #meReportScreen #meReportClientList > .empty-state {
+                grid-column: 1 / -1;
+            }
+            #meReportScreen .me-report-client-filterbar {
+                grid-column: 1 / -1;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+                padding: 12px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.9);
+            }
+            #meReportScreen .me-report-client-filterbar button {
+                min-height: 38px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.84);
+                color: var(--ink);
+                padding: 8px 13px;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 900;
+                transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+            }
+            #meReportScreen .me-report-client-filterbar button:hover {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.26);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            #meReportScreen .me-report-client-filterbar button.is-active {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: var(--blue);
+                color: #ffffff;
+            }
+            #meReportScreen .bank-client-card.is-archived {
+                border-style: dashed;
+                background: rgba(248, 251, 255, 0.58);
+                opacity: 0.82;
+            }
+            #meReportScreen .me-report-client-status {
+                display: inline-flex;
+                align-items: center;
+                width: fit-content;
+                margin-top: 8px;
+                padding: 4px 9px;
+                border-radius: 999px;
+                background: var(--green-soft);
+                color: var(--green);
+                font-size: 0.72rem;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+            #meReportScreen .me-report-client-status.is-archived {
+                background: var(--orange-soft);
+                color: #a66b10;
+            }
+            #meReportScreen .me-report-archive-button {
+                border-color: rgba(255, 159, 47, 0.34);
+                background: var(--orange-soft);
+                color: #95620d;
+            }
+            #meReportScreen .me-report-upload-form {
+                grid-template-columns: minmax(240px, 1fr) auto auto;
+                gap: 14px;
+                padding: 16px;
+                border: 1px solid rgba(29, 103, 242, 0.14);
+                border-radius: 18px;
+                background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.9));
+            }
+            #meReportScreen .me-report-upload-form .primary-button,
+            #meReportScreen .me-report-upload-form .ghost-button {
+                min-height: 50px;
+                padding-inline: 22px;
+                font-weight: 900;
+            }
+            #meReportScreen .me-report-submission-preview {
+                display: grid;
+                gap: 12px;
+                padding: 16px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 18px;
+                background: rgba(233, 241, 255, 0.48);
+            }
+            #meReportScreen .me-report-submission-preview[hidden] {
+                display: none;
+            }
+            #meReportScreen .me-report-file-cell {
+                display: grid;
+                gap: 8px;
+                align-items: start;
+            }
+            #meReportScreen .me-report-file-cell .ghost-button {
+                width: fit-content;
+                min-height: 32px;
+                padding: 6px 12px;
+                font-size: 0.78rem;
+            }
+            #meReportScreen .me-report-report-toolbar,
+            #meReportScreen .me-report-report-group-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            #meReportScreen .me-report-report-table,
+            #meReportScreen .me-report-month-group,
+            #meReportScreen .me-report-insight-page,
+            #meReportScreen .me-report-insight-card {
+                display: grid;
+                gap: 14px;
+            }
+            #meReportScreen .me-report-report-row {
+                display: grid;
+                grid-template-columns: minmax(170px, 1.1fr) minmax(160px, 1fr) minmax(105px, 0.62fr) minmax(120px, 0.72fr) minmax(130px, 0.74fr) auto;
+                gap: 12px;
+                align-items: center;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.82);
+            }
+            #meReportScreen .me-report-report-row.is-header {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                background: rgba(248, 251, 255, 0.9);
+            }
+            #meReportScreen .me-report-insight-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 14px;
+            }
+            #meReportScreen .me-report-insight-card {
+                padding: 16px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.82);
+            }
+            #meReportScreen .me-report-insight-card ul {
+                margin: 0;
+                padding-left: 18px;
+                color: var(--muted);
+                font-weight: 750;
+                line-height: 1.5;
+            }
+            #meReportScreen .me-report-forecast-bars {
+                display: grid;
+                gap: 10px;
+            }
+            #meReportScreen .me-report-forecast-bar {
+                display: grid;
+                grid-template-columns: 160px 120px minmax(0, 1fr);
+                align-items: center;
+                gap: 12px;
+                font-weight: 850;
+            }
+            #meReportScreen .me-report-forecast-bar span:first-child {
+                color: var(--muted);
+            }
+            #meReportScreen .me-report-forecast-bar em {
+                display: block;
+                height: 14px;
+                border-radius: 999px;
+                background: linear-gradient(90deg, var(--blue), #77a7ff);
+            }
+            #meReportScreen .me-report-quality-table {
+                display: grid;
+                gap: 8px;
+            }
+            @media (max-width: 760px) {
+                #meReportScreen .me-report-upload-form {
+                    grid-template-columns: 1fr;
+                }
+                #meReportScreen .me-report-upload-form .primary-button,
+                #meReportScreen .me-report-upload-form .ghost-button {
+                    width: 100%;
+                }
             }
             .bank-account-page {
                 display: grid;
@@ -4403,15 +4755,181 @@
                 border-radius: 18px;
                 background: rgba(248, 251, 255, 0.88);
             }
-            .ignition-topbar-widget {
-                flex: 1 0 100%;
+            #ignitionScreen > .detail-hero {
                 display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: start;
+                gap: 18px;
+            }
+            .ignition-hero-copy {
+                display: grid;
+                gap: 12px;
+                min-width: 0;
+            }
+            .ignition-connection-bubble {
+                position: relative;
+                isolation: isolate;
+                display: grid;
+                grid-template-columns: 34px minmax(0, 1fr);
                 gap: 10px;
-                padding: 12px;
+                align-items: center;
+                width: min(680px, 100%);
+                padding: 10px 13px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.92);
+                box-shadow: 0 14px 34px rgba(30, 47, 77, 0.10);
+                overflow: hidden;
+                animation: ignition-bubble-enter 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+                transition: border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .ignition-connection-bubble::before {
+                content: "";
+                position: absolute;
+                inset: -1px;
+                z-index: -1;
+                background: linear-gradient(120deg, rgba(29, 103, 242, 0.12), rgba(39, 176, 95, 0.10), transparent 64%);
+                opacity: 0;
+                transition: opacity 0.36s ease;
+            }
+            .ignition-connection-bubble.is-connected {
+                border-color: rgba(39, 176, 95, 0.28);
+            }
+            .ignition-connection-bubble.is-syncing {
+                border-color: rgba(29, 103, 242, 0.32);
+                box-shadow: 0 18px 48px rgba(29, 103, 242, 0.14);
+                transform: translateY(-1px);
+            }
+            .ignition-connection-bubble.is-syncing::before,
+            .ignition-connection-bubble.is-connected::before {
+                opacity: 1;
+            }
+            .ignition-bubble-icon {
+                width: 34px;
+                height: 34px;
+                display: grid;
+                place-items: center;
+                border-radius: 50%;
+                background: var(--blue-soft);
+                color: var(--blue);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+            }
+            .ignition-bubble-icon svg {
+                width: 18px;
+                height: 18px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .ignition-connection-bubble.is-connected .ignition-bubble-icon {
+                background: var(--green-soft);
+                color: var(--green);
+            }
+            .ignition-bubble-copy {
+                display: grid;
+                gap: 5px;
+                min-width: 0;
+            }
+            .ignition-bubble-copy strong {
+                font-size: 0.9rem;
+                font-weight: 950;
+                line-height: 1.1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .ignition-bubble-copy > span {
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 850;
+                line-height: 1.2;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .ignition-bubble-meta {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                min-width: 0;
+            }
+            .ignition-bubble-meta span {
+                min-width: 0;
+                padding: 4px 7px;
+                border-radius: 999px;
+                background: rgba(233, 241, 255, 0.72);
+                color: #5271aa;
+                font-size: 0.66rem;
+                font-weight: 950;
+                line-height: 1;
+                white-space: nowrap;
+            }
+            .ignition-bubble-progress {
+                position: relative;
+                height: 4px;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.11);
+                overflow: hidden;
+                opacity: 0;
+                transform: scaleX(0.72);
+                transform-origin: left;
+                transition: opacity 0.24s ease, transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .ignition-connection-bubble.is-syncing .ignition-bubble-progress {
+                opacity: 1;
+                transform: scaleX(1);
+            }
+            .ignition-bubble-progress::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                width: 42%;
+                background: linear-gradient(90deg, transparent, rgba(29, 103, 242, 0.5), transparent);
+                animation: sync-inline-shimmer 1.35s linear infinite;
+            }
+            .ignition-bubble-progress span {
+                position: relative;
+                z-index: 1;
+                display: block;
+                width: 0%;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #27b05f);
+                transition: width 0.62s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            @keyframes ignition-bubble-enter {
+                0% { opacity: 0; transform: translateY(-8px) scale(0.98); filter: blur(6px); }
+                100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+            }
+            @media (max-width: 900px) {
+                #ignitionScreen > .detail-hero {
+                    grid-template-columns: 1fr;
+                }
+                .ignition-connection-bubble {
+                    border-radius: 22px;
+                    align-items: start;
+                }
+                .ignition-bubble-copy strong,
+                .ignition-bubble-copy > span {
+                    white-space: normal;
+                }
+            }
+            .ignition-topbar-widget {
+                flex: 1 1 440px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                width: min(620px, 100%);
+                max-width: 640px;
+                margin: 0 auto;
+                padding: 12px 16px;
                 border: 1px solid rgba(29, 103, 242, 0.16);
-                border-radius: 10px;
-                background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(233, 241, 255, 0.76));
-                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.96);
+                box-shadow: 0 16px 42px rgba(30, 47, 77, 0.14);
                 animation: ignition-topbar-enter 0.24s ease both;
             }
             .ignition-topbar-widget[hidden] { display: none; }
@@ -4647,6 +5165,163 @@
             .ignition-renewals-table .percent-cell {
                 white-space: nowrap;
                 font-weight: 900;
+            }
+            .ignition-client-panel {
+                display: grid;
+                gap: 14px;
+            }
+            .ignition-client-toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            .ignition-client-toolbar > div:first-child {
+                min-width: min(360px, 100%);
+            }
+            .ignition-client-controls {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .ignition-client-search {
+                min-width: min(320px, 100%);
+            }
+            .ignition-client-control {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                min-height: 38px;
+                padding: 5px 8px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.92);
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+            .ignition-client-control select {
+                border: 0;
+                background: transparent;
+                color: var(--ink);
+                font: inherit;
+                text-transform: none;
+                outline: 0;
+            }
+            .ignition-client-table-wrap {
+                overflow: auto;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: #ffffff;
+            }
+            .ignition-client-table {
+                width: 100%;
+                min-width: 960px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .ignition-client-table th,
+            .ignition-client-table td {
+                padding: 12px 14px;
+                border-bottom: 1px solid var(--line);
+                text-align: left;
+                vertical-align: middle;
+            }
+            .ignition-client-table th {
+                color: var(--muted);
+                background: var(--surface-soft);
+                font-size: 0.72rem;
+                font-weight: 950;
+                text-transform: uppercase;
+            }
+            .ignition-client-table tbody tr {
+                transition: background 0.18s ease, box-shadow 0.18s ease;
+            }
+            .ignition-client-table tbody tr:hover {
+                background: rgba(233, 241, 255, 0.34);
+            }
+            .ignition-client-table a {
+                color: inherit;
+                text-decoration: none;
+            }
+            .ignition-client-name-cell {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                min-width: 0;
+            }
+            .ignition-client-icon {
+                flex: 0 0 auto;
+                width: 34px;
+                height: 34px;
+                display: grid;
+                place-items: center;
+                border-radius: 12px;
+                background: linear-gradient(135deg, rgba(29, 103, 242, 0.12), rgba(39, 176, 95, 0.10));
+                color: var(--blue);
+            }
+            .ignition-client-icon svg {
+                width: 18px;
+                height: 18px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2.1;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .ignition-client-name-cell strong,
+            .ignition-client-table td strong {
+                display: block;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-weight: 900;
+            }
+            .ignition-client-name-cell span,
+            .ignition-client-table td small {
+                display: block;
+                margin-top: 3px;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 800;
+                line-height: 1.25;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .ignition-client-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 9px;
+                border-radius: 999px;
+                background: rgba(233, 241, 255, 0.82);
+                color: var(--blue);
+                font-size: 0.74rem;
+                font-weight: 950;
+                white-space: nowrap;
+            }
+            .ignition-client-status.is-active {
+                background: var(--green-soft);
+                color: var(--green);
+            }
+            .ignition-client-status.is-risk {
+                background: var(--red-soft);
+                color: var(--red);
+            }
+            .ignition-client-status::before {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background: currentColor;
+            }
+            .ignition-client-empty {
+                padding: 18px;
             }
             .payment-plan-preview {
                 padding: 12px 14px;
@@ -6060,7 +6735,7 @@
                 .global-activity-panel {
                     grid-template-columns: 1fr;
                     width: 100%;
-                    max-height: 66vh;
+                    --activity-panel-max-height: 66vh;
                     margin-top: 2px;
                 }
                 body.is-client-view .ledger-topbar {
@@ -6230,7 +6905,7 @@
                 <div class="console-app">
                 <aside class="app-sidebar" aria-label="Main navigation">
                     <div class="app-sidebar-brand">
-                        <img class="app-sidebar-logo" src="https://creditcontrolconsole-production.up.railway.app/static/JaccountancyBlueStacked.png" alt="Jaccountancy">
+                        <img class="app-sidebar-logo" src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy">
                     </div>
                     <nav class="app-nav">
                         <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">
@@ -6323,7 +6998,7 @@
                             </div>
                         </div>
                         <div class="header-xero-action" id="headerXeroAction">
-                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Login with Xero</a>
+                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">START</a>
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
                             <button class="topbar-contact-strip" id="topbarClientButton" type="button">
@@ -6384,23 +7059,12 @@
                             </div>
                         </div>
                         <div class="ignition-topbar-widget" id="ignitionTopbarWidget" role="status" aria-live="polite" aria-atomic="true" hidden>
-                            <div class="ignition-sync-head">
-                                <div>
-                                    <p class="eyebrow">Ignition connection</p>
-                                    <strong id="ignitionConnectionStatus">Not connected</strong>
-                                    <span id="ignitionPracticeName">Create the OAuth application in Ignition Developer Hub, then connect Jenius.</span>
-                                </div>
-                                <div>
-                                    <p class="eyebrow">Last sync</p>
-                                    <strong id="ignitionLastSync">Never synced</strong>
-                                    <span id="ignitionDatasetTotal">0 records stored</span>
-                                </div>
-                            </div>
-                            <div class="ignition-progress-track" aria-hidden="true"><span id="ignitionSyncProgressFill"></span></div>
-                            <div class="ignition-sync-detail">
-                                <strong id="ignitionSyncStep">Waiting for Ignition connection</strong>
-                                <span id="ignitionSyncSummary">Once connected, sync imports Reporting API data into the Jenius database for fast dashboards and historical reporting.</span>
-                                <span id="ignitionSyncCounts"></span>
+                            <span class="sync-inline-spinner" aria-hidden="true"></span>
+                            <div class="sync-inline-copy">
+                                <strong id="ignitionSyncStep">Ignition syncing</strong>
+                                <span id="ignitionSyncSummary">Preparing Ignition Reporting API import</span>
+                                <div class="sync-inline-progress" aria-hidden="true"><span id="ignitionSyncProgressFill"></span></div>
+                                <small class="sync-inline-eta" id="ignitionSyncCounts">Estimating time left</small>
                             </div>
                         </div>
                         <div class="topbar-actions">
@@ -6424,6 +7088,7 @@
                                 </div>
                             </div>
                         </div>
+                        <button class="ignition-renewals-topbar-button" id="startIgnitionRenewalsButton" type="button" hidden>Renewals</button>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
                             <span class="global-activity-count" id="globalActivityCount">0</span>
                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg>
@@ -6777,7 +7442,6 @@
                         <div class="detail-hero">
                             <div>
                                 <p class="eyebrow">Overdue invoice workflow</p>
-                                <h2>Review Late Payment Charges</h2>
                                 <p class="detail-meta">Open invoices with outstanding balances. Review days overdue, then raise one Xero invoice per selected late payment charge.</p>
                             </div>
                             <div class="detail-actions">
@@ -6816,7 +7480,6 @@
                         <div class="detail-hero">
                             <div>
                                 <p class="eyebrow">Invoice write-off workflow</p>
-                                <h2>Bad Debt</h2>
                                 <p class="detail-meta">Outstanding invoices eligible for write-off. The workflow raises a Xero credit note to the bad debt account and allocates it to the invoice.</p>
                             </div>
                             <div class="detail-actions">
@@ -6849,7 +7512,6 @@
                     <section class="late-charges-screen detail-card" id="jashflowScreen" hidden>
                         <div class="detail-hero">
                             <div>
-                                <p class="eyebrow">Jashflow</p>
                                 <h2>Client loans</h2>
                                 <p class="detail-meta">Track active client loans, daily compound interest, payments, and interest invoicing controls.</p>
                             </div>
@@ -6941,10 +7603,25 @@
 
                     <section class="late-charges-screen detail-card" id="ignitionScreen" hidden>
                         <div class="detail-hero">
-                            <div>
-                                <p class="eyebrow">Ignition Reporting API</p>
-                                <h2>Ignition</h2>
-                                <p class="detail-meta">Live practice intelligence for sales, onboarding, services, proposals, invoices, payments, collections, and deal pipeline data.</p>
+                            <div class="ignition-hero-copy">
+                                <div>
+                                    <p class="eyebrow">Ignition Reporting API</p>
+                                    <p class="detail-meta">Live practice intelligence for sales, onboarding, services, proposals, invoices, payments, collections, and deal pipeline data.</p>
+                                </div>
+                                <div class="ignition-connection-bubble" id="ignitionConnectionBubble" role="status" aria-live="polite" aria-atomic="true">
+                                    <span class="ignition-bubble-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M13 2 5 13h6l-1 9 9-12h-6l1-8Z"></path></svg>
+                                    </span>
+                                    <div class="ignition-bubble-copy">
+                                        <strong id="ignitionConnectionStatus">Ignition ready to connect</strong>
+                                        <span id="ignitionPracticeName">Use Connect Ignition to authorise the Reporting API with PKCE OAuth.</span>
+                                        <div class="ignition-bubble-meta">
+                                            <span id="ignitionLastSync">Never synced</span>
+                                            <span id="ignitionDatasetTotal">0 records stored</span>
+                                        </div>
+                                        <div class="ignition-bubble-progress" aria-hidden="true"><span id="ignitionBubbleProgressFill"></span></div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="refreshIgnitionButton" type="button">Refresh</button>
@@ -6954,13 +7631,7 @@
                         </div>
                         <section class="detail-panel ignition-panel">
                             <div class="ignition-summary-grid" aria-label="Ignition management metrics">
-                                <article class="ignition-renewals-launch">
-                                    <div>
-                                        <span>Total clients</span>
-                                        <strong id="ignitionClientCount">0</strong>
-                                    </div>
-                                    <button class="ignition-mini-button" id="startIgnitionRenewalsButton" type="button">Renewals</button>
-                                </article>
+                                <article><span>Total clients</span><strong id="ignitionClientCount">0</strong></article>
                                 <article><span>New clients MTD</span><strong id="ignitionNewClientsMtd">0</strong></article>
                                 <article><span>Proposals sent MTD</span><strong id="ignitionProposalsSentMtd">0</strong></article>
                                 <article><span>Accepted MTD</span><strong id="ignitionProposalsAcceptedMtd">0</strong></article>
@@ -6973,6 +7644,42 @@
                                 <article><span>Pipeline</span><strong id="ignitionPipelineValue">£0</strong></article>
                                 <article><span>Net collections</span><strong id="ignitionCollectionDisbursements">£0</strong></article>
                             </div>
+                        </section>
+                        <section class="detail-panel ignition-client-panel">
+                            <div class="ignition-client-toolbar">
+                                <div>
+                                    <p class="eyebrow">Clients</p>
+                                    <h3>Ignition client register</h3>
+                                    <p class="detail-meta" id="ignitionClientTableSummary">Synced client rows will appear after the Reporting API import.</p>
+                                </div>
+                                <div class="ignition-client-controls">
+                                    <label class="search-wrap ignition-client-search">
+                                        <span class="search-icon">⌕</span>
+                                        <input id="ignitionClientSearch" type="search" placeholder="Search client, owner, status...">
+                                    </label>
+                                    <label class="ignition-client-control">
+                                        Sort
+                                        <select id="ignitionClientSortSelect" aria-label="Sort Ignition clients">
+                                            <option value="activity-desc">Latest activity</option>
+                                            <option value="name-asc">Client A-Z</option>
+                                            <option value="proposals-desc">Proposals</option>
+                                            <option value="accepted-desc">Accepted</option>
+                                            <option value="outstanding-desc">Outstanding</option>
+                                        </select>
+                                    </label>
+                                    <label class="ignition-client-control">
+                                        Filter
+                                        <select id="ignitionClientFilterSelect" aria-label="Filter Ignition clients">
+                                            <option value="all">All clients</option>
+                                            <option value="active">Active</option>
+                                            <option value="awaiting">Awaiting acceptance</option>
+                                            <option value="overdue">Overdue</option>
+                                            <option value="new">New this month</option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="ignition-client-table-wrap" id="ignitionClientTableWrap"></div>
                         </section>
                         <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel" hidden>
                             <div class="ignition-renewals-toolbar">
@@ -7047,7 +7754,6 @@
                         <div class="detail-hero">
                             <div>
                                 <p class="eyebrow">Month-end bookkeeping</p>
-                                <h2>ME Report</h2>
                                 <p class="detail-meta">Client register, overview report upload, account treatment review, corporation tax estimate, dividend capacity, DLA review, exceptions, and branded month-end reporting.</p>
                             </div>
                             <div class="detail-actions">
@@ -7078,16 +7784,6 @@
                                     <span id="meReportSyncSummary">Add a client to start the month-end register.</span>
                                     <span id="meReportSyncCounts"></span>
                                 </div>
-                            </div>
-                            <div class="ignition-summary-grid" aria-label="ME Report management metrics">
-                                <article><span>Clients</span><strong id="meReportClientCount">0</strong></article>
-                                <article><span>Green</span><strong id="meReportGreenCount">0</strong></article>
-                                <article><span>Amber</span><strong id="meReportAmberCount">0</strong></article>
-                                <article><span>Red</span><strong id="meReportRedCount">0</strong></article>
-                                <article><span>Estimated CT</span><strong id="meReportEstimatedCT">£0</strong></article>
-                                <article><span>Dividend capacity</span><strong id="meReportDividendCapacity">£0</strong></article>
-                                <article><span>DLA red</span><strong id="meReportDlaRedCount">0</strong></article>
-                                <article><span>Reports</span><strong id="meReportReportsGenerated">0</strong></article>
                             </div>
                         </section>
                         <section class="detail-panel" id="meReportClientFormPanel" hidden>
@@ -7131,7 +7827,6 @@
                         <div class="detail-hero">
                             <div>
                                 <p class="eyebrow">Bookkeeping month end</p>
-                                <h2>Practice Pack Generator</h2>
                                 <p class="detail-meta">Build the management pack and individual staff practice packs from the BM client and task exports.</p>
                             </div>
                             <div class="detail-actions">
@@ -7185,7 +7880,6 @@
                         <div class="detail-hero insights-hero">
                             <div>
                                 <p class="eyebrow insights-live-greeting" id="insightsLiveGreeting">Loading local time...</p>
-                                <h2>Insights</h2>
                                 <p class="detail-meta" id="insightsMeta">AI analysis, reports and collection trends from synced Xero data.</p>
                             </div>
                             <div class="detail-actions">
@@ -7970,6 +8664,7 @@
                 settings: "Settings"
             };
             let globalActivityOpen = false;
+            let globalActivityCloseTimer = null;
             let systemActivityItems = loadSystemActivity();
             let lastSystemActivityView = "";
             let searchTerm = "";
@@ -8061,7 +8756,7 @@
             let bankStatementUploadTimer = null;
             let bankStatementPollingTimer = null;
             const bankStatementMaxUploadBytes = 50 * 1024 * 1024;
-            let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [] }, renewals: { currentRun: null, recentRuns: [] }, syncRun: null, activeSyncRun: null };
+            let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [], clients: [] }, renewals: { currentRun: null, recentRuns: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let ignitionRenewalsLoading = false;
             let isIgnitionSyncing = false;
@@ -8069,12 +8764,19 @@
             let latestIgnitionSyncRun = null;
             let ignitionSyncStartedAt = 0;
             let ignitionSyncProgressTimer = null;
+            let ignitionClientSearchTerm = "";
+            let ignitionClientSortMode = "activity-desc";
+            let ignitionClientFilter = "all";
             let meReportData = { clients: [], summary: {}, treatmentCategories: [], settings: {}, xero: {}, syncRun: null, activeSyncRun: null };
+            let meReportClientStatusFilter = ["active", "archived", "all"].includes(persistedUIState.meReportClientStatusFilter)
+                ? persistedUIState.meReportClientStatusFilter
+                : "active";
             let meReportLoading = false;
             let meReportClientFormOpen = false;
             let selectedMeReportClientId = "";
             let meReportWorkspaceOpen = false;
             let activeMeReportTab = "overview";
+            let selectedMeReportSubmissionId = "";
             let isMeReportProcessing = false;
             let meReportUploadProcessing = false;
             let meReportEmailSending = false;
@@ -8213,6 +8915,7 @@
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
                         meReport: config.endpoints?.meReport || "/api/me-report",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
+                        meReportClientStatus: config.endpoints?.meReportClientStatus || "/api/me-report/clients/:clientId/status",
                         meReportBulkSubmissions: config.endpoints?.meReportBulkSubmissions || "/api/me-report/bulk-submissions",
                         meReportConnectXero: config.endpoints?.meReportConnectXero || "/api/me-report/clients/:clientId/connect-xero",
                         meReportSync: config.endpoints?.meReportSync || "/api/me-report/clients/:clientId/sync",
@@ -8394,6 +9097,7 @@
                         selectedClientId,
                         selectedFilter,
                         clientFilter,
+                        meReportClientStatusFilter,
                         lateChargeFilter,
                         badDebtFilter,
                         activeInsightsSection,
@@ -9801,6 +10505,10 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "jashflow", "bank-statements", "ignition", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
+                const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
+                if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
+                const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
+                if (ignitionTopbarWidget && activeView !== "ignition") ignitionTopbarWidget.hidden = true;
                 if (activeView !== "settings") closeSettingsSidebar();
                 const activeNav = activeNavForView();
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
@@ -14583,6 +15291,7 @@
                         servicePerformance: Array.isArray(dashboard.servicePerformance) ? dashboard.servicePerformance : [],
                         managerPerformance: Array.isArray(dashboard.managerPerformance) ? dashboard.managerPerformance : [],
                         awaitingProposals: Array.isArray(dashboard.awaitingProposals) ? dashboard.awaitingProposals : [],
+                        clients: Array.isArray(dashboard.clients) ? dashboard.clients : [],
                         renewalAnalysis: dashboard.renewalAnalysis || {}
                     },
                     renewals: source.renewals || { currentRun: null, recentRuns: [] },
@@ -14660,7 +15369,7 @@
                 const progress = runActive || run?.status === "completed" ? Math.min(100, Math.max(0, Number(run?.progress || 0))) : 0;
                 const topbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (topbarWidget) {
-                    topbarWidget.hidden = activeView !== "ignition";
+                    topbarWidget.hidden = activeView !== "ignition" || !runActive;
                     topbarWidget.classList.toggle("is-syncing", runActive);
                 }
                 const statusText = connected
@@ -14695,6 +15404,13 @@
                 );
                 const progressFill = document.getElementById("ignitionSyncProgressFill");
                 if (progressFill) progressFill.style.width = `${progress}%`;
+                const bubble = document.getElementById("ignitionConnectionBubble");
+                if (bubble) {
+                    bubble.classList.toggle("is-connected", connected);
+                    bubble.classList.toggle("is-syncing", runActive || ignitionLoading);
+                }
+                const bubbleProgressFill = document.getElementById("ignitionBubbleProgressFill");
+                if (bubbleProgressFill) bubbleProgressFill.style.width = `${progress}%`;
 
                 const connectButton = document.getElementById("connectIgnitionButton");
                 if (connectButton) {
@@ -14711,6 +15427,7 @@
                 if (refreshButton) refreshButton.disabled = ignitionLoading || isIgnitionSyncing;
                 const renewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (renewalsButton) {
+                    renewalsButton.hidden = activeView !== "ignition";
                     renewalsButton.disabled = !connected || ignitionLoading || ignitionRenewalsLoading;
                     renewalsButton.textContent = ignitionRenewalsLoading ? "Loading..." : "Renewals";
                     renewalsButton.title = connected ? "Create a new five-week renewal round from unpicked Ignition proposals" : "Connect Ignition before starting renewals";
@@ -14735,6 +15452,7 @@
                 renderIgnitionAwaitingProposals();
                 renderIgnitionRenewalAnalysis();
                 renderIgnitionDatasetCounts();
+                renderIgnitionClients();
                 renderIgnitionRenewals();
             }
 
@@ -14839,6 +15557,142 @@
                         <strong>${escapeHTML(value)}</strong>
                     </div>
                 `).join("");
+            }
+
+            function ignitionClientDateValue(value) {
+                const timestamp = Date.parse(value || "");
+                return Number.isFinite(timestamp) ? timestamp : 0;
+            }
+
+            function ignitionClientIsNewThisMonth(client) {
+                const timestamp = ignitionClientDateValue(client.createdAt);
+                if (!timestamp) return false;
+                const date = new Date(timestamp);
+                const today = new Date();
+                return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
+            }
+
+            function ignitionClientStatusText(client) {
+                const rawStatus = String(client.status || "").trim();
+                if (client.overdueInvoiceCount) return "Overdue";
+                if (!rawStatus) return "Active";
+                return rawStatus.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+            }
+
+            function ignitionClientStatusClass(client) {
+                const status = String(client.status || "").toLowerCase();
+                if (Number(client.overdueInvoiceCount || 0) > 0) return "is-risk";
+                if (!status || status.includes("active") || status.includes("connected")) return "is-active";
+                return "";
+            }
+
+            function ignitionClientMatchesFilter(client) {
+                if (ignitionClientFilter === "awaiting") return Number(client.awaitingCount || 0) > 0;
+                if (ignitionClientFilter === "overdue") return Number(client.overdueInvoiceCount || 0) > 0;
+                if (ignitionClientFilter === "new") return ignitionClientIsNewThisMonth(client);
+                if (ignitionClientFilter === "active") {
+                    const status = String(client.status || "").toLowerCase();
+                    return !status || status.includes("active") || status.includes("connected");
+                }
+                return true;
+            }
+
+            function ignitionClientMatchesSearch(client) {
+                const term = ignitionClientSearchTerm.trim().toLowerCase();
+                if (!term) return true;
+                const haystack = [
+                    client.name,
+                    client.email,
+                    client.owner,
+                    client.status,
+                    client.proposalCount,
+                    client.acceptedCount,
+                    client.awaitingCount,
+                    client.outstandingValue
+                ].join(" ").toLowerCase();
+                return haystack.includes(term);
+            }
+
+            function sortedIgnitionClients(rows) {
+                return rows.slice().sort((left, right) => {
+                    if (ignitionClientSortMode === "name-asc") return String(left.name || "").localeCompare(String(right.name || ""));
+                    if (ignitionClientSortMode === "proposals-desc") return Number(right.proposalCount || 0) - Number(left.proposalCount || 0) || String(left.name || "").localeCompare(String(right.name || ""));
+                    if (ignitionClientSortMode === "accepted-desc") return Number(right.acceptedCount || 0) - Number(left.acceptedCount || 0) || String(left.name || "").localeCompare(String(right.name || ""));
+                    if (ignitionClientSortMode === "outstanding-desc") return Number(right.outstandingValue || 0) - Number(left.outstandingValue || 0) || String(left.name || "").localeCompare(String(right.name || ""));
+                    return ignitionClientDateValue(right.lastActivityAt || right.createdAt) - ignitionClientDateValue(left.lastActivityAt || left.createdAt) || String(left.name || "").localeCompare(String(right.name || ""));
+                });
+            }
+
+            function renderIgnitionClients() {
+                const wrap = document.getElementById("ignitionClientTableWrap");
+                if (!wrap) return;
+                const allRows = Array.isArray(ignitionData.dashboard?.clients) ? ignitionData.dashboard.clients : [];
+                const visibleRows = sortedIgnitionClients(allRows.filter((client) => ignitionClientMatchesFilter(client) && ignitionClientMatchesSearch(client)));
+                const summary = document.getElementById("ignitionClientTableSummary");
+                if (summary) {
+                    summary.textContent = allRows.length
+                        ? `Showing ${visibleRows.length.toLocaleString("en-GB")} of ${allRows.length.toLocaleString("en-GB")} synced Ignition client${allRows.length === 1 ? "" : "s"}.`
+                        : "Synced client rows will appear after the Reporting API import.";
+                }
+                const searchInput = document.getElementById("ignitionClientSearch");
+                if (searchInput && searchInput.value !== ignitionClientSearchTerm) searchInput.value = ignitionClientSearchTerm;
+                const sortSelect = document.getElementById("ignitionClientSortSelect");
+                if (sortSelect && sortSelect.value !== ignitionClientSortMode) sortSelect.value = ignitionClientSortMode;
+                const filterSelect = document.getElementById("ignitionClientFilterSelect");
+                if (filterSelect && filterSelect.value !== ignitionClientFilter) filterSelect.value = ignitionClientFilter;
+
+                if (ignitionLoading) {
+                    wrap.innerHTML = '<div class="empty-state ignition-client-empty"><p class="eyebrow">Loading</p><h4>Loading Ignition clients</h4><p>Reading persisted Reporting API client, proposal and invoice rows.</p></div>';
+                    return;
+                }
+                if (!allRows.length) {
+                    wrap.innerHTML = '<div class="empty-state ignition-client-empty"><p class="eyebrow">No clients</p><h4>No Ignition clients are stored yet</h4><p>Connect and sync Ignition to populate the client register.</p></div>';
+                    return;
+                }
+                if (!visibleRows.length) {
+                    wrap.innerHTML = '<div class="empty-state ignition-client-empty"><p class="eyebrow">No matches</p><h4>No clients match this view</h4><p>Adjust the search, sort or filter controls to widen the register.</p></div>';
+                    return;
+                }
+
+                wrap.innerHTML = `
+                    <table class="ignition-client-table">
+                        <thead>
+                            <tr>
+                                <th>Client</th>
+                                <th>Status</th>
+                                <th>Owner</th>
+                                <th>Proposals</th>
+                                <th>Outstanding</th>
+                                <th>Last activity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${visibleRows.map((client) => {
+                                const statusClass = ignitionClientStatusClass(client);
+                                const link = String(client.link || "").trim();
+                                const nameHTML = `
+                                    <div class="ignition-client-name-cell">
+                                        <span class="ignition-client-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
+                                        <div>
+                                            <strong>${escapeHTML(client.name || "Unknown client")}</strong>
+                                            <span>${escapeHTML(client.email || client.id || "No email stored")}</span>
+                                        </div>
+                                    </div>
+                                `;
+                                return `
+                                    <tr>
+                                        <td>${link ? `<a href="${escapeHTML(link)}" target="_blank" rel="noopener">${nameHTML}</a>` : nameHTML}</td>
+                                        <td><span class="ignition-client-status ${statusClass}">${escapeHTML(ignitionClientStatusText(client))}</span></td>
+                                        <td><strong>${escapeHTML(client.owner || "Unassigned")}</strong><small>${client.createdAt ? `Created ${formatDate(client.createdAt)}` : "No creation date"}</small></td>
+                                        <td><strong>${Number(client.proposalCount || 0).toLocaleString("en-GB")}</strong><small>${Number(client.acceptedCount || 0).toLocaleString("en-GB")} accepted · ${Number(client.awaitingCount || 0).toLocaleString("en-GB")} awaiting</small></td>
+                                        <td><strong>${formatCurrency(client.outstandingValue || 0)}</strong><small>${Number(client.outstandingInvoiceCount || 0).toLocaleString("en-GB")} open · ${Number(client.overdueInvoiceCount || 0).toLocaleString("en-GB")} overdue</small></td>
+                                        <td><strong>${formatDate(client.lastActivityAt || client.createdAt)}</strong><small>${client.lastActivityAt ? "Latest proposal or invoice" : "No activity date"}</small></td>
+                                    </tr>
+                                `;
+                            }).join("")}
+                        </tbody>
+                    </table>
+                `;
             }
 
             function ignitionRenewalPercent(value) {
@@ -15232,15 +16086,31 @@
                 };
             }
 
+            function meReportClientStatus(client) {
+                return String(client?.status || "active").toLowerCase() === "archived" ? "archived" : "active";
+            }
+
+            function meReportVisibleClients() {
+                const clients = meReportData.clients || [];
+                if (meReportClientStatusFilter === "all") return clients;
+                return clients.filter((client) => meReportClientStatus(client) === meReportClientStatusFilter);
+            }
+
             function selectedMeReportClient() {
-                return (meReportData.clients || []).find((client) => client.id === selectedMeReportClientId) || (meReportData.clients || [])[0] || null;
+                const visibleClients = meReportVisibleClients();
+                return visibleClients.find((client) => client.id === selectedMeReportClientId) || visibleClients[0] || null;
             }
 
             function ensureMeReportSelection() {
-                if (!selectedMeReportClientId || !(meReportData.clients || []).some((client) => client.id === selectedMeReportClientId)) {
-                    selectedMeReportClientId = (meReportData.clients || [])[0]?.id || "";
+                const visibleClients = meReportVisibleClients();
+                if (!visibleClients.length) {
+                    selectedMeReportClientId = "";
+                    meReportWorkspaceOpen = false;
+                } else if (!selectedMeReportClientId || !visibleClients.some((client) => client.id === selectedMeReportClientId)) {
+                    selectedMeReportClientId = visibleClients[0]?.id || "";
+                    meReportWorkspaceOpen = false;
                 }
-                if (!["overview", "submission-history", "tax", "dividends", "dla", "alerts", "mappings", "reports"].includes(activeMeReportTab)) {
+                if (!["overview", "submission-history", "report-insights", "tax", "dividends", "dla", "alerts", "mappings", "reports"].includes(activeMeReportTab)) {
                     activeMeReportTab = "overview";
                 }
             }
@@ -15362,19 +16232,22 @@
                 const summary = meReportData.summary || {};
                 const run = meReportRunForDisplay() || {};
                 const runActive = syncRunIsActive(run) || isMeReportProcessing;
-                const clients = meReportData.clients || [];
-                const submissions = clients.flatMap((client) => Array.isArray(client.submissions) ? client.submissions : []);
+                const allClients = meReportData.clients || [];
+                const activeClients = allClients.filter((client) => meReportClientStatus(client) === "active");
+                const archivedClients = allClients.filter((client) => meReportClientStatus(client) === "archived");
+                const submissions = allClients.flatMap((client) => Array.isArray(client.submissions) ? client.submissions : []);
                 const latestSubmission = submissions
                     .slice()
                     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
                 ensureMeReportSelection();
+                const clients = meReportVisibleClients();
 
-                setMeReportText("meReportWorkflowStatus", clients.length ? `${clients.length.toLocaleString("en-GB")} ME client${clients.length === 1 ? "" : "s"} registered` : "Register clients, upload overview report, then calculate");
+                setMeReportText("meReportWorkflowStatus", activeClients.length ? `${activeClients.length.toLocaleString("en-GB")} active ME client${activeClients.length === 1 ? "" : "s"}` : "Register clients, upload overview report, then calculate");
                 setMeReportText("meReportWorkflowSummary", runActive ? run.summary || "Processing the month-end overview report and calculating the review." : "ME Report saves uploaded overview reports, account treatment checks, exceptions, calculations and report history per client.");
                 setMeReportText("meReportXeroStatus", latestSubmission ? `${String(latestSubmission.status || "uploaded").toUpperCase()} overview report` : "Awaiting overview report");
                 setMeReportText("meReportXeroTenant", latestSubmission ? `${latestSubmission.filename || "Uploaded overview report"} · ${formatDate(latestSubmission.createdAt)}` : "Upload the client overview report PDF to calculate CT, dividends and DLA checks.");
                 setMeReportText("meReportSyncStep", meReportLoading ? "Loading ME Report" : meReportUploadProcessing ? "Processing overview report" : run.currentStep || "Ready");
-                setMeReportText("meReportSyncSummary", run.errorMessage || run.summary || (meReportUploadProcessing ? "Jenius AI is reading the uploaded report and building the CT and dividend calculations." : clients.length ? "Open a client and upload the latest overview report to calculate the month-end review." : "Add a client to start the month-end register."));
+                setMeReportText("meReportSyncSummary", run.errorMessage || run.summary || (meReportUploadProcessing ? "Jenius AI is reading the uploaded report and building the CT and dividend calculations." : activeClients.length ? "Open an active client and upload the latest overview report to calculate the month-end review." : "Add a client to start the month-end register."));
                 setMeReportText("meReportSyncCounts", run.recordsSynced ? `${Number(run.recordsSynced || 0).toLocaleString("en-GB")} source records processed` : `${submissions.length.toLocaleString("en-GB")} overview report upload${submissions.length === 1 ? "" : "s"} saved`);
                 const progressFill = document.getElementById("meReportProgressFill");
                 if (progressFill) progressFill.style.width = `${meReportUploadProcessing ? 56 : Math.min(100, Math.max(0, Number(run.progress || 0)))}%`;
@@ -15403,7 +16276,7 @@
                     bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Bulk upload";
                 }
                 const bulkSendButton = document.getElementById("bulkSendMeReportsButton");
-                const readyReportCount = clients.reduce((count, client) => (
+                const readyReportCount = activeClients.reduce((count, client) => (
                     count + (client.reports || []).filter((report) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail)).length
                 ), 0);
                 if (bulkSendButton) {
@@ -15415,13 +16288,17 @@
                 const actionList = document.getElementById("meReportActionList");
                 const detail = document.getElementById("meReportDetail");
                 if (!clientList || !actionList || !detail) return;
+                const reportTableMode = meReportWorkspaceOpen && activeMeReportTab === "submission-history";
+                const reportInsightMode = meReportWorkspaceOpen && activeMeReportTab === "report-insights";
                 const workspace = clientList.closest(".bank-statement-workspace");
                 if (workspace) {
                     workspace.classList.toggle("is-client-list", !meReportWorkspaceOpen);
-                    workspace.classList.toggle("is-extraction-detail", meReportWorkspaceOpen);
+                    workspace.classList.toggle("is-extraction-detail", meReportWorkspaceOpen && !reportTableMode && !reportInsightMode);
+                    workspace.classList.toggle("is-report-table", reportTableMode);
+                    workspace.classList.toggle("is-report-insights", reportInsightMode);
                 }
                 clientList.hidden = Boolean(meReportWorkspaceOpen);
-                actionList.hidden = !meReportWorkspaceOpen;
+                actionList.hidden = !meReportWorkspaceOpen || reportTableMode || reportInsightMode;
                 detail.hidden = !meReportWorkspaceOpen;
                 clientList.innerHTML = "";
                 actionList.innerHTML = "";
@@ -15432,7 +16309,7 @@
                     clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading ME Report clients</h4><p>Reading saved month-end register records from the backend.</p></div>';
                     return;
                 }
-                if (!clients.length) {
+                if (!allClients.length) {
                     clientList.hidden = false;
                     actionList.hidden = true;
                     detail.hidden = true;
@@ -15440,21 +16317,55 @@
                     return;
                 }
 
+                const filterOptions = [
+                    ["active", `Active (${activeClients.length.toLocaleString("en-GB")})`],
+                    ["archived", `Archived (${archivedClients.length.toLocaleString("en-GB")})`],
+                    ["all", `All (${allClients.length.toLocaleString("en-GB")})`]
+                ];
+                const filterbar = document.createElement("div");
+                filterbar.className = "me-report-client-filterbar";
+                filterbar.innerHTML = filterOptions.map(([value, label]) => `
+                    <button class="${meReportClientStatusFilter === value ? "is-active" : ""}" type="button" data-me-report-client-filter="${value}">${escapeHTML(label)}</button>
+                `).join("");
+                clientList.appendChild(filterbar);
+                filterbar.querySelectorAll("[data-me-report-client-filter]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        meReportClientStatusFilter = button.dataset.meReportClientFilter || "active";
+                        meReportWorkspaceOpen = false;
+                        persistState();
+                        renderMeReportScreen();
+                    });
+                });
+
+                if (!clients.length) {
+                    const empty = document.createElement("div");
+                    empty.className = "empty-state";
+                    const emptyCopy = meReportClientStatusFilter === "archived"
+                        ? ["Archived", "No archived ME Report workspaces", "Archive a client workspace when it should be hidden from the active month-end list."]
+                        : ["Active clients", "No active ME Report clients", archivedClients.length ? "Switch to Archived or All to restore a workspace." : "Add a client, then upload the first overview report to build CT, dividend and DLA calculations."];
+                    empty.innerHTML = `<p class="eyebrow">${escapeHTML(emptyCopy[0])}</p><h4>${escapeHTML(emptyCopy[1])}</h4><p>${escapeHTML(emptyCopy[2])}</p>`;
+                    clientList.appendChild(empty);
+                    return;
+                }
+
                 clients.forEach((client) => {
                     const light = client.trafficLight || "amber";
+                    const clientStatus = meReportClientStatus(client);
                     const exceptionCount = (client.exceptions || []).filter((item) => item.status === "open").length;
                     const button = document.createElement("button");
                     button.type = "button";
-                    button.className = `bank-client-card${client.id === selectedMeReportClientId ? " is-active" : ""}`;
+                    button.className = `bank-client-card${client.id === selectedMeReportClientId ? " is-active" : ""}${clientStatus === "archived" ? " is-archived" : ""}`;
                     button.innerHTML = `
                         <strong>${escapeHTML(client.clientName || "Unnamed client")}</strong>
                         <span>${escapeHTML(client.xeroContactEmail || client.reportRecipientEmail || "No Xero email")} · ${escapeHTML(client.bookkeepingFrequency || "Monthly")}</span>
                         <span>${escapeHTML(light.toUpperCase())} · ${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"} · ${(client.submissions || []).length.toLocaleString("en-GB")} submission${(client.submissions || []).length === 1 ? "" : "s"}</span>
+                        <span class="me-report-client-status is-${clientStatus}">${clientStatus}</span>
                     `;
                     button.addEventListener("click", () => {
                         selectedMeReportClientId = client.id;
                         meReportWorkspaceOpen = true;
-                        activeMeReportTab = "overview";
+                        activeMeReportTab = "submission-history";
+                        selectedMeReportSubmissionId = "";
                         renderMeReportScreen();
                     });
                     clientList.appendChild(button);
@@ -15463,6 +16374,7 @@
 
                 const client = selectedMeReportClient();
                 if (!client) return;
+                const selectedClientArchived = meReportClientStatus(client) === "archived";
                 const tabs = [
                     ["overview", "Overview"],
                     ["submission-history", "Submission history"],
@@ -15476,10 +16388,12 @@
                 actionList.innerHTML = `
                     <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
                     <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
+                    <button class="ghost-button me-report-archive-button" id="archiveMeReportClientButton" type="button">${selectedClientArchived ? "Restore workspace" : "Archive workspace"}</button>
                     ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                 `;
                 document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
                 document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
+                document.getElementById("archiveMeReportClientButton")?.addEventListener("click", () => updateMeReportClientStatus(client.id, selectedClientArchived ? "active" : "archived"));
                 actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
                     button.addEventListener("click", () => {
                         activeMeReportTab = button.dataset.meReportTab;
@@ -15494,6 +16408,7 @@
                 if (clientId) selectedMeReportClientId = clientId;
                 meReportWorkspaceOpen = true;
                 activeMeReportTab = "submission-history";
+                selectedMeReportSubmissionId = "";
                 renderMeReportScreen();
                 const fileInput = document.getElementById("meReportSubmissionFile");
                 if (fileInput) fileInput.click();
@@ -15601,12 +16516,144 @@
                 `;
             }
 
+            function meReportSubmissionDate(submission) {
+                const raw = submission?.calculation?.periodEnd || submission?.completedAt || submission?.createdAt || "";
+                const date = new Date(raw);
+                return Number.isNaN(date.getTime()) ? null : date;
+            }
+
+            function meReportSubmissionMonthYear(submission) {
+                const date = meReportSubmissionDate(submission);
+                if (!date) return "Undated reports";
+                return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(date);
+            }
+
+            function meReportSubmissionProcessed(submission) {
+                const status = String(submission?.status || "").toLowerCase();
+                return Boolean(submission?.calculation && Object.keys(submission.calculation || {}).length && !["processing", "failed", "error"].includes(status));
+            }
+
+            function groupedMeReportSubmissions(submissions) {
+                const groups = new Map();
+                (submissions || []).slice().sort((a, b) => {
+                    const aDate = meReportSubmissionDate(a)?.getTime() || 0;
+                    const bDate = meReportSubmissionDate(b)?.getTime() || 0;
+                    return bDate - aDate;
+                }).forEach((submission) => {
+                    const label = meReportSubmissionMonthYear(submission);
+                    if (!groups.has(label)) groups.set(label, []);
+                    groups.get(label).push(submission);
+                });
+                return Array.from(groups.entries()).map(([label, rows]) => ({ label, rows }));
+            }
+
+            function meReportInsightItems(items, fallback) {
+                const values = Array.isArray(items) ? items.map((item) => String(item || "").trim()).filter(Boolean) : [];
+                return values.length ? values.slice(0, 6) : fallback;
+            }
+
+            function renderMeReportInsightList(title, items, fallback) {
+                const rows = meReportInsightItems(items, fallback);
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">${escapeHTML(title)}</p>
+                        <ul>${rows.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>
+                    </article>
+                `;
+            }
+
+            function renderMeReportForecastBars(summary = {}) {
+                const forecast = summary.forecast || {};
+                const values = [
+                    ["YTD turnover", summary.yearToDateSales || 0, ""],
+                    ["YTD profit", summary.yearToDateProfit || 0, ""],
+                    ["Forecast turnover", forecast.projectedAnnualTurnover || 0, "forecast"],
+                    ["Forecast profit", forecast.projectedAnnualProfit || 0, "forecast"]
+                ];
+                const max = Math.max(1, ...values.map(([, value]) => Math.abs(Number(value || 0))));
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">Forecast</p>
+                        <h3>${formatCurrency(forecast.projectedAnnualTurnover || 0)} turnover · ${formatCurrency(forecast.projectedAnnualProfit || 0)} profit</h3>
+                        <p class="detail-meta">${escapeHTML(forecast.narrative || "Forecast will appear once enough current-year trading data has been extracted.")}</p>
+                        <div class="me-report-forecast-bars">
+                            ${values.map(([label, value]) => `
+                                <div class="me-report-forecast-bar">
+                                    <span>${escapeHTML(label)}</span>
+                                    <strong>${formatCurrency(value || 0)}</strong>
+                                    <em style="width: ${Math.min(100, Math.max(2, Math.round(Math.abs(Number(value || 0)) / max * 100)))}%"></em>
+                                </div>
+                            `).join("")}
+                        </div>
+                        <p class="detail-meta">${Number(forecast.monthsElapsed || 0)} of 12 months complete · forecast CT ${formatCurrency(forecast.projectedAnnualCorporationTax || 0)}</p>
+                    </article>
+                `;
+            }
+
+            function renderMeReportQualityTables(summary = {}) {
+                const chartIssues = Array.isArray(summary.chartOfAccountsIssues) ? summary.chartOfAccountsIssues : [];
+                const duplicates = Array.isArray(summary.duplicateTransactionRisks) ? summary.duplicateTransactionRisks : [];
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">Data quality</p>
+                        <h3>${(chartIssues.length + duplicates.length).toLocaleString("en-GB")} review point${chartIssues.length + duplicates.length === 1 ? "" : "s"}</h3>
+                        <div class="me-report-quality-table">
+                            ${chartIssues.slice(0, 6).map((item) => `<div class="bank-flag-row"><strong>${escapeHTML(item.accountCode || "")} ${escapeHTML(item.accountName || "Chart issue")}</strong><small>${escapeHTML(item.issue || "")}<br>${escapeHTML(item.suggestion || "")}</small></div>`).join("")}
+                            ${duplicates.slice(0, 6).map((item) => `<div class="bank-flag-row"><strong>${escapeHTML(item.description || "Possible duplicate transaction")} · ${formatCurrency(item.amount || 0)}</strong><small>${escapeHTML(item.date || "")} · ${escapeHTML(item.reason || "")}</small></div>`).join("")}
+                            ${!chartIssues.length && !duplicates.length ? '<div class="empty-state"><p class="eyebrow">Clear</p><h4>No spelling or duplicate transaction risks captured</h4><p>AI did not flag chart of accounts naming or duplicate transaction risks in this upload.</p></div>' : ""}
+                        </div>
+                    </article>
+                `;
+            }
+
+            function renderMeReportSubmissionInsightPage(client, submission) {
+                const summary = submission?.calculation || client.summary || {};
+                const insights = summary.profitAndLossInsights || {};
+                return `
+                    <div class="me-report-insight-page">
+                        <div class="jashflow-detail-head me-report-report-toolbar">
+                            <div>
+                                <p class="eyebrow">JUK Overview Report insights</p>
+                                <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionMonthYear(submission))}</h3>
+                                <p class="detail-meta">${escapeHTML(submission?.filename || "Overview report")} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
+                                <button class="primary-button" type="button" data-me-generate-report ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate client PDF</button>
+                            </div>
+                        </div>
+                        <div class="ignition-summary-grid">
+                            ${renderMeReportMetric("YTD turnover", formatCurrency(summary.yearToDateSales || 0))}
+                            ${renderMeReportMetric("YTD profit", formatCurrency(summary.yearToDateProfit || 0))}
+                            ${renderMeReportMetric("Monthly profit", formatCurrency(summary.monthlyProfit || summary.accountingProfit || 0))}
+                            ${renderMeReportMetric("Estimated CT", formatCurrency(summary.estimatedCorporationTax || 0))}
+                            ${renderMeReportMetric("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
+                            ${renderMeReportMetric("DLA balance", formatCurrency(summary.dlaBalance || 0))}
+                        </div>
+                        <div class="me-report-insight-grid">
+                            ${renderMeReportInsightList("Going well", insights.goingWell, ["Profit and loss data has been extracted and is ready for client commentary."])}
+                            ${renderMeReportInsightList("Needs attention", insights.needsAttention, summary.warnings || ["Review CT, DLA, VAT and dividend assumptions before issuing advice."])}
+                            ${renderMeReportInsightList("Priorities", insights.priorities, ["Approve exceptions, confirm tax treatment, then send the client report."])}
+                        </div>
+                        ${renderMeReportForecastBars(summary)}
+                        ${renderMeReportQualityTables(summary)}
+                        ${renderMeReportAiHelp(summary, "all")}
+                    </div>
+                `;
+            }
+
             function renderMeReportTab(client, tab) {
                 const summary = client.summary || {};
                 if (tab === "mappings") return renderMeReportMappings(client);
                 if (tab === "alerts") return renderMeReportExceptions(client);
                 if (tab === "reports") return renderMeReportReports(client);
                 if (tab === "submission-history") return renderMeReportSubmissions(client);
+                if (tab === "report-insights") {
+                    const submissions = client.submissions || [];
+                    const submission = submissions.find((item) => item.id === selectedMeReportSubmissionId) || submissions.find(meReportSubmissionProcessed) || submissions[0];
+                    if (!submission) return renderMeReportSubmissions(client);
+                    return renderMeReportSubmissionInsightPage(client, submission);
+                }
                 const metrics = [
                     ["Monthly sales", formatCurrency(summary.monthlySales || 0)],
                     ["Monthly expenses", formatCurrency(summary.monthlyExpenses || 0)],
@@ -15680,42 +16727,65 @@
 
             function renderMeReportSubmissions(client) {
                 const submissions = client.submissions || [];
+                const grouped = groupedMeReportSubmissions(submissions);
+                const archived = meReportClientStatus(client) === "archived";
                 return `
-                    <div class="jashflow-detail-head">
+                    <div class="jashflow-detail-head me-report-report-toolbar">
                         <div>
-                            <p class="eyebrow">Submission history</p>
+                            <p class="eyebrow">JUK Overview Reports</p>
                             <h3>${escapeHTML(client.clientName)}</h3>
-                            <p class="detail-meta">Upload the latest overview report PDF or management accounts. Jenius AI extracts the CT estimate and dividend availability into this workspace.</p>
+                            <p class="detail-meta">Every uploaded overview report is grouped by month and year. Open a fully processed report to review Profit and Loss insights, priorities, data quality checks and forecasts.</p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="ghost-button" type="button" data-me-report-back-clients>Back to clients</button>
+                            <button class="ghost-button me-report-archive-button" type="button" data-me-report-status-toggle>${archived ? "Restore workspace" : "Archive workspace"}</button>
+                            <button class="primary-button" type="button" data-me-report-upload-trigger ${meReportUploadProcessing ? "disabled" : ""}>Upload JUK overview report</button>
                         </div>
                     </div>
-                    <form class="bank-upload-form" id="meReportSubmissionForm">
+                    <form class="bank-upload-form me-report-upload-form" id="meReportSubmissionForm">
                         <label>
                             Latest PDF
                             <input id="meReportSubmissionFile" name="file" type="file" accept="application/pdf,.pdf" required>
                         </label>
+                        <button class="ghost-button" id="previewSelectedMeReportFileButton" type="button" disabled>Preview selected</button>
                         <button class="primary-button" type="submit" ${meReportUploadProcessing ? "disabled" : ""}>${meReportUploadProcessing ? "Processing..." : "Upload overview report"}</button>
                     </form>
-                    <div class="bank-upload-history-table" role="table" aria-label="ME Report submission history">
-                        <div class="bank-upload-history-row is-header" role="row">
-                            <span>Uploaded</span>
-                            <span>File</span>
-                            <span>Status</span>
-                            <span>CT estimate</span>
-                            <span>Dividend availability</span>
-                            <span>AI detail</span>
-                            <span>Notes</span>
-                        </div>
-                        ${submissions.map((submission) => `
-                            <div class="bank-upload-history-row" role="row">
-                                <span>${escapeHTML(formatDate(submission.createdAt))}</span>
-                                <span>${escapeHTML(submission.filename || "Management accounts PDF")}</span>
-                                <span><mark class="bank-status-pill is-${escapeHTML(String(submission.status || "saved").toLowerCase())}">${escapeHTML(submission.status || "saved")}</mark></span>
-                                <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
-                                <span>${formatCurrency(submission.dividendCapacity || 0)}</span>
-                                <span>${renderMeReportAiHelp(submission.calculation || {}, "all")}</span>
-                                <span>${escapeHTML(submission.errorMessage || submission.summary || "Processed by Jenius AI")}</span>
-                            </div>
-                        `).join("") || '<div class="empty-state"><p class="eyebrow">No submissions</p><h4>No overview report uploaded yet</h4><p>Upload the latest overview report PDF to build CT and dividend estimates from the source document.</p></div>'}
+                    <div class="me-report-submission-preview" id="meReportSubmissionPreview" hidden></div>
+                    <div class="me-report-report-table" role="table" aria-label="JUK Overview Report uploads">
+                        ${grouped.map((group) => `
+                            <section class="me-report-month-group">
+                                <div class="me-report-report-group-head">
+                                    <div>
+                                        <p class="eyebrow">${escapeHTML(group.label)}</p>
+                                        <h3>${group.rows.length.toLocaleString("en-GB")} uploaded report${group.rows.length === 1 ? "" : "s"}</h3>
+                                    </div>
+                                </div>
+                                <div class="me-report-report-row is-header" role="row">
+                                    <span>Report</span>
+                                    <span>Uploaded</span>
+                                    <span>Status</span>
+                                    <span>CT estimate</span>
+                                    <span>Dividend capacity</span>
+                                    <span>Actions</span>
+                                </div>
+                                ${group.rows.map((submission) => {
+                                    const processed = meReportSubmissionProcessed(submission);
+                                    return `
+                                        <div class="me-report-report-row" role="row">
+                                            <span class="me-report-file-cell"><strong>${escapeHTML(submission.filename || "JUK overview report")}</strong><small>${escapeHTML(submission.summary || submission.errorMessage || "Jenius AI overview upload")}</small></span>
+                                            <span>${escapeHTML(formatDate(submission.createdAt))}</span>
+                                            <span><mark class="bank-status-pill is-${escapeHTML(String(submission.status || "saved").toLowerCase())}">${escapeHTML(submission.status || "saved")}</mark></span>
+                                            <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
+                                            <span>${formatCurrency(submission.dividendCapacity || 0)}</span>
+                                            <span class="detail-actions">
+                                                <button class="ghost-button" type="button" data-me-submission-preview="${escapeHTML(submission.id)}">Preview</button>
+                                                <button class="primary-button" type="button" data-me-submission-open="${escapeHTML(submission.id)}" ${processed ? "" : "disabled"}>${processed ? "Open insights" : "Processing"}</button>
+                                            </span>
+                                        </div>
+                                    `;
+                                }).join("")}
+                            </section>
+                        `).join("") || '<div class="empty-state"><p class="eyebrow">No reports</p><h4>No JUK Overview Reports uploaded yet</h4><p>Upload the latest overview report PDF to build CT, dividend, forecast and Profit and Loss insights from the source document.</p></div>'}
                     </div>
                 `;
             }
@@ -15779,8 +16849,88 @@
                 `;
             }
 
+            function renderMeReportSubmissionPreview(submission) {
+                if (!submission) return "";
+                const calculation = submission.calculation || {};
+                return `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Upload preview</p>
+                            <h3>${escapeHTML(submission.filename || "Management accounts PDF")}</h3>
+                            <p class="detail-meta">${escapeHTML(formatDate(submission.createdAt))} · ${escapeHTML(submission.status || "saved")} · CT ${formatCurrency(submission.estimatedCorporationTax || 0)} · dividends ${formatCurrency(submission.dividendCapacity || 0)}</p>
+                        </div>
+                    </div>
+                    ${submission.summary ? `<p class="detail-meta">${escapeHTML(submission.summary)}</p>` : ""}
+                    ${submission.errorMessage ? `<p class="bank-upload-failure-advice">${escapeHTML(submission.errorMessage)}</p>` : ""}
+                    ${renderMeReportAiHelp(calculation, "all")}
+                `;
+            }
+
+            function showMeReportSubmissionPreview(client, submissionId) {
+                const submission = (client.submissions || []).find((item) => item.id === submissionId);
+                if (!submission) return showToast("Unable to find that uploaded report preview", "error");
+                const preview = document.getElementById("meReportSubmissionPreview");
+                if (!preview) return;
+                preview.innerHTML = renderMeReportSubmissionPreview(submission);
+                preview.hidden = false;
+                preview.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+
+            function previewSelectedMeReportFile() {
+                const input = document.getElementById("meReportSubmissionFile");
+                const file = input?.files?.[0];
+                if (!file) return showToast("Choose a PDF before previewing", "error");
+                const url = URL.createObjectURL(file);
+                window.open(url, "_blank", "noopener");
+                window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+            }
+
             function wireMeReportDynamicActions(client) {
                 document.getElementById("meReportSubmissionForm")?.addEventListener("submit", (event) => uploadMeReportSubmission(event, client.id));
+                const submissionInput = document.getElementById("meReportSubmissionFile");
+                const selectedPreviewButton = document.getElementById("previewSelectedMeReportFileButton");
+                if (submissionInput && selectedPreviewButton) {
+                    selectedPreviewButton.disabled = !submissionInput.files?.length;
+                    submissionInput.addEventListener("change", () => {
+                        selectedPreviewButton.disabled = !submissionInput.files?.length;
+                    });
+                    selectedPreviewButton.addEventListener("click", previewSelectedMeReportFile);
+                }
+                document.querySelectorAll("[data-me-submission-preview]").forEach((button) => {
+                    button.addEventListener("click", () => showMeReportSubmissionPreview(client, button.dataset.meSubmissionPreview));
+                });
+                document.querySelectorAll("[data-me-submission-open]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        selectedMeReportSubmissionId = button.dataset.meSubmissionOpen || "";
+                        activeMeReportTab = "report-insights";
+                        meReportWorkspaceOpen = true;
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-report-back-reports]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        activeMeReportTab = "submission-history";
+                        selectedMeReportSubmissionId = "";
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-report-back-clients]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        meReportWorkspaceOpen = false;
+                        activeMeReportTab = "overview";
+                        selectedMeReportSubmissionId = "";
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-report-upload-trigger]").forEach((button) => {
+                    button.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
+                });
+                document.querySelectorAll("[data-me-report-status-toggle]").forEach((button) => {
+                    button.addEventListener("click", () => updateMeReportClientStatus(client.id, meReportClientStatus(client) === "archived" ? "active" : "archived"));
+                });
+                document.querySelectorAll("[data-me-generate-report]").forEach((button) => {
+                    button.addEventListener("click", generateSelectedMeReport);
+                });
                 document.querySelectorAll("[data-me-mapping-action]").forEach((button) => {
                     button.addEventListener("click", () => updateMeReportMapping(button.dataset.mappingId, button.dataset.meMappingAction));
                 });
@@ -15823,6 +16973,29 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save ME Report client", "error");
+                }
+            }
+
+            async function updateMeReportClientStatus(clientId, statusValue) {
+                if (!clientId) return;
+                const nextStatus = statusValue === "archived" ? "archived" : "active";
+                const client = (meReportData.clients || []).find((item) => item.id === clientId);
+                if (nextStatus === "archived" && !window.confirm(`Archive ${client?.clientName || "this ME Report workspace"}? It will be hidden from the default Active view.`)) return;
+                try {
+                    const response = await requestJSON(api.endpoints.meReportClientStatus, {
+                        method: "POST",
+                        body: JSON.stringify({ status: nextStatus })
+                    }, { clientId });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportClientId = nextStatus === "active" ? clientId : "";
+                    meReportWorkspaceOpen = false;
+                    if (nextStatus === "active") meReportClientStatusFilter = "active";
+                    persistState();
+                    showToast(nextStatus === "active" ? "ME Report workspace restored" : "ME Report workspace archived", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to update ME Report workspace", "error");
                 }
             }
 
@@ -16834,12 +18007,34 @@
                 if (!topbar || !panel || !toggle || !count || !statusGrid || !activityList) return;
 
                 const activeCount = globalActiveCount();
+                const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
                 count.hidden = activeCount <= 0;
                 count.textContent = activeCount > 9 ? "9+" : String(activeCount);
                 topbar.classList.toggle("is-activity-open", globalActivityOpen);
-                panel.hidden = !globalActivityOpen;
                 toggle.setAttribute("aria-expanded", String(globalActivityOpen));
                 toggle.setAttribute("aria-label", globalActivityOpen ? "Hide recent system activity" : "Show recent system activity");
+                if (globalActivityOpen) {
+                    window.clearTimeout(globalActivityCloseTimer);
+                    globalActivityCloseTimer = null;
+                    panel.hidden = false;
+                    panel.classList.remove("is-collapsing");
+                } else if (!panel.hidden && !panel.classList.contains("is-collapsing")) {
+                    if (reduceMotion) {
+                        panel.hidden = true;
+                        panel.classList.remove("is-collapsing");
+                    } else {
+                        panel.classList.add("is-collapsing");
+                        globalActivityCloseTimer = window.setTimeout(() => {
+                            if (!globalActivityOpen) {
+                                panel.hidden = true;
+                                panel.classList.remove("is-collapsing");
+                            }
+                            globalActivityCloseTimer = null;
+                        }, 340);
+                    }
+                } else if (panel.hidden) {
+                    panel.classList.remove("is-collapsing");
+                }
 
                 statusGrid.innerHTML = globalStatusItems().map((item) => `
                     <article class="global-status-pill is-${escapeHTML(item.tone || "live")}">
@@ -16903,7 +18098,7 @@
                 const headerXeroAction = document.getElementById("headerXeroAction");
                 if (headerConnectButton) {
                     headerConnectButton.hidden = hideConnectAction;
-                    headerConnectButton.textContent = "Login with Xero";
+                    headerConnectButton.textContent = "START";
                     headerConnectButton.href = loginURL();
                 }
                 if (headerXeroAction) {
@@ -19782,6 +20977,21 @@
                 if (connectIgnitionButton) connectIgnitionButton.addEventListener("click", openIgnitionConnection);
                 const runIgnitionSyncButton = document.getElementById("runIgnitionSyncButton");
                 if (runIgnitionSyncButton) runIgnitionSyncButton.addEventListener("click", runIgnitionSync);
+                const ignitionClientSearch = document.getElementById("ignitionClientSearch");
+                if (ignitionClientSearch) ignitionClientSearch.addEventListener("input", (event) => {
+                    ignitionClientSearchTerm = event.target.value || "";
+                    renderIgnitionClients();
+                });
+                const ignitionClientSortSelect = document.getElementById("ignitionClientSortSelect");
+                if (ignitionClientSortSelect) ignitionClientSortSelect.addEventListener("change", (event) => {
+                    ignitionClientSortMode = event.target.value || "activity-desc";
+                    renderIgnitionClients();
+                });
+                const ignitionClientFilterSelect = document.getElementById("ignitionClientFilterSelect");
+                if (ignitionClientFilterSelect) ignitionClientFilterSelect.addEventListener("change", (event) => {
+                    ignitionClientFilter = event.target.value || "all";
+                    renderIgnitionClients();
+                });
                 const startIgnitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (startIgnitionRenewalsButton) startIgnitionRenewalsButton.addEventListener("click", startIgnitionRenewals);
                 const saveIgnitionRenewalsButton = document.getElementById("saveIgnitionRenewalsButton");

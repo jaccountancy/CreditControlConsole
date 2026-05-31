@@ -6199,6 +6199,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "xeroContactEmail": row.get("xero_contact_email") or "",
         "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
         "xeroTenantName": row.get("xero_tenant_name") or "",
+        "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
         "lastCalculatedAt": _iso(row.get("last_calculated_at")) or "",
         "lastReportAt": _iso(row.get("last_report_at")) or "",
@@ -6500,6 +6501,35 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
     return me_report_payload(user)
 
 
+def update_me_report_client_status(user: dict, client_id: str, payload: dict) -> dict:
+    requested_status = str(payload.get("status") or "").strip().lower()
+    if requested_status not in {"active", "archived"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client status must be active or archived.")
+    _me_report_client_row(user, client_id)
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE me_report_clients
+                SET status = %s,
+                    updated_at = %s
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (requested_status, now, client_id, user["id"]),
+            )
+        connection.commit()
+    record_audit_event(
+        "me_report_client",
+        client_id,
+        f"me_report.client_{requested_status}",
+        {"status": requested_status},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
 def connect_me_report_client_to_current_xero(user: dict, client_id: str) -> dict:
     _me_report_client_row(user, client_id)
     connection_row = get_xero_connection_for_user(user["id"])
@@ -6560,6 +6590,9 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "dlaBalance",
         "trafficLight",
         "pageCoverage",
+        "profitAndLossInsights",
+        "chartOfAccountsIssues",
+        "duplicateTransactionRisks",
         "warnings",
     ],
     "properties": {
@@ -6676,6 +6709,46 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
                 },
             },
         },
+        "profitAndLossInsights": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["goingWell", "needsAttention", "priorities"],
+            "properties": {
+                "goingWell": {"type": "array", "items": {"type": "string"}},
+                "needsAttention": {"type": "array", "items": {"type": "string"}},
+                "priorities": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+        "chartOfAccountsIssues": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["accountCode", "accountName", "issue", "suggestion", "sourcePage"],
+                "properties": {
+                    "accountCode": {"type": "string"},
+                    "accountName": {"type": "string"},
+                    "issue": {"type": "string"},
+                    "suggestion": {"type": "string"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
+        "duplicateTransactionRisks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["description", "date", "amount", "reason", "sourcePage"],
+                "properties": {
+                    "description": {"type": "string"},
+                    "date": {"type": ["string", "null"]},
+                    "amount": {"type": "number"},
+                    "reason": {"type": "string"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
         "warnings": {
             "type": "array",
             "items": {"type": "string"},
@@ -6704,7 +6777,11 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         "Schedule shows a nil depreciation column. Put clearly disallowable costs such as car fines, penalties and non-allowable "
         "tax adjustment accounts in disallowedExpenses. Do not make final tax judgements for ambiguous legal, bad debt or client "
         "remediation costs; include those in warnings instead. The backend will calculate CT and dividend availability from the "
-        "extracted figures, so return the source figures as exactly as possible. "
+        "extracted figures, so return the source figures as exactly as possible. Also review the Profit and Loss for plain-English "
+        "client insights: what is going well, what needs attention, and the top month-end priorities. Check the chart of accounts "
+        "for likely spelling mistakes, odd account names, duplicated account names, or confusing account labels. Review the "
+        "transaction review pages for possible duplicate transactions, repeated supplier bills, repeated bank transactions, "
+        "or spend-money entries that may duplicate bills. "
         f"The client workspace is {client.get('client_name') or 'unknown'}."
     )
     request_body = {
@@ -6797,6 +6874,53 @@ def _me_report_source_page(prefix: str, page) -> str:
     if page in (None, ""):
         return prefix
     return f"{prefix}, page {page}"
+
+
+def _me_report_text_items(items, fallback: list[str] | None = None, limit: int = 6) -> list[str]:
+    values = [str(item).strip() for item in (items or []) if str(item).strip()]
+    if values:
+        return values[:limit]
+    return (fallback or [])[:limit]
+
+
+def _me_report_months_elapsed(extracted: dict, client: dict) -> int:
+    period_start = _parse_optional_iso_date(extracted.get("periodStart"))
+    period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
+    if period_start and period_start <= period_end:
+        months = (period_end.year - period_start.year) * 12 + period_end.month - period_start.month + 1
+        if 1 <= months <= 12:
+            return months
+    try:
+        year_end_month = int(client.get("year_end_month") or 3)
+    except (TypeError, ValueError):
+        year_end_month = 3
+    start_month = (year_end_month % 12) + 1
+    start_year = period_end.year if period_end.month >= start_month else period_end.year - 1
+    months = (period_end.year - start_year) * 12 + period_end.month - start_month + 1
+    return min(12, max(1, months))
+
+
+def _me_report_forecast_summary(extracted: dict, client: dict, ytd_sales: Decimal, ytd_profit: Decimal, taxable_profit: Decimal) -> dict:
+    months_elapsed = _me_report_months_elapsed(extracted, client)
+    months_remaining = max(0, 12 - months_elapsed)
+    multiplier = Decimal(12) / Decimal(months_elapsed)
+    projected_turnover = _money(ytd_sales * multiplier)
+    projected_profit = _money(ytd_profit * multiplier)
+    projected_taxable_profit = _money(taxable_profit * multiplier)
+    projected_ct, _, _ = _me_report_corporation_tax(projected_taxable_profit)
+    return {
+        "monthsElapsed": months_elapsed,
+        "monthsRemaining": months_remaining,
+        "projectedAnnualTurnover": float(projected_turnover),
+        "projectedAnnualProfit": float(projected_profit),
+        "projectedAnnualCorporationTax": float(projected_ct),
+        "projectedMonthlySalesRunRate": float(_money(ytd_sales / months_elapsed)),
+        "projectedMonthlyProfitRunRate": float(_money(ytd_profit / months_elapsed)),
+        "narrative": (
+            f"Based on {months_elapsed} month{'' if months_elapsed == 1 else 's'} of current-year results, "
+            f"full-year turnover is forecast at £{projected_turnover:,.2f} and profit at £{projected_profit:,.2f}."
+        ),
+    }
 
 
 def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
@@ -6999,6 +7123,46 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     }
     warnings.append("CT estimate assumes non-ring-fence profits, no associated company threshold reduction, and no unextracted reliefs or losses.")
     warnings = list(dict.fromkeys(warnings))
+    extracted_insights = extracted.get("profitAndLossInsights") if isinstance(extracted.get("profitAndLossInsights"), dict) else {}
+    forecast = _me_report_forecast_summary(extracted, client, ytd_sales, ytd_profit, estimated_taxable_profit)
+    going_well_fallback = [
+        f"Year-to-date profit is positive at £{ytd_profit:,.2f}." if ytd_profit > 0 else "Revenue has been extracted and is ready for trend review.",
+        f"Current monthly profit is £{accounting_profit:,.2f}." if accounting_profit > 0 else "Month-end figures are now structured for review.",
+    ]
+    needs_attention_fallback = []
+    if warnings:
+        needs_attention_fallback.append(warnings[0])
+    if ytd_sales and ytd_profit / ytd_sales < Decimal("0.10"):
+        needs_attention_fallback.append("Profit margin is below 10%; review cost base and pricing.")
+    if not needs_attention_fallback:
+        needs_attention_fallback.append("Review VAT, CT and dividend assumptions before sending client advice.")
+    priorities_fallback = [
+        "Confirm unusual or disallowable Profit and Loss items before approval.",
+        "Review any DLA balance and dividend capacity before advising the client.",
+        "Send the client the forecast and priority actions once staff have approved the report.",
+    ]
+    chart_issues = [
+        {
+            "accountCode": str(item.get("accountCode") or ""),
+            "accountName": str(item.get("accountName") or ""),
+            "issue": str(item.get("issue") or ""),
+            "suggestion": str(item.get("suggestion") or ""),
+            "source": _me_report_source_page("Trial Balance", item.get("sourcePage")),
+        }
+        for item in (extracted.get("chartOfAccountsIssues") or [])
+        if isinstance(item, dict) and (item.get("issue") or item.get("accountName"))
+    ][:12]
+    duplicate_risks = [
+        {
+            "description": str(item.get("description") or ""),
+            "date": str(item.get("date") or ""),
+            "amount": float(_money(item.get("amount"))),
+            "reason": str(item.get("reason") or ""),
+            "source": _me_report_source_page("Review of Transactions", item.get("sourcePage")),
+        }
+        for item in (extracted.get("duplicateTransactionRisks") or [])
+        if isinstance(item, dict) and (item.get("description") or item.get("reason"))
+    ][:12]
 
     return {
         "periodStart": extracted.get("periodStart") or "",
@@ -7031,6 +7195,15 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "dlaStatus": "red" if _money(extracted.get("dlaBalance")) < 0 else ("amber" if _money(extracted.get("dlaBalance")) == 0 else "green"),
         "trafficLight": traffic_light,
         "source": "uploaded_pdf",
+        "forecast": forecast,
+        "profitAndLossInsights": {
+            "goingWell": _me_report_text_items(extracted_insights.get("goingWell"), going_well_fallback),
+            "needsAttention": _me_report_text_items(extracted_insights.get("needsAttention"), needs_attention_fallback),
+            "priorities": _me_report_text_items(extracted_insights.get("priorities"), priorities_fallback),
+        },
+        "chartOfAccountsIssues": chart_issues,
+        "duplicateTransactionRisks": duplicate_risks,
+        "dataQualityIssueCount": len(chart_issues) + len(duplicate_risks),
         "commentary": (
             f"Uploaded PDF reviewed for {client.get('client_name') or 'client'}. "
             f"Profit before tax YTD is £{accounting_profit:,.2f}; estimated taxable profit is £{estimated_taxable_profit:,.2f}; "
@@ -8110,6 +8283,38 @@ def generate_me_report(user: dict, client_id: str, payload: dict | None = None) 
         f"<li><strong>{xml_escape(item.get('severity') or '').upper()} - {xml_escape(item.get('title') or '')}</strong><br>{xml_escape(item.get('detail') or '')}<br><em>{xml_escape(item.get('suggested_action') or '')}</em></li>"
         for item in exceptions
     )
+    forecast = summary.get("forecast") if isinstance(summary.get("forecast"), dict) else {}
+    insights = summary.get("profitAndLossInsights") if isinstance(summary.get("profitAndLossInsights"), dict) else {}
+    chart_issues = summary.get("chartOfAccountsIssues") if isinstance(summary.get("chartOfAccountsIssues"), list) else []
+    duplicate_risks = summary.get("duplicateTransactionRisks") if isinstance(summary.get("duplicateTransactionRisks"), list) else []
+
+    def list_html(items, empty: str = "No specific points captured.") -> str:
+        values = [str(item).strip() for item in (items or []) if str(item).strip()]
+        return "".join(f"<li>{xml_escape(item)}</li>" for item in values[:8]) or f"<li>{xml_escape(empty)}</li>"
+
+    chart_issue_rows = "".join(
+        f"<tr><td>{xml_escape(item.get('accountCode') or '')}</td><td>{xml_escape(item.get('accountName') or '')}</td><td>{xml_escape(item.get('issue') or '')}</td><td>{xml_escape(item.get('suggestion') or '')}</td></tr>"
+        for item in chart_issues[:10]
+        if isinstance(item, dict)
+    )
+    duplicate_rows = "".join(
+        f"<tr><td>{xml_escape(item.get('date') or '')}</td><td>{xml_escape(item.get('description') or '')}</td><td>£{_money(item.get('amount')):,.2f}</td><td>{xml_escape(item.get('reason') or '')}</td></tr>"
+        for item in duplicate_risks[:10]
+        if isinstance(item, dict)
+    )
+    bar_max = max(
+        Decimal("1.00"),
+        abs(_money(summary.get("yearToDateSales"))),
+        abs(_money(summary.get("yearToDateProfit"))),
+        abs(_money(forecast.get("projectedAnnualTurnover"))),
+        abs(_money(forecast.get("projectedAnnualProfit"))),
+    )
+
+    def bar_html(label: str, value, tone: str = "") -> str:
+        amount = _money(value)
+        width = min(100, max(2, int((abs(amount) / bar_max) * 100)))
+        return f"<div class=\"bar-row {xml_escape(tone)}\"><span>{xml_escape(label)}</span><strong>£{amount:,.2f}</strong><em style=\"width:{width}%\"></em></div>"
+
     report_html = f"""
 <!doctype html>
 <html>
@@ -8123,6 +8328,14 @@ body {{ font-family: Arial, sans-serif; color: #1e2f4d; margin: 32px; line-heigh
 .metric {{ border: 1px solid #d8e2f2; border-radius: 8px; padding: 12px; }}
 .metric span {{ display: block; color: #6b7890; font-size: 12px; text-transform: uppercase; }}
 .metric strong {{ font-size: 22px; }}
+.insight-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }}
+.insight-card {{ border: 1px solid #d8e2f2; border-radius: 10px; padding: 14px; background: #f8fbff; }}
+.insight-card h3 {{ margin-top: 0; color: #1e2f4d; }}
+.bar-panel {{ display: grid; gap: 10px; margin-top: 14px; }}
+.bar-row {{ position: relative; display: grid; grid-template-columns: 180px 120px 1fr; align-items: center; gap: 12px; }}
+.bar-row em {{ display: block; height: 14px; border-radius: 999px; background: #1d67f2; }}
+.bar-row.profit em {{ background: #27b05f; }}
+.bar-row.forecast em {{ background: #8d62ff; }}
 table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
 th, td {{ border-bottom: 1px solid #d8e2f2; text-align: left; padding: 8px; font-size: 13px; }}
 h1, h2 {{ color: #1e2f4d; }}
@@ -8152,6 +8365,24 @@ h1, h2 {{ color: #1e2f4d; }}
 <section>
 <h2>Profit and loss versus year to date</h2>
 <p>For the current month, sales are £{_money(summary.get('monthlySales')):,.2f}, expenses are £{_money(summary.get('monthlyExpenses')):,.2f}, and profit is £{_money(summary.get('monthlyProfit')):,.2f}. Year to date, sales are £{_money(summary.get('yearToDateSales')):,.2f}, expenses are £{_money(summary.get('yearToDateExpenses')):,.2f}, and profit is £{_money(summary.get('yearToDateProfit')):,.2f}.</p>
+<div class="bar-panel">
+{bar_html('YTD turnover', summary.get('yearToDateSales'))}
+{bar_html('YTD profit', summary.get('yearToDateProfit'), 'profit')}
+{bar_html('Forecast turnover', forecast.get('projectedAnnualTurnover'), 'forecast')}
+{bar_html('Forecast profit', forecast.get('projectedAnnualProfit'), 'forecast profit')}
+</div>
+</section>
+<section>
+<h2>Forecast</h2>
+<p>{xml_escape(forecast.get('narrative') or 'Forecast will appear once the uploaded overview report contains enough current-year trading data.')} Estimated full-year CT on the current run rate is £{_money(forecast.get('projectedAnnualCorporationTax')):,.2f}. The report is {int(forecast.get('monthsElapsed') or 0)} month(s) into a 12-month year, with {int(forecast.get('monthsRemaining') or 0)} month(s) remaining.</p>
+</section>
+<section>
+<h2>AI insight priorities</h2>
+<div class="insight-grid">
+<div class="insight-card"><h3>Going well</h3><ul>{list_html(insights.get('goingWell'))}</ul></div>
+<div class="insight-card"><h3>Needs attention</h3><ul>{list_html(insights.get('needsAttention'))}</ul></div>
+<div class="insight-card"><h3>Priorities</h3><ul>{list_html(insights.get('priorities'))}</ul></div>
+</div>
 </section>
 <section>
 <h2>Estimated corporation tax</h2>
@@ -8172,6 +8403,10 @@ h1, h2 {{ color: #1e2f4d; }}
 <section>
 <h2>Duplicate and data quality checks</h2>
 <p>Possible duplicate spend-money/bill issues: {int(summary.get('duplicateSpendBillCount') or 0)}. Possible duplicate Xero contacts: {int(summary.get('duplicateContactCount') or 0)}. Review any open exceptions before approval.</p>
+<h3>Chart of accounts checks</h3>
+<table><thead><tr><th>Code</th><th>Account</th><th>Issue</th><th>Suggestion</th></tr></thead><tbody>{chart_issue_rows or '<tr><td colspan="4">No chart of accounts spelling or naming issues captured.</td></tr>'}</tbody></table>
+<h3>Possible duplicate transactions</h3>
+<table><thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Reason</th></tr></thead><tbody>{duplicate_rows or '<tr><td colspan="4">No duplicate transaction risks captured in the uploaded report.</td></tr>'}</tbody></table>
 </section>
 <section>
 <h2>Bookkeeping review points</h2>
@@ -8377,6 +8612,10 @@ def _minimal_me_report_pdf(lines: list[str]) -> bytes:
 
 
 def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
+    forecast = summary.get("forecast") if isinstance(summary.get("forecast"), dict) else {}
+    insights = summary.get("profitAndLossInsights") if isinstance(summary.get("profitAndLossInsights"), dict) else {}
+    priorities = [str(item).strip() for item in insights.get("priorities") or [] if str(item).strip()]
+    needs_attention = [str(item).strip() for item in insights.get("needsAttention") or [] if str(item).strip()]
     lines = [
         client.get("client_name") or "Client",
         f"Period: {summary.get('periodStart') or ''} to {summary.get('periodEnd') or ''}",
@@ -8387,9 +8626,14 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
         f"Estimated Corporation Tax: {_format_me_report_money(summary.get('estimatedCorporationTax'))}",
         f"Dividend availability: {_format_me_report_money(summary.get('dividendCapacity'))}",
         f"DLA balance: {_format_me_report_money(summary.get('dlaBalance'))}",
+        f"Forecast annual turnover: {_format_me_report_money(forecast.get('projectedAnnualTurnover'))}",
+        f"Forecast annual profit: {_format_me_report_money(forecast.get('projectedAnnualProfit'))}",
         "",
         "Commentary:",
         report.get("commentary") or summary.get("commentary") or "Month-end bookkeeping review completed.",
+        "",
+        "Priorities:",
+        "; ".join(priorities[:3]) or "Review the month-end insight priorities before issuing.",
         "",
         "DLA note:",
         _me_report_template_context(client, report, summary)["dla_credit_note"] or "No director loan account credit reminder applies.",
@@ -8414,6 +8658,7 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
     metric_rows = [
         ["Monthly sales", _format_me_report_money(summary.get("monthlySales")), "Monthly profit", _format_me_report_money(summary.get("monthlyProfit"))],
         ["YTD sales", _format_me_report_money(summary.get("yearToDateSales")), "YTD profit", _format_me_report_money(summary.get("yearToDateProfit"))],
+        ["Forecast turnover", _format_me_report_money(forecast.get("projectedAnnualTurnover")), "Forecast profit", _format_me_report_money(forecast.get("projectedAnnualProfit"))],
         ["Estimated CT", _format_me_report_money(summary.get("estimatedCorporationTax")), "Dividend availability", _format_me_report_money(summary.get("dividendCapacity"))],
         ["DLA balance", _format_me_report_money(summary.get("dlaBalance")), "Traffic light", str(summary.get("trafficLight") or report.get("traffic_light") or "").upper()],
     ]
@@ -8431,6 +8676,13 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
     story.extend([table, Spacer(1, 18)])
     story.append(Paragraph("Bookkeeping commentary", styles["Heading2"]))
     story.append(Paragraph(xml_escape(report.get("commentary") or summary.get("commentary") or "Month-end bookkeeping review completed."), styles["BodyText"]))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph("Forecast and AI priorities", styles["Heading2"]))
+    story.append(Paragraph(xml_escape(forecast.get("narrative") or "Forecast will appear once the overview report contains enough trading data."), styles["BodyText"]))
+    if priorities:
+        story.append(Paragraph(xml_escape("Priorities: " + "; ".join(priorities[:4])), styles["BodyText"]))
+    if needs_attention:
+        story.append(Paragraph(xml_escape("Needs attention: " + "; ".join(needs_attention[:4])), styles["BodyText"]))
     story.append(Spacer(1, 12))
     story.append(Paragraph("Tax and extraction note", styles["Heading2"]))
     story.append(Paragraph(xml_escape(_me_report_template_context(client, report, summary)["dla_credit_note"] or "No director loan account credit reminder applies."), styles["BodyText"]))
@@ -10049,6 +10301,154 @@ def _ignition_proposal_service_name(row: dict) -> str:
     return ", ".join(names)
 
 
+def _ignition_record_client_name(row: dict) -> str:
+    return (
+        _first_mapping_text(row, ("client_name", "clientName", "customer_name", "customerName", "business_name", "company_name", "name", "display_name"))
+        or _first_mapping_text(row.get("client"), ("name", "business_name", "company_name", "display_name"))
+        or _first_mapping_text(row.get("customer"), ("name", "business_name", "company_name", "display_name"))
+        or _first_mapping_text(row.get("contact"), ("name", "full_name", "business_name", "company_name"))
+        or "Unknown client"
+    )
+
+
+def _ignition_client_display_name(row: dict) -> str:
+    first = str(row.get("first_name") or row.get("firstName") or "").strip()
+    last = str(row.get("last_name") or row.get("lastName") or "").strip()
+    full_name = " ".join(part for part in (first, last) if part).strip()
+    return (
+        _first_mapping_text(row, ("name", "business_name", "company_name", "display_name", "client_name", "customer_name"))
+        or full_name
+        or _first_mapping_text(row.get("contact"), ("name", "full_name", "email"))
+        or "Unknown client"
+    )
+
+
+def _ignition_client_owner(row: dict) -> str:
+    return (
+        _first_mapping_text(row, ("client_manager", "clientManager", "manager_name", "account_manager", "client_owner", "owner", "manager"))
+        or _first_mapping_text(row.get("manager"), ("name", "full_name", "email"))
+        or _first_mapping_text(row.get("owner"), ("name", "full_name", "email"))
+        or _first_mapping_text(row.get("account_manager"), ("name", "full_name", "email"))
+    )
+
+
+def _ignition_client_email(row: dict) -> str:
+    return (
+        _first_mapping_text(row, ("email", "email_address", "emailAddress", "primary_email", "primaryEmail"))
+        or _first_mapping_text(row.get("contact"), ("email", "email_address", "emailAddress"))
+        or _first_mapping_text(row.get("primary_contact"), ("email", "email_address", "emailAddress"))
+    )
+
+
+def _ignition_client_status(row: dict) -> str:
+    status = (
+        _first_mapping_text(row, ("status", "state", "client_status", "clientStatus", "lifecycle_stage", "lifecycleStage"))
+        or "active"
+    )
+    return status.strip() or "active"
+
+
+def _ignition_client_created_at(row: dict) -> str:
+    value = row.get("created_at") or row.get("createdAt") or row.get("started_at") or row.get("start_date") or row.get("updated_at") or ""
+    return str(value or "")
+
+
+def _ignition_client_rows(clients: list[dict], proposals: list[dict], outstanding_invoices: list[dict], overdue_invoices: list[dict]) -> list[dict]:
+    rollups: dict[str, dict] = {}
+
+    def key_for(name: str) -> str:
+        return str(name or "Unknown client").strip().casefold()
+
+    def rollup_for(name: str) -> dict:
+        key = key_for(name)
+        return rollups.setdefault(
+            key,
+            {
+                "name": name or "Unknown client",
+                "proposals": 0,
+                "accepted": 0,
+                "awaiting": 0,
+                "outstandingInvoices": 0,
+                "overdueInvoices": 0,
+                "outstandingValue": Decimal("0.00"),
+                "lastActivityAt": "",
+            },
+        )
+
+    for proposal in proposals:
+        rollup = rollup_for(_ignition_record_client_name(proposal))
+        state_value = str(proposal.get("state") or "").lower()
+        rollup["proposals"] += 1
+        if state_value == "accepted" or proposal.get("accepted_at"):
+            rollup["accepted"] += 1
+        if state_value in ("awaiting_acceptance", "sent"):
+            rollup["awaiting"] += 1
+        activity_at = str(proposal.get("updated_at") or proposal.get("sent_at") or proposal.get("created_at") or "")
+        if activity_at > rollup["lastActivityAt"]:
+            rollup["lastActivityAt"] = activity_at
+
+    overdue_ids = {id(row) for row in overdue_invoices}
+    for invoice in outstanding_invoices:
+        rollup = rollup_for(_ignition_record_client_name(invoice))
+        rollup["outstandingInvoices"] += 1
+        if id(invoice) in overdue_ids:
+            rollup["overdueInvoices"] += 1
+        rollup["outstandingValue"] += _money_from_ignition(invoice.get("amount_due") or invoice.get("balance") or invoice.get("outstanding_amount") or invoice.get("total"))
+        activity_at = str(invoice.get("updated_at") or invoice.get("due_date") or invoice.get("created_at") or "")
+        if activity_at > rollup["lastActivityAt"]:
+            rollup["lastActivityAt"] = activity_at
+
+    rows: list[dict] = []
+    represented = set()
+    for client in clients:
+        name = _ignition_client_display_name(client)
+        key = key_for(name)
+        represented.add(key)
+        rollup = rollups.get(key, rollup_for(name))
+        rows.append(
+            {
+                "id": str(client.get("id") or client.get("client_id") or client.get("uuid") or name),
+                "name": name,
+                "email": _ignition_client_email(client),
+                "owner": _ignition_client_owner(client) or "Unassigned",
+                "status": _ignition_client_status(client),
+                "createdAt": _ignition_client_created_at(client),
+                "lastActivityAt": rollup["lastActivityAt"],
+                "proposalCount": rollup["proposals"],
+                "acceptedCount": rollup["accepted"],
+                "awaitingCount": rollup["awaiting"],
+                "outstandingInvoiceCount": rollup["outstandingInvoices"],
+                "overdueInvoiceCount": rollup["overdueInvoices"],
+                "outstandingValue": float(_money(rollup["outstandingValue"])),
+                "link": str(client.get("link") or client.get("url") or client.get("app_url") or ""),
+            }
+        )
+
+    for key, rollup in rollups.items():
+        if key in represented:
+            continue
+        rows.append(
+            {
+                "id": key,
+                "name": rollup["name"],
+                "email": "",
+                "owner": "Unassigned",
+                "status": "from proposals",
+                "createdAt": "",
+                "lastActivityAt": rollup["lastActivityAt"],
+                "proposalCount": rollup["proposals"],
+                "acceptedCount": rollup["accepted"],
+                "awaitingCount": rollup["awaiting"],
+                "outstandingInvoiceCount": rollup["outstandingInvoices"],
+                "overdueInvoiceCount": rollup["overdueInvoices"],
+                "outstandingValue": float(_money(rollup["outstandingValue"])),
+                "link": "",
+            }
+        )
+
+    return sorted(rows, key=lambda row: str(row.get("name") or "").casefold())
+
+
 def _parse_ignition_renewal_date_value(value) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -10259,6 +10659,7 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
             }
             for row in sorted(awaiting, key=lambda item: str(item.get("created_at") or ""), reverse=True)[:10]
         ],
+        "clients": _ignition_client_rows(clients, proposals, outstanding_invoices, overdue_invoices),
         "renewalAnalysis": {
             "renewalCount": len(renewal_proposals),
             "renewalAccepted": len(accepted_renewals),
