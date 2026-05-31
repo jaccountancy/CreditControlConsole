@@ -6351,6 +6351,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
             review_summary = json.loads(review_summary)
         except ValueError:
             review_summary = {}
+    review_summary = _me_report_apply_brought_forward_loss(review_summary, row)
     open_exceptions = [item for item in exceptions if (item.get("status") or "open") == "open"]
     traffic_light = (latest_review or {}).get("traffic_light") or ("red" if any((item.get("severity") or "") == "red" for item in open_exceptions) else "amber")
     return {
@@ -6360,6 +6361,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "bookkeepingFrequency": row.get("bookkeeping_frequency") or "Monthly",
         "reportRecipientEmail": row.get("report_recipient_email") or "",
         "yearEndMonth": int(row.get("year_end_month") or 3),
+        "broughtForwardTradingLoss": float(_money(row.get("brought_forward_trading_loss"))),
         "xeroContactId": row.get("xero_contact_id") or "",
         "xeroContactName": row.get("xero_contact_name") or "",
         "xeroContactEmail": row.get("xero_contact_email") or "",
@@ -6397,7 +6399,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
                 "periodEnd": _iso(review.get("period_end")) or "",
                 "status": review.get("status") or "",
                 "trafficLight": review.get("traffic_light") or "amber",
-                "summary": review.get("summary") if isinstance(review.get("summary"), dict) else {},
+                "summary": _me_report_apply_brought_forward_loss(review.get("summary") if isinstance(review.get("summary"), dict) else {}, row),
                 "createdAt": _iso(review.get("created_at")) or "",
             }
             for review in reviews
@@ -6614,6 +6616,7 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
     owner = str(payload.get("internalClientOwner") or "").strip()
     frequency = str(payload.get("bookkeepingFrequency") or "Monthly").strip() or "Monthly"
     recipient = str(payload.get("reportRecipientEmail") or (xero_contact or {}).get("email") or "").strip()
+    brought_forward_trading_loss = _non_negative_money(payload.get("broughtForwardTradingLoss") or 0, "Brought forward trading loss")
     try:
         year_end_month = int(payload.get("yearEndMonth") or 3)
     except (TypeError, ValueError) as exc:
@@ -6630,11 +6633,12 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
                 INSERT INTO me_report_clients (
                     user_id, client_name, internal_client_owner,
                     bookkeeping_frequency, report_recipient_email,
-                    year_end_month, xero_contact_id, xero_contact_name,
+                    year_end_month, brought_forward_trading_loss,
+                    xero_contact_id, xero_contact_name,
                     xero_contact_email, xero_connection_id, xero_tenant_id,
                     xero_tenant_name, xero_connection_status, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -6644,6 +6648,7 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
                     frequency,
                     recipient,
                     year_end_month,
+                    brought_forward_trading_loss,
                     xero_contact["xeroContactId"] if xero_contact else None,
                     xero_contact["name"] if xero_contact else "",
                     xero_contact["email"] if xero_contact else "",
@@ -6662,6 +6667,33 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
         str(client_id),
         "me_report.client_created",
         {"client_name": client_name, "xero_contact_id": xero_contact_id},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
+    _me_report_client_row(user, client_id)
+    brought_forward_trading_loss = _non_negative_money(payload.get("broughtForwardTradingLoss") or 0, "Brought forward trading loss")
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE me_report_clients
+                SET brought_forward_trading_loss = %s,
+                    updated_at = %s
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (brought_forward_trading_loss, now, client_id, user["id"]),
+            )
+        connection.commit()
+    record_audit_event(
+        "me_report_client",
+        client_id,
+        "me_report.client_updated",
+        {"brought_forward_trading_loss": float(brought_forward_trading_loss)},
         user["id"],
     )
     return me_report_payload(user)
@@ -6802,6 +6834,7 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "accountingProfit",
         "yearToDateSales",
         "yearToDateProfit",
+        "rolling12MonthTurnover",
         "trialBalanceAccounts",
         "balanceSheet",
         "fixedAssetReconciliation",
@@ -6827,6 +6860,7 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "accountingProfit": {"type": "number"},
         "yearToDateSales": {"type": "number"},
         "yearToDateProfit": {"type": "number"},
+        "rolling12MonthTurnover": {"type": "number"},
         "trialBalanceAccounts": {
             "type": "array",
             "items": {
@@ -6993,6 +7027,7 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         "Profit and Loss (and VAT Registration check), Balance Sheet, Fixed Asset Reconciliation, Depreciation Schedule, "
         "Aged Payables, Aged Receivables and Trial Balance. Use GBP numbers without currency symbols. "
         "For accountingProfit and yearToDateProfit use Profit (loss) before taxation from Profit and Loss - YTD if present. "
+        "Extract rolling12MonthTurnover from the VAT Registration check or rolling 12-month turnover/taxable turnover line if shown; return 0 only when it is not present. "
         "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
         "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
         "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved "
@@ -7226,6 +7261,100 @@ def _me_report_forecast_summary(extracted: dict, client: dict, ytd_sales: Decima
     }
 
 
+ME_REPORT_DEFAULT_VAT_THRESHOLD = Decimal("90000.00")
+
+
+def _me_report_summary_rolling_turnover(summary: dict) -> Decimal:
+    forecast = summary.get("forecast") if isinstance(summary.get("forecast"), dict) else {}
+    for value in (
+        summary.get("rolling12MonthTurnover"),
+        summary.get("rolling12MonthSales"),
+        summary.get("vatRolling12MonthTurnover"),
+        summary.get("annualTurnover"),
+        forecast.get("projectedAnnualTurnover"),
+        summary.get("yearToDateSales"),
+    ):
+        amount = _money(value)
+        if amount:
+            return amount
+    monthly_sales = _money(summary.get("monthlySales"))
+    return _money(monthly_sales * Decimal(12)) if monthly_sales else Decimal("0.00")
+
+
+def _me_report_apply_brought_forward_loss(summary: dict, client: dict) -> dict:
+    if not isinstance(summary, dict):
+        return {}
+    result = dict(summary)
+    client_loss_value = client.get("brought_forward_trading_loss")
+    brought_forward_loss = _money(client_loss_value if client_loss_value is not None else result.get("broughtForwardTradingLoss"))
+    result["broughtForwardTradingLoss"] = float(brought_forward_loss)
+    has_loss_metadata = "taxableProfitBeforeLosses" in result or _money(result.get("tradingLossReliefUsed")) > 0
+    if brought_forward_loss <= 0 and not has_loss_metadata:
+        result.setdefault("tradingLossReliefUsed", 0.0)
+        return result
+
+    taxable_before_losses = _money(result.get("taxableProfitBeforeLosses"))
+    if taxable_before_losses <= 0:
+        taxable_before_losses = _money(result.get("estimatedTaxableProfit")) + _money(result.get("tradingLossReliefUsed"))
+    if taxable_before_losses <= 0:
+        taxable_before_losses = max(
+            Decimal("0.00"),
+            _money(result.get("accountingProfit") or result.get("yearToDateProfit")) + _money(result.get("taxAdjustments")),
+        )
+
+    trading_loss_relief_used = min(brought_forward_loss, taxable_before_losses)
+    taxable_after_losses = max(Decimal("0.00"), _money(taxable_before_losses - trading_loss_relief_used))
+    estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(taxable_after_losses)
+    current_year_profit = _money(result.get("yearToDateProfit") or result.get("accountingProfit"))
+    current_year_earnings = _money(current_year_profit - estimated_ct)
+    period_end_reserves = _money(
+        _money(result.get("openingRetainedReserves"))
+        + current_year_earnings
+        - _money(result.get("dividendsTaken"))
+    )
+    dividend_capacity = max(Decimal("0.00"), period_end_reserves)
+
+    result.update({
+        "taxableProfitBeforeLosses": float(taxable_before_losses),
+        "tradingLossReliefUsed": float(trading_loss_relief_used),
+        "estimatedTaxableProfit": float(taxable_after_losses),
+        "estimatedCorporationTax": float(estimated_ct),
+        "effectiveTaxRate": float(effective_rate),
+        "corporationTaxRateBand": ct_rate_band,
+        "corporationTaxBreakdown": corporation_tax_breakdown,
+        "taxProvisionRequired": float(estimated_ct),
+        "currentYearEarnings": float(current_year_earnings),
+        "periodEndDistributableReserves": float(period_end_reserves),
+        "dividendCapacity": float(dividend_capacity),
+        "totalPotentialExtraction": float(_money(_money(result.get("directorLoanCreditBalance")) + dividend_capacity)),
+    })
+
+    tax_steps = result.get("taxCalculationSteps") if isinstance(result.get("taxCalculationSteps"), list) else []
+    if tax_steps:
+        loss_step = _me_report_step("Brought-forward trading loss utilised", -trading_loss_relief_used, "Deduct", "Stored client setting")
+        updated_steps = []
+        found_loss_step = False
+        for step in tax_steps:
+            if isinstance(step, dict) and "brought-forward" in str(step.get("label") or "").lower():
+                updated_steps.append(loss_step)
+                found_loss_step = True
+            else:
+                updated_steps.append(step)
+        if not found_loss_step:
+            insert_at = next(
+                (
+                    index
+                    for index, step in enumerate(updated_steps)
+                    if isinstance(step, dict) and "estimated taxable" in str(step.get("label") or "").lower()
+                ),
+                len(updated_steps),
+            )
+            updated_steps = [*updated_steps[:insert_at], loss_step, *updated_steps[insert_at:]]
+        tax_steps = updated_steps
+        result["taxCalculationSteps"] = tax_steps
+    return result
+
+
 def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     warnings = [str(item).strip() for item in extracted.get("warnings") or [] if str(item).strip()]
     trial_balance_accounts = [item for item in extracted.get("trialBalanceAccounts") or [] if isinstance(item, dict)]
@@ -7354,7 +7483,10 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     disallowed_expenses_addback = _money(non_allowable_addback + penalties_addback + entertaining_addback + explicit_disallowed_total)
     depreciation_total_addback = _money(depreciation_addback + amortisation_addback)
     tax_adjustments = _money(depreciation_total_addback + disallowed_expenses_addback - capital_allowances)
-    estimated_taxable_profit = max(Decimal("0.00"), _money(accounting_profit + tax_adjustments))
+    brought_forward_trading_loss = _money(client.get("brought_forward_trading_loss"))
+    taxable_profit_before_losses = max(Decimal("0.00"), _money(accounting_profit + tax_adjustments))
+    trading_loss_relief_used = min(brought_forward_trading_loss, taxable_profit_before_losses)
+    estimated_taxable_profit = max(Decimal("0.00"), _money(taxable_profit_before_losses - trading_loss_relief_used))
     estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(estimated_taxable_profit)
 
     tax_steps = [
@@ -7366,6 +7498,9 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         _me_report_step("Client entertaining add-back", entertaining_addback, "Add back", "Trial Balance entertaining accounts"),
         *explicit_disallowed_steps,
         *capital_allowance_steps,
+        *([
+            _me_report_step("Brought-forward trading loss utilised", -trading_loss_relief_used, "Deduct", "Stored client setting")
+        ] if brought_forward_trading_loss else []),
         _me_report_step("Estimated taxable profit YTD", estimated_taxable_profit, "Result", "Calculated"),
         _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds"),
     ]
@@ -7433,6 +7568,17 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     warnings = list(dict.fromkeys(warnings))
     extracted_insights = extracted.get("profitAndLossInsights") if isinstance(extracted.get("profitAndLossInsights"), dict) else {}
     forecast = _me_report_forecast_summary(extracted, client, ytd_sales, ytd_profit, estimated_taxable_profit)
+    period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
+    rolling_12_month_turnover = _money(extracted.get("rolling12MonthTurnover"))
+    if not rolling_12_month_turnover:
+        rolling_12_month_turnover = _me_report_summary_rolling_turnover({
+            **extracted,
+            "monthlySales": float(monthly_sales),
+            "yearToDateSales": float(ytd_sales),
+            "forecast": forecast,
+        })
+    vat_threshold = ME_REPORT_DEFAULT_VAT_THRESHOLD
+    vat_threshold_exceeded = rolling_12_month_turnover > vat_threshold
     going_well_fallback = [
         f"Year-to-date profit is positive at £{ytd_profit:,.2f}." if ytd_profit > 0 else "Revenue has been extracted and is ready for trend review.",
         f"Current monthly profit is £{accounting_profit:,.2f}." if accounting_profit > 0 else "Month-end figures are now structured for review.",
@@ -7481,12 +7627,20 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "yearToDateSales": float(ytd_sales),
         "yearToDateExpenses": float(max(Decimal("0.00"), _money(ytd_sales - ytd_profit))),
         "yearToDateProfit": float(ytd_profit),
+        "rolling12MonthTurnover": float(rolling_12_month_turnover),
+        "vatThreshold": float(vat_threshold),
+        "vatThresholdExceeded": vat_threshold_exceeded,
+        "vatThresholdFirstBreachedAt": period_end.isoformat() if vat_threshold_exceeded else "",
+        "vatWarningVisible": vat_threshold_exceeded,
         "accountingProfit": float(accounting_profit),
         "depreciationAddBack": float(depreciation_addback),
         "amortisationAddBack": float(amortisation_addback),
         "disallowedExpensesAddBack": float(disallowed_expenses_addback),
         "capitalAllowances": float(capital_allowances),
         "taxAdjustments": float(tax_adjustments),
+        "taxableProfitBeforeLosses": float(taxable_profit_before_losses),
+        "broughtForwardTradingLoss": float(brought_forward_trading_loss),
+        "tradingLossReliefUsed": float(trading_loss_relief_used),
         "estimatedTaxableProfit": float(estimated_taxable_profit),
         "estimatedCorporationTax": float(estimated_ct),
         "effectiveTaxRate": float(effective_rate),
@@ -7515,7 +7669,9 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "dataQualityIssueCount": len(chart_issues) + len(duplicate_risks),
         "commentary": (
             f"Uploaded PDF reviewed for {client.get('client_name') or 'client'}. "
-            f"Profit before tax YTD is £{accounting_profit:,.2f}; estimated taxable profit is £{estimated_taxable_profit:,.2f}; "
+            f"Profit before tax YTD is £{accounting_profit:,.2f}; "
+            f"{'brought-forward trading loss relief used is £' + format(trading_loss_relief_used, ',.2f') + '; ' if brought_forward_trading_loss else ''}"
+            f"estimated taxable profit is £{estimated_taxable_profit:,.2f}; "
             f"estimated CT is £{estimated_ct:,.2f}. Dividend availability at period end is £{dividend_capacity:,.2f}."
         ),
         "warnings": warnings,
@@ -8191,7 +8347,10 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         if row.get("category") in ("Client entertaining", "Fines and penalties", "Depreciation", "Non-business expenses", "Private use items")
     )
     capital_allowance_review = sum(1 for row in mapping_rows if row.get("category") in ("Computer equipment", "Plant and machinery", "Office equipment", "Assets needing review"))
-    taxable_profit = max(Decimal("0.00"), _money(ytd_profit + disallowable_addbacks))
+    brought_forward_trading_loss = _money(client.get("brought_forward_trading_loss"))
+    taxable_profit_before_losses = max(Decimal("0.00"), _money(ytd_profit + disallowable_addbacks))
+    trading_loss_relief_used = min(brought_forward_trading_loss, taxable_profit_before_losses)
+    taxable_profit = max(Decimal("0.00"), _money(taxable_profit_before_losses - trading_loss_relief_used))
     estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(taxable_profit)
     post_tax_profit = _money(ytd_profit - estimated_ct)
     period_end_distributable_reserves = _money(retained_earnings + post_tax_profit - dividends_taken)
@@ -8200,6 +8359,9 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
     tax_steps = [
         _me_report_step("Profit before tax YTD", ytd_profit, "Start", "Xero Profit and Loss - YTD"),
         _me_report_step("Estimated disallowable add-backs", disallowable_addbacks, "Add back", "Account treatment review"),
+        *([
+            _me_report_step("Brought-forward trading loss utilised", -trading_loss_relief_used, "Deduct", "Stored client setting")
+        ] if brought_forward_trading_loss else []),
         _me_report_step("Estimated taxable profit YTD", taxable_profit, "Result", "Calculated"),
         _me_report_step("Corporation tax estimate", estimated_ct, ct_rate_band, "Calculated using current UK CT thresholds"),
     ]
@@ -8346,6 +8508,9 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "vatWarningVisible": vat_warning_visible,
         "accountingProfit": float(_money(monthly_profit)),
         "taxAdjustments": float(_money(disallowable_addbacks)),
+        "taxableProfitBeforeLosses": float(taxable_profit_before_losses),
+        "broughtForwardTradingLoss": float(brought_forward_trading_loss),
+        "tradingLossReliefUsed": float(trading_loss_relief_used),
         "estimatedTaxableProfit": float(_money(taxable_profit)),
         "estimatedCorporationTax": float(estimated_ct),
         "effectiveTaxRate": float(effective_rate),
@@ -8375,6 +8540,7 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "commentary": (
             f"This month shows estimated profit of £{_money(monthly_profit):,.2f}. "
             f"Year-to-date profit is £{_money(ytd_profit):,.2f}. "
+            f"{'Brought-forward trading loss relief used is £' + format(trading_loss_relief_used, ',.2f') + '. ' if brought_forward_trading_loss else ''}"
             f"Estimated corporation tax is £{estimated_ct:,.2f}, subject to accountant review and final year-end adjustments. "
             f"Rolling 12-month turnover is £{_money(annual_turnover):,.2f}, "
             f"{'above' if vat_threshold_exceeded else 'below'} the £{vat_threshold:,.0f} VAT threshold. "
@@ -8641,6 +8807,7 @@ def generate_me_report(user: dict, client_id: str, payload: dict | None = None) 
             summary = json.loads(summary)
         except ValueError:
             summary = {}
+    summary = _me_report_apply_brought_forward_loss(summary, client)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -8709,6 +8876,18 @@ def generate_me_report(user: dict, client_id: str, payload: dict | None = None) 
         width = min(100, max(2, int((abs(amount) / bar_max) * 100)))
         return f"<div class=\"bar-row {xml_escape(tone)}\"><span>{xml_escape(label)}</span><strong>£{amount:,.2f}</strong><em style=\"width:{width}%\"></em></div>"
 
+    rolling_12_month_turnover = _me_report_summary_rolling_turnover(summary)
+    vat_threshold = _money(summary.get("vatThreshold") or ME_REPORT_DEFAULT_VAT_THRESHOLD)
+    vat_warning_visible = bool(summary.get("vatWarningVisible")) or (vat_threshold > 0 and rolling_12_month_turnover > vat_threshold)
+    vat_threshold_first_breached_at = summary.get("vatThresholdFirstBreachedAt") or "not breached"
+    brought_forward_trading_loss = _money(summary.get("broughtForwardTradingLoss"))
+    trading_loss_relief_used = _money(summary.get("tradingLossReliefUsed"))
+    loss_relief_html = (
+        f"<p>Brought-forward trading loss stored for this client is £{brought_forward_trading_loss:,.2f}. "
+        f"Loss relief used in this CT estimate is £{trading_loss_relief_used:,.2f}.</p>"
+        if brought_forward_trading_loss else ""
+    )
+
     report_html = f"""
 <!doctype html>
 <html>
@@ -8750,7 +8929,8 @@ h1, h2 {{ color: #1e2f4d; }}
 <div class="metric"><span>YTD sales</span><strong>£{_money(summary.get('yearToDateSales')):,.2f}</strong></div>
 <div class="metric"><span>YTD profit</span><strong>£{_money(summary.get('yearToDateProfit')):,.2f}</strong></div>
 <div class="metric"><span>Estimated CT</span><strong>£{_money(summary.get('estimatedCorporationTax')):,.2f}</strong></div>
-<div class="metric"><span>12m turnover</span><strong>£{_money(summary.get('rolling12MonthTurnover')):,.2f}</strong></div>
+<div class="metric"><span>B/F trading loss</span><strong>£{brought_forward_trading_loss:,.2f}</strong></div>
+<div class="metric"><span>12m turnover</span><strong>£{rolling_12_month_turnover:,.2f}</strong></div>
 <div class="metric"><span>Dividend capacity</span><strong>£{_money(summary.get('dividendCapacity')):,.2f}</strong></div>
 <div class="metric"><span>DLA balance</span><strong>£{_money(summary.get('dlaBalance')):,.2f}</strong></div>
 <div class="metric"><span>Traffic light</span><strong>{xml_escape(summary.get('trafficLight') or review.get('traffic_light') or 'amber').upper()}</strong></div>
@@ -8781,10 +8961,11 @@ h1, h2 {{ color: #1e2f4d; }}
 <section>
 <h2>Estimated corporation tax</h2>
 <p>Accounting profit £{_money(summary.get('accountingProfit')):,.2f}, tax adjustments £{_money(summary.get('taxAdjustments')):,.2f}, taxable profit £{_money(summary.get('estimatedTaxableProfit')):,.2f}, estimated CT £{_money(summary.get('estimatedCorporationTax')):,.2f}.</p>
+{loss_relief_html}
 </section>
 <section>
 <h2>VAT threshold check</h2>
-<p>Rolling 12-month turnover is £{_money(summary.get('rolling12MonthTurnover')):,.2f} against the £{_money(summary.get('vatThreshold')):,.2f} VAT threshold. Status: {'warning visible' if summary.get('vatWarningVisible') else 'below active warning threshold'}. First breach date: {xml_escape(summary.get('vatThresholdFirstBreachedAt') or 'not breached')}.</p>
+<p>Rolling 12-month turnover is £{rolling_12_month_turnover:,.2f} against the £{vat_threshold:,.2f} VAT threshold. Status: {'warning visible' if vat_warning_visible else 'below active warning threshold'}. First breach date: {xml_escape(vat_threshold_first_breached_at)}.</p>
 </section>
 <section>
 <h2>Dividend availability and DLA</h2>
@@ -8879,6 +9060,7 @@ def _me_report_report_context(user: dict, report_id: str) -> dict:
                        clients.xero_connection_id,
                        clients.xero_tenant_id,
                        clients.xero_tenant_name,
+                       clients.brought_forward_trading_loss,
                        reviews.summary AS review_summary,
                        reviews.period_start,
                        reviews.period_end,
@@ -8901,20 +9083,22 @@ def _me_report_report_context(user: dict, report_id: str) -> dict:
             summary = json.loads(summary)
         except ValueError:
             summary = {}
+    client = {
+        "id": row.get("client_id"),
+        "client_name": row.get("client_name") or "",
+        "report_recipient_email": row.get("report_recipient_email") or "",
+        "xero_contact_id": row.get("xero_contact_id") or "",
+        "xero_contact_name": row.get("xero_contact_name") or "",
+        "xero_contact_email": row.get("xero_contact_email") or "",
+        "xero_connection_id": row.get("xero_connection_id"),
+        "xero_tenant_id": row.get("xero_tenant_id") or "",
+        "xero_tenant_name": row.get("xero_tenant_name") or "",
+        "brought_forward_trading_loss": row.get("brought_forward_trading_loss"),
+    }
     return {
         "report": row,
-        "client": {
-            "id": row.get("client_id"),
-            "client_name": row.get("client_name") or "",
-            "report_recipient_email": row.get("report_recipient_email") or "",
-            "xero_contact_id": row.get("xero_contact_id") or "",
-            "xero_contact_name": row.get("xero_contact_name") or "",
-            "xero_contact_email": row.get("xero_contact_email") or "",
-            "xero_connection_id": row.get("xero_connection_id"),
-            "xero_tenant_id": row.get("xero_tenant_id") or "",
-            "xero_tenant_name": row.get("xero_tenant_name") or "",
-        },
-        "summary": summary,
+        "client": client,
+        "summary": _me_report_apply_brought_forward_loss(summary, client),
     }
 
 
@@ -9010,6 +9194,8 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
     insights = summary.get("profitAndLossInsights") if isinstance(summary.get("profitAndLossInsights"), dict) else {}
     priorities = [str(item).strip() for item in insights.get("priorities") or [] if str(item).strip()]
     needs_attention = [str(item).strip() for item in insights.get("needsAttention") or [] if str(item).strip()]
+    brought_forward_trading_loss = _money(summary.get("broughtForwardTradingLoss"))
+    trading_loss_relief_used = _money(summary.get("tradingLossReliefUsed"))
     lines = [
         client.get("client_name") or "Client",
         f"Period: {summary.get('periodStart') or ''} to {summary.get('periodEnd') or ''}",
@@ -9018,6 +9204,8 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
         f"YTD sales: {_format_me_report_money(summary.get('yearToDateSales'))}",
         f"YTD profit: {_format_me_report_money(summary.get('yearToDateProfit'))}",
         f"Estimated Corporation Tax: {_format_me_report_money(summary.get('estimatedCorporationTax'))}",
+        f"Brought-forward trading loss: {_format_me_report_money(brought_forward_trading_loss)}",
+        f"Trading loss relief used: {_format_me_report_money(trading_loss_relief_used)}",
         f"Dividend availability: {_format_me_report_money(summary.get('dividendCapacity'))}",
         f"DLA balance: {_format_me_report_money(summary.get('dlaBalance'))}",
         f"Forecast annual turnover: {_format_me_report_money(forecast.get('projectedAnnualTurnover'))}",
@@ -9054,6 +9242,7 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
         ["YTD sales", _format_me_report_money(summary.get("yearToDateSales")), "YTD profit", _format_me_report_money(summary.get("yearToDateProfit"))],
         ["Forecast turnover", _format_me_report_money(forecast.get("projectedAnnualTurnover")), "Forecast profit", _format_me_report_money(forecast.get("projectedAnnualProfit"))],
         ["Estimated CT", _format_me_report_money(summary.get("estimatedCorporationTax")), "Dividend availability", _format_me_report_money(summary.get("dividendCapacity"))],
+        ["B/F trading loss", _format_me_report_money(brought_forward_trading_loss), "Loss relief used", _format_me_report_money(trading_loss_relief_used)],
         ["DLA balance", _format_me_report_money(summary.get("dlaBalance")), "Traffic light", str(summary.get("trafficLight") or report.get("traffic_light") or "").upper()],
     ]
     table = Table(metric_rows, colWidths=[96, 132, 120, 132])
@@ -9079,6 +9268,8 @@ def _me_report_pdf_bytes(client: dict, report: dict, summary: dict) -> bytes:
         story.append(Paragraph(xml_escape("Needs attention: " + "; ".join(needs_attention[:4])), styles["BodyText"]))
     story.append(Spacer(1, 12))
     story.append(Paragraph("Tax and extraction note", styles["Heading2"]))
+    if brought_forward_trading_loss:
+        story.append(Paragraph(xml_escape(f"Brought-forward trading loss stored for this client is {_format_me_report_money(brought_forward_trading_loss)}. Loss relief used in this CT estimate is {_format_me_report_money(trading_loss_relief_used)}."), styles["BodyText"]))
     story.append(Paragraph(xml_escape(_me_report_template_context(client, report, summary)["dla_credit_note"] or "No director loan account credit reminder applies."), styles["BodyText"]))
     document.build(story)
     return buffer.getvalue()

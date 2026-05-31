@@ -8005,20 +8005,6 @@
                                     <p class="eyebrow">Ignition Reporting API</p>
                                     <p class="detail-meta">Live practice intelligence for sales, onboarding, services, proposals, invoices, payments, collections, and deal pipeline data.</p>
                                 </div>
-                                <div class="ignition-connection-bubble" id="ignitionConnectionBubble" role="status" aria-live="polite" aria-atomic="true">
-                                    <span class="ignition-bubble-icon" aria-hidden="true">
-                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M13 2 5 13h6l-1 9 9-12h-6l1-8Z"></path></svg>
-                                    </span>
-                                    <div class="ignition-bubble-copy">
-                                        <strong id="ignitionConnectionStatus">Ignition ready to connect</strong>
-                                        <span id="ignitionPracticeName">Use Connect Ignition to authorise the Reporting API with PKCE OAuth.</span>
-                                        <div class="ignition-bubble-meta">
-                                            <span id="ignitionLastSync">Never synced</span>
-                                            <span id="ignitionDatasetTotal">0 records stored</span>
-                                        </div>
-                                        <div class="ignition-bubble-progress" aria-hidden="true"><span id="ignitionBubbleProgressFill"></span></div>
-                                    </div>
-                                </div>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="refreshIgnitionButton" type="button">Refresh</button>
@@ -8161,28 +8147,6 @@
                                 <button class="ghost-button" id="addMeReportClientButton" type="button">Add client</button>
                             </div>
                         </div>
-                        <section class="detail-panel ignition-panel">
-                            <div class="ignition-sync-card">
-                                <div class="ignition-sync-head">
-                                    <div>
-                                        <p class="eyebrow">Workflow</p>
-                                        <strong id="meReportWorkflowStatus">Register clients, upload overview report, then calculate</strong>
-                                        <span id="meReportWorkflowSummary">The top processing cell will show upload and calculation progress whenever an overview report is being reviewed.</span>
-                                    </div>
-                                    <div>
-                                        <p class="eyebrow">Source document</p>
-                                        <strong id="meReportXeroStatus">Overview report</strong>
-                                        <span id="meReportXeroTenant">Upload the management overview report to calculate CT, dividends and DLA checks.</span>
-                                    </div>
-                                </div>
-                                <div class="ignition-progress-track" aria-hidden="true"><span id="meReportProgressFill"></span></div>
-                                <div class="ignition-sync-detail">
-                                    <strong id="meReportSyncStep">Ready</strong>
-                                    <span id="meReportSyncSummary">Add a client to start the month-end register.</span>
-                                    <span id="meReportSyncCounts"></span>
-                                </div>
-                            </div>
-                        </section>
                         <section class="detail-panel" id="meReportClientFormPanel" hidden>
                             <form class="bank-account-form" id="meReportClientForm">
                                 <label>
@@ -8208,6 +8172,10 @@
                                 <label>
                                     Year end month
                                     <input id="meReportYearEndMonthInput" type="number" min="1" max="12" value="3">
+                                </label>
+                                <label>
+                                    Brought forward trading loss
+                                    <input id="meReportBroughtForwardLossInput" type="number" min="0" step="0.01" value="0">
                                 </label>
                                 <button class="primary-button" type="submit">Save client</button>
                             </form>
@@ -16243,8 +16211,6 @@
                 const connection = ignitionData.connection || {};
                 const connected = isIgnitionConnected();
                 const oauthConfigured = connection.oauthConfigured !== false;
-                const counts = ignitionData.datasetCounts || {};
-                const totalStored = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
                 const run = ignitionRunForDisplay();
                 const runActive = syncRunIsActive(run) || isIgnitionSyncing;
                 const progress = runActive || run?.status === "completed" ? Math.min(100, Math.max(0, Number(run?.progress || 0))) : 0;
@@ -16253,23 +16219,6 @@
                     topbarWidget.hidden = activeView !== "ignition" || !runActive;
                     topbarWidget.classList.toggle("is-syncing", runActive);
                 }
-                const statusText = connected
-                    ? "Connected to Ignition"
-                    : oauthConfigured
-                    ? "Ignition ready to connect"
-                    : "Ignition OAuth not configured";
-
-                setIgnitionText("ignitionConnectionStatus", statusText);
-                setIgnitionText(
-                    "ignitionPracticeName",
-                    connected
-                        ? (connection.practiceName || connection.practiceId || "Practice connected; sync stores Reporting API data in Jenius.")
-                        : oauthConfigured
-                        ? "Use Connect Ignition to authorise the Reporting API with PKCE OAuth."
-                        : "Set IGNITION_CLIENT_ID, IGNITION_CLIENT_SECRET and IGNITION_REDIRECT_URI on the backend."
-                );
-                setIgnitionText("ignitionLastSync", connection.lastSyncAt ? formatDate(connection.lastSyncAt) : "Never synced");
-                setIgnitionText("ignitionDatasetTotal", `${totalStored.toLocaleString("en-GB")} records stored`);
                 setIgnitionText("ignitionSyncStep", ignitionLoading ? "Loading Ignition dashboard" : run?.currentStep || (connected ? "Ready to sync Ignition" : "Waiting for Ignition connection"));
                 setIgnitionText(
                     "ignitionSyncSummary",
@@ -16285,13 +16234,6 @@
                 );
                 const progressFill = document.getElementById("ignitionSyncProgressFill");
                 if (progressFill) progressFill.style.width = `${progress}%`;
-                const bubble = document.getElementById("ignitionConnectionBubble");
-                if (bubble) {
-                    bubble.classList.toggle("is-connected", connected);
-                    bubble.classList.toggle("is-syncing", runActive || ignitionLoading);
-                }
-                const bubbleProgressFill = document.getElementById("ignitionBubbleProgressFill");
-                if (bubbleProgressFill) bubbleProgressFill.style.width = `${progress}%`;
 
                 const connectButton = document.getElementById("connectIgnitionButton");
                 if (connectButton) {
@@ -17122,27 +17064,11 @@
                 const screen = document.getElementById("meReportScreen");
                 if (!screen) return;
                 const summary = meReportData.summary || {};
-                const run = meReportRunForDisplay() || {};
-                const runActive = syncRunIsActive(run) || isMeReportProcessing;
                 const allClients = meReportData.clients || [];
                 const activeClients = allClients.filter((client) => meReportClientStatus(client) === "active");
                 const archivedClients = allClients.filter((client) => meReportClientStatus(client) === "archived");
-                const submissions = allClients.flatMap((client) => Array.isArray(client.submissions) ? client.submissions : []);
-                const latestSubmission = submissions
-                    .slice()
-                    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
                 ensureMeReportSelection();
                 const clients = meReportVisibleClients();
-
-                setMeReportText("meReportWorkflowStatus", activeClients.length ? `${activeClients.length.toLocaleString("en-GB")} active ME client${activeClients.length === 1 ? "" : "s"}` : "Register clients, upload overview report, then calculate");
-                setMeReportText("meReportWorkflowSummary", runActive ? run.summary || "Processing the month-end overview report and calculating the review." : "ME Report saves uploaded overview reports, account treatment checks, exceptions, calculations and report history per client.");
-                setMeReportText("meReportXeroStatus", latestSubmission ? `${String(latestSubmission.status || "uploaded").toUpperCase()} overview report` : "Awaiting overview report");
-                setMeReportText("meReportXeroTenant", latestSubmission ? `${latestSubmission.filename || "Uploaded overview report"} · ${formatDate(latestSubmission.createdAt)}` : "Upload the client overview report PDF to calculate CT, dividends and DLA checks.");
-                setMeReportText("meReportSyncStep", meReportLoading ? "Loading ME Report" : meReportUploadProcessing ? "Processing overview report" : run.currentStep || "Ready");
-                setMeReportText("meReportSyncSummary", run.errorMessage || run.summary || (meReportUploadProcessing ? "Jenius AI is reading the uploaded report and building the CT and dividend calculations." : activeClients.length ? "Open an active client and upload the latest overview report to calculate the month-end review." : "Add a client to start the month-end register."));
-                setMeReportText("meReportSyncCounts", run.recordsSynced ? `${Number(run.recordsSynced || 0).toLocaleString("en-GB")} source records processed` : `${submissions.length.toLocaleString("en-GB")} overview report upload${submissions.length === 1 ? "" : "s"} saved`);
-                const progressFill = document.getElementById("meReportProgressFill");
-                if (progressFill) progressFill.style.width = `${meReportUploadProcessing ? 56 : Math.min(100, Math.max(0, Number(run.progress || 0)))}%`;
 
                 setMeReportText("meReportClientCount", Number(summary.clientCount || 0).toLocaleString("en-GB"));
                 setMeReportText("meReportGreenCount", Number(summary.green || 0).toLocaleString("en-GB"));
@@ -17281,12 +17207,14 @@
                 actionList.innerHTML = `
                     <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
                     <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
+                    <button class="ghost-button" id="setMeReportTradingLossButton" type="button">Set B/F loss</button>
                     <button class="ghost-button me-report-archive-button" id="archiveMeReportClientButton" type="button">${selectedClientArchived ? "Restore workspace" : "Archive workspace"}</button>
                     <button class="ghost-button danger-button" id="deleteMeReportClientButton" type="button">Delete workspace</button>
                     ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                 `;
                 document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
                 document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
+                document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
                 document.getElementById("archiveMeReportClientButton")?.addEventListener("click", () => updateMeReportClientStatus(client.id, selectedClientArchived ? "active" : "archived"));
                 document.getElementById("deleteMeReportClientButton")?.addEventListener("click", () => deleteMeReportClient(client.id));
                 actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
@@ -17324,6 +17252,29 @@
 
             function renderMeReportMetric(label, value) {
                 return `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
+            }
+
+            function meReportBroughtForwardTradingLoss(client = {}, summary = {}) {
+                const value = Number(client.broughtForwardTradingLoss ?? summary.broughtForwardTradingLoss ?? 0);
+                return Number.isFinite(value) ? Math.max(0, value) : 0;
+            }
+
+            function meReportRolling12MonthTurnover(summary = {}) {
+                const forecast = summary.forecast || {};
+                const candidates = [
+                    summary.rolling12MonthTurnover,
+                    summary.rolling12MonthSales,
+                    summary.vatRolling12MonthTurnover,
+                    summary.annualTurnover,
+                    forecast.projectedAnnualTurnover,
+                    summary.yearToDateSales
+                ];
+                for (const value of candidates) {
+                    const amount = Number(value || 0);
+                    if (Number.isFinite(amount) && amount !== 0) return amount;
+                }
+                const monthlySales = Number(summary.monthlySales || 0);
+                return Number.isFinite(monthlySales) ? monthlySales * 12 : 0;
             }
 
             function meReportNormalisedTrafficLight(value) {
@@ -17432,6 +17383,7 @@
                     { label: "Amortisation add-back", amount: summary.amortisationAddBack || 0, treatment: "Add back", source: "Trial Balance" },
                     { label: "Disallowed expenses", amount: summary.disallowedExpensesAddBack || 0, treatment: "Add back", source: "Disallowed expense scan" },
                     { label: "Capital allowances", amount: -Math.abs(Number(summary.capitalAllowances || 0)), treatment: "Deduct", source: "Fixed Asset Reconciliation" },
+                    { label: "Brought-forward trading loss utilised", amount: -Math.abs(Number(summary.tradingLossReliefUsed || 0)), treatment: "Deduct", source: "Stored client setting" },
                     { label: "Estimated taxable profit YTD", amount: summary.estimatedTaxableProfit || 0, treatment: "Result", source: "Calculated" },
                     { label: "Corporation tax estimate", amount: summary.estimatedCorporationTax || 0, treatment: summary.corporationTaxRateBand || "Calculated", source: "CT rate engine" }
                 ];
@@ -17647,6 +17599,7 @@
                 const postTaxYtdEarnings = Number.isFinite(Number(summary.currentYearEarnings))
                     ? Number(summary.currentYearEarnings)
                     : Number(summary.yearToDateProfit || summary.accountingProfit || 0) - Number(summary.estimatedCorporationTax || 0);
+                const broughtForwardTradingLoss = meReportBroughtForwardTradingLoss(client, summary);
                 if (tab === "mappings") return renderMeReportMappings(client);
                 if (tab === "alerts") return renderMeReportExceptions(client);
                 if (tab === "reports") return renderMeReportReports(client);
@@ -17662,20 +17615,23 @@
                     ["Monthly expenses", formatCurrency(summary.monthlyExpenses || 0)],
                     ["Monthly profit", formatCurrency(summary.monthlyProfit || 0)],
                     ["YTD profit", formatCurrency(summary.yearToDateProfit || 0)],
+                    ["B/F trading loss", formatCurrency(broughtForwardTradingLoss)],
                     ["Dividend capacity", formatCurrency(summary.dividendCapacity || 0)],
                     ["DLA balance", formatCurrency(summary.dlaBalance || 0)]
                 ];
                 if (tab === "tax") {
                     return `
-                        <div class="jashflow-detail-head"><div><p class="eyebrow">Corporation tax engine</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">Rules-based estimate from accounting profit, mapped add-backs and review flags.</p></div></div>
+                        <div class="jashflow-detail-head"><div><p class="eyebrow">Corporation tax engine</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">Rules-based estimate from accounting profit, mapped add-backs, brought-forward losses and review flags.</p></div><button class="ghost-button" type="button" data-me-report-loss>Edit B/F loss</button></div>
                         <div class="ignition-summary-grid">
                             ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
                             ${renderMeReportMetric("Tax adjustments", formatCurrency(summary.taxAdjustments || 0))}
+                            ${renderMeReportMetric("B/F trading loss", formatCurrency(broughtForwardTradingLoss))}
+                            ${renderMeReportMetric("Loss relief used", formatCurrency(summary.tradingLossReliefUsed || 0))}
                             ${renderMeReportMetric("Taxable profit", formatCurrency(summary.estimatedTaxableProfit || 0))}
                             ${renderMeReportTaxEstimateMetric(summary)}
                             ${renderMeReportMetric("Effective tax rate", formatPercent(summary.effectiveTaxRate || 0))}
                             ${renderMeReportMetric("Provision required", formatCurrency(summary.taxProvisionRequired || 0))}
-                            ${renderMeReportMetric("12m turnover", formatCurrency(summary.rolling12MonthTurnover || 0))}
+                            ${renderMeReportMetric("12m turnover", formatCurrency(meReportRolling12MonthTurnover(summary)))}
                             ${renderMeReportMetric("VAT threshold", formatCurrency(summary.vatThreshold || 90000))}
                             ${renderMeReportMetric("VAT warning", summary.vatWarningVisible ? "Visible" : "Clear")}
                         </div>
@@ -17969,6 +17925,9 @@
                 document.querySelectorAll("[data-me-report-send]").forEach((button) => {
                     button.addEventListener("click", () => sendMeReportEmail(button.dataset.meReportSend));
                 });
+                document.querySelectorAll("[data-me-report-loss]").forEach((button) => {
+                    button.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
+                });
             }
 
             async function createMeReportClient(event) {
@@ -17981,7 +17940,8 @@
                     internalClientOwner: document.getElementById("meReportOwnerInput")?.value || "",
                     bookkeepingFrequency: document.getElementById("meReportFrequencyInput")?.value || "Monthly",
                     reportRecipientEmail: document.getElementById("meReportEmailInput")?.value || "",
-                    yearEndMonth: document.getElementById("meReportYearEndMonthInput")?.value || 3
+                    yearEndMonth: document.getElementById("meReportYearEndMonthInput")?.value || 3,
+                    broughtForwardTradingLoss: document.getElementById("meReportBroughtForwardLossInput")?.value || 0
                 };
                 try {
                     const response = await requestJSON(api.endpoints.meReportClients, { method: "POST", body: JSON.stringify(payload) });
@@ -17993,6 +17953,29 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save ME Report client", "error");
+                }
+            }
+
+            async function setMeReportBroughtForwardLoss(clientId = "") {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const currentValue = meReportBroughtForwardTradingLoss(client, client.summary || {});
+                const entered = window.prompt("Brought forward trading loss", currentValue ? String(currentValue) : "0");
+                if (entered === null) return;
+                const value = Number(String(entered).replace(/,/g, ""));
+                if (!Number.isFinite(value) || value < 0) return showToast("Enter a valid non-negative trading loss", "error");
+                try {
+                    const response = await requestJSON(api.endpoints.meReportClient, {
+                        method: "POST",
+                        body: JSON.stringify({ broughtForwardTradingLoss: value })
+                    }, { clientId: client.id });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportClientId = client.id;
+                    showToast("Brought forward trading loss saved", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to save brought forward trading loss", "error");
                 }
             }
 

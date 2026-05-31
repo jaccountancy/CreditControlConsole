@@ -112,6 +112,7 @@ from .services import (
     update_control_status,
     update_ignition_renewal_run,
     update_bank_statement_account,
+    update_me_report_client,
     update_me_report_client_status,
     update_me_report_exception,
     update_me_report_mapping,
@@ -1081,6 +1082,12 @@ async def api_bulk_upload_me_report_submissions(
 async def api_create_me_report_client(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "meReport": create_me_report_client(user, payload)}
+
+
+@app.post("/api/me-report/clients/{client_id}")
+async def api_update_me_report_client(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": update_me_report_client(user, client_id, payload)}
 
 
 @app.post("/api/me-report/clients/{client_id}/status")
