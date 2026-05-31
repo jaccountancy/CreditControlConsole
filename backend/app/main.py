@@ -66,6 +66,7 @@ from .services import (
     add_jashflow_charge,
     add_jashflow_payment,
     create_jashflow_loan,
+    delete_jashflow_loan,
     jashflow_payload,
     post_jashflow_interest_invoice,
     save_jashflow_settings,
@@ -1024,6 +1025,11 @@ async def api_create_jashflow_loan(request: Request, user: dict = Depends(requir
 async def api_update_jashflow_loan(loan_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "jashflow": update_jashflow_loan(user, loan_id, payload)}
+
+
+@app.delete("/api/jashflow/loans/{loan_id}")
+def api_delete_jashflow_loan(loan_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "jashflow": delete_jashflow_loan(user, loan_id)}
 
 
 @app.post("/api/jashflow/loans/{loan_id}/payments")

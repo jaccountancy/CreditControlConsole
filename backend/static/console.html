@@ -1189,14 +1189,18 @@
                 margin-left: 0;
             }
             .ledger-topbar.has-inline-status .header-connect-button {
-                min-width: 96px;
-                min-height: 38px;
-                padding: 9px 16px;
+                width: 30px;
+                min-width: 30px;
+                height: 30px;
+                min-height: 30px;
+                padding: 0;
             }
             .ledger-topbar.is-topbar-dense .header-connect-button {
-                min-width: 86px;
-                min-height: 34px;
-                padding: 7px 13px;
+                width: 28px;
+                min-width: 28px;
+                height: 28px;
+                min-height: 28px;
+                padding: 0;
             }
             .ledger-topbar.has-inline-status .global-activity-toggle {
                 margin-left: 0;
@@ -1596,49 +1600,82 @@
                 }
             }
             .header-xero-action {
-                margin-left: auto;
+                position: absolute;
+                top: -5px;
+                right: 21px;
+                z-index: 8;
+                margin-left: 0;
                 display: flex;
                 align-items: center;
                 justify-content: flex-end;
-                flex: 1 1 auto;
+                flex: 0 0 auto;
             }
             .header-xero-action[hidden] { display: none; }
-            .header-connect-button {
+            .primary-button.header-connect-button {
                 position: relative;
-                min-width: 112px;
-                min-height: 44px;
-                padding: 11px 22px;
+                width: 30px;
+                min-width: 30px;
+                height: 30px;
+                min-height: 30px;
+                padding: 0;
                 overflow: hidden;
                 isolation: isolate;
+                display: inline-grid;
+                place-items: center;
+                border: 1px solid rgba(255, 255, 255, 0.82);
+                border-radius: 999px;
+                background: linear-gradient(135deg, #1d67f2, #3b83ff);
+                color: #ffffff;
                 font-weight: 900;
                 letter-spacing: 0;
                 white-space: nowrap;
-                box-shadow: 0 10px 24px rgba(29, 103, 242, 0.22);
-                transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.26s ease, filter 0.26s ease;
+                box-shadow: 0 8px 18px rgba(29, 103, 242, 0.28), 0 0 0 5px rgba(29, 103, 242, 0.09);
+                transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.26s ease, filter 0.26s ease, border-color 0.26s ease;
             }
             .header-connect-button::after {
                 content: "";
                 position: absolute;
-                inset: -70% -40%;
+                inset: -6px;
                 z-index: -1;
-                background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.6) 44%, transparent 68%);
-                opacity: 0;
-                transform: translateX(-65%) rotate(10deg);
-                transition: opacity 0.26s ease, transform 0.56s cubic-bezier(0.16, 1, 0.3, 1);
+                border-radius: inherit;
+                background: radial-gradient(circle, rgba(29, 103, 242, 0.3), rgba(29, 103, 242, 0));
+                opacity: 0.6;
+                transform: scale(0.74);
+                transition: opacity 0.26s ease, transform 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .header-connect-button svg {
+                position: relative;
+                z-index: 1;
+                width: 16px;
+                height: 16px;
+                stroke: currentColor;
+                stroke-width: 2.6;
+                fill: none;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .header-connect-label {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                overflow: hidden;
+                clip: rect(0 0 0 0);
+                white-space: nowrap;
             }
             .header-connect-button:hover,
             .header-connect-button:focus-visible {
-                transform: translateY(-2px) scale(1.035);
+                transform: translateY(-2px) scale(1.08);
                 filter: saturate(1.08);
-                box-shadow: 0 16px 34px rgba(29, 103, 242, 0.32);
+                border-color: rgba(255, 255, 255, 1);
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.34), 0 0 0 7px rgba(29, 103, 242, 0.12);
             }
             .header-connect-button:hover::after,
             .header-connect-button:focus-visible::after {
-                opacity: 1;
-                transform: translateX(62%) rotate(10deg);
+                opacity: 0.92;
+                transform: scale(1);
             }
             .header-connect-button:active {
-                transform: translateY(0) scale(0.99);
+                transform: translateY(0) scale(0.96);
             }
             .topbar-back-button,
             .topbar-contact-strip {
@@ -8047,7 +8084,8 @@
                 backdrop-filter: blur(10px);
             }
             .developer-log-panel[hidden] { display: none; }
-            #bankAccountPanel {
+            #bankAccountPanel,
+            #bankStatementUploadPanel {
                 z-index: 260;
             }
             .developer-log-card {
@@ -8078,17 +8116,34 @@
             .bank-account-panel-card {
                 width: min(760px, 100%);
             }
+            .bank-statement-upload-card {
+                width: min(620px, 100%);
+            }
             .bank-account-dialog-form {
                 min-height: 0;
                 margin: 0;
                 gap: 0;
                 overflow: auto;
             }
+            .bank-upload-dialog-form {
+                min-height: 0;
+                margin: 0;
+                gap: 0;
+                overflow: hidden;
+            }
             .bank-account-form-body {
                 display: grid;
                 gap: 16px;
                 padding: 20px 24px 24px;
                 overflow: auto;
+            }
+            .bank-statement-upload-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+            }
+            .bank-statement-upload-body input[type="file"] {
+                padding: 12px;
             }
             .bank-account-form-status {
                 padding: 12px 14px;
@@ -9012,7 +9067,7 @@
             .ledger-topbar.is-topbar-dense.has-inline-status.has-topbar-refresh-action {
                 padding-right: 10px;
             }
-            .ledger-topbar.has-inline-status .sync-inline-banner:not([hidden]) {
+            .ledger-topbar.is-topbar-status-only .sync-inline-banner:not([hidden]) {
                 flex: 1 1 100%;
                 width: 100%;
                 min-width: 0;
@@ -9022,25 +9077,25 @@
                 justify-content: flex-start;
                 border-radius: 12px;
             }
-            .ledger-topbar.has-multiple-inline-status .sync-inline-banner:not([hidden]) {
+            .ledger-topbar.has-multiple-inline-status:not(.is-topbar-status-only) .sync-inline-banner:not([hidden]) {
                 flex: 1 1 420px;
                 min-width: min(320px, 100%);
                 max-width: none;
             }
-            .ledger-topbar.has-inline-status .brand-lockup,
-            .ledger-topbar.has-inline-status .topbar-actions,
-            .ledger-topbar.has-inline-status .global-activity-toggle,
-            .ledger-topbar.has-inline-status .topbar-refresh-data-button,
-            .ledger-topbar.has-inline-status .ignition-renewals-topbar-button:not([hidden]),
-            .ledger-topbar.has-inline-status .jashflow-topbar-summary:not([hidden]),
-            .ledger-topbar.has-inline-status .lpc-topbar-summary:not([hidden]),
-            .ledger-topbar.has-inline-status .credit-control-topbar-summary:not([hidden]),
-            .ledger-topbar.has-inline-status .bank-account-topbar-summary:not([hidden]),
-            .ledger-topbar.has-inline-status .practice-pack-topbar-summary:not([hidden]),
-            .ledger-topbar.has-inline-status .bank-continuity-topbar-pill:not([hidden]),
-            .ledger-topbar.has-inline-status .ignition-topbar-tabs:not([hidden]),
-            .ledger-topbar.has-inline-status .me-report-topbar-actions:not([hidden]),
-            .ledger-topbar.has-inline-status .topbar-client-context:not([hidden]) {
+            .ledger-topbar.is-topbar-status-only .brand-lockup,
+            .ledger-topbar.is-topbar-status-only .topbar-actions,
+            .ledger-topbar.is-topbar-status-only .global-activity-toggle,
+            .ledger-topbar.is-topbar-status-only .topbar-refresh-data-button,
+            .ledger-topbar.is-topbar-status-only .ignition-renewals-topbar-button:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .jashflow-topbar-summary:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .lpc-topbar-summary:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .credit-control-topbar-summary:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .bank-account-topbar-summary:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .practice-pack-topbar-summary:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .bank-continuity-topbar-pill:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .ignition-topbar-tabs:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .me-report-topbar-actions:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .topbar-client-context:not([hidden]) {
                 flex-basis: 0 !important;
                 width: 0 !important;
                 min-width: 0 !important;
@@ -9057,13 +9112,13 @@
                 pointer-events: none !important;
                 transform: translateY(-6px) scale(0.985) !important;
             }
-            .ledger-topbar.has-inline-status .topbar-refresh-data-button,
-            .ledger-topbar.has-inline-status .global-activity-toggle {
+            .ledger-topbar.is-topbar-status-only .topbar-refresh-data-button,
+            .ledger-topbar.is-topbar-status-only .global-activity-toggle {
                 height: 0 !important;
                 padding-top: 0 !important;
                 padding-bottom: 0 !important;
             }
-            .ledger-topbar.has-inline-status .global-activity-panel:not([hidden]) {
+            .ledger-topbar.is-topbar-status-only .global-activity-panel:not([hidden]) {
                 max-height: 0 !important;
                 padding-top: 0 !important;
                 padding-bottom: 0 !important;
@@ -9152,7 +9207,7 @@
                     <div class="app-sidebar-footer">
                         <button class="app-sidebar-connect" id="sidebarResyncButton" type="button">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg></span>
-                            <span class="app-nav-copy"><strong>START</strong><span>Connect Xero</span></span>
+                            <span class="app-nav-copy"><strong>Resync Data</strong></span>
                         </button>
                         <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
@@ -9325,7 +9380,10 @@
                             <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload JUK Overview Report</button>
                         </div>
                         <div class="header-xero-action" id="headerXeroAction">
-                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">START</a>
+                            <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start" aria-label="Connect Xero" title="Connect Xero">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.8 0"></path></svg>
+                                <span class="header-connect-label">Connect Xero</span>
+                            </a>
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
                             <button class="topbar-contact-strip" id="topbarClientButton" type="button">
@@ -9958,6 +10016,7 @@
                                     Loan notes
                                     <textarea id="jashflowNotesInput" rows="3" placeholder="Internal notes, terms, agreed variations, or review points"></textarea>
                                 </label>
+                                <button class="ghost-button danger-button" id="deleteJashflowLoanButton" type="button" hidden>Delete loan</button>
                                 <button class="ghost-button" id="cancelJashflowLoanFormButton" type="button">Cancel</button>
                                 <button class="primary-button" id="jashflowLoanSubmitButton" type="submit">Save loan</button>
                             </form>
@@ -10788,6 +10847,36 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="bankStatementUploadPanel" aria-modal="true" role="dialog" aria-labelledby="bankStatementUploadPanelTitle" hidden>
+                    <div class="developer-log-card bank-statement-upload-card">
+                        <form class="stack-form bank-upload-dialog-form" id="bankStatementUploadForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="bankStatementUploadPanelTitle">Upload bank statements</h3>
+                                    <p id="bankStatementUploadPanelSummary">Choose PDF statements for this account.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeBankStatementUploadPanelButton" type="button">Cancel</button>
+                                </div>
+                            </div>
+                            <div class="bank-statement-upload-body">
+                                <label class="bank-account-field" for="bankStatementUploadInput">
+                                    <span class="bank-field-label"><span>PDF statements</span><small>Multiple allowed</small></span>
+                                    <input id="bankStatementUploadInput" type="file" accept="application/pdf,.pdf" multiple required>
+                                    <span class="detail-meta" id="bankStatementUploadHelp">Upload one or more PDF bank statements for extraction.</span>
+                                </label>
+                            </div>
+                            <div class="bank-account-form-footer">
+                                <p class="detail-meta" id="bankStatementUploadFooter">Statements will be extracted and attached to this bank account.</p>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="cancelBankStatementUploadPanelButton" type="button">Cancel</button>
+                                    <button class="primary-button" id="bankStatementUploadSubmitButton" type="submit">Upload and extract</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="quickNotePanel" aria-modal="true" role="dialog" aria-labelledby="quickNoteTitle" hidden>
                     <div class="developer-log-card">
                         <form class="stack-form" id="quickNoteForm">
@@ -11130,6 +11219,7 @@
             let jashflowLoading = false;
             let jashflowInsightsLoaded = false;
             let jashflowPostingInterest = false;
+            let jashflowLoanDeleting = false;
             let selectedJashflowLoanId = "";
             let jashflowFormOpen = false;
             let jashflowSettingsOpen = false;
@@ -11152,6 +11242,7 @@
             let selectedBankAccountId = "";
             let editingBankAccountId = "";
             let bankAccountFormOpen = false;
+            let bankStatementUploadPanelOpen = false;
             let bankStatementClientFormOpen = false;
             let bankStatementWorkspaceOpen = false;
             let bankStatementAccountOpen = false;
@@ -13424,6 +13515,11 @@
                     .filter((element) => element && !element.hidden);
             }
 
+            function shouldShowIgnitionTopbarWidget() {
+                const run = ignitionRunForDisplay();
+                return isIgnitionView() && (syncRunIsActive(run) || isIgnitionSyncing);
+            }
+
             function setTopbarStatusSuppression(topbar, suppress) {
                 if (!topbar) return;
                 const selectors = [
@@ -13485,9 +13581,13 @@
             function applyAdaptiveTopbarLayout(topbar, statusCount) {
                 topbarAdaptiveLayoutFrame = 0;
                 if (!topbar || !statusCount) {
-                    topbar?.classList.remove("is-topbar-dense", "is-topbar-stacked", "has-multiple-inline-status");
+                    topbar?.classList.remove("is-topbar-dense", "is-topbar-stacked", "is-topbar-status-only", "has-multiple-inline-status");
+                    setTopbarStatusSuppression(topbar, false);
                     return;
                 }
+
+                topbar.classList.remove("is-topbar-status-only");
+                setTopbarStatusSuppression(topbar, false);
 
                 const width = topbar.clientWidth || window.innerWidth || 0;
                 const currentHeight = topbar.getBoundingClientRect().height || 0;
@@ -13511,6 +13611,15 @@
                     );
                     topbar.classList.toggle("is-topbar-stacked", shouldUseStackedLayout);
                     if (shouldUseStackedLayout) topbar.classList.add("is-topbar-dense");
+                    const stackedHeight = topbar.getBoundingClientRect().height || nextHeight;
+                    const shouldUseStatusOnlyLayout = !isClientView && (
+                        width < 760 ||
+                        (statusCount > 1 && width < 1100) ||
+                        (hasSummary && width < 1120 && stackedHeight > 150) ||
+                        stackedHeight > 190
+                    );
+                    topbar.classList.toggle("is-topbar-status-only", shouldUseStatusOnlyLayout);
+                    setTopbarStatusSuppression(topbar, shouldUseStatusOnlyLayout);
                 });
             }
 
@@ -13527,13 +13636,13 @@
                 topbar.classList.toggle("has-inline-status", hasVisibleStatus);
                 topbar.classList.toggle("has-multiple-inline-status", statusCount > 1);
                 topbar.classList.toggle("is-topbar-live", activeTopbarProcessCount(statusCount) > 0);
-                setTopbarStatusSuppression(topbar, hasVisibleStatus);
+                setTopbarStatusSuppression(topbar, false);
                 if (topbarAdaptiveLayoutFrame) {
                     window.cancelAnimationFrame(topbarAdaptiveLayoutFrame);
                     topbarAdaptiveLayoutFrame = 0;
                 }
                 if (!hasVisibleStatus) {
-                    topbar.classList.remove("is-topbar-dense", "is-topbar-stacked");
+                    topbar.classList.remove("is-topbar-dense", "is-topbar-stacked", "is-topbar-status-only");
                     return;
                 }
                 topbarAdaptiveLayoutFrame = window.requestAnimationFrame(() => applyAdaptiveTopbarLayout(topbar, statusCount));
@@ -14071,10 +14180,6 @@
                         event.preventDefault();
                         event.stopPropagation();
                         closeClientActionMenu();
-                        if (syncAction.id === "sidebarResyncButton" && !isXeroConnected()) {
-                            handleSidebarConnectButton(event);
-                            return;
-                        }
                         if (syncAction.id === "syncRetryButton" && document.getElementById("syncInlineBanner")?.dataset.syncContext === "ignition") {
                             runIgnitionSync();
                             return;
@@ -16609,6 +16714,12 @@
                 if (backLoansButton) backLoansButton.hidden = !jashflowDetailOpen;
                 const submitButton = document.getElementById("jashflowLoanSubmitButton");
                 if (submitButton) submitButton.textContent = editingJashflowLoanId ? "Save and recalculate" : "Save loan";
+                const deleteLoanButton = document.getElementById("deleteJashflowLoanButton");
+                if (deleteLoanButton) {
+                    deleteLoanButton.hidden = !editingJashflowLoanId;
+                    deleteLoanButton.disabled = jashflowLoanDeleting;
+                    deleteLoanButton.textContent = jashflowLoanDeleting ? "Deleting..." : "Delete loan";
+                }
                 const customerSelect = document.getElementById("jashflowCustomerSelect");
                 if (customerSelect) {
                     const previousCustomer = customerSelect.value;
@@ -17036,6 +17147,36 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save Jashflow loan", "error");
+                }
+            }
+
+            async function deleteJashflowLoan() {
+                const loanId = document.getElementById("jashflowLoanIdInput")?.value || editingJashflowLoanId || "";
+                if (!loanId || jashflowLoanDeleting) return;
+                const loan = (jashflowData.loans || []).find((item) => String(item.id || "") === String(loanId));
+                const transactionCount = (loan?.transactions || []).filter((row) => !row.isVirtual).length;
+                const transactionCopy = transactionCount
+                    ? ` and ${transactionCount.toLocaleString("en-GB")} saved transaction${transactionCount === 1 ? "" : "s"}`
+                    : "";
+                const clientName = loan?.customerName || "this Jashflow loan";
+                if (!window.confirm(`Delete ${clientName}? This removes the loan ledger${transactionCopy}.`)) return;
+                jashflowLoanDeleting = true;
+                renderJashflowScreen();
+                try {
+                    const response = await requestJSON(api.endpoints.jashflowLoan, { method: "DELETE" }, { loanId });
+                    jashflowData = normaliseJashflowPayload(response);
+                    selectedJashflowLoanId = selectedJashflowLoanId === loanId ? (jashflowData.loans[0]?.id || "") : selectedJashflowLoanId;
+                    editingJashflowLoanId = "";
+                    jashflowFormOpen = false;
+                    jashflowDetailOpen = false;
+                    clearJashflowLoanForm();
+                    showToast("Jashflow loan deleted", "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete Jashflow loan", "error");
+                } finally {
+                    jashflowLoanDeleting = false;
+                    renderJashflowScreen();
                 }
             }
 
@@ -17746,6 +17887,28 @@
                 renderBankAccountPanel();
             }
 
+            function openBankStatementUploadPanel() {
+                const account = selectedBankAccount();
+                if (!account) {
+                    showToast("Select or add a bank account before uploading statements", "error");
+                    return;
+                }
+                if (accountHasVisibleBankUploadActivity(account)) {
+                    showToast("Statement extraction is already running for this account", "info");
+                    return;
+                }
+                bankStatementUploadPanelOpen = true;
+                renderBankStatementUploadPanel();
+                setTimeout(() => document.getElementById("bankStatementUploadInput")?.focus(), 0);
+            }
+
+            function closeBankStatementUploadPanel() {
+                bankStatementUploadPanelOpen = false;
+                const input = document.getElementById("bankStatementUploadInput");
+                if (input) input.value = "";
+                renderBankStatementUploadPanel();
+            }
+
             function renderBankAccountPanel() {
                 const panel = document.getElementById("bankAccountPanel");
                 if (!panel) return;
@@ -17773,6 +17936,36 @@
                 if (currencyInput && !currencyInput.value) currencyInput.value = String(editingAccount?.currencyCode || "GBP").replace(/[^a-z]/gi, "").toUpperCase().slice(0, 3) || "GBP";
                 const submitButton = document.getElementById("bankAccountSubmitButton");
                 if (submitButton) submitButton.textContent = editingAccount ? "Save changes" : "Save account";
+            }
+
+            function renderBankStatementUploadPanel() {
+                const panel = document.getElementById("bankStatementUploadPanel");
+                if (!panel) return;
+                const account = selectedBankAccount();
+                const shouldShow = activeView === "bank-statements" && bankStatementAccountOpen && bankStatementUploadPanelOpen && Boolean(account);
+                panel.hidden = !shouldShow;
+                if (!shouldShow) {
+                    if (!account || !bankStatementAccountOpen || activeView !== "bank-statements") bankStatementUploadPanelOpen = false;
+                    return;
+                }
+                const activeUpload = activeBankUploadForAccount(account);
+                const localUploadActive = bankStatementUploading && bankStatementUploadingAccountId === account.id;
+                const accountProcessing = localUploadActive || Boolean(activeUpload);
+                const title = document.getElementById("bankStatementUploadPanelTitle");
+                if (title) title.textContent = `Upload statements for ${bankAccountDisplayName(account)}`;
+                const summary = document.getElementById("bankStatementUploadPanelSummary");
+                if (summary) summary.textContent = bankAccountDetailLine(account) || "Choose PDF bank statements for extraction.";
+                const help = document.getElementById("bankStatementUploadHelp");
+                if (help) help.textContent = accountProcessing ? "Statement extraction is already running for this account." : "Upload one or more PDF bank statements for extraction.";
+                const footer = document.getElementById("bankStatementUploadFooter");
+                if (footer) footer.textContent = `Statements will be extracted and attached to ${bankAccountDisplayName(account)}.`;
+                const input = document.getElementById("bankStatementUploadInput");
+                if (input) input.disabled = accountProcessing;
+                const submitButton = document.getElementById("bankStatementUploadSubmitButton");
+                if (submitButton) {
+                    submitButton.disabled = accountProcessing;
+                    submitButton.textContent = accountProcessing ? "Extraction running" : "Upload and extract";
+                }
             }
 
             function bankAccountDigits(value) {
@@ -18834,13 +19027,6 @@
                 }).join("");
                 const activeTabMarkup = bankStatementAccountTab === "history"
                     ? `
-                        <form class="bank-upload-form" id="bankStatementUploadForm">
-                            <label>
-                                PDF statements
-                                <input id="bankStatementUploadInput" type="file" accept="application/pdf,.pdf" multiple required>
-                            </label>
-                            <button class="primary-button" type="submit" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction running" : "Upload and extract"}</button>
-                        </form>
                         <div class="jashflow-table-wrap">
                             <table class="bank-upload-history-table">
                                 <thead>
@@ -18891,6 +19077,7 @@
                         </div>
                         <div class="bank-account-actions">
                             <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
+                            <button class="ghost-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction running" : "Upload and extract"}</button>
                             <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
                             <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
                             <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
@@ -18905,14 +19092,15 @@
                     ${activeTabMarkup}
                     </div>
                 `;
-                document.getElementById("bankStatementUploadForm")?.addEventListener("submit", uploadBankStatements);
                 document.getElementById("backBankAccountsButton")?.addEventListener("click", () => {
                     bankStatementAccountOpen = false;
                     bankAccountFormOpen = false;
+                    bankStatementUploadPanelOpen = false;
                     bankStatementAccountTab = "transactions";
                     bankStatementTransactionSearchTerm = "";
                     renderBankStatementsScreen();
                 });
+                document.getElementById("openBankStatementUploadButton")?.addEventListener("click", openBankStatementUploadPanel);
                 document.getElementById("editBankAccountButton")?.addEventListener("click", () => openBankAccountForm(account));
                 document.getElementById("exportBankTransactionsButton")?.addEventListener("click", exportBankTransactions);
                 document.getElementById("exportBankTransactionsXeroButton")?.addEventListener("click", exportBankTransactionsForXero);
@@ -18943,6 +19131,7 @@
                 detail.querySelectorAll("[data-bank-upload-delete]").forEach((button) => {
                     button.addEventListener("click", () => deleteBankStatementUpload(button.dataset.bankUploadDelete || ""));
                 });
+                renderBankStatementUploadPanel();
                 renderBankAccountPanel();
             }
 
@@ -19088,6 +19277,8 @@
                 if (oversized) return showToast(`${oversized.name || "One selected file"} is ${formatFileSize(oversized.size)}. Bank statement PDFs must be under 50 MB.`, "error");
                 const formData = new FormData();
                 files.forEach((file) => formData.append("files", file, file.name));
+                bankStatementUploadPanelOpen = false;
+                if (input) input.value = "";
                 bankStatementUploading = true;
                 bankStatementUploadingAccountId = account.id;
                 bankStatementUploadingFilename = files.length === 1 ? files[0].name : `${files.length.toLocaleString("en-GB")} PDF statements`;
@@ -23129,8 +23320,9 @@
                 const hideHeaderConnectAction = !showHeaderConnectAction;
                 if (headerConnectButton) {
                     headerConnectButton.hidden = hideHeaderConnectAction;
-                    headerConnectButton.textContent = "START";
                     headerConnectButton.href = loginURL();
+                    headerConnectButton.setAttribute("aria-label", "Connect Xero");
+                    headerConnectButton.title = "Connect Xero";
                     headerConnectButton.setAttribute("aria-disabled", String(hideHeaderConnectAction));
                 }
                 if (headerXeroAction) {
@@ -23215,19 +23407,17 @@
                     sidebarResyncButton.disabled = isSyncing || syncBlockedByRateLimit;
                     const label = sidebarResyncButton.querySelector("strong");
                     const detail = sidebarResyncButton.querySelector(".app-sidebar-detail") || sidebarResyncButton.querySelector(".app-nav-copy > span");
-                    if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : connected ? "Resync Data" : "START";
-                    if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : connected ? "Refresh Xero" : "Connect Xero";
+                    if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : "Resync Data";
+                    if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : "Refresh Xero";
                     sidebarResyncButton.title = syncBlockedByRateLimit
                         ? rateLimitCopy
                         : isSyncing
                         ? "Please wait while Xero data is imported"
-                        : connected
-                        ? "Resume or refresh Xero data from the backend connection"
-                        : "Connect Xero to start importing invoices";
+                        : "Resume or refresh Xero data from the backend connection";
                 }
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget) {
-                    ignitionTopbarWidget.hidden = !isIgnitionView();
+                    ignitionTopbarWidget.hidden = !shouldShowIgnitionTopbarWidget();
                 }
                 updateTopbarInlineStatusState();
                 renderTopbarClientContext();
@@ -24640,6 +24830,7 @@
                 renderJashflowScreen();
                 renderBankStatementsScreen();
                 renderBankAccountPanel();
+                renderBankStatementUploadPanel();
                 renderIgnitionScreen();
                 renderMeReportScreen();
                 renderPracticePackScreen();
@@ -26969,6 +27160,8 @@
                 });
                 const cancelJashflowLoanFormButton = document.getElementById("cancelJashflowLoanFormButton");
                 if (cancelJashflowLoanFormButton) cancelJashflowLoanFormButton.addEventListener("click", closeJashflowLoanForm);
+                const deleteJashflowLoanButton = document.getElementById("deleteJashflowLoanButton");
+                if (deleteJashflowLoanButton) deleteJashflowLoanButton.addEventListener("click", deleteJashflowLoan);
                 const jashflowLoanForm = document.getElementById("jashflowLoanForm");
                 if (jashflowLoanForm) jashflowLoanForm.addEventListener("submit", createJashflowLoan);
                 const jashflowSettingsForm = document.getElementById("jashflowSettingsForm");
@@ -26993,6 +27186,7 @@
                 if (backBankStatementClientsButton) backBankStatementClientsButton.addEventListener("click", () => {
                     bankStatementWorkspaceOpen = false;
                     bankAccountFormOpen = false;
+                    bankStatementUploadPanelOpen = false;
                     bankStatementAccountTab = "transactions";
                     bankStatementTransactionSearchTerm = "";
                     renderBankStatementsScreen();
@@ -27011,6 +27205,16 @@
                 const bankAccountPanel = document.getElementById("bankAccountPanel");
                 if (bankAccountPanel) bankAccountPanel.addEventListener("click", (event) => {
                     if (event.target.id === "bankAccountPanel") closeBankAccountForm();
+                });
+                const bankStatementUploadForm = document.getElementById("bankStatementUploadForm");
+                if (bankStatementUploadForm) bankStatementUploadForm.addEventListener("submit", uploadBankStatements);
+                const closeBankStatementUploadPanelButton = document.getElementById("closeBankStatementUploadPanelButton");
+                if (closeBankStatementUploadPanelButton) closeBankStatementUploadPanelButton.addEventListener("click", closeBankStatementUploadPanel);
+                const cancelBankStatementUploadPanelButton = document.getElementById("cancelBankStatementUploadPanelButton");
+                if (cancelBankStatementUploadPanelButton) cancelBankStatementUploadPanelButton.addEventListener("click", closeBankStatementUploadPanel);
+                const bankStatementUploadPanel = document.getElementById("bankStatementUploadPanel");
+                if (bankStatementUploadPanel) bankStatementUploadPanel.addEventListener("click", (event) => {
+                    if (event.target.id === "bankStatementUploadPanel") closeBankStatementUploadPanel();
                 });
                 const refreshIgnitionButton = document.getElementById("refreshIgnitionButton");
                 if (refreshIgnitionButton) refreshIgnitionButton.addEventListener("click", () => loadIgnition(true));
@@ -27166,15 +27370,7 @@
                 if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
                 const sidebarResyncButton = document.getElementById("sidebarResyncButton");
                 if (sidebarResyncButton && !sidebarResyncButton.onclick) {
-                    sidebarResyncButton.addEventListener("click", (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (isXeroConnected()) {
-                            runXeroSync({ allowBackendConnectionCheck: true });
-                        } else {
-                            handleSidebarConnectButton(event);
-                        }
-                    });
+                    sidebarResyncButton.addEventListener("click", () => runXeroSync({ allowBackendConnectionCheck: true }));
                 }
                 const syncViewLogsButton = document.getElementById("syncViewLogsButton");
                 if (syncViewLogsButton && !syncViewLogsButton.onclick) syncViewLogsButton.addEventListener("click", openDeveloperLog);

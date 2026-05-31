@@ -284,6 +284,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     provider TEXT NOT NULL,
     initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    tenant_id TEXT,
     status TEXT NOT NULL,
     customers_synced INTEGER NOT NULL DEFAULT 0,
     invoices_synced INTEGER NOT NULL DEFAULT 0,
@@ -297,6 +298,7 @@ CREATE TABLE IF NOT EXISTS sync_runs (
 
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS provider TEXT DEFAULT 'xero';
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS initiated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS tenant_id TEXT;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'queued';
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS customers_synced INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS invoices_synced INTEGER NOT NULL DEFAULT 0;
@@ -314,6 +316,12 @@ ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS contacts_total INTEGER NOT NULL D
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS invoices_total INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS rate_limit_until TIMESTAMPTZ;
 ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS retry_after_seconds INTEGER NOT NULL DEFAULT 0;
+UPDATE sync_runs
+SET tenant_id = xero_connections.tenant_id
+FROM xero_connections
+WHERE sync_runs.provider = 'xero'
+  AND sync_runs.tenant_id IS NULL
+  AND sync_runs.initiated_by_user_id = xero_connections.user_id;
 UPDATE sync_runs
 SET customers_synced = COALESCE(customers_synced, 0),
     invoices_synced = COALESCE(invoices_synced, 0),
@@ -356,6 +364,9 @@ BEGIN
         EXECUTE format('ALTER TABLE sync_runs ALTER COLUMN %I SET DEFAULT 0', counter_column.column_name);
     END LOOP;
 END $$;
+
+CREATE INDEX IF NOT EXISTS sync_runs_provider_user_tenant_idx
+ON sync_runs (provider, initiated_by_user_id, tenant_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS sync_checkpoints (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

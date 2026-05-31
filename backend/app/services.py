@@ -1768,7 +1768,7 @@ def _update_sync_run(sync_run_id: str, **fields) -> dict | None:
 
 def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict, bool]:
     sync_options = normalise_sync_options(sync_options)
-    get_xero_connection_for_user(user["id"])
+    connection_row = get_xero_connection_for_user(user["id"])
     _mark_stale_sync_runs(user["id"])
     rate_limit = _active_xero_rate_limit(user["id"])
     if rate_limit is not None:
@@ -1807,6 +1807,7 @@ def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict
                 INSERT INTO sync_runs (
                     provider,
                     initiated_by_user_id,
+                    tenant_id,
                     status,
                     current_step,
                     summary,
@@ -1820,12 +1821,13 @@ def request_sync_run(user: dict, sync_options: dict | None = None) -> tuple[dict
                     heartbeat_at,
                     created_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
                     "xero",
                     user["id"],
+                    connection_row.get("tenant_id"),
                     "queued",
                     "Queued",
                     f"Xero sync queued. {sync_options['summary']}",
@@ -1889,6 +1891,7 @@ def serialize_sync_run(sync_run: dict) -> dict:
 
     return {
         "id": str(sync_run["id"]),
+        "tenantId": sync_run.get("tenant_id") or "",
         "status": sync_run.get("status") or "",
         "currentStep": sync_run.get("current_step") or "",
         "summary": sync_run.get("summary") or "",
@@ -2942,6 +2945,7 @@ async def run_sync(user: dict, sync_run_id: str, sync_options: dict | None = Non
         sync_mode_summary = f"Resuming interrupted sync {resume_source_run.get('id')}. {sync_mode_summary}"
     _update_sync_run(
         sync_run_id,
+        tenant_id=connection_row["tenant_id"],
         status="running",
         current_step="Starting Xero sync",
         summary=f"Connecting to Xero. {sync_mode_summary}",
@@ -4879,6 +4883,7 @@ JASHFLOW_HISTORY_EVENT_TITLES = {
     "jashflow.loan_created": "Loan created",
     "jashflow.loan_updated": "Loan updated",
     "jashflow.loan_recalculated": "Loan recalculated",
+    "jashflow.loan_deleted": "Loan deleted",
     "jashflow.payment_added": "Payment added",
     "jashflow.charge_added": "Charge added",
 }
@@ -5568,6 +5573,54 @@ def update_jashflow_loan(user: dict, loan_id: str, payload: dict) -> dict:
             },
             user["id"],
         )
+    return jashflow_payload(user)
+
+
+def delete_jashflow_loan(user: dict, loan_id: str) -> dict:
+    tenant_id = _jashflow_tenant_id(user)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT loans.*, customers.name AS customer_name
+                FROM jashflow_loans AS loans
+                JOIN customers ON customers.id = loans.customer_id
+                WHERE loans.id = %s
+                  AND loans.tenant_id = %s
+                """,
+                (loan_id, tenant_id),
+            )
+            loan = cursor.fetchone()
+            if loan is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jashflow loan not found.")
+            cursor.execute(
+                """
+                DELETE FROM jashflow_loans
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (loan_id, tenant_id),
+            )
+        connection.commit()
+
+    record_audit_event(
+        "jashflow_loan",
+        str(loan_id),
+        "jashflow.loan_deleted",
+        {
+            "customer_id": str(loan.get("customer_id") or ""),
+            "customer_name": loan.get("customer_name") or "",
+            "principal_amount": float(_money(loan.get("principal_amount"))),
+            "arrangement_fee": float(_money(loan.get("arrangement_fee"))),
+            "annual_interest_rate": float(_rate_percent(loan.get("annual_interest_rate"))),
+            "duration_months": int(loan.get("duration_months") or 0),
+            "start_date": _iso(loan.get("start_date")) or "",
+            "status": loan.get("status") or "active",
+            "notes": loan.get("notes") or "",
+            "deleted_at": _iso(utcnow()) or "",
+        },
+        user["id"],
+    )
     return jashflow_payload(user)
 
 
