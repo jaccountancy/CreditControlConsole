@@ -319,7 +319,8 @@
                 backdrop-filter: none;
             }
             .app-sidebar-brand,
-            .app-sidebar-card {
+            .app-sidebar-card,
+            .app-sidebar-bottom {
                 background: rgba(255, 255, 255, 0.96);
                 border: 1px solid rgba(61, 85, 130, 0.10);
                 box-shadow: 0 10px 28px rgba(30, 47, 77, 0.08);
@@ -475,10 +476,12 @@
                 top: 50%;
                 transform: translateY(-50%);
             }
-            .app-sidebar-footer {
-                margin-top: auto;
+            .app-sidebar-bottom {
+                width: 100%;
                 display: grid;
-                gap: 6px;
+                gap: 8px;
+                padding: 10px;
+                border-radius: 22px;
             }
             .app-sidebar-connect {
                 color: #fff;
@@ -9474,11 +9477,15 @@
                 .app-nav-copy > span {
                     display: none;
                 }
-                .app-sidebar-footer {
+                .app-sidebar-bottom {
+                    grid-column: 1 / -1;
                     margin-top: 0;
                     display: flex;
                     align-items: center;
                     gap: 6px;
+                    min-height: 70px;
+                    padding: 8px;
+                    border-radius: 18px;
                 }
                 .app-sidebar-connect,
                 .app-sidebar-link {
@@ -9598,8 +9605,8 @@
                 .app-sidebar-card {
                     grid-template-columns: minmax(0, 1fr);
                 }
-                .app-sidebar-footer {
-                    display: none;
+                .app-sidebar-bottom {
+                    grid-column: 1;
                 }
                 body.is-client-view .ledger-shell { width: min(100%, calc(100vw - 20px)); }
                 body.is-client-view .ledger-topbar {
@@ -9980,16 +9987,12 @@
                             <span class="app-nav-copy"><strong>Settings</strong><span>Logs</span></span>
                         </a>
                         </nav>
-                    <div class="app-sidebar-footer">
-                        <button class="app-sidebar-connect" id="sidebarResyncButton" type="button">
-                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg></span>
-                            <span class="app-nav-copy"><strong>Resync Data</strong></span>
-                        </button>
+                    </div>
+                    <div class="app-sidebar-bottom">
                         <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
                             <span class="app-nav-copy"><strong>Back to Jenius</strong><span>Main site</span></span>
                         </a>
-                    </div>
                     </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-main" aria-label="Settings navigation">
@@ -15160,7 +15163,7 @@
                         openFirstSevenDayNoticeClient();
                         return;
                     }
-                    const syncAction = event.target.closest?.("#settingsRunSyncButton, #menuSyncButton, #clientRunImportButton, #syncRetryButton, #sidebarResyncButton");
+                    const syncAction = event.target.closest?.("#settingsRunSyncButton, #menuSyncButton, #clientRunImportButton, #syncRetryButton");
                     if (syncAction) {
                         event.preventDefault();
                         event.stopPropagation();
@@ -15169,7 +15172,7 @@
                             runIgnitionSync();
                             return;
                         }
-                        runXeroSync({ allowBackendConnectionCheck: syncAction.id === "sidebarResyncButton" });
+                        runXeroSync();
                         return;
                     }
                     const disconnectButton = event.target.closest?.("#disconnectXeroButton, #settingsDisconnectXeroButton");
@@ -24904,19 +24907,6 @@
                     sidebarConnectButton.disabled = isSyncing || syncBlockedByRateLimit;
                     sidebarConnectButton.title = syncBlockedByRateLimit ? rateLimitCopy : "";
                 }
-                const sidebarResyncButton = document.getElementById("sidebarResyncButton");
-                if (sidebarResyncButton) {
-                    sidebarResyncButton.disabled = isSyncing || syncBlockedByRateLimit;
-                    const label = sidebarResyncButton.querySelector("strong");
-                    const detail = sidebarResyncButton.querySelector(".app-sidebar-detail") || sidebarResyncButton.querySelector(".app-nav-copy > span");
-                    if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : "Resync Data";
-                    if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : "Refresh Xero";
-                    sidebarResyncButton.title = syncBlockedByRateLimit
-                        ? rateLimitCopy
-                        : isSyncing
-                        ? "Please wait while Xero data is imported"
-                        : "Resume or refresh Xero data from the backend connection";
-                }
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget) {
                     ignitionTopbarWidget.hidden = !shouldShowIgnitionTopbarWidget();
@@ -28974,10 +28964,6 @@
                 if (settingsSyncPendingXeroButton) settingsSyncPendingXeroButton.addEventListener("click", syncPendingXeroActions);
                 const syncRetryButton = document.getElementById("syncRetryButton");
                 if (syncRetryButton && !syncRetryButton.onclick) syncRetryButton.addEventListener("click", () => runXeroSync());
-                const sidebarResyncButton = document.getElementById("sidebarResyncButton");
-                if (sidebarResyncButton && !sidebarResyncButton.onclick) {
-                    sidebarResyncButton.addEventListener("click", () => runXeroSync({ allowBackendConnectionCheck: true }));
-                }
                 const syncViewLogsButton = document.getElementById("syncViewLogsButton");
                 if (syncViewLogsButton && !syncViewLogsButton.onclick) syncViewLogsButton.addEventListener("click", openDeveloperLog);
             }
