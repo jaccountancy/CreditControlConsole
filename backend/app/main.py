@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -114,10 +114,11 @@ from .services import (
     gmail_authorize_url,
     gmail_oauth_configured,
     merge_me_report_duplicate_contact,
+    queue_bank_statement_retry,
+    queue_bank_statement_upload,
     store_gmail_connection,
     upload_me_report_submission_pdf,
-    upload_bank_statement_pdf,
-    retry_bank_statement_upload,
+    _process_bank_statement_upload,
 )
 from .ignition import (
     IgnitionConfigurationError,
@@ -370,7 +371,7 @@ def auth_xero_connected():
 def auth_gmail_start(redirect_to: str = "/", user: dict = Depends(require_panel_user)):
     redirect_to = normalise_oauth_redirect(redirect_to)
     if not gmail_oauth_configured():
-        return xero_login_error_response("Gmail OAuth is not configured. Add Google OAuth credentials before connecting Gmail.", status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Gmail")
+        return xero_login_error_response("Gmail OAuth is not configured. Add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET and GMAIL_REDIRECT_URI before connecting Gmail.", status.HTTP_500_INTERNAL_SERVER_ERROR, provider="Gmail")
     state_token = start_oauth_state(redirect_to=redirect_to, user_id=user["id"], provider="gmail")
     return RedirectResponse(gmail_authorize_url(state_token), status_code=status.HTTP_302_FOUND)
 
@@ -1129,27 +1130,52 @@ async def api_update_bank_statement_account(account_id: str, request: Request, u
 @app.post("/api/bank-statements/accounts/{account_id}/uploads")
 async def api_upload_bank_statement(
     account_id: str,
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     user: dict = Depends(require_panel_user),
 ):
     if not files:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload at least one PDF bank statement.")
-    result = None
+    result = bank_statement_payload(user)
     for upload in files:
         content = await upload.read()
-        result = await upload_bank_statement_pdf(
+        result, account, upload_id = queue_bank_statement_upload(
             user,
             account_id,
             upload.filename or "bank-statement.pdf",
             upload.content_type or "application/pdf",
             content,
         )
-    return {"status": "ok", "bankStatements": result or bank_statement_payload(user)}
+        background_tasks.add_task(
+            _process_bank_statement_upload,
+            dict(user),
+            account,
+            upload_id,
+            upload.filename or "bank-statement.pdf",
+            upload.content_type or "application/pdf",
+            content,
+        )
+    return {"status": "ok", "bankStatements": result}
 
 
 @app.post("/api/bank-statements/uploads/{upload_id}/retry")
-async def api_retry_bank_statement_upload(upload_id: str, user: dict = Depends(require_panel_user)):
-    return {"status": "ok", "bankStatements": await retry_bank_statement_upload(user, upload_id)}
+async def api_retry_bank_statement_upload(
+    upload_id: str,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_panel_user),
+):
+    result, account, retry_upload_id, filename, content_type, file_bytes = queue_bank_statement_retry(user, upload_id)
+    background_tasks.add_task(
+        _process_bank_statement_upload,
+        dict(user),
+        account,
+        retry_upload_id,
+        filename,
+        content_type,
+        file_bytes,
+        True,
+    )
+    return {"status": "ok", "bankStatements": result}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

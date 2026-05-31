@@ -1044,6 +1044,9 @@ CREATE TABLE IF NOT EXISTS audit_events (
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS audit_events_entity_idx
+ON audit_events (entity_type, entity_id, created_at DESC);
 """
 
 

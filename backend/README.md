@@ -30,6 +30,7 @@ Required variables:
 - `IGNITION_CLIENT_ID`
 - `IGNITION_CLIENT_SECRET`
 - `IGNITION_REDIRECT_URI=https://<your-api-domain>/api/ignition/callback`
+- `IGNITION_REDIRECT_URL=https://<your-api-domain>/api/ignition/callback` is also accepted as a legacy alias if Railway already has that name.
 - `IGNITION_SCOPES=reporting`
 - `PANEL_ALLOWED_ORIGINS=https://www.team.jaccountancy.co.uk,https://team.jaccountancy.co.uk`
 - `LATE_PAYMENT_CHARGE_ACCOUNT_CODE=1222`
@@ -46,7 +47,7 @@ The late-charge, allocation, write-off, and Jashflow interest workflows create a
 
 Bank statement extraction uses the OpenAI Responses API for PDF transaction extraction. Set `OPENAI_API_KEY` before uploading statements in the Bank Statements screen.
 
-Ignition integration uses Ignition's Reporting API OAuth application from Developer Hub. The Ignition account must have Reporting API access and the redirect URI above registered exactly. Jenius stores encrypted Ignition tokens, syncs Reporting API datasets into PostgreSQL tables/views, and serves the Ignition dashboard from stored data rather than live dashboard API calls.
+Ignition integration uses Ignition's Reporting API OAuth application from Developer Hub. The Ignition account must have Reporting API access, and the callback sent by Jenius must exactly match one Redirect URI registered in Ignition Developer Hub. For example, if Railway has `IGNITION_REDIRECT_URI=https://my.jaccountancy.co.uk/api/ignition/callback`, Ignition must register that exact URL, including scheme, host, path, and no trailing slash unless Railway also has it. Jenius stores encrypted Ignition tokens, syncs Reporting API datasets into PostgreSQL tables/views, and serves the Ignition dashboard from stored data rather than live dashboard API calls.
 
 ## Main routes
 

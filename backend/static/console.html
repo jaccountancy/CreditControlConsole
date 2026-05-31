@@ -60,7 +60,7 @@
                 grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
                 align-items: start;
                 gap: 20px;
-                padding: 0 10px 32px 0;
+                padding: 0 10px 32px 10px;
             }
             button, input, textarea, select { font: inherit; }
             button { cursor: pointer; }
@@ -70,6 +70,11 @@
                 margin: 10px auto 32px;
             }
             body.is-tool-page .ledger-shell {
+                width: 100%;
+                margin-left: 0;
+                margin-right: 0;
+            }
+            body.is-ledger-view .ledger-shell {
                 width: 100%;
                 margin-left: 0;
                 margin-right: 0;
@@ -88,11 +93,10 @@
                 flex-direction: column;
                 gap: 8px;
                 padding: 16px 12px;
-                border-radius: 0;
+                border-radius: 24px;
                 background: rgba(255, 255, 255, 0.96);
-                border: none;
-                border-right: 1px solid rgba(61, 85, 130, 0.10);
-                box-shadow: 6px 0 24px rgba(30, 47, 77, 0.06);
+                border: 1px solid rgba(61, 85, 130, 0.10);
+                box-shadow: 0 10px 28px rgba(30, 47, 77, 0.08);
                 backdrop-filter: blur(12px);
                 transition: opacity 0.2s ease, transform 0.2s ease;
             }
@@ -176,20 +180,54 @@
                 width: 100%;
                 min-height: 38px;
                 display: grid;
+                grid-template-columns: 26px minmax(0, 1fr);
+                align-items: center;
                 align-content: center;
-                gap: 2px;
+                gap: 8px;
                 border: 1px solid transparent;
-                border-radius: 8px;
-                padding: 6px 9px;
+                border-radius: 13px;
+                padding: 7px 8px;
                 text-align: left;
                 color: var(--ink);
                 background: transparent;
                 text-decoration: none;
                 font-weight: 900;
                 line-height: 1.18;
+                transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
             }
-            .app-nav-button span,
-            .app-sidebar-link span {
+            .app-nav-icon {
+                width: 26px;
+                height: 26px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 9px;
+                color: var(--blue);
+                background: linear-gradient(135deg, rgba(233, 241, 255, 0.96), rgba(238, 232, 255, 0.88));
+                border: 1px solid rgba(29, 103, 242, 0.13);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 6px 12px rgba(29, 103, 242, 0.08);
+                transition: transform 0.2s ease, color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+            }
+            .app-nav-icon svg {
+                width: 15px;
+                height: 15px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .app-nav-copy {
+                min-width: 0;
+                display: grid;
+                gap: 2px;
+            }
+            .app-nav-copy strong {
+                overflow-wrap: anywhere;
+                font-size: 0.9rem;
+                font-weight: 900;
+                line-height: 1.08;
+            }
+            .app-nav-copy > span {
                 color: var(--muted);
                 font-size: 0.7rem;
                 font-weight: 800;
@@ -201,10 +239,28 @@
                 background: rgba(233, 241, 255, 0.72);
                 color: var(--blue);
             }
+            .app-nav-button:hover .app-nav-icon,
+            .app-sidebar-link:hover .app-nav-icon,
+            .app-sidebar-connect:not(:disabled):hover .app-nav-icon {
+                color: #fff;
+                background: linear-gradient(135deg, var(--blue), var(--purple));
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.22);
+                transform: translateY(-2px) rotate(-6deg) scale(1.06);
+            }
+            .app-nav-button:active .app-nav-icon,
+            .app-sidebar-link:active .app-nav-icon,
+            .app-sidebar-connect:not(:disabled):active .app-nav-icon {
+                transform: translateY(0) scale(0.96);
+            }
             .app-nav-button.is-active {
                 color: var(--blue);
                 border-color: rgba(29, 103, 242, 0.26);
                 background: var(--blue-soft);
+            }
+            .app-nav-button.is-active .app-nav-icon {
+                color: #fff;
+                background: linear-gradient(135deg, var(--blue), #55a0ff);
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.22);
             }
             .app-nav-button.is-active::before {
                 content: "";
@@ -226,9 +282,20 @@
                 color: #fff;
                 background: var(--ink);
                 border-color: rgba(30, 47, 77, 0.22);
-                text-align: center;
+                text-align: left;
                 cursor: pointer;
                 font: inherit;
+            }
+            .app-sidebar-connect:hover {
+                color: #fff;
+                background: linear-gradient(135deg, #1e2f4d, #1d67f2);
+                border-color: rgba(29, 103, 242, 0.24);
+            }
+            .app-sidebar-connect .app-nav-icon {
+                color: #fff;
+                background: rgba(255, 255, 255, 0.14);
+                border-color: rgba(255, 255, 255, 0.18);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 6px 12px rgba(30, 47, 77, 0.14);
             }
             .app-sidebar-connect:disabled {
                 opacity: 0.62;
@@ -238,7 +305,7 @@
                 font-size: 0.86rem;
                 font-weight: 900;
             }
-            .app-sidebar-connect span {
+            .app-sidebar-connect .app-nav-copy > span {
                 color: rgba(255, 255, 255, 0.72);
                 font-size: 0.68rem;
                 font-weight: 800;
@@ -246,6 +313,22 @@
             .app-sidebar-link {
                 color: var(--blue);
                 background: rgba(248, 251, 255, 0.86);
+            }
+            @media (prefers-reduced-motion: reduce) {
+                .app-nav-button,
+                .app-sidebar-link,
+                .app-sidebar-connect,
+                .app-nav-icon {
+                    transition: none;
+                }
+                .app-nav-button:hover .app-nav-icon,
+                .app-sidebar-link:hover .app-nav-icon,
+                .app-sidebar-connect:not(:disabled):hover .app-nav-icon,
+                .app-nav-button:active .app-nav-icon,
+                .app-sidebar-link:active .app-nav-icon,
+                .app-sidebar-connect:not(:disabled):active .app-nav-icon {
+                    transform: none;
+                }
             }
             .ledger-topbar .topbar-actions {
                 display: none;
@@ -257,8 +340,9 @@
                 backdrop-filter: blur(14px);
             }
             .ledger-topbar {
-                position: relative;
-                z-index: 80;
+                position: sticky;
+                top: 8px;
+                z-index: 160;
                 display: flex;
                 flex-wrap: wrap;
                 justify-content: space-between;
@@ -267,6 +351,11 @@
                 padding: 10px 14px;
                 border-radius: 12px;
                 margin-bottom: 10px;
+                transition: box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+            }
+            .ledger-topbar.is-activity-open {
+                border-color: rgba(29, 103, 242, 0.16);
+                box-shadow: 0 18px 48px rgba(30, 47, 77, 0.13);
             }
             .brand-lockup { display: flex; align-items: center; min-width: 0; }
             .brand-lockup h1 {
@@ -288,6 +377,168 @@
                 gap: 12px;
             }
             .topbar-client-context[hidden] { display: none; }
+            .global-activity-toggle {
+                width: 42px;
+                height: 42px;
+                margin-left: auto;
+                display: inline-grid;
+                place-items: center;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: #ffffff;
+                color: var(--ink);
+                box-shadow: 0 8px 18px rgba(30, 47, 77, 0.08);
+                transition: transform 0.18s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+            }
+            .global-activity-toggle:hover,
+            .global-activity-toggle:focus-visible {
+                color: var(--blue);
+                border-color: rgba(29, 103, 242, 0.28);
+                background: var(--blue-soft);
+                transform: translateY(-1px);
+                outline: none;
+            }
+            .global-activity-toggle svg {
+                width: 19px;
+                height: 19px;
+                stroke: currentColor;
+                stroke-width: 2.4;
+                fill: none;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                transition: transform 0.24s ease;
+            }
+            .ledger-topbar.is-activity-open .global-activity-toggle svg {
+                transform: rotate(180deg);
+            }
+            .global-activity-count {
+                position: absolute;
+                min-width: 17px;
+                height: 17px;
+                margin: -25px -25px 0 0;
+                display: grid;
+                place-items: center;
+                padding: 0 5px;
+                border-radius: 999px;
+                background: var(--blue);
+                color: #ffffff;
+                font-size: 0.62rem;
+                font-weight: 900;
+                line-height: 1;
+            }
+            .global-activity-panel {
+                flex: 1 0 100%;
+                display: grid;
+                grid-template-columns: minmax(250px, 0.72fr) minmax(320px, 1.28fr);
+                gap: 12px;
+                max-height: min(58vh, 560px);
+                overflow: auto;
+                padding: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.12);
+                border-radius: 10px;
+                background: rgba(248, 251, 255, 0.94);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+                animation: global-activity-open 0.24s ease both;
+            }
+            .global-activity-panel[hidden] { display: none; }
+            .global-activity-section {
+                display: grid;
+                gap: 8px;
+                align-content: start;
+            }
+            .global-activity-section h3 {
+                font-size: 0.8rem;
+                font-weight: 900;
+                text-transform: uppercase;
+                color: var(--muted);
+            }
+            .global-status-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .global-status-pill,
+            .global-activity-row {
+                min-width: 0;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: #ffffff;
+            }
+            .global-status-pill {
+                display: grid;
+                gap: 2px;
+                padding: 9px 10px;
+            }
+            .global-status-pill span,
+            .global-activity-row span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            .global-status-pill strong,
+            .global-activity-row strong {
+                overflow: hidden;
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 900;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .global-status-pill small,
+            .global-activity-row small {
+                overflow: hidden;
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 750;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .global-status-pill.is-live {
+                border-color: rgba(39, 176, 95, 0.24);
+                background: var(--green-soft);
+            }
+            .global-status-pill.is-warning {
+                border-color: rgba(255, 159, 47, 0.25);
+                background: var(--orange-soft);
+            }
+            .global-status-pill.is-error {
+                border-color: rgba(255, 83, 83, 0.25);
+                background: var(--red-soft);
+            }
+            .global-activity-list {
+                display: grid;
+                gap: 8px;
+            }
+            .global-activity-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 3px 10px;
+                padding: 9px 10px;
+            }
+            .global-activity-row strong,
+            .global-activity-row small {
+                grid-column: 1;
+            }
+            .global-activity-row em {
+                grid-column: 2;
+                grid-row: 1 / span 2;
+                align-self: center;
+                color: var(--muted);
+                font-style: normal;
+                font-size: 0.72rem;
+                font-weight: 850;
+                white-space: nowrap;
+            }
+            .global-activity-row.is-error {
+                border-color: rgba(255, 83, 83, 0.24);
+                background: var(--red-soft);
+            }
+            @keyframes global-activity-open {
+                from { opacity: 0; transform: translateY(-8px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
             .header-xero-action {
                 margin-left: auto;
                 display: flex;
@@ -1290,9 +1541,21 @@
                 opacity: 0.52;
             }
             .ledger-card { border-radius: 14px; overflow: visible; position: relative; }
+            body.is-ledger-view .ledger-view {
+                min-height: calc(100vh - 116px);
+                display: flex;
+                flex-direction: column;
+            }
+            body.is-ledger-view .ledger-card {
+                flex: 1 1 auto;
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+            }
             .ledger-scroll {
                 position: relative;
                 z-index: 1;
+                flex: 1 1 auto;
                 overflow: auto;
                 border-radius: 0 0 14px 14px;
             }
@@ -2912,10 +3175,18 @@
                 display: grid;
                 gap: 18px;
             }
+            #jashflowScreen .detail-hero {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: start;
+            }
             .jashflow-summary-grid {
                 display: grid;
-                grid-template-columns: repeat(5, minmax(0, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
                 gap: 12px;
+            }
+            .jashflow-hero-summary {
+                grid-column: 1 / -1;
             }
             .jashflow-summary-grid article {
                 padding: 14px;
@@ -3097,6 +3368,47 @@
                 gap: 12px;
                 flex-wrap: wrap;
                 margin-bottom: 14px;
+            }
+            .jashflow-list-toolbar {
+                align-items: flex-start;
+            }
+            .jashflow-loan-book-title {
+                min-width: min(100%, 220px);
+            }
+            .jashflow-loan-book-title h3 {
+                margin-bottom: 2px;
+            }
+            .jashflow-loan-controls {
+                display: flex;
+                align-items: flex-end;
+                justify-content: flex-end;
+                gap: 10px;
+                flex-wrap: wrap;
+                margin-left: auto;
+            }
+            .jashflow-loan-control {
+                display: grid;
+                gap: 5px;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+            .jashflow-loan-control input,
+            .jashflow-loan-control select {
+                min-height: 40px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.92);
+                color: var(--ink);
+                padding: 0 10px;
+                font: inherit;
+                font-size: 0.88rem;
+                font-weight: 750;
+                text-transform: none;
+            }
+            .jashflow-loan-search input {
+                width: min(320px, 44vw);
             }
             .jashflow-filter-toggle {
                 display: inline-flex;
@@ -3347,6 +3659,26 @@
                 font-weight: 900;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
+            }
+            .jashflow-statement-table strong,
+            .jashflow-statement-table small {
+                display: block;
+            }
+            .jashflow-statement-table small {
+                margin-top: 3px;
+                color: var(--muted);
+                font-weight: 750;
+            }
+            .jashflow-history-change-list {
+                display: grid;
+                gap: 7px;
+            }
+            .jashflow-history-change-list div {
+                display: grid;
+                gap: 2px;
+            }
+            .jashflow-history-change-list small {
+                overflow-wrap: anywhere;
             }
             .jashflow-table-wrap {
                 overflow-x: auto;
@@ -3822,15 +4154,48 @@
                 flex-wrap: wrap;
                 justify-content: flex-end;
             }
+            .bank-account-hero-card {
+                display: grid;
+                gap: 16px;
+                padding: 16px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: rgba(255, 255, 255, 0.78);
+                transition: border-color 0.28s ease, box-shadow 0.28s ease, background 0.28s ease;
+            }
+            .bank-account-hero-card.is-processing {
+                border-color: rgba(29, 103, 242, 0.28);
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(233, 241, 255, 0.78), rgba(232, 248, 238, 0.68));
+                box-shadow: 0 18px 46px rgba(29, 103, 242, 0.11);
+            }
             .bank-upload-processing-card {
+                position: relative;
+                overflow: hidden;
                 padding: 16px;
                 border: 1px solid rgba(29, 103, 242, 0.2);
                 border-radius: 16px;
                 background: rgba(233, 241, 255, 0.72);
                 box-shadow: 0 14px 40px rgba(29, 103, 242, 0.10);
+                animation: bank-processing-enter 0.42s ease both, bank-processing-pulse 2.6s ease-in-out infinite;
+            }
+            .bank-upload-processing-card::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(115deg, transparent 0%, rgba(255, 255, 255, 0.62) 42%, transparent 70%);
+                transform: translateX(-120%);
+                animation: bank-processing-sheen 2.4s ease-in-out infinite;
+                pointer-events: none;
             }
             .bank-upload-processing-card .sync-progress-head {
+                position: relative;
                 margin-bottom: 12px;
+                z-index: 1;
+            }
+            .bank-upload-processing-card .sync-progress-track,
+            .bank-upload-processing-card .sync-progress-meta {
+                position: relative;
+                z-index: 1;
             }
             .bank-upload-processing-card h3,
             .bank-upload-processing-card p {
@@ -3841,34 +4206,72 @@
                 color: var(--muted);
                 font-weight: 750;
             }
-            .bank-client-table {
+            @keyframes bank-processing-enter {
+                from { opacity: 0; transform: translateY(-8px) scale(0.985); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            @keyframes bank-processing-pulse {
+                0%, 100% { box-shadow: 0 14px 40px rgba(29, 103, 242, 0.10); }
+                50% { box-shadow: 0 18px 48px rgba(39, 176, 95, 0.14); }
+            }
+            @keyframes bank-processing-sheen {
+                0% { transform: translateX(-120%); }
+                48%, 100% { transform: translateX(130%); }
+            }
+            .bank-client-table,
+            .bank-account-table {
                 width: 100%;
                 min-width: 820px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
+            .bank-account-table {
+                min-width: 980px;
+            }
             .bank-client-table th,
-            .bank-client-table td {
+            .bank-client-table td,
+            .bank-account-table th,
+            .bank-account-table td {
                 padding: 13px 14px;
                 border-bottom: 1px solid var(--line);
                 text-align: left;
                 vertical-align: middle;
             }
-            .bank-client-table th {
+            .bank-client-table th,
+            .bank-account-table th {
                 color: var(--muted);
                 font-size: 0.72rem;
                 font-weight: 900;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
             }
+            .bank-account-table tbody tr {
+                cursor: pointer;
+                transition: background 0.16s ease, box-shadow 0.16s ease;
+            }
+            .bank-account-table tbody tr:hover,
+            .bank-account-table tbody tr:focus-visible {
+                background: rgba(29, 103, 242, 0.06);
+                outline: none;
+            }
+            .bank-account-table tbody tr.is-processing {
+                background: rgba(233, 241, 255, 0.74);
+            }
             .bank-client-table strong,
-            .bank-client-table small {
+            .bank-client-table small,
+            .bank-account-table strong,
+            .bank-account-table small {
                 display: block;
             }
-            .bank-client-table small {
+            .bank-client-table small,
+            .bank-account-table small {
                 margin-top: 3px;
                 color: var(--muted);
                 font-weight: 750;
+            }
+            .bank-account-table .amount-cell {
+                font-weight: 900;
+                white-space: nowrap;
             }
             .bank-client-card {
                 border: 1px solid var(--line);
@@ -3923,6 +4326,34 @@
                 border-radius: 18px;
                 background: rgba(248, 251, 255, 0.88);
             }
+            .ignition-topbar-widget {
+                flex: 1 0 100%;
+                display: grid;
+                gap: 10px;
+                padding: 12px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 10px;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(233, 241, 255, 0.76));
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.84);
+                animation: ignition-topbar-enter 0.24s ease both;
+            }
+            .ignition-topbar-widget[hidden] { display: none; }
+            .ignition-topbar-widget.is-syncing {
+                border-color: rgba(29, 103, 242, 0.28);
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(233, 241, 255, 0.82), rgba(232, 248, 238, 0.72));
+                box-shadow: 0 14px 38px rgba(29, 103, 242, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            }
+            .ignition-topbar-widget.is-syncing .ignition-progress-track {
+                position: relative;
+            }
+            .ignition-topbar-widget.is-syncing .ignition-progress-track::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                width: 42%;
+                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.82), transparent);
+                animation: sync-inline-shimmer 1.4s linear infinite;
+            }
             .ignition-sync-head {
                 display: flex;
                 justify-content: space-between;
@@ -3961,6 +4392,10 @@
                 border-radius: inherit;
                 background: linear-gradient(90deg, #1d67f2, #27b05f);
                 transition: width 240ms ease;
+            }
+            @keyframes ignition-topbar-enter {
+                from { opacity: 0; transform: translateY(-8px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             .ignition-summary-grid {
                 display: grid;
@@ -5394,10 +5829,31 @@
                 }
                 .app-nav-button {
                     width: auto;
-                    min-width: 92px;
-                    min-height: 48px;
+                    min-width: 96px;
+                    min-height: 58px;
+                    grid-template-columns: minmax(0, 1fr);
+                    justify-items: center;
+                    gap: 5px;
                     text-align: center;
                     padding: 8px 10px;
+                }
+                .app-nav-icon {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 8px;
+                }
+                .app-nav-icon svg {
+                    width: 14px;
+                    height: 14px;
+                }
+                .app-nav-copy {
+                    justify-items: center;
+                }
+                .app-nav-copy strong {
+                    font-size: 0.78rem;
+                }
+                .app-nav-copy > span {
+                    display: none;
                 }
                 .app-sidebar-footer {
                     margin-top: 0;
@@ -5408,10 +5864,30 @@
                 .app-sidebar-connect,
                 .app-sidebar-link {
                     width: auto;
-                    min-height: 48px;
+                    min-height: 52px;
+                    grid-template-columns: 24px minmax(0, 1fr);
                     white-space: nowrap;
                 }
+                .app-sidebar-connect .app-nav-copy,
+                .app-sidebar-link .app-nav-copy {
+                    justify-items: start;
+                }
                 .toolbar-row, .ledger-topbar, .detail-hero { flex-direction: column; align-items: flex-start; }
+                .ignition-topbar-widget {
+                    width: 100%;
+                }
+                .global-activity-toggle {
+                    position: absolute;
+                    top: 10px;
+                    right: 12px;
+                    margin-left: 0;
+                }
+                .global-activity-panel {
+                    grid-template-columns: 1fr;
+                    width: 100%;
+                    max-height: 66vh;
+                    margin-top: 2px;
+                }
                 body.is-client-view .ledger-topbar {
                     grid-template-columns: minmax(0, 1fr) auto;
                 }
@@ -5463,6 +5939,7 @@
                 }
                 .summary-chip { min-width: 0; }
                 .summary-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                .global-status-grid { grid-template-columns: 1fr; }
                 .client-main-panel,
                 .client-action-center {
                     grid-column: auto;
@@ -5530,6 +6007,14 @@
                     grid-template-columns: 1fr;
                     align-items: start;
                 }
+                #jashflowScreen .detail-hero {
+                    grid-template-columns: 1fr;
+                }
+                .jashflow-loan-controls,
+                .jashflow-loan-control,
+                .jashflow-loan-search input {
+                    width: 100%;
+                }
                 .topbar-contact-strip {
                     max-width: calc(100vw - 64px);
                 }
@@ -5570,22 +6055,52 @@
                         <img class="app-sidebar-logo" src="https://creditcontrolconsole-production.up.railway.app/static/JaccountancyBlueStacked.png" alt="Jaccountancy">
                     </div>
                     <nav class="app-nav">
-                        <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">Home<span>Insights</span></a>
-                        <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">Credit Control<span>Accounts</span></a>
-                        <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">LPCs<span>Late charges</span></a>
-                        <a class="app-nav-button" href="#credit-control-bad-debt" data-app-nav="bad-debt">Bad Debt<span>Invoice Write offs</span></a>
-                        <a class="app-nav-button" href="#credit-control-jashflow" data-app-nav="jashflow">Jashflow<span>Loans</span></a>
-                        <a class="app-nav-button" href="#credit-control-bank-statements" data-app-nav="bank-statements">Bank Statements<span>Extraction</span></a>
-                        <a class="app-nav-button" href="#credit-control-ignition" data-app-nav="ignition">Ignition<span>API Integration</span></a>
-                        <a class="app-nav-button" href="#credit-control-me-report" data-app-nav="me-report">ME Report<span>Month End</span></a>
-                        <a class="app-nav-button" href="#credit-control-settings" data-app-nav="settings">Settings<span>Logs</span></a>
+                        <a class="app-nav-button" href="#credit-control-home" data-app-nav="home">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h14v-9.5"></path><path d="M10 20v-5h4v5"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Home</strong><span>Insights</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="6" width="18" height="13" rx="3"></rect><path d="M3 10h18"></path><path d="M7 15h5"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Credit Control</strong><span>Accounts</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path><path d="M7 4 4 7"></path><path d="m17 4 3 3"></path></svg></span>
+                            <span class="app-nav-copy"><strong>LPCs</strong><span>Late charges</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-bad-debt" data-app-nav="bad-debt">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10.2 4.6 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.8 4.6a2 2 0 0 0-3.6 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Bad Debt</strong><span>Invoice Write offs</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-jashflow" data-app-nav="jashflow">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 17 9 12l4 4 7-9"></path><path d="M15 7h5v5"></path><path d="M4 21h16"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Jashflow</strong><span>Loans</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-bank-statements" data-app-nav="bank-statements">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m3 9 9-5 9 5"></path><path d="M4 10h16"></path><path d="M6 10v8"></path><path d="M10 10v8"></path><path d="M14 10v8"></path><path d="M18 10v8"></path><path d="M4 20h16"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Bank Statements</strong><span>Extraction</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-ignition" data-app-nav="ignition">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Ignition</strong><span>API Integration</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-me-report" data-app-nav="me-report">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h2"></path><path d="M12 15h4"></path></svg></span>
+                            <span class="app-nav-copy"><strong>ME Report</strong><span>Month End</span></span>
+                        </a>
+                        <a class="app-nav-button" href="#credit-control-settings" data-app-nav="settings">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
+                            <span class="app-nav-copy"><strong>Settings</strong><span>Logs</span></span>
+                        </a>
                     </nav>
                     <div class="app-sidebar-footer">
                         <button class="app-sidebar-connect" id="sidebarResyncButton" type="button">
-                            <strong>Resync Data</strong>
-                            <span>Refresh Xero</span>
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Resync Data</strong><span class="app-sidebar-detail">Refresh Xero</span></span>
                         </button>
-                        <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
+                        <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 17 17 7"></path><path d="M10 7h7v7"></path><path d="M5 5h6"></path><path d="M5 5v14h14v-6"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Back to Jenius</strong><span>Main site</span></span>
+                        </a>
                     </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-main" aria-label="Settings navigation">
@@ -5621,7 +6136,7 @@
                     <header class="ledger-topbar">
                         <div class="brand-lockup">
                             <div>
-                                <h1>Jenius Tools</h1>
+                                <h1 id="topbarPageTitle">Credit Control</h1>
                                 <p class="connection-meta" id="ledgerConnectionMeta">Xero organisation not connected · Waiting for first sync</p>
                             </div>
                         </div>
@@ -5686,6 +6201,26 @@
                                 <span id="aiInlineDetail">Building the insights dashboard</span>
                             </div>
                         </div>
+                        <div class="ignition-topbar-widget" id="ignitionTopbarWidget" role="status" aria-live="polite" aria-atomic="true" hidden>
+                            <div class="ignition-sync-head">
+                                <div>
+                                    <p class="eyebrow">Ignition connection</p>
+                                    <strong id="ignitionConnectionStatus">Not connected</strong>
+                                    <span id="ignitionPracticeName">Create the OAuth application in Ignition Developer Hub, then connect Jenius.</span>
+                                </div>
+                                <div>
+                                    <p class="eyebrow">Last sync</p>
+                                    <strong id="ignitionLastSync">Never synced</strong>
+                                    <span id="ignitionDatasetTotal">0 records stored</span>
+                                </div>
+                            </div>
+                            <div class="ignition-progress-track" aria-hidden="true"><span id="ignitionSyncProgressFill"></span></div>
+                            <div class="ignition-sync-detail">
+                                <strong id="ignitionSyncStep">Waiting for Ignition connection</strong>
+                                <span id="ignitionSyncSummary">Once connected, sync imports Reporting API data into the Jenius database for fast dashboards and historical reporting.</span>
+                                <span id="ignitionSyncCounts"></span>
+                            </div>
+                        </div>
                         <div class="topbar-actions">
                             <div class="xero-connect-wrap topbar-menu-wrap" id="topbarMenuWrap">
                                 <button class="primary-button" id="topbarMenuButton" type="button" aria-haspopup="true">Menu</button>
@@ -5706,6 +6241,20 @@
                                     <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                                 </div>
                             </div>
+                        </div>
+                        <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
+                            <span class="global-activity-count" id="globalActivityCount">0</span>
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg>
+                        </button>
+                        <div class="global-activity-panel" id="globalActivityPanel" hidden>
+                            <section class="global-activity-section">
+                                <h3>Status</h3>
+                                <div class="global-status-grid" id="globalStatusGrid"></div>
+                            </section>
+                            <section class="global-activity-section">
+                                <h3>Recent activity</h3>
+                                <div class="global-activity-list" id="globalActivityList"></div>
+                            </section>
                         </div>
                         <p class="stale-sync-warning" id="staleSyncWarning" hidden>Sync data may be stale. Run a fresh sync from Xero before chasing clients.</p>
                     </header>
@@ -6127,9 +6676,7 @@
                                 <button class="ghost-button" id="toggleJashflowSetupButton" type="button">Xero posting setup</button>
                                 <button class="primary-button" id="addJashflowClientButton" type="button">Add new loan</button>
                             </div>
-                        </div>
-                        <section class="detail-panel jashflow-panel">
-                            <div class="jashflow-summary-grid">
+                            <div class="jashflow-summary-grid jashflow-hero-summary" aria-label="Jashflow loan summary">
                                 <article>
                                     <span>Active loans</span>
                                     <strong id="jashflowActiveLoans">0</strong>
@@ -6151,6 +6698,8 @@
                                     <strong id="jashflowBalanceTotal">£0.00</strong>
                                 </article>
                             </div>
+                        </div>
+                        <section class="detail-panel jashflow-panel">
                             <form class="jashflow-settings-form" id="jashflowSettingsForm" hidden>
                                 <label>
                                     Interest received account code
@@ -6222,26 +6771,6 @@
                             </div>
                         </div>
                         <section class="detail-panel ignition-panel">
-                            <div class="ignition-sync-card">
-                                <div class="ignition-sync-head">
-                                    <div>
-                                        <p class="eyebrow">Connection</p>
-                                        <strong id="ignitionConnectionStatus">Not connected</strong>
-                                        <span id="ignitionPracticeName">Create the OAuth application in Ignition Developer Hub, then connect Jenius.</span>
-                                    </div>
-                                    <div>
-                                        <p class="eyebrow">Last sync</p>
-                                        <strong id="ignitionLastSync">Never synced</strong>
-                                        <span id="ignitionDatasetTotal">0 records stored</span>
-                                    </div>
-                                </div>
-                                <div class="ignition-progress-track" aria-hidden="true"><span id="ignitionSyncProgressFill"></span></div>
-                                <div class="ignition-sync-detail">
-                                    <strong id="ignitionSyncStep">Waiting for Ignition connection</strong>
-                                    <span id="ignitionSyncSummary">Once connected, sync imports Reporting API data into the Jenius database for fast dashboards and historical reporting.</span>
-                                    <span id="ignitionSyncCounts"></span>
-                                </div>
-                            </div>
                             <div class="ignition-summary-grid" aria-label="Ignition management metrics">
                                 <article><span>Total clients</span><strong id="ignitionClientCount">0</strong></article>
                                 <article><span>New clients MTD</span><strong id="ignitionNewClientsMtd">0</strong></article>
@@ -7072,6 +7601,7 @@
             const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
             const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
             const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
+            const ACTIVITY_KEY = `${STORAGE_KEY}:system-activity`;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
             const DEFAULT_API_BASE_URL = window.location.protocol === "file:" || /(^|\.)team\.jaccountancy\.co\.uk$/i.test(window.location.hostname)
@@ -7168,6 +7698,21 @@
             let activeNavSection = "home";
             let activeClientSection = "overview";
             let activeSettingsSection = "data-import";
+            const topbarViewTitles = {
+                ledger: "Credit Control",
+                client: "Client account",
+                insights: "Insights",
+                "late-charges": "Late Payment Charges",
+                "bad-debt": "Bad Debt",
+                jashflow: "Jashflow",
+                "bank-statements": "Bank Statement Extraction",
+                ignition: "Ignition",
+                "me-report": "ME Report",
+                settings: "Settings"
+            };
+            let globalActivityOpen = false;
+            let systemActivityItems = loadSystemActivity();
+            let lastSystemActivityView = "";
             let searchTerm = "";
             let clientFilter = persistedUIState.clientFilter || "all";
             let sortMode = "amount";
@@ -7204,6 +7749,21 @@
             let pendingXeroActionsLoading = false;
             let pendingXeroActionsSyncing = false;
             let activeAllocationSource = null;
+            const jashflowLoanStatusFilterLabels = {
+                active: "Active loans",
+                interest: "Interest to post",
+                repaid: "Fully repaid",
+                all: "All loans"
+            };
+            const jashflowLoanSortLabels = {
+                "balance-desc": "Balance highest",
+                "balance-asc": "Balance lowest",
+                "client-asc": "Client A-Z",
+                "start-desc": "Newest start",
+                "start-asc": "Oldest start",
+                "interest-desc": "Interest highest",
+                "principal-desc": "Principal highest"
+            };
             let jashflowData = { customers: [], loans: [], summary: {} };
             let jashflowLoading = false;
             let jashflowInsightsLoaded = false;
@@ -7214,6 +7774,9 @@
             let editingJashflowLoanId = "";
             let jashflowDetailOpen = false;
             let jashflowHideRepaidLoans = true;
+            let jashflowLoanSearchTerm = "";
+            let jashflowLoanSortMode = "balance-desc";
+            let jashflowLoanStatusFilter = jashflowHideRepaidLoans ? "active" : "all";
             let activeJashflowLoanTab = "details";
             let jashflowStatementFromDate = "";
             let jashflowStatementToDate = "";
@@ -7237,6 +7800,8 @@
             let bankStatementUploadStartedAt = 0;
             let bankStatementUploadEstimatedSeconds = 0;
             let bankStatementUploadTimer = null;
+            let bankStatementPollingTimer = null;
+            const bankStatementMaxUploadBytes = 50 * 1024 * 1024;
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let isIgnitionSyncing = false;
@@ -7440,6 +8005,43 @@
                     }
                     return {};
                 }
+            }
+
+            function loadSystemActivity() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]");
+                    return Array.isArray(stored) ? stored.slice(0, 40) : [];
+                } catch {
+                    return [];
+                }
+            }
+
+            function persistSystemActivity() {
+                try {
+                    localStorage.setItem(ACTIVITY_KEY, JSON.stringify(systemActivityItems.slice(0, 40)));
+                } catch {
+                    // Recent activity is helpful, but not critical if browser storage is blocked.
+                }
+            }
+
+            function pushSystemActivity(item) {
+                const message = String(item?.message || "").trim();
+                if (!message) return;
+                const activity = {
+                    id: item.id || `activity-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    type: item.type || "info",
+                    label: item.label || "System",
+                    message,
+                    detail: item.detail || "",
+                    at: item.at || new Date().toISOString()
+                };
+                const duplicate = systemActivityItems[0];
+                if (duplicate && duplicate.message === activity.message && duplicate.label === activity.label && Date.parse(activity.at) - Date.parse(duplicate.at || 0) < 3000) {
+                    return;
+                }
+                systemActivityItems = [activity, ...systemActivityItems].slice(0, 40);
+                persistSystemActivity();
+                renderGlobalActivityCard();
             }
 
             function loadState() {
@@ -8056,6 +8658,19 @@
                 const date = new Date(value);
                 if (Number.isNaN(date.getTime())) return value;
                 return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+            }
+
+            function formatDateTime(value) {
+                if (!value) return "--";
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return value;
+                return new Intl.DateTimeFormat("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                }).format(date);
             }
 
             function addMonthsISO(months) {
@@ -8899,6 +9514,11 @@
                 return "clients";
             }
 
+            function activeTopbarTitle(topbarClient = null) {
+                if (topbarClient?.name) return topbarClient.name;
+                return topbarViewTitles[activeView] || topbarViewTitles.ledger;
+            }
+
             function syncActiveViewShell() {
                 setElementVisible(document.getElementById("ledgerView"), activeView === "ledger");
                 setElementVisible(document.getElementById("clientScreen"), activeView === "client");
@@ -8910,6 +9530,7 @@
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
+                document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "jashflow", "bank-statements", "ignition", "me-report", "settings", "insights"].includes(activeView));
                 if (activeView !== "settings") closeSettingsSidebar();
@@ -8919,6 +9540,7 @@
                     button.classList.toggle("is-active", active);
                     button.setAttribute("aria-current", active ? "page" : "false");
                 });
+                recordActiveViewActivity();
             }
 
             function openLedgerSection(section = "clients") {
@@ -9167,6 +9789,17 @@
                     if (navButton) {
                         handleAppNavigation(navButton.dataset.appNav, event);
                         return;
+                    }
+                    const globalActivityToggle = event.target.closest?.("#globalActivityToggle");
+                    if (globalActivityToggle) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setGlobalActivityOpen(!globalActivityOpen);
+                        return;
+                    }
+                    const insideGlobalActivity = event.target.closest?.("#globalActivityPanel");
+                    if (!insideGlobalActivity && globalActivityOpen) {
+                        setGlobalActivityOpen(false);
                     }
                     const topbarMenuButton = event.target.closest?.("#topbarMenuButton");
                     if (topbarMenuButton) {
@@ -11590,6 +12223,155 @@
                 return String(loan?.status || "active").toLowerCase() === "closed" || Number(loan?.balance || 0) <= 0.01;
             }
 
+            function jashflowLoanMatchesStatusFilter(loan) {
+                const filter = jashflowLoanStatusFilterLabels[jashflowLoanStatusFilter] ? jashflowLoanStatusFilter : "active";
+                const isRepaid = jashflowLoanIsRepaid(loan);
+                if (filter === "active") return !isRepaid;
+                if (filter === "repaid") return isRepaid;
+                if (filter === "interest") return Number(loan?.uninvoicedInterest || 0) >= 0.01;
+                return true;
+            }
+
+            function jashflowLoanSearchBlob(loan) {
+                return [
+                    loan?.customerName,
+                    loan?.status,
+                    loan?.notes,
+                    loan?.startDate,
+                    loan?.principalAmount,
+                    loan?.arrangementFee,
+                    loan?.annualInterestRate,
+                    loan?.durationMonths,
+                    loan?.monthlyRepayment,
+                    loan?.chargesTotal,
+                    loan?.paymentsTotal,
+                    loan?.accruedInterest,
+                    loan?.uninvoicedInterest,
+                    loan?.balance
+                ].filter((value) => value !== null && value !== undefined).join(" ").toLowerCase();
+            }
+
+            function jashflowLoanMatchesSearch(loan) {
+                const query = jashflowLoanSearchTerm.trim().toLowerCase();
+                return !query || jashflowLoanSearchBlob(loan).includes(query);
+            }
+
+            function sortedJashflowLoans(loans) {
+                const mode = jashflowLoanSortLabels[jashflowLoanSortMode] ? jashflowLoanSortMode : "balance-desc";
+                return loans.slice().sort((left, right) => {
+                    if (mode === "balance-asc") return Number(left.balance || 0) - Number(right.balance || 0);
+                    if (mode === "client-asc") return String(left.customerName || "").localeCompare(String(right.customerName || ""));
+                    if (mode === "start-desc") return String(right.startDate || "").localeCompare(String(left.startDate || ""));
+                    if (mode === "start-asc") return String(left.startDate || "").localeCompare(String(right.startDate || ""));
+                    if (mode === "interest-desc") return Number(right.uninvoicedInterest || right.accruedInterest || 0) - Number(left.uninvoicedInterest || left.accruedInterest || 0);
+                    if (mode === "principal-desc") return Number(right.principalAmount || 0) - Number(left.principalAmount || 0);
+                    return Number(right.balance || 0) - Number(left.balance || 0);
+                });
+            }
+
+            function jashflowDescriptionCell(row, fallback, meta = "") {
+                const title = String(row?.description || row?.type || fallback || "Transaction").trim();
+                const normalisedTitle = normaliseStatus(title);
+                const pieces = [];
+                const type = String(row?.type || "").trim();
+                if (type && normaliseStatus(type) !== normalisedTitle) pieces.push(escapeHTML(type));
+                String(meta || "").split(" · ").map((item) => item.trim()).filter(Boolean).forEach((item) => {
+                    const normalisedItem = normaliseStatus(item);
+                    if (normalisedItem !== normalisedTitle && !pieces.some((piece) => normaliseStatus(piece) === normalisedItem)) {
+                        pieces.push(escapeHTML(item));
+                    }
+                });
+                return `<strong>${escapeHTML(title)}</strong>${pieces.length ? `<small>${pieces.join(" · ")}</small>` : ""}`;
+            }
+
+            function jashflowHistoryValue(change, key) {
+                const value = change?.[key];
+                const format = String(change?.format || "").toLowerCase();
+                if (value === null || value === undefined || value === "") return "Blank";
+                if (format === "currency") return formatCurrency(value);
+                if (format === "percentage") return `${Number(value || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}%`;
+                if (format === "months") return `${Number(value || 0).toLocaleString("en-GB")} months`;
+                if (format === "date") return formatDate(value);
+                return String(value);
+            }
+
+            function jashflowHistoryChangeMarkup(change) {
+                const label = escapeHTML(change?.label || change?.field || "Change");
+                const hasFrom = Object.prototype.hasOwnProperty.call(change || {}, "from");
+                const hasTo = Object.prototype.hasOwnProperty.call(change || {}, "to");
+                const fromValue = hasFrom ? jashflowHistoryValue(change, "from") : "";
+                const toValue = hasTo ? jashflowHistoryValue(change, "to") : "";
+                const detail = hasFrom && hasTo
+                    ? `from ${fromValue} to ${toValue}`
+                    : hasTo
+                    ? `set to ${toValue}`
+                    : hasFrom
+                    ? `was ${fromValue}`
+                    : "Updated";
+                return `<div><strong>${label}</strong><small>${escapeHTML(detail)}</small></div>`;
+            }
+
+            function jashflowHistoryChangesMarkup(historyEvent) {
+                const changes = Array.isArray(historyEvent?.changes) ? historyEvent.changes : [];
+                if (changes.length) {
+                    return `<div class="jashflow-history-change-list">${changes.map(jashflowHistoryChangeMarkup).join("")}</div>`;
+                }
+                return escapeHTML(historyEvent?.description || "Action recorded");
+            }
+
+            function jashflowLoanBookControls(totalCount, visibleCount) {
+                const statusOptions = Object.entries(jashflowLoanStatusFilterLabels)
+                    .map(([value, label]) => `<option value="${value}" ${jashflowLoanStatusFilter === value ? "selected" : ""}>${label}</option>`)
+                    .join("");
+                const sortOptions = Object.entries(jashflowLoanSortLabels)
+                    .map(([value, label]) => `<option value="${value}" ${jashflowLoanSortMode === value ? "selected" : ""}>${label}</option>`)
+                    .join("");
+                return `
+                    <div class="jashflow-list-toolbar">
+                        <div class="jashflow-loan-book-title">
+                            <p class="eyebrow">Loan book</p>
+                            <h3>${visibleCount.toLocaleString("en-GB")} of ${totalCount.toLocaleString("en-GB")} loan${totalCount === 1 ? "" : "s"}</h3>
+                        </div>
+                        <div class="jashflow-loan-controls">
+                            <label class="jashflow-loan-control jashflow-loan-search">
+                                Search
+                                <input id="jashflowLoanSearchInput" type="search" placeholder="Client, notes, status or amount" value="${escapeHTML(jashflowLoanSearchTerm)}">
+                            </label>
+                            <label class="jashflow-loan-control">
+                                Filter
+                                <select id="jashflowLoanStatusFilterSelect">${statusOptions}</select>
+                            </label>
+                            <label class="jashflow-loan-control">
+                                Sort
+                                <select id="jashflowLoanSortSelect">${sortOptions}</select>
+                            </label>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function bindJashflowLoanBookControls() {
+                document.getElementById("jashflowLoanSearchInput")?.addEventListener("input", (event) => {
+                    jashflowLoanSearchTerm = event.target.value;
+                    renderJashflowScreen();
+                    setTimeout(() => {
+                        const input = document.getElementById("jashflowLoanSearchInput");
+                        if (!input) return;
+                        input.focus();
+                        input.setSelectionRange(input.value.length, input.value.length);
+                    }, 0);
+                });
+                document.getElementById("jashflowLoanStatusFilterSelect")?.addEventListener("change", (event) => {
+                    jashflowLoanStatusFilter = jashflowLoanStatusFilterLabels[event.target.value] ? event.target.value : "active";
+                    jashflowHideRepaidLoans = jashflowLoanStatusFilter === "active";
+                    renderJashflowScreen();
+                });
+                document.getElementById("jashflowLoanSortSelect")?.addEventListener("change", (event) => {
+                    jashflowLoanSortMode = jashflowLoanSortLabels[event.target.value] ? event.target.value : "balance-desc";
+                    renderJashflowScreen();
+                });
+            }
+
             function jashflowDateInRange(row, fromDate, toDate) {
                 const rowDate = String(row?.date || "");
                 if (fromDate && rowDate < fromDate) return false;
@@ -11757,19 +12539,17 @@
                 list.hidden = jashflowDetailOpen;
                 detail.hidden = !jashflowDetailOpen;
                 const allLoanRows = jashflowData.loans || [];
-                const visibleLoanRows = allLoanRows.filter((loan) => !jashflowHideRepaidLoans || !jashflowLoanIsRepaid(loan));
+                const visibleLoanRows = sortedJashflowLoans(
+                    allLoanRows.filter((loan) => jashflowLoanMatchesStatusFilter(loan) && jashflowLoanMatchesSearch(loan))
+                );
+                const loanBookControls = jashflowLoanBookControls(allLoanRows.length, visibleLoanRows.length);
 
                 if (!visibleLoanRows.length) {
                     list.innerHTML = `
-                        <div class="jashflow-list-toolbar">
-                            <label class="jashflow-filter-toggle"><input id="jashflowHideRepaidToggle" type="checkbox" ${jashflowHideRepaidLoans ? "checked" : ""}> Hide fully repaid loans</label>
-                        </div>
-                        <div class="empty-state"><p class="eyebrow">No loans</p><h4>${allLoanRows.length ? "All loans are currently hidden" : "No Jashflow loans are saved"}</h4><p>${allLoanRows.length ? "Turn off the repaid-loan filter to show closed or fully repaid loans." : "Use Add new loan to create a persisted loan ledger."}</p></div>
+                        ${loanBookControls}
+                        <div class="empty-state"><p class="eyebrow">No loans</p><h4>${allLoanRows.length ? "No loans match the current view" : "No Jashflow loans are saved"}</h4><p>${allLoanRows.length ? "Adjust the Loan Book search, filter or sort controls to widen the view." : "Use Add new loan to create a persisted loan ledger."}</p></div>
                     `;
-                    document.getElementById("jashflowHideRepaidToggle")?.addEventListener("change", (event) => {
-                        jashflowHideRepaidLoans = event.target.checked;
-                        renderJashflowScreen();
-                    });
+                    bindJashflowLoanBookControls();
                     detail.innerHTML = "";
                     return;
                 }
@@ -11779,13 +12559,7 @@
                 }
 
                 list.innerHTML = `
-                    <div class="jashflow-list-toolbar">
-                        <div>
-                            <p class="eyebrow">Loan book</p>
-                            <h3>${visibleLoanRows.length.toLocaleString("en-GB")} loan${visibleLoanRows.length === 1 ? "" : "s"}</h3>
-                        </div>
-                        <label class="jashflow-filter-toggle"><input id="jashflowHideRepaidToggle" type="checkbox" ${jashflowHideRepaidLoans ? "checked" : ""}> Hide fully repaid loans</label>
-                    </div>
+                    ${loanBookControls}
                     <table class="jashflow-loans-table">
                         <thead>
                             <tr>
@@ -11828,10 +12602,7 @@
                         renderJashflowScreen();
                     });
                 });
-                document.getElementById("jashflowHideRepaidToggle")?.addEventListener("change", (event) => {
-                    jashflowHideRepaidLoans = event.target.checked;
-                    renderJashflowScreen();
-                });
+                bindJashflowLoanBookControls();
 
                 if (!jashflowDetailOpen) {
                     detail.innerHTML = "";
@@ -11841,15 +12612,18 @@
                 const loan = selectedJashflowLoan();
                 if (!loan) return;
                 const transactions = jashflowTransactionRows(loan);
-                const validLoanTabs = ["details", "future-schedule", "payments", "fees-interest", "statement", "transactions"];
+                const validLoanTabs = ["details", "future-schedule", "payments", "fees-interest", "statement", "transactions", "history"];
                 if (!validLoanTabs.includes(activeJashflowLoanTab)) activeJashflowLoanTab = "details";
                 const chargeRows = transactions.filter((row) => ["fee", "charge", "interest"].includes(String(row.type || "").toLowerCase()));
                 const paymentRows = transactions.filter((row) => String(row.type || "").toLowerCase() === "payment");
                 const scheduleRows = jashflowFutureRepaymentSchedule(loan);
+                const historyEvents = (Array.isArray(loan.history) ? loan.history : [])
+                    .slice()
+                    .sort((left, right) => String(right.stamp || "").localeCompare(String(left.stamp || "")));
                 const statementRows = jashflowStatementRowsForExport(loan).map((row) => `
                     <tr class="${row.isVirtual ? "is-virtual" : ""}">
                         <td>${formatDate(row.date)}</td>
-                        <td><strong>${escapeHTML(row.description || row.type || "Transaction")}</strong><small>${escapeHTML(row.type || "")}${row.isVirtual ? " · calculated" : ""}</small></td>
+                        <td>${jashflowDescriptionCell(row, "Transaction", row.isVirtual ? "calculated" : "")}</td>
                         <td>${formatCurrency(row.debit || Math.max(Number(row.amount || 0), 0))}</td>
                         <td>${formatCurrency(row.credit || Math.max(Number(row.amount || 0) * -1, 0))}</td>
                         <td>${formatCurrency(row.balance || 0)}</td>
@@ -11875,7 +12649,7 @@
                 const chargeTableRows = chargeRows.map((row) => `
                     <tr>
                         <td>${formatDate(row.date)}</td>
-                        <td><strong>${escapeHTML(row.description || row.type || "Charge")}</strong><small>${row.isVirtual ? "Calculated interest, not posted yet" : escapeHTML(row.type || "")}</small></td>
+                        <td>${jashflowDescriptionCell(row, "Charge", row.isVirtual ? "Not posted yet" : "")}</td>
                         <td>${formatCurrency(row.debit || row.amount || 0)}</td>
                         <td>${row.isVirtual ? "Pending" : "Saved"}</td>
                     </tr>
@@ -11890,6 +12664,18 @@
                         <td>${formatCurrency(row.closingBalance)}</td>
                     </tr>
                 `).join("");
+                const historyRows = historyEvents.map((event) => {
+                    const userName = event.userName || event.userEmail || "System";
+                    const userEmail = event.userEmail && event.userEmail !== userName ? event.userEmail : "";
+                    return `
+                        <tr>
+                            <td>${formatDateTime(event.stamp)}</td>
+                            <td><strong>${escapeHTML(event.title || "Loan event")}</strong><small>${escapeHTML(event.eventType || "")}</small></td>
+                            <td>${jashflowHistoryChangesMarkup(event)}</td>
+                            <td><strong>${escapeHTML(userName)}</strong>${userEmail ? `<small>${escapeHTML(userEmail)}</small>` : ""}</td>
+                        </tr>
+                    `;
+                }).join("");
                 const loanMetrics = `
                     <div class="jashflow-metrics">
                         <div class="jashflow-metric"><span>Principal</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></div>
@@ -12006,13 +12792,26 @@
                         </div>
                     </section>
                 `;
+                const historyTab = `
+                    <section class="jashflow-detail-section">
+                        <span>History</span>
+                        <h4>Loan change history</h4>
+                        <div class="jashflow-table-wrap">
+                            <table class="jashflow-statement-table">
+                                <thead><tr><th>Date and time</th><th>Event</th><th>Changes</th><th>By</th></tr></thead>
+                                <tbody>${historyRows || '<tr><td colspan="4">No loan history has been recorded yet.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                `;
                 const tabContent = {
                     details: detailsTab,
                     "future-schedule": scheduleTab,
                     payments: paymentsTab,
                     "fees-interest": feesTab,
                     statement: statementTab,
-                    transactions: transactionsTab
+                    transactions: transactionsTab,
+                    history: historyTab
                 }[activeJashflowLoanTab] || detailsTab;
                 detail.innerHTML = `
                     <div class="jashflow-loan-topbar">
@@ -12028,6 +12827,7 @@
                             <button type="button" class="${activeJashflowLoanTab === "fees-interest" ? "is-active" : ""}" data-jashflow-loan-tab="fees-interest">Fees and interest</button>
                             <button type="button" class="${activeJashflowLoanTab === "statement" ? "is-active" : ""}" data-jashflow-loan-tab="statement">Statement</button>
                             <button type="button" class="${activeJashflowLoanTab === "transactions" ? "is-active" : ""}" data-jashflow-loan-tab="transactions">Transactions</button>
+                            <button type="button" class="${activeJashflowLoanTab === "history" ? "is-active" : ""}" data-jashflow-loan-tab="history">History</button>
                         </nav>
                     </div>
                     <div class="jashflow-detail-sections">${tabContent}</div>
@@ -12103,7 +12903,7 @@
                 try {
                     const response = await requestJSON(api.endpoints.jashflowLoan, {
                         method: "PUT",
-                        body: JSON.stringify(jashflowLoanPayload(loan))
+                        body: JSON.stringify(jashflowLoanPayload(loan, { auditAction: "recalculate" }))
                     }, { loanId: loan.id });
                     jashflowData = normaliseJashflowPayload(response);
                     selectedJashflowLoanId = loan.id;
@@ -12396,9 +13196,21 @@
                 }).format(date);
             }
 
+            function formatFileSize(bytes) {
+                const size = Number(bytes || 0);
+                if (!Number.isFinite(size) || size <= 0) return "0 B";
+                const units = ["B", "KB", "MB", "GB"];
+                const index = Math.min(units.length - 1, Math.floor(Math.log(size) / Math.log(1024)));
+                const value = size / Math.pow(1024, index);
+                return `${value.toLocaleString("en-GB", { maximumFractionDigits: index === 0 ? 0 : 1 })} ${units[index]}`;
+            }
+
             function bankUploadFailureAdvice(upload) {
                 const error = String(upload?.errorMessage || "");
                 if (!error) return "";
+                if (/under 50 MB|50\s*MB|file size/i.test(error)) {
+                    return "This PDF is too large for the extractor. Export a smaller statement period or compress the PDF, then upload it again.";
+                }
                 if (/not valid JSON|stopped before returning valid JSON|max_output|token/i.test(error)) {
                     return "The AI response was incomplete. Retry uses the stored PDF and the page-chunked extractor.";
                 }
@@ -12682,10 +13494,101 @@
                     : "Final extraction and balance checks running";
             }
 
-            async function loadBankStatements(force = false) {
-                if (bankStatementsLoading && !force) return;
+            function bankUploadStatus(upload) {
+                return String(upload?.status || "").toLowerCase();
+            }
+
+            function bankUploadIsActive(upload) {
+                return ["queued", "processing"].includes(bankUploadStatus(upload));
+            }
+
+            function bankUploadTimestamp(upload) {
+                const candidates = [upload?.lastAttemptAt, upload?.completedAt, upload?.createdAt].filter(Boolean);
+                for (const value of candidates) {
+                    const timestamp = Date.parse(value);
+                    if (Number.isFinite(timestamp)) return timestamp;
+                }
+                return 0;
+            }
+
+            function latestBankUploadForAccount(account) {
+                return (account?.uploads || [])
+                    .slice()
+                    .sort((left, right) => bankUploadTimestamp(right) - bankUploadTimestamp(left))[0] || null;
+            }
+
+            function activeBankUploadForAccount(account) {
+                return (account?.uploads || [])
+                    .filter(bankUploadIsActive)
+                    .sort((left, right) => bankUploadTimestamp(right) - bankUploadTimestamp(left))[0] || null;
+            }
+
+            function bankStatementsHaveActiveUploads() {
+                return (bankStatementData.clients || []).some((client) =>
+                    (client.accounts || []).some((account) => Boolean(activeBankUploadForAccount(account)))
+                );
+            }
+
+            function bankUploadElapsedSeconds(upload) {
+                const timestamp = bankUploadTimestamp(upload);
+                return timestamp ? Math.max(0, Math.floor((Date.now() - timestamp) / 1000)) : 0;
+            }
+
+            function bankUploadBackgroundStatusText(upload) {
+                const status = bankUploadStatus(upload);
+                if (status === "queued") return "Waiting for extraction worker";
+                if (status === "processing") return "Processing in the background";
+                return "Background extraction active";
+            }
+
+            function bankUploadProcessingTitle(upload, isLocalUpload) {
+                if (isLocalUpload) return "Uploading bank statement";
+                return bankUploadStatus(upload) === "queued" ? "Queued for extraction" : "Extracting bank statement";
+            }
+
+            function bankUploadProcessingSummary(upload, fallbackFilename, isLocalUpload) {
+                const filename = fallbackFilename || upload?.filename || "PDF statement";
+                if (isLocalUpload) return `${filename} is being uploaded and queued. You can keep using the console once it starts.`;
+                if (bankUploadStatus(upload) === "queued") return `${filename} is queued for background extraction. You can move around the system while it runs.`;
+                return `${filename} is being read, checked and deduplicated in the background.`;
+            }
+
+            function accountHasVisibleBankUploadActivity(account) {
+                return (bankStatementUploading && bankStatementUploadingAccountId === account?.id) || Boolean(activeBankUploadForAccount(account));
+            }
+
+            function syncBankStatementBackgroundActivity() {
+                if (bankStatementUploading || bankStatementsHaveActiveUploads()) {
+                    startBankStatementUploadTimer();
+                    startBankStatementPolling();
+                    renderGlobalActivityCard();
+                    return;
+                }
+                stopBankStatementUploadTimer();
+                stopBankStatementPolling();
+                renderGlobalActivityCard();
+            }
+
+            function startBankStatementPolling() {
+                if (bankStatementPollingTimer) return;
+                bankStatementPollingTimer = window.setInterval(() => {
+                    if (bankStatementsLoading || !bankStatementsHaveActiveUploads()) {
+                        syncBankStatementBackgroundActivity();
+                        return;
+                    }
+                    loadBankStatements(true, { silent: true });
+                }, 5000);
+            }
+
+            function stopBankStatementPolling() {
+                window.clearInterval(bankStatementPollingTimer);
+                bankStatementPollingTimer = null;
+            }
+
+            async function loadBankStatements(force = false, options = {}) {
+                if (bankStatementsLoading) return;
                 bankStatementsLoading = true;
-                renderBankStatementsScreen();
+                if (!options.silent) renderBankStatementsScreen();
                 try {
                     const payload = await requestJSON(api.endpoints.bankStatements);
                     bankStatementData = normaliseBankStatementPayload(payload);
@@ -12700,6 +13603,7 @@
                     }
                 } finally {
                     bankStatementsLoading = false;
+                    syncBankStatementBackgroundActivity();
                     renderBankStatementsScreen();
                     if (activeView === "insights" && activeInsightsSection === "bank-extraction") renderInsightsScreen();
                 }
@@ -12876,19 +13780,26 @@
                         renderBankStatementsScreen();
                     });
                     document.getElementById("addBankAccountButton")?.addEventListener("click", () => openBankAccountForm());
-                    accountList.querySelectorAll("[data-open-bank-account]").forEach((button) => {
-                        button.addEventListener("click", () => {
-                            selectedBankAccountId = button.dataset.openBankAccount || "";
+                    accountList.querySelectorAll("[data-open-bank-account]").forEach((row) => {
+                        const openAccount = () => {
+                            selectedBankAccountId = row.dataset.openBankAccount || "";
                             bankStatementAccountOpen = true;
                             bankAccountFormOpen = false;
                             bankStatementAccountTab = "transactions";
                             bankStatementTransactionSearchTerm = "";
                             renderBankAccountPanel();
                             renderBankStatementsScreen();
+                        };
+                        row.addEventListener("click", openAccount);
+                        row.addEventListener("keydown", (event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return;
+                            event.preventDefault();
+                            openAccount();
                         });
                     });
                     accountList.querySelectorAll("[data-edit-bank-account]").forEach((button) => {
-                        button.addEventListener("click", () => {
+                        button.addEventListener("click", (event) => {
+                            event.stopPropagation();
                             const account = bankAccounts.find((item) => item.id === button.dataset.editBankAccount);
                             if (account) openBankAccountForm(account);
                         });
@@ -12899,23 +13810,45 @@
                     accountList.innerHTML = `
                         ${accountListHeaderMarkup}
                         ${bankAccounts.length ? `
-                            <div class="bank-account-card-grid">
-                                ${bankAccounts.map((account) => {
-                                    const latestUpload = (account.uploads || []).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
-                                    return `
-                                        <article class="bank-account-card">
-                                            <div>
-                                                <strong>${escapeHTML(bankAccountDisplayName(account))}</strong>
-                                                <span>${escapeHTML(bankAccountDetailLine(account))}</span>
-                                                <span>${(account.transactions || []).length.toLocaleString("en-GB")} transaction${(account.transactions || []).length === 1 ? "" : "s"} · ${(account.uploads || []).length.toLocaleString("en-GB")} upload${(account.uploads || []).length === 1 ? "" : "s"}${latestUpload ? ` · latest ${escapeHTML(latestUpload.status || "saved")}` : ""}</span>
-                                            </div>
-                                            <div class="bank-account-card-actions">
-                                                <button class="ghost-button" type="button" data-edit-bank-account="${escapeHTML(account.id)}">Edit</button>
-                                                <button class="primary-button" type="button" data-open-bank-account="${escapeHTML(account.id)}">Open account</button>
-                                            </div>
-                                        </article>
-                                    `;
-                                }).join("")}
+                            <div class="jashflow-table-wrap">
+                                <table class="bank-account-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Account</th>
+                                            <th>Bank details</th>
+                                            <th>Transactions</th>
+                                            <th>Uploads</th>
+                                            <th>Date range</th>
+                                            <th>Latest balance</th>
+                                            <th>Review flags</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${bankAccounts.map((account) => {
+                                            const latestUpload = latestBankUploadForAccount(account);
+                                            const activeUpload = activeBankUploadForAccount(account);
+                                            const transactionCount = (account.transactions || []).length;
+                                            const uploadCount = (account.uploads || []).length;
+                                            const accountDateRange = bankAccountDateRange(account);
+                                            const accountLatestBalance = latestBankAccountBalance(account);
+                                            const warningCount = bankStatementWarnings(account).length;
+                                            const isProcessing = accountHasVisibleBankUploadActivity(account);
+                                            return `
+                                                <tr data-open-bank-account="${escapeHTML(account.id)}" tabindex="0" class="${isProcessing ? "is-processing" : ""}">
+                                                    <td><strong>${escapeHTML(bankAccountDisplayName(account))}</strong><small>${isProcessing ? escapeHTML(bankUploadBackgroundStatusText(activeUpload)) : escapeHTML(account.status || "Ready")}</small></td>
+                                                    <td><strong>${escapeHTML(account.bankName || "Bank account")}</strong><small>${escapeHTML(bankAccountDetailLine(account))}</small></td>
+                                                    <td>${transactionCount.toLocaleString("en-GB")}</td>
+                                                    <td><strong>${uploadCount.toLocaleString("en-GB")}</strong><small>${latestUpload ? `${escapeHTML(latestUpload.status || "saved")} · ${formatDate(latestUpload.completedAt || latestUpload.lastAttemptAt || latestUpload.createdAt)}` : "No uploads yet"}</small></td>
+                                                    <td>${formatBankDateRange(accountDateRange.start, accountDateRange.end)}</td>
+                                                    <td class="amount-cell">${accountLatestBalance === null || accountLatestBalance === undefined ? "--" : formatCurrency(accountLatestBalance)}</td>
+                                                    <td>${warningCount ? `<span class="bank-status-pill is-failed">${warningCount.toLocaleString("en-GB")} to review</span>` : '<span class="bank-status-pill">Clear</span>'}</td>
+                                                    <td><button class="ghost-button" type="button" data-edit-bank-account="${escapeHTML(account.id)}">Edit</button></td>
+                                                </tr>
+                                            `;
+                                        }).join("")}
+                                    </tbody>
+                                </table>
                             </div>
                         ` : `<div class="empty-state"><p class="eyebrow">No accounts</p><h4>Add a bank account for ${escapeHTML(client.customerName || "this client")}</h4><p>Each bank account opens into its own transactions and submission history page.</p><button class="primary-button" id="emptyAddBankAccountButton" type="button">Add bank account</button></div>`}
                     `;
@@ -12944,14 +13877,20 @@
                 const balanceQuality = bankStatementBalanceQuality(account);
                 const dateRange = bankAccountDateRange(account);
                 const latestBalance = latestBankAccountBalance(account);
-                const uploadElapsedSeconds = bankStatementUploadStartedAt ? Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000)) : 0;
-                const uploadProcessingMarkup = bankStatementUploading && bankStatementUploadingAccountId === account.id ? `
+                const activeUpload = activeBankUploadForAccount(account);
+                const localUploadActive = bankStatementUploading && bankStatementUploadingAccountId === account.id;
+                const accountProcessing = localUploadActive || Boolean(activeUpload);
+                const uploadElapsedSeconds = localUploadActive
+                    ? Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000))
+                    : bankUploadElapsedSeconds(activeUpload);
+                const processingFilename = localUploadActive ? bankStatementUploadingFilename : activeUpload?.filename;
+                const uploadProcessingMarkup = accountProcessing ? `
                     <article class="bank-upload-processing-card" role="status" aria-live="polite">
                         <div class="sync-progress-head">
                             <span class="sync-inline-spinner" aria-hidden="true"></span>
                             <div>
-                                <h3>Extracting bank statement</h3>
-                                <p>${escapeHTML(bankStatementUploadingFilename || "PDF upload")} is being read, checked and deduplicated.</p>
+                                <h3>${escapeHTML(bankUploadProcessingTitle(activeUpload, localUploadActive))}</h3>
+                                <p>${escapeHTML(bankUploadProcessingSummary(activeUpload, processingFilename, localUploadActive))}</p>
                             </div>
                         </div>
                         <div class="sync-progress-track" aria-hidden="true">
@@ -12959,7 +13898,7 @@
                         </div>
                         <div class="sync-progress-meta">
                             <span id="bankStatementUploadElapsed">Elapsed ${formatSyncDuration(uploadElapsedSeconds)}</span>
-                            <span id="bankStatementUploadCountdown">${bankStatementUploadCountdownText()}</span>
+                            <span id="bankStatementUploadCountdown">${localUploadActive ? bankStatementUploadCountdownText() : bankUploadBackgroundStatusText(activeUpload)}</span>
                         </div>
                     </article>
                 ` : "";
@@ -13004,7 +13943,7 @@
                 }).join("");
                 const uploadRows = uploads.map((upload) => {
                     const failed = String(upload.status || "").toLowerCase() === "failed";
-                    const canRetry = Boolean(upload.canRetry) && !bankStatementUploading;
+                    const canRetry = Boolean(upload.canRetry) && !accountProcessing;
                     const advice = bankUploadFailureAdvice(upload);
                     return `
                         <tr class="${failed ? "is-failed-upload" : ""}">
@@ -13035,7 +13974,7 @@
                                 PDF statements
                                 <input id="bankStatementUploadInput" type="file" accept="application/pdf,.pdf" multiple required>
                             </label>
-                            <button class="primary-button" type="submit" ${bankStatementUploading ? "disabled" : ""}>${bankStatementUploading ? "Extracting..." : "Upload and extract"}</button>
+                            <button class="primary-button" type="submit" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction running" : "Upload and extract"}</button>
                         </form>
                         <div class="jashflow-table-wrap">
                             <table class="bank-upload-history-table">
@@ -13080,27 +14019,29 @@
                     `;
                 detail.innerHTML = `
                     <div class="bank-account-page">
-                    ${uploadProcessingMarkup}
-                    <div class="bank-account-page-header">
-                        <div>
-                            <p class="eyebrow">Extraction account</p>
-                            <h3>${escapeHTML(bankAccountDisplayName(account))}</h3>
-                            <p class="detail-meta">${escapeHTML(bankAccountDetailLine(account))}</p>
+                    <section class="bank-account-hero-card ${uploadProcessingMarkup ? "is-processing" : ""}">
+                        <div class="bank-account-page-header">
+                            <div>
+                                <p class="eyebrow">Extraction account</p>
+                                <h3>${escapeHTML(bankAccountDisplayName(account))}</h3>
+                                <p class="detail-meta">${escapeHTML(bankAccountDetailLine(account))}</p>
+                            </div>
+                            <div class="bank-account-actions">
+                                <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
+                                <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
+                                <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
+                                <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
+                            </div>
                         </div>
-                        <div class="bank-account-actions">
-                            <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
-                            <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
-                            <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
-                            <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
+                        ${uploadProcessingMarkup}
+                        <div class="bank-account-summary-grid">
+                            <article class="bank-account-summary-card"><span>Transactions</span><strong>${transactions.length.toLocaleString("en-GB")}</strong></article>
+                            <article class="bank-account-summary-card"><span>Date range</span><strong>${formatBankDateRange(dateRange.start, dateRange.end)}</strong></article>
+                            <article class="bank-account-summary-card"><span>Latest balance</span><strong>${latestBalance === null || latestBalance === undefined ? "--" : formatCurrency(latestBalance)}</strong></article>
+                            <article class="bank-account-summary-card"><span>Balance QA</span><strong>${balanceQuality.mismatchCount ? `${balanceQuality.mismatchCount.toLocaleString("en-GB")} mismatch${balanceQuality.mismatchCount === 1 ? "" : "es"}` : balanceQuality.checkedCount ? `${balanceQuality.checkedCount.toLocaleString("en-GB")} checked` : "Pending"}</strong></article>
+                            <article class="bank-account-summary-card"><span>Warnings</span><strong>${warnings.length ? `${warnings.length.toLocaleString("en-GB")} to review` : "Clear"}</strong></article>
                         </div>
-                    </div>
-                    <div class="bank-account-summary-grid">
-                        <article class="bank-account-summary-card"><span>Transactions</span><strong>${transactions.length.toLocaleString("en-GB")}</strong></article>
-                        <article class="bank-account-summary-card"><span>Date range</span><strong>${formatBankDateRange(dateRange.start, dateRange.end)}</strong></article>
-                        <article class="bank-account-summary-card"><span>Latest balance</span><strong>${latestBalance === null || latestBalance === undefined ? "--" : formatCurrency(latestBalance)}</strong></article>
-                        <article class="bank-account-summary-card"><span>Balance QA</span><strong>${balanceQuality.mismatchCount ? `${balanceQuality.mismatchCount.toLocaleString("en-GB")} mismatch${balanceQuality.mismatchCount === 1 ? "" : "es"}` : balanceQuality.checkedCount ? `${balanceQuality.checkedCount.toLocaleString("en-GB")} checked` : "Pending"}</strong></article>
-                        <article class="bank-account-summary-card"><span>Warnings</span><strong>${warnings.length ? `${warnings.length.toLocaleString("en-GB")} to review` : "Clear"}</strong></article>
-                    </div>
+                    </section>
                     <div class="bank-warning-panel" role="${warnings.length ? "alert" : "status"}">${warningsMarkup}</div>
                     <nav class="bank-account-tabs" aria-label="Bank account sections">
                         <button type="button" class="${bankStatementAccountTab === "transactions" ? "is-active" : ""}" data-bank-account-tab="transactions">Transactions</button>
@@ -13211,14 +14152,22 @@
             function startBankStatementUploadTimer() {
                 window.clearInterval(bankStatementUploadTimer);
                 bankStatementUploadTimer = window.setInterval(() => {
-                    if (!bankStatementUploading) return;
+                    const account = selectedBankAccount();
+                    const activeUpload = account ? activeBankUploadForAccount(account) : null;
+                    const localUploadActive = Boolean(bankStatementUploading && bankStatementUploadingAccountId === account?.id);
+                    if (!bankStatementUploading && !activeUpload) {
+                        if (!bankStatementsHaveActiveUploads()) syncBankStatementBackgroundActivity();
+                        return;
+                    }
                     const elapsed = document.getElementById("bankStatementUploadElapsed");
                     if (elapsed) {
-                        const seconds = Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000));
+                        const seconds = localUploadActive
+                            ? Math.max(0, Math.floor((Date.now() - bankStatementUploadStartedAt) / 1000))
+                            : bankUploadElapsedSeconds(activeUpload);
                         elapsed.textContent = `Elapsed ${formatSyncDuration(seconds)}`;
                     }
                     const countdown = document.getElementById("bankStatementUploadCountdown");
-                    if (countdown) countdown.textContent = bankStatementUploadCountdownText();
+                    if (countdown) countdown.textContent = localUploadActive ? bankStatementUploadCountdownText() : bankUploadBackgroundStatusText(activeUpload);
                 }, 1000);
             }
 
@@ -13236,6 +14185,8 @@
                 if (!files.length) return showToast("Choose at least one PDF bank statement", "error");
                 const nonPdf = files.find((file) => !/\.pdf$/i.test(file.name || "") && file.type !== "application/pdf");
                 if (nonPdf) return showToast(`${nonPdf.name || "One selected file"} is not a PDF statement`, "error");
+                const oversized = files.find((file) => Number(file.size || 0) > bankStatementMaxUploadBytes);
+                if (oversized) return showToast(`${oversized.name || "One selected file"} is ${formatFileSize(oversized.size)}. Bank statement PDFs must be under 50 MB.`, "error");
                 const formData = new FormData();
                 files.forEach((file) => formData.append("files", file, file.name));
                 bankStatementUploading = true;
@@ -13251,10 +14202,8 @@
                     bankStatementData = normaliseBankStatementPayload(response);
                     selectedBankAccountId = account.id;
                     ensureBankStatementSelection();
-                    const refreshed = selectedBankAccount();
                     const uploadedCount = files.length.toLocaleString("en-GB");
-                    const newRows = (refreshed?.uploads || []).slice(0, files.length).reduce((sum, upload) => sum + Number(upload.insertedCount || 0), 0);
-                    showToast(`${uploadedCount} statement${files.length === 1 ? "" : "s"} extracted; ${newRows.toLocaleString("en-GB")} new transaction${newRows === 1 ? "" : "s"} saved`, "success");
+                    showToast(`${uploadedCount} statement${files.length === 1 ? "" : "s"} queued for background extraction. You can keep using the console while it processes.`, "success");
                 } catch (error) {
                     uploadFailed = true;
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
@@ -13265,9 +14214,11 @@
                     bankStatementUploadingFilename = "";
                     bankStatementUploadStartedAt = 0;
                     bankStatementUploadEstimatedSeconds = 0;
-                    stopBankStatementUploadTimer();
                     if (uploadFailed) await loadBankStatements(true);
-                    else renderBankStatementsScreen();
+                    else {
+                        syncBankStatementBackgroundActivity();
+                        renderBankStatementsScreen();
+                    }
                 }
             }
 
@@ -13288,7 +14239,7 @@
                     bankStatementData = normaliseBankStatementPayload(response);
                     selectedBankAccountId = account.id;
                     ensureBankStatementSelection();
-                    showToast("Bank statement retry completed", "success");
+                    showToast("Bank statement retry queued for background extraction. You can keep using the console while it processes.", "success");
                 } catch (error) {
                     retryFailed = true;
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
@@ -13299,9 +14250,11 @@
                     bankStatementUploadingFilename = "";
                     bankStatementUploadStartedAt = 0;
                     bankStatementUploadEstimatedSeconds = 0;
-                    stopBankStatementUploadTimer();
                     if (retryFailed) await loadBankStatements(true);
-                    else renderBankStatementsScreen();
+                    else {
+                        syncBankStatementBackgroundActivity();
+                        renderBankStatementsScreen();
+                    }
                 }
             }
 
@@ -13435,6 +14388,11 @@
                 const run = ignitionRunForDisplay();
                 const runActive = syncRunIsActive(run) || isIgnitionSyncing;
                 const progress = runActive || run?.status === "completed" ? Math.min(100, Math.max(0, Number(run?.progress || 0))) : 0;
+                const topbarWidget = document.getElementById("ignitionTopbarWidget");
+                if (topbarWidget) {
+                    topbarWidget.hidden = activeView !== "ignition";
+                    topbarWidget.classList.toggle("is-syncing", runActive);
+                }
                 const statusText = connected
                     ? "Connected to Ignition"
                     : oauthConfigured
@@ -13619,19 +14577,13 @@
                 if (remoteStartedAt && (!ignitionSyncStartedAt || remoteStartedAt < ignitionSyncStartedAt)) ignitionSyncStartedAt = remoteStartedAt;
                 const elapsedSeconds = Math.max(0, Math.floor((Date.now() - ignitionSyncStartedAt) / 1000));
                 const progress = Math.min(100, Math.max(0, Number(run.progress || 0)));
-                const title = run.status === "failed" ? "Ignition sync failed" : "Ignition syncing";
-                const detail = run.errorMessage || run.summary || run.currentStep || "Fetching Reporting API data from Ignition.";
-                const inlineTitle = document.getElementById("syncInlineTitle");
-                if (inlineTitle) inlineTitle.textContent = title;
-                const inlineDetail = document.getElementById("syncInlineDetail");
-                if (inlineDetail) inlineDetail.textContent = detail;
-                const inlineProgressFill = document.getElementById("syncInlineProgressFill");
-                if (inlineProgressFill) inlineProgressFill.style.width = `${progress}%`;
-                const inlineEta = document.getElementById("syncInlineEta");
-                if (inlineEta) {
-                    const datasets = run.datasetsSynced || {};
-                    const completedDatasets = Object.keys(datasets).length;
-                    inlineEta.textContent = `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${completedDatasets.toLocaleString("en-GB")} datasets · ${progress}% complete`;
+                const datasets = run.datasetsSynced || {};
+                const completedDatasets = Object.keys(datasets).length;
+                if (run.status !== "failed") {
+                    latestIgnitionSyncRun = {
+                        ...run,
+                        summary: run.summary || `Elapsed ${formatSyncDuration(elapsedSeconds)} · ${completedDatasets.toLocaleString("en-GB")} datasets · ${progress}% complete`
+                    };
                 }
                 renderIgnitionScreen();
             }
@@ -13643,10 +14595,10 @@
                 activeIgnitionSyncRunId = syncRun?.id || activeIgnitionSyncRunId;
                 ignitionSyncStartedAt = syncRunTimestamp(syncRun) || Date.now();
                 const inlineBanner = document.getElementById("syncInlineBanner");
-                if (inlineBanner) {
-                    inlineBanner.hidden = false;
+                if (inlineBanner?.dataset.syncContext === "ignition") {
+                    inlineBanner.hidden = true;
                     inlineBanner.classList.remove("is-error", "is-success", "is-warning");
-                    inlineBanner.dataset.syncContext = "ignition";
+                    inlineBanner.dataset.syncContext = "";
                 }
                 updateIgnitionSyncProgress();
                 window.clearInterval(ignitionSyncProgressTimer);
@@ -13657,28 +14609,32 @@
             function showIgnitionSyncFailure(message) {
                 clearTopbarNoticeTimer();
                 const inlineBanner = document.getElementById("syncInlineBanner");
-                if (inlineBanner) {
-                    inlineBanner.hidden = false;
-                    inlineBanner.classList.remove("is-success", "is-warning");
-                    inlineBanner.classList.add("is-error");
-                    inlineBanner.dataset.syncContext = "ignition";
+                if (inlineBanner?.dataset.syncContext === "ignition") {
+                    inlineBanner.hidden = true;
+                    inlineBanner.classList.remove("is-error", "is-success", "is-warning");
+                    inlineBanner.dataset.syncContext = "";
                 }
-                const inlineTitle = document.getElementById("syncInlineTitle");
-                if (inlineTitle) inlineTitle.textContent = "Ignition sync failed";
-                const inlineDetail = document.getElementById("syncInlineDetail");
-                if (inlineDetail) inlineDetail.textContent = message || "Open Developer log for the backend error.";
+                latestIgnitionSyncRun = {
+                    ...(latestIgnitionSyncRun || {}),
+                    status: "failed",
+                    errorMessage: message || "Open Developer log for the backend error.",
+                    summary: message || "Ignition sync failed.",
+                    progress: Number(latestIgnitionSyncRun?.progress || 0)
+                };
+                renderIgnitionScreen();
             }
 
             function stopIgnitionSyncFeedback({ keepInlineBanner = false } = {}) {
                 isIgnitionSyncing = false;
                 activeIgnitionSyncRunId = null;
-                latestIgnitionSyncRun = null;
+                if (!keepInlineBanner) latestIgnitionSyncRun = null;
                 window.clearInterval(ignitionSyncProgressTimer);
                 ignitionSyncProgressTimer = null;
                 const inlineBanner = document.getElementById("syncInlineBanner");
-                if (inlineBanner && !keepInlineBanner && !isSyncing && !isOperationRunning) {
+                if (inlineBanner?.dataset.syncContext === "ignition" && !isSyncing && !isOperationRunning) {
                     inlineBanner.hidden = true;
                     inlineBanner.classList.remove("is-error", "is-success", "is-warning");
+                    inlineBanner.dataset.syncContext = "";
                 }
                 renderChrome();
                 renderIgnitionScreen();
@@ -13754,7 +14710,6 @@
                     if (completedPayload.ignition) ignitionData = normaliseIgnitionPayload(completedPayload);
                     else await loadIgnition(true);
                     renderAll();
-                    showTopbarNotice("Ignition sync complete", completedPayload.ignitionSyncRun?.summary || "Reporting API data imported into Jenius.", "success");
                     showToast(completedPayload.ignitionSyncRun?.summary || "Ignition sync complete", "success", { label: "View logs", onClick: openDeveloperLog });
                     keepFailureBanner = true;
                 } catch (error) {
@@ -13791,7 +14746,6 @@
                     if (completedPayload.ignition) ignitionData = normaliseIgnitionPayload(completedPayload);
                     else await loadIgnition(true);
                     renderAll();
-                    showTopbarNotice("Ignition sync complete", completedPayload.ignitionSyncRun?.summary || "Reporting API data imported into Jenius.", "success");
                     showToast(completedPayload.ignitionSyncRun?.summary || "Ignition sync complete", "success", { label: "View logs", onClick: openDeveloperLog });
                     keepFailureBanner = true;
                 } catch (error) {
@@ -15219,6 +16173,234 @@
                 });
             }
 
+            function viewDisplayLabel(view = activeView) {
+                return {
+                    ledger: "Credit Control",
+                    client: "Client workspace",
+                    settings: "Settings",
+                    insights: "Home insights",
+                    "late-charges": "Late Payment Charges",
+                    "bad-debt": "Bad Debt",
+                    jashflow: "Jashflow",
+                    "bank-statements": "Bank Statements",
+                    ignition: "Ignition",
+                    "me-report": "ME Report"
+                }[view] || "Console";
+            }
+
+            function activeViewActivityDetail() {
+                if (activeView === "client") {
+                    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                    return client?.name || "Client account";
+                }
+                if (activeView === "bank-statements") {
+                    const client = selectedBankStatementClient();
+                    const account = selectedBankAccount();
+                    return [client?.customerName, account ? bankAccountDisplayName(account) : ""].filter(Boolean).join(" · ") || "Extraction workspace";
+                }
+                if (activeView === "jashflow") {
+                    const loan = selectedJashflowLoan();
+                    return loan?.customerName || loan?.borrowerName || "Loan book";
+                }
+                if (activeView === "settings") return syncScopeLabels[syncSettings.invoiceScope] || "System settings";
+                return "Opened from sidebar";
+            }
+
+            function recordActiveViewActivity() {
+                const key = [
+                    activeView,
+                    activeView === "client" ? selectedClientId || selectedInvoiceId || "" : "",
+                    activeView === "bank-statements" ? `${selectedBankStatementClientId || ""}:${selectedBankAccountId || ""}` : "",
+                    activeView === "jashflow" ? selectedJashflowLoanId || "" : "",
+                    activeView === "settings" ? activeSettingsSection || "" : ""
+                ].join("|");
+                if (!key || key === lastSystemActivityView) return;
+                lastSystemActivityView = key;
+                pushSystemActivity({
+                    type: "navigation",
+                    label: "Visited",
+                    message: viewDisplayLabel(activeView),
+                    detail: activeViewActivityDetail()
+                });
+            }
+
+            function formatActivityTime(value) {
+                if (!value) return "Now";
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return String(value);
+                const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
+                if (seconds < 60) return "Now";
+                if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+                if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+                return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
+            }
+
+            function bankUploadActivityItems() {
+                const rows = [];
+                (bankStatementData.clients || []).forEach((client) => {
+                    (client.accounts || []).forEach((account) => {
+                        (account.uploads || []).forEach((upload) => {
+                            const status = bankUploadStatus(upload);
+                            rows.push({
+                                type: status === "failed" ? "error" : bankUploadIsActive(upload) ? "warning" : "success",
+                                label: "Bank upload",
+                                message: `${upload.filename || "Statement upload"} · ${status || "saved"}`,
+                                detail: [client.customerName, bankAccountDisplayName(account)].filter(Boolean).join(" · "),
+                                at: upload.completedAt || upload.lastAttemptAt || upload.createdAt || ""
+                            });
+                        });
+                    });
+                });
+                return rows;
+            }
+
+            function developerLogActivityItems() {
+                const logs = developerLogEntries.length ? developerLogEntries : (lastBrowserSyncLog ? [lastBrowserSyncLog] : []);
+                return logs.slice(0, 8).map((entry) => ({
+                    type: String(entry.level || "").toLowerCase() === "error" ? "error" : "info",
+                    label: entry.eventType || "Developer log",
+                    message: entry.message || entry.syncStatus || "System event",
+                    detail: entry.syncStatus || entry.source || "",
+                    at: entry.createdAt || ""
+                }));
+            }
+
+            function activityTimestamp(item) {
+                const timestamp = Date.parse(item?.at || "");
+                return Number.isFinite(timestamp) ? timestamp : 0;
+            }
+
+            function globalActivityItems() {
+                return [
+                    ...systemActivityItems,
+                    ...bankUploadActivityItems(),
+                    ...developerLogActivityItems()
+                ]
+                    .filter((item) => item?.message)
+                    .sort((left, right) => activityTimestamp(right) - activityTimestamp(left))
+                    .slice(0, 14);
+            }
+
+            function bankUploadStatusCounts() {
+                const counts = { active: 0, failed: 0, completed: 0 };
+                (bankStatementData.clients || []).forEach((client) => {
+                    (client.accounts || []).forEach((account) => {
+                        (account.uploads || []).forEach((upload) => {
+                            const status = bankUploadStatus(upload);
+                            if (["queued", "processing"].includes(status)) counts.active += 1;
+                            else if (status === "failed") counts.failed += 1;
+                            else if (status === "completed") counts.completed += 1;
+                        });
+                    });
+                });
+                return counts;
+            }
+
+            function globalStatusItems() {
+                const bankCounts = bankUploadStatusCounts();
+                const activeBankTotal = bankCounts.active + (bankStatementUploading ? 1 : 0);
+                const gmail = meReportData.settings?.gmail || {};
+                const gmailKnown = Boolean(meReportData.settings && Object.keys(meReportData.settings).length);
+                const ignitionConnection = ignitionData.connection || {};
+                const ignitionKnown = Boolean(ignitionConnection && Object.keys(ignitionConnection).length);
+                const meRun = meReportRunForDisplay?.() || null;
+                const activeBankCopy = activeBankTotal
+                    ? `${activeBankTotal.toLocaleString("en-GB")} processing`
+                    : bankCounts.failed
+                        ? `${bankCounts.failed.toLocaleString("en-GB")} failed`
+                        : "No active uploads";
+                return [
+                    {
+                        label: "Xero",
+                        value: isXeroConnected() ? "Connected" : "Not connected",
+                        detail: state.organisation.name || state.organisation.status || "Waiting for Xero",
+                        tone: isXeroConnected() ? "live" : "warning"
+                    },
+                    {
+                        label: "Import scope",
+                        value: syncScopeLabels[syncSettings.invoiceScope] || "Outstanding invoices only",
+                        detail: (syncSettings.invoiceYears || []).length ? `${syncSettings.invoiceYears.length} selected year${syncSettings.invoiceYears.length === 1 ? "" : "s"}` : "All invoice years",
+                        tone: "live"
+                    },
+                    {
+                        label: "Bank extraction",
+                        value: activeBankCopy,
+                        detail: `${bankCounts.completed.toLocaleString("en-GB")} completed upload${bankCounts.completed === 1 ? "" : "s"}`,
+                        tone: bankCounts.failed ? "error" : activeBankTotal ? "warning" : "live"
+                    },
+                    {
+                        label: "Gmail",
+                        value: !gmailKnown ? "Not loaded" : gmail.connected ? "Connected" : gmail.configured ? "Ready" : "Not configured",
+                        detail: gmail.email || "ME Report email connection",
+                        tone: !gmailKnown ? "warning" : gmail.connected ? "live" : gmail.configured ? "warning" : "error"
+                    },
+                    {
+                        label: "Ignition",
+                        value: !ignitionKnown ? "Not loaded" : ignitionConnection.connected ? "Connected" : ignitionConnection.oauthConfigured === false ? "Not configured" : "Ready",
+                        detail: ignitionConnection.practiceName || ignitionConnection.practiceId || "Reporting API",
+                        tone: !ignitionKnown ? "warning" : ignitionConnection.connected ? "live" : ignitionConnection.oauthConfigured === false ? "error" : "warning"
+                    },
+                    {
+                        label: "ME Report",
+                        value: syncRunIsActive(meRun) || isMeReportProcessing ? "Processing" : `${(meReportData.clients || []).length.toLocaleString("en-GB")} clients`,
+                        detail: meReportData.summary?.latestSubmissionAt ? `Latest ${formatDate(meReportData.summary.latestSubmissionAt)}` : "Month-end workspace",
+                        tone: syncRunIsActive(meRun) || isMeReportProcessing ? "warning" : "live"
+                    }
+                ];
+            }
+
+            function globalActiveCount() {
+                const bankCounts = bankUploadStatusCounts();
+                return bankCounts.active
+                    + (bankStatementUploading ? 1 : 0)
+                    + (isSyncing ? 1 : 0)
+                    + (isIgnitionSyncing ? 1 : 0)
+                    + (isMeReportProcessing || meReportUploadProcessing || meReportBulkUploading ? 1 : 0);
+            }
+
+            function setGlobalActivityOpen(isOpen) {
+                globalActivityOpen = Boolean(isOpen);
+                renderGlobalActivityCard();
+            }
+
+            function renderGlobalActivityCard() {
+                const topbar = document.querySelector(".ledger-topbar");
+                const panel = document.getElementById("globalActivityPanel");
+                const toggle = document.getElementById("globalActivityToggle");
+                const count = document.getElementById("globalActivityCount");
+                const statusGrid = document.getElementById("globalStatusGrid");
+                const activityList = document.getElementById("globalActivityList");
+                if (!topbar || !panel || !toggle || !count || !statusGrid || !activityList) return;
+
+                const activeCount = globalActiveCount();
+                count.hidden = activeCount <= 0;
+                count.textContent = activeCount > 9 ? "9+" : String(activeCount);
+                topbar.classList.toggle("is-activity-open", globalActivityOpen);
+                panel.hidden = !globalActivityOpen;
+                toggle.setAttribute("aria-expanded", String(globalActivityOpen));
+                toggle.setAttribute("aria-label", globalActivityOpen ? "Hide recent system activity" : "Show recent system activity");
+
+                statusGrid.innerHTML = globalStatusItems().map((item) => `
+                    <article class="global-status-pill is-${escapeHTML(item.tone || "live")}">
+                        <span>${escapeHTML(item.label)}</span>
+                        <strong>${escapeHTML(item.value)}</strong>
+                        <small>${escapeHTML(item.detail || "")}</small>
+                    </article>
+                `).join("");
+
+                const rows = globalActivityItems();
+                activityList.innerHTML = rows.length
+                    ? rows.map((item) => `
+                        <article class="global-activity-row ${item.type === "error" ? "is-error" : ""}">
+                            <span>${escapeHTML(item.label || "System")}</span>
+                            <strong title="${escapeHTML(item.message || "")}">${escapeHTML(item.message || "System event")}</strong>
+                            <small>${escapeHTML(item.detail || "")}</small>
+                            <em>${escapeHTML(formatActivityTime(item.at))}</em>
+                        </article>
+                    `).join("")
+                    : '<article class="global-activity-row"><span>System</span><strong>No recent activity yet</strong><small>Navigation, uploads, processing and errors will appear here.</small><em>Now</em></article>';
+            }
+
             function renderChrome() {
                 document.body.classList.toggle("is-syncing", isSyncing);
                 if (activeView === "insights") activeNavSection = "home";
@@ -15229,8 +16411,8 @@
                 else if (activeView === "client") activeNavSection = "clients";
                 syncActiveViewShell();
                 const topbarClient = activeView === "client" ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId) : null;
-                const heading = document.querySelector(".brand-lockup h1");
-                if (heading) heading.textContent = topbarClient?.name || "Jenius Tools";
+                const heading = document.getElementById("topbarPageTitle") || document.querySelector(".brand-lockup h1");
+                if (heading) heading.textContent = activeTopbarTitle(topbarClient);
                 const syncStamp = document.getElementById("syncStamp");
                 if (syncStamp) syncStamp.textContent = isSyncing ? "Pulling in data from Xero..." : (state.organisation.lastSync || "Waiting for first sync");
                 const organisationName = state.organisation.name || "Xero organisation not connected";
@@ -15315,7 +16497,7 @@
                 if (sidebarResyncButton) {
                     sidebarResyncButton.disabled = isSyncing || syncBlockedByRateLimit;
                     const label = sidebarResyncButton.querySelector("strong");
-                    const detail = sidebarResyncButton.querySelector("span");
+                    const detail = sidebarResyncButton.querySelector(".app-sidebar-detail") || sidebarResyncButton.querySelector(".app-nav-copy > span");
                     if (label) label.textContent = syncBlockedByRateLimit ? "Xero Paused" : isSyncing ? "Syncing..." : "Resync Data";
                     if (detail) detail.textContent = syncBlockedByRateLimit ? formatWaitDuration(rateLimit.seconds) : isSyncing ? "Import in progress" : "Refresh Xero";
                     sidebarResyncButton.title = syncBlockedByRateLimit
@@ -15324,7 +16506,12 @@
                         ? "Please wait while Xero data is imported"
                         : "Resume or refresh Xero data from the backend connection";
                 }
+                const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
+                if (ignitionTopbarWidget) {
+                    ignitionTopbarWidget.hidden = activeView !== "ignition";
+                }
                 renderTopbarClientContext();
+                renderGlobalActivityCard();
             }
 
             const syncButtonIds = ["menuSyncButton", "settingsRunSyncButton", "clientRunImportButton"];
@@ -16369,6 +17556,12 @@
             }
 
             function showToast(message, type = "info", action = null, duration = null) {
+                pushSystemActivity({
+                    type,
+                    label: type === "error" ? "Error message" : type === "success" ? "Completed" : "Notification",
+                    message,
+                    detail: action?.label ? `Action available: ${action.label}` : viewDisplayLabel(activeView)
+                });
                 const stack = document.getElementById("toastStack");
                 if (!stack) return;
                 const toast = document.createElement("div");
@@ -16568,6 +17761,7 @@
                     renderDeveloperLogList(list, visibleLogs);
                 });
                 syncDeveloperLogDateInputs();
+                renderGlobalActivityCard();
             }
 
             function developerLogCopyText() {
@@ -18556,11 +19750,9 @@
                     );
                 }
                 if (returnedFromIgnitionConnection) {
-                    showTopbarNotice(
-                        "Ignition is now connected",
-                        ignitionConnectionReturn.syncRunId ? "Importing Reporting API data from Ignition." : "Use Sync Ignition to import Reporting API data.",
-                        "success",
-                        XERO_CONNECTED_NOTICE_DURATION_MS
+                    showToast(
+                        ignitionConnectionReturn.syncRunId ? "Ignition connected. Importing Reporting API data." : "Ignition connected. Use Sync Ignition to import Reporting API data.",
+                        "success"
                     );
                 }
                 try {

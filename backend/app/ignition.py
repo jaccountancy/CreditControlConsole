@@ -47,7 +47,7 @@ def _ignition_scopes() -> str:
 
 def ignition_redirect_uri() -> str:
     settings = get_settings()
-    configured = _settings_text(settings.ignition_redirect_uri)
+    configured = _settings_text(settings.ignition_redirect_uri) or _settings_text(settings.ignition_redirect_url)
     return configured or f"{settings.base_url.rstrip('/')}/api/ignition/callback"
 
 
@@ -70,7 +70,10 @@ def pkce_challenge(verifier: str) -> str:
 def ignition_authorize_url(state_token: str, code_verifier: str) -> str:
     settings = get_settings()
     if not ignition_oauth_configured():
-        raise IgnitionConfigurationError("Ignition OAuth is not configured. Add real IGNITION_CLIENT_ID, IGNITION_CLIENT_SECRET and IGNITION_REDIRECT_URI values.")
+        raise IgnitionConfigurationError(
+            "Ignition OAuth is not configured. Add real IGNITION_CLIENT_ID and IGNITION_CLIENT_SECRET values, "
+            "then set IGNITION_REDIRECT_URI to the exact callback registered in Ignition Developer Hub."
+        )
     authorize_url = _settings_text(settings.ignition_authorize_url)
     query = urlencode(
         {

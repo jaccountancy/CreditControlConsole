@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     ignition_client_id: str | None = None
     ignition_client_secret: str | None = None
     ignition_redirect_uri: str | None = None
+    ignition_redirect_url: str | None = None
     ignition_scopes: str = "reporting"
     ignition_authorize_url: str = "https://developers.ignitionapp.com/oauth2/authorize"
     ignition_token_url: str = "https://developers.ignitionapp.com/oauth2/token"
@@ -51,9 +52,18 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("base_url", "database_url", "xero_redirect_uri")
+    @field_validator(
+        "base_url",
+        "database_url",
+        "xero_redirect_uri",
+        "ignition_redirect_uri",
+        "ignition_redirect_url",
+        "gmail_redirect_uri",
+    )
     @classmethod
-    def reject_local_values(cls, value: str) -> str:
+    def reject_local_values(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         lowered = value.lower()
         if "localhost" in lowered or "127.0.0.1" in lowered:
             raise ValueError("Local connection values are disabled; use Railway-hosted URLs only.")

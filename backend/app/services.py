@@ -4598,6 +4598,116 @@ def _jashflow_tenant_id(user: dict) -> str:
     return str(get_xero_connection_for_user(user["id"]).get("tenant_id") or "")
 
 
+JASHFLOW_HISTORY_EVENT_TITLES = {
+    "jashflow.loan_created": "Loan created",
+    "jashflow.loan_updated": "Loan updated",
+    "jashflow.loan_recalculated": "Loan recalculated",
+    "jashflow.payment_added": "Payment added",
+    "jashflow.charge_added": "Charge added",
+}
+
+JASHFLOW_LEGACY_HISTORY_FIELDS = (
+    ("principal_amount", "Loan amount", "currency"),
+    ("arrangement_fee", "Arrangement fee", "currency"),
+    ("annual_interest_rate", "Compound interest", "percentage"),
+    ("duration_months", "Term", "months"),
+    ("start_date", "Start date", "date"),
+    ("status", "Status", "text"),
+    ("notes", "Loan notes", "text"),
+)
+
+
+def _jashflow_change_entry(field: str, label: str, before, after, value_format: str = "text") -> dict:
+    return {
+        "field": field,
+        "label": label,
+        "from": _safe_json(before),
+        "to": _safe_json(after),
+        "format": value_format,
+    }
+
+
+def _jashflow_audit_payload(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {"description": value}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _jashflow_legacy_history_changes(event_type: str, payload: dict) -> list[dict]:
+    changes = []
+    if event_type in {"jashflow.loan_created", "jashflow.loan_updated"}:
+        customer_label = payload.get("customer_name") or payload.get("customer_id")
+        if customer_label:
+            changes.append({
+                "field": "customer",
+                "label": "Client",
+                "to": _safe_json(customer_label),
+                "format": "text",
+            })
+        for field, label, value_format in JASHFLOW_LEGACY_HISTORY_FIELDS:
+            if field in payload:
+                if field == "notes" and not payload.get(field):
+                    continue
+                changes.append({
+                    "field": field,
+                    "label": label,
+                    "to": _safe_json(payload.get(field)),
+                    "format": value_format,
+                })
+    elif event_type == "jashflow.payment_added":
+        for field, label, value_format in (
+            ("payment_date", "Payment date", "date"),
+            ("amount", "Payment amount", "currency"),
+            ("description", "Reference", "text"),
+        ):
+            if field in payload:
+                changes.append({
+                    "field": field,
+                    "label": label,
+                    "to": _safe_json(payload.get(field)),
+                    "format": value_format,
+                })
+    elif event_type == "jashflow.charge_added":
+        for field, label, value_format in (
+            ("charge_date", "Charge date", "date"),
+            ("amount", "Charge amount", "currency"),
+            ("description", "Description", "text"),
+        ):
+            if field in payload:
+                changes.append({
+                    "field": field,
+                    "label": label,
+                    "to": _safe_json(payload.get(field)),
+                    "format": value_format,
+                })
+    return changes
+
+
+def _serialize_jashflow_history_event(row: dict) -> dict:
+    event_type = row.get("event_type") or ""
+    payload = _jashflow_audit_payload(row.get("payload"))
+    changes = payload.get("changes") if isinstance(payload.get("changes"), list) else []
+    if not changes:
+        changes = _jashflow_legacy_history_changes(event_type, payload)
+    description = str(payload.get("description") or payload.get("message") or "").strip()
+    return {
+        "id": str(row.get("id") or ""),
+        "eventType": event_type,
+        "title": JASHFLOW_HISTORY_EVENT_TITLES.get(event_type, event_type or "Loan event"),
+        "description": description,
+        "stamp": _iso(row.get("created_at")) or "",
+        "userName": row.get("full_name") or row.get("email") or "",
+        "userEmail": row.get("email") or "",
+        "changes": [_safe_json(change) for change in changes if isinstance(change, dict)],
+    }
+
+
 def _jashflow_transaction_sort_key(item: dict) -> tuple:
     transaction_date = item.get("transaction_date") or item.get("date") or date.min
     if isinstance(transaction_date, datetime):
@@ -4694,7 +4804,12 @@ def _jashflow_interest_summary(loan: dict, transactions: list[dict] | None = Non
     }
 
 
-def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_interest_total: Decimal | None = None) -> dict:
+def _serialize_jashflow_loan(
+    loan: dict,
+    transactions: list[dict],
+    invoiced_interest_total: Decimal | None = None,
+    history: list[dict] | None = None,
+) -> dict:
     invoiced_interest_total = _money(invoiced_interest_total)
     summary = _jashflow_interest_summary(loan, transactions)
     payments_total = _money(summary["paymentsTotal"])
@@ -4757,6 +4872,7 @@ def _serialize_jashflow_loan(loan: dict, transactions: list[dict], invoiced_inte
         "balanceBeforeInterest": float(summary["balanceBeforeInterest"]),
         "monthlyRepayment": float(summary["monthlyRepayment"]),
         "transactions": statement_rows,
+        "history": [_serialize_jashflow_history_event(row) for row in (history or [])],
     }
 
 
@@ -4813,8 +4929,10 @@ def jashflow_payload(user: dict) -> dict:
             )
             loan_rows = cursor.fetchall()
             loan_ids = [row["id"] for row in loan_rows]
+            loan_id_strings = [str(row["id"]) for row in loan_rows]
             transactions_by_loan = defaultdict(list)
             interest_posted_by_loan = defaultdict(lambda: Decimal("0.00"))
+            history_by_loan = defaultdict(list)
             if loan_ids:
                 cursor.execute(
                     """
@@ -4840,6 +4958,19 @@ def jashflow_payload(user: dict) -> dict:
                 )
                 for row in cursor.fetchall():
                     interest_posted_by_loan[str(row["loan_id"])] = _money(row.get("posted_interest"))
+                cursor.execute(
+                    """
+                    SELECT audit_events.*, users.full_name, users.email
+                    FROM audit_events
+                    LEFT JOIN users ON users.id = audit_events.user_id
+                    WHERE audit_events.entity_type = 'jashflow_loan'
+                      AND audit_events.entity_id = ANY(%s)
+                    ORDER BY audit_events.created_at DESC
+                    """,
+                    (loan_id_strings,),
+                )
+                for row in cursor.fetchall():
+                    history_by_loan[str(row["entity_id"])].append(row)
             cursor.execute(
                 """
                 SELECT *
@@ -4869,6 +5000,7 @@ def jashflow_payload(user: dict) -> dict:
             row,
             transactions_by_loan.get(str(row["id"]), []),
             interest_posted_by_loan.get(str(row["id"]), Decimal("0.00")),
+            history_by_loan.get(str(row["id"]), []),
         )
         for row in loan_rows
     ]
@@ -4934,31 +5066,33 @@ def create_jashflow_loan(user: dict, payload: dict) -> dict:
     if duration_months < 1 or duration_months > 240:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Duration must be between 1 and 240 months.")
     start_date = _parse_iso_date(payload.get("startDate"), "Start date")
+    notes = str(payload.get("notes") or "").strip()
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id
+                SELECT id, name
                 FROM customers
                 WHERE id = %s
                   AND tenant_id = %s
                 """,
                 (customer_id, tenant_id),
             )
-            if cursor.fetchone() is None:
+            customer = cursor.fetchone()
+            if customer is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found in this Xero tenant.")
             cursor.execute(
                 """
                 INSERT INTO jashflow_loans (
                     tenant_id, customer_id, principal_amount, arrangement_fee,
-                    annual_interest_rate, duration_months, start_date, status,
+                    annual_interest_rate, duration_months, start_date, notes, status,
                     created_by_user_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
                 RETURNING id
                 """,
-                (tenant_id, customer_id, principal, arrangement_fee, annual_interest_rate, duration_months, start_date, user["id"], utcnow(), utcnow()),
+                (tenant_id, customer_id, principal, arrangement_fee, annual_interest_rate, duration_months, start_date, notes, user["id"], utcnow(), utcnow()),
             )
             loan_id = cursor.fetchone()["id"]
             cursor.execute(
@@ -4988,11 +5122,13 @@ def create_jashflow_loan(user: dict, payload: dict) -> dict:
         "jashflow.loan_created",
         {
             "customer_id": customer_id,
+            "customer_name": customer.get("name") or "",
             "principal_amount": float(principal),
             "arrangement_fee": float(arrangement_fee),
             "annual_interest_rate": float(annual_interest_rate),
             "duration_months": duration_months,
             "start_date": start_date.isoformat(),
+            "notes": notes,
         },
         user["id"],
     )
@@ -5018,31 +5154,64 @@ def update_jashflow_loan(user: dict, loan_id: str, payload: dict) -> dict:
     if status_value not in {"active", "closed"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Loan status must be active or closed.")
     notes = str(payload.get("notes") or "").strip()
+    audit_action = str(payload.get("auditAction") or "").strip().lower()
+    changes = []
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id
-                FROM jashflow_loans
-                WHERE id = %s
-                  AND tenant_id = %s
+                SELECT loans.*, customers.name AS customer_name
+                FROM jashflow_loans AS loans
+                JOIN customers ON customers.id = loans.customer_id
+                WHERE loans.id = %s
+                  AND loans.tenant_id = %s
                 """,
                 (loan_id, tenant_id),
             )
-            if cursor.fetchone() is None:
+            old_loan = cursor.fetchone()
+            if old_loan is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Jashflow loan not found.")
             cursor.execute(
                 """
-                SELECT id
+                SELECT id, name
                 FROM customers
                 WHERE id = %s
                   AND tenant_id = %s
                 """,
                 (customer_id, tenant_id),
             )
-            if cursor.fetchone() is None:
+            new_customer = cursor.fetchone()
+            if new_customer is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found in this Xero tenant.")
+            if str(old_loan.get("customer_id")) != customer_id:
+                changes.append(_jashflow_change_entry(
+                    "customerId",
+                    "Client",
+                    old_loan.get("customer_name") or str(old_loan.get("customer_id")),
+                    new_customer.get("name") or customer_id,
+                ))
+            old_principal = _money(old_loan.get("principal_amount"))
+            if old_principal != principal:
+                changes.append(_jashflow_change_entry("principalAmount", "Loan amount", float(old_principal), float(principal), "currency"))
+            old_arrangement_fee = _money(old_loan.get("arrangement_fee"))
+            if old_arrangement_fee != arrangement_fee:
+                changes.append(_jashflow_change_entry("arrangementFee", "Arrangement fee", float(old_arrangement_fee), float(arrangement_fee), "currency"))
+            old_annual_interest_rate = _rate_percent(old_loan.get("annual_interest_rate"))
+            if old_annual_interest_rate != annual_interest_rate:
+                changes.append(_jashflow_change_entry("annualInterestRate", "Compound interest", float(old_annual_interest_rate), float(annual_interest_rate), "percentage"))
+            old_duration_months = int(old_loan.get("duration_months") or 0)
+            if old_duration_months != duration_months:
+                changes.append(_jashflow_change_entry("durationMonths", "Term", old_duration_months, duration_months, "months"))
+            old_start_date = _iso(old_loan.get("start_date")) or ""
+            if old_start_date != start_date.isoformat():
+                changes.append(_jashflow_change_entry("startDate", "Start date", old_start_date, start_date.isoformat(), "date"))
+            old_notes = str(old_loan.get("notes") or "").strip()
+            if old_notes != notes:
+                changes.append(_jashflow_change_entry("notes", "Loan notes", old_notes, notes, "text"))
+            old_status = str(old_loan.get("status") or "active").strip().lower()
+            if old_status != status_value:
+                changes.append(_jashflow_change_entry("status", "Status", old_status, status_value))
             cursor.execute(
                 """
                 UPDATE jashflow_loans
@@ -5101,21 +5270,26 @@ def update_jashflow_loan(user: dict, loan_id: str, payload: dict) -> dict:
                 )
         connection.commit()
 
-    record_audit_event(
-        "jashflow_loan",
-        str(loan_id),
-        "jashflow.loan_updated",
-        {
-            "customer_id": customer_id,
-            "principal_amount": float(principal),
-            "arrangement_fee": float(arrangement_fee),
-            "annual_interest_rate": float(annual_interest_rate),
-            "duration_months": duration_months,
-            "start_date": start_date.isoformat(),
-            "status": status_value,
-        },
-        user["id"],
-    )
+    if changes or audit_action == "recalculate":
+        record_audit_event(
+            "jashflow_loan",
+            str(loan_id),
+            "jashflow.loan_updated" if changes else "jashflow.loan_recalculated",
+            {
+                "customer_id": customer_id,
+                "customer_name": new_customer.get("name") or "",
+                "principal_amount": float(principal),
+                "arrangement_fee": float(arrangement_fee),
+                "annual_interest_rate": float(annual_interest_rate),
+                "duration_months": duration_months,
+                "start_date": start_date.isoformat(),
+                "status": status_value,
+                "notes": notes,
+                "changes": changes,
+                "message": "" if changes else "Interest recalculated from the loan start date.",
+            },
+            user["id"],
+        )
     return jashflow_payload(user)
 
 
@@ -5163,7 +5337,12 @@ def add_jashflow_charge(user: dict, loan_id: str, payload: dict) -> dict:
         "jashflow_loan",
         str(loan_id),
         "jashflow.charge_added",
-        {"transaction_id": str(transaction_id), "amount": float(amount), "charge_date": charge_date.isoformat()},
+        {
+            "transaction_id": str(transaction_id),
+            "amount": float(amount),
+            "charge_date": charge_date.isoformat(),
+            "description": description,
+        },
         user["id"],
     )
     return jashflow_payload(user)
@@ -5213,7 +5392,12 @@ def add_jashflow_payment(user: dict, loan_id: str, payload: dict) -> dict:
         "jashflow_loan",
         str(loan_id),
         "jashflow.payment_added",
-        {"transaction_id": str(transaction_id), "amount": float(amount), "payment_date": payment_date.isoformat()},
+        {
+            "transaction_id": str(transaction_id),
+            "amount": float(amount),
+            "payment_date": payment_date.isoformat(),
+            "description": description,
+        },
         user["id"],
     )
     return jashflow_payload(user)
@@ -9281,10 +9465,12 @@ async def _process_bank_statement_upload(user: dict, account: dict, upload_id: s
     return bank_statement_payload(user)
 
 
-async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+def queue_bank_statement_upload(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> tuple[dict, dict, str]:
     tenant_id = _bank_statement_tenant_id(user)
     if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF bank statement.")
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -9318,10 +9504,15 @@ async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: 
             )
             upload_id = cursor.fetchone()["id"]
         connection.commit()
+    return bank_statement_payload(user), account, str(upload_id)
+
+
+async def upload_bank_statement_pdf(user: dict, bank_account_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+    _, account, upload_id = queue_bank_statement_upload(user, bank_account_id, filename, content_type, file_bytes)
     return await _process_bank_statement_upload(user, account, str(upload_id), filename, content_type, file_bytes)
 
 
-async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
+def queue_bank_statement_retry(user: dict, upload_id: str) -> tuple[dict, dict, str, str, str, bytes]:
     tenant_id = _bank_statement_tenant_id(user)
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -9338,23 +9529,53 @@ async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
                 (upload_id, tenant_id),
             )
             row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement submission not found.")
+            if row.get("status") in ("queued", "processing"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This bank statement submission is already processing.")
+            file_bytes = bytes(row.get("source_file") or b"")
+            if not file_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This older submission cannot be retried because the original PDF was not stored. Upload the PDF again to retry extraction.",
+                )
+            cursor.execute(
+                """
+                UPDATE bank_statement_uploads
+                SET status = 'queued',
+                    error_message = NULL,
+                    completed_at = NULL,
+                    last_attempt_at = %s
+                WHERE id = %s
+                """,
+                (utcnow(), upload_id),
+            )
+            _append_bank_statement_upload_activity(
+                cursor,
+                upload_id,
+                "retry_queued",
+                "Retry queued for background extraction.",
+                {"filename": row.get("filename") or "bank-statement.pdf"},
+            )
         connection.commit()
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement submission not found.")
-    if row.get("status") in ("queued", "processing"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This bank statement submission is already processing.")
-    file_bytes = bytes(row.get("source_file") or b"")
-    if not file_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This older submission cannot be retried because the original PDF was not stored. Upload the PDF again to retry extraction.",
-        )
-    return await _process_bank_statement_upload(
-        user,
+    return (
+        bank_statement_payload(user),
         row,
         str(row["upload_id"]),
         row.get("filename") or "bank-statement.pdf",
         row.get("content_type") or "application/pdf",
+        file_bytes,
+    )
+
+
+async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
+    _, row, retry_upload_id, filename, content_type, file_bytes = queue_bank_statement_retry(user, upload_id)
+    return await _process_bank_statement_upload(
+        user,
+        row,
+        retry_upload_id,
+        filename,
+        content_type,
         file_bytes,
         is_retry=True,
     )
