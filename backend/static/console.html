@@ -3000,6 +3000,9 @@
                 }
             }
             .sync-inline-banner[hidden] { display: none; }
+            .sync-inline-banner.is-dismissible {
+                cursor: pointer;
+            }
             .sync-inline-banner.is-error {
                 --bubble-accent: var(--red);
                 --bubble-accent-rgb: 255, 83, 83;
@@ -3070,7 +3073,7 @@
                 gap: 8px;
                 margin-left: auto;
             }
-            .sync-inline-banner.is-error .sync-inline-actions { display: inline-flex; }
+            .sync-inline-banner.is-error:not(.is-dismissible) .sync-inline-actions { display: inline-flex; }
             .sync-inline-actions button {
                 border: 1px solid rgba(255, 83, 83, 0.25);
                 border-radius: 999px;
@@ -3084,6 +3087,28 @@
             .sync-inline-actions button:hover {
                 background: white;
                 border-color: rgba(255, 83, 83, 0.42);
+            }
+            .sync-inline-dismiss {
+                flex: 0 0 auto;
+                width: 34px;
+                height: 34px;
+                display: inline-grid;
+                place-items: center;
+                margin-left: auto;
+                border: 1px solid rgba(var(--bubble-accent-rgb), 0.24);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.82);
+                color: var(--bubble-accent);
+                font-size: 1rem;
+                font-weight: 950;
+                line-height: 1;
+                cursor: pointer;
+            }
+            .sync-inline-dismiss[hidden] {
+                display: none;
+            }
+            .sync-inline-dismiss:hover {
+                background: rgba(var(--bubble-accent-rgb), 0.10);
             }
             .sync-inline-copy {
                 display: grid;
@@ -8695,7 +8720,11 @@
                 --toast-accent: var(--blue);
                 --toast-accent-rgb: 29, 103, 242;
                 position: relative;
-                padding: 14px 16px;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 10px;
+                padding: 14px 14px 14px 16px;
                 border-radius: 16px;
                 overflow: hidden;
                 background:
@@ -8707,6 +8736,7 @@
                     0 10px 24px rgba(30, 47, 77, 0.10);
                 color: var(--ink);
                 font-weight: 800;
+                cursor: pointer;
                 animation: support-bubble-rise 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             .toast-message::before {
@@ -8732,15 +8762,37 @@
                 --toast-accent-rgb: 29, 103, 242;
                 color: var(--blue);
             }
+            .toast-copy {
+                min-width: 0;
+                line-height: 1.35;
+            }
             .toast-action {
-                display: block;
-                margin-top: 8px;
+                grid-column: 1 / -1;
+                justify-self: start;
                 padding: 0;
                 border: 0;
                 background: transparent;
                 color: inherit;
                 font-weight: 900;
                 text-decoration: underline;
+                cursor: pointer;
+            }
+            .toast-dismiss {
+                width: 30px;
+                height: 30px;
+                display: inline-grid;
+                place-items: center;
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.22);
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.78);
+                color: inherit;
+                font-size: 1rem;
+                font-weight: 950;
+                line-height: 1;
+                cursor: pointer;
+            }
+            .toast-dismiss:hover {
+                background: rgba(var(--toast-accent-rgb), 0.10);
             }
             .sync-progress-overlay {
                 position: fixed;
@@ -9715,6 +9767,7 @@
                                 <button id="syncViewLogsButton" type="button">View logs</button>
                                 <button id="syncRetryButton" type="button">Try again</button>
                             </div>
+                            <button class="sync-inline-dismiss" id="syncInlineDismissButton" type="button" aria-label="Hide notification" title="Hide notification" hidden>&times;</button>
                         </div>
                         <div class="sync-inline-banner ai-inline-banner" id="aiInlineBanner" role="status" aria-live="polite" aria-atomic="true" hidden>
                             <span class="sync-inline-spinner sync-logo-loader ai-logo-loader" aria-hidden="true">
@@ -10569,7 +10622,7 @@
                                         <option value="December">December</option>
                                     </select>
                                 </label>
-                                <button class="primary-button" type="submit">Generate PDFs</button>
+                                <button class="primary-button" type="submit">Generate practice pack</button>
                             </form>
                             <p class="late-charge-summary" id="practicePackSummary">Awaiting BM Client File CSV and BM Task File CSV.</p>
                             <div class="practice-pack-output-list" id="practicePackOutputList">
@@ -14294,6 +14347,20 @@
                         event.preventDefault();
                         event.stopPropagation();
                         closeHelpPanel();
+                        return;
+                    }
+                    const syncInlineDismissButton = event.target.closest?.("#syncInlineDismissButton");
+                    if (syncInlineDismissButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        dismissTopbarNotice();
+                        return;
+                    }
+                    const syncInlineNotice = event.target.closest?.("#syncInlineBanner.is-dismissible");
+                    if (syncInlineNotice && !event.target.closest("button")) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        dismissTopbarNotice();
                         return;
                     }
                     const developerLogButton = event.target.closest?.("#developerLogButton, #syncViewLogsButton");
@@ -21960,7 +22027,7 @@
                         </div>
                         <div class="detail-actions">
                             <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
-                            <button class="primary-button" type="button" data-me-generate-report ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate client PDF</button>
+                            <button class="primary-button" type="button" data-me-generate-report ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate practice pack</button>
                         </div>
                     </div>
                 `;
@@ -25550,13 +25617,34 @@
                 if (!stack) return;
                 const toast = document.createElement("div");
                 toast.className = `toast-message ${type}`;
-                toast.textContent = message;
+                const copy = document.createElement("span");
+                copy.className = "toast-copy";
+                copy.textContent = message;
+                toast.appendChild(copy);
+                const dismiss = document.createElement("button");
+                dismiss.type = "button";
+                dismiss.className = "toast-dismiss";
+                dismiss.setAttribute("aria-label", "Hide notification");
+                dismiss.title = "Hide notification";
+                dismiss.innerHTML = "&times;";
+                dismiss.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toast.remove();
+                });
+                toast.appendChild(dismiss);
+                toast.addEventListener("click", (event) => {
+                    if (event.target.closest("button")) return;
+                    toast.remove();
+                });
                 if (action?.label) {
                     const link = document.createElement("button");
                     link.type = "button";
                     link.className = "toast-action";
                     link.textContent = action.label;
-                    link.addEventListener("click", () => {
+                    link.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
                         action.onClick?.();
                         toast.remove();
                     });
@@ -26698,9 +26786,27 @@
                 }
             }
 
+            function setTopbarNoticeDismissible(enabled) {
+                const inlineBanner = document.getElementById("syncInlineBanner");
+                const dismissButton = document.getElementById("syncInlineDismissButton");
+                if (inlineBanner) inlineBanner.classList.toggle("is-dismissible", Boolean(enabled));
+                if (dismissButton) dismissButton.hidden = !enabled;
+            }
+
             function clearTopbarNoticeTimer() {
                 window.clearTimeout(topbarNoticeTimer);
                 topbarNoticeTimer = null;
+                setTopbarNoticeDismissible(false);
+            }
+
+            function dismissTopbarNotice() {
+                const inlineBanner = document.getElementById("syncInlineBanner");
+                if (!inlineBanner || inlineBanner.dataset.syncContext !== "notice") return;
+                clearTopbarNoticeTimer();
+                inlineBanner.hidden = true;
+                inlineBanner.classList.remove("is-error", "is-success", "is-warning", "is-dismissible");
+                inlineBanner.dataset.syncContext = "";
+                updateTopbarInlineStatusState();
             }
 
             function showTopbarNotice(title, detail, variant = "success", duration = TOPBAR_NOTICE_DURATION_MS) {
@@ -26709,22 +26815,21 @@
                 if (inlineBanner) {
                     inlineBanner.hidden = false;
                     inlineBanner.classList.remove("is-error", "is-success", "is-warning");
-                    inlineBanner.dataset.syncContext = inlineBanner.dataset.syncContext || "";
-                    if (variant === "success") inlineBanner.classList.add("is-success");
+                    inlineBanner.dataset.syncContext = "notice";
+                    if (variant === "error") inlineBanner.classList.add("is-error");
+                    else if (variant === "warning") inlineBanner.classList.add("is-warning");
+                    else inlineBanner.classList.add("is-success");
                 }
                 const inlineTitle = document.getElementById("syncInlineTitle");
                 if (inlineTitle) inlineTitle.textContent = title;
                 const inlineDetail = document.getElementById("syncInlineDetail");
                 if (inlineDetail) inlineDetail.textContent = detail;
+                setTopbarNoticeDismissible(true);
                 updateTopbarInlineStatusState();
-                topbarNoticeTimer = window.setTimeout(() => {
-                    if (!isSyncing && !isOperationRunning && !isIgnitionSyncing && !isMeReportProcessing && inlineBanner?.classList.contains("is-success")) {
-                        inlineBanner.hidden = true;
-                        inlineBanner.classList.remove("is-success");
-                        clearSyncFailureBanner();
-                        updateTopbarInlineStatusState();
-                    }
-                }, duration);
+                const requestedDuration = Number(duration);
+                if (Number.isFinite(requestedDuration) && requestedDuration > 0) {
+                    topbarNoticeTimer = window.setTimeout(dismissTopbarNotice, requestedDuration);
+                }
             }
 
             function clearSyncFailureBanner() {
