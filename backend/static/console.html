@@ -8266,6 +8266,10 @@
                 border-color: rgba(39, 176, 95, 0.25);
                 background: rgba(232, 248, 238, 0.88);
             }
+            .client-invoice-row.is-allocated {
+                border-color: rgba(39, 176, 95, 0.22);
+                background: rgba(248, 251, 255, 0.92);
+            }
             .client-invoice-row.is-statement-header {
                 cursor: default;
                 border-color: transparent;
@@ -8305,6 +8309,23 @@
             .client-invoice-row.is-payment .client-statement-type {
                 background: var(--green-soft);
                 color: var(--green);
+            }
+            .client-invoice-row.is-allocated .client-statement-type {
+                background: rgba(232, 248, 238, 0.88);
+                color: var(--green);
+            }
+            .client-statement-ai {
+                display: block;
+                margin-top: 5px;
+                color: #667797;
+                font-size: 0.78rem;
+                font-weight: 800;
+                line-height: 1.3;
+            }
+            .client-statement-ai::before {
+                content: "AI ";
+                color: var(--blue);
+                font-weight: 950;
             }
             .client-statement-money {
                 text-align: right;
@@ -8805,6 +8826,26 @@
                 align-items: center;
                 gap: 8px;
                 flex-wrap: wrap;
+            }
+            .client-transaction-toggle {
+                min-height: 42px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.92);
+                color: var(--ink);
+                font-size: 0.84rem;
+                font-weight: 900;
+                white-space: nowrap;
+            }
+            .client-transaction-toggle input {
+                width: 16px;
+                height: 16px;
+                margin: 0;
+                accent-color: var(--blue);
             }
             .client-section-pane {
                 display: grid;
@@ -11320,10 +11361,10 @@
                                 </div>
                             </div>
                             <nav class="xero-client-tabs client-section-nav" aria-label="Client sections">
-                                <button type="button" class="is-active" data-client-section="overview">Activity &amp; Workflow</button>
+                                <button type="button" data-client-section="overview">Summary</button>
+                                <button type="button" class="is-active" data-client-section="invoices">Financial details</button>
                                 <button type="button" data-client-section="payment-plans">Payment plans</button>
-                                <button type="button" data-client-section="notes">Contact details</button>
-                                <button type="button" data-client-section="invoices">Financial details</button>
+                                <button type="button" data-client-section="notes">Notes</button>
                                 <button type="button" data-client-section="legal">Files</button>
                             </nav>
                         </section>
@@ -11368,9 +11409,9 @@
 
                             <div class="client-main-panel">
                                 <nav class="client-section-nav legacy-client-section-nav" aria-label="Recovery workspace">
-                                    <button type="button" class="is-active" data-client-section="overview">Summary</button>
-                                    <button type="button" data-client-section="invoices">Transactions</button>
-                                    <button type="button" data-client-section="notes">Activity & Workflow</button>
+                                    <button type="button" data-client-section="overview">Summary</button>
+                                    <button type="button" class="is-active" data-client-section="invoices">Transactions</button>
+                                    <button type="button" data-client-section="notes">Notes</button>
                                     <button type="button" data-client-section="payment-plans">Payment plans</button>
                                 </nav>
 
@@ -11401,6 +11442,10 @@
                                                 <h3>Unallocated invoice and cash movements</h3>
                                             </div>
                                             <div class="client-invoice-bulk-actions">
+                                                <label class="client-transaction-toggle">
+                                                    <input id="clientShowAllocatedToggle" type="checkbox">
+                                                    <span>Show allocated</span>
+                                                </label>
                                                 <button class="ghost-button" id="clientTransactionsRefreshButton" type="button">Refresh from Xero</button>
                                                 <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
                                                 <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
@@ -11455,13 +11500,6 @@
                                 </section>
 
                                 <section class="client-section-pane" data-client-pane="notes">
-                                    <section class="detail-panel account-file-section">
-                                        <div class="section-heading">
-                                            <p class="eyebrow">Xero contact</p>
-                                            <h4>Contact details</h4>
-                                        </div>
-                                        <div class="xero-contact-details" id="clientContactDetailsPanel"></div>
-                                    </section>
                                     <section class="detail-panel account-file-section account-notes-section">
                                         <div class="section-heading">
                                             <p class="eyebrow">Client notes</p>
@@ -11567,33 +11605,6 @@
                                 </section>
 
                                 <section class="client-section-pane" data-client-pane="settings">
-                                    <section class="detail-panel assignment-panel">
-                                        <div class="panel-heading">
-                                            <div>
-                                                <p class="eyebrow">Assignment workflow</p>
-                                                <h3>Ownership, SLA and queue state</h3>
-                                            </div>
-                                            <button class="ghost-button" id="assignClientManagerButton" type="button">Assign manager</button>
-                                        </div>
-                                        <div class="assignment-grid">
-                                            <article>
-                                                <span>Owner</span>
-                                                <strong id="clientAssignmentSummary">Unassigned</strong>
-                                            </article>
-                                            <article>
-                                                <span>SLA timer</span>
-                                                <strong id="clientSlaSummary">Awaiting action</strong>
-                                            </article>
-                                            <article>
-                                                <span>Next action due</span>
-                                                <strong id="clientNextActionDue">Review today</strong>
-                                            </article>
-                                            <article>
-                                                <span>Queue</span>
-                                                <strong id="clientQueueStatus">Credit control</strong>
-                                            </article>
-                                        </div>
-                                    </section>
                                     <section class="detail-panel history-section">
                                         <div class="section-heading">
                                             <p class="eyebrow">Activity timeline</p>
@@ -12073,7 +12084,7 @@
             let selectedClientId = persistedUIState.selectedClientId || null;
             let activeView = "ledger";
             let activeNavSection = "home";
-            let activeClientSection = "overview";
+            let activeClientSection = "invoices";
             let activeSettingsSection = "data-import";
             const topbarViewTitles = {
                 ledger: "Credit Control",
@@ -12161,6 +12172,7 @@
             let quickNoteInvoiceId = null;
             let lastPaymentPlanAutoNote = "";
             let selectedClientInvoiceIds = new Set();
+            let showAllocatedClientTransactions = false;
             let selectedLateChargeInvoiceIds = new Set();
             let selectedBadDebtInvoiceIds = new Set();
             let latePaymentChargeBaseAmounts = new Map();
@@ -14058,7 +14070,7 @@
             }
 
             function renderXeroContactDetails(client) {
-                const targets = [...document.querySelectorAll("#xeroContactDetails, #clientContactDetailsPanel")];
+                const targets = [...document.querySelectorAll("#xeroContactDetails")];
                 if (!targets.length) return;
                 targets.forEach((target) => { target.innerHTML = ""; });
                 if (!client) return;
@@ -14584,7 +14596,7 @@
                 selectedClientId = notice.clientId;
                 selectedInvoiceId = notice.invoiceId;
                 activeView = "client";
-                activeClientSection = "overview";
+                activeClientSection = "invoices";
                 renderAll();
             }
 
@@ -14893,6 +14905,7 @@
             function openSelectedClientView() {
                 if (!selectedClientId && !selectedInvoiceId) return;
                 activeView = "client";
+                activeClientSection = "invoices";
                 syncActiveViewShell();
                 renderAll();
                 scrollConsoleToTop();
@@ -15774,14 +15787,14 @@
                 });
             }
 
-            function openClientWorkspace(invoice, focusId, section = "overview") {
+            function openClientWorkspace(invoice, focusId, section = "invoices") {
                 selectedInvoiceId = invoice.id;
                 selectedClientId = invoice.customerId;
                 activeView = "client";
-                activeClientSection = clientSections.has(section) ? section : "overview";
+                activeClientSection = clientSections.has(section) ? section : "invoices";
                 syncActiveViewShell();
                 renderAll();
-                if (activeClientSection === "overview" && !focusId) {
+                if (activeClientSection === "invoices" && !focusId) {
                     scrollConsoleToTop();
                 } else {
                     scrollClientWorkspaceTarget(activeClientSection, focusId, 350);
@@ -15867,14 +15880,14 @@
                 });
             }
 
-            function openClientGroup(group, section = "overview") {
+            function openClientGroup(group, section = "invoices") {
                 const invoice = group?.priorityInvoice || group?.invoices?.[0] || null;
                 if (!invoice && !group?.client) return;
                 if (!group?.invoices?.length && group?.client) {
                     selectedClientId = group.client.id;
                     selectedInvoiceId = null;
                     activeView = "client";
-                    activeClientSection = clientSections.has(section) ? section : "overview";
+                    activeClientSection = clientSections.has(section) ? section : "invoices";
                     syncActiveViewShell();
                     renderAll();
                     scrollConsoleToTop();
@@ -16194,10 +16207,14 @@
                 const nextAction = clientNextAction(client, invoices, totals, noticeInvoices, hasLegal);
                 document.getElementById("clientNextActionTitle").textContent = nextAction.title;
                 document.getElementById("clientNextActionBody").textContent = nextAction.body;
-                document.getElementById("clientAssignmentSummary").textContent = manager;
-                document.getElementById("clientSlaSummary").textContent = totals.maxOverdueDays > 0 ? `${totals.maxOverdueDays} days overdue` : "On track";
-                document.getElementById("clientNextActionDue").textContent = nextAction.due;
-                document.getElementById("clientQueueStatus").textContent = hasLegal ? "Legal escalation" : totals.overdueInvoiceCount ? "Credit control priority" : "Standard follow-up";
+                const assignmentSummary = document.getElementById("clientAssignmentSummary");
+                const slaSummary = document.getElementById("clientSlaSummary");
+                const nextActionDue = document.getElementById("clientNextActionDue");
+                const queueStatus = document.getElementById("clientQueueStatus");
+                if (assignmentSummary) assignmentSummary.textContent = manager;
+                if (slaSummary) slaSummary.textContent = totals.maxOverdueDays > 0 ? `${totals.maxOverdueDays} days overdue` : "On track";
+                if (nextActionDue) nextActionDue.textContent = nextAction.due;
+                if (queueStatus) queueStatus.textContent = hasLegal ? "Legal escalation" : totals.overdueInvoiceCount ? "Credit control priority" : "Standard follow-up";
                 renderRecoveryWorkflow(client, invoices, totals, noticeInvoices, hasLegal);
             }
 
@@ -16258,7 +16275,7 @@
                 setElementVisible(meReportScreen, activeView === "me-report");
                 if (activeView !== "client") return;
 
-                if (!clientSections.has(activeClientSection)) activeClientSection = "overview";
+                if (!clientSections.has(activeClientSection)) activeClientSection = "invoices";
                 const invoice = findInvoiceById(selectedInvoiceId);
                 const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                 const invoices = clientInvoices(client);
@@ -17025,6 +17042,7 @@
                     : fallbackOutstandingTransactions(invoices);
                 const unallocatedCredits = Array.isArray(cached?.unallocatedCredits) ? cached.unallocatedCredits : [];
                 const overpayments = Array.isArray(cached?.overpayments) ? cached.overpayments : [];
+                const allocatedCredits = showAllocatedClientTransactions && Array.isArray(cached?.allocatedCredits) ? cached.allocatedCredits : [];
                 const rows = [];
 
                 outstandingInvoices.forEach((invoice) => {
@@ -17064,7 +17082,41 @@
                     });
                 });
 
+                allocatedCredits.forEach((source) => {
+                    rows.push({
+                        kind: "allocated",
+                        source,
+                        selectable: false,
+                        date: source.date || "",
+                        type: "Allocated credit",
+                        title: `${creditSourceLabel(source)} ${source.number || source.id || ""}`.trim(),
+                        detail: [source.status || "Authorised", source.reference, "allocated"].filter(Boolean).join(" · "),
+                        debit: 0,
+                        credit: Number(source.appliedAmount || 0),
+                        currencyCode: source.currencyCode || "GBP",
+                    });
+                });
+
                 return rows.sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+            }
+
+            function clientStatementAiDescription(entry) {
+                const amount = entry.debit || entry.credit || 0;
+                const amountText = formatXeroCurrency(amount, entry.currencyCode || "GBP");
+                if (entry.kind === "invoice") {
+                    const dueText = entry.source?.dueDate ? `due ${formatDate(entry.source.dueDate)}` : "with no due date";
+                    return `${entry.title} is an open invoice for ${amountText}, ${dueText}; match it against available credits or keep it in the chase queue.`;
+                }
+                if (entry.kind === "credit") {
+                    return `${entry.title} is an unapplied credit note worth ${amountText}; it can reduce this client's open balance once allocated.`;
+                }
+                if (entry.kind === "payment") {
+                    return `${entry.title} is unallocated cash worth ${amountText}; allocate it to the best matching invoice before chasing.`;
+                }
+                if (entry.kind === "allocated") {
+                    return `${entry.title} has already been allocated for ${amountText}; keep visible when checking the client allocation history.`;
+                }
+                return `Review this ${entry.type.toLowerCase()} movement for ${amountText} before taking the next action.`;
             }
 
             function clientStatementEmptyState(target, client, rows, isLoading) {
@@ -17101,6 +17153,8 @@
                 const target = document.getElementById("clientInvoiceList");
                 if (!target) return;
                 target.innerHTML = "";
+                const allocatedToggle = document.getElementById("clientShowAllocatedToggle");
+                if (allocatedToggle) allocatedToggle.checked = showAllocatedClientTransactions;
                 const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                 const rows = clientStatementRows(client, invoices);
                 const validIds = new Set(rows.filter((row) => row.selectable).map((row) => row.invoiceId));
@@ -17138,6 +17192,7 @@
                         <div>
                             <div class="client-name">${escapeHTML(entry.title)}</div>
                             <div class="invoice-subline">${escapeHTML(entry.detail)}${entry.date ? ` · ${formatDate(entry.date)}` : ""}</div>
+                            <span class="client-statement-ai">${escapeHTML(clientStatementAiDescription(entry))}</span>
                         </div>
                         <strong class="client-statement-money">${entry.debit ? formatXeroCurrency(entry.debit, entry.currencyCode) : "--"}</strong>
                         <strong class="client-statement-money is-credit">${entry.credit ? formatXeroCurrency(entry.credit, entry.currencyCode) : "--"}</strong>
@@ -26958,6 +27013,10 @@
                 });
                 document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
                 document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
+                document.getElementById("clientShowAllocatedToggle")?.addEventListener("change", (event) => {
+                    showAllocatedClientTransactions = Boolean(event.target.checked);
+                    renderClientScreen();
+                });
                 document.getElementById("refreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
                 document.getElementById("clientTransactionsRefreshButton")?.addEventListener("click", refreshCustomerTransactions);
                 document.getElementById("actionCenterRefreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
