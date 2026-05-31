@@ -10986,6 +10986,7 @@ async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
 
 IGNITION_PLAN_LABELS = ("Solo", "Solo+", "Solo MTD", "Micro", "Starter", "Standard", "Premium", "Ultimate")
 OPTIONAL_IGNITION_DATASETS = {"deals", "deal_stages"}
+IGNITION_RENEWAL_WINDOW_WEEKS = 8
 IGNITION_RENEWAL_END_DATE_KEYS = {
     "end_date",
     "ends_on",
@@ -11709,6 +11710,24 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     }
 
 
+def _ignition_upcoming_renewal_proposals(records: list[dict], window_start: date, window_end: date) -> list[dict]:
+    candidates = []
+    for record in records:
+        proposal_payload = record.get("payload") or {}
+        renewal_date = _ignition_proposal_end_date(proposal_payload)
+        if not renewal_date:
+            continue
+        if not (window_start <= renewal_date <= window_end):
+            continue
+        if not _is_accepted_ignition_proposal(proposal_payload):
+            continue
+        candidates.append(_ignition_renewal_item_seed(record, renewal_date))
+    return sorted(
+        candidates,
+        key=lambda item: (item["renewal_date"], str(item.get("client_name") or "").casefold(), str(item.get("proposal_name") or "").casefold()),
+    )
+
+
 def _invoice_status(row: dict) -> str:
     return str(row.get("status") or row.get("state") or row.get("payment_status") or "").lower()
 
@@ -12033,7 +12052,7 @@ async def create_ignition_renewal_run(user: dict) -> dict:
     _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
 
     window_start = utcnow().date()
-    window_end = window_start + timedelta(weeks=8)
+    window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
     with get_connection() as db:
         with db.cursor() as cursor:
             cursor.execute(
@@ -12046,16 +12065,7 @@ async def create_ignition_renewal_run(user: dict) -> dict:
                 (user["id"],),
             )
             records = cursor.fetchall()
-            candidates = []
-            for record in records:
-                proposal_payload = record.get("payload") or {}
-                renewal_date = _ignition_proposal_end_date(proposal_payload)
-                if (
-                    _is_accepted_ignition_proposal(proposal_payload)
-                    and renewal_date
-                    and window_start <= renewal_date <= window_end
-                ):
-                    candidates.append(_ignition_renewal_item_seed(record, renewal_date))
+            candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
 
             cursor.execute("SELECT proposal_external_id FROM ignition_renewal_items WHERE user_id = %s", (user["id"],))
             already_picked = {row["proposal_external_id"] for row in cursor.fetchall()}
@@ -12115,7 +12125,13 @@ async def create_ignition_renewal_run(user: dict) -> dict:
         "ignition_renewal_run",
         str(run["id"]),
         "ignition.renewals.created",
-        {"window_start": window_start.isoformat(), "window_end": window_end.isoformat(), "picked": len(inserted), "skipped_previously_picked": skipped_count},
+        {
+            "window_start": window_start.isoformat(),
+            "window_end": window_end.isoformat(),
+            "window_weeks": IGNITION_RENEWAL_WINDOW_WEEKS,
+            "picked": len(inserted),
+            "skipped_previously_picked": skipped_count,
+        },
         user["id"],
     )
     return {"renewals": ignition_renewals_payload(user, str(run["id"]))}
