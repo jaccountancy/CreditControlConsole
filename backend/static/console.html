@@ -3554,6 +3554,7 @@
             .practice-pack-panel {
                 display: grid;
                 gap: 18px;
+                margin-top: 14px;
             }
             .practice-pack-form {
                 display: grid;
@@ -3900,7 +3901,10 @@
                 min-height: 38px;
                 padding: 9px 14px;
             }
-            .jashflow-loan-tabs button {
+            .jashflow-loan-tabs button,
+            .jashflow-loan-tabs a {
+                display: inline-flex;
+                align-items: center;
                 min-height: 42px;
                 border: 0;
                 border-bottom: 3px solid transparent;
@@ -3909,10 +3913,19 @@
                 color: var(--muted);
                 padding: 0 4px;
                 font-weight: 900;
+                text-decoration: none;
             }
+            .jashflow-loan-tabs button:hover,
+            .jashflow-loan-tabs a:hover,
             .jashflow-loan-tabs button.is-active {
                 color: var(--blue);
                 border-bottom-color: var(--blue);
+            }
+            .jashflow-loan-tabs button:disabled {
+                color: var(--muted);
+                border-bottom-color: transparent;
+                cursor: not-allowed;
+                opacity: 0.55;
             }
             .jashflow-export-controls {
                 justify-content: flex-start;
@@ -5521,6 +5534,44 @@
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
                 gap: 12px;
+            }
+            .ignition-tabs {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                padding: 8px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: rgba(248, 251, 255, 0.9);
+            }
+            .ignition-tabs button {
+                min-height: 40px;
+                padding: 8px 12px;
+                border: 1px solid transparent;
+                border-radius: 999px;
+                background: transparent;
+                color: var(--muted);
+                font: inherit;
+                font-weight: 900;
+                cursor: pointer;
+                white-space: nowrap;
+            }
+            .ignition-tabs button:hover,
+            .ignition-tabs button.is-active {
+                border-color: rgba(29, 103, 242, 0.22);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            .ignition-tabs button.is-active {
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 18px rgba(29, 103, 242, 0.08);
+            }
+            .ignition-tab-panel {
+                display: grid;
+                gap: 14px;
+                min-width: 0;
+            }
+            .ignition-tab-panel[hidden] {
+                display: none;
             }
             .ignition-summary-grid article,
             .ignition-report-card,
@@ -7765,7 +7816,6 @@
                                 </div>
                             </div>
                         </div>
-                        <button class="ignition-renewals-topbar-button" id="startIgnitionRenewalsButton" type="button" hidden>Renewals</button>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
                             <span class="global-activity-count" id="globalActivityCount">0</span>
                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"></path></svg>
@@ -8298,56 +8348,116 @@
                                 </div>
                             </div>
                             <div class="detail-actions">
-                                <button class="ghost-button" id="openIgnitionClientsButton" type="button">Client register</button>
                                 <button class="ghost-button" id="refreshIgnitionButton" type="button">Refresh</button>
                                 <button class="ghost-button" id="connectIgnitionButton" type="button">Connect Ignition</button>
-                                <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync Ignition</button>
+                                <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
                             </div>
                         </div>
-                        <section class="detail-panel ignition-panel">
-                            <div class="ignition-summary-grid" aria-label="Ignition management metrics">
-                                <article><span>Total clients</span><strong id="ignitionClientCount">0</strong></article>
-                                <article><span>New clients MTD</span><strong id="ignitionNewClientsMtd">0</strong></article>
-                                <article><span>Proposals sent MTD</span><strong id="ignitionProposalsSentMtd">0</strong></article>
-                                <article><span>Accepted MTD</span><strong id="ignitionProposalsAcceptedMtd">0</strong></article>
-                                <article><span>Conversion</span><strong id="ignitionConversionRate">0%</strong></article>
-                                <article><span>MRR accepted MTD</span><strong id="ignitionExpectedMrr">£0</strong></article>
-                                <article><span>ARR accepted MTD</span><strong id="ignitionExpectedArr">£0</strong></article>
-                                <article><span>Awaiting value</span><strong id="ignitionAwaitingValue">£0</strong></article>
-                                <article><span>Outstanding</span><strong id="ignitionOutstandingInvoices">£0</strong></article>
-                                <article><span>Payments MTD</span><strong id="ignitionPaymentsMtd">£0</strong></article>
-                                <article><span>Pipeline</span><strong id="ignitionPipelineValue">£0</strong></article>
-                                <article><span>Net collections</span><strong id="ignitionCollectionDisbursements">£0</strong></article>
-                            </div>
-                        </section>
-                        <section class="detail-panel ignition-staff-fee-panel">
-                            <div class="ignition-report-head">
-                                <div>
-                                    <span>Practice Pack</span>
-                                    <strong>Monthly fees by staff</strong>
-                                    <p class="detail-meta" id="ignitionStaffFeeSummary">Upload the latest BM Client CSV in Practice Pack to map clients to managers.</p>
+                        <nav class="ignition-tabs" aria-label="Ignition sections">
+                            <button class="is-active" type="button" data-ignition-tab="overview">Overview</button>
+                            <button type="button" data-ignition-tab="clients">Client register</button>
+                            <button type="button" data-ignition-tab="renewals">Renewals</button>
+                            <button type="button" data-ignition-tab="staff-income">Income by staff</button>
+                            <button type="button" data-ignition-tab="subscriptions">Subscriptions</button>
+                            <button type="button" data-ignition-tab="renewal-analysis">Renewal vs new work</button>
+                            <button type="button" data-ignition-tab="creators">Proposal creators</button>
+                            <button type="button" data-ignition-tab="pipeline">Pipeline</button>
+                            <button type="button" data-ignition-tab="datasets">Datasets</button>
+                        </nav>
+                        <section class="ignition-tab-panel" data-ignition-panel="overview">
+                            <section class="detail-panel ignition-panel">
+                                <div class="ignition-summary-grid" aria-label="Ignition management metrics">
+                                    <article><span>Total clients</span><strong id="ignitionClientCount">0</strong></article>
+                                    <article><span>New clients MTD</span><strong id="ignitionNewClientsMtd">0</strong></article>
+                                    <article><span>Proposals sent MTD</span><strong id="ignitionProposalsSentMtd">0</strong></article>
+                                    <article><span>Accepted MTD</span><strong id="ignitionProposalsAcceptedMtd">0</strong></article>
+                                    <article><span>Conversion</span><strong id="ignitionConversionRate">0%</strong></article>
+                                    <article><span>MRR accepted MTD</span><strong id="ignitionExpectedMrr">£0</strong></article>
+                                    <article><span>ARR accepted MTD</span><strong id="ignitionExpectedArr">£0</strong></article>
+                                    <article><span>Awaiting value</span><strong id="ignitionAwaitingValue">£0</strong></article>
+                                    <article><span>Outstanding</span><strong id="ignitionOutstandingInvoices">£0</strong></article>
+                                    <article><span>Payments MTD</span><strong id="ignitionPaymentsMtd">£0</strong></article>
+                                    <article><span>Pipeline</span><strong id="ignitionPipelineValue">£0</strong></article>
+                                    <article><span>Net collections</span><strong id="ignitionCollectionDisbursements">£0</strong></article>
                                 </div>
-                            </div>
-                            <div class="ignition-staff-fee-list" id="ignitionStaffFeeWidget"></div>
+                            </section>
                         </section>
-                        <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel" hidden>
-                            <div class="ignition-renewals-toolbar">
-                                <div>
-                                    <p class="eyebrow">Renewals process</p>
-                                    <h3 id="ignitionRenewalsTitle">Renewals round</h3>
-                                    <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from Ignition proposals due in the next five weeks.</p>
+                        <section class="ignition-tab-panel" data-ignition-panel="clients" hidden>
+                            <section class="detail-panel ignition-client-panel">
+                                <div class="ignition-client-toolbar">
+                                    <div>
+                                        <p class="eyebrow">Clients</p>
+                                        <h3>Ignition client register</h3>
+                                        <p class="detail-meta" id="ignitionClientTableSummary">Synced client rows will appear after the Reporting API import.</p>
+                                    </div>
+                                    <div class="ignition-client-controls">
+                                        <label class="search-wrap ignition-client-search">
+                                            <span class="search-icon">⌕</span>
+                                            <input id="ignitionClientSearch" type="search" placeholder="Search client, owner, status...">
+                                        </label>
+                                        <label class="ignition-client-control">
+                                            Sort
+                                            <select id="ignitionClientSortSelect" aria-label="Sort Ignition clients">
+                                                <option value="activity-desc">Latest activity</option>
+                                                <option value="name-asc">Client A-Z</option>
+                                                <option value="proposals-desc">Proposals</option>
+                                                <option value="accepted-desc">Accepted</option>
+                                                <option value="outstanding-desc">Outstanding</option>
+                                            </select>
+                                        </label>
+                                        <label class="ignition-client-control">
+                                            Filter
+                                            <select id="ignitionClientFilterSelect" aria-label="Filter Ignition clients">
+                                                <option value="all">All clients</option>
+                                                <option value="active">Active</option>
+                                                <option value="awaiting">Awaiting acceptance</option>
+                                                <option value="overdue">Overdue</option>
+                                                <option value="new">New this month</option>
+                                            </select>
+                                        </label>
+                                        <button class="ghost-button" id="refreshIgnitionClientsButton" type="button">Refresh</button>
+                                    </div>
                                 </div>
-                                <div class="detail-actions">
-                                    <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
-                                    <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
-                                    <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise and raise ELs</button>
-                                </div>
-                            </div>
-                            <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
-                            <div class="ignition-renewals-table-wrap" id="ignitionRenewalsTableWrap"></div>
+                                <div class="ignition-client-table-wrap" id="ignitionClientTableWrap"></div>
+                            </section>
                         </section>
-                        <section class="detail-panel ignition-workspace">
-                            <div class="ignition-report-stack">
+                        <section class="ignition-tab-panel" data-ignition-panel="renewals" hidden>
+                            <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel">
+                                <div class="ignition-renewals-toolbar">
+                                    <div>
+                                        <p class="eyebrow">Renewals process</p>
+                                        <h3 id="ignitionRenewalsTitle">Renewals round</h3>
+                                        <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from Ignition proposals due in the next five weeks.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="startIgnitionRenewalsButton" type="button">Create renewals round</button>
+                                        <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
+                                        <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
+                                        <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise and raise ELs</button>
+                                    </div>
+                                </div>
+                                <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
+                                <div class="ignition-renewals-table-wrap" id="ignitionRenewalsTableWrap"></div>
+                            </section>
+                        </section>
+                        <section class="ignition-tab-panel" data-ignition-panel="staff-income" hidden>
+                            <section class="detail-panel ignition-staff-fee-panel">
+                                <div class="ignition-report-head">
+                                    <div>
+                                        <span>BM Data</span>
+                                        <strong>Monthly fees by staff</strong>
+                                        <p class="detail-meta" id="ignitionStaffFeeSummary">Upload the latest BM Data CSV to map clients to managers.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="uploadIgnitionBMDataButton" type="button">Upload BM Data file</button>
+                                    </div>
+                                </div>
+                                <input id="ignitionBMDataFile" type="file" accept=".csv,text/csv" hidden>
+                                <div class="ignition-staff-fee-list" id="ignitionStaffFeeWidget"></div>
+                            </section>
+                        </section>
+                        <section class="ignition-tab-panel" data-ignition-panel="subscriptions" hidden>
+                            <section class="detail-panel">
                                 <div class="ignition-report-card">
                                     <div class="ignition-report-head">
                                         <div>
@@ -8357,26 +8467,10 @@
                                     </div>
                                     <div class="ignition-list" id="ignitionServicePerformance"></div>
                                 </div>
-                                <div class="ignition-report-card">
-                                    <div class="ignition-report-head">
-                                        <div>
-                                            <span>Team performance</span>
-                                            <strong>Proposal value by creator or sender</strong>
-                                        </div>
-                                    </div>
-                                    <div class="ignition-list" id="ignitionManagerPerformance"></div>
-                                </div>
-                            </div>
-                            <div class="ignition-side-stack">
-                                <div class="ignition-report-card">
-                                    <div class="ignition-report-head">
-                                        <div>
-                                            <span>Sales pipeline</span>
-                                            <strong>Awaiting acceptance</strong>
-                                        </div>
-                                    </div>
-                                    <div class="ignition-list" id="ignitionAwaitingProposals"></div>
-                                </div>
+                            </section>
+                        </section>
+                        <section class="ignition-tab-panel" data-ignition-panel="renewal-analysis" hidden>
+                            <section class="detail-panel">
                                 <div class="ignition-report-card">
                                     <div class="ignition-report-head">
                                         <div>
@@ -8386,6 +8480,36 @@
                                     </div>
                                     <div class="ignition-dataset-grid" id="ignitionRenewalAnalysis"></div>
                                 </div>
+                            </section>
+                        </section>
+                        <section class="ignition-tab-panel" data-ignition-panel="creators" hidden>
+                            <section class="detail-panel">
+                                <div class="ignition-report-card">
+                                    <div class="ignition-report-head">
+                                        <div>
+                                            <span>Team performance</span>
+                                            <strong>Proposal value by creator or sender</strong>
+                                        </div>
+                                    </div>
+                                    <div class="ignition-list" id="ignitionManagerPerformance"></div>
+                                </div>
+                            </section>
+                        </section>
+                        <section class="ignition-tab-panel" data-ignition-panel="pipeline" hidden>
+                            <section class="detail-panel">
+                                <div class="ignition-report-card">
+                                    <div class="ignition-report-head">
+                                        <div>
+                                            <span>Sales pipeline</span>
+                                            <strong>Awaiting acceptance</strong>
+                                        </div>
+                                    </div>
+                                    <div class="ignition-list" id="ignitionAwaitingProposals"></div>
+                                </div>
+                            </section>
+                        </section>
+                        <section class="ignition-tab-panel" data-ignition-panel="datasets" hidden>
+                            <section class="detail-panel">
                                 <div class="ignition-report-card">
                                     <div class="ignition-report-head">
                                         <div>
@@ -8395,56 +8519,7 @@
                                     </div>
                                     <div class="ignition-dataset-grid" id="ignitionDatasetCounts"></div>
                                 </div>
-                            </div>
-                        </section>
-                    </section>
-
-                    <section class="late-charges-screen detail-card" id="ignitionClientsScreen" hidden>
-                        <div class="detail-hero">
-                            <div>
-                                <p class="eyebrow">Ignition Reporting API</p>
-                                <p class="detail-meta">Search, sort, and review every synced Ignition client without crowding the main Reporting API dashboard.</p>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="ghost-button" id="backIgnitionDashboardButton" type="button">Back to Ignition</button>
-                                <button class="ghost-button" id="refreshIgnitionClientsButton" type="button">Refresh</button>
-                            </div>
-                        </div>
-                        <section class="detail-panel ignition-client-panel">
-                            <div class="ignition-client-toolbar">
-                                <div>
-                                    <p class="eyebrow">Clients</p>
-                                    <h3>Ignition client register</h3>
-                                    <p class="detail-meta" id="ignitionClientTableSummary">Synced client rows will appear after the Reporting API import.</p>
-                                </div>
-                                <div class="ignition-client-controls">
-                                    <label class="search-wrap ignition-client-search">
-                                        <span class="search-icon">⌕</span>
-                                        <input id="ignitionClientSearch" type="search" placeholder="Search client, owner, status...">
-                                    </label>
-                                    <label class="ignition-client-control">
-                                        Sort
-                                        <select id="ignitionClientSortSelect" aria-label="Sort Ignition clients">
-                                            <option value="activity-desc">Latest activity</option>
-                                            <option value="name-asc">Client A-Z</option>
-                                            <option value="proposals-desc">Proposals</option>
-                                            <option value="accepted-desc">Accepted</option>
-                                            <option value="outstanding-desc">Outstanding</option>
-                                        </select>
-                                    </label>
-                                    <label class="ignition-client-control">
-                                        Filter
-                                        <select id="ignitionClientFilterSelect" aria-label="Filter Ignition clients">
-                                            <option value="all">All clients</option>
-                                            <option value="active">Active</option>
-                                            <option value="awaiting">Awaiting acceptance</option>
-                                            <option value="overdue">Overdue</option>
-                                            <option value="new">New this month</option>
-                                        </select>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="ignition-client-table-wrap" id="ignitionClientTableWrap"></div>
+                            </section>
                         </section>
                     </section>
 
@@ -8511,7 +8586,6 @@
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="practicePackClearButton" type="button">Clear</button>
-                                <button class="primary-button" id="practicePackGenerateButton" type="button">Generate PDF ZIP</button>
                             </div>
                         </div>
                         <section class="detail-panel practice-pack-panel">
@@ -9490,6 +9564,8 @@
             let ignitionClientSearchTerm = "";
             let ignitionClientSortMode = "activity-desc";
             let ignitionClientFilter = "all";
+            const ignitionTabKeys = new Set(["overview", "clients", "renewals", "staff-income", "subscriptions", "renewal-analysis", "creators", "pipeline", "datasets"]);
+            let activeIgnitionTab = "overview";
             let meReportData = { clients: [], summary: {}, treatmentCategories: [], settings: {}, xero: {}, syncRun: null, activeSyncRun: null };
             let meReportClientStatusFilter = ["active", "archived", "all"].includes(persistedUIState.meReportClientStatusFilter)
                 ? persistedUIState.meReportClientStatusFilter
@@ -9750,6 +9826,7 @@
                         month: stored.month || "",
                         generatedAt: stored.generatedAt || "",
                         clientCount: Number(stored.clientCount || assignments.length || 0),
+                        source: stored.source || "Practice Pack",
                         assignments
                     };
                 } catch {
@@ -9758,7 +9835,7 @@
                     } catch {
                         // Practice Pack manager mapping is rebuilt on the next BM Client CSV upload.
                     }
-                    return { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+                    return { month: "", generatedAt: "", clientCount: 0, source: "Practice Pack", assignments: [] };
                 }
             }
 
@@ -11135,7 +11212,7 @@
             }
 
             function contactXeroURL(client) {
-                const contactId = client?.xeroContactId || client?.contactId;
+                const contactId = client?.xeroContactId || client?.contactId || client?.customerXeroContactId;
                 return contactId
                     ? `https://go.xero.com/Contacts/View/${encodeURIComponent(contactId)}`
                     : "#";
@@ -14359,6 +14436,14 @@
                 return (jashflowData.loans || []).find((loan) => loan.id === selectedJashflowLoanId) || (jashflowData.loans || [])[0] || null;
             }
 
+            function jashflowLoanCustomer(loan) {
+                const customerId = String(loan?.customerId || "");
+                if (!customerId) return null;
+                return (jashflowData.customers || []).find((customer) => String(customer.id || "") === customerId)
+                    || (state.customers || []).find((customer) => String(customer.id || "") === customerId)
+                    || null;
+            }
+
             function jashflowLoanPayload(loan, overrides = {}) {
                 return {
                     customerId: loan?.customerId || "",
@@ -14844,6 +14929,11 @@
                 const transactions = jashflowTransactionRows(loan);
                 const validLoanTabs = ["details", "future-schedule", "payments", "fees-interest", "statement", "transactions", "history"];
                 if (!validLoanTabs.includes(activeJashflowLoanTab)) activeJashflowLoanTab = "details";
+                const loanCustomer = jashflowLoanCustomer(loan);
+                const loanXeroUrl = contactXeroURL(loanCustomer || loan);
+                const xeroTab = loanXeroUrl === "#"
+                    ? '<button type="button" title="No Xero contact link is available for this loan" disabled>Xero</button>'
+                    : `<a href="${escapeHTML(loanXeroUrl)}" target="_blank" rel="noopener" title="Open ${escapeHTML(loan.customerName || loanCustomer?.name || "this contact")} in Xero">Xero</a>`;
                 const chargeRows = transactions.filter((row) => ["fee", "charge", "interest"].includes(String(row.type || "").toLowerCase()));
                 const paymentRows = transactions.filter((row) => String(row.type || "").toLowerCase() === "payment");
                 const scheduleRows = jashflowFutureRepaymentSchedule(loan);
@@ -15058,6 +15148,7 @@
                             <button type="button" class="${activeJashflowLoanTab === "statement" ? "is-active" : ""}" data-jashflow-loan-tab="statement">Statement</button>
                             <button type="button" class="${activeJashflowLoanTab === "transactions" ? "is-active" : ""}" data-jashflow-loan-tab="transactions">Transactions</button>
                             <button type="button" class="${activeJashflowLoanTab === "history" ? "is-active" : ""}" data-jashflow-loan-tab="history">History</button>
+                            ${xeroTab}
                         </nav>
                     </div>
                     <div class="jashflow-detail-sections">${tabContent}</div>
@@ -16679,12 +16770,31 @@
             }
 
             function openIgnitionClientsScreen() {
-                activeView = "ignition-clients";
+                activeView = "ignition";
+                activeIgnitionTab = "clients";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
                 scrollConsoleToTop();
                 loadIgnition();
+            }
+
+            function renderIgnitionTabs() {
+                if (!ignitionTabKeys.has(activeIgnitionTab)) activeIgnitionTab = "overview";
+                document.querySelectorAll("[data-ignition-tab]").forEach((button) => {
+                    const active = button.dataset.ignitionTab === activeIgnitionTab;
+                    button.classList.toggle("is-active", active);
+                    button.setAttribute("aria-selected", String(active));
+                });
+                document.querySelectorAll("[data-ignition-panel]").forEach((panel) => {
+                    panel.hidden = panel.dataset.ignitionPanel !== activeIgnitionTab;
+                });
+            }
+
+            function activateIgnitionTab(tab) {
+                if (!ignitionTabKeys.has(tab)) return;
+                activeIgnitionTab = tab;
+                renderIgnitionScreen();
             }
 
             async function loadIgnition(force = false) {
@@ -16725,7 +16835,7 @@
                     topbarWidget.hidden = !isIgnitionView() || !runActive;
                     topbarWidget.classList.toggle("is-syncing", runActive);
                 }
-                setIgnitionText("ignitionSyncStep", ignitionLoading ? "Loading Ignition dashboard" : run?.currentStep || (connected ? "Ready to sync Ignition" : "Waiting for Ignition connection"));
+                setIgnitionText("ignitionSyncStep", ignitionLoading ? "Loading Ignition dashboard" : run?.currentStep || (connected ? "Ready to sync Ignition changes" : "Waiting for Ignition connection"));
                 setIgnitionText(
                     "ignitionSyncSummary",
                     ignitionLoading
@@ -16748,13 +16858,8 @@
                 const syncButton = document.getElementById("runIgnitionSyncButton");
                 if (syncButton) {
                     syncButton.disabled = !connected || isIgnitionSyncing || ignitionLoading;
-                    syncButton.textContent = isIgnitionSyncing ? "Syncing Ignition..." : "Sync Ignition";
-                }
-                const openClientsButton = document.getElementById("openIgnitionClientsButton");
-                if (openClientsButton) {
-                    const clientTotal = Number(ignitionData.dashboard?.totals?.clientCount || 0);
-                    openClientsButton.textContent = clientTotal ? `Client register (${clientTotal.toLocaleString("en-GB")})` : "Client register";
-                    openClientsButton.disabled = ignitionLoading;
+                    syncButton.textContent = isIgnitionSyncing ? "Syncing changes..." : "Sync changes";
+                    syncButton.title = connected ? "Import Ignition changes since the last completed sync" : "Connect Ignition before syncing";
                 }
                 const refreshButton = document.getElementById("refreshIgnitionButton");
                 if (refreshButton) refreshButton.disabled = ignitionLoading || isIgnitionSyncing;
@@ -16764,7 +16869,7 @@
                 if (renewalsButton) {
                     renewalsButton.hidden = activeView !== "ignition";
                     renewalsButton.disabled = !connected || ignitionLoading || ignitionRenewalsLoading;
-                    renewalsButton.textContent = ignitionRenewalsLoading ? "Loading..." : "Renewals";
+                    renewalsButton.textContent = ignitionRenewalsLoading ? "Creating..." : "Create renewals round";
                     renewalsButton.title = connected ? "Create a new five-week renewal round from unpicked Ignition proposals" : "Connect Ignition before starting renewals";
                 }
 
@@ -16790,6 +16895,7 @@
                 renderIgnitionDatasetCounts();
                 renderIgnitionClients();
                 renderIgnitionRenewals();
+                renderIgnitionTabs();
             }
 
             function renderIgnitionServicePerformance() {
@@ -16853,10 +16959,11 @@
                     return {
                         month: practicePackResult.month || "",
                         generatedAt: practicePackResult.generatedAt || "",
-                        clientCount: practicePackResult.clientCount || practicePackAssignmentRows().length
+                        clientCount: practicePackResult.clientCount || practicePackAssignmentRows().length,
+                        source: "Practice Pack"
                     };
                 }
-                return practicePackAssignments || { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+                return practicePackAssignments || { month: "", generatedAt: "", clientCount: 0, source: "Practice Pack", assignments: [] };
             }
 
             function practicePackAssignmentIndexes(assignments) {
@@ -16949,20 +17056,20 @@
                 if (!target) return;
                 const summary = document.getElementById("ignitionStaffFeeSummary");
                 if (ignitionLoading) {
-                    if (summary) summary.textContent = "Loading Ignition client fees and Practice Pack manager assignments.";
-                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Building staff fee totals</h4><p>Reading synced Ignition clients and the latest Practice Pack manager map.</p></div>';
+                    if (summary) summary.textContent = "Loading Ignition client fees and BM Data manager assignments.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Building staff fee totals</h4><p>Reading synced Ignition clients and the latest BM Data manager map.</p></div>';
                     return;
                 }
 
                 const report = buildIgnitionStaffFeeRows();
                 const meta = practicePackAssignmentMeta();
                 if (!report.assignments.length) {
-                    if (summary) summary.textContent = "Upload the latest BM Client CSV in Practice Pack to map clients to managers.";
-                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Waiting for Practice Pack</p><h4>No client manager map is loaded</h4><p>Generate the Practice Pack from the BM Client CSV and BM Task CSV, then this widget will update automatically.</p></div>';
+                    if (summary) summary.textContent = "Upload the latest BM Data CSV to map clients to managers.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Waiting for BM Data</p><h4>No client manager map is loaded</h4><p>Upload the BM Data CSV from this panel and the staff fee totals will update automatically.</p></div>';
                     return;
                 }
                 if (!report.clients.length) {
-                    if (summary) summary.textContent = "Practice Pack managers are loaded; sync Ignition to bring in client fees.";
+                    if (summary) summary.textContent = "BM Data managers are loaded; sync Ignition to bring in client fees.";
                     target.innerHTML = '<div class="empty-state"><p class="eyebrow">Waiting for Ignition</p><h4>No Ignition client rows are stored yet</h4><p>Connect and sync Ignition to calculate monthly fees by staff member.</p></div>';
                     return;
                 }
@@ -16972,7 +17079,8 @@
                     return;
                 }
 
-                const sourceTime = meta.generatedAt ? ` · Practice Pack ${formatDateTime(meta.generatedAt)}` : "";
+                const sourceLabel = meta.source || "BM Data";
+                const sourceTime = meta.generatedAt ? ` · ${sourceLabel} ${formatDateTime(meta.generatedAt)}` : "";
                 if (summary) {
                     summary.textContent = `${report.rows.length.toLocaleString("en-GB")} staff member${report.rows.length === 1 ? "" : "s"} · ${formatCurrency(report.totalGross)} inc VAT per month from ${report.feeClientCount.toLocaleString("en-GB")} Ignition client${report.feeClientCount === 1 ? "" : "s"}${sourceTime}.`;
                 }
@@ -16982,7 +17090,7 @@
                         <div class="ignition-staff-fee-row">
                             <div>
                                 <strong>${escapeHTML(row.manager || "Unassigned")}</strong>
-                                <span>${row.clientCount.toLocaleString("en-GB")} client${row.clientCount === 1 ? "" : "s"} · ${row.matchedClients.toLocaleString("en-GB")} matched to Practice Pack${unmatched}</span>
+                                <span>${row.clientCount.toLocaleString("en-GB")} client${row.clientCount === 1 ? "" : "s"} · ${row.matchedClients.toLocaleString("en-GB")} matched to BM Data${unmatched}</span>
                             </div>
                             <strong>${formatCurrency(row.gross)} / month</strong>
                             <small>${formatCurrency(row.net)} fees<br>${formatCurrency(row.vat)} VAT</small>
@@ -17193,7 +17301,6 @@
                 const panel = document.getElementById("ignitionRenewalsPanel");
                 if (!panel) return;
                 const run = ignitionRenewalRun();
-                panel.hidden = !run && !ignitionRenewalsLoading;
 
                 const title = document.getElementById("ignitionRenewalsTitle");
                 const summary = document.getElementById("ignitionRenewalsSummary");
@@ -17227,6 +17334,18 @@
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
                     if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, Boolean(run.emailSentAt || run.finalisedAt));
+                } else {
+                    if (title) title.textContent = "Renewals round";
+                    if (summary) summary.textContent = "Create a renewals round from Ignition proposals due in the next five weeks.";
+                    if (meta) {
+                        meta.innerHTML = [
+                            ["Status", "Ready"],
+                            ["Window", "Next five weeks"],
+                            ["Email", `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`],
+                            ["Zapier", ignitionData.renewals?.zapierConfigured ? "Configured" : "Not configured"]
+                        ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+                    }
+                    if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active round</p><h4>Create a renewals round when you are ready</h4><p>Ignition will pick proposals due in the next five weeks and skip anything already reserved in an earlier round.</p></div>';
                 }
 
                 const locked = Boolean(run?.emailSentAt || run?.finalisedAt);
@@ -20962,6 +21081,28 @@
                 return match ? String(row[match] || "").trim() : "";
             }
 
+            function practicePackClientAssignmentsFromData(clientData) {
+                const clientNameColumns = ["Client Name", "Client", "Name", "ClientName", "Company Name", "Company", "Contact", "Customer Name", "Organisation", "Organisation Name", "Business Name"];
+                const clientManagerColumns = ["Client Manager", "Manager", "Manager Name", "Account Manager", "Account Manager Name", "Client Owner", "Owner", "Assigned Manager", "Relationship Manager", "Partner", "Staff", "Staff Member", "Bookkeeper", "Assigned To"];
+                const clientIndex = new Map();
+                const rows = Array.isArray(clientData?.rows) ? clientData.rows : [];
+                rows.forEach((row, index) => {
+                    const name = practicePackColumnValue(row, clientNameColumns) || `Client ${index + 1}`;
+                    const manager = practicePackColumnValue(row, clientManagerColumns) || "Unassigned";
+                    const key = normalisePracticePackName(name) || `client${index + 1}`;
+                    if (!clientIndex.has(key)) {
+                        clientIndex.set(key, {
+                            key,
+                            matchKey: normalisePracticePackClientMatchName(name),
+                            clientName: name,
+                            manager,
+                            source: "BM Data File"
+                        });
+                    }
+                });
+                return [...clientIndex.values()].filter((client) => client.clientName);
+            }
+
             function parsePracticePackCsv(text) {
                 const rawRows = [];
                 let row = [];
@@ -21283,6 +21424,45 @@
                 downloadPracticePackBlob(practicePackResult.zipBlob, practicePackResult.filename);
             }
 
+            async function uploadIgnitionBMDataFile(file) {
+                if (!file) return;
+                const looksLikeCsv = /\.csv$/i.test(file.name || "") || /csv/i.test(file.type || "");
+                if (!looksLikeCsv) {
+                    showToast("Choose a BM Data CSV file.", "error");
+                    return;
+                }
+                try {
+                    const clientData = parsePracticePackCsv(await file.text());
+                    const assignments = practicePackClientAssignmentsFromData(clientData);
+                    if (!assignments.length) {
+                        showToast("No client rows were found in the BM Data file.", "error");
+                        return;
+                    }
+
+                    const assignedCount = assignments.filter((assignment) => assignment.manager && assignment.manager !== "Unassigned").length;
+                    practicePackResult = null;
+                    practicePackAssignments = {
+                        month: currentPracticePackMonth(),
+                        generatedAt: new Date().toISOString(),
+                        clientCount: assignments.length,
+                        source: "BM Data file",
+                        assignments
+                    };
+                    persistPracticePackAssignments();
+                    renderPracticePackScreen();
+                    renderIgnitionStaffFeeWidget();
+
+                    const message = assignedCount
+                        ? `${formatInteger(assignments.length)} clients loaded with ${formatInteger(assignedCount)} manager assignments.`
+                        : `${formatInteger(assignments.length)} clients loaded, but no manager column was recognised.`;
+                    showTopbarNotice("BM Data file uploaded", message, "success");
+                    showToast(message, assignedCount ? "success" : "info");
+                } catch (error) {
+                    console.error("Unable to upload BM Data file", error);
+                    showToast("Unable to read the BM Data CSV file.", "error");
+                }
+            }
+
             async function generatePracticePack(event) {
                 event?.preventDefault();
                 const clientFile = document.getElementById("practicePackClientFile")?.files?.[0];
@@ -21323,6 +21503,7 @@
                         month,
                         generatedAt: practicePackResult.generatedAt,
                         clientCount: practicePackResult.clientCount,
+                        source: "Practice Pack",
                         assignments: practicePackResult.clientAssignments.map((record) => normalisePracticePackAssignmentRecord(record)).filter(Boolean)
                     };
                     persistPracticePackAssignments();
@@ -21341,7 +21522,7 @@
 
             function clearPracticePackScreen() {
                 practicePackResult = null;
-                practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+                practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, source: "Practice Pack", assignments: [] };
                 persistPracticePackAssignments();
                 ["practicePackClientFile", "practicePackTaskFile"].forEach((id) => {
                     const input = document.getElementById(id);
@@ -21423,6 +21604,19 @@
                 if (monthSelect && monthSelect.dataset.practicePackWired !== "true") {
                     monthSelect.dataset.practicePackWired = "true";
                     monthSelect.addEventListener("change", renderPracticePackScreen);
+                }
+                const ignitionBMDataButton = document.getElementById("uploadIgnitionBMDataButton");
+                if (ignitionBMDataButton && ignitionBMDataButton.dataset.practicePackWired !== "true") {
+                    ignitionBMDataButton.dataset.practicePackWired = "true";
+                    ignitionBMDataButton.addEventListener("click", () => document.getElementById("ignitionBMDataFile")?.click());
+                }
+                const ignitionBMDataFile = document.getElementById("ignitionBMDataFile");
+                if (ignitionBMDataFile && ignitionBMDataFile.dataset.practicePackWired !== "true") {
+                    ignitionBMDataFile.dataset.practicePackWired = "true";
+                    ignitionBMDataFile.addEventListener("change", async (event) => {
+                        await uploadIgnitionBMDataFile(event.target.files?.[0]);
+                        event.target.value = "";
+                    });
                 }
             }
 
@@ -23298,7 +23492,7 @@
                 statePersistenceDisabled = false;
                 syncSettings = { invoiceScope: "outstanding_only", invoiceYears: [] };
                 letterTemplates = defaultLetterTemplates.map((template) => normaliseLetterTemplate(template));
-                practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, assignments: [] };
+                practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, source: "Practice Pack", assignments: [] };
                 selectedLetterTemplateId = letterTemplates[0]?.id || "";
                 selectedFilter = "all";
                 lateChargeFilter = "active";
@@ -23810,6 +24004,9 @@
                 });
                 const refreshIgnitionButton = document.getElementById("refreshIgnitionButton");
                 if (refreshIgnitionButton) refreshIgnitionButton.addEventListener("click", () => loadIgnition(true));
+                document.querySelectorAll("[data-ignition-tab]").forEach((button) => {
+                    button.addEventListener("click", () => activateIgnitionTab(button.dataset.ignitionTab || "overview"));
+                });
                 const openIgnitionClientsButton = document.getElementById("openIgnitionClientsButton");
                 if (openIgnitionClientsButton) openIgnitionClientsButton.addEventListener("click", openIgnitionClientsScreen);
                 const backIgnitionDashboardButton = document.getElementById("backIgnitionDashboardButton");

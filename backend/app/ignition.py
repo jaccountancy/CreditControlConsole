@@ -1,6 +1,6 @@
 import base64
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import httpx
@@ -271,12 +271,20 @@ async def ignition_api_get(connection_row: dict, endpoint: str, params: dict | N
     return response.json()
 
 
-async def fetch_ignition_collection(connection_row: dict, endpoint: str) -> tuple[list[dict], dict]:
+def _ignition_modified_since_param(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+async def fetch_ignition_collection(connection_row: dict, endpoint: str, modified_since: datetime | None = None) -> tuple[list[dict], dict]:
     rows: list[dict] = []
     cursor = None
     last_meta: dict = {}
     while True:
         params = {"limit": IGNITION_PAGE_LIMIT}
+        if modified_since is not None:
+            params["updated_since"] = _ignition_modified_since_param(modified_since)
         if cursor:
             params["cursor"] = cursor
         payload = await ignition_api_get(connection_row, endpoint, params)

@@ -10886,6 +10886,41 @@ def _upsert_ignition_records(user: dict, practice_id: str, dataset: str, rows: l
     return len(rows)
 
 
+def _ignition_incremental_modified_since(user_id: str) -> datetime | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT started_at
+                FROM ignition_sync_runs
+                WHERE user_id = %s
+                  AND status = 'completed'
+                  AND started_at IS NOT NULL
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            latest_run = cursor.fetchone() or {}
+            cutoff = latest_run.get("started_at")
+            if cutoff is None:
+                cursor.execute(
+                    """
+                    SELECT MAX(COALESCE(source_updated_at, source_created_at, synced_at)) AS cutoff
+                    FROM ignition_reporting_records
+                    WHERE user_id = %s
+                    """,
+                    (user_id,),
+                )
+                cutoff = (cursor.fetchone() or {}).get("cutoff")
+        connection.commit()
+    if cutoff is None:
+        return None
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=timezone.utc)
+    return cutoff.astimezone(timezone.utc) - INCREMENTAL_SYNC_OVERLAP
+
+
 def request_ignition_sync_run(user: dict) -> tuple[dict, bool]:
     try:
         get_ignition_connection_for_user(user["id"])
@@ -12048,30 +12083,82 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
     dataset_counts: dict[str, int] = {}
     total_fetched = 0
     total_processed = 0
+    modified_since = _ignition_incremental_modified_since(user["id"])
+    is_incremental_sync = modified_since is not None
+    incremental_filter_supported = True
+    run_started_at = utcnow()
+    start_summary = (
+        f"Preparing incremental Reporting API sync for changes since {modified_since.isoformat()}."
+        if is_incremental_sync
+        else "Preparing first full Reporting API sync."
+    )
     _update_ignition_sync_run(
         sync_run_id,
         status="running",
-        current_step="Connecting to Ignition",
-        summary="Refreshing Ignition OAuth access and preparing Reporting API sync.",
-        started_at=utcnow(),
-        heartbeat_at=utcnow(),
+        current_step="Preparing incremental Ignition sync" if is_incremental_sync else "Connecting to Ignition",
+        summary=start_summary,
+        started_at=run_started_at,
+        heartbeat_at=run_started_at,
     )
     practice = {"id": connection.get("practice_id") or "", "name": connection.get("practice_name") or ""}
     for dataset, endpoint in IGNITION_DATASETS:
+        fetch_modified_since = modified_since if is_incremental_sync and incremental_filter_supported else None
         _update_ignition_sync_run(
             sync_run_id,
             current_step=f"Importing {dataset.replace('_', ' ')}",
-            summary=f"Fetching {dataset.replace('_', ' ')} from Ignition Reporting API.",
+            summary=(
+                f"Fetching changed {dataset.replace('_', ' ')} from Ignition Reporting API."
+                if fetch_modified_since
+                else f"Fetching {dataset.replace('_', ' ')} from Ignition Reporting API."
+            ),
             heartbeat_at=utcnow(),
             datasets_synced=dataset_counts,
             fetched_count=total_fetched,
             processed_count=total_processed,
         )
         try:
-            rows, meta = await fetch_ignition_collection(connection, endpoint)
+            rows, meta = await fetch_ignition_collection(connection, endpoint, modified_since=fetch_modified_since)
         except HTTPException as exc:
             provider_status = _ignition_provider_status(exc)
-            if dataset in OPTIONAL_IGNITION_DATASETS and provider_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
+            if fetch_modified_since and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
+                incremental_filter_supported = False
+                record_audit_event(
+                    "ignition_sync_run",
+                    str(sync_run_id),
+                    "ignition.sync.incremental_filter_unavailable",
+                    {
+                        "dataset": dataset,
+                        "provider_status": provider_status,
+                        "modified_since": modified_since.isoformat(),
+                        "message": "Ignition rejected the incremental updated_since filter; falling back to a full Reporting API sync.",
+                    },
+                    user["id"],
+                )
+                _update_ignition_sync_run(
+                    sync_run_id,
+                    summary="Ignition rejected incremental filters; continuing with a full Reporting API sync.",
+                    heartbeat_at=utcnow(),
+                )
+                try:
+                    rows, meta = await fetch_ignition_collection(connection, endpoint)
+                except HTTPException as fallback_exc:
+                    fallback_status = _ignition_provider_status(fallback_exc)
+                    if dataset in OPTIONAL_IGNITION_DATASETS and fallback_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
+                        dataset_counts[dataset] = 0
+                        record_audit_event(
+                            "ignition_sync_run",
+                            str(sync_run_id),
+                            f"ignition.{dataset}.skipped",
+                            {
+                                "dataset": dataset,
+                                "provider_status": fallback_status,
+                                "message": "Optional Ignition Deals dataset is unavailable for this practice.",
+                            },
+                            user["id"],
+                        )
+                        continue
+                    raise fallback_exc
+            elif dataset in OPTIONAL_IGNITION_DATASETS and provider_status in (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND):
                 dataset_counts[dataset] = 0
                 record_audit_event(
                     "ignition_sync_run",
@@ -12085,7 +12172,8 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
                     user["id"],
                 )
                 continue
-            raise exc
+            else:
+                raise exc
         practice_meta = (meta or {}).get("practice") or {}
         if practice_meta.get("id") or practice_meta.get("name"):
             practice = {"id": str(practice_meta.get("id") or practice.get("id") or ""), "name": practice_meta.get("name") or practice.get("name") or ""}
@@ -12094,7 +12182,12 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         total_fetched += len(rows)
         total_processed += processed
         record_audit_event("ignition_sync_run", str(sync_run_id), f"ignition.{dataset}.synced", {"dataset": dataset, "records": processed}, user["id"])
-    summary = f"Ignition sync complete: imported {total_processed} records across {len(dataset_counts)} reporting datasets."
+    if is_incremental_sync and incremental_filter_supported:
+        summary = f"Ignition incremental sync complete: imported {total_processed} changed records across {len(dataset_counts)} reporting datasets."
+    elif is_incremental_sync:
+        summary = f"Ignition sync complete: imported {total_processed} records across {len(dataset_counts)} reporting datasets after falling back to a full sync."
+    else:
+        summary = f"Ignition sync complete: imported {total_processed} records across {len(dataset_counts)} reporting datasets."
     completed = _update_ignition_sync_run(
         sync_run_id,
         status="completed",
