@@ -6558,6 +6558,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
             dismissed_warning_keys = []
     if not isinstance(dismissed_warning_keys, list):
         dismissed_warning_keys = []
+    tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(row.get("tax_adjustment_overrides"))
     return {
         "id": str(row["id"]),
         "clientName": row.get("client_name") or "",
@@ -6575,6 +6576,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "vatRegisteredConfirmed": vat_registered_confirmed,
         "vatRegisteredConfirmedAt": _iso(row.get("vat_registered_confirmed_at")) or "",
         "dismissedWarningKeys": [str(item) for item in dismissed_warning_keys if str(item).strip()][:200],
+        "taxAdjustmentOverrides": tax_adjustment_overrides,
         "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
         "lastCalculatedAt": _iso(row.get("last_calculated_at")) or "",
@@ -6646,6 +6648,41 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         ],
         "submissions": [_serialize_me_report_submission(submission) for submission in submissions],
     }
+
+
+def _normalise_me_report_tax_adjustment_overrides(value) -> dict:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = {}
+    if not isinstance(value, dict):
+        value = {}
+    allowed_keys = [
+        "depreciation",
+        "amortisation",
+        "nonAllowable",
+        "penalties",
+        "entertaining",
+    ]
+    result = {}
+    for key in allowed_keys:
+        raw_entry = value.get(key) if isinstance(value.get(key), dict) else {}
+        entry = {}
+        for direction in ("add", "remove"):
+            raw_codes = raw_entry.get(direction)
+            if not isinstance(raw_codes, list):
+                raw_codes = []
+            seen = set()
+            codes = []
+            for raw_code in raw_codes:
+                code = str(raw_code or "").strip().upper()
+                if code and code not in seen:
+                    seen.add(code)
+                    codes.append(code)
+            entry[direction] = codes[:200]
+        result[key] = entry
+    return result
 
 
 def _me_report_client_row(user: dict, client_id: str) -> dict:
@@ -6909,6 +6946,9 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
             for item in payload.get("dismissedWarningKeys")
             if str(item).strip()
         ][:200]
+    tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(client.get("tax_adjustment_overrides"))
+    if "taxAdjustmentOverrides" in payload:
+        tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(payload.get("taxAdjustmentOverrides"))
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -6919,6 +6959,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     vat_registered_confirmed = %s,
                     vat_registered_confirmed_at = %s,
                     dismissed_warning_keys = %s::jsonb,
+                    tax_adjustment_overrides = %s::jsonb,
                     updated_at = %s
                 WHERE id = %s
                   AND user_id = %s
@@ -6929,6 +6970,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     vat_registered_confirmed,
                     vat_registered_confirmed_at,
                     json.dumps(dismissed_warning_keys, default=_json_default),
+                    json.dumps(tax_adjustment_overrides, default=_json_default),
                     now,
                     client_id,
                     user["id"],
@@ -6964,6 +7006,10 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
             "vat_registered_confirmed": vat_registered_confirmed,
             "vat_registered_confirmed_at": _iso(vat_registered_confirmed_at) or "",
             "dismissed_warning_count": len(dismissed_warning_keys),
+            "tax_adjustment_override_count": sum(
+                len(entry.get("add") or []) + len(entry.get("remove") or [])
+                for entry in tax_adjustment_overrides.values()
+            ),
         },
         user["id"],
     )

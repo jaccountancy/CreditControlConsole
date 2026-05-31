@@ -5686,7 +5686,7 @@
                 align-items: center;
             }
             .me-report-step-breakdown-head {
-                grid-template-columns: minmax(0, 1fr) auto;
+                grid-template-columns: minmax(0, 1fr) auto auto;
                 color: var(--ink);
             }
             .me-report-step-breakdown-head span {
@@ -5694,6 +5694,21 @@
                 font-size: 0.78rem;
                 font-weight: 850;
                 text-align: right;
+            }
+            .me-report-breakdown-edit-button {
+                min-height: 30px;
+                padding: 6px 12px;
+                font-size: 0.72rem;
+                opacity: 0;
+                transform: translateX(6px);
+                pointer-events: none;
+                transition: opacity 0.16s ease, transform 0.16s ease;
+            }
+            .me-report-step-breakdown:hover .me-report-breakdown-edit-button,
+            .me-report-calculation-row:focus-within .me-report-breakdown-edit-button {
+                opacity: 1;
+                transform: translateX(0);
+                pointer-events: auto;
             }
             .me-report-step-breakdown-row {
                 padding-top: 8px;
@@ -5727,6 +5742,16 @@
                 font-style: normal;
                 font-weight: 900;
                 text-align: right;
+            }
+            .me-report-step-breakdown-row.is-excluded {
+                color: var(--muted);
+                background: rgba(255, 83, 83, 0.05);
+            }
+            .me-report-step-breakdown-row.is-excluded strong {
+                text-decoration: line-through;
+            }
+            .me-report-step-breakdown-row.is-excluded em {
+                color: var(--red);
             }
             .me-report-help-notes {
                 margin: 0;
@@ -23365,7 +23390,7 @@
             }
 
             function meReportTabHint(client, key) {
-                const summary = client.summary || {};
+                const summary = meReportAdjustedSummary(client, client.summary || {});
                 if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Upload overview report";
                 if (key === "submission-history") return `${(client.submissions || []).length} uploaded`;
                 if (key === "tax") return formatCurrency(summary.estimatedCorporationTax || 0);
@@ -23603,6 +23628,342 @@
                 })).filter((item) => Number(item.amount || 0) > 0);
             }
 
+            function meReportClonePlain(value) {
+                try {
+                    return JSON.parse(JSON.stringify(value || {}));
+                } catch {
+                    return {};
+                }
+            }
+
+            function meReportMoneyValue(value) {
+                const numeric = Number(value || 0);
+                return Number.isFinite(numeric) ? Math.round(numeric * 100) / 100 : 0;
+            }
+
+            function meReportNormaliseTaxCode(value) {
+                return String(value || "").trim().toUpperCase();
+            }
+
+            function meReportTaxAdjustmentStepKeys() {
+                return ["depreciation", "amortisation", "nonAllowable", "penalties", "entertaining"];
+            }
+
+            function meReportNormaliseTaxAdjustmentOverrides(value = {}) {
+                let source = value;
+                if (typeof source === "string") {
+                    try {
+                        source = JSON.parse(source);
+                    } catch {
+                        source = {};
+                    }
+                }
+                if (!source || typeof source !== "object") source = {};
+                return meReportTaxAdjustmentStepKeys().reduce((result, key) => {
+                    const entry = source[key] && typeof source[key] === "object" ? source[key] : {};
+                    const normaliseList = (items) => [...new Set((Array.isArray(items) ? items : [])
+                        .map(meReportNormaliseTaxCode)
+                        .filter(Boolean))]
+                        .slice(0, 200);
+                    result[key] = {
+                        add: normaliseList(entry.add),
+                        remove: normaliseList(entry.remove)
+                    };
+                    return result;
+                }, {});
+            }
+
+            function meReportClientTaxOverrides(client = {}) {
+                return meReportNormaliseTaxAdjustmentOverrides(client.taxAdjustmentOverrides);
+            }
+
+            function meReportTaxOverridesHaveEntries(overrides = {}) {
+                return meReportTaxAdjustmentStepKeys().some((key) => (
+                    (overrides[key]?.add || []).length || (overrides[key]?.remove || []).length
+                ));
+            }
+
+            function meReportTaxAdjustmentStepDefinitions() {
+                return [
+                    {
+                        key: "depreciation",
+                        label: "Depreciation add-back",
+                        source: "Trial Balance",
+                        note: "Added back because accounting depreciation is not corporation-tax deductible; capital allowances are reviewed separately.",
+                        predicate: (account) => {
+                            const text = meReportTrialBalanceAccountText(account);
+                            return text.includes("depreciation") && !text.includes("accumulated") && !text.includes("amortisation") && !meReportTrialBalanceAccountIsBalanceSheet(account);
+                        }
+                    },
+                    {
+                        key: "amortisation",
+                        label: "Amortisation add-back",
+                        source: "Trial Balance",
+                        note: "Added back for review because the nominal code is amortisation and no separate qualifying intangible treatment has been confirmed.",
+                        predicate: (account) => meReportTrialBalanceAccountText(account).includes("amortisation") && !meReportTrialBalanceAccountIsBalanceSheet(account)
+                    },
+                    {
+                        key: "nonAllowable",
+                        label: "Non-allowable expense add-back",
+                        source: "Disallowed expense scan",
+                        note: "Added back because the nominal code or source description marks the cost as non-allowable for tax.",
+                        predicate: (account) => {
+                            const text = meReportTrialBalanceAccountText(account);
+                            return text.includes("non-allowable") || text.includes("non allowable") || text.includes("tax adjustment");
+                        }
+                    },
+                    {
+                        key: "penalties",
+                        label: "Fines, penalties and car fine add-back",
+                        source: "Disallowed expense scan",
+                        note: "Added back because fines, penalties and similar charges are normally disallowable for corporation tax.",
+                        predicate: (account) => {
+                            const text = meReportTrialBalanceAccountText(account);
+                            return ["fine", "penalt", "car fine", "parking fine", "hmrc interest"].some((term) => text.includes(term));
+                        }
+                    },
+                    {
+                        key: "entertaining",
+                        label: "Client entertaining add-back",
+                        source: "Entertainment review",
+                        note: "Added back because client entertaining is normally disallowable for corporation tax even when it is business-related.",
+                        predicate: (account) => {
+                            const text = meReportTrialBalanceAccountText(account);
+                            return text.includes("entertainment - 0%") || text.includes("client entertaining") || text.includes("client entertainment");
+                        }
+                    }
+                ];
+            }
+
+            function meReportTaxAdjustmentStepKeyFromLabel(label = "") {
+                const text = String(label || "").toLowerCase();
+                if (text.includes("depreciation") && !text.includes("amortisation")) return "depreciation";
+                if (text.includes("amortisation")) return "amortisation";
+                if (text.includes("non-allowable") || text.includes("non allowable") || text.includes("disallowed expense")) return "nonAllowable";
+                if (text.includes("fine") || text.includes("penalt") || text.includes("car fine")) return "penalties";
+                if (text.includes("client entertaining") || text.includes("client entertainment")) return "entertaining";
+                return "";
+            }
+
+            function meReportTaxAccountRows(summary = {}, config = {}, overrides = {}) {
+                const accounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
+                const stepOverrides = overrides[config.key] || {};
+                const addCodes = new Set(stepOverrides.add || []);
+                const removeCodes = new Set(stepOverrides.remove || []);
+                return accounts.map((account) => {
+                    const code = meReportNormaliseTaxCode(account.accountCode);
+                    const amount = meReportTrialBalanceAccountAmount(account);
+                    const defaultIncluded = Boolean(config.predicate?.(account));
+                    const manuallyIncluded = code && addCodes.has(code);
+                    const manuallyExcluded = code && removeCodes.has(code);
+                    const visible = (defaultIncluded || manuallyIncluded || manuallyExcluded) && amount > 0;
+                    if (!visible) return null;
+                    const included = (defaultIncluded || manuallyIncluded) && !manuallyExcluded;
+                    const overrideNote = manuallyExcluded
+                        ? "Excluded by review"
+                        : (manuallyIncluded && !defaultIncluded ? "Included by review" : "");
+                    return {
+                        code,
+                        label: account.accountName || account.accountCode || "Nominal code",
+                        amount: included ? amount : 0,
+                        originalAmount: amount,
+                        debit: account.debitYTD,
+                        credit: account.creditYTD,
+                        source: account.sourcePage ? `Trial Balance, page ${account.sourcePage}` : "Trial Balance",
+                        treatment: [account.accountType || "", overrideNote].filter(Boolean).join(" · "),
+                        included,
+                        overrideStatus: overrideNote
+                    };
+                }).filter(Boolean);
+            }
+
+            function meReportFindTaxAccount(summary = {}, code = "") {
+                const normalised = meReportNormaliseTaxCode(code);
+                return (Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [])
+                    .find((account) => meReportNormaliseTaxCode(account.accountCode) === normalised) || null;
+            }
+
+            function meReportCorporationTaxDetailFromProfit(value) {
+                const taxableProfit = Math.max(0, meReportMoneyValue(value));
+                const lowerLimit = 50000;
+                const upperLimit = 250000;
+                const smallProfitsRate = 19;
+                const mainRate = 25;
+                const marginalReliefRate = 3 / 200;
+                let tax = 0;
+                let rateBand = "No corporation tax";
+                let lines = [{ label: "No taxable profit", amount: taxableProfit, rate: "0.0%", tax: 0 }];
+                if (taxableProfit > 0 && taxableProfit <= lowerLimit) {
+                    tax = meReportMoneyValue(taxableProfit * (smallProfitsRate / 100));
+                    rateBand = "Small profits rate";
+                    lines = [{ label: rateBand, amount: taxableProfit, rate: formatPercent(smallProfitsRate), tax }];
+                } else if (taxableProfit >= upperLimit) {
+                    tax = meReportMoneyValue(taxableProfit * (mainRate / 100));
+                    rateBand = "Main rate";
+                    lines = [{ label: rateBand, amount: taxableProfit, rate: formatPercent(mainRate), tax }];
+                } else if (taxableProfit > lowerLimit) {
+                    const mainTax = meReportMoneyValue(taxableProfit * (mainRate / 100));
+                    const marginalRelief = meReportMoneyValue((upperLimit - taxableProfit) * marginalReliefRate);
+                    tax = meReportMoneyValue(mainTax - marginalRelief);
+                    rateBand = "Main rate less marginal relief";
+                    lines = [
+                        { label: "Main rate", amount: taxableProfit, rate: formatPercent(mainRate), tax: mainTax },
+                        { label: "Marginal relief", amount: upperLimit - taxableProfit, rate: "3/200", tax: -marginalRelief },
+                        { label: "Corporation tax estimate", amount: taxableProfit, rate: formatPercent(taxableProfit ? (tax / taxableProfit) * 100 : 0), tax }
+                    ];
+                }
+                return {
+                    taxableProfit,
+                    tax,
+                    effectiveRate: taxableProfit ? meReportMoneyValue((tax / taxableProfit) * 100) : 0,
+                    rateBand,
+                    lowerLimit,
+                    upperLimit,
+                    smallProfitsRate,
+                    mainRate,
+                    marginalReliefFraction: "3/200",
+                    lines
+                };
+            }
+
+            function meReportIsBaseTaxStep(row = {}) {
+                const label = String(row.label || "").toLowerCase();
+                return (
+                    label.includes("profit before tax")
+                    || label.includes("depreciation add-back")
+                    || label.includes("amortisation add-back")
+                    || label.includes("non-allowable expense add-back")
+                    || label.includes("disallowed expenses")
+                    || label.includes("fines, penalties")
+                    || label.includes("client entertaining add-back")
+                    || label.includes("capital allowances")
+                    || label.includes("brought-forward trading loss")
+                    || label.includes("estimated taxable profit")
+                    || label.includes("corporation tax estimate")
+                    || label.includes("section 455")
+                    || label.includes("total ct")
+                );
+            }
+
+            function meReportPreservedTaxAddBackRows(rows = []) {
+                return rows.filter((row) => {
+                    if (!row || meReportIsBaseTaxStep(row)) return false;
+                    const label = String(row.label || "").toLowerCase();
+                    const treatment = String(row.treatment || "").toLowerCase();
+                    const amount = Number(row.amount || 0);
+                    return amount > 0 && (treatment.includes("add") || label.includes("disallow") || label.includes("entertain"));
+                });
+            }
+
+            function meReportExistingCapitalAllowance(summary = {}, rows = []) {
+                const rowTotal = rows
+                    .filter((row) => String(row.label || "").toLowerCase().includes("capital allowance"))
+                    .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+                const fallback = Number(summary.capitalAllowances || 0);
+                return Math.abs(meReportMoneyValue(rowTotal || fallback));
+            }
+
+            function meReportApplyTaxAdjustmentOverrides(summary = {}, client = {}, overrides = {}) {
+                const rows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
+                const accountingProfit = meReportMoneyValue(summary.accountingProfit || summary.yearToDateProfit || 0);
+                const stepRows = meReportTaxAdjustmentStepDefinitions().map((config) => {
+                    const breakdown = meReportTaxAccountRows(summary, config, overrides);
+                    const amount = meReportMoneyValue(breakdown.reduce((sum, item) => sum + meReportBreakdownAmount(item), 0));
+                    return {
+                        label: config.label,
+                        amount,
+                        treatment: "Add back",
+                        source: config.source,
+                        note: config.note,
+                        breakdown,
+                        breakdownTitle: "Figure breakdown",
+                        taxOverrideKey: config.key
+                    };
+                });
+                const otherRows = meReportPreservedTaxAddBackRows(rows);
+                const otherAddBack = meReportMoneyValue(otherRows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
+                const capitalAllowances = meReportExistingCapitalAllowance(summary, rows);
+                const addBackTotal = meReportMoneyValue(stepRows.reduce((sum, row) => sum + Number(row.amount || 0), 0) + otherAddBack);
+                const taxAdjustments = meReportMoneyValue(addBackTotal - capitalAllowances);
+                const taxableProfitBeforeLosses = Math.max(0, meReportMoneyValue(accountingProfit + taxAdjustments));
+                const broughtForwardTradingLoss = meReportBroughtForwardTradingLoss(client, summary);
+                const tradingLossReliefUsed = Math.min(broughtForwardTradingLoss, taxableProfitBeforeLosses);
+                const taxableProfit = Math.max(0, meReportMoneyValue(taxableProfitBeforeLosses - tradingLossReliefUsed));
+                const taxDetail = meReportCorporationTaxDetailFromProfit(taxableProfit);
+                const estimatedCt = taxDetail.tax;
+                const currentYearProfit = meReportMoneyValue(summary.yearToDateProfit || accountingProfit);
+                const currentYearEarnings = meReportMoneyValue(currentYearProfit - estimatedCt);
+                const periodEndReserves = meReportMoneyValue(Number(summary.openingRetainedReserves || 0) + currentYearEarnings - Number(summary.dividendsTaken || 0));
+                const section455Tax = meReportMoneyValue(summary.section455Tax || 0);
+                const totalTaxExposure = meReportMoneyValue(estimatedCt + section455Tax);
+                const taxCalculationSteps = [
+                    { label: "Profit before tax YTD", amount: accountingProfit, treatment: "Start", source: "Profit and Loss - YTD" },
+                    ...stepRows.filter((row) => Number(row.amount || 0) !== 0 || row.breakdown.length),
+                    ...otherRows,
+                    ...(capitalAllowances ? [{ label: "Capital allowances from qualifying fixed asset additions", amount: -capitalAllowances, treatment: "Deduct", source: "Fixed Asset Reconciliation" }] : []),
+                    ...(broughtForwardTradingLoss || tradingLossReliefUsed ? [{ label: "Brought-forward trading loss utilised", amount: -tradingLossReliefUsed, treatment: "Deduct", source: "Stored client setting" }] : []),
+                    {
+                        label: "Estimated taxable profit YTD",
+                        amount: taxableProfit,
+                        treatment: "Result",
+                        source: "Calculated",
+                        breakdown: [
+                            { label: "Profit before tax YTD", amount: accountingProfit, treatment: "Start", source: "Profit and Loss - YTD" },
+                            { label: "Tax adjustments", amount: taxAdjustments, treatment: "Add back less deductions", source: "Nominal code review" },
+                            ...(tradingLossReliefUsed ? [{ label: "Brought-forward trading loss utilised", amount: -tradingLossReliefUsed, treatment: "Deduct", source: "Stored client setting" }] : [])
+                        ]
+                    },
+                    {
+                        label: "Corporation tax estimate",
+                        amount: estimatedCt,
+                        treatment: taxDetail.rateBand,
+                        source: "CT rate engine",
+                        breakdown: taxDetail.lines.map((line) => ({
+                            label: line.label,
+                            amount: line.tax,
+                            treatment: `${line.rate || ""} on ${formatCurrency(line.amount || 0)}`,
+                            source: "GOV.UK Corporation Tax rates"
+                        }))
+                    },
+                    ...(section455Tax > 0 ? [
+                        { label: "Section 455 exposure on overdrawn DLA", amount: section455Tax, treatment: "Add to CT cash exposure", source: "DLA balance" },
+                        { label: "Total CT and s455 exposure", amount: totalTaxExposure, treatment: "Result", source: "Corporation Tax plus Section 455" }
+                    ] : [])
+                ];
+                return {
+                    ...summary,
+                    taxAdjustmentOverrides: overrides,
+                    taxAdjustmentOverrideClientId: client.id || "",
+                    depreciationAddBack: stepRows.find((row) => row.taxOverrideKey === "depreciation")?.amount || 0,
+                    amortisationAddBack: stepRows.find((row) => row.taxOverrideKey === "amortisation")?.amount || 0,
+                    disallowedExpensesAddBack: addBackTotal,
+                    capitalAllowances,
+                    taxAdjustments,
+                    taxableProfitBeforeLosses,
+                    tradingLossReliefUsed,
+                    estimatedTaxableProfit: taxableProfit,
+                    estimatedCorporationTax: estimatedCt,
+                    corporationTaxBreakdown: taxDetail,
+                    corporationTaxRateBand: taxDetail.rateBand,
+                    effectiveTaxRate: taxDetail.effectiveRate,
+                    taxProvisionRequired: estimatedCt,
+                    section455Tax,
+                    totalTaxExposure,
+                    currentYearEarnings,
+                    periodEndDistributableReserves: periodEndReserves,
+                    dividendCapacity: Math.max(0, periodEndReserves),
+                    taxCalculationSteps
+                };
+            }
+
+            function meReportAdjustedSummary(client = {}, sourceSummary = {}) {
+                const summary = meReportClonePlain(sourceSummary);
+                const overrides = meReportClientTaxOverrides(client);
+                summary.taxAdjustmentOverrides = overrides;
+                summary.taxAdjustmentOverrideClientId = client.id || "";
+                return meReportTaxOverridesHaveEntries(overrides) ? meReportApplyTaxAdjustmentOverrides(summary, client, overrides) : summary;
+            }
+
             function meReportFallbackStepBreakdown(row = {}, title = "", allRows = [], summary = {}) {
                 const label = String(row.label || "").toLowerCase();
                 if (label.includes("depreciation") && !label.includes("amortisation")) {
@@ -23720,13 +24081,20 @@
                 return Number.isFinite(numeric) ? formatCurrency(numeric) : "--";
             }
 
-            function renderMeReportStepBreakdown(row = {}, breakdown = []) {
+            function renderMeReportStepBreakdown(row = {}, breakdown = [], context = {}) {
                 const total = breakdown.reduce((sum, item) => sum + meReportBreakdownAmount(item), 0);
+                const includedCount = breakdown.filter((item) => item.included !== false).length;
+                const stepKey = row.taxOverrideKey || meReportTaxAdjustmentStepKeyFromLabel(row.label);
+                const canEdit = context.title === "CT estimate" && stepKey && context.summary?.taxAdjustmentOverrideClientId;
+                const editButton = canEdit
+                    ? `<button class="ghost-button me-report-breakdown-edit-button" type="button" data-me-tax-adjust data-me-tax-client="${escapeHTML(context.summary.taxAdjustmentOverrideClientId)}" data-me-tax-step="${escapeHTML(stepKey)}">Edit codes</button>`
+                    : "";
                 return `
                     <div class="me-report-step-breakdown">
                         <div class="me-report-step-breakdown-head">
                             <strong>${escapeHTML(row.breakdownTitle || "Figure breakdown")}</strong>
-                            <span>${breakdown.length.toLocaleString("en-GB")} line${breakdown.length === 1 ? "" : "s"} · total ${formatCurrency(total)}</span>
+                            <span>${includedCount.toLocaleString("en-GB")}/${breakdown.length.toLocaleString("en-GB")} included · total ${formatCurrency(total)}</span>
+                            ${editButton}
                         </div>
                         <div class="me-report-step-breakdown-row is-header">
                             <span>Code</span>
@@ -23737,12 +24105,12 @@
                             <span>Source</span>
                         </div>
                         ${breakdown.map((item) => `
-                            <div class="me-report-step-breakdown-row">
+                            <div class="me-report-step-breakdown-row${item.included === false ? " is-excluded" : ""}">
                                 <span>${escapeHTML(item.code || "--")}</span>
                                 <span><strong>${escapeHTML(item.label || item.name || "Calculation line")}</strong>${item.treatment ? `<small>${escapeHTML(item.treatment)}</small>` : ""}</span>
                                 <em>${meReportBreakdownMoney(item.debit)}</em>
                                 <em>${meReportBreakdownMoney(item.credit)}</em>
-                                <em>${formatCurrency(meReportBreakdownAmount(item))}</em>
+                                <em>${item.included === false ? `Excluded ${formatCurrency(item.originalAmount || 0)}` : formatCurrency(meReportBreakdownAmount(item))}</em>
                                 <span>${escapeHTML(item.source || "")}</span>
                             </div>
                         `).join("")}
@@ -23770,7 +24138,7 @@
                                         <strong>${formatCurrency(row.amount || 0)}</strong>
                                         <em>${escapeHTML(row.treatment || "")}</em>
                                         <span>${escapeHTML(meReportCalculationNote(row))}</span>
-                                        ${breakdown.length ? renderMeReportStepBreakdown(row, breakdown) : ""}
+                                        ${breakdown.length ? renderMeReportStepBreakdown(row, breakdown, { title, summary }) : ""}
                                     </div>
                                 `;
                             }).join("")}
@@ -24252,7 +24620,7 @@
             }
 
             function renderMeReportSubmissionInsightPage(client, submission) {
-                const summary = submission?.calculation || client.summary || {};
+                const summary = meReportAdjustedSummary(client, submission?.calculation || client.summary || {});
                 const activeTab = meReportSubmissionTabKeys.has(activeMeReportSubmissionTab) ? activeMeReportSubmissionTab : "insights";
                 activeMeReportSubmissionTab = activeTab;
                 return `
@@ -24265,7 +24633,7 @@
             }
 
             function renderMeReportTab(client, tab) {
-                const summary = client.summary || {};
+                const summary = meReportAdjustedSummary(client, client.summary || {});
                 const postTaxYtdEarnings = Number.isFinite(Number(summary.currentYearEarnings))
                     ? Number(summary.currentYearEarnings)
                     : Number(summary.yearToDateProfit || summary.accountingProfit || 0) - Number(summary.estimatedCorporationTax || 0);
@@ -24606,6 +24974,13 @@
                 document.querySelectorAll("[data-me-report-loss]").forEach((button) => {
                     button.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
                 });
+                document.querySelectorAll("[data-me-tax-adjust]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        editMeReportTaxAdjustmentCodes(button.dataset.meTaxClient || client.id, button.dataset.meTaxStep || "");
+                    });
+                });
             }
 
             async function createMeReportClient(event) {
@@ -24686,6 +25061,58 @@
                 const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
                 if (!window.confirm(`Confirm a VAT registration application has been made for ${client?.clientName || "this client"}? Today's date will be saved and VAT threshold warnings will be hidden for future uploads.`)) return;
                 updateMeReportClientPreferences(clientId, { vatRegisteredConfirmed: true }, "VAT application confirmation saved for this client");
+            }
+
+            function meReportCopyTaxOverrides(overrides = {}) {
+                return meReportNormaliseTaxAdjustmentOverrides(overrides);
+            }
+
+            async function editMeReportTaxAdjustmentCodes(clientId = "", stepKey = "") {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const config = meReportTaxAdjustmentStepDefinitions().find((item) => item.key === stepKey);
+                if (!config) return showToast("This CT line cannot be edited yet", "error");
+                const selectedSubmission = (client.submissions || []).find((item) => item.id === selectedMeReportSubmissionId);
+                const baseSummary = activeMeReportTab === "report-insights" && selectedSubmission?.calculation
+                    ? selectedSubmission.calculation
+                    : (client.summary || {});
+                const overrides = meReportCopyTaxOverrides(client.taxAdjustmentOverrides);
+                const adjustedSummary = meReportAdjustedSummary(client, baseSummary);
+                const currentRows = meReportTaxAccountRows(adjustedSummary, config, overrides);
+                const includedCodes = currentRows.filter((row) => row.included !== false).map((row) => row.code).filter(Boolean);
+                const excludedCodes = currentRows.filter((row) => row.included === false).map((row) => row.code).filter(Boolean);
+                const promptText = [
+                    `${config.label}`,
+                    `Included: ${includedCodes.length ? includedCodes.join(", ") : "none"}`,
+                    `Excluded: ${excludedCodes.length ? excludedCodes.join(", ") : "none"}`,
+                    "Type a nominal code to include it, or prefix it with - to exclude it."
+                ].join("\n");
+                const entered = window.prompt(promptText, "");
+                if (entered === null) return;
+                const rawValue = String(entered || "").trim();
+                const remove = rawValue.startsWith("-");
+                const code = meReportNormaliseTaxCode(remove ? rawValue.slice(1) : rawValue);
+                if (!code) return showToast("Enter a nominal code", "error");
+                if (!meReportFindTaxAccount(baseSummary, code)) {
+                    return showToast(`Code ${code} was not found in this report trial balance`, "error");
+                }
+                const next = meReportCopyTaxOverrides(overrides);
+                meReportTaxAdjustmentStepKeys().forEach((key) => {
+                    next[key].add = (next[key].add || []).filter((item) => item !== code);
+                    if (!remove || key === stepKey) {
+                        next[key].remove = (next[key].remove || []).filter((item) => item !== code);
+                    }
+                });
+                if (remove) {
+                    next[stepKey].remove = [...new Set([...(next[stepKey].remove || []), code])];
+                } else {
+                    next[stepKey].add = [...new Set([...(next[stepKey].add || []), code])];
+                }
+                await updateMeReportClientPreferences(
+                    client.id,
+                    { taxAdjustmentOverrides: next },
+                    remove ? `Code ${code} excluded from ${config.label}` : `Code ${code} included in ${config.label}`
+                );
             }
 
             async function updateMeReportClientStatus(clientId, statusValue) {
