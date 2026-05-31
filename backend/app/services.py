@@ -11006,22 +11006,54 @@ def _proposal_value(row: dict) -> Decimal:
     return sum(_money_from_ignition((service.get("pricing") or {}).get("minimum_contract_value")) for service in row.get("services") or [])
 
 
+def _billing_period_months(billing: dict) -> Decimal | None:
+    text = " ".join(
+        str(billing.get(key) or "")
+        for key in (
+            "summary",
+            "frequency",
+            "interval",
+            "period",
+            "billing_period",
+            "billingPeriod",
+            "billing_type",
+            "billingType",
+            "type",
+        )
+    ).lower()
+    if not text:
+        return None
+    one_off_markers = ("one off", "one-off", "once", "upfront", "on acceptance", "non recurring", "non-recurring", "ad hoc")
+    if any(marker in text for marker in one_off_markers):
+        return Decimal("0")
+    if "week" in text:
+        return Decimal("12") / Decimal("52")
+    if "month" in text:
+        return Decimal("1")
+    if "quarter" in text:
+        return Decimal("3")
+    if "year" in text or "annual" in text:
+        return Decimal("12")
+    return None
+
+
 def _proposal_mrr(row: dict) -> Decimal:
     total = Decimal("0.00")
+    saw_service_period_value = False
     for service in row.get("services") or []:
         pricing = service.get("pricing") or {}
         billing = service.get("billing") or {}
         period = _money_from_ignition(pricing.get("minimum_period_value"))
         if period:
-            summary = str(billing.get("summary") or "").lower()
-            if "year" in summary or "annual" in summary:
-                total += period / Decimal("12")
-            elif "quarter" in summary:
-                total += period / Decimal("3")
-            else:
-                total += period
+            saw_service_period_value = True
+            period_months = _billing_period_months(billing)
+            if period_months is None or period_months <= 0:
+                continue
+            total += period / period_months
     if total:
         return total
+    if saw_service_period_value:
+        return Decimal("0.00")
     length = _money(row.get("minimum_contract_length") or 0)
     value = _proposal_value(row)
     return value / length if length > 0 else Decimal("0.00")
@@ -11422,7 +11454,8 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
 
     accepted_value = sum(_proposal_value(row) for row in accepted)
     accepted_value_mtd = sum(_proposal_value(row) for row in accepted_mtd)
-    expected_mrr = sum(_proposal_mrr(row) for row in accepted)
+    expected_mrr = sum(_proposal_mrr(row) for row in accepted_mtd)
+    expected_mrr_all_time = sum(_proposal_mrr(row) for row in accepted)
     awaiting_value = sum(_proposal_value(row) for row in awaiting)
     payment_total_mtd = sum(_money_from_ignition(row.get("amount") or row.get("total") or row.get("payment_amount")) for row in payments_mtd)
     outstanding_total = sum(_money_from_ignition(row.get("amount_due") or row.get("balance") or row.get("outstanding_amount") or row.get("total")) for row in outstanding_invoices)
@@ -11443,6 +11476,8 @@ def _ignition_dashboard(records: dict[str, list[dict]]) -> dict:
             "acceptedProposalValueMtd": float(_money(accepted_value_mtd)),
             "expectedMrr": float(_money(expected_mrr)),
             "expectedArr": float(_money(expected_mrr * Decimal("12"))),
+            "expectedMrrAllTime": float(_money(expected_mrr_all_time)),
+            "expectedArrAllTime": float(_money(expected_mrr_all_time * Decimal("12"))),
             "awaitingProposalValue": float(_money(awaiting_value)),
             "outstandingInvoices": len(outstanding_invoices),
             "overdueInvoices": len(overdue_invoices),
