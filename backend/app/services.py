@@ -6508,6 +6508,23 @@ def _serialize_me_report_submission(row: dict) -> dict:
     }
 
 
+def _me_report_is_vat_registration_exception(item: dict) -> bool:
+    title = str(item.get("title") or "").lower()
+    detail = str(item.get("detail") or "").lower()
+    return "vat registration threshold" in title or "vat registration threshold" in detail
+
+
+def _me_report_summary_for_client(summary: dict, client: dict) -> dict:
+    prepared = _me_report_apply_brought_forward_loss(summary if isinstance(summary, dict) else {}, client)
+    if bool(client.get("vat_registered_confirmed")):
+        prepared = {
+            **prepared,
+            "vatRegisteredConfirmed": True,
+            "vatWarningVisible": False,
+        }
+    return prepared
+
+
 def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[dict], exceptions: list[dict], reports: list[dict], submissions: list[dict]) -> dict:
     latest_review = reviews[0] if reviews else None
     review_summary = latest_review.get("summary") if latest_review else {}
@@ -6516,9 +6533,20 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
             review_summary = json.loads(review_summary)
         except ValueError:
             review_summary = {}
-    review_summary = _me_report_apply_brought_forward_loss(review_summary, row)
-    open_exceptions = [item for item in exceptions if (item.get("status") or "open") == "open"]
-    traffic_light = (latest_review or {}).get("traffic_light") or ("red" if any((item.get("severity") or "") == "red" for item in open_exceptions) else "amber")
+    review_summary = _me_report_summary_for_client(review_summary, row)
+    vat_registered_confirmed = bool(row.get("vat_registered_confirmed"))
+    visible_exceptions = [
+        item
+        for item in exceptions
+        if not (vat_registered_confirmed and _me_report_is_vat_registration_exception(item))
+    ]
+    open_exceptions = [item for item in visible_exceptions if (item.get("status") or "open") == "open"]
+    calculated_traffic_light = "red" if any((item.get("severity") or "") == "red" for item in open_exceptions) else ("amber" if open_exceptions else "green")
+    traffic_light = (latest_review or {}).get("traffic_light") or calculated_traffic_light
+    if vat_registered_confirmed and traffic_light == "amber" and not open_exceptions:
+        traffic_light = calculated_traffic_light
+        if str(review_summary.get("trafficLight") or "").lower() == "amber":
+            review_summary = {**review_summary, "trafficLight": calculated_traffic_light}
     dismissed_warning_keys = row.get("dismissed_warning_keys") or []
     if isinstance(dismissed_warning_keys, str):
         try:
@@ -6540,7 +6568,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "xeroContactEmail": row.get("xero_contact_email") or "",
         "xeroConnectionStatus": row.get("xero_connection_status") or "not_connected",
         "xeroTenantName": row.get("xero_tenant_name") or "",
-        "vatRegisteredConfirmed": bool(row.get("vat_registered_confirmed")),
+        "vatRegisteredConfirmed": vat_registered_confirmed,
         "dismissedWarningKeys": [str(item) for item in dismissed_warning_keys if str(item).strip()][:200],
         "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
@@ -6574,7 +6602,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
                 "periodEnd": _iso(review.get("period_end")) or "",
                 "status": review.get("status") or "",
                 "trafficLight": review.get("traffic_light") or "amber",
-                "summary": _me_report_apply_brought_forward_loss(review.get("summary") if isinstance(review.get("summary"), dict) else {}, row),
+                "summary": _me_report_summary_for_client(review.get("summary") if isinstance(review.get("summary"), dict) else {}, row),
                 "createdAt": _iso(review.get("created_at")) or "",
             }
             for review in reviews
@@ -6592,7 +6620,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
                 "note": item.get("note") or "",
                 "createdAt": _iso(item.get("created_at")) or "",
             }
-            for item in exceptions
+            for item in visible_exceptions
         ],
         "reports": [
             {
@@ -6889,6 +6917,25 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     user["id"],
                 ),
             )
+            if vat_registered_confirmed:
+                cursor.execute(
+                    """
+                    UPDATE me_report_exceptions
+                    SET status = 'resolved',
+                        note = CASE
+                            WHEN COALESCE(note, '') = '' THEN 'Client confirmed VAT registered.'
+                            ELSE note
+                        END,
+                        updated_at = %s
+                    WHERE client_id = %s
+                      AND status = 'open'
+                      AND (
+                          LOWER(COALESCE(title, '')) LIKE '%%vat registration threshold%%'
+                          OR LOWER(COALESCE(detail, '')) LIKE '%%vat registration threshold%%'
+                      )
+                    """,
+                    (now, client_id),
+                )
         connection.commit()
     record_audit_event(
         "me_report_client",
@@ -9030,7 +9077,7 @@ def generate_me_report(user: dict, client_id: str, payload: dict | None = None) 
             summary = json.loads(summary)
         except ValueError:
             summary = {}
-    summary = _me_report_apply_brought_forward_loss(summary, client)
+    summary = _me_report_summary_for_client(summary, client)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -9045,6 +9092,8 @@ def generate_me_report(user: dict, client_id: str, payload: dict | None = None) 
                 (client_id, review["id"]),
             )
             exceptions = cursor.fetchall()
+            if bool(client.get("vat_registered_confirmed")):
+                exceptions = [item for item in exceptions if not _me_report_is_vat_registration_exception(item)]
             cursor.execute(
                 """
                 SELECT *
@@ -9101,7 +9150,13 @@ def generate_me_report(user: dict, client_id: str, payload: dict | None = None) 
 
     rolling_12_month_turnover = _me_report_summary_rolling_turnover(summary)
     vat_threshold = _money(summary.get("vatThreshold") or ME_REPORT_DEFAULT_VAT_THRESHOLD)
-    vat_warning_visible = bool(summary.get("vatWarningVisible")) or (vat_threshold > 0 and rolling_12_month_turnover > vat_threshold)
+    vat_registered_confirmed = bool(client.get("vat_registered_confirmed") or summary.get("vatRegisteredConfirmed"))
+    vat_warning_visible = not vat_registered_confirmed and (
+        bool(summary.get("vatWarningVisible")) or (vat_threshold > 0 and rolling_12_month_turnover > vat_threshold)
+    )
+    report_traffic_light = str(summary.get("trafficLight") or review.get("traffic_light") or "amber").lower()
+    if vat_registered_confirmed and report_traffic_light == "amber" and not exceptions:
+        report_traffic_light = "green"
     vat_threshold_first_breached_at = summary.get("vatThresholdFirstBreachedAt") or "not breached"
     brought_forward_trading_loss = _money(summary.get("broughtForwardTradingLoss"))
     trading_loss_relief_used = _money(summary.get("tradingLossReliefUsed"))
@@ -9156,7 +9211,7 @@ h1, h2 {{ color: #1e2f4d; }}
 <div class="metric"><span>12m turnover</span><strong>£{rolling_12_month_turnover:,.2f}</strong></div>
 <div class="metric"><span>Dividend capacity</span><strong>£{_money(summary.get('dividendCapacity')):,.2f}</strong></div>
 <div class="metric"><span>DLA balance</span><strong>£{_money(summary.get('dlaBalance')):,.2f}</strong></div>
-<div class="metric"><span>Traffic light</span><strong>{xml_escape(summary.get('trafficLight') or review.get('traffic_light') or 'amber').upper()}</strong></div>
+<div class="metric"><span>Traffic light</span><strong>{xml_escape(report_traffic_light).upper()}</strong></div>
 </div>
 </section>
 <section>
@@ -9188,7 +9243,7 @@ h1, h2 {{ color: #1e2f4d; }}
 </section>
 <section>
 <h2>VAT threshold check</h2>
-<p>Rolling 12-month turnover is £{rolling_12_month_turnover:,.2f} against the £{vat_threshold:,.2f} VAT threshold. Status: {'warning visible' if vat_warning_visible else 'below active warning threshold'}. First breach date: {xml_escape(vat_threshold_first_breached_at)}.</p>
+<p>Rolling 12-month turnover is £{rolling_12_month_turnover:,.2f} against the £{vat_threshold:,.2f} VAT threshold. Status: {'client confirmed VAT registered' if vat_registered_confirmed else 'warning visible' if vat_warning_visible else 'below active warning threshold'}. First breach date: {xml_escape(vat_threshold_first_breached_at)}.</p>
 </section>
 <section>
 <h2>Dividend availability and DLA</h2>
@@ -11156,8 +11211,21 @@ def _parse_ignition_datetime(value) -> datetime | None:
 
 
 def _ignition_source_dates(row: dict) -> tuple[datetime | None, datetime | None]:
-    created = _parse_ignition_datetime(row.get("created_at") or row.get("created") or row.get("created_on"))
-    updated = _parse_ignition_datetime(row.get("updated_at") or row.get("modified_at") or row.get("last_updated_at") or row.get("accepted_at") or row.get("sent_at"))
+    created = _parse_ignition_datetime(row.get("created_at") or row.get("createdAt") or row.get("created") or row.get("created_on") or row.get("createdOn"))
+    updated = _parse_ignition_datetime(
+        row.get("updated_at")
+        or row.get("updatedAt")
+        or row.get("modified_at")
+        or row.get("modifiedAt")
+        or row.get("last_updated_at")
+        or row.get("lastUpdatedAt")
+        or row.get("last_modified_at")
+        or row.get("lastModifiedAt")
+        or row.get("accepted_at")
+        or row.get("acceptedAt")
+        or row.get("sent_at")
+        or row.get("sentAt")
+    )
     return created, updated
 
 
@@ -11191,6 +11259,7 @@ def _update_ignition_sync_run(sync_run_id: str, **fields) -> dict:
 
 def _upsert_ignition_records(user: dict, practice_id: str, dataset: str, rows: list[dict]) -> int:
     now = utcnow()
+    changed_count = 0
     with get_connection() as connection:
         with connection.cursor() as cursor:
             for index, row in enumerate(rows):
@@ -11210,6 +11279,10 @@ def _upsert_ignition_records(user: dict, practice_id: str, dataset: str, rows: l
                         source_updated_at = EXCLUDED.source_updated_at,
                         synced_at = EXCLUDED.synced_at,
                         updated_at = EXCLUDED.updated_at
+                    WHERE ignition_reporting_records.practice_id IS DISTINCT FROM EXCLUDED.practice_id
+                       OR ignition_reporting_records.payload IS DISTINCT FROM EXCLUDED.payload
+                       OR ignition_reporting_records.source_created_at IS DISTINCT FROM EXCLUDED.source_created_at
+                       OR ignition_reporting_records.source_updated_at IS DISTINCT FROM EXCLUDED.source_updated_at
                     """,
                     (
                         user["id"],
@@ -11223,8 +11296,9 @@ def _upsert_ignition_records(user: dict, practice_id: str, dataset: str, rows: l
                         now,
                     ),
                 )
+                changed_count += int(cursor.rowcount or 0)
         connection.commit()
-    return len(rows)
+    return changed_count
 
 
 def _ignition_incremental_modified_since(user_id: str) -> datetime | None:
@@ -11232,22 +11306,32 @@ def _ignition_incremental_modified_since(user_id: str) -> datetime | None:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT started_at
-                FROM ignition_sync_runs
+                SELECT MAX(COALESCE(source_updated_at, source_created_at)) AS cutoff
+                FROM ignition_reporting_records
                 WHERE user_id = %s
-                  AND status = 'completed'
-                  AND started_at IS NOT NULL
-                ORDER BY started_at DESC
-                LIMIT 1
                 """,
                 (user_id,),
             )
-            latest_run = cursor.fetchone() or {}
-            cutoff = latest_run.get("started_at")
+            cutoff = (cursor.fetchone() or {}).get("cutoff")
             if cutoff is None:
                 cursor.execute(
                     """
-                    SELECT MAX(COALESCE(source_updated_at, source_created_at, synced_at)) AS cutoff
+                    SELECT started_at
+                    FROM ignition_sync_runs
+                    WHERE user_id = %s
+                      AND status = 'completed'
+                      AND started_at IS NOT NULL
+                    ORDER BY started_at DESC
+                    LIMIT 1
+                    """,
+                    (user_id,),
+                )
+                latest_run = cursor.fetchone() or {}
+                cutoff = latest_run.get("started_at")
+            if cutoff is None:
+                cursor.execute(
+                    """
+                    SELECT MAX(synced_at) AS cutoff
                     FROM ignition_reporting_records
                     WHERE user_id = %s
                     """,

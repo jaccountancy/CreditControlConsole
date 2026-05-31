@@ -523,9 +523,7 @@
                 transition:
                     box-shadow 0.36s cubic-bezier(0.16, 1, 0.3, 1),
                     border-color 0.36s ease,
-                    background 0.36s ease,
-                    padding 0.34s cubic-bezier(0.16, 1, 0.3, 1),
-                    gap 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+                    background 0.36s ease;
             }
             .ledger-topbar::before,
             .ledger-topbar::after {
@@ -714,14 +712,6 @@
             .global-activity-toggle,
             .sync-inline-banner {
                 transition:
-                    flex-basis 0.36s cubic-bezier(0.16, 1, 0.3, 1),
-                    min-width 0.36s cubic-bezier(0.16, 1, 0.3, 1),
-                    max-width 0.36s cubic-bezier(0.16, 1, 0.3, 1),
-                    width 0.36s cubic-bezier(0.16, 1, 0.3, 1),
-                    max-height 0.34s cubic-bezier(0.16, 1, 0.3, 1),
-                    margin 0.28s ease,
-                    padding 0.28s ease,
-                    gap 0.28s ease,
                     transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
                     opacity 0.26s ease;
             }
@@ -765,6 +755,86 @@
                 gap: 12px;
             }
             .topbar-client-context[hidden] { display: none; }
+            .topbar-client-pill {
+                flex: 1 1 auto;
+                min-width: 0;
+                display: flex;
+                align-items: stretch;
+                gap: 8px;
+                padding: 6px;
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                background: rgba(248, 251, 255, 0.92);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+            }
+            .topbar-client-status {
+                min-width: 145px;
+                max-width: 210px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 8px 11px;
+                border-radius: 12px;
+                border: 1px solid rgba(255, 83, 83, 0.24);
+                background: linear-gradient(135deg, rgba(255, 83, 83, 0.10), rgba(255, 159, 47, 0.10));
+                color: #9f2633;
+                font-size: 0.72rem;
+                font-weight: 950;
+                line-height: 1.2;
+                text-align: center;
+            }
+            .topbar-client-status.is-current {
+                border-color: rgba(39, 176, 95, 0.24);
+                background: var(--green-soft);
+                color: #168246;
+            }
+            .topbar-client-status.is-legal {
+                border-color: rgba(141, 98, 255, 0.28);
+                background: var(--purple-soft);
+                color: var(--purple);
+            }
+            .topbar-client-metrics {
+                flex: 1 1 440px;
+                min-width: 0;
+                display: grid;
+                grid-template-columns: repeat(4, minmax(74px, 1fr));
+                gap: 1px;
+                overflow: hidden;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: var(--line);
+            }
+            .topbar-client-metrics article {
+                min-width: 0;
+                padding: 8px 10px;
+                background: rgba(255, 255, 255, 0.92);
+            }
+            .topbar-client-metrics article.is-urgent {
+                background: var(--red-soft);
+            }
+            .topbar-client-metrics span,
+            .topbar-client-metrics strong {
+                display: block;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .topbar-client-metrics span {
+                color: var(--muted);
+                font-size: 0.58rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .topbar-client-metrics strong {
+                margin-top: 3px;
+                color: var(--ink);
+                font-size: 0.86rem;
+                font-weight: 950;
+            }
+            .topbar-client-metrics article.is-urgent strong {
+                color: var(--red);
+            }
             .bank-continuity-topbar-pill {
                 flex: 0 1 360px;
                 min-width: 250px;
@@ -904,6 +974,26 @@
                 background: rgba(248, 251, 255, 0.92);
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
             }
+            .me-report-topbar-actions.has-report-summary {
+                flex: 1 1 920px;
+                min-width: min(900px, 100%);
+                justify-content: stretch;
+                gap: 6px;
+                border-radius: 18px;
+            }
+            .me-report-topbar-metrics {
+                flex: 1 1 auto;
+                min-width: min(560px, 100%);
+                display: grid;
+                grid-template-columns: repeat(5, minmax(96px, 1fr));
+                gap: 1px;
+                overflow: hidden;
+                border-radius: 14px;
+                background: var(--line);
+            }
+            .me-report-topbar-metrics[hidden] {
+                display: none;
+            }
             .jashflow-topbar-summary[hidden],
             .lpc-topbar-summary[hidden],
             .practice-pack-topbar-summary[hidden],
@@ -916,10 +1006,36 @@
                 padding: 10px 16px;
                 white-space: nowrap;
             }
+            .me-report-topbar-actions.has-report-summary .ghost-button,
+            .me-report-topbar-actions.has-report-summary .primary-button {
+                flex: 0 0 auto;
+                min-height: 38px;
+                padding: 8px 12px;
+            }
+            @media (max-width: 1280px) {
+                .me-report-topbar-actions.has-report-summary {
+                    flex-basis: 100%;
+                    min-width: 0;
+                }
+                .me-report-topbar-metrics {
+                    grid-template-columns: repeat(3, minmax(96px, 1fr));
+                }
+            }
+            @media (max-width: 760px) {
+                .me-report-topbar-actions.has-report-summary {
+                    align-items: stretch;
+                    flex-wrap: wrap;
+                }
+                .me-report-topbar-metrics {
+                    flex-basis: 100%;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+            }
             .jashflow-topbar-summary article,
             .lpc-topbar-summary article,
             .bank-account-topbar-summary article,
             .credit-control-topbar-summary article,
+            .me-report-topbar-metrics article,
             .practice-pack-topbar-summary article,
             .credit-control-topbar-summary button {
                 position: relative;
@@ -932,6 +1048,7 @@
             .lpc-topbar-summary article::before,
             .bank-account-topbar-summary article::before,
             .credit-control-topbar-summary article::before,
+            .me-report-topbar-metrics article::before,
             .practice-pack-topbar-summary article::before,
             .credit-control-topbar-summary button::before {
                 content: "";
@@ -950,6 +1067,7 @@
             .lpc-topbar-summary article:hover,
             .bank-account-topbar-summary article:hover,
             .credit-control-topbar-summary article:hover,
+            .me-report-topbar-metrics article:hover,
             .practice-pack-topbar-summary article:hover,
             .credit-control-topbar-summary button:hover {
                 background: rgba(255, 255, 255, 0.98);
@@ -959,12 +1077,14 @@
             .lpc-topbar-summary article:hover::before,
             .bank-account-topbar-summary article:hover::before,
             .credit-control-topbar-summary article:hover::before,
+            .me-report-topbar-metrics article:hover::before,
             .practice-pack-topbar-summary article:hover::before,
             .credit-control-topbar-summary button:hover::before,
             .ledger-topbar.has-inline-status .jashflow-topbar-summary article:first-child::before,
             .ledger-topbar.has-inline-status .lpc-topbar-summary article:first-child::before,
             .ledger-topbar.has-inline-status .bank-account-topbar-summary article:first-child::before,
             .ledger-topbar.has-inline-status .credit-control-topbar-summary article:first-child::before,
+            .ledger-topbar.has-inline-status .me-report-topbar-metrics article:first-child::before,
             .ledger-topbar.has-inline-status .practice-pack-topbar-summary article:first-child::before {
                 opacity: 1;
                 transform: scaleY(1);
@@ -986,6 +1106,8 @@
             .credit-control-topbar-summary span,
             .credit-control-topbar-summary strong,
             .credit-control-topbar-summary p,
+            .me-report-topbar-metrics span,
+            .me-report-topbar-metrics strong,
             .practice-pack-topbar-summary span,
             .practice-pack-topbar-summary strong {
                 display: block;
@@ -997,6 +1119,7 @@
             .lpc-topbar-summary span,
             .bank-account-topbar-summary span,
             .credit-control-topbar-summary span,
+            .me-report-topbar-metrics span,
             .practice-pack-topbar-summary span {
                 color: var(--muted);
                 font-size: 0.64rem;
@@ -1008,6 +1131,7 @@
             .lpc-topbar-summary strong,
             .bank-account-topbar-summary strong,
             .credit-control-topbar-summary strong,
+            .me-report-topbar-metrics strong,
             .practice-pack-topbar-summary strong {
                 margin-top: 4px;
                 color: var(--ink);
@@ -1748,7 +1872,7 @@
             }
             body.is-client-view .ledger-topbar {
                 display: grid;
-                grid-template-columns: minmax(220px, 1fr) auto minmax(280px, 0.75fr) auto;
+                grid-template-columns: minmax(220px, 0.72fr) minmax(0, 1.35fr) auto;
                 align-items: center;
                 gap: 12px;
                 padding: 14px 72px 14px 18px;
@@ -1763,13 +1887,21 @@
                 margin-top: 4px;
             }
             body.is-client-view .topbar-client-context {
-                flex: 0 0 auto;
+                grid-column: 2;
                 min-width: 0;
-                justify-content: center;
+                justify-content: stretch;
+                align-self: stretch;
             }
-            body.is-client-view .topbar-contact-strip,
             body.is-client-view .topbar-client-action-wrap {
                 display: none;
+            }
+            body.is-client-view .topbar-contact-strip {
+                flex: 0 1 230px;
+                min-width: 190px;
+                max-width: none;
+                border: 0;
+                background: transparent;
+                padding: 6px;
             }
             body.is-client-view .topbar-back-button {
                 min-height: 36px;
@@ -1780,6 +1912,36 @@
                 min-width: 0;
                 min-height: 50px;
                 padding: 9px 16px;
+            }
+            body.is-client-view .ledger-topbar.has-inline-status .brand-lockup {
+                flex: initial;
+                min-width: 0;
+            }
+            body.is-client-view .ledger-topbar.has-inline-status .brand-lockup h1 {
+                font-size: clamp(1.55rem, 2vw, 2.2rem);
+            }
+            body.is-client-view .ledger-topbar.has-inline-status .connection-meta {
+                max-width: none;
+                font-size: inherit;
+            }
+            body.is-client-view .ledger-topbar.has-inline-status .topbar-client-context {
+                grid-column: 2;
+                min-width: 0;
+                gap: 12px;
+                justify-content: stretch;
+            }
+            body.is-client-view .ledger-topbar.has-inline-status .sync-inline-banner:not([hidden]),
+            body.is-client-view .ledger-topbar.has-inline-status .sync-inline-banner.ai-inline-banner:not([hidden]) {
+                grid-column: 1 / -1;
+                order: 40;
+            }
+            body.is-client-view .ledger-topbar .brand-lockup,
+            body.is-client-view .ledger-topbar .brand-lockup h1,
+            body.is-client-view .ledger-topbar .connection-meta,
+            body.is-client-view .topbar-client-context,
+            body.is-client-view .topbar-client-pill,
+            body.is-client-view .sync-inline-banner {
+                transition: opacity 0.2s ease, transform 0.2s ease;
             }
             body.is-client-view .topbar-actions {
                 justify-content: flex-end;
@@ -2725,6 +2887,10 @@
                 border-radius: 0 0 14px 14px;
             }
             .sync-inline-banner {
+                --bubble-accent: var(--blue);
+                --bubble-accent-rgb: 29, 103, 242;
+                --bubble-copy: var(--muted);
+                position: relative;
                 flex: 1 1 440px;
                 display: inline-flex;
                 align-items: center;
@@ -2735,16 +2901,31 @@
                 max-width: 640px;
                 margin: 0 auto;
                 padding: 12px 16px;
-                border: 1px solid rgba(29, 103, 242, 0.22);
-                border-radius: 999px;
-                background: rgba(255, 255, 255, 0.96);
-                box-shadow: 0 16px 42px rgba(30, 47, 77, 0.16);
+                border: 1px solid rgba(var(--bubble-accent-rgb), 0.22);
+                border-radius: 16px;
+                background:
+                    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92)),
+                    linear-gradient(90deg, rgba(var(--bubble-accent-rgb), 0.12), rgba(39, 176, 95, 0.08));
+                box-shadow:
+                    0 14px 34px rgba(var(--bubble-accent-rgb), 0.12),
+                    0 10px 24px rgba(30, 47, 77, 0.10),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.82);
                 color: var(--ink);
                 transform-origin: center right;
-                will-change: transform, opacity, flex-basis, width, max-width;
+                overflow: hidden;
+                will-change: transform, opacity;
+            }
+            .sync-inline-banner::before {
+                content: "";
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: 4px;
+                background: linear-gradient(180deg, var(--bubble-accent), rgba(39, 176, 95, 0.86));
+                opacity: 0.9;
+                pointer-events: none;
             }
             .sync-inline-banner:not([hidden]) {
-                animation: topbar-status-bubble-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+                animation: support-bubble-rise 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             .ledger-topbar.has-inline-status .sync-inline-banner:not([hidden]) {
                 flex: 1 1 390px;
@@ -2791,12 +2972,16 @@
                 animation: topbar-reflow-glide 0.38s cubic-bezier(0.16, 1, 0.3, 1) both;
             }
             @keyframes topbar-status-bubble-in {
-                from { opacity: 0; transform: translateY(8px) scale(0.985); }
-                to { opacity: 1; transform: translateY(0) scale(1); }
+                from { opacity: 0; transform: translateY(6px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes support-bubble-rise {
+                from { opacity: 0; transform: translateY(6px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             @keyframes topbar-reflow-glide {
-                from { opacity: 0.82; transform: translateY(5px) scale(0.992); }
-                to { opacity: 1; transform: translateY(0) scale(1); }
+                from { opacity: 0.82; transform: translateY(4px); }
+                to { opacity: 1; transform: translateY(0); }
             }
             @media (prefers-reduced-motion: reduce) {
                 .sync-inline-banner:not([hidden]),
@@ -2816,20 +3001,22 @@
             }
             .sync-inline-banner[hidden] { display: none; }
             .sync-inline-banner.is-error {
-                border-color: rgba(255, 83, 83, 0.28);
-                background: var(--red-soft);
+                --bubble-accent: var(--red);
+                --bubble-accent-rgb: 255, 83, 83;
+                --bubble-copy: #b53a3a;
                 color: var(--red);
             }
             .sync-inline-banner.is-success {
-                border-color: rgba(39, 176, 95, 0.26);
-                background: var(--green-soft);
+                --bubble-accent: var(--green);
+                --bubble-accent-rgb: 39, 176, 95;
+                --bubble-copy: #168246;
                 color: #168246;
             }
             .sync-inline-banner.is-warning {
-                border-color: rgba(255, 190, 68, 0.48);
-                background: #fff6dc;
+                --bubble-accent: #d28b00;
+                --bubble-accent-rgb: 210, 139, 0;
+                --bubble-copy: #8a5b00;
                 color: #8a5b00;
-                box-shadow: 0 18px 48px rgba(194, 127, 0, 0.16);
             }
             .sync-inline-spinner {
                 width: 22px;
@@ -2909,7 +3096,7 @@
                 white-space: nowrap;
             }
             .sync-inline-copy span {
-                color: var(--muted);
+                color: var(--bubble-copy);
                 font-size: 0.78rem;
                 font-weight: 800;
                 display: -webkit-box;
@@ -7432,19 +7619,43 @@
                 gap: 10px;
                 margin-top: 16px;
             }
+            .client-statement-list {
+                display: grid;
+                gap: 8px;
+            }
             .client-invoice-row {
                 width: 100%;
                 display: grid;
-                grid-template-columns: auto minmax(0, 1fr) auto auto;
+                grid-template-columns: auto minmax(108px, 0.22fr) minmax(0, 1fr) minmax(116px, 0.18fr) minmax(116px, 0.18fr);
                 align-items: center;
                 gap: 14px;
                 border: 1px solid var(--line);
-                border-radius: 18px;
+                border-radius: 12px;
                 background: rgba(248, 251, 255, 0.82);
-                padding: 14px 16px;
+                padding: 12px 14px;
                 text-align: left;
                 color: var(--ink);
                 cursor: pointer;
+            }
+            .client-invoice-row.is-credit {
+                border-color: rgba(222, 128, 18, 0.30);
+                background: rgba(255, 247, 226, 0.94);
+            }
+            .client-invoice-row.is-payment {
+                border-color: rgba(39, 176, 95, 0.25);
+                background: rgba(232, 248, 238, 0.88);
+            }
+            .client-invoice-row.is-statement-header {
+                cursor: default;
+                border-color: transparent;
+                background: transparent;
+                padding-top: 0;
+                padding-bottom: 4px;
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
             }
             .client-invoice-row input {
                 width: 16px;
@@ -7454,6 +7665,47 @@
             .client-invoice-row.is-selected {
                 border-color: rgba(29, 103, 242, 0.35);
                 background: var(--blue-soft);
+            }
+            .client-statement-type {
+                display: inline-flex;
+                justify-content: center;
+                border-radius: 999px;
+                padding: 5px 8px;
+                background: rgba(233, 241, 255, 0.82);
+                color: var(--blue);
+                font-size: 0.7rem;
+                font-weight: 950;
+                white-space: nowrap;
+            }
+            .client-invoice-row.is-credit .client-statement-type {
+                background: rgba(255, 237, 199, 0.9);
+                color: #a76109;
+            }
+            .client-invoice-row.is-payment .client-statement-type {
+                background: var(--green-soft);
+                color: var(--green);
+            }
+            .client-statement-money {
+                text-align: right;
+                white-space: nowrap;
+            }
+            .client-statement-money.is-credit {
+                color: var(--green);
+            }
+            @media (max-width: 860px) {
+                .client-invoice-row {
+                    grid-template-columns: auto minmax(0, 1fr);
+                    align-items: start;
+                }
+                .client-invoice-row.is-statement-header {
+                    display: none;
+                }
+                .client-statement-type,
+                .client-statement-money {
+                    grid-column: 2;
+                    justify-self: start;
+                    text-align: left;
+                }
             }
             .client-action-grid { align-items: start; }
             .stack-form { display: grid; gap: 12px; margin-top: 16px; }
@@ -8440,24 +8692,44 @@
                 max-width: min(380px, calc(100vw - 48px));
             }
             .toast-message {
+                --toast-accent: var(--blue);
+                --toast-accent-rgb: 29, 103, 242;
+                position: relative;
                 padding: 14px 16px;
-                border-radius: 18px;
-                background: var(--surface-strong);
-                border: 1px solid var(--line);
-                box-shadow: 0 18px 40px rgba(30, 47, 77, 0.16);
+                border-radius: 16px;
+                overflow: hidden;
+                background:
+                    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.92)),
+                    linear-gradient(90deg, rgba(var(--toast-accent-rgb), 0.11), rgba(39, 176, 95, 0.07));
+                border: 1px solid rgba(var(--toast-accent-rgb), 0.22);
+                box-shadow:
+                    0 16px 36px rgba(var(--toast-accent-rgb), 0.12),
+                    0 10px 24px rgba(30, 47, 77, 0.10);
                 color: var(--ink);
                 font-weight: 800;
+                animation: support-bubble-rise 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+            }
+            .toast-message::before {
+                content: "";
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: 4px;
+                background: linear-gradient(180deg, var(--toast-accent), rgba(39, 176, 95, 0.86));
+                pointer-events: none;
             }
             .toast-message.success {
-                border-color: rgba(39, 176, 95, 0.28);
+                --toast-accent: var(--green);
+                --toast-accent-rgb: 39, 176, 95;
                 color: var(--green);
             }
             .toast-message.error {
-                border-color: rgba(255, 83, 83, 0.28);
+                --toast-accent: var(--red);
+                --toast-accent-rgb: 255, 83, 83;
                 color: var(--red);
             }
             .toast-message.info {
-                border-color: rgba(29, 103, 242, 0.28);
+                --toast-accent: var(--blue);
+                --toast-accent-rgb: 29, 103, 242;
                 color: var(--blue);
             }
             .toast-action {
@@ -8972,6 +9244,9 @@
                 .me-report-topbar-actions .primary-button {
                     flex: 1 1 100%;
                 }
+                .me-report-topbar-metrics {
+                    grid-template-columns: 1fr;
+                }
                 .ignition-topbar-tabs {
                     justify-content: flex-start;
                     overflow-x: auto;
@@ -9376,6 +9651,7 @@
                             <button type="button" data-ignition-tab="creators">Proposal creators</button>
                         </nav>
                         <div class="me-report-topbar-actions" id="meReportTopbarActions" aria-label="ME Report actions" hidden>
+                            <div class="me-report-topbar-metrics" id="meReportTopbarMetrics" aria-label="Selected ME Report summary" hidden></div>
                             <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
                             <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload JUK Overview Report</button>
                         </div>
@@ -9386,13 +9662,17 @@
                             </a>
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
-                            <button class="topbar-contact-strip" id="topbarClientButton" type="button">
-                                <span class="topbar-client-avatar" id="topbarClientAvatar">--</span>
-                                <span class="topbar-contact-copy">
-                                    <strong id="topbarContactName">No client selected</strong>
-                                    <small id="topbarContactMeta">Client account</small>
-                                </span>
-                            </button>
+                            <div class="topbar-client-pill" id="topbarClientPill">
+                                <button class="topbar-contact-strip" id="topbarClientButton" type="button">
+                                    <span class="topbar-client-avatar" id="topbarClientAvatar">--</span>
+                                    <span class="topbar-contact-copy">
+                                        <strong id="topbarContactName">No client selected</strong>
+                                        <small id="topbarContactMeta">Client account</small>
+                                    </span>
+                                </button>
+                                <span class="topbar-client-status" id="topbarClientStatus">Current account state</span>
+                                <div class="topbar-client-metrics" id="topbarClientMetrics" aria-label="Client account summary"></div>
+                            </div>
                             <div class="xero-connect-wrap client-action-menu-wrap topbar-client-action-wrap" id="clientActionMenuWrap">
                                 <button class="ghost-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Actions</button>
                                 <div class="xero-action-menu" id="clientActionMenu">
@@ -10413,8 +10693,6 @@
                                 </nav>
 
                                 <section class="client-section-pane" data-client-pane="overview">
-                                    <div class="client-status-banner" id="clientStateBanner">Select a client to see account status.</div>
-                                    <div class="detail-stats client-kpi-strip" id="clientStats"></div>
                                     <div class="court-callout interest-tooltip-anchor" tabindex="0">
                                         <button class="info-button" id="interestInfoButton" type="button" aria-label="Show interest calculation">i</button>
                                         <p id="interestInfoText">Account-level statutory interest and court-cost guidance will appear here for this client.</p>
@@ -10437,40 +10715,16 @@
                                     <section class="detail-panel invoice-workspace-panel">
                                         <div class="panel-heading">
                                             <div>
-                                                <p class="eyebrow">Client invoices</p>
-                                                <h3>Open ledger rows and selected invoice</h3>
+                                                <p class="eyebrow">Client transactions</p>
+                                                <h3>Unallocated invoice and cash movements</h3>
                                             </div>
                                             <div class="client-invoice-bulk-actions">
-                                                <select id="clientInvoiceSelect" aria-label="Selected invoice"></select>
+                                                <button class="ghost-button" id="clientTransactionsRefreshButton" type="button">Refresh from Xero</button>
                                                 <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
                                                 <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
                                             </div>
                                         </div>
-                                        <div class="invoice-workspace-body">
-                                            <div class="client-invoices-column">
-                                                <div class="client-invoice-list" id="clientInvoiceList"></div>
-                                            </div>
-                                            <section class="selected-invoice-panel invoice-detail-pane" aria-label="Selected invoice">
-                                                <div class="panel-heading">
-                                                    <div>
-                                                        <p class="eyebrow">Selected invoice</p>
-                                                        <h3 id="selectedInvoiceSummary">--</h3>
-                                                    </div>
-                                                    <a id="selectedInvoiceXeroLink" class="invoice-xero-link" target="_blank" rel="noopener" hidden>Open in Xero</a>
-                                                </div>
-                                                <div class="selected-invoice-detail" id="selectedInvoiceDetail"></div>
-                                                <div class="selected-invoice-actions">
-                                                    <button class="ghost-button" type="button" data-client-action="invoice-note">Add note</button>
-                                                    <button class="ghost-button" type="button" data-client-action="payment">Start payment plan</button>
-                                                    <button class="ghost-button" type="button" data-client-action="attachment">Add attachment</button>
-                                                </div>
-                                                <form class="stack-form" id="invoiceNoteForm">
-                                                    <textarea id="invoiceNoteInput" rows="4" placeholder="Note for the selected invoice"></textarea>
-                                                    <button class="primary-button" type="submit">Add invoice note</button>
-                                                </form>
-                                                <div class="mini-timeline" id="selectedInvoiceNotesList"></div>
-                                            </section>
-                                        </div>
+                                        <div class="client-statement-list" id="clientInvoiceList"></div>
                                     </section>
                                 </section>
 
@@ -11160,6 +11414,7 @@
             let activeSyncRunId = null;
             let latestSyncRun = null;
             let lastBrowserSyncLog = null;
+            let lastPanelErrorSignature = "";
             let topbarNoticeTimer = null;
             let headerStartActionPressed = false;
             let topbarAdaptiveLayoutFrame = 0;
@@ -12361,6 +12616,19 @@
             }
 
             function applyPanelPayload(payload) {
+                if (payload?.panelError) {
+                    const signature = `${payload.panelError.type || "PanelError"}:${payload.panelError.error || payload.panelError.message || ""}`;
+                    if (signature && signature !== lastPanelErrorSignature) {
+                        lastPanelErrorSignature = signature;
+                        showTopbarNotice(
+                            "Credit Control data unavailable",
+                            payload.panelError.message || payload.panelError.error || "The cached panel payload could not be built.",
+                            "error"
+                        );
+                    }
+                } else {
+                    lastPanelErrorSignature = "";
+                }
                 const nextState = normaliseState(payload);
                 if (payloadHasActiveXeroRateLimit(payload) && !nextState.customers.length && state.customers.length) {
                     nextState.customers = state.customers;
@@ -13495,6 +13763,8 @@
 
             function activeTopbarTitle(topbarClient = null) {
                 if (topbarClient?.name) return topbarClient.name;
+                const meReportInsight = activeMeReportInsightContext();
+                if (meReportInsight?.title) return meReportInsight.title;
                 return topbarViewTitles[activeView] || topbarViewTitles.ledger;
             }
 
@@ -13552,6 +13822,7 @@
                     ".credit-control-topbar-summary:not([hidden]), " +
                     ".bank-account-topbar-summary:not([hidden]), " +
                     ".practice-pack-topbar-summary:not([hidden]), " +
+                    ".me-report-topbar-actions.has-report-summary:not([hidden]), " +
                     ".ignition-topbar-tabs:not([hidden])"
                 ));
             }
@@ -13590,37 +13861,34 @@
                 setTopbarStatusSuppression(topbar, false);
 
                 const width = topbar.clientWidth || window.innerWidth || 0;
-                const currentHeight = topbar.getBoundingClientRect().height || 0;
                 const isClientView = document.body.classList.contains("is-client-view");
                 const hasSummary = hasVisibleTopbarSummary(topbar);
+                if (isClientView) {
+                    topbar.classList.remove("is-topbar-dense", "is-topbar-stacked", "is-topbar-status-only");
+                    setTopbarStatusSuppression(topbar, false);
+                    return;
+                }
                 const shouldUseDenseLayout = !isClientView && (
                     width < 1580 ||
                     statusCount > 1 ||
-                    hasSummary ||
-                    currentHeight > 96
+                    hasSummary
                 );
                 topbar.classList.toggle("is-topbar-dense", shouldUseDenseLayout);
 
-                topbarAdaptiveLayoutFrame = window.requestAnimationFrame(() => {
-                    topbarAdaptiveLayoutFrame = 0;
-                    const nextHeight = topbar.getBoundingClientRect().height || 0;
-                    const shouldUseStackedLayout = !isClientView && (
-                        width < 980 ||
-                        (statusCount > 1 && width < 1360) ||
-                        (nextHeight > 136 && width < 1720)
-                    );
-                    topbar.classList.toggle("is-topbar-stacked", shouldUseStackedLayout);
-                    if (shouldUseStackedLayout) topbar.classList.add("is-topbar-dense");
-                    const stackedHeight = topbar.getBoundingClientRect().height || nextHeight;
-                    const shouldUseStatusOnlyLayout = !isClientView && (
-                        width < 760 ||
-                        (statusCount > 1 && width < 1100) ||
-                        (hasSummary && width < 1120 && stackedHeight > 150) ||
-                        stackedHeight > 190
-                    );
-                    topbar.classList.toggle("is-topbar-status-only", shouldUseStatusOnlyLayout);
-                    setTopbarStatusSuppression(topbar, shouldUseStatusOnlyLayout);
-                });
+                const shouldUseStackedLayout = !isClientView && (
+                    width < 980 ||
+                    (statusCount > 1 && width < 1360) ||
+                    (hasSummary && width < 1320)
+                );
+                topbar.classList.toggle("is-topbar-stacked", shouldUseStackedLayout);
+                if (shouldUseStackedLayout) topbar.classList.add("is-topbar-dense");
+                const shouldUseStatusOnlyLayout = !isClientView && (
+                    width < 760 ||
+                    (statusCount > 1 && width < 1100) ||
+                    (hasSummary && width < 1120)
+                );
+                topbar.classList.toggle("is-topbar-status-only", shouldUseStatusOnlyLayout);
+                setTopbarStatusSuppression(topbar, shouldUseStatusOnlyLayout);
             }
 
             function updateTopbarInlineStatusState() {
@@ -13653,18 +13921,19 @@
                 topbarAdaptiveLayoutWired = true;
                 window.addEventListener("resize", updateTopbarInlineStatusState, { passive: true });
                 const topbar = document.querySelector(".ledger-topbar");
-                if (window.ResizeObserver && topbar) {
-                    topbarAdaptiveResizeObserver = new ResizeObserver(() => updateTopbarInlineStatusState());
-                    topbarAdaptiveResizeObserver.observe(topbar);
+                if (topbarAdaptiveResizeObserver) {
+                    topbarAdaptiveResizeObserver.disconnect();
+                    topbarAdaptiveResizeObserver = null;
                 }
             }
 
             function renderTopbarIdentity(topbarClient = null) {
                 const account = activeBankStatementAccountForTopbar();
+                const meReportInsight = activeMeReportInsightContext();
                 const heading = document.getElementById("topbarPageTitle") || document.querySelector(".brand-lockup h1");
                 if (heading) heading.textContent = account ? bankAccountDisplayName(account) : activeTopbarTitle(topbarClient);
                 const connectionMeta = document.getElementById("ledgerConnectionMeta");
-                if (connectionMeta) connectionMeta.textContent = account ? bankAccountDetailLine(account) : topbarConnectionMetaText();
+                if (connectionMeta) connectionMeta.textContent = account ? bankAccountDetailLine(account) : meReportInsight ? activeMeReportInsightMeta(meReportInsight) : topbarConnectionMetaText();
             }
 
             function syncActiveViewShell() {
@@ -13690,6 +13959,7 @@
                 if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
                 const meReportTopbarActions = document.getElementById("meReportTopbarActions");
                 if (meReportTopbarActions) meReportTopbarActions.hidden = activeView !== "me-report";
+                renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
@@ -14133,7 +14403,7 @@
                         assignCurrentClientManager();
                         return;
                     }
-                    const refreshTransactionsButton = event.target.closest?.("#refreshTransactionsButton, #actionCenterRefreshTransactionsButton");
+                    const refreshTransactionsButton = event.target.closest?.("#refreshTransactionsButton, #clientTransactionsRefreshButton, #actionCenterRefreshTransactionsButton");
                     if (refreshTransactionsButton) {
                         event.preventDefault();
                         event.stopPropagation();
@@ -14981,9 +15251,39 @@
                     : { title: "No action required", body: "There are no open invoices for this client.", due: "--" };
             }
 
+            function clientAccountState(client, totals, noticeInvoices, hasLegal) {
+                if (!client) return { label: "Select a client to see account status.", tone: "" };
+                if (hasLegal) return { label: "In Legal Escalation", tone: "is-legal" };
+                if (noticeInvoices.length) return { label: `7 Day Notice Sent · ${sevenDayNoticeCountdown(noticeInvoices[0])}`, tone: "" };
+                if (totals.overdueInvoiceCount) return { label: `${totals.maxOverdueDays} days overdue · ${formatCurrency(totals.overduePrincipal)} overdue`, tone: "" };
+                return { label: "Current account state", tone: "is-current" };
+            }
+
+            function renderTopbarClientAccountSummary(client, openInvoices, totals, noticeInvoices, hasLegal) {
+                const status = document.getElementById("topbarClientStatus");
+                const metrics = document.getElementById("topbarClientMetrics");
+                if (!status || !metrics) return;
+                const accountState = clientAccountState(client, totals, noticeInvoices, hasLegal);
+                status.className = `topbar-client-status ${accountState.tone}`.trim();
+                status.textContent = accountState.label;
+                const rows = [
+                    ["Total due", formatCurrency(totals.principal)],
+                    ["Open invoices", `${openInvoices.length}`],
+                    ["Max days overdue", `${totals.maxOverdueDays || 0}`, totals.maxOverdueDays > 0],
+                    ["Interest accrued", formatCurrency(totals.interest)],
+                ];
+                metrics.innerHTML = rows.map(([label, value, urgent]) => `
+                    <article class="${urgent ? "is-urgent" : ""}">
+                        <span>${escapeHTML(label)}</span>
+                        <strong>${escapeHTML(value)}</strong>
+                    </article>
+                `).join("");
+            }
+
             function renderClientWorkspaceShell(client, invoices, openInvoices, totals, noticeInvoices, hasLegal) {
                 const manager = client?.manager || "Unassigned";
                 renderXeroClientHeader(client, openInvoices, totals);
+                renderTopbarClientAccountSummary(client, openInvoices, totals, noticeInvoices, hasLegal);
                 document.getElementById("clientAvatar").textContent = clientInitials(client);
                 document.getElementById("clientSidebarName").textContent = client?.name || "No client selected";
                 const sidebarStatus = document.getElementById("clientSidebarStatus");
@@ -14997,35 +15297,6 @@
                 document.getElementById("clientSidebarInvoices").textContent = `${openInvoices.length} Open Invoice${openInvoices.length === 1 ? "" : "s"}`;
                 const sidebarDays = document.getElementById("clientSidebarDays");
                 if (sidebarDays) sidebarDays.textContent = `${totals.maxOverdueDays || 0}`;
-
-                const stats = document.getElementById("clientStats");
-                stats.innerHTML = "";
-                [
-                    ["Total due", formatCurrency(totals.principal)],
-                    ["Open invoices", `${openInvoices.length}`],
-                    ["Max days overdue", `${totals.maxOverdueDays || 0}`, totals.maxOverdueDays > 0],
-                    ["Interest accrued", formatCurrency(totals.interest), false, "interest"],
-                ].forEach(([label, value, urgent, type]) => {
-                    const card = document.createElement("article");
-                    const isInterest = type === "interest";
-                    card.className = `detail-stat${urgent ? " is-urgent" : ""}${isInterest ? " interest-tooltip-anchor" : ""}`;
-                    if (isInterest) card.tabIndex = 0;
-                    card.innerHTML = `<span>${label}</span><strong>${value}</strong>${isInterest ? `<div class="interest-calc-tooltip" role="tooltip">${interestCalculationTooltipHTML(totals)}</div>` : ""}`;
-                    stats.appendChild(card);
-                });
-
-                const banner = document.getElementById("clientStateBanner");
-                const bannerClass = hasLegal ? " is-legal" : totals.overdueInvoiceCount ? "" : " is-current";
-                banner.className = `client-status-banner${bannerClass}`;
-                banner.textContent = !client
-                    ? "Select a client to see account status."
-                    : hasLegal
-                    ? "In Legal Escalation"
-                    : noticeInvoices.length
-                    ? `7 Day Notice Sent · ${sevenDayNoticeCountdown(noticeInvoices[0])}`
-                    : totals.overdueInvoiceCount
-                    ? `${totals.maxOverdueDays} days overdue · ${formatCurrency(totals.overduePrincipal)} overdue`
-                    : "Current account state";
 
                 const nextAction = clientNextAction(client, invoices, totals, noticeInvoices, hasLegal);
                 document.getElementById("clientNextActionTitle").textContent = nextAction.title;
@@ -15118,9 +15389,12 @@
                 renderClientSectionVisibility();
                 renderSelectedInvoiceDetail(selectedInvoice);
 
-                document.getElementById("selectedInvoiceSummary").textContent = selectedInvoice
-                    ? `${selectedInvoice.invoiceNumber || "Invoice"} · ${formatCurrency(selectedInvoice.amountDue || 0)} due`
-                    : "--";
+                const selectedInvoiceSummary = document.getElementById("selectedInvoiceSummary");
+                if (selectedInvoiceSummary) {
+                    selectedInvoiceSummary.textContent = selectedInvoice
+                        ? `${selectedInvoice.invoiceNumber || "Invoice"} · ${formatCurrency(selectedInvoice.amountDue || 0)} due`
+                        : "--";
+                }
                 document.getElementById("clientContactSummary").textContent = client
                     ? client.primaryPerson || client.contact || client.email || client.phone || client.name || "No contact details"
                     : "No contact details";
@@ -15129,8 +15403,10 @@
 
                 const xeroLink = document.getElementById("selectedInvoiceXeroLink");
                 const xeroUrl = invoiceXeroURL(selectedInvoice);
-                xeroLink.href = xeroUrl;
-                xeroLink.hidden = !selectedInvoice || xeroUrl === "#";
+                if (xeroLink) {
+                    xeroLink.href = xeroUrl;
+                    xeroLink.hidden = !selectedInvoice || xeroUrl === "#";
+                }
 
                 const contactLinkTarget = document.getElementById("selectedContactXeroLink");
                 const contactUrl = contactXeroURL(client);
@@ -15312,6 +15588,7 @@
 
             function renderClientInvoicePicker(invoices) {
                 const select = document.getElementById("clientInvoiceSelect");
+                if (!select) return;
                 select.innerHTML = "";
                 invoices.forEach((invoice) => {
                     const option = document.createElement("option");
@@ -15542,9 +15819,12 @@
                 const creditList = document.getElementById("unallocatedCreditList");
                 const allocatedList = document.getElementById("allocatedCreditList");
                 const refreshButton = document.getElementById("refreshTransactionsButton");
+                const clientRefreshButton = document.getElementById("clientTransactionsRefreshButton");
                 if (!summary || !invoiceList || !creditList || !allocatedList) return;
 
-                if (refreshButton) refreshButton.disabled = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
+                const isLoadingForClient = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
+                if (refreshButton) refreshButton.disabled = isLoadingForClient;
+                if (clientRefreshButton) clientRefreshButton.disabled = isLoadingForClient;
                 if (!client) {
                     summary.innerHTML = "";
                     renderTransactionEmpty(invoiceList, "No client", "Select a client", "Unallocated Xero invoice balances will appear here.");
@@ -15843,48 +16123,148 @@
                 }
             }
 
+            function clientStatementRows(client, invoices = []) {
+                const cached = cachedCustomerTransactions(client);
+                const localByXeroId = new Map(clientInvoices(client).map((invoice) => [String(invoice.xeroInvoiceId || ""), invoice]).filter(([key]) => key));
+                const outstandingInvoices = Array.isArray(cached?.outstandingInvoices)
+                    ? cached.outstandingInvoices
+                    : fallbackOutstandingTransactions(invoices);
+                const unallocatedCredits = Array.isArray(cached?.unallocatedCredits) ? cached.unallocatedCredits : [];
+                const overpayments = Array.isArray(cached?.overpayments) ? cached.overpayments : [];
+                const rows = [];
+
+                outstandingInvoices.forEach((invoice) => {
+                    const localInvoice = invoice.id ? null : localByXeroId.get(String(invoice.xeroInvoiceId || ""));
+                    const invoiceId = invoice.id || localInvoice?.id || "";
+                    const date = invoice.invoiceDate || invoice.date || invoice.dueDate || "";
+                    const dueText = invoice.dueDate ? `Due ${formatDate(invoice.dueDate)}` : "No due date";
+                    const description = invoiceLineSummary(invoice);
+                    rows.push({
+                        kind: "invoice",
+                        invoiceId,
+                        source: invoice,
+                        selectable: Boolean(invoiceId),
+                        date,
+                        type: "Invoice raised",
+                        title: invoice.invoiceNumber || "Invoice",
+                        detail: [invoice.status || invoiceStatusLabel(invoice), dueText, description].filter(Boolean).join(" · "),
+                        debit: Number(invoice.amountDue || 0),
+                        credit: 0,
+                        currencyCode: invoice.currencyCode || "GBP",
+                    });
+                });
+
+                [...unallocatedCredits, ...overpayments].forEach((source) => {
+                    const isOverpayment = source?.sourceType === "overpayment";
+                    rows.push({
+                        kind: isOverpayment ? "payment" : "credit",
+                        source,
+                        selectable: false,
+                        date: source.date || "",
+                        type: isOverpayment ? "Payment made" : "Credit note",
+                        title: `${creditSourceLabel(source)} ${source.number || source.id || ""}`.trim(),
+                        detail: [source.status || "Authorised", source.reference, "unallocated"].filter(Boolean).join(" · "),
+                        debit: 0,
+                        credit: Number(source.remainingCredit || 0),
+                        currencyCode: source.currencyCode || "GBP",
+                    });
+                });
+
+                return rows.sort((left, right) => String(right.date || "").localeCompare(String(left.date || "")));
+            }
+
+            function clientStatementEmptyState(target, client, rows, isLoading) {
+                if (!client) {
+                    renderTransactionEmpty(target, "No client", "Select a client", "Unallocated invoice and cash movements will appear here.");
+                    return true;
+                }
+                if (!state.organisation?.xeroConnected) {
+                    renderTransactionEmpty(target, "Xero disconnected", "Connect Xero to load live transactions", "This statement view shows unallocated Xero invoice, credit and payment balances.");
+                    return true;
+                }
+                if (!client.xeroContactId) {
+                    renderTransactionEmpty(target, "No Xero contact", "This client is not linked to a Xero contact", "Run a fresh import or open the matching Xero contact.");
+                    return true;
+                }
+                const cached = cachedCustomerTransactions(client);
+                if (cached?.error) {
+                    renderTransactionEmpty(target, "Xero error", "Unable to load unallocated transactions", cached.error);
+                    return true;
+                }
+                if (!rows.length) {
+                    renderTransactionEmpty(
+                        target,
+                        isLoading ? "Loading Xero" : "No unallocated transactions",
+                        isLoading ? "Loading live statement movements" : "No unallocated Xero invoices, credits or payments found",
+                        isLoading ? "Fetching live transaction lines for this Xero contact." : "This contact has no open invoice balance, unapplied credit note or overpayment."
+                    );
+                    return true;
+                }
+                return false;
+            }
+
             function renderClientInvoiceList(invoices) {
                 const target = document.getElementById("clientInvoiceList");
+                if (!target) return;
                 target.innerHTML = "";
-                const validIds = new Set((invoices || []).map((invoice) => invoice.id));
+                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                const rows = clientStatementRows(client, invoices);
+                const validIds = new Set(rows.filter((row) => row.selectable).map((row) => row.invoiceId));
                 selectedClientInvoiceIds = new Set([...selectedClientInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
-                if (!invoices.length) {
-                    const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
-                    emptyState.querySelector(".eyebrow").textContent = "No invoices";
-                    emptyState.querySelector("h4").textContent = "No Xero invoices for this client";
-                    emptyState.querySelector("p:last-child").textContent = "Sync from Xero to populate the client ledger.";
-                    target.appendChild(emptyState);
+                const isLoading = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
+                const refreshButton = document.getElementById("clientTransactionsRefreshButton");
+                if (refreshButton) refreshButton.disabled = isLoading;
+                if (clientStatementEmptyState(target, client, rows, isLoading)) {
                     updateClientInvoiceBulkNoteButton();
                     return;
                 }
-                invoices.forEach((invoice) => {
+
+                const header = document.createElement("article");
+                header.className = "client-invoice-row is-statement-header";
+                header.innerHTML = `
+                    <span></span>
+                    <span>Movement</span>
+                    <span>Description</span>
+                    <span class="client-statement-money">Debit</span>
+                    <span class="client-statement-money">Credit</span>
+                `;
+                target.appendChild(header);
+
+                rows.forEach((entry) => {
                     const row = document.createElement("article");
-                    const category = invoiceCategory(invoice);
-                    const description = invoiceLineSummary(invoice);
-                    row.className = `client-invoice-row${invoice.id === selectedInvoiceId ? " is-selected" : ""}`;
-                    row.title = description;
+                    const selected = entry.invoiceId && entry.invoiceId === selectedInvoiceId;
+                    row.className = `client-invoice-row is-${entry.kind}${selected ? " is-selected" : ""}`;
+                    row.title = entry.detail;
+                    const control = entry.selectable
+                        ? `<input class="client-invoice-note-select" type="checkbox" aria-label="Select invoice ${escapeHTML(entry.title)} for note" ${selectedClientInvoiceIds.has(entry.invoiceId) ? "checked" : ""}>`
+                        : `<span class="client-statement-spacer" aria-hidden="true"></span>`;
                     row.innerHTML = `
-                        <input class="client-invoice-note-select" type="checkbox" aria-label="Select invoice ${escapeHTML(invoice.invoiceNumber || invoice.id)} for note" ${selectedClientInvoiceIds.has(invoice.id) ? "checked" : ""}>
+                        ${control}
+                        <span class="client-statement-type">${escapeHTML(entry.type)}</span>
                         <div>
-                            <div class="client-name">${invoice.invoiceNumber || "Invoice"}</div>
-                            <div class="invoice-subline">${escapeHTML(description)} · due ${formatDate(invoice.dueDate)}</div>
+                            <div class="client-name">${escapeHTML(entry.title)}</div>
+                            <div class="invoice-subline">${escapeHTML(entry.detail)}${entry.date ? ` · ${formatDate(entry.date)}` : ""}</div>
                         </div>
-                        ${statusPill(invoice)}
-                        <strong>${formatCurrency(invoice.amountDue || 0)}</strong>
+                        <strong class="client-statement-money">${entry.debit ? formatXeroCurrency(entry.debit, entry.currencyCode) : "--"}</strong>
+                        <strong class="client-statement-money is-credit">${entry.credit ? formatXeroCurrency(entry.credit, entry.currencyCode) : "--"}</strong>
                     `;
                     const tooltip = document.createElement("div");
                     tooltip.className = "invoice-hover-description";
-                    tooltip.textContent = description;
+                    tooltip.textContent = entry.detail;
                     row.appendChild(tooltip);
-                    row.querySelector(".client-invoice-note-select").addEventListener("click", (event) => {
-                        event.stopPropagation();
-                        if (event.target.checked) selectedClientInvoiceIds.add(invoice.id);
-                        else selectedClientInvoiceIds.delete(invoice.id);
-                        updateClientInvoiceBulkNoteButton();
-                    });
+                    row.querySelector(".client-invoice-note-select")?.addEventListener("click", (event) => {
+                            event.stopPropagation();
+                            if (event.target.checked) selectedClientInvoiceIds.add(entry.invoiceId);
+                            else selectedClientInvoiceIds.delete(entry.invoiceId);
+                            updateClientInvoiceBulkNoteButton();
+                        });
                     row.addEventListener("click", () => {
-                        selectedInvoiceId = invoice.id;
-                        renderClientScreen();
+                        if (entry.selectable) {
+                            selectedInvoiceId = entry.invoiceId;
+                            renderClientScreen();
+                        } else if (entry.kind === "credit" || entry.kind === "payment") {
+                            openAllocationPanel(entry.source);
+                        }
                     });
                     target.appendChild(row);
                 });
@@ -20539,8 +20919,30 @@
                 return clients.filter((client) => meReportClientStatus(client) === meReportClientStatusFilter);
             }
 
+            function meReportVatRegistered(client = {}, summary = {}) {
+                return Boolean(client?.vatRegisteredConfirmed || summary?.vatRegisteredConfirmed);
+            }
+
+            function meReportVatWarningVisible(client = {}, summary = {}) {
+                const rolling = meReportRolling12MonthTurnover(summary);
+                const threshold = Number(summary?.vatThreshold || 90000);
+                const thresholdExceeded = threshold > 0 && rolling > threshold;
+                return !meReportVatRegistered(client, summary) && Boolean(summary?.vatWarningVisible || thresholdExceeded);
+            }
+
+            function meReportExceptionSuppressed(client = {}, exception = {}) {
+                if (!meReportVatRegistered(client, client?.summary || {})) return false;
+                const title = String(exception?.title || "").toLowerCase();
+                const detail = String(exception?.detail || "").toLowerCase();
+                return title.includes("vat registration threshold") || detail.includes("vat registration threshold");
+            }
+
+            function meReportVisibleExceptions(client = {}) {
+                return (client?.exceptions || []).filter((item) => !meReportExceptionSuppressed(client, item));
+            }
+
             function meReportOpenReviewCount(client) {
-                return (client?.exceptions || []).filter((item) => item.status === "open").length;
+                return meReportVisibleExceptions(client).filter((item) => item.status === "open").length;
             }
 
             function meReportClientSubmissions(client) {
@@ -20599,7 +21001,7 @@
                     meReportOpenReviewCount(client),
                     meReportClientSubmissions(client).length,
                     meReportReadyReportCount(client),
-                    ...(client.exceptions || []).map((item) => [item.title, item.reason, item.message, item.status].join(" "))
+                    ...meReportVisibleExceptions(client).map((item) => [item.title, item.reason, item.message, item.status].join(" "))
                 ].join(" ").toLowerCase();
                 return haystack.includes(term);
             }
@@ -20767,6 +21169,69 @@
                 return visibleClients.find((client) => client.id === selectedMeReportClientId) || visibleClients[0] || null;
             }
 
+            function activeMeReportInsightContext() {
+                if (activeView !== "me-report" || !meReportWorkspaceOpen || activeMeReportTab !== "report-insights") return null;
+                const client = selectedMeReportClient();
+                if (!client) return null;
+                const submissions = client.submissions || [];
+                const submission = submissions.find((item) => item.id === selectedMeReportSubmissionId) || submissions.find(meReportSubmissionProcessed) || submissions[0];
+                if (!submission) return null;
+                const summary = submission?.calculation || client.summary || {};
+                const title = meReportSubmissionTopbarTitle(client, submission);
+                return { client, submission, summary, title };
+            }
+
+            function meReportSubmissionTopbarTitle(client = {}, submission = {}) {
+                const filename = String(submission?.filename || "").replace(/\.[^.]+$/, "").trim();
+                const cleanFilename = filename.replace(/\s[-–]\s/g, " · ");
+                const monthLabel = meReportSubmissionMonthYear(submission);
+                const clientLabel = client.clientName || client.xeroContactName || "";
+                const genericFilename = /^(juk\s+)?overview\s+report$/i.test(cleanFilename) || /^month[-\s]*end\s+report$/i.test(cleanFilename);
+                if (cleanFilename && !genericFilename && (cleanFilename.includes(monthLabel) || (clientLabel && cleanFilename.includes(clientLabel)))) {
+                    return cleanFilename;
+                }
+                if (clientLabel) return `${clientLabel} · ${monthLabel}`;
+                return cleanFilename || `ME Report · ${monthLabel}`;
+            }
+
+            function activeMeReportInsightMeta(context = activeMeReportInsightContext()) {
+                if (!context) return "";
+                const subtabLabel = meReportSubmissionTabs.find(([key]) => key === activeMeReportSubmissionTab)?.[1] || "Insights";
+                const completedAt = context.submission?.completedAt || context.submission?.createdAt;
+                const processedCopy = completedAt ? `Processed ${formatDate(completedAt)}` : "Overview report";
+                return `${context.submission?.filename || "JUK Overview Report"} · ${processedCopy} · ${subtabLabel}`;
+            }
+
+            function meReportSummaryMetricItems(summary = {}) {
+                return [
+                    ["Actual turnover", formatCurrency(summary.yearToDateSales || 0)],
+                    ["Actual profit", formatCurrency(summary.yearToDateProfit || 0)],
+                    ["CT estimate", formatCurrency(summary.estimatedCorporationTax || 0)],
+                    ["Dividend capacity", formatCurrency(summary.dividendCapacity || 0)],
+                    ["DLA balance", formatCurrency(summary.dlaBalance || 0)]
+                ];
+            }
+
+            function renderMeReportTopbarSummary() {
+                const actions = document.getElementById("meReportTopbarActions");
+                const target = document.getElementById("meReportTopbarMetrics");
+                if (!target) return;
+                const context = activeMeReportInsightContext();
+                const showSummary = Boolean(context);
+                target.hidden = !showSummary;
+                if (actions) actions.classList.toggle("has-report-summary", showSummary);
+                if (!showSummary) {
+                    target.innerHTML = "";
+                    return;
+                }
+                target.innerHTML = meReportSummaryMetricItems(context.summary).map(([label, value]) => `
+                    <article>
+                        <span>${escapeHTML(label)}</span>
+                        <strong>${escapeHTML(value)}</strong>
+                    </article>
+                `).join("");
+            }
+
             function ensureMeReportSelection() {
                 const visibleClients = meReportVisibleClients();
                 if (!visibleClients.length) {
@@ -20901,6 +21366,8 @@
                 const activeClients = allClients.filter((client) => meReportClientStatus(client) === "active");
                 const archivedClients = allClients.filter((client) => meReportClientStatus(client) === "archived");
                 ensureMeReportSelection();
+                renderMeReportTopbarSummary();
+                renderTopbarIdentity();
 
                 setMeReportText("meReportClientCount", Number(summary.clientCount || 0).toLocaleString("en-GB"));
                 setMeReportText("meReportGreenCount", Number(summary.green || 0).toLocaleString("en-GB"));
@@ -21116,7 +21583,7 @@
                 if (key === "tax") return formatCurrency(summary.estimatedCorporationTax || 0);
                 if (key === "dividends") return formatCurrency(summary.dividendCapacity || 0);
                 if (key === "dla") return `${(summary.dlaStatus || "amber").toUpperCase()} · ${formatCurrency(summary.dlaBalance || 0)}`;
-                if (key === "alerts") return `${(client.exceptions || []).filter((item) => item.status === "open").length} open`;
+                if (key === "alerts") return `${meReportOpenReviewCount(client)} open`;
                 if (key === "mappings") return `${(client.mappings || []).length} accounts`;
                 if (key === "reports") return `${(client.reports || []).length} generated`;
                 return "";
@@ -21188,7 +21655,7 @@
             function renderMeReportTrafficMetric(client, summary = {}) {
                 const light = meReportNormalisedTrafficLight(summary.trafficLight || client.trafficLight || "amber");
                 const label = meReportTrafficLightLabel(light);
-                const exceptionCount = (client.exceptions || []).filter((item) => item.status === "open").length;
+                const exceptionCount = meReportOpenReviewCount(client);
                 const detail = light === "green"
                     ? "No open red or yellow review points"
                     : `${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"}`;
@@ -21495,13 +21962,6 @@
                             <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
                             <button class="primary-button" type="button" data-me-generate-report ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate client PDF</button>
                         </div>
-                        <div class="me-report-inline-metrics" aria-label="Report summary">
-                            ${renderMeReportMetricPill("Actual turnover", formatCurrency(summary.yearToDateSales || 0))}
-                            ${renderMeReportMetricPill("Actual profit", formatCurrency(summary.yearToDateProfit || 0))}
-                            ${renderMeReportMetricPill("CT estimate", formatCurrency(summary.estimatedCorporationTax || 0))}
-                            ${renderMeReportMetricPill("Dividend capacity", formatCurrency(summary.dividendCapacity || 0))}
-                            ${renderMeReportMetricPill("DLA balance", formatCurrency(summary.dlaBalance || 0))}
-                        </div>
                     </div>
                 `;
             }
@@ -21593,7 +22053,7 @@
                 const threshold = Number(summary.vatThreshold || 90000);
                 const vatRegistered = Boolean(client.vatRegisteredConfirmed || summary.vatRegisteredConfirmed);
                 const thresholdExceeded = rolling > threshold;
-                const warningVisible = Boolean(summary.vatWarningVisible || (thresholdExceeded && !vatRegistered));
+                const warningVisible = meReportVatWarningVisible(client, summary);
                 const percentage = Math.min(140, Math.max(2, Math.round(Math.abs(rolling) / Math.max(1, threshold) * 100)));
                 return `
                     <article class="me-report-insight-card ${warningVisible ? "me-report-alert-card" : ""}">
@@ -21766,7 +22226,7 @@
                             ${renderMeReportMetric("Provision required", formatCurrency(summary.taxProvisionRequired || 0))}
                             ${renderMeReportMetric("12m turnover", formatCurrency(meReportRolling12MonthTurnover(summary)))}
                             ${renderMeReportMetric("VAT threshold", formatCurrency(summary.vatThreshold || 90000))}
-                            ${renderMeReportMetric("VAT warning", summary.vatWarningVisible ? "Visible" : "Clear")}
+                            ${renderMeReportMetric("VAT warning", meReportVatWarningVisible(client, summary) ? "Visible" : "Clear")}
                         </div>
                         <article class="me-report-insight-card">
                             <p class="eyebrow">CT rate breakdown</p>
@@ -21916,10 +22376,11 @@
             }
 
             function renderMeReportExceptions(client) {
-                const exceptions = client.exceptions || [];
+                const exceptions = meReportVisibleExceptions(client);
                 if (!exceptions.length) return '<div class="empty-state"><p class="eyebrow">AI alerts</p><h4>No exceptions recorded</h4><p>Uploading an overview report will create alerts for tax, DLA, dividend, mapping and missing-data review points.</p></div>';
+                const openCount = exceptions.filter((item) => item.status === "open").length;
                 return `
-                    <div class="jashflow-detail-head"><div><p class="eyebrow">Exception review</p><h3>${exceptions.filter((item) => item.status === "open").length.toLocaleString("en-GB")} open review point${exceptions.filter((item) => item.status === "open").length === 1 ? "" : "s"}</h3><p class="detail-meta">Staff can resolve, escalate or add notes against every exception.</p></div></div>
+                    <div class="jashflow-detail-head"><div><p class="eyebrow">Exception review</p><h3>${openCount.toLocaleString("en-GB")} open review point${openCount === 1 ? "" : "s"}</h3><p class="detail-meta">Staff can resolve, escalate or add notes against every exception.</p></div></div>
                     <div class="bank-flag-list">
                         ${exceptions.map((item) => `
                             <div class="bank-flag-row">
@@ -23354,6 +23815,7 @@
                 if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
                 const meReportTopbarActions = document.getElementById("meReportTopbarActions");
                 if (meReportTopbarActions) meReportTopbarActions.hidden = activeView !== "me-report";
+                renderMeReportTopbarSummary();
                 const practicePackTopbarSummary = document.getElementById("practicePackTopbarSummary");
                 if (practicePackTopbarSummary) practicePackTopbarSummary.hidden = activeView !== "practice-packs";
                 renderBankStatementContinuityTopbar();
@@ -25032,6 +25494,7 @@
                 document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
                 document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
                 document.getElementById("refreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
+                document.getElementById("clientTransactionsRefreshButton")?.addEventListener("click", refreshCustomerTransactions);
                 document.getElementById("actionCenterRefreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
                 document.getElementById("actionCenterAssignClientManagerButton")?.addEventListener("click", () => {
                     document.getElementById("assignClientManagerButton")?.click();

@@ -786,10 +786,49 @@ def api_dashboard(user: dict = Depends(require_api_user)):
 
 @app.get("/api/panel")
 def api_panel(user: dict = Depends(require_panel_user)):
-    active_sync_run = active_sync_run_for_user(user)
-    rate_limit = active_xero_rate_limit_for_user(user)
+    panel_error = None
+    try:
+        panel = panel_payload(user)
+    except Exception as exc:
+        logger.exception("Unable to build panel payload")
+        panel_error = {
+            "message": "The backend could not build the cached ledger panel payload.",
+            "error": str(exc) or exc.__class__.__name__,
+            "type": exc.__class__.__name__,
+        }
+        panel = {
+            "organisation": {
+                "name": "",
+                "status": "Cached ledger unavailable",
+                "lastSync": "Backend panel payload failed",
+                "xeroConnected": False,
+            },
+            "dashboard": {
+                "totalReceivables": 0,
+                "totalOverdue": 0,
+                "openInvoices": 0,
+                "accountsNeedingAction": 0,
+                "potentialInterest": 0,
+            },
+            "customers": [],
+            "cacheStatus": {},
+            "databaseMetrics": {"error": panel_error["error"]},
+            "audit": [],
+            "selectedInvoice": None,
+        }
+    try:
+        active_sync_run = active_sync_run_for_user(user)
+    except Exception:
+        logger.exception("Unable to read active sync run for panel")
+        active_sync_run = None
+    try:
+        rate_limit = active_xero_rate_limit_for_user(user)
+    except Exception:
+        logger.exception("Unable to read Xero rate limit for panel")
+        rate_limit = None
     return {
-        **panel_payload(user),
+        **panel,
+        "panelError": panel_error,
         "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
         "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
     }

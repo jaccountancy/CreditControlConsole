@@ -10,7 +10,8 @@ from .config import get_settings
 from .database import get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret, random_token
 
-IGNITION_PAGE_LIMIT = 250
+IGNITION_PAGE_LIMIT = 1000
+IGNITION_FALLBACK_PAGE_LIMIT = 250
 IGNITION_TIMEOUT_SECONDS = 90.0
 IGNITION_DATASETS = (
     ("clients", "/reporting/clients"),
@@ -281,13 +282,24 @@ async def fetch_ignition_collection(connection_row: dict, endpoint: str, modifie
     rows: list[dict] = []
     cursor = None
     last_meta: dict = {}
+    page_limit = IGNITION_PAGE_LIMIT
     while True:
-        params = {"limit": IGNITION_PAGE_LIMIT}
+        params = {"limit": page_limit}
         if modified_since is not None:
             params["updated_since"] = _ignition_modified_since_param(modified_since)
         if cursor:
             params["cursor"] = cursor
-        payload = await ignition_api_get(connection_row, endpoint, params)
+        try:
+            payload = await ignition_api_get(connection_row, endpoint, params)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            provider_status = int(detail.get("status_code") or 0)
+            if page_limit != IGNITION_FALLBACK_PAGE_LIMIT and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
+                page_limit = IGNITION_FALLBACK_PAGE_LIMIT
+                params["limit"] = page_limit
+                payload = await ignition_api_get(connection_row, endpoint, params)
+            else:
+                raise
         batch = payload.get("data") or []
         if not isinstance(batch, list):
             batch = []
