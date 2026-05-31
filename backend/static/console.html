@@ -40,6 +40,7 @@
 
             * { box-sizing: border-box; }
             html, body { margin: 0; min-height: 100%; }
+            [hidden] { display: none !important; }
             body {
                 font-family: "Manrope", sans-serif;
                 color: var(--ink);
@@ -67,6 +68,11 @@
                 grid-column: 2;
                 width: min(1320px, 100%);
                 margin: 10px auto 32px;
+            }
+            body.is-tool-page .ledger-shell {
+                width: 100%;
+                margin-left: 0;
+                margin-right: 0;
             }
             .app-sidebar,
             .settings-mode-sidebar {
@@ -3012,6 +3018,10 @@
                 display: grid;
                 gap: 14px;
             }
+            #jashflowScreen.is-loan-detail-open > .detail-hero,
+            #jashflowScreen.is-loan-detail-open > .jashflow-panel {
+                display: none;
+            }
             .jashflow-loan-detail[hidden],
             .jashflow-loan-list[hidden] {
                 display: none;
@@ -3042,6 +3052,21 @@
                 justify-content: flex-start;
                 margin: 0;
                 border-bottom: 1px solid var(--line);
+            }
+            .jashflow-loan-topbar {
+                display: grid;
+                gap: 10px;
+            }
+            .jashflow-loan-action-row {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .jashflow-loan-action-row .ghost-button {
+                min-height: 38px;
+                padding: 9px 14px;
             }
             .jashflow-loan-tabs button {
                 min-height: 42px;
@@ -3294,9 +3319,38 @@
                 display: grid;
                 gap: 18px;
             }
+            #bankStatementsScreen.detail-card,
+            #meReportScreen.detail-card {
+                display: grid;
+                gap: 18px;
+                width: 100%;
+                min-height: calc(100vh - 84px);
+                align-content: start;
+                border-radius: 22px;
+                padding: 28px;
+            }
+            #bankStatementsScreen .detail-hero,
+            #meReportScreen .detail-hero {
+                align-items: center;
+                padding-bottom: 18px;
+                border-bottom: 1px solid var(--line);
+            }
+            #bankStatementsScreen .detail-hero .detail-meta,
+            #meReportScreen .detail-hero .detail-meta {
+                max-width: 860px;
+            }
             #bankStatementsScreen .bank-statement-workspace,
-            #bankStatementsScreen .bank-client-form {
+            #bankStatementsScreen .bank-client-form,
+            #meReportScreen .bank-statement-workspace,
+            #meReportScreen #meReportClientFormPanel {
                 margin-top: 18px;
+            }
+            #bankStatementsScreen .bank-client-form,
+            #meReportScreen #meReportClientFormPanel {
+                padding: 16px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.86);
             }
             .bank-account-card,
             .bank-transaction-row,
@@ -3349,6 +3403,42 @@
             }
             .bank-statement-workspace.is-extraction-detail {
                 grid-template-columns: minmax(260px, 0.32fr) minmax(0, 1fr);
+            }
+            #bankStatementsScreen .bank-statement-workspace,
+            #meReportScreen .bank-statement-workspace {
+                min-height: calc(100vh - 310px);
+            }
+            #bankStatementsScreen .bank-statement-workspace.is-client-list,
+            #meReportScreen .bank-statement-workspace.is-client-list {
+                grid-template-columns: minmax(0, 1fr);
+            }
+            #bankStatementsScreen .bank-statement-workspace.is-extraction-detail,
+            #meReportScreen .bank-statement-workspace.is-extraction-detail {
+                grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+            }
+            #bankStatementsScreen #bankAccountList,
+            #meReportScreen #meReportActionList {
+                align-self: start;
+                min-width: 0;
+            }
+            #bankStatementsScreen #bankAccountList > .ghost-button,
+            #meReportScreen #meReportActionList > .ghost-button,
+            #meReportScreen #meReportActionList > .primary-button {
+                width: 100%;
+                min-height: 46px;
+            }
+            #bankStatementsScreen .bank-account-detail,
+            #meReportScreen .bank-account-detail {
+                min-width: 0;
+            }
+            #bankStatementsScreen .bank-account-summary-grid {
+                grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            }
+            #meReportScreen .ignition-summary-grid {
+                grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            }
+            #meReportScreen .bank-statement-workspace.is-client-list #meReportClientList {
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             }
             .bank-account-page {
                 display: grid;
@@ -5257,6 +5347,15 @@
                 .sync-progress-meta { flex-direction: column; gap: 6px; }
                 .bank-statement-workspace.is-extraction-detail {
                     grid-template-columns: 1fr;
+                }
+                #bankStatementsScreen .bank-statement-workspace.is-extraction-detail,
+                #meReportScreen .bank-statement-workspace.is-extraction-detail {
+                    grid-template-columns: 1fr;
+                }
+                #bankStatementsScreen.detail-card,
+                #meReportScreen.detail-card {
+                    min-height: auto;
+                    padding: 20px;
                 }
                 .bank-account-page-header {
                     flex-direction: column;
@@ -8587,6 +8686,7 @@
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
                 document.body.classList.toggle("is-client-view", activeView === "client");
+                document.body.classList.toggle("is-tool-page", ["bank-statements", "me-report"].includes(activeView));
                 if (activeView !== "settings") closeSettingsSidebar();
                 const activeNav = activeNavForView();
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
@@ -11213,6 +11313,7 @@
             function openJashflowLoanForm(loan = null) {
                 editingJashflowLoanId = loan?.id || "";
                 jashflowFormOpen = true;
+                jashflowDetailOpen = false;
                 renderJashflowScreen();
                 populateJashflowLoanForm(loan);
                 setTimeout(() => document.getElementById("jashflowCustomerSelect")?.focus(), 0);
@@ -11332,6 +11433,7 @@
             function renderJashflowScreen() {
                 const screen = document.getElementById("jashflowScreen");
                 if (!screen) return;
+                screen.classList.toggle("is-loan-detail-open", jashflowDetailOpen);
                 const summary = jashflowData.summary || {};
                 const activeLoans = document.getElementById("jashflowActiveLoans");
                 const principalTotal = document.getElementById("jashflowPrincipalTotal");
@@ -11479,6 +11581,9 @@
                     row.addEventListener("click", () => {
                         selectedJashflowLoanId = row.dataset.jashflowLoanId;
                         jashflowDetailOpen = true;
+                        jashflowFormOpen = false;
+                        jashflowSettingsOpen = false;
+                        editingJashflowLoanId = "";
                         activeJashflowLoanTab = "details";
                         renderJashflowScreen();
                     });
@@ -11545,7 +11650,19 @@
                         <td>${formatCurrency(row.closingBalance)}</td>
                     </tr>
                 `).join("");
+                const loanMetrics = `
+                    <div class="jashflow-metrics">
+                        <div class="jashflow-metric"><span>Principal</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Charges</span><strong>${formatCurrency(loan.chargesTotal || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Payments</span><strong>${formatCurrency(loan.paymentsTotal || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Interest</span><strong>${formatCurrency(loan.accruedInterest || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Invoiced interest</span><strong>${formatCurrency(loan.invoicedInterest || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Uninvoiced interest</span><strong>${formatCurrency(loan.uninvoicedInterest || 0)}</strong></div>
+                        <div class="jashflow-metric"><span>Monthly repayment</span><strong>${formatCurrency(loan.monthlyRepayment || 0)}</strong></div>
+                    </div>
+                `;
                 const detailsTab = `
+                    ${loanMetrics}
                     <div class="jashflow-info-grid">
                         <article><span>Loan amount</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></article>
                         <article><span>Arrangement fee</span><strong>${formatCurrency(loan.arrangementFee || 0)}</strong></article>
@@ -11658,36 +11775,28 @@
                     transactions: transactionsTab
                 }[activeJashflowLoanTab] || detailsTab;
                 detail.innerHTML = `
-                    <div class="jashflow-detail-head">
-                        <div>
-                            <p class="eyebrow">Loan page</p>
-                            <h3>${escapeHTML(loan.customerName || "Unnamed client")}</h3>
-                            <p class="detail-meta">Started ${formatDate(loan.startDate)} · recalculates daily compound interest from the start date after applying saved payments and charges in date order.</p>
-                        </div>
-                        <div class="detail-actions">
+                    <div class="jashflow-loan-topbar">
+                        <div class="jashflow-loan-action-row">
+                            <button class="ghost-button" id="backJashflowLoanDetailButton" type="button">Back to loans</button>
                             <button class="ghost-button" id="editJashflowLoanButton" type="button">Edit loan</button>
                             <button class="ghost-button" id="recalculateJashflowLoanButton" type="button">Recalculate</button>
                         </div>
+                        <nav class="jashflow-loan-tabs" aria-label="Loan sections">
+                            <button type="button" class="${activeJashflowLoanTab === "details" ? "is-active" : ""}" data-jashflow-loan-tab="details">Details</button>
+                            <button type="button" class="${activeJashflowLoanTab === "future-schedule" ? "is-active" : ""}" data-jashflow-loan-tab="future-schedule">Future schedule</button>
+                            <button type="button" class="${activeJashflowLoanTab === "payments" ? "is-active" : ""}" data-jashflow-loan-tab="payments">Payments</button>
+                            <button type="button" class="${activeJashflowLoanTab === "fees-interest" ? "is-active" : ""}" data-jashflow-loan-tab="fees-interest">Fees and interest</button>
+                            <button type="button" class="${activeJashflowLoanTab === "statement" ? "is-active" : ""}" data-jashflow-loan-tab="statement">Statement</button>
+                            <button type="button" class="${activeJashflowLoanTab === "transactions" ? "is-active" : ""}" data-jashflow-loan-tab="transactions">Transactions</button>
+                        </nav>
                     </div>
-                    <div class="jashflow-metrics">
-                        <div class="jashflow-metric"><span>Principal</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></div>
-                        <div class="jashflow-metric"><span>Charges</span><strong>${formatCurrency(loan.chargesTotal || 0)}</strong></div>
-                        <div class="jashflow-metric"><span>Payments</span><strong>${formatCurrency(loan.paymentsTotal || 0)}</strong></div>
-                        <div class="jashflow-metric"><span>Interest</span><strong>${formatCurrency(loan.accruedInterest || 0)}</strong></div>
-                        <div class="jashflow-metric"><span>Invoiced interest</span><strong>${formatCurrency(loan.invoicedInterest || 0)}</strong></div>
-                        <div class="jashflow-metric"><span>Uninvoiced interest</span><strong>${formatCurrency(loan.uninvoicedInterest || 0)}</strong></div>
-                        <div class="jashflow-metric"><span>Monthly repayment</span><strong>${formatCurrency(loan.monthlyRepayment || 0)}</strong></div>
-                    </div>
-                    <nav class="jashflow-loan-tabs" aria-label="Loan sections">
-                        <button type="button" class="${activeJashflowLoanTab === "details" ? "is-active" : ""}" data-jashflow-loan-tab="details">Details</button>
-                        <button type="button" class="${activeJashflowLoanTab === "future-schedule" ? "is-active" : ""}" data-jashflow-loan-tab="future-schedule">Future schedule</button>
-                        <button type="button" class="${activeJashflowLoanTab === "payments" ? "is-active" : ""}" data-jashflow-loan-tab="payments">Payments</button>
-                        <button type="button" class="${activeJashflowLoanTab === "fees-interest" ? "is-active" : ""}" data-jashflow-loan-tab="fees-interest">Fees and interest</button>
-                        <button type="button" class="${activeJashflowLoanTab === "statement" ? "is-active" : ""}" data-jashflow-loan-tab="statement">Statement</button>
-                        <button type="button" class="${activeJashflowLoanTab === "transactions" ? "is-active" : ""}" data-jashflow-loan-tab="transactions">Transactions</button>
-                    </nav>
                     <div class="jashflow-detail-sections">${tabContent}</div>
                 `;
+                document.getElementById("backJashflowLoanDetailButton")?.addEventListener("click", () => {
+                    jashflowDetailOpen = false;
+                    activeJashflowLoanTab = "details";
+                    renderJashflowScreen();
+                });
                 document.getElementById("editJashflowLoanButton")?.addEventListener("click", () => openJashflowLoanForm(loan));
                 document.getElementById("recalculateJashflowLoanButton")?.addEventListener("click", recalculateJashflowLoan);
                 document.getElementById("saveJashflowNotesButton")?.addEventListener("click", saveJashflowLoanNotes);
