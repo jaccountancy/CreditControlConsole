@@ -120,6 +120,7 @@ DATABASE_METRIC_TABLES = {
     "me_report_reviews": "ME report reviews",
     "me_report_exceptions": "ME report exceptions",
     "me_report_reports": "ME report reports",
+    "me_report_submissions": "ME report submissions",
     "me_report_sync_runs": "ME report sync runs",
 }
 _PREVIOUS_SIGTERM_HANDLER = None
@@ -4989,28 +4990,28 @@ def save_jashflow_settings(user: dict, payload: dict) -> dict:
     tenant_id = _jashflow_tenant_id(user)
     customer_id = str(payload.get("invoiceContactCustomerId") or payload.get("customerId") or "").strip()
     account_code = str(payload.get("interestAccountCode") or "").strip()
-    if not customer_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose the Xero contact used for Jashflow interest invoices.")
     if not account_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter the Xero interest received account code.")
 
+    invoice_contact_id = ""
+    invoice_contact_name = ""
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT name, xero_contact_id
-                FROM customers
-                WHERE id = %s
-                  AND tenant_id = %s
-                """,
-                (customer_id, tenant_id),
-            )
-            customer = cursor.fetchone()
-            if customer is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected invoice contact was not found in this Xero tenant.")
-            xero_contact_id = customer.get("xero_contact_id")
-            if not xero_contact_id:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected invoice contact is missing a Xero contact id.")
+            if customer_id:
+                cursor.execute(
+                    """
+                    SELECT name, xero_contact_id
+                    FROM customers
+                    WHERE id = %s
+                      AND tenant_id = %s
+                    """,
+                    (customer_id, tenant_id),
+                )
+                customer = cursor.fetchone()
+                if customer is None:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected invoice contact was not found in this Xero tenant.")
+                invoice_contact_id = customer.get("xero_contact_id") or ""
+                invoice_contact_name = customer.get("name") or ""
             cursor.execute(
                 """
                 INSERT INTO jashflow_settings (
@@ -5025,7 +5026,7 @@ def save_jashflow_settings(user: dict, payload: dict) -> dict:
                     updated_by_user_id = EXCLUDED.updated_by_user_id,
                     updated_at = EXCLUDED.updated_at
                 """,
-                (tenant_id, xero_contact_id, customer.get("name") or "", account_code, user["id"], utcnow(), utcnow()),
+                (tenant_id, invoice_contact_id, invoice_contact_name, account_code, user["id"], utcnow(), utcnow()),
             )
         connection.commit()
 
@@ -5033,7 +5034,7 @@ def save_jashflow_settings(user: dict, payload: dict) -> dict:
         "jashflow_settings",
         tenant_id,
         "jashflow.settings_saved",
-        {"invoice_contact_name": customer.get("name") or "", "interest_account_code": account_code},
+        {"invoice_contact_name": invoice_contact_name, "interest_account_code": account_code},
         user["id"],
     )
     return jashflow_payload(user)
@@ -5131,11 +5132,9 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
     period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
     current_payload = jashflow_payload(user)
     settings = current_payload.get("settings") or {}
-    invoice_contact_id = settings.get("invoiceContactId") or ""
-    invoice_contact_name = settings.get("invoiceContactName") or ""
     account_code = settings.get("interestAccountCode") or ""
-    if not invoice_contact_id or not account_code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the Jashflow interest invoice contact and account code before posting interest.")
+    if not account_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the Jashflow interest received account code before posting interest.")
 
     lines = []
     for loan in current_payload.get("loans") or []:
@@ -5161,54 +5160,50 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
 
     total = sum((line["interestAmount"] for line in lines), Decimal("0.00")).quantize(Decimal("0.01"))
     connection_row = get_xero_connection_for_user(user["id"])
-    description = (
-        f"Jashflow interest earned to {_invoice_date_description(period_end)}. "
-        f"Supporting client breakdown is attached to this invoice."
-    )
-    invoice_payload = {
-        "Type": "ACCREC",
-        "Contact": {"ContactID": invoice_contact_id},
-        "Date": period_end.isoformat(),
-        "DueDate": period_end.isoformat(),
-        "Reference": f"Jashflow interest to {period_end.isoformat()}",
-        "LineAmountTypes": "NoTax",
-        "Status": "AUTHORISED",
-        "LineItems": [
-            {
-                "Description": description,
-                "Quantity": 1,
-                "UnitAmount": float(total),
-                "AccountCode": account_code,
-                "TaxType": "NONE",
-            }
-        ],
-    }
-    idempotency_seed = json.dumps(
-        {"periodEnd": period_end.isoformat(), "lines": [(line["loanId"], str(line["interestAmount"])) for line in lines]},
-        sort_keys=True,
-    )
-    idempotency_key = f"jashflow-interest-{hashlib.sha256(idempotency_seed.encode()).hexdigest()[:32]}"
-    xero_response = await create_sales_invoice(connection_row, invoice_payload, idempotency_key=idempotency_key)
-    created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
-    invoice_id = created_invoice.get("InvoiceID") or created_invoice.get("ID") or ""
-    invoice_number = created_invoice.get("InvoiceNumber") or ""
-    if not invoice_id:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Xero created the Jashflow interest invoice but did not return an invoice id.")
-
-    attachment_filename = f"jashflow-interest-{period_end.isoformat()}.xlsx"
-    attachment_error = ""
-    workbook_bytes = _build_jashflow_interest_workbook(lines, period_end, total)
-    try:
-        await attach_file_to_invoice(
-            connection_row,
-            invoice_id,
-            attachment_filename,
-            workbook_bytes,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    created_invoices = []
+    for line in lines:
+        contact = {"ContactID": line["xeroContactId"]} if line.get("xeroContactId") else {"Name": line["customerName"]}
+        invoice_payload = {
+            "Type": "ACCREC",
+            "Contact": contact,
+            "Date": period_end.isoformat(),
+            "DueDate": period_end.isoformat(),
+            "Reference": f"Jashflow interest to {period_end.isoformat()}",
+            "LineAmountTypes": "NoTax",
+            "Status": "AUTHORISED",
+            "LineItems": [
+                {
+                    "Description": f"Jashflow interest earned to {_invoice_date_description(period_end)} for {line['customerName']}.",
+                    "Quantity": 1,
+                    "UnitAmount": float(line["interestAmount"]),
+                    "AccountCode": account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+        }
+        idempotency_seed = json.dumps(
+            {"periodEnd": period_end.isoformat(), "loanId": line["loanId"], "interestAmount": str(line["interestAmount"])},
+            sort_keys=True,
         )
-    except Exception as exc:
-        attachment_error = _sync_error_message(exc)
-        logger.exception("Unable to attach Jashflow interest workbook to Xero invoice %s", invoice_id)
+        idempotency_key = f"jashflow-interest-{hashlib.sha256(idempotency_seed.encode()).hexdigest()[:32]}"
+        xero_response = await create_sales_invoice(connection_row, invoice_payload, idempotency_key=idempotency_key)
+        created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
+        invoice_id = created_invoice.get("InvoiceID") or created_invoice.get("ID") or ""
+        invoice_number = created_invoice.get("InvoiceNumber") or ""
+        if not invoice_id:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Xero created the Jashflow interest invoice for {line['customerName']} but did not return an invoice id.")
+        created_invoices.append({
+            "loanId": line["loanId"],
+            "customerName": line["customerName"],
+            "xeroInvoiceId": invoice_id,
+            "xeroInvoiceNumber": invoice_number,
+            "interestAmount": float(line["interestAmount"]),
+        })
+
+    invoice_id = ",".join(invoice["xeroInvoiceId"] for invoice in created_invoices)
+    invoice_number = ", ".join(invoice["xeroInvoiceNumber"] or invoice["xeroInvoiceId"] for invoice in created_invoices)
+    attachment_filename = ""
+    attachment_error = ""
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -5227,8 +5222,8 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
                     tenant_id,
                     invoice_id,
                     invoice_number,
-                    invoice_contact_id,
-                    invoice_contact_name,
+                    "multiple",
+                    "Individual loan contacts",
                     account_code,
                     period_end,
                     total,
@@ -5273,8 +5268,7 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
             "xero_invoice_number": invoice_number,
             "total_interest_amount": float(total),
             "line_count": len(lines),
-            "attachment_filename": attachment_filename,
-            "attachment_error": attachment_error,
+            "invoice_count": len(created_invoices),
         },
         user["id"],
     )
@@ -5285,6 +5279,8 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
             "xeroInvoiceNumber": invoice_number,
             "totalInterestAmount": float(total),
             "lineCount": len(lines),
+            "invoiceCount": len(created_invoices),
+            "invoices": created_invoices,
             "attachmentFilename": attachment_filename,
             "attachmentError": attachment_error,
         },
@@ -5351,7 +5347,22 @@ def _serialize_me_report_sync_run(row: dict | None) -> dict | None:
     }
 
 
-def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[dict], exceptions: list[dict], reports: list[dict]) -> dict:
+def _serialize_me_report_submission(row: dict) -> dict:
+    return {
+        "id": str(row["id"]),
+        "filename": row.get("filename") or "",
+        "contentType": row.get("content_type") or "",
+        "status": row.get("status") or "saved",
+        "errorMessage": row.get("error_message") or "",
+        "summary": row.get("summary") or "",
+        "estimatedCorporationTax": float(row.get("estimated_corporation_tax") or 0),
+        "dividendCapacity": float(row.get("dividend_capacity") or 0),
+        "createdAt": _iso(row.get("created_at")) or "",
+        "completedAt": _iso(row.get("completed_at")) or "",
+    }
+
+
+def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[dict], exceptions: list[dict], reports: list[dict], submissions: list[dict]) -> dict:
     latest_review = reviews[0] if reviews else None
     review_summary = latest_review.get("summary") if latest_review else {}
     if isinstance(review_summary, str):
@@ -5432,6 +5443,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
             }
             for report in reports
         ],
+        "submissions": [_serialize_me_report_submission(submission) for submission in submissions],
     }
 
 
@@ -5467,6 +5479,7 @@ def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dic
             reviews_by_client = defaultdict(list)
             exceptions_by_client = defaultdict(list)
             reports_by_client = defaultdict(list)
+            submissions_by_client = defaultdict(list)
             if client_ids:
                 cursor.execute(
                     """
@@ -5512,6 +5525,17 @@ def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dic
                 )
                 for row in cursor.fetchall():
                     reports_by_client[row["client_id"]].append(row)
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM me_report_submissions
+                    WHERE client_id = ANY(%s)
+                    ORDER BY created_at DESC
+                    """,
+                    (client_ids,),
+                )
+                for row in cursor.fetchall():
+                    submissions_by_client[row["client_id"]].append(row)
             cursor.execute(
                 """
                 SELECT *
@@ -5543,6 +5567,7 @@ def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dic
             reviews_by_client.get(row["id"], [])[:8],
             exceptions_by_client.get(row["id"], [])[:50],
             reports_by_client.get(row["id"], [])[:12],
+            submissions_by_client.get(row["id"], [])[:20],
         )
         for row in client_rows
     ]
@@ -5645,6 +5670,210 @@ def connect_me_report_client_to_current_xero(user: dict, client_id: str) -> dict
         client_id,
         "me_report.xero_connected",
         {"tenant_id": connection_row.get("tenant_id"), "tenant_name": connection_row.get("tenant_name")},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+ME_REPORT_PDF_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "periodEnd",
+        "summary",
+        "monthlySales",
+        "monthlyExpenses",
+        "accountingProfit",
+        "estimatedCorporationTax",
+        "dividendCapacity",
+        "dlaBalance",
+        "trafficLight",
+        "warnings",
+    ],
+    "properties": {
+        "periodEnd": {"type": ["string", "null"]},
+        "summary": {"type": "string"},
+        "monthlySales": {"type": "number"},
+        "monthlyExpenses": {"type": "number"},
+        "accountingProfit": {"type": "number"},
+        "estimatedCorporationTax": {"type": "number"},
+        "dividendCapacity": {"type": "number"},
+        "dlaBalance": {"type": "number"},
+        "trafficLight": {"type": "string"},
+        "warnings": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+}
+
+
+async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading ME Report PDFs.")
+    if len(file_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+    prompt = (
+        "Extract a month-end bookkeeping summary from this Xero JUK Overview report or management accounts PDF. "
+        "Return JSON only. Use GBP numbers without currency symbols. "
+        "Estimate corporation tax from the document's profit/tax lines where available, otherwise use the clearest CT estimate shown. "
+        "Extract dividend availability or distributable reserves where shown. "
+        "Summarise any assumptions, missing pages or review warnings. "
+        f"The client workspace is {client.get('client_name') or 'unknown'}."
+    )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_file",
+                        "filename": filename,
+                        "file_data": f"data:application/pdf;base64,{encoded}",
+                    },
+                    {"type": "input_text", "text": prompt},
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "me_report_pdf_extraction",
+                "schema": ME_REPORT_PDF_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 4000,
+    }
+    text = _extract_response_text(await _post_openai_responses(request_body, "ME Report PDF extraction"))
+    try:
+        return json.loads(text) if text else {}
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned ME Report extraction that was not valid JSON.") from exc
+
+
+async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+    client = _me_report_client_row(user, client_id)
+    if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF management accounts file.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO me_report_submissions (
+                    client_id, filename, content_type, status, created_by_user_id, created_at
+                )
+                VALUES (%s, %s, %s, 'processing', %s, %s)
+                RETURNING id
+                """,
+                (client_id, filename, content_type or "application/pdf", user["id"], utcnow()),
+            )
+            submission_id = cursor.fetchone()["id"]
+        connection.commit()
+
+    try:
+        extracted = await _extract_me_report_pdf(file_bytes, filename, client)
+        estimated_ct = _money(extracted.get("estimatedCorporationTax"))
+        dividend_capacity = _money(extracted.get("dividendCapacity"))
+        period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
+        period_start = date(period_end.year, period_end.month, 1)
+        traffic_light = str(extracted.get("trafficLight") or "amber").lower()
+        if traffic_light not in {"green", "amber", "red"}:
+            traffic_light = "amber"
+        warnings = [str(item) for item in extracted.get("warnings") or [] if str(item).strip()]
+        summary_text = str(extracted.get("summary") or "Management accounts PDF processed by Jenius AI.").strip()[:1200]
+        review_summary = {
+            "monthlySales": float(_money(extracted.get("monthlySales"))),
+            "monthlyExpenses": float(_money(extracted.get("monthlyExpenses"))),
+            "monthlyProfit": float(_money(extracted.get("accountingProfit"))),
+            "yearToDateProfit": float(_money(extracted.get("accountingProfit"))),
+            "accountingProfit": float(_money(extracted.get("accountingProfit"))),
+            "taxAdjustments": 0.0,
+            "estimatedTaxableProfit": float(_money(extracted.get("accountingProfit"))),
+            "estimatedCorporationTax": float(estimated_ct),
+            "dividendCapacity": float(dividend_capacity),
+            "dlaBalance": float(_money(extracted.get("dlaBalance"))),
+            "trafficLight": traffic_light,
+            "commentary": summary_text,
+            "source": "uploaded_pdf",
+            "warnings": warnings,
+        }
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE me_report_submissions
+                    SET status = 'completed',
+                        summary = %s,
+                        extracted_payload = %s::jsonb,
+                        estimated_corporation_tax = %s,
+                        dividend_capacity = %s,
+                        completed_at = %s
+                    WHERE id = %s
+                    """,
+                    (
+                        summary_text,
+                        json.dumps(extracted, default=_json_default),
+                        estimated_ct,
+                        dividend_capacity,
+                        utcnow(),
+                        submission_id,
+                    ),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO me_report_reviews (
+                        client_id, period_start, period_end, status, traffic_light,
+                        summary, raw_payload, created_by_user_id, created_at, updated_at
+                    )
+                    VALUES (%s, %s, %s, 'calculated', %s, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    """,
+                    (
+                        client_id,
+                        period_start,
+                        period_end,
+                        traffic_light,
+                        json.dumps(review_summary, default=_json_default),
+                        json.dumps({"source": "uploaded_pdf", "submissionId": str(submission_id), "extracted": extracted}, default=_json_default),
+                        user["id"],
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+                cursor.execute(
+                    """
+                    UPDATE me_report_clients
+                    SET last_calculated_at = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (utcnow(), utcnow(), client_id),
+                )
+            connection.commit()
+    except Exception as exc:
+        error = _sync_error_message(exc)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE me_report_submissions
+                    SET status = 'failed',
+                        error_message = %s,
+                        completed_at = %s
+                    WHERE id = %s
+                    """,
+                    (error, utcnow(), submission_id),
+                )
+            connection.commit()
+        raise
+
+    record_audit_event(
+        "me_report_submission",
+        str(submission_id),
+        "me_report.submission_extracted",
+        {"client_id": client_id, "filename": filename, "estimated_ct": str(estimated_ct), "dividend_capacity": str(dividend_capacity)},
         user["id"],
     )
     return me_report_payload(user)

@@ -68,8 +68,11 @@
                 width: min(1320px, 100%);
                 margin: 10px auto 32px;
             }
-            .app-sidebar {
+            .app-sidebar,
+            .settings-mode-sidebar {
                 position: sticky;
+                grid-column: 1;
+                grid-row: 1;
                 z-index: 110;
                 top: 8px;
                 width: var(--app-sidebar-width);
@@ -85,6 +88,66 @@
                 border-right: 1px solid rgba(61, 85, 130, 0.10);
                 box-shadow: 6px 0 24px rgba(30, 47, 77, 0.06);
                 backdrop-filter: blur(12px);
+                transition: opacity 0.2s ease, transform 0.2s ease;
+            }
+            .settings-mode-sidebar {
+                opacity: 0;
+                pointer-events: none;
+                transform: translateX(-14px);
+            }
+            body.settings-sidebar-mode .app-sidebar,
+            body.factory-reset-sidebar-mode .app-sidebar,
+            body.factory-reset-sidebar-mode .settings-sidebar-main {
+                opacity: 0;
+                pointer-events: none;
+                transform: translateX(-14px);
+            }
+            body.settings-sidebar-mode .settings-sidebar-main,
+            body.factory-reset-sidebar-mode .settings-sidebar-factory {
+                opacity: 1;
+                pointer-events: auto;
+                transform: translateX(0);
+            }
+            .settings-sidebar-title {
+                display: grid;
+                gap: 4px;
+                padding: 6px 9px 10px;
+            }
+            .settings-sidebar-title strong {
+                font-size: 0.98rem;
+                font-weight: 950;
+            }
+            .settings-sidebar-title span {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+            }
+            .settings-sidebar-back,
+            .settings-sidebar-button {
+                width: 100%;
+                min-height: 38px;
+                border: 1px solid transparent;
+                border-radius: 8px;
+                background: transparent;
+                color: var(--ink);
+                padding: 6px 9px;
+                text-align: left;
+                font-weight: 900;
+                line-height: 1.18;
+            }
+            .settings-sidebar-back:hover,
+            .settings-sidebar-button:hover,
+            .settings-sidebar-button.is-active {
+                border-color: rgba(29, 103, 242, 0.20);
+                background: rgba(233, 241, 255, 0.72);
+                color: var(--blue);
+            }
+            .settings-sidebar-button span {
+                display: block;
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 800;
             }
             .app-sidebar-brand {
                 display: block;
@@ -1846,6 +1909,12 @@
                 gap: 18px;
                 margin-top: 18px;
             }
+            .settings-layout > [data-settings-section] {
+                display: none;
+            }
+            .settings-layout > [data-settings-section].is-active {
+                display: block;
+            }
             .settings-panel {
                 max-width: 760px;
             }
@@ -2943,6 +3012,73 @@
                 display: grid;
                 gap: 14px;
             }
+            .jashflow-loan-detail[hidden],
+            .jashflow-loan-list[hidden] {
+                display: none;
+            }
+            .jashflow-list-toolbar,
+            .jashflow-export-controls,
+            .jashflow-loan-tabs {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-bottom: 14px;
+            }
+            .jashflow-filter-toggle {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                color: var(--muted);
+                font-weight: 850;
+            }
+            .jashflow-filter-toggle input {
+                width: 18px;
+                height: 18px;
+                accent-color: var(--blue);
+            }
+            .jashflow-loan-tabs {
+                justify-content: flex-start;
+                margin: 0;
+                border-bottom: 1px solid var(--line);
+            }
+            .jashflow-loan-tabs button {
+                min-height: 42px;
+                border: 0;
+                border-bottom: 3px solid transparent;
+                border-radius: 0;
+                background: transparent;
+                color: var(--muted);
+                padding: 0 4px;
+                font-weight: 900;
+            }
+            .jashflow-loan-tabs button.is-active {
+                color: var(--blue);
+                border-bottom-color: var(--blue);
+            }
+            .jashflow-export-controls {
+                justify-content: flex-start;
+            }
+            .jashflow-export-controls label {
+                display: grid;
+                gap: 5px;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .jashflow-export-controls input {
+                min-height: 40px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.92);
+                color: var(--ink);
+                padding: 0 10px;
+                font: inherit;
+                font-weight: 750;
+            }
             .jashflow-detail-head {
                 display: flex;
                 flex-wrap: wrap;
@@ -3074,17 +3210,14 @@
             .jashflow-statement-row strong {
                 white-space: nowrap;
             }
-            .bank-statement-panel,
             .bank-statement-workspace {
                 display: grid;
                 gap: 18px;
             }
-            .bank-extraction-summary-grid {
-                display: grid;
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                gap: 12px;
+            #bankStatementsScreen .bank-statement-workspace,
+            #bankStatementsScreen .bank-client-form {
+                margin-top: 18px;
             }
-            .bank-extraction-summary-grid article,
             .bank-account-card,
             .bank-transaction-row,
             .bank-flag-row {
@@ -3093,7 +3226,6 @@
                 border: 1px solid var(--line);
                 background: rgba(255, 255, 255, 0.78);
             }
-            .bank-extraction-summary-grid span,
             .bank-client-form label,
             .bank-account-form label,
             .bank-upload-form label {
@@ -3103,11 +3235,6 @@
                 font-weight: 900;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
-            }
-            .bank-extraction-summary-grid strong {
-                display: block;
-                margin-top: 6px;
-                font-size: 1.2rem;
             }
             .bank-client-form,
             .bank-account-form,
@@ -3142,6 +3269,186 @@
             }
             .bank-statement-workspace.is-extraction-detail {
                 grid-template-columns: minmax(260px, 0.32fr) minmax(0, 1fr);
+            }
+            .bank-account-page {
+                display: grid;
+                gap: 16px;
+                min-width: 0;
+            }
+            .bank-account-page-header,
+            .bank-account-toolbar,
+            .bank-account-tabs,
+            .bank-warning-row {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .bank-account-page-header {
+                padding-bottom: 14px;
+                border-bottom: 1px solid var(--line);
+            }
+            .bank-account-page-header h3 {
+                margin: 4px 0 0;
+            }
+            .bank-account-actions,
+            .bank-account-tabs {
+                flex-wrap: wrap;
+            }
+            .bank-account-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .bank-account-summary-card,
+            .bank-warning-card {
+                padding: 14px;
+                border-radius: 14px;
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.78);
+            }
+            .bank-account-summary-card span,
+            .bank-warning-card span,
+            .bank-upload-history-table small {
+                display: block;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .bank-account-summary-card strong {
+                display: block;
+                margin-top: 6px;
+                font-size: 1rem;
+            }
+            .bank-warning-panel {
+                display: grid;
+                gap: 8px;
+            }
+            .bank-warning-card {
+                border-color: rgba(255, 159, 47, 0.34);
+                background: rgba(255, 243, 223, 0.9);
+            }
+            .bank-warning-card.is-high {
+                border-color: rgba(255, 83, 83, 0.36);
+                background: rgba(255, 231, 231, 0.9);
+            }
+            .bank-warning-row {
+                justify-content: flex-start;
+            }
+            .bank-warning-icon {
+                display: inline-grid;
+                place-items: center;
+                flex: 0 0 auto;
+                width: 28px;
+                height: 28px;
+                border-radius: 999px;
+                background: rgba(255, 159, 47, 0.18);
+                color: #9d6414;
+                font-weight: 950;
+            }
+            .bank-warning-card.is-high .bank-warning-icon {
+                background: rgba(255, 83, 83, 0.18);
+                color: #ad3434;
+            }
+            .bank-warning-card strong,
+            .bank-warning-card p {
+                display: block;
+                margin: 0;
+            }
+            .bank-warning-card p {
+                margin-top: 3px;
+                color: var(--muted);
+                font-weight: 750;
+            }
+            .bank-account-tabs {
+                justify-content: flex-start;
+                border-bottom: 1px solid var(--line);
+            }
+            .bank-account-tabs button {
+                min-height: 42px;
+                border: 0;
+                border-bottom: 3px solid transparent;
+                border-radius: 0;
+                background: transparent;
+                color: var(--muted);
+                padding: 0 4px;
+                font-weight: 900;
+            }
+            .bank-account-tabs button.is-active {
+                color: var(--blue);
+                border-bottom-color: var(--blue);
+            }
+            .bank-account-toolbar {
+                align-items: center;
+                flex-wrap: wrap;
+            }
+            .bank-account-toolbar .search-wrap {
+                max-width: 420px;
+            }
+            .bank-transaction-table,
+            .bank-upload-history-table {
+                width: 100%;
+                min-width: 880px;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .bank-transaction-table th,
+            .bank-transaction-table td,
+            .bank-upload-history-table th,
+            .bank-upload-history-table td {
+                padding: 12px 14px;
+                border-bottom: 1px solid var(--line);
+                text-align: left;
+                vertical-align: middle;
+            }
+            .bank-transaction-table th,
+            .bank-upload-history-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .bank-transaction-table td:nth-child(1) { width: 120px; }
+            .bank-transaction-table td:nth-child(3),
+            .bank-transaction-table td:nth-child(4),
+            .bank-transaction-table td:nth-child(5) {
+                white-space: nowrap;
+                text-align: right;
+                font-weight: 850;
+            }
+            .bank-transaction-table strong,
+            .bank-upload-history-table strong {
+                display: block;
+            }
+            .bank-transaction-table small,
+            .bank-upload-history-table small {
+                margin-top: 3px;
+                color: var(--muted);
+                font-weight: 750;
+            }
+            .bank-status-pill {
+                display: inline-flex;
+                align-items: center;
+                min-height: 28px;
+                border-radius: 999px;
+                padding: 4px 10px;
+                background: var(--green-soft);
+                color: #1b7e45;
+                font-size: 0.78rem;
+                font-weight: 900;
+                text-transform: capitalize;
+            }
+            .bank-status-pill.is-failed {
+                background: var(--red-soft);
+                color: #b73939;
+            }
+            .bank-status-pill.is-processing,
+            .bank-status-pill.is-queued {
+                background: var(--orange-soft);
+                color: #9d6414;
             }
             .bank-extraction-client-list,
             .bank-account-list,
@@ -4749,7 +5056,7 @@
                 .xero-transaction-grid,
                 .import-year-grid,
                 .jashflow-summary-grid,
-                .bank-extraction-summary-grid,
+                .bank-account-summary-grid,
                 .ignition-summary-grid,
                 .detail-stats,
                 .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -4853,11 +5160,17 @@
                 }
                 .ledger-footer { flex-direction: column; align-items: flex-start; }
                 .sync-progress-meta { flex-direction: column; gap: 6px; }
+                .bank-statement-workspace.is-extraction-detail {
+                    grid-template-columns: 1fr;
+                }
+                .bank-account-page-header {
+                    flex-direction: column;
+                }
             }
             @media (max-width: 560px) {
                 .summary-bar { grid-template-columns: 1fr; }
                 .jashflow-summary-grid,
-                .bank-extraction-summary-grid,
+                .bank-account-summary-grid,
                 .ignition-summary-grid,
                 .payments-made-summary,
                 .allocation-form { grid-template-columns: 1fr; }
@@ -4886,8 +5199,36 @@
                             <strong>Resync Data</strong>
                             <span>Refresh Xero</span>
                         </button>
-                        <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius Hub<span>Main site</span></a>
+                        <a class="app-sidebar-link" href="https://www.Team.Jaccountancy.co.uk">Back to Jenius<span>Main site</span></a>
                     </div>
+                </aside>
+                <aside class="settings-mode-sidebar settings-sidebar-main" aria-label="Settings navigation">
+                    <button class="settings-sidebar-back" id="settingsBackToMainSidebarButton" type="button">← Back to Main Sidebar</button>
+                    <div class="settings-sidebar-title">
+                        <strong>Settings</strong>
+                        <span>Focused controls</span>
+                    </div>
+                    <nav class="app-nav">
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="data-import">Data Import Preferences<span>Invoice import filter</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="period-scope">Period Scope Syncs<span>Invoice years</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="xero-connection">Xero Connection / Disconnection<span>Organisation link</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">Mapping Changes / COA<span>Posting defaults</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">Xero Outbox / Pending<span>Queued actions</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="letters">Letter Templates<span>Reminder copy</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">Developer Log / Audit<span>Sync events</span></button>
+                        <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">System Status<span>Database metrics</span></button>
+                        <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">Factory Reset<span>Protected reset area</span></button>
+                    </nav>
+                </aside>
+                <aside class="settings-mode-sidebar settings-sidebar-factory" aria-label="Factory reset navigation">
+                    <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">← Back to Settings Sidebar</button>
+                    <div class="settings-sidebar-title">
+                        <strong>Factory Reset</strong>
+                        <span>Protected reset area</span>
+                    </div>
+                    <nav class="app-nav">
+                        <button class="settings-sidebar-button danger-button" id="factoryOpenResetPageButton" type="button">Open Factory Reset<span>Show reset controls</span></button>
+                    </nav>
                 </aside>
                 <main class="ledger-shell">
                     <header class="ledger-topbar">
@@ -4975,7 +5316,7 @@
                                     <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                                     <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
                                     <button type="button" id="developerLogButton">Developer log</button>
-                                    <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius Hub</a>
+                                    <a href="https://www.Team.Jaccountancy.co.uk">Back to Jenius</a>
                                 </div>
                             </div>
                         </div>
@@ -5126,7 +5467,7 @@
                         </div>
 
                         <div class="settings-layout">
-                            <section class="detail-panel settings-panel">
+                            <section class="detail-panel settings-panel" data-settings-section="data-import">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Data import</p>
@@ -5143,11 +5484,6 @@
                                             <option value="full_history">Full invoice history</option>
                                         </select>
                                     </label>
-                                    <div class="import-years-panel">
-                                        <div class="settings-field-label">Invoice years to import</div>
-                                        <div class="import-year-grid" id="importYearOptions"></div>
-                                        <p class="settings-help">Leave every year unticked to import all available Xero invoice years, or tick specific years to limit the import.</p>
-                                    </div>
                                     <div class="sync-settings-status" id="syncSettingsStatus">
                                         <span>Imported: no sync yet</span>
                                         <span>Remaining: choose a filter and run sync</span>
@@ -5155,7 +5491,23 @@
                                 </div>
                             </section>
 
-                            <section class="detail-panel settings-panel wide-settings-panel">
+                            <section class="detail-panel settings-panel" data-settings-section="period-scope">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Period scope</p>
+                                        <h3>Invoice years to import</h3>
+                                    </div>
+                                </div>
+                                <div class="sync-settings-panel">
+                                    <div class="import-years-panel">
+                                        <div class="settings-field-label">Invoice years to import</div>
+                                        <div class="import-year-grid" id="importYearOptions"></div>
+                                        <p class="settings-help">Leave every year unticked to import all available Xero invoice years, or tick specific years to limit the import.</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="system-status">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Database</p>
@@ -5170,7 +5522,7 @@
                                 <div class="database-metrics-list" id="databaseMetricsTables"></div>
                             </section>
 
-                            <section class="detail-panel settings-panel">
+                            <section class="detail-panel settings-panel" data-settings-section="xero-connection">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Xero connection</p>
@@ -5181,7 +5533,7 @@
                                 <p class="settings-help">Disconnect only when you need to connect a different Xero organisation. Imported ledger rows remain visible until the next sync replaces them.</p>
                             </section>
 
-                            <section class="detail-panel settings-panel">
+                            <section class="detail-panel settings-panel" data-settings-section="mapping">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Accounting codes</p>
@@ -5191,7 +5543,7 @@
                                 <p class="settings-help">Late payment charges post to account code 1222 with OUTPUT2 VAT. Bad debt write-offs post credit notes to account code 402 with no VAT and allocate them to the original invoice.</p>
                             </section>
 
-                            <section class="detail-panel settings-panel wide-settings-panel">
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="outbox">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Xero outbox</p>
@@ -5208,7 +5560,7 @@
                                 </div>
                             </section>
 
-                            <section class="detail-panel settings-panel wide-settings-panel">
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="developer-log">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Developer log</p>
@@ -5233,7 +5585,7 @@
                                 </div>
                             </section>
 
-                            <section class="detail-panel settings-panel">
+                            <section class="detail-panel settings-panel" data-settings-section="letters">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Letters</p>
@@ -5255,7 +5607,7 @@
                                 </form>
                             </section>
 
-                            <section class="detail-panel settings-panel danger-panel factory-reset-panel">
+                            <section class="detail-panel settings-panel danger-panel factory-reset-panel" data-settings-section="factory-reset">
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Hidden destructive action</p>
@@ -5353,6 +5705,7 @@
                                 <p class="detail-meta">Track active client loans, daily compound interest, payments, and interest invoicing controls.</p>
                             </div>
                             <div class="detail-actions">
+                                <button class="ghost-button" id="backJashflowLoansButton" type="button" hidden>Back to loans</button>
                                 <button class="ghost-button" id="toggleJashflowSetupButton" type="button">Xero posting setup</button>
                                 <button class="primary-button" id="addJashflowClientButton" type="button">Add new loan</button>
                             </div>
@@ -5382,17 +5735,13 @@
                             </div>
                             <form class="jashflow-settings-form" id="jashflowSettingsForm" hidden>
                                 <label>
-                                    Interest invoice contact
-                                    <select id="jashflowInterestContactSelect" required></select>
-                                </label>
-                                <label>
                                     Interest received account code
                                     <input id="jashflowInterestAccountCodeInput" type="text" inputmode="numeric" autocomplete="off" required>
                                 </label>
                                 <button class="ghost-button" type="submit">Save setup</button>
                                 <button class="primary-button" id="postJashflowInterestButton" type="button">Post uninvoiced interest</button>
                             </form>
-                            <p class="late-charge-summary" id="jashflowPostingSummary">Save the Xero contact and interest account code before posting interest.</p>
+                            <p class="late-charge-summary" id="jashflowPostingSummary">Save the Xero interest account code before posting interest.</p>
                             <form class="jashflow-loan-form" id="jashflowLoanForm" hidden>
                                 <input id="jashflowLoanIdInput" type="hidden">
                                 <label>
@@ -5446,34 +5795,13 @@
                                 <button class="ghost-button" id="refreshBankStatementsButton" type="button">Refresh</button>
                             </div>
                         </div>
-                        <section class="detail-panel bank-statement-panel">
-                            <div class="bank-extraction-summary-grid">
-                                <article>
-                                    <span>Extraction clients</span>
-                                    <strong id="bankStatementClientCount">0</strong>
-                                </article>
-                                <article>
-                                    <span>Bank accounts</span>
-                                    <strong id="bankStatementAccountCount">0</strong>
-                                </article>
-                                <article>
-                                    <span>Transactions</span>
-                                    <strong id="bankStatementTransactionCount">0</strong>
-                                </article>
-                                <article>
-                                    <span>Review flags</span>
-                                    <strong id="bankStatementFlagCount">0</strong>
-                                </article>
-                            </div>
-                            <form class="bank-client-form" id="bankStatementClientForm" hidden>
-                                <label>
-                                    Add Xero customer
-                                    <select id="bankStatementCustomerSelect" required></select>
-                                </label>
-                                <button class="primary-button" type="submit">Add extraction client</button>
-                            </form>
-                            <p class="late-charge-summary" id="bankStatementSummary">Load or add an extraction client to begin.</p>
-                        </section>
+                        <form class="bank-client-form" id="bankStatementClientForm" hidden>
+                            <label>
+                                Add Xero customer
+                                <select id="bankStatementCustomerSelect" required></select>
+                            </label>
+                            <button class="primary-button" type="submit">Add extraction client</button>
+                        </form>
                         <section class="detail-panel bank-statement-workspace">
                             <div class="bank-extraction-client-list" id="bankStatementClientList"></div>
                             <div class="bank-account-list" id="bankAccountList"></div>
@@ -5591,6 +5919,7 @@
                                 <p class="detail-meta">Client register, Xero sync, account treatment review, corporation tax estimate, dividend capacity, DLA review, exceptions, and branded month-end reporting.</p>
                             </div>
                             <div class="detail-actions">
+                                <button class="ghost-button" id="backMeReportClientsButton" type="button" hidden>Back to clients</button>
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
                                 <button class="ghost-button" id="addMeReportClientButton" type="button">Add client</button>
                             </div>
@@ -6276,7 +6605,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Where things are</h4>
-                                <p>The left sidebar holds Home, Credit Control, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius Hub. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
+                                <p>The left sidebar holds Home, Credit Control, Invoices, LPCs, Settings, Xero login/resync, and Back to Jenius. The top of the ledger shows totals and status chips. The table controls hold search, sorting, filtering, columns, dense view, reset filters, and CSV export. Opening a client shows the invoices, notes, generated letters, payment plans, files, status history, and audit trail for that client.</p>
                             </section>
                             <section class="help-section">
                                 <h4>First sync</h4>
@@ -6318,7 +6647,7 @@
                             </section>
                             <section class="help-section">
                                 <h4>Leaving the console</h4>
-                                <p>Use Back to Jenius Hub at the bottom of the left sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
+                                <p>Use Back to Jenius at the bottom of the left sidebar to return to the main Jenius site. Log Out is handled by the surrounding Jenius navigation outside this embedded console. Closing this Help panel returns you to the same screen you were using.</p>
                             </section>
                         </div>
                     </div>
@@ -6432,6 +6761,7 @@
             let activeView = "ledger";
             let activeNavSection = "home";
             let activeClientSection = "overview";
+            let activeSettingsSection = "data-import";
             let searchTerm = "";
             let clientFilter = persistedUIState.clientFilter || "all";
             let sortMode = "amount";
@@ -6476,6 +6806,13 @@
             let jashflowFormOpen = false;
             let jashflowSettingsOpen = false;
             let editingJashflowLoanId = "";
+            let jashflowDetailOpen = false;
+            let jashflowHideRepaidLoans = true;
+            let activeJashflowLoanTab = "details";
+            let jashflowStatementFromDate = "";
+            let jashflowStatementToDate = "";
+            let jashflowTransactionFromDate = "";
+            let jashflowTransactionToDate = "";
             let bankStatementData = { customers: [], clients: [], summary: {} };
             let bankStatementsLoading = false;
             let bankStatementInsightsLoaded = false;
@@ -6485,6 +6822,8 @@
             let bankAccountFormOpen = false;
             let bankStatementClientFormOpen = false;
             let bankStatementWorkspaceOpen = false;
+            let bankStatementAccountTab = "transactions";
+            let bankStatementTransactionSearchTerm = "";
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let isIgnitionSyncing = false;
@@ -6496,8 +6835,10 @@
             let meReportLoading = false;
             let meReportClientFormOpen = false;
             let selectedMeReportClientId = "";
+            let meReportWorkspaceOpen = false;
             let activeMeReportTab = "overview";
             let isMeReportProcessing = false;
+            let meReportUploadProcessing = false;
             let activeMeReportSyncRunId = null;
             let latestMeReportSyncRun = null;
             let meReportSyncStartedAt = 0;
@@ -6627,6 +6968,7 @@
                         meReportConnectXero: config.endpoints?.meReportConnectXero || "/api/me-report/clients/:clientId/connect-xero",
                         meReportSync: config.endpoints?.meReportSync || "/api/me-report/clients/:clientId/sync",
                         meReportSyncStatus: config.endpoints?.meReportSyncStatus || "/api/me-report/sync/:syncId",
+                        meReportSubmissions: config.endpoints?.meReportSubmissions || "/api/me-report/clients/:clientId/submissions",
                         meReportMappings: config.endpoints?.meReportMappings || "/api/me-report/mappings/:mappingId",
                         meReportExceptions: config.endpoints?.meReportExceptions || "/api/me-report/exceptions/:exceptionId",
                         meReportMergeContact: config.endpoints?.meReportMergeContact || "/api/me-report/exceptions/:exceptionId/merge-contact",
@@ -8148,6 +8490,7 @@
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
                 document.body.classList.toggle("is-client-view", activeView === "client");
+                if (activeView !== "settings") closeSettingsSidebar();
                 const activeNav = activeNavForView();
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
                     const active = button.dataset.appNav === activeNav;
@@ -10695,6 +11038,7 @@
                 activeView = "jashflow";
                 editingJashflowLoanId = "";
                 jashflowFormOpen = false;
+                jashflowDetailOpen = false;
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
@@ -10812,6 +11156,51 @@
                 return rows;
             }
 
+            function jashflowLoanIsRepaid(loan) {
+                return String(loan?.status || "active").toLowerCase() === "closed" || Number(loan?.balance || 0) <= 0.01;
+            }
+
+            function jashflowDateInRange(row, fromDate, toDate) {
+                const rowDate = String(row?.date || "");
+                if (fromDate && rowDate < fromDate) return false;
+                if (toDate && rowDate > toDate) return false;
+                return true;
+            }
+
+            function jashflowStatementRowsForExport(loan) {
+                return jashflowTransactionRows(loan).filter((row) => jashflowDateInRange(row, jashflowStatementFromDate, jashflowStatementToDate));
+            }
+
+            function jashflowTransactionRowsForExport(loan) {
+                return jashflowTransactionRows(loan)
+                    .filter((row) => !row.isVirtual)
+                    .filter((row) => jashflowDateInRange(row, jashflowTransactionFromDate, jashflowTransactionToDate));
+            }
+
+            function jashflowLoanExportFilename(loan, suffix) {
+                const name = (loan?.customerName || "jashflow-loan").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "jashflow-loan";
+                return `${name}-${suffix}.csv`;
+            }
+
+            function jashflowRangeControls(mode) {
+                const fromValue = mode === "statement" ? jashflowStatementFromDate : jashflowTransactionFromDate;
+                const toValue = mode === "statement" ? jashflowStatementToDate : jashflowTransactionToDate;
+                const exportButtonId = mode === "statement" ? "exportJashflowStatementButton" : "exportJashflowTransactionsButton";
+                return `
+                    <div class="jashflow-export-controls">
+                        <label>
+                            From
+                            <input id="jashflow${mode === "statement" ? "Statement" : "Transaction"}FromDateInput" type="date" value="${escapeHTML(fromValue)}">
+                        </label>
+                        <label>
+                            To
+                            <input id="jashflow${mode === "statement" ? "Statement" : "Transaction"}ToDateInput" type="date" value="${escapeHTML(toValue)}">
+                        </label>
+                        <button class="ghost-button" id="${exportButtonId}" type="button">Export ${mode}</button>
+                    </div>
+                `;
+            }
+
             async function loadJashflow(force = false) {
                 if (jashflowLoading) return;
                 jashflowLoading = true;
@@ -10860,6 +11249,8 @@
                 if (form) form.hidden = !jashflowFormOpen;
                 const addButton = document.getElementById("addJashflowClientButton");
                 if (addButton) addButton.textContent = jashflowFormOpen ? "Close loan form" : "Add new loan";
+                const backLoansButton = document.getElementById("backJashflowLoansButton");
+                if (backLoansButton) backLoansButton.hidden = !jashflowDetailOpen;
                 const submitButton = document.getElementById("jashflowLoanSubmitButton");
                 if (submitButton) submitButton.textContent = editingJashflowLoanId ? "Save and recalculate" : "Save loan";
                 const customerSelect = document.getElementById("jashflowCustomerSelect");
@@ -10887,7 +11278,7 @@
                 if (accountInput && document.activeElement !== accountInput) accountInput.value = settings.interestAccountCode || "";
                 const postButton = document.getElementById("postJashflowInterestButton");
                 const postingSummary = document.getElementById("jashflowPostingSummary");
-                const setupComplete = Boolean(settings.invoiceContactId && settings.interestAccountCode);
+                const setupComplete = Boolean(settings.interestAccountCode);
                 const uninvoicedAmount = Number(summary.uninvoicedInterestTotal || 0);
                 if (postButton) {
                     postButton.disabled = jashflowPostingInterest || !setupComplete || uninvoicedAmount < 0.01;
@@ -10899,9 +11290,9 @@
                 }
                 if (postingSummary) {
                     postingSummary.textContent = !setupComplete
-                        ? "Save the Xero invoice contact and interest received account code before posting interest."
+                        ? "Save the Xero interest received account code before posting interest."
                         : uninvoicedAmount >= 0.01
-                        ? `${formatCurrency(uninvoicedAmount)} of accrued Jashflow interest has not yet been invoiced into Xero.`
+                        ? `${formatCurrency(uninvoicedAmount)} of accrued Jashflow interest will post as individual Xero invoices against each loan client.`
                         : "All accrued Jashflow interest has already been posted to Xero.";
                 }
                 const startDateInput = document.getElementById("jashflowStartDateInput");
@@ -10918,19 +11309,38 @@
                     return;
                 }
 
-                const activeLoanRows = (jashflowData.loans || []).filter((loan) => String(loan.status || "active").toLowerCase() === "active");
+                list.hidden = jashflowDetailOpen;
+                detail.hidden = !jashflowDetailOpen;
+                const allLoanRows = jashflowData.loans || [];
+                const visibleLoanRows = allLoanRows.filter((loan) => !jashflowHideRepaidLoans || !jashflowLoanIsRepaid(loan));
 
-                if (!activeLoanRows.length) {
-                    list.innerHTML = '<div class="empty-state"><p class="eyebrow">No active loans</p><h4>No Jashflow loans are currently active</h4><p>Use Add new loan to open the setup fields and create a persisted loan ledger.</p></div>';
-                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Statement</p><h4>Select or add a loan</h4><p>Payments and generated statement rows will appear here once a loan exists.</p></div>';
+                if (!visibleLoanRows.length) {
+                    list.innerHTML = `
+                        <div class="jashflow-list-toolbar">
+                            <label class="jashflow-filter-toggle"><input id="jashflowHideRepaidToggle" type="checkbox" ${jashflowHideRepaidLoans ? "checked" : ""}> Hide fully repaid loans</label>
+                        </div>
+                        <div class="empty-state"><p class="eyebrow">No loans</p><h4>${allLoanRows.length ? "All loans are currently hidden" : "No Jashflow loans are saved"}</h4><p>${allLoanRows.length ? "Turn off the repaid-loan filter to show closed or fully repaid loans." : "Use Add new loan to create a persisted loan ledger."}</p></div>
+                    `;
+                    document.getElementById("jashflowHideRepaidToggle")?.addEventListener("change", (event) => {
+                        jashflowHideRepaidLoans = event.target.checked;
+                        renderJashflowScreen();
+                    });
+                    detail.innerHTML = "";
                     return;
                 }
 
-                if (!selectedJashflowLoanId || !activeLoanRows.some((loan) => loan.id === selectedJashflowLoanId)) {
-                    selectedJashflowLoanId = activeLoanRows[0].id;
+                if (!selectedJashflowLoanId || !visibleLoanRows.some((loan) => loan.id === selectedJashflowLoanId)) {
+                    selectedJashflowLoanId = visibleLoanRows[0].id;
                 }
 
                 list.innerHTML = `
+                    <div class="jashflow-list-toolbar">
+                        <div>
+                            <p class="eyebrow">Loan book</p>
+                            <h3>${visibleLoanRows.length.toLocaleString("en-GB")} loan${visibleLoanRows.length === 1 ? "" : "s"}</h3>
+                        </div>
+                        <label class="jashflow-filter-toggle"><input id="jashflowHideRepaidToggle" type="checkbox" ${jashflowHideRepaidLoans ? "checked" : ""}> Hide fully repaid loans</label>
+                    </div>
                     <table class="jashflow-loans-table">
                         <thead>
                             <tr>
@@ -10946,8 +11356,8 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${activeLoanRows.map((loan) => `
-                                <tr class="${loan.id === selectedJashflowLoanId ? "is-selected" : ""}" data-jashflow-loan-id="${escapeHTML(loan.id)}">
+                            ${visibleLoanRows.map((loan) => `
+                                <tr data-jashflow-loan-id="${escapeHTML(loan.id)}">
                                     <td><strong>${escapeHTML(loan.customerName || "Unnamed client")}</strong><small>${Number(loan.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}% compound · ${Number(loan.durationMonths || 0)} months</small></td>
                                     <td><strong>${formatDate(loan.startDate)}</strong><small>${Number(loan.daysAccrued || 0).toLocaleString("en-GB")} days accrued</small></td>
                                     <td class="amount-cell">${formatCurrency(loan.principalAmount || 0)}</td>
@@ -10965,21 +11375,52 @@
                 list.querySelectorAll("[data-jashflow-loan-id]").forEach((row) => {
                     row.addEventListener("click", () => {
                         selectedJashflowLoanId = row.dataset.jashflowLoanId;
+                        jashflowDetailOpen = true;
+                        activeJashflowLoanTab = "details";
                         renderJashflowScreen();
                     });
                 });
+                document.getElementById("jashflowHideRepaidToggle")?.addEventListener("change", (event) => {
+                    jashflowHideRepaidLoans = event.target.checked;
+                    renderJashflowScreen();
+                });
+
+                if (!jashflowDetailOpen) {
+                    detail.innerHTML = "";
+                    return;
+                }
 
                 const loan = selectedJashflowLoan();
                 if (!loan) return;
                 const transactions = jashflowTransactionRows(loan);
+                const validLoanTabs = ["details", "future-schedule", "payments", "fees-interest", "statement", "transactions"];
+                if (!validLoanTabs.includes(activeJashflowLoanTab)) activeJashflowLoanTab = "details";
                 const chargeRows = transactions.filter((row) => ["fee", "charge", "interest"].includes(String(row.type || "").toLowerCase()));
+                const paymentRows = transactions.filter((row) => String(row.type || "").toLowerCase() === "payment");
                 const scheduleRows = jashflowFutureRepaymentSchedule(loan);
-                const statementRows = transactions.map((row) => `
+                const statementRows = jashflowStatementRowsForExport(loan).map((row) => `
                     <tr class="${row.isVirtual ? "is-virtual" : ""}">
                         <td>${formatDate(row.date)}</td>
                         <td><strong>${escapeHTML(row.description || row.type || "Transaction")}</strong><small>${escapeHTML(row.type || "")}${row.isVirtual ? " · calculated" : ""}</small></td>
                         <td>${formatCurrency(row.debit || Math.max(Number(row.amount || 0), 0))}</td>
                         <td>${formatCurrency(row.credit || Math.max(Number(row.amount || 0) * -1, 0))}</td>
+                        <td>${formatCurrency(row.balance || 0)}</td>
+                    </tr>
+                `).join("");
+                const transactionRows = jashflowTransactionRowsForExport(loan).map((row) => `
+                    <tr>
+                        <td>${formatDate(row.date)}</td>
+                        <td><strong>${escapeHTML(row.description || row.type || "Transaction")}</strong><small>${escapeHTML(row.type || "")}</small></td>
+                        <td>${formatCurrency(row.debit || Math.max(Number(row.amount || 0), 0))}</td>
+                        <td>${formatCurrency(row.credit || Math.max(Number(row.amount || 0) * -1, 0))}</td>
+                        <td>${formatCurrency(row.balance || 0)}</td>
+                    </tr>
+                `).join("");
+                const paymentTableRows = paymentRows.map((row) => `
+                    <tr>
+                        <td>${formatDate(row.date)}</td>
+                        <td><strong>${escapeHTML(row.description || "Payment received")}</strong><small>${escapeHTML(row.type || "")}</small></td>
+                        <td>${formatCurrency(row.credit || Math.abs(Number(row.amount || 0)))}</td>
                         <td>${formatCurrency(row.balance || 0)}</td>
                     </tr>
                 `).join("");
@@ -11001,17 +11442,128 @@
                         <td>${formatCurrency(row.closingBalance)}</td>
                     </tr>
                 `).join("");
+                const detailsTab = `
+                    <div class="jashflow-info-grid">
+                        <article><span>Loan amount</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></article>
+                        <article><span>Arrangement fee</span><strong>${formatCurrency(loan.arrangementFee || 0)}</strong></article>
+                        <article><span>Compound interest</span><strong>${Number(loan.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}%</strong></article>
+                        <article><span>Term</span><strong>${Number(loan.durationMonths || 0).toLocaleString("en-GB")} months</strong></article>
+                        <article><span>Start date</span><strong>${formatDate(loan.startDate)}</strong></article>
+                        <article><span>Days accrued</span><strong>${Number(loan.daysAccrued || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Balance before interest</span><strong>${formatCurrency(loan.balanceBeforeInterest || 0)}</strong></article>
+                        <article><span>Current balance</span><strong>${formatCurrency(loan.balance || 0)}</strong></article>
+                    </div>
+                    <section class="jashflow-detail-section">
+                        <span>Loan notes</span>
+                        <h4>Internal notes</h4>
+                        <textarea class="jashflow-notes-editor" id="jashflowLoanNotesEditor" placeholder="Add notes, approval points, client context, or agreed changes">${escapeHTML(loan.notes || "")}</textarea>
+                        <div class="detail-actions">
+                            <button class="primary-button" id="saveJashflowNotesButton" type="button">Save notes</button>
+                        </div>
+                    </section>
+                `;
+                const scheduleTab = `
+                    <section class="jashflow-detail-section">
+                        <span>Expected repayments</span>
+                        <h4>Future schedule</h4>
+                        <div class="jashflow-table-wrap">
+                            <table class="jashflow-schedule-table">
+                                <thead>
+                                    <tr><th>#</th><th>Due date</th><th>Opening</th><th>Interest</th><th>Expected payment</th><th>Closing</th></tr>
+                                </thead>
+                                <tbody>${scheduleTableRows || '<tr><td colspan="6">No future repayment rows are needed because this loan is already cleared.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                `;
+                const paymentsTab = `
+                    <section class="jashflow-detail-section">
+                        <span>Payments</span>
+                        <h4>Add payment</h4>
+                        <form class="jashflow-payment-form" id="jashflowPaymentForm">
+                            <input id="jashflowPaymentDateInput" type="date" value="${localDateKey()}" required>
+                            <input id="jashflowPaymentAmountInput" type="number" min="0.01" step="0.01" placeholder="Payment amount" required>
+                            <input id="jashflowPaymentNoteInput" type="text" placeholder="Payment reference">
+                            <button class="primary-button" type="submit">Add payment</button>
+                        </form>
+                    </section>
+                    <section class="jashflow-detail-section">
+                        <span>Payment history</span>
+                        <h4>Saved payments</h4>
+                        <div class="jashflow-table-wrap">
+                            <table class="jashflow-statement-table">
+                                <thead><tr><th>Date</th><th>Description</th><th>Payment</th><th>Balance</th></tr></thead>
+                                <tbody>${paymentTableRows || '<tr><td colspan="4">No payments have been recorded for this loan.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                `;
+                const feesTab = `
+                    <section class="jashflow-detail-section">
+                        <span>Fees and interest</span>
+                        <h4>Add charge</h4>
+                        <form class="jashflow-charge-form" id="jashflowChargeForm">
+                            <input id="jashflowChargeDateInput" type="date" value="${localDateKey()}" required>
+                            <input id="jashflowChargeAmountInput" type="number" min="0.01" step="0.01" placeholder="Charge amount" required>
+                            <input id="jashflowChargeNoteInput" type="text" placeholder="Charge description">
+                            <button class="ghost-button" type="submit">Add charge</button>
+                        </form>
+                    </section>
+                    <section class="jashflow-detail-section">
+                        <span>Charges</span>
+                        <h4>Fees, charges and accrued interest</h4>
+                        <div class="jashflow-table-wrap">
+                            <table class="jashflow-statement-table">
+                                <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Status</th></tr></thead>
+                                <tbody>${chargeTableRows || '<tr><td colspan="4">No charges have been recorded for this loan.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                `;
+                const statementTab = `
+                    ${jashflowRangeControls("statement")}
+                    <section class="jashflow-detail-section">
+                        <span>Statement</span>
+                        <h4>Loan statement</h4>
+                        <div class="jashflow-table-wrap">
+                            <table class="jashflow-statement-table">
+                                <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running balance</th></tr></thead>
+                                <tbody>${statementRows || '<tr><td colspan="5">No statement rows match the selected date range.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                `;
+                const transactionsTab = `
+                    ${jashflowRangeControls("transactions")}
+                    <section class="jashflow-detail-section">
+                        <span>Transactions</span>
+                        <h4>Saved transaction history</h4>
+                        <div class="jashflow-table-wrap">
+                            <table class="jashflow-statement-table">
+                                <thead><tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running balance</th></tr></thead>
+                                <tbody>${transactionRows || '<tr><td colspan="5">No saved transactions match the selected date range.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                `;
+                const tabContent = {
+                    details: detailsTab,
+                    "future-schedule": scheduleTab,
+                    payments: paymentsTab,
+                    "fees-interest": feesTab,
+                    statement: statementTab,
+                    transactions: transactionsTab
+                }[activeJashflowLoanTab] || detailsTab;
                 detail.innerHTML = `
                     <div class="jashflow-detail-head">
                         <div>
-                            <p class="eyebrow">Loan statement</p>
+                            <p class="eyebrow">Loan page</p>
                             <h3>${escapeHTML(loan.customerName || "Unnamed client")}</h3>
                             <p class="detail-meta">Started ${formatDate(loan.startDate)} · recalculates daily compound interest from the start date after applying saved payments and charges in date order.</p>
                         </div>
                         <div class="detail-actions">
                             <button class="ghost-button" id="editJashflowLoanButton" type="button">Edit loan</button>
                             <button class="ghost-button" id="recalculateJashflowLoanButton" type="button">Recalculate</button>
-                            <button class="ghost-button" id="exportJashflowStatementButton" type="button">Export statement</button>
                         </div>
                     </div>
                     <div class="jashflow-metrics">
@@ -11023,78 +11575,15 @@
                         <div class="jashflow-metric"><span>Uninvoiced interest</span><strong>${formatCurrency(loan.uninvoicedInterest || 0)}</strong></div>
                         <div class="jashflow-metric"><span>Monthly repayment</span><strong>${formatCurrency(loan.monthlyRepayment || 0)}</strong></div>
                     </div>
-                    <div class="jashflow-info-grid">
-                        <article><span>Loan amount</span><strong>${formatCurrency(loan.principalAmount || 0)}</strong></article>
-                        <article><span>Arrangement fee</span><strong>${formatCurrency(loan.arrangementFee || 0)}</strong></article>
-                        <article><span>Compound interest</span><strong>${Number(loan.annualInterestRate || 0).toLocaleString("en-GB", { maximumFractionDigits: 4 })}%</strong></article>
-                        <article><span>Term</span><strong>${Number(loan.durationMonths || 0).toLocaleString("en-GB")} months</strong></article>
-                        <article><span>Start date</span><strong>${formatDate(loan.startDate)}</strong></article>
-                        <article><span>Days accrued</span><strong>${Number(loan.daysAccrued || 0).toLocaleString("en-GB")}</strong></article>
-                        <article><span>Balance before interest</span><strong>${formatCurrency(loan.balanceBeforeInterest || 0)}</strong></article>
-                        <article><span>Current balance</span><strong>${formatCurrency(loan.balance || 0)}</strong></article>
-                    </div>
-                    <div class="jashflow-detail-sections">
-                        <section class="jashflow-detail-section">
-                            <span>Loan notes</span>
-                            <h4>Internal notes</h4>
-                            <textarea class="jashflow-notes-editor" id="jashflowLoanNotesEditor" placeholder="Add notes, approval points, client context, or agreed changes">${escapeHTML(loan.notes || "")}</textarea>
-                            <div class="detail-actions">
-                                <button class="primary-button" id="saveJashflowNotesButton" type="button">Save notes</button>
-                            </div>
-                        </section>
-                        <section class="jashflow-detail-section">
-                            <span>Expected repayments</span>
-                            <h4>Future schedule</h4>
-                            <div class="jashflow-table-wrap">
-                                <table class="jashflow-schedule-table">
-                                    <thead>
-                                        <tr><th>#</th><th>Due date</th><th>Opening</th><th>Interest</th><th>Expected payment</th><th>Closing</th></tr>
-                                    </thead>
-                                    <tbody>${scheduleTableRows || '<tr><td colspan="6">No future repayment rows are needed because this loan is already cleared.</td></tr>'}</tbody>
-                                </table>
-                            </div>
-                        </section>
-                        <section class="jashflow-detail-section">
-                            <span>Payments and charges</span>
-                            <h4>Add activity</h4>
-                            <form class="jashflow-payment-form" id="jashflowPaymentForm">
-                                <input id="jashflowPaymentDateInput" type="date" value="${localDateKey()}" required>
-                                <input id="jashflowPaymentAmountInput" type="number" min="0.01" step="0.01" placeholder="Payment amount" required>
-                                <input id="jashflowPaymentNoteInput" type="text" placeholder="Payment reference">
-                                <button class="primary-button" type="submit">Add payment</button>
-                            </form>
-                            <form class="jashflow-charge-form" id="jashflowChargeForm">
-                                <input id="jashflowChargeDateInput" type="date" value="${localDateKey()}" required>
-                                <input id="jashflowChargeAmountInput" type="number" min="0.01" step="0.01" placeholder="Charge amount" required>
-                                <input id="jashflowChargeNoteInput" type="text" placeholder="Charge description">
-                                <button class="ghost-button" type="submit">Add charge</button>
-                            </form>
-                        </section>
-                        <section class="jashflow-detail-section">
-                            <span>Charges</span>
-                            <h4>Fees, charges and accrued interest</h4>
-                            <div class="jashflow-table-wrap">
-                                <table class="jashflow-statement-table">
-                                    <thead>
-                                        <tr><th>Date</th><th>Description</th><th>Debit</th><th>Status</th></tr>
-                                    </thead>
-                                    <tbody>${chargeTableRows || '<tr><td colspan="4">No charges have been recorded for this loan.</td></tr>'}</tbody>
-                                </table>
-                            </div>
-                        </section>
-                        <section class="jashflow-detail-section">
-                            <span>Transactions</span>
-                            <h4>Loan statement</h4>
-                            <div class="jashflow-table-wrap">
-                                <table class="jashflow-statement-table">
-                                    <thead>
-                                        <tr><th>Date</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running balance</th></tr>
-                                    </thead>
-                                    <tbody>${statementRows || '<tr><td colspan="5">This loan has no saved transactions yet.</td></tr>'}</tbody>
-                                </table>
-                            </div>
-                        </section>
-                    </div>
+                    <nav class="jashflow-loan-tabs" aria-label="Loan sections">
+                        <button type="button" class="${activeJashflowLoanTab === "details" ? "is-active" : ""}" data-jashflow-loan-tab="details">Details</button>
+                        <button type="button" class="${activeJashflowLoanTab === "future-schedule" ? "is-active" : ""}" data-jashflow-loan-tab="future-schedule">Future schedule</button>
+                        <button type="button" class="${activeJashflowLoanTab === "payments" ? "is-active" : ""}" data-jashflow-loan-tab="payments">Payments</button>
+                        <button type="button" class="${activeJashflowLoanTab === "fees-interest" ? "is-active" : ""}" data-jashflow-loan-tab="fees-interest">Fees and interest</button>
+                        <button type="button" class="${activeJashflowLoanTab === "statement" ? "is-active" : ""}" data-jashflow-loan-tab="statement">Statement</button>
+                        <button type="button" class="${activeJashflowLoanTab === "transactions" ? "is-active" : ""}" data-jashflow-loan-tab="transactions">Transactions</button>
+                    </nav>
+                    <div class="jashflow-detail-sections">${tabContent}</div>
                 `;
                 document.getElementById("editJashflowLoanButton")?.addEventListener("click", () => openJashflowLoanForm(loan));
                 document.getElementById("recalculateJashflowLoanButton")?.addEventListener("click", recalculateJashflowLoan);
@@ -11102,6 +11591,29 @@
                 document.getElementById("jashflowPaymentForm")?.addEventListener("submit", addJashflowPayment);
                 document.getElementById("jashflowChargeForm")?.addEventListener("submit", addJashflowCharge);
                 document.getElementById("exportJashflowStatementButton")?.addEventListener("click", exportJashflowStatement);
+                document.getElementById("exportJashflowTransactionsButton")?.addEventListener("click", exportJashflowTransactions);
+                detail.querySelectorAll("[data-jashflow-loan-tab]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        activeJashflowLoanTab = button.dataset.jashflowLoanTab || "details";
+                        renderJashflowScreen();
+                    });
+                });
+                document.getElementById("jashflowStatementFromDateInput")?.addEventListener("change", (event) => {
+                    jashflowStatementFromDate = event.target.value;
+                    renderJashflowScreen();
+                });
+                document.getElementById("jashflowStatementToDateInput")?.addEventListener("change", (event) => {
+                    jashflowStatementToDate = event.target.value;
+                    renderJashflowScreen();
+                });
+                document.getElementById("jashflowTransactionFromDateInput")?.addEventListener("change", (event) => {
+                    jashflowTransactionFromDate = event.target.value;
+                    renderJashflowScreen();
+                });
+                document.getElementById("jashflowTransactionToDateInput")?.addEventListener("change", (event) => {
+                    jashflowTransactionToDate = event.target.value;
+                    renderJashflowScreen();
+                });
             }
 
             async function createJashflowLoan(event) {
@@ -11244,7 +11756,7 @@
                     showToast("There is no uninvoiced Jashflow interest to post", "info");
                     return;
                 }
-                if (!window.confirm(`Post ${formatCurrency(amount)} of Jashflow interest to Xero and attach the client breakdown workbook?`)) return;
+                if (!window.confirm(`Post ${formatCurrency(amount)} of Jashflow interest to Xero as individual invoices against each loan client?`)) return;
                 jashflowPostingInterest = true;
                 renderJashflowScreen();
                 try {
@@ -11254,13 +11766,7 @@
                     });
                     jashflowData = normaliseJashflowPayload(response);
                     const interestPost = response?.interestPost || {};
-                    const attachmentError = interestPost.attachmentError || "";
-                    showToast(
-                        attachmentError
-                            ? `Interest invoice posted, but the workbook attachment failed: ${attachmentError}`
-                            : `Interest invoice ${interestPost.xeroInvoiceNumber || interestPost.xeroInvoiceId || ""} posted with workbook attached`,
-                        attachmentError ? "info" : "success"
-                    );
+                    showToast(`${Number(interestPost.invoiceCount || interestPost.lineCount || 0).toLocaleString("en-GB")} Jashflow interest invoice${Number(interestPost.invoiceCount || interestPost.lineCount || 0) === 1 ? "" : "s"} posted to Xero`, "success");
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to post Jashflow interest", "error");
@@ -11275,7 +11781,7 @@
                 if (!loan) return;
                 const rows = [
                     ["Date", "Type", "Description", "Debit", "Credit", "Balance"],
-                    ...(loan.transactions || []).map((row) => [
+                    ...jashflowStatementRowsForExport(loan).map((row) => [
                         row.date || "",
                         row.type || "",
                         row.description || "",
@@ -11284,15 +11790,24 @@
                         Number(row.balance || 0).toFixed(2)
                     ])
                 ];
-                const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-                const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = `${(loan.customerName || "jashflow").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}-jashflow-statement.csv`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(link.href);
+                downloadBankCsv(jashflowLoanExportFilename(loan, "jashflow-statement"), rows);
+            }
+
+            function exportJashflowTransactions() {
+                const loan = selectedJashflowLoan();
+                if (!loan) return;
+                const rows = [
+                    ["Date", "Type", "Description", "Debit", "Credit", "Balance"],
+                    ...jashflowTransactionRowsForExport(loan).map((row) => [
+                        row.date || "",
+                        row.type || "",
+                        row.description || "",
+                        Number(row.debit || Math.max(Number(row.amount || 0), 0)).toFixed(2),
+                        Number(row.credit || Math.max(Number(row.amount || 0) * -1, 0)).toFixed(2),
+                        Number(row.balance || 0).toFixed(2)
+                    ])
+                ];
+                downloadBankCsv(jashflowLoanExportFilename(loan, "jashflow-transactions"), rows);
             }
 
             function normaliseBankStatementPayload(payload) {
@@ -11385,6 +11900,183 @@
                 return `${upload?.status || "saved"} · ${Number(upload?.insertedCount || 0).toLocaleString("en-GB")} new · ${Number(upload?.duplicateCount || 0).toLocaleString("en-GB")} duplicate`;
             }
 
+            function bankAccountTransactionsAscending(account) {
+                return (account?.transactions || []).slice().sort((left, right) => {
+                    const leftKey = `${left.date || ""}|${left.createdAt || ""}|${left.id || ""}`;
+                    const rightKey = `${right.date || ""}|${right.createdAt || ""}|${right.id || ""}`;
+                    return leftKey.localeCompare(rightKey);
+                });
+            }
+
+            function bankDateFromISO(value) {
+                const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (!match) return null;
+                return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+            }
+
+            function bankDaysBetween(start, end) {
+                const startDate = bankDateFromISO(start);
+                const endDate = bankDateFromISO(end);
+                if (!startDate || !endDate) return null;
+                return Math.round((endDate.getTime() - startDate.getTime()) / 86400000);
+            }
+
+            function formatBankDateRange(start, end) {
+                if (!start && !end) return "--";
+                if (start && end) return `${formatDate(start)} to ${formatDate(end)}`;
+                return formatDate(start || end);
+            }
+
+            function formatXeroBankDate(value) {
+                const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (!match) return value || "";
+                return `${match[3]}/${match[2]}/${match[1]}`;
+            }
+
+            function bankUploadMap(account) {
+                return new Map((account?.uploads || []).map((upload) => [String(upload.id || ""), upload]));
+            }
+
+            function bankAccountDateRange(account) {
+                const dates = bankAccountTransactionsAscending(account).map((transaction) => transaction.date).filter(Boolean);
+                return {
+                    start: dates[0] || "",
+                    end: dates[dates.length - 1] || ""
+                };
+            }
+
+            function latestBankAccountBalance(account) {
+                const transactions = bankAccountTransactionsAscending(account).filter((row) => row.balance !== null && row.balance !== undefined);
+                const transaction = transactions[transactions.length - 1];
+                return transaction ? transaction.balance : null;
+            }
+
+            function bankStatementWarnings(account) {
+                const warnings = [];
+                const seen = new Set();
+                const addWarning = (type, severity, title, message) => {
+                    const key = `${type}:${message}`;
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    warnings.push({ type, severity, title, message });
+                };
+                const transactions = bankAccountTransactionsAscending(account);
+                let previous = null;
+                let missingBalances = 0;
+                transactions.forEach((transaction) => {
+                    if (transaction.balance === null || transaction.balance === undefined || transaction.balance === "") {
+                        missingBalances += 1;
+                    }
+                    if (previous) {
+                        const dayGap = bankDaysBetween(previous.date, transaction.date);
+                        if (dayGap !== null && dayGap > 31) {
+                            addWarning(
+                                "transaction-date-gap",
+                                "medium",
+                                "Potential date gap",
+                                `No extracted transactions between ${formatDate(previous.date)} and ${formatDate(transaction.date)}. Check the uploaded statement coverage for this period.`
+                            );
+                        }
+                        if (previous.balance !== null && previous.balance !== undefined && transaction.balance !== null && transaction.balance !== undefined) {
+                            const expected = Number(previous.balance || 0) + Number(transaction.amount || 0);
+                            const actual = Number(transaction.balance || 0);
+                            if (Math.abs(expected - actual) > 0.02) {
+                                addWarning(
+                                    "balance-mismatch",
+                                    "high",
+                                    "Running balance mismatch",
+                                    `${formatDate(transaction.date)} expected ${formatCurrency(expected)}, extracted ${formatCurrency(actual)}.`
+                                );
+                            }
+                        }
+                    }
+                    previous = transaction;
+                });
+
+                if (missingBalances > 0 && transactions.length > 0) {
+                    addWarning(
+                        "missing-balances",
+                        "medium",
+                        "Balance check incomplete",
+                        `${missingBalances.toLocaleString("en-GB")} transaction${missingBalances === 1 ? "" : "s"} do not have an extracted running balance, so the sequence cannot be fully checked.`
+                    );
+                }
+
+                const uploadsWithDates = (account?.uploads || [])
+                    .filter((upload) => upload.statementStartDate && upload.statementEndDate)
+                    .slice()
+                    .sort((left, right) => String(left.statementStartDate).localeCompare(String(right.statementStartDate)));
+                let previousUpload = null;
+                uploadsWithDates.forEach((upload) => {
+                    if (previousUpload) {
+                        const gap = bankDaysBetween(previousUpload.statementEndDate, upload.statementStartDate);
+                        if (gap !== null && gap > 1) {
+                            addWarning(
+                                "statement-period-gap",
+                                "high",
+                                "Statement period gap",
+                                `${formatDate(previousUpload.statementEndDate)} to ${formatDate(upload.statementStartDate)} is not covered by uploaded statement dates.`
+                            );
+                        }
+                    }
+                    previousUpload = upload;
+                });
+                const uploadsMissingDates = (account?.uploads || []).filter((upload) => !upload.statementStartDate || !upload.statementEndDate).length;
+                if (uploadsMissingDates > 0) {
+                    addWarning(
+                        "upload-date-missing",
+                        "medium",
+                        "Upload period not confirmed",
+                        `${uploadsMissingDates.toLocaleString("en-GB")} submission${uploadsMissingDates === 1 ? "" : "s"} do not include a clear statement start and end date.`
+                    );
+                }
+
+                (account?.flags || []).forEach((flag) => {
+                    addWarning(
+                        flag.type || "saved-flag",
+                        flag.severity || "medium",
+                        flag.type === "balance_mismatch" ? "Saved balance warning" : "Saved statement warning",
+                        flag.message || "Statement continuity needs review."
+                    );
+                });
+
+                return warnings.slice(0, 12);
+            }
+
+            function bankTransactionMatchesSearch(transaction, upload, term) {
+                const query = String(term || "").trim().toLowerCase();
+                if (!query) return true;
+                return [
+                    transaction.date,
+                    transaction.description,
+                    transaction.type,
+                    transaction.amount,
+                    transaction.balance,
+                    upload?.filename
+                ].join(" ").toLowerCase().includes(query);
+            }
+
+            function bankCsvEscape(value) {
+                return `"${String(value ?? "").replace(/"/g, '""')}"`;
+            }
+
+            function downloadBankCsv(filename, rows) {
+                const csv = rows.map((row) => row.map(bankCsvEscape).join(",")).join("\n");
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(link.href);
+            }
+
+            function bankExportFilename(account, suffix) {
+                const name = (account?.accountName || "bank-statement").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "bank-statement";
+                return `${name}-${suffix}.csv`;
+            }
+
             async function loadBankStatements(force = false) {
                 if (bankStatementsLoading && !force) return;
                 bankStatementsLoading = true;
@@ -11412,15 +12104,6 @@
                 const screen = document.getElementById("bankStatementsScreen");
                 if (!screen) return;
                 ensureBankStatementSelection();
-                const summary = bankStatementData.summary || {};
-                const clientCount = document.getElementById("bankStatementClientCount");
-                const accountCount = document.getElementById("bankStatementAccountCount");
-                const transactionCount = document.getElementById("bankStatementTransactionCount");
-                const flagCount = document.getElementById("bankStatementFlagCount");
-                if (clientCount) clientCount.textContent = Number(summary.clientCount || 0).toLocaleString("en-GB");
-                if (accountCount) accountCount.textContent = Number(summary.accountCount || 0).toLocaleString("en-GB");
-                if (transactionCount) transactionCount.textContent = Number(summary.transactionCount || 0).toLocaleString("en-GB");
-                if (flagCount) flagCount.textContent = Number(summary.flagCount || 0).toLocaleString("en-GB");
                 const clientForm = document.getElementById("bankStatementClientForm");
                 if (clientForm) clientForm.hidden = !bankStatementClientFormOpen;
                 const toggleClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
@@ -11439,19 +12122,6 @@
                 }
                 const addClientButton = document.querySelector("#bankStatementClientForm button[type='submit']");
                 if (addClientButton) addClientButton.disabled = !availableCustomers.length || bankStatementsLoading || bankStatementUploading;
-
-                const bankSummary = document.getElementById("bankStatementSummary");
-                if (bankSummary) {
-                    bankSummary.textContent = bankStatementUploading
-                        ? "OpenAI is extracting the uploaded PDF statement and saving only new transactions to the selected account."
-                        : bankStatementsLoading
-                        ? "Loading saved extraction clients, accounts, statements and transactions."
-                        : Number(summary.flagCount || 0) > 0
-                        ? `${Number(summary.flagCount || 0).toLocaleString("en-GB")} extraction review flag${Number(summary.flagCount || 0) === 1 ? "" : "s"} need attention across saved accounts.`
-                        : Number(summary.transactionCount || 0) > 0
-                        ? `${Number(summary.transactionCount || 0).toLocaleString("en-GB")} extracted transaction${Number(summary.transactionCount || 0) === 1 ? "" : "s"} saved. Duplicate statement rows are skipped automatically.`
-                        : "Add an extraction client, add their bank account, then upload PDF statements for OpenAI extraction.";
-                }
 
                 const clientList = document.getElementById("bankStatementClientList");
                 const accountList = document.getElementById("bankAccountList");
@@ -11532,6 +12202,8 @@
                             bankStatementWorkspaceOpen = true;
                             bankAccountFormOpen = false;
                             bankStatementClientFormOpen = false;
+                            bankStatementAccountTab = "transactions";
+                            bankStatementTransactionSearchTerm = "";
                             renderBankStatementsScreen();
                             if (!(client?.accounts || []).length) openBankAccountForm();
                         });
@@ -11575,6 +12247,8 @@
                     button.addEventListener("click", () => {
                         selectedBankAccountId = account.id;
                         bankAccountFormOpen = false;
+                        bankStatementAccountTab = "transactions";
+                        bankStatementTransactionSearchTerm = "";
                         renderBankAccountPanel();
                         renderBankStatementsScreen();
                     });
@@ -11591,48 +12265,163 @@
                     return;
                 }
 
-                const latestUploads = (account.uploads || []).slice(0, 5).map((upload) => `
-                    <div class="bank-flag-row">
-                        <strong>${escapeHTML(upload.filename || "Statement upload")}</strong>
-                        <small>${escapeHTML(bankUploadSummary(upload))}</small>
-                    </div>
+                if (!["transactions", "history"].includes(bankStatementAccountTab)) bankStatementAccountTab = "transactions";
+                const uploadById = bankUploadMap(account);
+                const transactions = bankAccountTransactionsAscending(account);
+                const filteredTransactions = transactions
+                    .filter((transaction) => bankTransactionMatchesSearch(transaction, uploadById.get(String(transaction.uploadId || "")), bankStatementTransactionSearchTerm))
+                    .slice()
+                    .reverse();
+                const uploads = (account.uploads || []).slice().sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+                const warnings = bankStatementWarnings(account);
+                const dateRange = bankAccountDateRange(account);
+                const latestBalance = latestBankAccountBalance(account);
+                const warningsMarkup = warnings.length
+                    ? warnings.map((warning) => `
+                        <article class="bank-warning-card ${warning.severity === "high" ? "is-high" : ""}">
+                            <div class="bank-warning-row">
+                                <span class="bank-warning-icon">!</span>
+                                <div>
+                                    <span>${escapeHTML(warning.severity || "review")}</span>
+                                    <strong>${escapeHTML(warning.title || "Statement warning")}</strong>
+                                    <p>${escapeHTML(warning.message || "Review this account before importing to Xero.")}</p>
+                                </div>
+                            </div>
+                        </article>
+                    `).join("")
+                    : `
+                        <article class="bank-warning-card">
+                            <div class="bank-warning-row">
+                                <span class="bank-warning-icon">OK</span>
+                                <div>
+                                    <span>Continuity</span>
+                                    <strong>No transactional gaps detected</strong>
+                                    <p>Running balances, extracted statement dates, and transaction sequence checks are clear for the saved data.</p>
+                                </div>
+                            </div>
+                        </article>
+                    `;
+                const transactionRows = filteredTransactions.map((transaction) => {
+                    const amount = Number(transaction.amount || 0);
+                    const upload = uploadById.get(String(transaction.uploadId || ""));
+                    return `
+                        <tr>
+                            <td><strong>${formatDate(transaction.date)}</strong><small>${escapeHTML(transaction.date || "")}</small></td>
+                            <td><strong>${escapeHTML(transaction.description || "Transaction")}</strong><small>${escapeHTML(transaction.type || "No type extracted")}</small></td>
+                            <td>${amount > 0 ? formatCurrency(amount) : ""}</td>
+                            <td>${amount < 0 ? formatCurrency(Math.abs(amount)) : ""}</td>
+                            <td>${transaction.balance === null || transaction.balance === undefined ? "No balance" : formatCurrency(transaction.balance)}</td>
+                            <td><strong>${escapeHTML(upload?.filename || "Unknown upload")}</strong><small>${escapeHTML(upload?.status || "")}</small></td>
+                        </tr>
+                    `;
+                }).join("");
+                const uploadRows = uploads.map((upload) => `
+                    <tr>
+                        <td><strong>${escapeHTML(upload.filename || "Statement upload")}</strong><small>${formatDate(upload.createdAt)}</small></td>
+                        <td><span class="bank-status-pill is-${escapeHTML(upload.status || "saved")}">${escapeHTML(upload.status || "saved")}</span></td>
+                        <td>${formatBankDateRange(upload.statementStartDate, upload.statementEndDate)}</td>
+                        <td><strong>${Number(upload.extractedCount || 0).toLocaleString("en-GB")} extracted</strong><small>${Number(upload.insertedCount || 0).toLocaleString("en-GB")} new - ${Number(upload.duplicateCount || 0).toLocaleString("en-GB")} duplicate</small></td>
+                        <td><strong>${upload.openingBalance === null || upload.openingBalance === undefined ? "--" : formatCurrency(upload.openingBalance)}</strong><small>Closing ${upload.closingBalance === null || upload.closingBalance === undefined ? "--" : formatCurrency(upload.closingBalance)}</small></td>
+                        <td><strong>${formatDate(upload.completedAt || upload.createdAt)}</strong><small>${escapeHTML(upload.errorMessage || bankUploadSummary(upload))}</small></td>
+                    </tr>
                 `).join("");
-                const flags = (account.flags || []).map((flag) => `
-                    <div class="bank-flag-row">
-                        <strong>${escapeHTML(flag.severity || "review").toUpperCase()}</strong>
-                        <small>${escapeHTML(flag.message || "Statement continuity needs review.")}</small>
-                    </div>
-                `).join("");
-                const transactions = (account.transactions || []).slice().reverse().map((transaction) => `
-                    <div class="bank-transaction-row">
-                        <span>${formatDate(transaction.date)}</span>
-                        <small>${escapeHTML(transaction.description || transaction.type || "Transaction")}</small>
-                        <strong>${formatCurrency(transaction.amount || 0)}</strong>
-                        <strong>${transaction.balance === null || transaction.balance === undefined ? "No balance" : formatCurrency(transaction.balance)}</strong>
-                    </div>
-                `).join("");
+                const activeTabMarkup = bankStatementAccountTab === "history"
+                    ? `
+                        <form class="bank-upload-form" id="bankStatementUploadForm">
+                            <label>
+                                PDF statements
+                                <input id="bankStatementUploadInput" type="file" accept="application/pdf,.pdf" multiple required>
+                            </label>
+                            <button class="primary-button" type="submit" ${bankStatementUploading ? "disabled" : ""}>${bankStatementUploading ? "Extracting..." : "Upload and extract"}</button>
+                        </form>
+                        <div class="jashflow-table-wrap">
+                            <table class="bank-upload-history-table">
+                                <thead>
+                                    <tr>
+                                        <th>Submission</th>
+                                        <th>Status</th>
+                                        <th>Statement period</th>
+                                        <th>Rows</th>
+                                        <th>Balances</th>
+                                        <th>Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${uploadRows || '<tr><td colspan="6">No statement submissions have been uploaded for this bank account.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    `
+                    : `
+                        <div class="bank-account-toolbar">
+                            <label class="search-wrap late-charge-search">
+                                <span class="search-icon">⌕</span>
+                                <input id="bankTransactionSearchInput" type="search" placeholder="Search transactions, type, amount or upload..." value="${escapeHTML(bankStatementTransactionSearchTerm)}">
+                            </label>
+                            <span class="detail-meta">Showing ${filteredTransactions.length.toLocaleString("en-GB")} of ${transactions.length.toLocaleString("en-GB")} transactions</span>
+                        </div>
+                        <div class="jashflow-table-wrap">
+                            <table class="bank-transaction-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Description</th>
+                                        <th>Money in</th>
+                                        <th>Money out</th>
+                                        <th>Balance</th>
+                                        <th>Source</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${transactionRows || '<tr><td colspan="6">No transactions match the current search.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    `;
                 detail.innerHTML = `
-                    <div class="jashflow-detail-head">
+                    <div class="bank-account-page">
+                    <div class="bank-account-page-header">
                         <div>
                             <p class="eyebrow">Extraction account</p>
                             <h3>${escapeHTML(account.accountName || "Bank account")}</h3>
                             <p class="detail-meta">${escapeHTML(account.accountNumber || "No account number saved")}${account.sortCode ? ` · ${escapeHTML(account.sortCode)}` : ""} · ${escapeHTML(account.currencyCode || "GBP")}</p>
                         </div>
-                        <button class="ghost-button" id="exportBankTransactionsButton" type="button">Export transactions</button>
+                        <div class="bank-account-actions">
+                            <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
+                            <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
+                        </div>
                     </div>
-                    <form class="bank-upload-form" id="bankStatementUploadForm">
-                        <label>
-                            PDF statements
-                            <input id="bankStatementUploadInput" type="file" accept="application/pdf,.pdf" multiple required>
-                        </label>
-                        <button class="primary-button" type="submit" ${bankStatementUploading ? "disabled" : ""}>${bankStatementUploading ? "Extracting..." : "Upload and extract"}</button>
-                    </form>
-                    <div class="bank-flag-list">${latestUploads || '<div class="empty-state"><p class="eyebrow">No uploads</p><h4>No statements uploaded</h4><p>Upload one or more PDF statements to extract and save transactions.</p></div>'}</div>
-                    <div class="bank-flag-list">${flags || '<div class="empty-state"><p class="eyebrow">Continuity</p><h4>No review flags</h4><p>Running balance checks and statement date gaps will appear here when detected.</p></div>'}</div>
-                    <div class="bank-transaction-list">${transactions || '<div class="empty-state"><p class="eyebrow">Transactions</p><h4>No extracted transactions</h4><p>Transactions are saved after a PDF statement has been extracted.</p></div>'}</div>
+                    <div class="bank-account-summary-grid">
+                        <article class="bank-account-summary-card"><span>Transactions</span><strong>${transactions.length.toLocaleString("en-GB")}</strong></article>
+                        <article class="bank-account-summary-card"><span>Date range</span><strong>${formatBankDateRange(dateRange.start, dateRange.end)}</strong></article>
+                        <article class="bank-account-summary-card"><span>Latest balance</span><strong>${latestBalance === null || latestBalance === undefined ? "--" : formatCurrency(latestBalance)}</strong></article>
+                        <article class="bank-account-summary-card"><span>Warnings</span><strong>${warnings.length ? `${warnings.length.toLocaleString("en-GB")} to review` : "Clear"}</strong></article>
+                    </div>
+                    <div class="bank-warning-panel" role="${warnings.length ? "alert" : "status"}">${warningsMarkup}</div>
+                    <nav class="bank-account-tabs" aria-label="Bank account sections">
+                        <button type="button" class="${bankStatementAccountTab === "transactions" ? "is-active" : ""}" data-bank-account-tab="transactions">Transactions</button>
+                        <button type="button" class="${bankStatementAccountTab === "history" ? "is-active" : ""}" data-bank-account-tab="history">Submission history</button>
+                    </nav>
+                    ${activeTabMarkup}
+                    </div>
                 `;
                 document.getElementById("bankStatementUploadForm")?.addEventListener("submit", uploadBankStatements);
                 document.getElementById("exportBankTransactionsButton")?.addEventListener("click", exportBankTransactions);
+                document.getElementById("exportBankTransactionsXeroButton")?.addEventListener("click", exportBankTransactionsForXero);
+                document.getElementById("bankTransactionSearchInput")?.addEventListener("input", (event) => {
+                    bankStatementTransactionSearchTerm = event.target.value;
+                    renderBankStatementsScreen();
+                    setTimeout(() => {
+                        const input = document.getElementById("bankTransactionSearchInput");
+                        if (input) {
+                            input.focus();
+                            const length = input.value.length;
+                            input.setSelectionRange(length, length);
+                        }
+                    }, 0);
+                });
+                detail.querySelectorAll("[data-bank-account-tab]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        bankStatementAccountTab = button.dataset.bankAccountTab || "transactions";
+                        renderBankStatementsScreen();
+                    });
+                });
                 renderBankAccountPanel();
             }
 
@@ -11729,25 +12518,46 @@
             function exportBankTransactions() {
                 const account = selectedBankAccount();
                 if (!account) return;
+                const uploadById = bankUploadMap(account);
                 const rows = [
-                    ["Date", "Description", "Amount", "Balance", "Type"],
-                    ...(account.transactions || []).map((row) => [
+                    ["Date", "Description", "Money In", "Money Out", "Signed Amount", "Running Balance", "Type", "Source Upload"],
+                    ...bankAccountTransactionsAscending(account).map((row) => {
+                        const amount = Number(row.amount || 0);
+                        const upload = uploadById.get(String(row.uploadId || ""));
+                        return [
                         row.date || "",
                         row.description || "",
-                        Number(row.amount || 0).toFixed(2),
+                        amount > 0 ? amount.toFixed(2) : "",
+                        amount < 0 ? Math.abs(amount).toFixed(2) : "",
+                        amount.toFixed(2),
                         row.balance === null || row.balance === undefined ? "" : Number(row.balance || 0).toFixed(2),
-                        row.type || ""
-                    ])
+                        row.type || "",
+                        upload?.filename || ""
+                    ];
+                    })
                 ];
-                const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-                const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-                const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = `${(account.accountName || "bank-statement").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}-transactions.csv`;
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                URL.revokeObjectURL(link.href);
+                downloadBankCsv(bankExportFilename(account, "transactions"), rows);
+            }
+
+            function exportBankTransactionsForXero() {
+                const account = selectedBankAccount();
+                if (!account) return;
+                const uploadById = bankUploadMap(account);
+                const rows = [
+                    ["Date", "Amount", "Payee", "Description", "Reference", "Transaction Type"],
+                    ...bankAccountTransactionsAscending(account).map((row) => {
+                        const upload = uploadById.get(String(row.uploadId || ""));
+                        return [
+                            formatXeroBankDate(row.date),
+                            Number(row.amount || 0).toFixed(2),
+                            "",
+                            row.description || "",
+                            upload?.filename || account.accountNumber || "",
+                            row.type || ""
+                        ];
+                    })
+                ];
+                downloadBankCsv(bankExportFilename(account, "xero-bank-statement"), rows);
             }
 
             function normaliseIgnitionPayload(payload) {
@@ -12224,13 +13034,14 @@
                 if (!selectedMeReportClientId || !(meReportData.clients || []).some((client) => client.id === selectedMeReportClientId)) {
                     selectedMeReportClientId = (meReportData.clients || [])[0]?.id || "";
                 }
-                if (!["overview", "tax", "dividends", "dla", "alerts", "mappings", "reports"].includes(activeMeReportTab)) {
+                if (!["overview", "submission-history", "tax", "dividends", "dla", "alerts", "mappings", "reports"].includes(activeMeReportTab)) {
                     activeMeReportTab = "overview";
                 }
             }
 
             function openMeReportScreen() {
                 activeView = "me-report";
+                meReportWorkspaceOpen = false;
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
@@ -12303,6 +13114,8 @@
                 if (formPanel) formPanel.hidden = !meReportClientFormOpen;
                 const addButton = document.getElementById("addMeReportClientButton");
                 if (addButton) addButton.textContent = meReportClientFormOpen ? "Close form" : "Add client";
+                const backButton = document.getElementById("backMeReportClientsButton");
+                if (backButton) backButton.hidden = !meReportWorkspaceOpen;
                 const refreshButton = document.getElementById("refreshMeReportButton");
                 if (refreshButton) refreshButton.disabled = meReportLoading || isMeReportProcessing;
 
@@ -12310,18 +13123,28 @@
                 const actionList = document.getElementById("meReportActionList");
                 const detail = document.getElementById("meReportDetail");
                 if (!clientList || !actionList || !detail) return;
+                const workspace = clientList.closest(".bank-statement-workspace");
+                if (workspace) {
+                    workspace.classList.toggle("is-client-list", !meReportWorkspaceOpen);
+                    workspace.classList.toggle("is-extraction-detail", meReportWorkspaceOpen);
+                }
+                clientList.hidden = Boolean(meReportWorkspaceOpen);
+                actionList.hidden = !meReportWorkspaceOpen;
+                detail.hidden = !meReportWorkspaceOpen;
                 clientList.innerHTML = "";
                 actionList.innerHTML = "";
                 detail.innerHTML = "";
 
                 if (meReportLoading) {
+                    clientList.hidden = false;
                     clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading ME Report clients</h4><p>Reading saved month-end register records from the backend.</p></div>';
                     return;
                 }
                 if (!clients.length) {
+                    clientList.hidden = false;
+                    actionList.hidden = true;
+                    detail.hidden = true;
                     clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No ME Report clients saved</h4><p>Add a client, link Xero, then run the first month-end calculation.</p></div>';
-                    actionList.innerHTML = '<div class="empty-state"><p class="eyebrow">Workflow</p><h4>Waiting for a client</h4><p>Client actions appear after the client is saved.</p></div>';
-                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Month end</p><h4>No review selected</h4><p>Financial summary, CT, dividends, DLA and exceptions will appear here.</p></div>';
                     return;
                 }
 
@@ -12334,20 +13157,23 @@
                     button.innerHTML = `
                         <strong>${escapeHTML(client.clientName || "Unnamed client")}</strong>
                         <span>${escapeHTML(client.internalClientOwner || "No owner")} · ${escapeHTML(client.bookkeepingFrequency || "Monthly")}</span>
-                        <span>${escapeHTML(light.toUpperCase())} · ${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"}</span>
+                        <span>${escapeHTML(light.toUpperCase())} · ${exceptionCount.toLocaleString("en-GB")} open review point${exceptionCount === 1 ? "" : "s"} · ${(client.submissions || []).length.toLocaleString("en-GB")} submission${(client.submissions || []).length === 1 ? "" : "s"}</span>
                     `;
                     button.addEventListener("click", () => {
                         selectedMeReportClientId = client.id;
+                        meReportWorkspaceOpen = true;
                         activeMeReportTab = "overview";
                         renderMeReportScreen();
                     });
                     clientList.appendChild(button);
                 });
+                if (!meReportWorkspaceOpen) return;
 
                 const client = selectedMeReportClient();
                 if (!client) return;
                 const tabs = [
                     ["overview", "Overview"],
+                    ["submission-history", "Submission history"],
                     ["tax", "Tax"],
                     ["dividends", "Dividends"],
                     ["dla", "DLA"],
@@ -12377,6 +13203,7 @@
             function meReportTabHint(client, key) {
                 const summary = client.summary || {};
                 if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Run first calculation";
+                if (key === "submission-history") return `${(client.submissions || []).length} uploaded`;
                 if (key === "tax") return formatCurrency(summary.estimatedCorporationTax || 0);
                 if (key === "dividends") return formatCurrency(summary.dividendCapacity || 0);
                 if (key === "dla") return `${(summary.dlaStatus || "amber").toUpperCase()} · ${formatCurrency(summary.dlaBalance || 0)}`;
@@ -12395,6 +13222,7 @@
                 if (tab === "mappings") return renderMeReportMappings(client);
                 if (tab === "alerts") return renderMeReportExceptions(client);
                 if (tab === "reports") return renderMeReportReports(client);
+                if (tab === "submission-history") return renderMeReportSubmissions(client);
                 const metrics = [
                     ["Monthly sales", formatCurrency(summary.monthlySales || 0)],
                     ["Monthly expenses", formatCurrency(summary.monthlyExpenses || 0)],
@@ -12463,6 +13291,46 @@
                 `;
             }
 
+            function renderMeReportSubmissions(client) {
+                const submissions = client.submissions || [];
+                return `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Submission history</p>
+                            <h3>${escapeHTML(client.clientName)}</h3>
+                            <p class="detail-meta">Upload the latest Xero JUK Overview PDF or management accounts. Jenius AI extracts the CT estimate and dividend availability into this workspace.</p>
+                        </div>
+                    </div>
+                    <form class="bank-upload-form" id="meReportSubmissionForm">
+                        <label>
+                            Latest PDF
+                            <input id="meReportSubmissionFile" name="file" type="file" accept="application/pdf,.pdf" required>
+                        </label>
+                        <button class="primary-button" type="submit" ${meReportUploadProcessing ? "disabled" : ""}>${meReportUploadProcessing ? "Processing..." : "Upload and process"}</button>
+                    </form>
+                    <div class="bank-upload-history-table" role="table" aria-label="ME Report submission history">
+                        <div class="bank-upload-history-row is-header" role="row">
+                            <span>Uploaded</span>
+                            <span>File</span>
+                            <span>Status</span>
+                            <span>CT estimate</span>
+                            <span>Dividend availability</span>
+                            <span>Notes</span>
+                        </div>
+                        ${submissions.map((submission) => `
+                            <div class="bank-upload-history-row" role="row">
+                                <span>${escapeHTML(formatDate(submission.createdAt))}</span>
+                                <span>${escapeHTML(submission.filename || "Management accounts PDF")}</span>
+                                <span><mark class="bank-status-pill is-${escapeHTML(String(submission.status || "saved").toLowerCase())}">${escapeHTML(submission.status || "saved")}</mark></span>
+                                <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
+                                <span>${formatCurrency(submission.dividendCapacity || 0)}</span>
+                                <span>${escapeHTML(submission.errorMessage || submission.summary || "Processed by Jenius AI")}</span>
+                            </div>
+                        `).join("") || '<div class="empty-state"><p class="eyebrow">No submissions</p><h4>No management accounts uploaded yet</h4><p>Upload the latest Xero JUK Overview report PDF to build CT and dividend estimates from the source document.</p></div>'}
+                    </div>
+                `;
+            }
+
             function renderMeReportMappings(client) {
                 const mappings = client.mappings || [];
                 if (!mappings.length) return '<div class="empty-state"><p class="eyebrow">Account mappings</p><h4>No chart of accounts synced</h4><p>Connect Xero and run Sync and calculate to pull the chart of accounts into this client.</p></div>';
@@ -12522,6 +13390,7 @@
             }
 
             function wireMeReportDynamicActions(client) {
+                document.getElementById("meReportSubmissionForm")?.addEventListener("submit", (event) => uploadMeReportSubmission(event, client.id));
                 document.querySelectorAll("[data-me-mapping-action]").forEach((button) => {
                     button.addEventListener("click", () => updateMeReportMapping(button.dataset.mappingId, button.dataset.meMappingAction));
                 });
@@ -12564,6 +13433,36 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to save ME Report client", "error");
+                }
+            }
+
+            async function uploadMeReportSubmission(event, clientId) {
+                event.preventDefault();
+                if (meReportUploadProcessing) return;
+                const input = document.getElementById("meReportSubmissionFile");
+                const file = input?.files?.[0];
+                if (!file) return showToast("Choose a PDF to upload", "error");
+                const formData = new FormData();
+                formData.append("file", file);
+                meReportUploadProcessing = true;
+                setAiLoading(true, "Jenius AI is extracting the management accounts PDF.");
+                renderMeReportScreen();
+                try {
+                    const response = await requestFormData(api.endpoints.meReportSubmissions, formData, { clientId });
+                    meReportData = normaliseMeReportPayload(response);
+                    selectedMeReportClientId = clientId;
+                    meReportWorkspaceOpen = true;
+                    activeMeReportTab = "submission-history";
+                    showTopbarNotice("ME Report extraction complete", "Jenius AI processed the uploaded management accounts PDF.", "success");
+                    showToast("ME Report PDF processed", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to process ME Report PDF", "error");
+                } finally {
+                    meReportUploadProcessing = false;
+                    setAiLoading(false);
+                    renderMeReportScreen();
                 }
             }
 
@@ -13519,18 +14418,49 @@
                 cursor.setDate(1);
                 for (let index = 11; index >= 0; index -= 1) {
                     const month = new Date(cursor.getFullYear(), cursor.getMonth() - index, 1);
-                    const key = month.toISOString().slice(0, 7);
-                    months.push({ month: key, label: month.toLocaleDateString("en-GB", { month: "short", year: "numeric" }), invoiced: 0, paid: 0, outstanding: 0 });
+                    const key = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+                    months.push({
+                        month: key,
+                        label: month.toLocaleDateString("en-GB", { month: "short", year: "numeric" }),
+                        invoiced: 0,
+                        turnover: 0,
+                        paid: 0,
+                        cashCollected: 0,
+                        outstanding: 0,
+                        raisedCount: 0,
+                        paidCount: 0,
+                        outstandingCount: 0,
+                        averageInvoice: 0,
+                        collectionRatio: 0
+                    });
                 }
+                const byMonth = new Map(months.map((row) => [row.month, row]));
+                const monthKey = (value) => {
+                    if (!value) return "";
+                    const parsed = new Date(value);
+                    return Number.isNaN(parsed.getTime()) ? "" : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}`;
+                };
                 invoices.forEach((invoice) => {
-                    const raw = invoice.invoiceDate || invoice.dueDate;
-                    if (!raw) return;
-                    const key = new Date(raw).toISOString().slice(0, 7);
-                    const row = months.find((item) => item.month === key);
-                    if (!row) return;
-                    row.invoiced += Number(invoice.total || invoice.amountDue || 0);
-                    row.paid += Number(invoice.amountPaid || Math.max(Number(invoice.total || 0) - Number(invoice.amountDue || 0), 0));
-                    row.outstanding += Number(invoice.amountDue || 0);
+                    const invoiceTotal = Number(invoice.total || invoice.amountDue || 0);
+                    const paidAmount = Number(invoicePaidAmount(invoice) || invoice.amountPaid || Math.max(Number(invoice.total || 0) - Number(invoice.amountDue || 0), 0));
+                    const invoiceMonth = byMonth.get(monthKey(invoice.invoiceDate || invoice.date || invoice.dueDate));
+                    if (invoiceMonth) {
+                        invoiceMonth.invoiced += invoiceTotal;
+                        invoiceMonth.turnover += invoiceTotal;
+                        invoiceMonth.outstanding += Number(invoice.amountDue || 0);
+                        invoiceMonth.raisedCount += 1;
+                        if (Number(invoice.amountDue || 0) > 0) invoiceMonth.outstandingCount += 1;
+                    }
+                    const paidMonth = byMonth.get(monthKey(invoice.fullyPaidOnDate || invoice.paidDate || invoice.updatedDate || invoice.invoiceDate || invoice.dueDate));
+                    if (paidMonth && paidAmount > 0) {
+                        paidMonth.paid += paidAmount;
+                        paidMonth.cashCollected += paidAmount;
+                        if (invoiceCategory(invoice) === "paid" || Number(invoice.amountDue || 0) <= 0) paidMonth.paidCount += 1;
+                    }
+                });
+                months.forEach((row) => {
+                    row.averageInvoice = row.raisedCount ? row.turnover / row.raisedCount : 0;
+                    row.collectionRatio = row.turnover ? (row.cashCollected / row.turnover) * 100 : 0;
                 });
                 return months;
             }
@@ -13658,7 +14588,9 @@
                 const body = rows.length ? rows.map((row) => {
                     const value = Number(row[valueKey] || 0);
                     const width = Math.max(4, Math.round((value / maxValue) * 100));
-                    const displayValue = valueKey === "count" ? value.toLocaleString("en-GB") : formatCompactCurrency(value);
+                    const isCount = valueKey === "count" || /count$/i.test(valueKey);
+                    const isPercent = /ratio|percent|rate/i.test(valueKey);
+                    const displayValue = isCount ? value.toLocaleString("en-GB") : isPercent ? formatPercent(value) : formatCompactCurrency(value);
                     return `<div class="bar-row"><strong>${escapeHTML(row[labelKey] || row.name || row.category || "Item")}</strong><div class="bar-track"><span style="display:block;width:${width}%"></span></div><span>${escapeHTML(displayValue)}</span></div>`;
                 }).join("") : `<p>No data available.</p>`;
                 return `<section class="insight-chart"><span>${escapeHTML(title)}</span><div class="chart-row">${body}</div></section>`;
@@ -13788,20 +14720,39 @@
                 const latest = monthly[monthly.length - 1] || {};
                 const previous = monthly[monthly.length - 2] || {};
                 const outstandingMovement = Number(latest.outstanding || 0) - Number(previous.outstanding || 0);
-                const paidMovement = Number(latest.paid || 0) - Number(previous.paid || 0);
-                const bestCollection = monthly.reduce((best, row) => Number(row.paid || 0) > Number(best.paid || 0) ? row : best, {});
-                const collectionRatio = Number(latest.invoiced || 0) ? (Number(latest.paid || 0) / Number(latest.invoiced || 0)) * 100 : 0;
+                const cashMovement = Number(latest.cashCollected || latest.paid || 0) - Number(previous.cashCollected || previous.paid || 0);
+                const invoiceRaisedMovement = Number(latest.raisedCount || 0) - Number(previous.raisedCount || 0);
+                const bestCollection = monthly.reduce((best, row) => Number(row.cashCollected || row.paid || 0) > Number(best.cashCollected || best.paid || 0) ? row : best, {});
+                const collectionRatio = Number(latest.collectionRatio || (Number(latest.turnover || latest.invoiced || 0) ? (Number(latest.cashCollected || latest.paid || 0) / Number(latest.turnover || latest.invoiced || 0)) * 100 : 0));
                 const trendRows = [
                     { title: "Outstanding movement", detail: `${previous.label || "Previous"} to ${latest.label || "latest month"}`, value: `${outstandingMovement >= 0 ? "+" : ""}${formatCurrency(outstandingMovement)}`, urgency: outstandingMovement > 0 ? "medium" : "low" },
-                    { title: "Paid movement", detail: `${previous.label || "Previous"} to ${latest.label || "latest month"}`, value: `${paidMovement >= 0 ? "+" : ""}${formatCurrency(paidMovement)}`, urgency: paidMovement < 0 ? "medium" : "low" },
-                    { title: "Best collection month", detail: bestCollection.label || "No settled month yet", value: formatCurrency(bestCollection.paid || 0), urgency: "low" },
+                    { title: "Cash collection movement", detail: `${previous.label || "Previous"} to ${latest.label || "latest month"}`, value: `${cashMovement >= 0 ? "+" : ""}${formatCurrency(cashMovement)}`, urgency: cashMovement < 0 ? "medium" : "low" },
+                    { title: "Invoices raised movement", detail: `${previous.label || "Previous"} to ${latest.label || "latest month"}`, value: `${invoiceRaisedMovement >= 0 ? "+" : ""}${invoiceRaisedMovement.toLocaleString("en-GB")}`, urgency: invoiceRaisedMovement < 0 ? "medium" : "low" },
+                    { title: "Best cash collection month", detail: bestCollection.label || "No settled month yet", value: formatCurrency(bestCollection.cashCollected || bestCollection.paid || 0), urgency: "low" },
                 ];
+                const trendTableRows = monthly.map((row) => [
+                    row.label || row.month || "",
+                    formatCurrency(row.turnover || row.invoiced || 0),
+                    formatCurrency(row.cashCollected || row.paid || 0),
+                    Number(row.raisedCount || 0).toLocaleString("en-GB"),
+                    Number(row.paidCount || 0).toLocaleString("en-GB"),
+                    formatPercent(row.collectionRatio || 0),
+                ]);
                 return `${insightCardGrid([
-                    ["Latest invoiced", formatCurrency(latest.invoiced || 0), latest.label || "Latest month"],
-                    ["Latest paid", formatCurrency(latest.paid || 0), latest.label || "Latest month"],
+                    ["Monthly turnover", formatCurrency(latest.turnover || latest.invoiced || 0), latest.label || "Latest month"],
+                    ["Cash collected", formatCurrency(latest.cashCollected || latest.paid || 0), latest.label || "Latest month"],
+                    ["Invoices raised", Number(latest.raisedCount || 0).toLocaleString("en-GB"), latest.label || "Latest month"],
+                    ["Invoices paid", Number(latest.paidCount || 0).toLocaleString("en-GB"), latest.label || "Latest month"],
                     ["Latest outstanding", formatCurrency(latest.outstanding || 0), latest.label || "Latest month"],
-                    ["Collection ratio", formatPercent(collectionRatio), "Paid divided by invoiced"],
-                ])}${multiMetricRows("12 month ledger trend", monthly)}<section class="insight-chart"><span>Trend signals</span>${insightActionCards(trendRows)}</section>`;
+                    ["Collection ratio", formatPercent(collectionRatio), "Cash collected divided by turnover"],
+                    ["Average invoice", formatCurrency(latest.averageInvoice || 0), latest.label || "Latest month"],
+                    ["Outstanding invoices", Number(latest.outstandingCount || 0).toLocaleString("en-GB"), "Still unpaid from raised rows"],
+                ])}${multiMetricRows("12 month turnover, cash and due", monthly)}
+                <div class="insight-two-column">${barChart("Monthly turnover", monthly, "turnover")}${barChart("Cash collection", monthly, "cashCollected")}</div>
+                <div class="insight-two-column">${barChart("Invoices raised", monthly, "raisedCount")}${barChart("Invoices paid", monthly, "paidCount")}</div>
+                <div class="insight-two-column">${barChart("Average invoice value", monthly, "averageInvoice")}${barChart("Collection ratio", monthly, "collectionRatio")}</div>
+                <section class="insight-chart"><span>Trend signals</span>${insightActionCards(trendRows)}</section>
+                ${insightDataTable("Monthly Xero trend table", ["Month", "Turnover", "Cash collected", "Raised", "Paid", "Collection ratio"], trendTableRows, "No monthly Xero trend data is available.")}`;
             }
 
             function ageingInsights(analytics) {
@@ -14045,6 +14996,9 @@
                 const settledInvoices = allInvoices().filter((invoice) => invoiceCategory(invoice) === "paid" || (Number(invoice.amountDue || 0) <= 0 && invoicePaidAmount(invoice) > 0));
                 const settledValue = settledInvoices.reduce((sum, invoice) => sum + invoicePaidAmount(invoice), 0);
                 const averageValue = settledInvoices.length ? settledValue / settledInvoices.length : 0;
+                const monthly = buildLocalMonthlyInsights(settledInvoices);
+                const latest = monthly[monthly.length - 1] || {};
+                const bestCashMonth = monthly.reduce((best, row) => Number(row.cashCollected || row.paid || 0) > Number(best.cashCollected || best.paid || 0) ? row : best, {});
                 const byCustomer = new Map();
                 settledInvoices.forEach((invoice) => {
                     const key = invoice.customerId || invoice.customerName || "unknown";
@@ -14059,14 +15013,30 @@
                     ["Settled value", formatCurrency(settledValue), "Cash collected against settled rows"],
                     ["Average settled invoice", formatCurrency(averageValue), "Mean paid invoice value"],
                     ["Settled clients", byCustomer.size.toLocaleString("en-GB"), "Clients represented in settled rows"],
+                    ["Latest settled cash", formatCurrency(latest.cashCollected || latest.paid || 0), latest.label || "Latest month"],
+                    ["Latest paid count", Number(latest.paidCount || 0).toLocaleString("en-GB"), latest.label || "Latest month"],
+                    ["Best cash month", formatCurrency(bestCashMonth.cashCollected || bestCashMonth.paid || 0), bestCashMonth.label || "No paid month"],
+                    ["Latest collection ratio", formatPercent(latest.collectionRatio || 0), "Settled cash against raised value"],
                 ]);
-                return `${cards}<div class="insight-two-column">${barChart("Settled value by client", customerRows, "value", "name")}<section class="insight-chart"><span>Settled invoice review</span>${insightActionCards(customerRows.map((row) => ({ title: row.name, detail: `${row.count.toLocaleString("en-GB")} settled invoice${row.count === 1 ? "" : "s"}`, value: formatCurrency(row.value), urgency: "low" })), "No settled invoices are currently available in the synced data.")}</section></div>${multiMetricRows("Settled trend", buildLocalMonthlyInsights(settledInvoices))}`;
+                const monthlyRows = monthly.map((row) => [
+                    row.label || row.month || "",
+                    formatCurrency(row.cashCollected || row.paid || 0),
+                    Number(row.paidCount || 0).toLocaleString("en-GB"),
+                    formatCurrency(row.averageInvoice || 0),
+                    formatPercent(row.collectionRatio || 0),
+                ]);
+                return `${cards}<div class="insight-two-column">${barChart("Settled value by client", customerRows, "value", "name")}<section class="insight-chart"><span>Settled invoice review</span>${insightActionCards(customerRows.map((row) => ({ title: row.name, detail: `${row.count.toLocaleString("en-GB")} settled invoice${row.count === 1 ? "" : "s"}`, value: formatCurrency(row.value), urgency: "low" })), "No settled invoices are currently available in the synced data.")}</section></div>
+                ${multiMetricRows("Settled invoice monthly trend", monthly)}
+                <div class="insight-two-column">${barChart("Monthly settled cash", monthly, "cashCollected")}${barChart("Monthly paid invoice count", monthly, "paidCount")}</div>
+                <div class="insight-two-column">${barChart("Monthly average settled value", monthly, "averageInvoice")}${barChart("Settled collection ratio", monthly, "collectionRatio")}</div>
+                ${insightDataTable("Settled invoices by month", ["Month", "Cash collected", "Paid invoices", "Average settled", "Collection ratio"], monthlyRows, "No settled invoice trend data is currently available.")}`;
             }
 
             function renderAll() {
                 syncActiveViewShell();
                 renderChrome();
                 renderSyncSettings();
+                renderSettingsNavigation();
                 renderDatabaseMetrics();
                 renderPendingXeroActions();
                 renderFactoryResetGuard();
@@ -15230,8 +16200,87 @@
                 return null;
             }
 
-            function openSettingsScreen() {
+            const settingsSectionCopy = {
+                "data-import": {
+                    eyebrow: "Data import",
+                    title: "Data Import Preferences",
+                    meta: "Choose the invoice data depth for the next Xero import."
+                },
+                "period-scope": {
+                    eyebrow: "Period scope",
+                    title: "Period Scope Syncs",
+                    meta: "Limit imports to specific invoice years when you need a tighter sync window."
+                },
+                "xero-connection": {
+                    eyebrow: "Xero connection",
+                    title: "Xero Connection / Disconnection",
+                    meta: "Manage the linked Xero organisation without mixing it into other settings."
+                },
+                mapping: {
+                    eyebrow: "Mappings",
+                    title: "Mapping Changes / COA",
+                    meta: "Review posting defaults and chart-of-account assumptions."
+                },
+                outbox: {
+                    eyebrow: "Xero outbox",
+                    title: "Xero Outbox / Pending",
+                    meta: "Review queued Xero actions waiting for a successful push."
+                },
+                letters: {
+                    eyebrow: "Letters",
+                    title: "Letter Templates",
+                    meta: "Create and edit reminder templates used from client pages."
+                },
+                "developer-log": {
+                    eyebrow: "Developer log",
+                    title: "Developer Log / Audit",
+                    meta: "Inspect sync events, backend errors, and audit activity."
+                },
+                "system-status": {
+                    eyebrow: "System status",
+                    title: "System Status",
+                    meta: "Check stored record counts, database size, and backend health indicators."
+                },
+                "factory-reset": {
+                    eyebrow: "Factory reset",
+                    title: "Factory Reset",
+                    meta: "Protected destructive controls are isolated from day-to-day settings."
+                }
+            };
+
+            function showSettingsSidebar(mode = "settings") {
+                document.body.classList.toggle("settings-sidebar-mode", mode === "settings");
+                document.body.classList.toggle("factory-reset-sidebar-mode", mode === "factory");
+            }
+
+            function closeSettingsSidebar() {
+                document.body.classList.remove("settings-sidebar-mode", "factory-reset-sidebar-mode");
+            }
+
+            function renderSettingsNavigation() {
+                const copy = settingsSectionCopy[activeSettingsSection] || settingsSectionCopy["data-import"];
+                const screen = document.getElementById("settingsScreen");
+                if (screen) {
+                    const eyebrow = screen.querySelector(".detail-hero .eyebrow");
+                    const title = screen.querySelector(".detail-hero h2");
+                    const meta = screen.querySelector(".detail-hero .detail-meta");
+                    if (eyebrow) eyebrow.textContent = copy.eyebrow;
+                    if (title) title.textContent = copy.title;
+                    if (meta) meta.textContent = copy.meta;
+                }
+                document.querySelectorAll("[data-settings-section]").forEach((section) => {
+                    section.classList.toggle("is-active", section.dataset.settingsSection === activeSettingsSection);
+                });
+                document.querySelectorAll("[data-settings-nav]").forEach((button) => {
+                    button.classList.toggle("is-active", button.dataset.settingsNav === activeSettingsSection);
+                });
+                document.getElementById("factoryOpenResetPageButton")?.classList.toggle("is-active", activeSettingsSection === "factory-reset");
+            }
+
+            function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
                 activeView = "settings";
+                activeSettingsSection = settingsSectionCopy[section] ? section : "data-import";
+                showSettingsSidebar(sidebarMode);
                 syncActiveViewShell();
                 closeToolbarMenus();
                 closeTopbarMenu();
@@ -15816,6 +16865,20 @@
                 }
                 const menuSettingsButton = document.getElementById("menuSettingsButton");
                 if (menuSettingsButton) menuSettingsButton.addEventListener("click", openSettingsScreen);
+                document.getElementById("settingsBackToMainSidebarButton")?.addEventListener("click", closeSettingsSidebar);
+                document.querySelectorAll("[data-settings-nav]").forEach((button) => {
+                    button.addEventListener("click", () => openSettingsScreen(button.dataset.settingsNav || "data-import", "settings"));
+                });
+                document.getElementById("settingsFactorySidebarButton")?.addEventListener("click", () => {
+                    showSettingsSidebar("factory");
+                    renderSettingsNavigation();
+                    scrollConsoleToTop();
+                });
+                document.getElementById("factoryBackToSettingsSidebarButton")?.addEventListener("click", () => {
+                    showSettingsSidebar("settings");
+                    renderSettingsNavigation();
+                });
+                document.getElementById("factoryOpenResetPageButton")?.addEventListener("click", () => openSettingsScreen("factory-reset", "factory"));
                 const menuInsightsButton = document.getElementById("menuInsightsButton");
                 if (menuInsightsButton) menuInsightsButton.addEventListener("click", openInsightsScreen);
                 const menuLateChargesButton = document.getElementById("menuLateChargesButton");
@@ -15854,6 +16917,12 @@
                 if (jashflowSettingsForm) jashflowSettingsForm.addEventListener("submit", saveJashflowSettings);
                 const postJashflowInterestButton = document.getElementById("postJashflowInterestButton");
                 if (postJashflowInterestButton) postJashflowInterestButton.addEventListener("click", postJashflowInterest);
+                const backJashflowLoansButton = document.getElementById("backJashflowLoansButton");
+                if (backJashflowLoansButton) backJashflowLoansButton.addEventListener("click", () => {
+                    jashflowDetailOpen = false;
+                    activeJashflowLoanTab = "details";
+                    renderJashflowScreen();
+                });
                 const refreshBankStatementsButton = document.getElementById("refreshBankStatementsButton");
                 if (refreshBankStatementsButton) refreshBankStatementsButton.addEventListener("click", () => loadBankStatements(true));
                 const toggleBankStatementClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
@@ -15866,6 +16935,8 @@
                 if (backBankStatementClientsButton) backBankStatementClientsButton.addEventListener("click", () => {
                     bankStatementWorkspaceOpen = false;
                     bankAccountFormOpen = false;
+                    bankStatementAccountTab = "transactions";
+                    bankStatementTransactionSearchTerm = "";
                     renderBankStatementsScreen();
                 });
                 const bankStatementClientForm = document.getElementById("bankStatementClientForm");
@@ -15889,6 +16960,12 @@
                     meReportClientFormOpen = !meReportClientFormOpen;
                     renderMeReportScreen();
                     if (meReportClientFormOpen) setTimeout(() => document.getElementById("meReportClientNameInput")?.focus(), 0);
+                });
+                const backMeReportClientsButton = document.getElementById("backMeReportClientsButton");
+                if (backMeReportClientsButton) backMeReportClientsButton.addEventListener("click", () => {
+                    meReportWorkspaceOpen = false;
+                    activeMeReportTab = "overview";
+                    renderMeReportScreen();
                 });
                 const meReportClientForm = document.getElementById("meReportClientForm");
                 if (meReportClientForm) meReportClientForm.addEventListener("submit", createMeReportClient);

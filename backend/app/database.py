@@ -919,6 +919,25 @@ CREATE TABLE IF NOT EXISTS me_report_reports (
 CREATE INDEX IF NOT EXISTS me_report_reports_client_idx
 ON me_report_reports (client_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS me_report_submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,
+    filename TEXT NOT NULL DEFAULT '',
+    content_type TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'processing',
+    error_message TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    extracted_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    estimated_corporation_tax NUMERIC NOT NULL DEFAULT 0,
+    dividend_capacity NUMERIC NOT NULL DEFAULT 0,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS me_report_submissions_client_idx
+ON me_report_submissions (client_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS me_report_sync_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id UUID NOT NULL REFERENCES me_report_clients(id) ON DELETE CASCADE,

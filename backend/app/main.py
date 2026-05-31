@@ -104,6 +104,7 @@ from .services import (
     bank_statement_payload,
     bulk_update_invoice_status,
     merge_me_report_duplicate_contact,
+    upload_me_report_submission_pdf,
     upload_bank_statement_pdf,
 )
 from .ignition import (
@@ -168,13 +169,53 @@ def reusable_xero_user(request: Request) -> dict | None:
 
 def panel_session_response(user: dict) -> JSONResponse:
     session_token = create_session(user["id"], "Web panel")
-    active_sync_run = active_sync_run_for_user(user)
-    rate_limit = active_xero_rate_limit_for_user(user)
+    panel = {}
+    panel_error = None
+    active_sync_run = None
+    rate_limit = None
+    try:
+        panel = panel_payload(user)
+    except Exception as exc:
+        logger.exception("Unable to build reusable panel session payload")
+        panel_error = {
+            "message": "The backend could not build the cached ledger panel payload.",
+            "error": str(exc) or exc.__class__.__name__,
+            "type": exc.__class__.__name__,
+        }
+        panel = {
+            "organisation": {
+                "name": "",
+                "status": "Cached ledger unavailable",
+                "lastSync": "Backend panel payload failed",
+                "xeroConnected": False,
+            },
+            "dashboard": {
+                "totalReceivables": 0,
+                "totalOverdue": 0,
+                "openInvoices": 0,
+                "accountsNeedingAction": 0,
+                "potentialInterest": 0,
+            },
+            "customers": [],
+            "cacheStatus": {},
+            "databaseMetrics": {"error": panel_error["error"]},
+            "audit": [],
+            "selectedInvoice": None,
+        }
+    try:
+        active_sync_run = active_sync_run_for_user(user)
+    except Exception:
+        logger.exception("Unable to read active sync run for panel session")
+    try:
+        rate_limit = active_xero_rate_limit_for_user(user)
+    except Exception:
+        logger.exception("Unable to read Xero rate limit for panel session")
     response = JSONResponse(
         jsonable_encoder({
             "status": "ok",
             "sessionToken": session_token,
-            **panel_payload(user),
+            **panel,
+            "panelError": panel_error,
             "activeSyncRun": serialize_sync_run(active_sync_run) if active_sync_run else None,
             "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
         })
@@ -925,6 +966,25 @@ async def api_merge_me_report_duplicate_contact(exception_id: str, user: dict = 
 async def api_generate_me_report(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **generate_me_report(user, client_id, payload)}
+
+
+@app.post("/api/me-report/clients/{client_id}/submissions")
+async def api_upload_me_report_submission(
+    client_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    content = await file.read()
+    return {
+        "status": "ok",
+        "meReport": await upload_me_report_submission_pdf(
+            user,
+            client_id,
+            file.filename or "management-accounts.pdf",
+            file.content_type or "application/pdf",
+            content,
+        ),
+    }
 
 
 @app.get("/api/me-report/reports/{report_id}/download", response_class=HTMLResponse)
