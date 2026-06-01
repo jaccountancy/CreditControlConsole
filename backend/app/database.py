@@ -631,6 +631,7 @@ CREATE TABLE IF NOT EXISTS bank_statement_accounts (
     extraction_client_id UUID NOT NULL REFERENCES bank_statement_clients(id) ON DELETE CASCADE,
     account_name TEXT NOT NULL,
     nickname TEXT,
+    bank_provider TEXT NOT NULL DEFAULT '',
     account_number TEXT NOT NULL,
     sort_code TEXT,
     currency_code TEXT NOT NULL DEFAULT 'GBP',
@@ -642,6 +643,7 @@ CREATE TABLE IF NOT EXISTS bank_statement_accounts (
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS extraction_client_id UUID REFERENCES bank_statement_clients(id) ON DELETE CASCADE;
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS account_name TEXT NOT NULL DEFAULT 'Bank account';
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS nickname TEXT;
+ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS bank_provider TEXT NOT NULL DEFAULT '';
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS account_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS sort_code TEXT;
 ALTER TABLE bank_statement_accounts ADD COLUMN IF NOT EXISTS currency_code TEXT NOT NULL DEFAULT 'GBP';

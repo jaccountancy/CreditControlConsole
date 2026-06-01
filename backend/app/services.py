@@ -11328,6 +11328,7 @@ def _serialize_bank_account(account: dict, uploads: list[dict], transactions: li
         "nickname": account.get("nickname") or "",
         "displayName": account.get("nickname") or account.get("account_name") or "Bank account",
         "accountName": account.get("account_name") or "Bank account",
+        "bankProvider": account.get("bank_provider") or "",
         "accountNumber": account.get("account_number") or "",
         "sortCode": account.get("sort_code") or "",
         "currencyCode": account.get("currency_code") or "GBP",
@@ -11572,6 +11573,7 @@ def create_bank_statement_account(user: dict, extraction_client_id: str, payload
     tenant_id = _bank_statement_tenant_id(user)
     account_name = str(payload.get("accountName") or "Bank account").strip()[:160]
     nickname = str(payload.get("nickname") or "").strip()[:160]
+    bank_provider = str(payload.get("bankProvider") or "").strip()[:80]
     account_number = str(payload.get("accountNumber") or "").strip()[:80]
     sort_code = str(payload.get("sortCode") or "").strip()[:80]
     currency_code = str(payload.get("currencyCode") or "GBP").strip().upper()[:8] or "GBP"
@@ -11594,17 +11596,17 @@ def create_bank_statement_account(user: dict, extraction_client_id: str, payload
             cursor.execute(
                 """
                 INSERT INTO bank_statement_accounts (
-                    extraction_client_id, account_name, nickname, account_number, sort_code,
+                    extraction_client_id, account_name, nickname, bank_provider, account_number, sort_code,
                     currency_code, created_by_user_id, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (extraction_client_id, account_name, nickname, account_number, sort_code, currency_code, user["id"], utcnow(), utcnow()),
+                (extraction_client_id, account_name, nickname, bank_provider, account_number, sort_code, currency_code, user["id"], utcnow(), utcnow()),
             )
             account_id = cursor.fetchone()["id"]
         connection.commit()
-    record_audit_event("bank_statement_account", str(account_id), "bank_statement.account_added", {"account_number": account_number}, user["id"])
+    record_audit_event("bank_statement_account", str(account_id), "bank_statement.account_added", {"account_number": account_number, "bank_provider": bank_provider}, user["id"])
     return bank_statement_payload(user)
 
 
@@ -11612,6 +11614,7 @@ def update_bank_statement_account(user: dict, bank_account_id: str, payload: dic
     tenant_id = _bank_statement_tenant_id(user)
     account_name = str(payload.get("accountName") or "Bank account").strip()[:160]
     nickname = str(payload.get("nickname") or "").strip()[:160]
+    bank_provider = str(payload.get("bankProvider") or "").strip()[:80]
     account_number = str(payload.get("accountNumber") or "").strip()[:80]
     sort_code = str(payload.get("sortCode") or "").strip()[:80]
     currency_code = str(payload.get("currencyCode") or "GBP").strip().upper()[:8] or "GBP"
@@ -11624,6 +11627,7 @@ def update_bank_statement_account(user: dict, bank_account_id: str, payload: dic
                 UPDATE bank_statement_accounts AS accounts
                 SET account_name = %s,
                     nickname = %s,
+                    bank_provider = %s,
                     account_number = %s,
                     sort_code = %s,
                     currency_code = %s,
@@ -11635,7 +11639,7 @@ def update_bank_statement_account(user: dict, bank_account_id: str, payload: dic
                   AND clients.status = 'active'
                 RETURNING accounts.id
                 """,
-                (account_name, nickname, account_number, sort_code, currency_code, utcnow(), bank_account_id, tenant_id),
+                (account_name, nickname, bank_provider, account_number, sort_code, currency_code, utcnow(), bank_account_id, tenant_id),
             )
             row = cursor.fetchone()
             if row is None:
@@ -11645,7 +11649,7 @@ def update_bank_statement_account(user: dict, bank_account_id: str, payload: dic
         "bank_statement_account",
         str(bank_account_id),
         "bank_statement.account_updated",
-        {"account_number": account_number, "nickname": nickname},
+        {"account_number": account_number, "nickname": nickname, "bank_provider": bank_provider},
         user["id"],
     )
     return bank_statement_payload(user)
