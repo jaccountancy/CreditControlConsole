@@ -994,6 +994,7 @@ CREATE TABLE IF NOT EXISTS me_report_clients (
     vat_registered_confirmed_at TIMESTAMPTZ,
     dismissed_warning_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
     tax_adjustment_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
+    transfer_classification_overrides JSONB NOT NULL DEFAULT '{}'::jsonb,
     status TEXT NOT NULL DEFAULT 'active',
     last_sync_at TIMESTAMPTZ,
     last_calculated_at TIMESTAMPTZ,
@@ -1011,6 +1012,7 @@ ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS vat_registered_confirmed 
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS vat_registered_confirmed_at TIMESTAMPTZ;
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS dismissed_warning_keys JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS tax_adjustment_overrides JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE me_report_clients ADD COLUMN IF NOT EXISTS transfer_classification_overrides JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS me_report_clients_user_status_idx
 ON me_report_clients (user_id, status, created_at DESC);

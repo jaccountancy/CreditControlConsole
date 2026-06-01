@@ -6106,6 +6106,7 @@ ME_REPORT_CAPITAL_ALLOWANCE_ASSET_TERMS = (
     "fitting",
     "equipment",
 )
+ME_REPORT_TRANSFER_CLASSIFICATIONS = {"dividend", "directorLoan", "wages", "ignore"}
 ME_REPORT_CATEGORIES = [
     {"group": "Income", "items": ["Sales", "Other income", "Bank interest", "Grants", "Tax refunds", "Directors' income items needing review"]},
     {"group": "Normal allowable expenses", "items": ["Software", "Subscriptions", "Accountancy fees", "Office costs", "Telephone and internet", "Staff wages", "Employer pension", "Employer NIC", "Insurance", "Travel", "Training", "Bank charges"]},
@@ -6515,7 +6516,10 @@ def _me_report_is_vat_registration_exception(item: dict) -> bool:
 
 
 def _me_report_summary_for_client(summary: dict, client: dict) -> dict:
-    prepared = _me_report_apply_brought_forward_loss(summary if isinstance(summary, dict) else {}, client)
+    prepared = _me_report_apply_transfer_classification_overrides(
+        _me_report_apply_brought_forward_loss(summary if isinstance(summary, dict) else {}, client),
+        client,
+    )
     if client.get("brought_forward_trading_loss_updated_at"):
         prepared["broughtForwardTradingLossUpdatedAt"] = _iso(client.get("brought_forward_trading_loss_updated_at")) or ""
     if bool(client.get("vat_registered_confirmed")):
@@ -6559,6 +6563,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
     if not isinstance(dismissed_warning_keys, list):
         dismissed_warning_keys = []
     tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(row.get("tax_adjustment_overrides"))
+    transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(row.get("transfer_classification_overrides"))
     return {
         "id": str(row["id"]),
         "clientName": row.get("client_name") or "",
@@ -6577,6 +6582,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "vatRegisteredConfirmedAt": _iso(row.get("vat_registered_confirmed_at")) or "",
         "dismissedWarningKeys": [str(item) for item in dismissed_warning_keys if str(item).strip()][:200],
         "taxAdjustmentOverrides": tax_adjustment_overrides,
+        "transferClassificationOverrides": transfer_classification_overrides,
         "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
         "lastCalculatedAt": _iso(row.get("last_calculated_at")) or "",
@@ -6664,6 +6670,7 @@ def _normalise_me_report_tax_adjustment_overrides(value) -> dict:
         "nonAllowable",
         "penalties",
         "entertaining",
+        "capitalAllowances",
     ]
     result = {}
     for key in allowed_keys:
@@ -6682,6 +6689,52 @@ def _normalise_me_report_tax_adjustment_overrides(value) -> dict:
                     codes.append(code)
             entry[direction] = codes[:200]
         result[key] = entry
+    return result
+
+
+def _normalise_me_report_transfer_classification(value) -> str:
+    text = re.sub(r"[^a-z]", "", str(value or "").strip().lower())
+    aliases = {
+        "dividend": "dividend",
+        "dividends": "dividend",
+        "directorloan": "directorLoan",
+        "directorsloan": "directorLoan",
+        "directorloanaccount": "directorLoan",
+        "directorsloanaccount": "directorLoan",
+        "dla": "directorLoan",
+        "wage": "wages",
+        "wages": "wages",
+        "salary": "wages",
+        "payroll": "wages",
+        "ignore": "ignore",
+        "ignored": "ignore",
+        "exclude": "ignore",
+        "excluded": "ignore",
+    }
+    return aliases.get(text, "")
+
+
+def _me_report_transfer_rule_key(value) -> str:
+    key = re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().lower())
+    return re.sub(r"\s+", " ", key).strip()[:180]
+
+
+def _normalise_me_report_transfer_classification_overrides(value) -> dict:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = {}
+    if not isinstance(value, dict):
+        value = {}
+    result = {}
+    for raw_key, raw_classification in value.items():
+        key = _me_report_transfer_rule_key(raw_key)
+        classification = _normalise_me_report_transfer_classification(raw_classification)
+        if key and classification in ME_REPORT_TRANSFER_CLASSIFICATIONS:
+            result[key] = classification
+            if len(result) >= 300:
+                break
     return result
 
 
@@ -6949,6 +7002,9 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
     tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(client.get("tax_adjustment_overrides"))
     if "taxAdjustmentOverrides" in payload:
         tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(payload.get("taxAdjustmentOverrides"))
+    transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(client.get("transfer_classification_overrides"))
+    if "transferClassificationOverrides" in payload:
+        transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(payload.get("transferClassificationOverrides"))
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -6960,6 +7016,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     vat_registered_confirmed_at = %s,
                     dismissed_warning_keys = %s::jsonb,
                     tax_adjustment_overrides = %s::jsonb,
+                    transfer_classification_overrides = %s::jsonb,
                     updated_at = %s
                 WHERE id = %s
                   AND user_id = %s
@@ -6971,6 +7028,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     vat_registered_confirmed_at,
                     json.dumps(dismissed_warning_keys, default=_json_default),
                     json.dumps(tax_adjustment_overrides, default=_json_default),
+                    json.dumps(transfer_classification_overrides, default=_json_default),
                     now,
                     client_id,
                     user["id"],
@@ -7010,6 +7068,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                 len(entry.get("add") or []) + len(entry.get("remove") or [])
                 for entry in tax_adjustment_overrides.values()
             ),
+            "transfer_classification_override_count": len(transfer_classification_overrides),
         },
         user["id"],
     )
@@ -7156,6 +7215,7 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "trialBalanceAccounts",
         "balanceSheet",
         "dividendTransactions",
+        "directorTransferTransactions",
         "fixedAssetReconciliation",
         "depreciationSchedule",
         "disallowedExpenses",
@@ -7198,7 +7258,7 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["accountCode", "accountName", "accountType", "debitYTD", "creditYTD", "sourcePage"],
+                "required": ["accountCode", "accountName", "accountType", "debitYTD", "creditYTD", "sourcePage", "transactions"],
                 "properties": {
                     "accountCode": {"type": "string"},
                     "accountName": {"type": "string"},
@@ -7206,6 +7266,20 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
                     "debitYTD": {"type": "number"},
                     "creditYTD": {"type": "number"},
                     "sourcePage": {"type": ["integer", "null"]},
+                    "transactions": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["date", "description", "amount", "sourcePage"],
+                            "properties": {
+                                "date": {"type": ["string", "null"]},
+                                "description": {"type": "string"},
+                                "amount": {"type": "number"},
+                                "sourcePage": {"type": ["integer", "null"]},
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -7230,6 +7304,20 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
             },
         },
         "dividendTransactions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["date", "description", "amount", "sourcePage"],
+                "properties": {
+                    "date": {"type": ["string", "null"]},
+                    "description": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
+        "directorTransferTransactions": {
             "type": "array",
             "items": {
                 "type": "object",
@@ -7466,9 +7554,13 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         "Also extract the full rollingVatTurnoverMonths schedule when the report shows the 12 monthly taxable turnover figures. "
         "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
         "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
+        "For each Trial Balance account, include the transaction-level rows shown for that account in Review of Transactions or account detail pages; "
+        "this is especially important for Motor Vehicle Expenses. Return an empty transactions array when only the Trial Balance total is shown. "
         "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved "
-        "when shown in brackets. Extract dividend transaction dates, descriptions and amounts where the report shows dividend "
-        "payments, dividends declared, journals, director drawings classified as dividends, or dividend lines in the transaction review. "
+        "when shown in brackets. Extract dividend transaction dates, descriptions and amounts only where the transaction or account "
+        "explicitly says dividend or dividends. Do not treat director drawings, transfers, cash withdrawals, salary, wages, payroll, "
+        "or director loan movements as dividends unless the line explicitly uses dividend wording. Put those director payments, "
+        "drawings, salary/wage/payroll entries and director loan movements in directorTransferTransactions instead. "
         "Extract Fixed Asset Reconciliation differences by asset class, and report whether the Depreciation "
         "Schedule shows a nil depreciation column. Put clearly disallowable costs such as car fines, penalties and non-allowable "
         "tax adjustment accounts in disallowedExpenses. Do not make final tax judgements for ambiguous legal, bad debt or client "
@@ -7592,6 +7684,29 @@ def _me_report_account_breakdown(accounts: list[dict]) -> list[dict]:
             )
         )
     return rows
+
+
+def _me_report_account_transactions(account: dict, limit: int = 80) -> list[dict]:
+    transactions = account.get("transactions") if isinstance(account.get("transactions"), list) else []
+    rows = []
+    for transaction in transactions:
+        if not isinstance(transaction, dict):
+            continue
+        amount = _money(transaction.get("amount"))
+        description = str(transaction.get("description") or "").strip()
+        transaction_date = str(transaction.get("date") or "").strip()
+        if amount == 0 and not description and not transaction_date:
+            continue
+        source_page = transaction.get("sourcePage")
+        if source_page in (None, ""):
+            source_page = account.get("sourcePage")
+        rows.append({
+            "date": transaction_date,
+            "description": description,
+            "amount": float(amount),
+            "source": _me_report_source_page("Review of Transactions", source_page),
+        })
+    return rows[:limit]
 
 
 def _me_report_account_amount(account: dict) -> Decimal:
@@ -7724,6 +7839,229 @@ def _me_report_source_page(prefix: str, page) -> str:
     if page in (None, ""):
         return prefix
     return f"{prefix}, page {page}"
+
+
+def _me_report_transfer_key(row: dict) -> str:
+    description_key = _me_report_transfer_rule_key(row.get("description") or row.get("label") or "")
+    if description_key:
+        return description_key
+    return _me_report_transfer_rule_key(
+        " ".join(
+            str(row.get(key) or "")
+            for key in ("date", "amount", "source")
+        )
+    )
+
+
+def _me_report_transfer_default_classification(row: dict) -> str:
+    text = " ".join(
+        str(row.get(key) or "")
+        for key in ("description", "label", "source", "treatment")
+    ).lower()
+    if re.search(r"\bdividends?\b", text):
+        return "dividend"
+    if re.search(r"\b(wages?|salary|payroll|remuneration|bonus)\b", text):
+        return "wages"
+    return "directorLoan"
+
+
+def _me_report_transfer_source(row: dict, prefix: str) -> str:
+    source = str(row.get("source") or row.get("sourceLabel") or "").strip()
+    if source:
+        return source
+    return _me_report_source_page(prefix, row.get("sourcePage"))
+
+
+def _me_report_classified_director_transfers(
+    dividend_transactions: list[dict],
+    director_transfer_transactions: list[dict],
+    overrides: dict,
+    limit: int = 240,
+) -> list[dict]:
+    rows = []
+    seen = set()
+    for source_type, prefix, transactions in (
+        ("dividendExtraction", "Dividend transaction", dividend_transactions),
+        ("directorTransferExtraction", "Director transfer", director_transfer_transactions),
+    ):
+        for item in transactions or []:
+            if not isinstance(item, dict):
+                continue
+            amount = abs(_money(item.get("amount")))
+            description = str(item.get("description") or item.get("label") or "").strip()
+            transaction_date = str(item.get("date") or "").strip()
+            source = _me_report_transfer_source(item, prefix)
+            if amount <= 0 and not description and not transaction_date:
+                continue
+            candidate = {
+                "date": transaction_date,
+                "description": description,
+                "amount": float(amount),
+                "source": source,
+                "sourceType": source_type,
+            }
+            key = _me_report_transfer_key(candidate)
+            if not key:
+                continue
+            dedupe_key = (key, transaction_date, f"{amount:.2f}")
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            default_classification = _normalise_me_report_transfer_classification(item.get("defaultClassification")) or _me_report_transfer_default_classification(candidate)
+            override_classification = overrides.get(key) or _normalise_me_report_transfer_classification(item.get("overrideClassification"))
+            classification = override_classification or _normalise_me_report_transfer_classification(item.get("classification")) or default_classification
+            if classification not in ME_REPORT_TRANSFER_CLASSIFICATIONS:
+                classification = default_classification
+            candidate.update({
+                "key": key,
+                "classification": classification,
+                "defaultClassification": default_classification,
+                "overrideClassification": override_classification,
+            })
+            rows.append(candidate)
+            if len(rows) >= limit:
+                return rows
+    return rows
+
+
+def _me_report_dividend_transaction_breakdown(dividend_transactions: list[dict], limit: int = 24) -> list[dict]:
+    breakdown = []
+    for item in dividend_transactions[:limit]:
+        amount = abs(_money(item.get("amount")))
+        if amount <= 0:
+            continue
+        label_parts = [str(item.get("date") or "").strip(), str(item.get("description") or "Dividend").strip()]
+        breakdown.append(
+            _me_report_breakdown_item(
+                " - ".join(part for part in label_parts if part),
+                -amount,
+                str(item.get("source") or _me_report_source_page("Dividend transaction", item.get("sourcePage"))),
+                "",
+                "Deduct",
+            )
+        )
+    return breakdown
+
+
+def _me_report_dividend_calculation(
+    *,
+    retained_earnings: Decimal,
+    current_year_profit_before_tax: Decimal,
+    current_year_tax_provision: Decimal,
+    current_year_earnings: Decimal,
+    dividends_declared: Decimal,
+    balance_sheet_source: str,
+    dividend_transaction_breakdown: list[dict],
+) -> tuple[Decimal, Decimal, list[dict]]:
+    period_end_distributable_reserves = _money(retained_earnings + current_year_earnings - dividends_declared)
+    dividend_capacity = max(Decimal("0.00"), period_end_distributable_reserves)
+    dividend_steps = [
+        _me_report_step("Opening retained reserves", retained_earnings, "Start", "Balance Sheet capital and reserves", [
+            _me_report_breakdown_item("Retained earnings", retained_earnings, balance_sheet_source, "", "Start")
+        ]),
+        _me_report_step("YTD profit before tax", current_year_profit_before_tax, "Add", "Profit and Loss - YTD", [
+            _me_report_breakdown_item("Profit before tax YTD", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add")
+        ]),
+        _me_report_step("Estimated corporation tax provision", -current_year_tax_provision, "Deduct", "CT estimate", [
+            _me_report_breakdown_item("Corporation tax estimate", -current_year_tax_provision, "CT estimate", "", "Deduct")
+        ]),
+        _me_report_step("Post-tax YTD earnings", current_year_earnings, "Subtotal", "Calculated", [
+            _me_report_breakdown_item("YTD profit before tax", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add"),
+            _me_report_breakdown_item("Estimated corporation tax provision", -current_year_tax_provision, "CT estimate", "", "Deduct"),
+        ]),
+        _me_report_step(
+            "Dividends declared YTD",
+            -dividends_declared,
+            "Deduct",
+            "Extracted dividend transactions" if dividend_transaction_breakdown else "Balance Sheet dividends line",
+            dividend_transaction_breakdown or [
+                _me_report_breakdown_item("Dividends declared", -dividends_declared, balance_sheet_source, "", "Deduct")
+            ],
+        ),
+        _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated", [
+            _me_report_breakdown_item("Opening retained reserves", retained_earnings, "Balance Sheet capital and reserves", "", "Start"),
+            _me_report_breakdown_item("Post-tax YTD earnings", current_year_earnings, "Calculated", "", "Add"),
+            _me_report_breakdown_item("Dividends declared YTD", -dividends_declared, "Balance Sheet dividends line", "", "Deduct"),
+        ]),
+        _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated", [
+            _me_report_breakdown_item("Period-end distributable reserves", period_end_distributable_reserves, "Calculated", "", "Available"),
+            *([] if period_end_distributable_reserves >= 0 else [
+                _me_report_breakdown_item("Availability floor", -period_end_distributable_reserves, "Calculated", "", "Nil if reserves are negative")
+            ]),
+        ]),
+    ]
+    return period_end_distributable_reserves, dividend_capacity, dividend_steps
+
+
+def _me_report_apply_transfer_classification_overrides(summary: dict, client: dict) -> dict:
+    if not isinstance(summary, dict):
+        return {}
+    result = dict(summary)
+    overrides = _normalise_me_report_transfer_classification_overrides(client.get("transfer_classification_overrides") or result.get("transferClassificationOverrides"))
+    source_director_rows = [item for item in result.get("directorTransferTransactions") or [] if isinstance(item, dict)]
+    source_dividend_rows = [item for item in result.get("dividendTransactions") or [] if isinstance(item, dict)]
+    source_dla_rows = [item for item in result.get("directorLoanTransactions") or [] if isinstance(item, dict)]
+    source_wage_rows = [item for item in result.get("wageTransferTransactions") or [] if isinstance(item, dict)]
+    transfer_rows = _me_report_classified_director_transfers(
+        source_dividend_rows,
+        source_director_rows + source_dla_rows + source_wage_rows,
+        overrides,
+    )
+    result["transferClassificationOverrides"] = overrides
+    result["transferClassificationOverrideClientId"] = str(client.get("id") or "")
+    if not transfer_rows:
+        return result
+
+    dividend_rows = [row for row in transfer_rows if row.get("classification") == "dividend"]
+    dla_rows = [row for row in transfer_rows if row.get("classification") == "directorLoan"]
+    wage_rows = [row for row in transfer_rows if row.get("classification") == "wages"]
+    dividends_declared = _money(sum(abs(_money(item.get("amount"))) for item in dividend_rows))
+    retained_earnings = _money(result.get("openingRetainedReserves"))
+    current_year_profit_before_tax = _money(result.get("yearToDateProfit") or result.get("accountingProfit"))
+    current_year_tax_provision = _money(result.get("estimatedCorporationTax"))
+    current_year_earnings = _money(result.get("currentYearEarnings"))
+    if current_year_earnings == 0 and (current_year_profit_before_tax or current_year_tax_provision):
+        current_year_earnings = _money(current_year_profit_before_tax - current_year_tax_provision)
+    balance_sheet_source = "Balance Sheet"
+    dividend_breakdown = _me_report_dividend_transaction_breakdown(dividend_rows)
+    period_end_distributable_reserves, dividend_capacity, dividend_steps = _me_report_dividend_calculation(
+        retained_earnings=retained_earnings,
+        current_year_profit_before_tax=current_year_profit_before_tax,
+        current_year_tax_provision=current_year_tax_provision,
+        current_year_earnings=current_year_earnings,
+        dividends_declared=dividends_declared,
+        balance_sheet_source=balance_sheet_source,
+        dividend_transaction_breakdown=dividend_breakdown,
+    )
+    period_end = _parse_optional_iso_date(result.get("periodEnd"))
+    dla_balance = _money(result.get("dlaBalance"))
+    extraction_summary = _me_report_extraction_summary(
+        current_year_earnings=current_year_earnings,
+        dividend_capacity=dividend_capacity,
+        brought_forward_trading_loss=_money(result.get("broughtForwardTradingLoss")),
+        trading_loss_relief_used=_money(result.get("tradingLossReliefUsed")),
+        dla_balance=dla_balance,
+        estimated_ct=current_year_tax_provision,
+        period_end=period_end,
+    )
+    result.update({
+        "dividendsTaken": float(dividends_declared),
+        "dividendTransactions": dividend_rows[:120],
+        "directorTransferTransactions": transfer_rows[:240],
+        "directorLoanTransactions": dla_rows[:120],
+        "wageTransferTransactions": wage_rows[:120],
+        "currentYearEarnings": float(current_year_earnings),
+        "periodEndDistributableReserves": float(period_end_distributable_reserves),
+        "dividendCapacity": float(dividend_capacity),
+        "totalPotentialExtraction": extraction_summary["totalPotentialExtraction"],
+        "extractionWaterfall": extraction_summary["waterfall"],
+        "dlaMitigationSchedule": extraction_summary["mitigationSchedule"],
+        "payrollMitigation": extraction_summary["payrollMitigation"],
+        "overdrawnDlaExposure": extraction_summary["overdrawnDlaExposure"],
+        "creditDlaAvailable": extraction_summary["creditDlaAvailable"],
+        "dividendCalculationSteps": dividend_steps,
+    })
+    return result
 
 
 def _me_report_text_items(items, fallback: list[str] | None = None, limit: int = 6) -> list[str]:
@@ -8029,6 +8367,16 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     trial_balance_accounts = [item for item in extracted.get("trialBalanceAccounts") or [] if isinstance(item, dict)]
     balance_sheet = extracted.get("balanceSheet") if isinstance(extracted.get("balanceSheet"), dict) else {}
     dividend_transactions = [item for item in extracted.get("dividendTransactions") or [] if isinstance(item, dict)]
+    director_transfer_transactions = [item for item in extracted.get("directorTransferTransactions") or [] if isinstance(item, dict)]
+    transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(client.get("transfer_classification_overrides"))
+    director_transfer_rows = _me_report_classified_director_transfers(
+        dividend_transactions,
+        director_transfer_transactions,
+        transfer_classification_overrides,
+    )
+    classified_dividend_transactions = [row for row in director_transfer_rows if row.get("classification") == "dividend"]
+    director_loan_transactions = [row for row in director_transfer_rows if row.get("classification") == "directorLoan"]
+    wage_transfer_transactions = [row for row in director_transfer_rows if row.get("classification") == "wages"]
     fixed_asset_rows = [item for item in extracted.get("fixedAssetReconciliation") or [] if isinstance(item, dict)]
     depreciation_schedule = extracted.get("depreciationSchedule") if isinstance(extracted.get("depreciationSchedule"), dict) else {}
     page_coverage = extracted.get("pageCoverage") if isinstance(extracted.get("pageCoverage"), dict) else {}
@@ -8267,66 +8615,24 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     balance_sheet_current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
     retained_earnings = _money(balance_sheet.get("retainedEarnings"))
     dividends_declared = abs(_money(balance_sheet.get("dividendsDeclared")))
-    dividend_transaction_breakdown = []
-    for item in dividend_transactions[:24]:
-        amount = abs(_money(item.get("amount")))
-        if amount <= 0:
-            continue
-        label_parts = [str(item.get("date") or "").strip(), str(item.get("description") or "Dividend").strip()]
-        dividend_transaction_breakdown.append(
-            _me_report_breakdown_item(
-                " - ".join(part for part in label_parts if part),
-                -amount,
-                _me_report_source_page("Dividend transaction", item.get("sourcePage")),
-                "",
-                "Deduct",
-            )
-        )
-    if dividend_transaction_breakdown:
-        dividends_declared = abs(_money(sum(_money(item.get("amount")) for item in dividend_transactions)))
+    dividend_transaction_breakdown = _me_report_dividend_transaction_breakdown(classified_dividend_transactions)
+    if classified_dividend_transactions:
+        dividends_declared = abs(_money(sum(_money(item.get("amount")) for item in classified_dividend_transactions)))
     if not balance_sheet:
         retained_earnings = Decimal("0.00")
         dividends_declared = abs(_money(extracted.get("dividendsDeclared") or extracted.get("dividendsTaken")))
     current_year_profit_before_tax = accounting_profit
     current_year_tax_provision = estimated_ct
     current_year_earnings = _money(current_year_profit_before_tax - current_year_tax_provision)
-    period_end_distributable_reserves = _money(retained_earnings + current_year_earnings - dividends_declared)
-    dividend_capacity = max(Decimal("0.00"), period_end_distributable_reserves)
-    dividend_steps = [
-        _me_report_step("Opening retained reserves", retained_earnings, "Start", "Balance Sheet capital and reserves", [
-            _me_report_breakdown_item("Retained earnings", retained_earnings, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Start")
-        ]),
-        _me_report_step("YTD profit before tax", current_year_profit_before_tax, "Add", "Profit and Loss - YTD", [
-            _me_report_breakdown_item("Profit before tax YTD", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add")
-        ]),
-        _me_report_step("Estimated corporation tax provision", -current_year_tax_provision, "Deduct", "CT estimate", [
-            _me_report_breakdown_item("Corporation tax estimate", -current_year_tax_provision, "CT estimate", "", "Deduct")
-        ]),
-        _me_report_step("Post-tax YTD earnings", current_year_earnings, "Subtotal", "Calculated", [
-            _me_report_breakdown_item("YTD profit before tax", current_year_profit_before_tax, "Profit and Loss - YTD", "", "Add"),
-            _me_report_breakdown_item("Estimated corporation tax provision", -current_year_tax_provision, "CT estimate", "", "Deduct"),
-        ]),
-        _me_report_step(
-            "Dividends declared YTD",
-            -dividends_declared,
-            "Deduct",
-            "Extracted dividend transactions" if dividend_transaction_breakdown else "Balance Sheet dividends line",
-            dividend_transaction_breakdown or [
-                _me_report_breakdown_item("Dividends declared", -dividends_declared, _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")), "", "Deduct")
-            ],
-        ),
-        _me_report_step("Period-end distributable reserves", period_end_distributable_reserves, "Result", "Calculated", [
-            _me_report_breakdown_item("Opening retained reserves", retained_earnings, "Balance Sheet capital and reserves", "", "Start"),
-            _me_report_breakdown_item("Post-tax YTD earnings", current_year_earnings, "Calculated", "", "Add"),
-            _me_report_breakdown_item("Dividends declared YTD", -dividends_declared, "Balance Sheet dividends line", "", "Deduct"),
-        ]),
-        _me_report_step("Further dividend availability", dividend_capacity, "Available", "Calculated", [
-            _me_report_breakdown_item("Period-end distributable reserves", period_end_distributable_reserves, "Calculated", "", "Available"),
-            *([] if period_end_distributable_reserves >= 0 else [
-                _me_report_breakdown_item("Availability floor", -period_end_distributable_reserves, "Calculated", "", "Nil if reserves are negative")
-            ]),
-        ]),
-    ]
+    period_end_distributable_reserves, dividend_capacity, dividend_steps = _me_report_dividend_calculation(
+        retained_earnings=retained_earnings,
+        current_year_profit_before_tax=current_year_profit_before_tax,
+        current_year_tax_provision=current_year_tax_provision,
+        current_year_earnings=current_year_earnings,
+        dividends_declared=dividends_declared,
+        balance_sheet_source=_me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")),
+        dividend_transaction_breakdown=dividend_transaction_breakdown,
+    )
     if period_end_distributable_reserves < 0:
         warnings.append("Dividend availability is nil because accumulated distributable reserves are negative at period end.")
 
@@ -8449,6 +8755,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             "creditYTD": float(_money(account.get("creditYTD"))),
             "amount": float(_me_report_account_amount(account)),
             "source": _me_report_source_page("Trial Balance", account.get("sourcePage")),
+            "transactions": _me_report_account_transactions(account),
         }
         for account in trial_balance_accounts
         if isinstance(account, dict) and (account.get("accountCode") or account.get("accountName"))
@@ -8493,16 +8800,12 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "balanceSheetCurrentYearEarnings": float(balance_sheet_current_year_earnings),
         "currentYearEarnings": float(current_year_earnings),
         "dividendsTaken": float(dividends_declared),
-        "dividendTransactions": [
-            {
-                "date": str(item.get("date") or ""),
-                "description": str(item.get("description") or ""),
-                "amount": float(_money(item.get("amount"))),
-                "source": _me_report_source_page("Dividend transaction", item.get("sourcePage")),
-            }
-            for item in dividend_transactions
-            if isinstance(item, dict) and (_money(item.get("amount")) or item.get("description") or item.get("date"))
-        ][:24],
+        "dividendTransactions": classified_dividend_transactions[:120],
+        "directorTransferTransactions": director_transfer_rows[:240],
+        "directorLoanTransactions": director_loan_transactions[:120],
+        "wageTransferTransactions": wage_transfer_transactions[:120],
+        "transferClassificationOverrides": transfer_classification_overrides,
+        "transferClassificationOverrideClientId": str(client.get("id") or ""),
         "periodEndDistributableReserves": float(period_end_distributable_reserves),
         "dividendCapacity": float(dividend_capacity),
         "directorLoanCreditBalance": float(max(_money(extracted.get("dlaBalance")), Decimal("0.00"))),
@@ -9367,7 +9670,7 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "vatThresholdFirstBreachedAt": _iso(vat_threshold_first_breached_at) or "",
         "vatRegisteredConfirmed": vat_registered_confirmed,
         "vatWarningVisible": vat_warning_visible,
-        "accountingProfit": float(_money(monthly_profit)),
+        "accountingProfit": float(_money(ytd_profit)),
         "taxAdjustments": float(_money(disallowable_addbacks)),
         "taxableProfitBeforeLosses": float(taxable_profit_before_losses),
         "broughtForwardTradingLoss": float(brought_forward_trading_loss),
@@ -9930,6 +10233,10 @@ def _me_report_report_context(user: dict, report_id: str) -> dict:
                        clients.xero_tenant_id,
                        clients.xero_tenant_name,
                        clients.brought_forward_trading_loss,
+                       clients.brought_forward_trading_loss_updated_at,
+                       clients.transfer_classification_overrides,
+                       clients.vat_registered_confirmed,
+                       clients.vat_registered_confirmed_at,
                        reviews.summary AS review_summary,
                        reviews.period_start,
                        reviews.period_end,
@@ -9963,11 +10270,15 @@ def _me_report_report_context(user: dict, report_id: str) -> dict:
         "xero_tenant_id": row.get("xero_tenant_id") or "",
         "xero_tenant_name": row.get("xero_tenant_name") or "",
         "brought_forward_trading_loss": row.get("brought_forward_trading_loss"),
+        "brought_forward_trading_loss_updated_at": row.get("brought_forward_trading_loss_updated_at"),
+        "transfer_classification_overrides": row.get("transfer_classification_overrides"),
+        "vat_registered_confirmed": row.get("vat_registered_confirmed"),
+        "vat_registered_confirmed_at": row.get("vat_registered_confirmed_at"),
     }
     return {
         "report": row,
         "client": client,
-        "summary": _me_report_apply_brought_forward_loss(summary, client),
+        "summary": _me_report_summary_for_client(summary, client),
     }
 
 

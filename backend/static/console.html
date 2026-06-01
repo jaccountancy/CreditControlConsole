@@ -4107,13 +4107,14 @@
                 position: relative;
                 min-width: 0;
             }
-            .client-group-counts {
+            .client-inline-status {
                 display: flex;
+                align-items: center;
                 flex-wrap: wrap;
                 gap: 6px;
-                margin-top: 8px;
+                margin-top: 6px;
             }
-            .client-group-counts span,
+            .client-open-count,
             .client-credit-flag {
                 display: inline-flex;
                 align-items: center;
@@ -4124,6 +4125,9 @@
                 font-size: 0.76rem;
                 font-weight: 850;
             }
+            .client-open-count {
+                white-space: nowrap;
+            }
             .client-credit-flag.has-credit {
                 background: rgba(255, 159, 47, 0.14);
                 color: #a35a00;
@@ -4131,74 +4135,6 @@
             .client-credit-flag.is-loading {
                 background: var(--blue-soft);
                 color: var(--blue);
-            }
-            .client-ledger-hover {
-                position: absolute;
-                z-index: 90;
-                left: 0;
-                top: calc(100% + 10px);
-                width: min(540px, calc(100vw - 72px));
-                max-height: 420px;
-                overflow: auto;
-                display: grid;
-                gap: 12px;
-                padding: 14px;
-                border: 1px solid var(--line);
-                border-radius: 12px;
-                background: rgba(255, 255, 255, 0.98);
-                box-shadow: 0 20px 54px rgba(30, 47, 77, 0.18);
-                opacity: 0;
-                pointer-events: none;
-                transform: translateY(-4px);
-                transition: 0.16s ease;
-            }
-            .client-group-row:hover .client-ledger-hover,
-            .client-group-row:focus-within .client-ledger-hover {
-                opacity: 1;
-                pointer-events: auto;
-                transform: translateY(0);
-            }
-            .client-hover-section {
-                display: grid;
-                gap: 7px;
-            }
-            .client-hover-section > span {
-                color: var(--muted);
-                font-size: 0.68rem;
-                font-weight: 900;
-                letter-spacing: 0.1em;
-                text-transform: uppercase;
-            }
-            .client-hover-row {
-                display: grid;
-                grid-template-columns: minmax(0, 1fr) auto;
-                gap: 14px;
-                padding: 8px 0;
-                border-top: 1px solid rgba(61, 85, 130, 0.08);
-                font-size: 0.82rem;
-                font-weight: 800;
-            }
-            .client-hover-row:first-of-type {
-                border-top: 0;
-            }
-            .client-hover-row small,
-            .client-hover-empty {
-                display: block;
-                margin-top: 2px;
-                color: var(--muted);
-                font-size: 0.76rem;
-                font-weight: 750;
-                line-height: 1.35;
-            }
-            .client-hover-footnote {
-                padding-top: 10px;
-                border-top: 1px solid var(--line);
-                color: var(--muted);
-                font-size: 0.78rem;
-                font-weight: 800;
-            }
-            .client-inline-status {
-                margin-top: 8px;
             }
             .client-inline-status .status-pill {
                 font-size: 0.76rem;
@@ -4213,6 +4149,7 @@
                 margin-top: 4px;
             }
             body.is-dense .client-inline-status .status-pill,
+            body.is-dense .client-open-count,
             body.is-dense .client-credit-flag {
                 padding: 3px 7px;
                 font-size: 0.68rem;
@@ -4248,9 +4185,15 @@
                 display: block;
                 margin-bottom: 8px;
             }
+            .amount-cell.is-client-total .amount-value {
+                margin-bottom: 0;
+            }
             body.is-dense .amount-value {
                 margin-bottom: 2px;
                 line-height: 1.1;
+            }
+            body.is-dense .amount-cell.is-client-total .amount-value {
+                margin-bottom: 0;
             }
             .amount-full-tooltip {
                 position: absolute;
@@ -6388,6 +6331,9 @@
                 gap: 10px;
                 align-items: center;
             }
+            .me-report-step-breakdown.has-actions .me-report-step-breakdown-row {
+                grid-template-columns: minmax(74px, 0.3fr) minmax(180px, 1.1fr) minmax(82px, 0.4fr) minmax(82px, 0.4fr) minmax(96px, 0.42fr) minmax(130px, 0.78fr) minmax(92px, 0.42fr);
+            }
             .me-report-step-breakdown-head {
                 grid-template-columns: minmax(0, 1fr) auto auto;
                 color: var(--ink);
@@ -6456,6 +6402,17 @@
             }
             .me-report-step-breakdown-row.is-excluded em {
                 color: var(--red);
+            }
+            .me-report-tax-line-action {
+                display: flex;
+                justify-content: flex-end;
+            }
+            .me-report-tax-line-action .ghost-button,
+            .me-report-fixed-asset-action {
+                min-height: 30px;
+                padding: 6px 10px;
+                font-size: 0.72rem;
+                white-space: nowrap;
             }
             .me-report-help-notes {
                 margin: 0;
@@ -7487,6 +7444,127 @@
                 font-size: 0.86rem;
                 font-weight: 750;
             }
+            #meReportScreen .me-report-transfer-table table {
+                min-width: 960px;
+            }
+            #meReportScreen .me-report-transfer-table select {
+                width: 100%;
+                min-height: 34px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                background: #ffffff;
+                color: var(--ink);
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 850;
+                padding: 6px 8px;
+                outline: none;
+            }
+            #meReportScreen .me-report-transfer-table select:focus {
+                border-color: rgba(29, 103, 242, 0.45);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+            }
+            #meReportScreen .me-report-fixed-asset-difference {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+                padding: 6px 9px;
+                border-radius: 999px;
+                border: 1px solid transparent;
+                font-weight: 900;
+                white-space: nowrap;
+            }
+            #meReportScreen .me-report-fixed-asset-difference svg {
+                width: 15px;
+                height: 15px;
+                flex: 0 0 auto;
+                stroke: currentColor;
+                stroke-width: 2.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                fill: none;
+            }
+            #meReportScreen .me-report-fixed-asset-difference strong {
+                font: inherit;
+            }
+            #meReportScreen .me-report-fixed-asset-difference small {
+                color: inherit;
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+            #meReportScreen .me-report-fixed-asset-difference.is-clear {
+                color: #15803d;
+                background: rgba(34, 197, 94, 0.12);
+                border-color: rgba(34, 197, 94, 0.24);
+            }
+            #meReportScreen .me-report-fixed-asset-difference.is-warning {
+                color: #b42318;
+                background: rgba(255, 83, 83, 0.12);
+                border-color: rgba(255, 83, 83, 0.26);
+            }
+            #meReportScreen .me-report-account-row.has-transactions {
+                cursor: pointer;
+                transition: background 0.16s ease, box-shadow 0.16s ease;
+            }
+            #meReportScreen .me-report-account-row.has-transactions:hover,
+            #meReportScreen .me-report-account-row.has-transactions:focus {
+                background: rgba(233, 241, 255, 0.34);
+                outline: none;
+            }
+            #meReportScreen .me-report-account-row.is-expanded {
+                background: rgba(233, 241, 255, 0.58);
+                box-shadow: inset 3px 0 0 var(--blue);
+            }
+            #meReportScreen .me-report-account-transaction-row td {
+                padding: 0;
+                background: rgba(248, 251, 255, 0.9);
+            }
+            #meReportScreen .me-report-account-transaction-panel {
+                display: grid;
+                gap: 10px;
+                padding: 12px;
+                border-top: 1px solid rgba(29, 103, 242, 0.18);
+                border-bottom: 1px solid rgba(29, 103, 242, 0.12);
+            }
+            #meReportScreen .me-report-account-transaction-head,
+            #meReportScreen .me-report-account-transaction-line {
+                display: grid;
+                grid-template-columns: minmax(88px, 0.35fr) minmax(240px, 1.3fr) minmax(100px, 0.45fr) minmax(150px, 0.65fr);
+                gap: 10px;
+                align-items: center;
+            }
+            #meReportScreen .me-report-account-transaction-head {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #meReportScreen .me-report-account-transaction-line {
+                padding-top: 8px;
+                border-top: 1px solid var(--line);
+                font-size: 0.78rem;
+            }
+            #meReportScreen .me-report-account-transaction-line strong,
+            #meReportScreen .me-report-account-transaction-line small {
+                display: block;
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+            #meReportScreen .me-report-account-transaction-line small {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 750;
+            }
+            #meReportScreen .me-report-account-transaction-line em {
+                color: var(--ink);
+                font-style: normal;
+                font-weight: 900;
+                text-align: right;
+            }
             #meReportScreen .me-report-quality-row {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) auto;
@@ -7550,6 +7628,13 @@
                 }
                 #meReportScreen .me-report-table-card table {
                     min-width: 720px;
+                }
+                #meReportScreen .me-report-account-transaction-head,
+                #meReportScreen .me-report-account-transaction-line {
+                    grid-template-columns: 1fr;
+                }
+                #meReportScreen .me-report-account-transaction-line em {
+                    text-align: left;
                 }
             }
             .bank-account-page {
@@ -13880,6 +13965,7 @@
             let meReportLossDialogState = null;
             let meReportCtCompsUploading = false;
             let expandedMeReportCalculationKey = "";
+            let expandedMeReportChartAccountKey = "";
             let activeMeReportSyncRunId = null;
             let latestMeReportSyncRun = null;
             let meReportSyncStartedAt = 0;
@@ -16116,39 +16202,6 @@
                     || a.oldestDueSort - b.oldestDueSort;
             }
 
-            function clientGroupHoverHTML(group) {
-                const invoiceRows = group.openInvoices.length
-                    ? group.openInvoices.map((invoice) => `
-                        <div class="client-hover-row">
-                            <span><strong>${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong><small>${escapeHTML(invoiceLineSummary(invoice))} · due ${formatDate(invoice.dueDate)}</small></span>
-                            <strong>${formatCurrency(invoice.amountDue || 0)}</strong>
-                        </div>
-                    `).join("")
-                    : `<p class="client-hover-empty">No open invoices in the current filter.</p>`;
-                const creditState = clientCreditState(group.client);
-                const creditRows = creditState.sources.length
-                    ? creditState.sources.map((source) => `
-                        <div class="client-hover-row">
-                            <span><strong>${escapeHTML(creditSourceLabel(source))} ${escapeHTML(source.number || source.id || "")}</strong><small>${escapeHTML(source.status || "Authorised")} · ${formatDate(source.date)}${source.reference ? ` · ${escapeHTML(source.reference)}` : ""}</small></span>
-                            <strong>${formatXeroCurrency(source.remainingCredit || 0, source.currencyCode)}</strong>
-                        </div>
-                    `).join("")
-                    : `<p class="client-hover-empty">${escapeHTML(creditState.label)}.</p>`;
-                return `
-                    <div class="client-ledger-hover" role="tooltip">
-                        <div class="client-hover-section">
-                            <span>Open invoices</span>
-                            ${invoiceRows}
-                        </div>
-                        <div class="client-hover-section">
-                            <span>Unallocated credits and overpayments</span>
-                            ${creditRows}
-                        </div>
-                        <p class="client-hover-footnote">Open the client screen to allocate credits, write notes, send letters, or change workflow status.</p>
-                    </div>
-                `;
-            }
-
             function compareInvoices(a, b) {
                 if (sortMode === "amount") return Number(b.amountDue || 0) - Number(a.amountDue || 0);
                 if (sortMode === "client") return `${a.customerName || ""}`.localeCompare(`${b.customerName || ""}`);
@@ -17591,6 +17644,7 @@
                         const creditClass = creditState.status === "ready" ? "has-credit" : creditState.status === "loading" ? "is-loading" : "";
                         const clientName = group.client?.name || invoice?.customerName || "Unnamed client";
                         const clientContact = group.client?.primaryPerson || group.client?.email || group.client?.phone || invoice?.customerContact || group.id;
+                        const openInvoiceLabel = `${group.openCount.toLocaleString("en-GB")} open invoice${group.openCount === 1 ? "" : "s"}`;
                         const row = document.createElement("tr");
                         row.className = `client-group-row ${group.id === selectedClientId ? "is-selected" : ""} row-${category}`.trim();
                         row.innerHTML = `
@@ -17599,12 +17653,11 @@
                                 <div class="client-group-anchor">
                                     <div class="client-name">${escapeHTML(clientName)}</div>
                                     <div class="client-subline">${escapeHTML(clientContact || "")}</div>
-                                    <div class="client-inline-status">${statusPill(invoice)}</div>
-                                    ${clientGroupHoverHTML(group)}
+                                    <div class="client-inline-status">${statusPill(invoice)}<span class="client-open-count">${escapeHTML(openInvoiceLabel)}</span></div>
                                 </div>
                             </td>
                             <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(invoiceLineSummary(oldestInvoice))}</div><div class="invoice-subline">${escapeHTML(oldestInvoice?.invoiceNumber || "Invoice")} · due ${formatDate(oldestInvoice?.dueDate)}</div></div></div></td>
-                            <td class="amount-cell" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong><div class="payment-status">${group.openCount.toLocaleString("en-GB")} open invoice${group.openCount === 1 ? "" : "s"}</div></td>
+                            <td class="amount-cell is-client-total" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong></td>
                             <td data-column="notes"><span class="client-credit-flag ${creditClass}">${escapeHTML(creditState.label)}</span><div class="note-snippet">${escapeHTML(invoice?.notesSummary || "Open client screen for account notes.")}</div></td>
                             <td class="actions-cell"><button class="table-open-button" type="button" data-open-client>Open</button></td>
                         `;
@@ -25447,7 +25500,7 @@
             }
 
             function meReportTaxAdjustmentStepKeys() {
-                return ["depreciation", "amortisation", "nonAllowable", "penalties", "entertaining"];
+                return ["depreciation", "amortisation", "nonAllowable", "penalties", "entertaining", "capitalAllowances"];
             }
 
             function meReportNormaliseTaxAdjustmentOverrides(value = {}) {
@@ -25476,6 +25529,176 @@
 
             function meReportClientTaxOverrides(client = {}) {
                 return meReportNormaliseTaxAdjustmentOverrides(client.taxAdjustmentOverrides);
+            }
+
+            function meReportNormaliseTransferClassification(value = "") {
+                const key = String(value || "").trim().toLowerCase().replace(/[^a-z]/g, "");
+                const aliases = {
+                    dividend: "dividend",
+                    dividends: "dividend",
+                    directorloan: "directorLoan",
+                    directorsloan: "directorLoan",
+                    directorloanaccount: "directorLoan",
+                    directorsloanaccount: "directorLoan",
+                    dla: "directorLoan",
+                    wage: "wages",
+                    wages: "wages",
+                    salary: "wages",
+                    payroll: "wages",
+                    ignore: "ignore",
+                    ignored: "ignore",
+                    exclude: "ignore",
+                    excluded: "ignore"
+                };
+                return aliases[key] || "";
+            }
+
+            function meReportTransferRuleKey(value = "") {
+                return String(value || "")
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .slice(0, 180);
+            }
+
+            function meReportNormaliseTransferClassificationOverrides(value = {}) {
+                let source = value;
+                if (typeof source === "string") {
+                    try {
+                        source = JSON.parse(source);
+                    } catch {
+                        source = {};
+                    }
+                }
+                if (!source || typeof source !== "object" || Array.isArray(source)) source = {};
+                return Object.entries(source).reduce((result, [rawKey, rawClassification]) => {
+                    const key = meReportTransferRuleKey(rawKey);
+                    const classification = meReportNormaliseTransferClassification(rawClassification);
+                    if (key && classification) result[key] = classification;
+                    return result;
+                }, {});
+            }
+
+            function meReportClientTransferOverrides(client = {}) {
+                return meReportNormaliseTransferClassificationOverrides(client.transferClassificationOverrides);
+            }
+
+            function meReportCopyTransferOverrides(overrides = {}) {
+                return meReportNormaliseTransferClassificationOverrides(overrides);
+            }
+
+            function meReportTransferClassificationLabel(value = "") {
+                const classification = meReportNormaliseTransferClassification(value) || value;
+                if (classification === "dividend") return "Dividend";
+                if (classification === "directorLoan") return "Director loan";
+                if (classification === "wages") return "Wages";
+                if (classification === "ignore") return "Ignore";
+                return "Review";
+            }
+
+            function meReportTransferKey(row = {}) {
+                const descriptionKey = meReportTransferRuleKey(row.description || row.label || "");
+                if (descriptionKey) return descriptionKey;
+                return meReportTransferRuleKey([row.date, row.amount, row.source].filter(Boolean).join(" "));
+            }
+
+            function meReportTransferDefaultClassification(row = {}) {
+                const text = [row.description, row.label, row.source, row.treatment].map((part) => String(part || "").toLowerCase()).join(" ");
+                if (/\bdividends?\b/.test(text)) return "dividend";
+                if (/\b(wages?|salary|payroll|remuneration|bonus)\b/.test(text)) return "wages";
+                return "directorLoan";
+            }
+
+            function meReportTransferRows(summary = {}, overrides = {}) {
+                const normalisedOverrides = meReportNormaliseTransferClassificationOverrides(overrides);
+                const sources = [
+                    ...meReportObjectRows(summary.dividendTransactions).map((row) => ({ ...row, sourceType: row.sourceType || "dividendExtraction" })),
+                    ...meReportObjectRows(summary.directorTransferTransactions).map((row) => ({ ...row, sourceType: row.sourceType || "directorTransferExtraction" })),
+                    ...meReportObjectRows(summary.directorLoanTransactions).map((row) => ({ ...row, sourceType: row.sourceType || "directorLoan" })),
+                    ...meReportObjectRows(summary.wageTransferTransactions).map((row) => ({ ...row, sourceType: row.sourceType || "wages" }))
+                ];
+                const seen = new Set();
+                return sources.map((row) => {
+                    const amount = Math.abs(meReportMoneyValue(row.amount ?? row.value ?? 0));
+                    const date = String(row.date || "").trim();
+                    const description = String(row.description || row.label || "").trim();
+                    const source = String(row.source || row.sourceLabel || "").trim();
+                    if (!description && !date && amount <= 0) return null;
+                    const candidate = { ...row, date, description, source, amount };
+                    const key = meReportTransferKey(candidate);
+                    if (!key) return null;
+                    const dedupeKey = [key, date, amount.toFixed(2)].join("|");
+                    if (seen.has(dedupeKey)) return null;
+                    seen.add(dedupeKey);
+                    const defaultClassification = meReportNormaliseTransferClassification(row.defaultClassification) || meReportTransferDefaultClassification(candidate);
+                    const overrideClassification = normalisedOverrides[key] || meReportNormaliseTransferClassification(row.overrideClassification);
+                    const classification = overrideClassification || meReportNormaliseTransferClassification(row.classification) || defaultClassification;
+                    return {
+                        ...candidate,
+                        key,
+                        defaultClassification,
+                        overrideClassification,
+                        classification: meReportNormaliseTransferClassification(classification) || defaultClassification
+                    };
+                }).filter(Boolean);
+            }
+
+            function meReportDividendStepsFromTransferRows(summary = {}, dividendRows = [], dividendsTaken = 0, periodEndReserves = 0, dividendCapacity = 0) {
+                const ytdProfit = meReportMoneyValue(summary.yearToDateProfit || summary.accountingProfit || 0);
+                const estimatedCt = meReportMoneyValue(summary.estimatedCorporationTax || 0);
+                const retained = meReportMoneyValue(summary.openingRetainedReserves || 0);
+                const postTax = Number.isFinite(Number(summary.currentYearEarnings))
+                    ? meReportMoneyValue(summary.currentYearEarnings)
+                    : meReportMoneyValue(ytdProfit - estimatedCt);
+                const dividendBreakdown = dividendRows.map((row) => ({
+                    label: [row.date, row.description || "Dividend"].filter(Boolean).join(" - "),
+                    amount: -Math.abs(meReportMoneyValue(row.amount || 0)),
+                    source: row.source || "Dividend transaction",
+                    treatment: "Deduct"
+                }));
+                return [
+                    { label: "Opening retained reserves", amount: retained, treatment: "Start", source: "Balance Sheet capital and reserves", breakdown: [{ label: "Retained earnings", amount: retained, source: "Balance Sheet", treatment: "Start" }] },
+                    { label: "YTD profit before tax", amount: ytdProfit, treatment: "Add", source: "Profit and Loss - YTD", breakdown: [{ label: "Profit before tax YTD", amount: ytdProfit, source: "Profit and Loss - YTD", treatment: "Add" }] },
+                    { label: "Estimated corporation tax provision", amount: -Math.abs(estimatedCt), treatment: "Deduct", source: "CT estimate", breakdown: [{ label: "Corporation tax estimate", amount: -Math.abs(estimatedCt), source: "CT estimate", treatment: "Deduct" }] },
+                    { label: "Post-tax YTD earnings", amount: postTax, treatment: "Subtotal", source: "Calculated", breakdown: [{ label: "YTD profit before tax", amount: ytdProfit, source: "Profit and Loss - YTD", treatment: "Add" }, { label: "Estimated corporation tax provision", amount: -Math.abs(estimatedCt), source: "CT estimate", treatment: "Deduct" }] },
+                    { label: "Dividends declared YTD", amount: -Math.abs(dividendsTaken), treatment: "Deduct", source: dividendBreakdown.length ? "Classified dividend transactions" : "Balance Sheet dividends line", breakdown: dividendBreakdown.length ? dividendBreakdown : [{ label: "Dividends declared", amount: -Math.abs(dividendsTaken), source: "Balance Sheet", treatment: "Deduct" }] },
+                    { label: "Period-end distributable reserves", amount: periodEndReserves, treatment: "Result", source: "Calculated", breakdown: [{ label: "Opening retained reserves", amount: retained, source: "Balance Sheet capital and reserves", treatment: "Start" }, { label: "Post-tax YTD earnings", amount: postTax, source: "Calculated", treatment: "Add" }, { label: "Dividends declared YTD", amount: -Math.abs(dividendsTaken), source: "Classified dividend transactions", treatment: "Deduct" }] },
+                    { label: "Further dividend availability", amount: dividendCapacity, treatment: "Available", source: "Calculated", breakdown: [{ label: "Period-end distributable reserves", amount: periodEndReserves, source: "Calculated", treatment: "Available" }] }
+                ];
+            }
+
+            function meReportApplyTransferClassificationOverrides(summary = {}, client = {}) {
+                const result = meReportClonePlain(summary);
+                const overrides = meReportClientTransferOverrides(client);
+                const transferRows = meReportTransferRows(result, overrides);
+                result.transferClassificationOverrides = overrides;
+                result.transferClassificationOverrideClientId = client.id || "";
+                if (!transferRows.length) return result;
+                const dividendRows = transferRows.filter((row) => row.classification === "dividend");
+                const directorLoanRows = transferRows.filter((row) => row.classification === "directorLoan");
+                const wageRows = transferRows.filter((row) => row.classification === "wages");
+                const dividendsTaken = meReportMoneyValue(dividendRows.reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0));
+                const ytdProfit = meReportMoneyValue(result.yearToDateProfit || result.accountingProfit || 0);
+                const estimatedCt = meReportMoneyValue(result.estimatedCorporationTax || 0);
+                const currentYearEarnings = Number.isFinite(Number(result.currentYearEarnings))
+                    ? meReportMoneyValue(result.currentYearEarnings)
+                    : meReportMoneyValue(ytdProfit - estimatedCt);
+                const periodEndReserves = meReportMoneyValue(Number(result.openingRetainedReserves || 0) + currentYearEarnings - dividendsTaken);
+                const dividendCapacity = Math.max(0, periodEndReserves);
+                return {
+                    ...result,
+                    directorTransferTransactions: transferRows,
+                    dividendTransactions: dividendRows,
+                    directorLoanTransactions: directorLoanRows,
+                    wageTransferTransactions: wageRows,
+                    dividendsTaken,
+                    currentYearEarnings,
+                    periodEndDistributableReserves: periodEndReserves,
+                    dividendCapacity,
+                    dividendCalculationSteps: meReportDividendStepsFromTransferRows(result, dividendRows, dividendsTaken, periodEndReserves, dividendCapacity)
+                };
             }
 
             function meReportTaxOverridesHaveEntries(overrides = {}) {
@@ -25536,6 +25759,18 @@
                 ];
             }
 
+            function meReportTaxAdjustmentConfig(stepKey = "") {
+                if (stepKey === "capitalAllowances") {
+                    return {
+                        key: "capitalAllowances",
+                        label: "Capital allowances",
+                        source: "Fixed Asset Reconciliation",
+                        note: "Deducted where the fixed asset addition has been confirmed as qualifying for capital allowances."
+                    };
+                }
+                return meReportTaxAdjustmentStepDefinitions().find((item) => item.key === stepKey) || null;
+            }
+
             function meReportTaxAdjustmentStepKeyFromLabel(label = "") {
                 const text = String(label || "").toLowerCase();
                 if (text.includes("depreciation") && !text.includes("amortisation")) return "depreciation";
@@ -25543,6 +25778,7 @@
                 if (text.includes("non-allowable") || text.includes("non allowable") || text.includes("disallowed expense")) return "nonAllowable";
                 if (text.includes("fine") || text.includes("penalt") || text.includes("car fine")) return "penalties";
                 if (text.includes("client entertaining") || text.includes("client entertainment")) return "entertaining";
+                if (text.includes("capital allowance")) return "capitalAllowances";
                 return "";
             }
 
@@ -25780,6 +26016,61 @@
                 return Math.abs(meReportMoneyValue(rowTotal || fallback));
             }
 
+            function meReportFixedAssetAllowanceKey(row = {}) {
+                return meReportNormaliseTaxCode(row.assetClass || row.label || row.name || row.source || "");
+            }
+
+            function meReportFixedAssetAllowanceRows(summary = {}, overrides = {}) {
+                const stepOverrides = overrides.capitalAllowances || {};
+                const addCodes = new Set(stepOverrides.add || []);
+                const removeCodes = new Set(stepOverrides.remove || []);
+                return meReportObjectRows(summary.fixedAssetChecks).map((row) => {
+                    const code = meReportFixedAssetAllowanceKey(row);
+                    const difference = Math.abs(meReportMoneyValue(row.difference ?? row.closingCostDifference ?? row.closingBookDifference ?? 0));
+                    if (!code || difference <= 0) return null;
+                    const treatmentText = String(row.treatment || "").toLowerCase();
+                    const defaultIncluded = treatmentText.includes("included as qualifying") || treatmentText.includes("included in capital allowance");
+                    const flaggedForReview = treatmentText.includes("flagged") || treatmentText.includes("excluded from automatic capital allowances");
+                    const manuallyIncluded = addCodes.has(code);
+                    const manuallyExcluded = removeCodes.has(code);
+                    if (!defaultIncluded && !flaggedForReview && !manuallyIncluded && !manuallyExcluded) return null;
+                    const included = (defaultIncluded || manuallyIncluded) && !manuallyExcluded;
+                    const overrideNote = manuallyExcluded
+                        ? "Excluded by review"
+                        : (manuallyIncluded && !defaultIncluded ? "Included by review" : "");
+                    return {
+                        code,
+                        label: row.assetClass || row.label || "Fixed asset",
+                        amount: included ? -difference : 0,
+                        originalAmount: difference,
+                        debit: "",
+                        credit: "",
+                        source: row.source || "Fixed Asset Reconciliation",
+                        treatment: [row.treatment || "Review capital allowance treatment", overrideNote].filter(Boolean).join(" · "),
+                        included,
+                        defaultIncluded,
+                        manuallyIncluded,
+                        manuallyExcluded,
+                        overrideStatus: overrideNote
+                    };
+                }).filter(Boolean);
+            }
+
+            function meReportCapitalAllowanceOverrideDelta(summary = {}, overrides = {}) {
+                return meReportFixedAssetAllowanceRows(summary, overrides).reduce((sum, row) => {
+                    const amount = Math.abs(meReportMoneyValue(row.originalAmount || 0));
+                    if (row.manuallyIncluded && !row.defaultIncluded) return sum + amount;
+                    if (row.manuallyExcluded && row.defaultIncluded) return sum - amount;
+                    return sum;
+                }, 0);
+            }
+
+            function meReportFindFixedAssetAllowanceRow(summary = {}, code = "") {
+                const normalised = meReportNormaliseTaxCode(code);
+                return meReportObjectRows(summary.fixedAssetChecks)
+                    .find((row) => meReportFixedAssetAllowanceKey(row) === normalised) || null;
+            }
+
             function meReportApplyTaxAdjustmentOverrides(summary = {}, client = {}, overrides = {}) {
                 const sourceRows = meReportObjectRows(summary.taxCalculationSteps);
                 const rows = sourceRows.length ? sourceRows : meReportFallbackTaxSteps(summary);
@@ -25800,7 +26091,10 @@
                 });
                 const otherRows = meReportPreservedTaxAddBackRows(rows);
                 const otherAddBack = meReportMoneyValue(otherRows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
-                const capitalAllowances = meReportExistingCapitalAllowance(summary, rows);
+                const capitalAllowanceBreakdown = meReportFixedAssetAllowanceRows(summary, overrides);
+                const capitalAllowances = Math.max(0, meReportMoneyValue(
+                    meReportExistingCapitalAllowance(summary, rows) + meReportCapitalAllowanceOverrideDelta(summary, overrides)
+                ));
                 const addBackTotal = meReportMoneyValue(stepRows.reduce((sum, row) => sum + Number(row.amount || 0), 0) + otherAddBack);
                 const taxAdjustments = meReportMoneyValue(addBackTotal - capitalAllowances);
                 const taxableProfitBeforeLosses = Math.max(0, meReportMoneyValue(accountingProfit + taxAdjustments));
@@ -25818,7 +26112,16 @@
                     { label: "Profit before tax YTD", amount: accountingProfit, treatment: "Start", source: "Profit and Loss - YTD" },
                     ...stepRows.filter((row) => Number(row.amount || 0) !== 0 || row.breakdown.length),
                     ...otherRows,
-                    ...(capitalAllowances ? [{ label: "Capital allowances from qualifying fixed asset additions", amount: -capitalAllowances, treatment: "Deduct", source: "Fixed Asset Reconciliation" }] : []),
+                    ...(capitalAllowances || capitalAllowanceBreakdown.length ? [{
+                        label: "Capital allowances from qualifying fixed asset additions",
+                        amount: -capitalAllowances,
+                        treatment: "Deduct",
+                        source: "Fixed Asset Reconciliation",
+                        note: "Deducted for fixed asset additions confirmed as qualifying for capital allowances.",
+                        breakdown: capitalAllowanceBreakdown,
+                        breakdownTitle: "Fixed asset allowance review",
+                        taxOverrideKey: "capitalAllowances"
+                    }] : []),
                     ...(broughtForwardTradingLoss || tradingLossReliefUsed ? [{ label: "Brought-forward trading loss utilised", amount: -tradingLossReliefUsed, treatment: "Deduct", source: "Stored client setting" }] : []),
                     {
                         label: "Estimated taxable profit YTD",
@@ -25879,8 +26182,10 @@
                 const overrides = meReportClientTaxOverrides(client);
                 summary.taxAdjustmentOverrides = overrides;
                 summary.taxAdjustmentOverrideClientId = client.id || "";
-                if (meReportTaxOverridesHaveEntries(overrides)) return meReportApplyTaxAdjustmentOverrides(summary, client, overrides);
-                return meReportApplyBroughtForwardTradingLoss(summary, client);
+                const taxAdjustedSummary = meReportTaxOverridesHaveEntries(overrides)
+                    ? meReportApplyTaxAdjustmentOverrides(summary, client, overrides)
+                    : meReportApplyBroughtForwardTradingLoss(summary, client);
+                return meReportApplyTransferClassificationOverrides(taxAdjustedSummary, client);
             }
 
             function meReportFallbackStepBreakdown(row = {}, title = "", allRows = [], summary = {}) {
@@ -26009,7 +26314,7 @@
                     ? `<button class="ghost-button me-report-breakdown-edit-button" type="button" data-me-tax-adjust data-me-tax-client="${escapeHTML(context.summary.taxAdjustmentOverrideClientId)}" data-me-tax-step="${escapeHTML(stepKey)}">Edit codes</button>`
                     : "";
                 return `
-                    <div class="me-report-step-breakdown">
+                    <div class="me-report-step-breakdown${canEdit ? " has-actions" : ""}">
                         <div class="me-report-step-breakdown-head">
                             <strong>${escapeHTML(row.breakdownTitle || "Figure breakdown")}</strong>
                             <span>${includedCount.toLocaleString("en-GB")}/${breakdown.length.toLocaleString("en-GB")} included · total ${formatCurrency(total)}</span>
@@ -26022,17 +26327,26 @@
                             <span>Credit</span>
                             <span>Used</span>
                             <span>Source</span>
+                            ${canEdit ? "<span>Action</span>" : ""}
                         </div>
-                        ${breakdown.map((item) => `
-                            <div class="me-report-step-breakdown-row${item.included === false ? " is-excluded" : ""}">
-                                <span>${escapeHTML(item.code || "--")}</span>
-                                <span><strong>${escapeHTML(item.label || item.name || "Calculation line")}</strong>${item.treatment ? `<small>${escapeHTML(item.treatment)}</small>` : ""}</span>
-                                <em>${meReportBreakdownMoney(item.debit)}</em>
-                                <em>${meReportBreakdownMoney(item.credit)}</em>
-                                <em>${item.included === false ? `Excluded ${formatCurrency(item.originalAmount || 0)}` : formatCurrency(meReportBreakdownAmount(item))}</em>
-                                <span>${escapeHTML(item.source || "")}</span>
-                            </div>
-                        `).join("")}
+                        ${breakdown.map((item) => {
+                            const action = item.included === false ? "include" : "exclude";
+                            const actionLabel = action === "include" ? "Include" : "Exclude";
+                            const actionButton = canEdit && item.code
+                                ? `<span class="me-report-tax-line-action"><button class="ghost-button" type="button" data-me-tax-line-action="${action}" data-me-tax-client="${escapeHTML(context.summary.taxAdjustmentOverrideClientId)}" data-me-tax-step="${escapeHTML(stepKey)}" data-me-tax-code="${escapeHTML(item.code)}">${actionLabel}</button></span>`
+                                : "";
+                            return `
+                                <div class="me-report-step-breakdown-row${item.included === false ? " is-excluded" : ""}">
+                                    <span>${escapeHTML(item.code || "--")}</span>
+                                    <span><strong>${escapeHTML(item.label || item.name || "Calculation line")}</strong>${item.treatment ? `<small>${escapeHTML(item.treatment)}</small>` : ""}</span>
+                                    <em>${meReportBreakdownMoney(item.debit)}</em>
+                                    <em>${meReportBreakdownMoney(item.credit)}</em>
+                                    <em>${item.included === false ? `Excluded ${formatCurrency(item.originalAmount || 0)}` : formatCurrency(meReportBreakdownAmount(item))}</em>
+                                    <span>${escapeHTML(item.source || "")}</span>
+                                    ${actionButton}
+                                </div>
+                            `;
+                        }).join("")}
                     </div>
                 `;
             }
@@ -26294,6 +26608,45 @@
                 `;
             }
 
+            function meReportChartAccountTransactions(account = {}) {
+                return meReportObjectRows(account.transactions).map((transaction) => {
+                    const amount = meReportMoneyValue(transaction.amount ?? transaction.value ?? 0);
+                    const description = String(transaction.description || transaction.label || transaction.name || "").trim();
+                    const date = String(transaction.date || transaction.transactionDate || "").trim();
+                    const source = String(transaction.source || transaction.sourceLabel || "").trim();
+                    if (!description && !date && amount === 0) return null;
+                    return {
+                        date,
+                        description: description || "Transaction",
+                        amount,
+                        source,
+                    };
+                }).filter(Boolean);
+            }
+
+            function renderMeReportAccountTransactionBreakdown(row = {}, transactions = []) {
+                const total = transactions.reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0);
+                return `
+                    <div class="me-report-account-transaction-panel">
+                        <div class="me-report-account-transaction-head">
+                            <span>Date</span>
+                            <span>Transaction</span>
+                            <span>Amount</span>
+                            <span>Source</span>
+                        </div>
+                        ${transactions.map((transaction) => `
+                            <div class="me-report-account-transaction-line">
+                                <span>${transaction.date ? escapeHTML(formatDate(transaction.date)) : "--"}</span>
+                                <span><strong>${escapeHTML(transaction.description || "Transaction")}</strong><small>${escapeHTML(row.name || row.code || "")}</small></span>
+                                <em>${formatCurrency(transaction.amount || 0)}</em>
+                                <span>${escapeHTML(transaction.source || row.source || "Uploaded report")}</span>
+                            </div>
+                        `).join("")}
+                        <p class="me-report-help-notes">${transactions.length.toLocaleString("en-GB")} transaction${transactions.length === 1 ? "" : "s"} captured · total ${formatCurrency(total)}</p>
+                    </div>
+                `;
+            }
+
             function renderMeReportChartOfAccountsTab(client = {}, summary = {}) {
                 const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
                 const balanceRows = meReportObjectRows(summary.balanceSheetChecks);
@@ -26307,7 +26660,8 @@
                         credit: account.creditYTD,
                         amount: account.amount,
                         treatment: "Extracted from Trial Balance",
-                        source: account.source || "Uploaded report"
+                        source: account.source || "Uploaded report",
+                        transactions: meReportChartAccountTransactions(account)
                     }))
                     : mappings.map((mapping) => ({
                         code: mapping.accountCode,
@@ -26317,7 +26671,8 @@
                         credit: "",
                         amount: "",
                         treatment: mapping.suggestedTreatment || mapping.taxTreatment || "Stored mapping",
-                        source: mapping.reason || "Stored account mapping"
+                        source: mapping.reason || "Stored account mapping",
+                        transactions: []
                     }));
                 return `
                     <article class="me-report-insight-card">
@@ -26331,17 +26686,26 @@
                         <table>
                             <thead><tr><th>Code</th><th>Account</th><th>Type</th><th>Debit YTD</th><th>Credit YTD</th><th>Amount</th><th>Treatment</th></tr></thead>
                             <tbody>
-                                ${rows.map((row) => `
-                                    <tr>
-                                        <td>${escapeHTML(row.code || "")}</td>
-                                        <td><strong>${escapeHTML(row.name || "")}</strong><br><small>${escapeHTML(row.source || "")}</small></td>
-                                        <td>${escapeHTML(row.type || "")}</td>
-                                        <td>${row.debit === "" ? "--" : formatCurrency(row.debit || 0)}</td>
-                                        <td>${row.credit === "" ? "--" : formatCurrency(row.credit || 0)}</td>
-                                        <td>${row.amount === "" ? "--" : formatCurrency(row.amount || 0)}</td>
-                                        <td>${escapeHTML(row.treatment || "")}</td>
-                                    </tr>
-                                `).join("") || '<tr><td colspan="7">No chart or Trial Balance rows are available yet.</td></tr>'}
+                                ${rows.map((row, index) => {
+                                    const transactions = meReportObjectRows(row.transactions);
+                                    const rowKey = `chart:${index}:${row.code || ""}:${row.name || ""}`;
+                                    const expanded = transactions.length && expandedMeReportChartAccountKey === rowKey;
+                                    const rowAttributes = transactions.length
+                                        ? `tabindex="0" data-me-report-chart-account-row="${escapeHTML(rowKey)}" aria-expanded="${expanded ? "true" : "false"}"`
+                                        : "";
+                                    return `
+                                        <tr class="me-report-account-row${transactions.length ? " has-transactions" : ""}${expanded ? " is-expanded" : ""}" ${rowAttributes}>
+                                            <td>${escapeHTML(row.code || "")}</td>
+                                            <td><strong>${escapeHTML(row.name || "")}</strong><br><small>${escapeHTML(transactions.length ? `Click to view ${transactions.length.toLocaleString("en-GB")} transaction${transactions.length === 1 ? "" : "s"}` : row.source || "")}</small></td>
+                                            <td>${escapeHTML(row.type || "")}</td>
+                                            <td>${row.debit === "" ? "--" : formatCurrency(row.debit || 0)}</td>
+                                            <td>${row.credit === "" ? "--" : formatCurrency(row.credit || 0)}</td>
+                                            <td>${row.amount === "" ? "--" : formatCurrency(row.amount || 0)}</td>
+                                            <td>${escapeHTML(row.treatment || "")}${transactions.length ? `<br><small>${escapeHTML(row.source || "")}</small>` : ""}</td>
+                                        </tr>
+                                        ${expanded ? `<tr class="me-report-account-transaction-row"><td colspan="7">${renderMeReportAccountTransactionBreakdown(row, transactions)}</td></tr>` : ""}
+                                    `;
+                                }).join("") || '<tr><td colspan="7">No chart or Trial Balance rows are available yet.</td></tr>'}
                             </tbody>
                         </table>
                     </article>
@@ -26401,6 +26765,51 @@
                 `;
             }
 
+            function renderMeReportTransferClassificationTable(summary = {}) {
+                const clientId = summary.transferClassificationOverrideClientId || "";
+                const overrides = meReportNormaliseTransferClassificationOverrides(summary.transferClassificationOverrides);
+                const rows = meReportTransferRows(summary, overrides);
+                const dividendTotal = rows
+                    .filter((row) => row.classification === "dividend")
+                    .reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0);
+                const dlaTotal = rows
+                    .filter((row) => row.classification === "directorLoan")
+                    .reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0);
+                const wageTotal = rows
+                    .filter((row) => row.classification === "wages")
+                    .reduce((sum, row) => sum + Math.abs(Number(row.amount || 0)), 0);
+                return `
+                    <article class="me-report-insight-card me-report-table-card me-report-transfer-table">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Director transfer classification</p>
+                                <h3>${rows.length.toLocaleString("en-GB")} row${rows.length === 1 ? "" : "s"} · dividends ${formatCurrency(dividendTotal)} · DLA ${formatCurrency(dlaTotal)} · wages ${formatCurrency(wageTotal)}</h3>
+                                <p class="detail-meta">Explicit dividend wording is treated as dividends. Other director transfers are held outside dividends unless changed here.</p>
+                            </div>
+                            ${clientId ? `<button class="ghost-button" type="button" data-me-transfer-add-rule="${escapeHTML(clientId)}">Add remembered rule</button>` : ""}
+                        </div>
+                        <table>
+                            <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Source</th><th>Treatment</th></tr></thead>
+                            <tbody>
+                                ${rows.map((row) => `
+                                    <tr>
+                                        <td>${row.date ? escapeHTML(formatDate(row.date)) : "--"}</td>
+                                        <td><strong>${escapeHTML(row.description || "Director transfer")}</strong><br><small>Default: ${escapeHTML(meReportTransferClassificationLabel(row.defaultClassification))}${row.overrideClassification ? " · saved rule" : ""}</small></td>
+                                        <td>${formatCurrency(row.amount || 0)}</td>
+                                        <td>${escapeHTML(row.source || "Uploaded report")}</td>
+                                        <td>
+                                            <select class="me-report-transfer-select" data-me-transfer-classification="${escapeHTML(row.key)}" data-me-transfer-default="${escapeHTML(row.defaultClassification)}" ${clientId ? "" : "disabled"}>
+                                                ${["dividend", "directorLoan", "wages", "ignore"].map((value) => `<option value="${value}" ${row.classification === value ? "selected" : ""}>${escapeHTML(meReportTransferClassificationLabel(value))}</option>`).join("")}
+                                            </select>
+                                        </td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="5">No director transfer or dividend rows were extracted from this report.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
             function renderMeReportDlaTab(summary = {}) {
                 return `
                     <div class="ignition-summary-grid">
@@ -26409,6 +26818,7 @@
                         ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                         ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
                     </div>
+                    ${renderMeReportTransferClassificationTable(summary)}
                     <div class="empty-state"><p class="eyebrow">Risk engine</p><h4>${Number(summary.dlaBalance || 0) < 0 ? "Must review overdrawn DLA" : "DLA does not show an overdrawn balance"}</h4><p>${Number(summary.dlaBalance || 0) < 0 ? "Possible s455 tax and illegal dividend risk have been flagged for accountant review." : "If the DLA is in credit, repayment should be considered before dividends."}</p></div>
                 `;
             }
@@ -26487,13 +26897,32 @@
                         ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                     </div>
                     ${renderMeReportWaterfall("Maximum extraction order", summary.extractionWaterfall)}
+                    ${renderMeReportTransferClassificationTable(summary)}
                     ${renderMeReportDlaMitigation(summary)}
                     ${renderMeReportCalculationTable("Dividend availability", Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary), summary)}
                 `;
             }
 
-            function renderMeReportFixedAssetsTab(summary = {}) {
+            function renderMeReportFixedAssetDifference(value = 0) {
+                const difference = meReportMoneyValue(value);
+                const isClear = Math.abs(difference) < 0.005;
+                const icon = isClear
+                    ? '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>'
+                    : '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M18 6 6 18"></path><path d="M6 6l12 12"></path></svg>';
+                return `
+                    <span class="me-report-fixed-asset-difference ${isClear ? "is-clear" : "is-warning"}" title="${isClear ? "No fixed asset difference" : "Fixed asset difference needs review"}">
+                        ${icon}
+                        <strong>${formatCurrency(difference)}</strong>
+                        <small>${isClear ? "Matched" : "Review"}</small>
+                    </span>
+                `;
+            }
+
+            function renderMeReportFixedAssetsTab(client = {}, summary = {}) {
                 const fixedAssetRows = meReportObjectRows(summary.fixedAssetChecks);
+                const overrides = summary.taxAdjustmentOverrides || meReportClientTaxOverrides(client);
+                const allowanceRowsByKey = new Map(meReportFixedAssetAllowanceRows(summary, overrides).map((row) => [row.code, row]));
+                const clientId = summary.taxAdjustmentOverrideClientId || client.id || "";
                 return `
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Register total", formatCurrency(summary.fixedAssetRegisterTotal || 0))}
@@ -26503,17 +26932,27 @@
                     </div>
                     <article class="me-report-insight-card me-report-table-card">
                         <table>
-                            <thead><tr><th>Asset class</th><th>Balance Sheet</th><th>Register</th><th>Difference</th><th>Treatment</th></tr></thead>
+                            <thead><tr><th>Asset class</th><th>Balance Sheet</th><th>Register</th><th>Difference</th><th>Treatment</th><th>CT action</th></tr></thead>
                             <tbody>
-                                ${fixedAssetRows.map((row) => `
-                                    <tr>
-                                        <td>${escapeHTML(row.assetClass || "Fixed assets")}</td>
-                                        <td>${formatCurrency(row.balanceSheetClosingCost || 0)}</td>
-                                        <td>${formatCurrency(row.assetRegisterClosingCost || 0)}</td>
-                                        <td>${formatCurrency(row.difference || 0)}</td>
-                                        <td>${escapeHTML(row.treatment || "Review")}</td>
-                                    </tr>
-                                `).join("") || '<tr><td colspan="5">No fixed asset reconciliation rows were extracted from this report.</td></tr>'}
+                                ${fixedAssetRows.map((row) => {
+                                    const key = meReportFixedAssetAllowanceKey(row);
+                                    const allowanceRow = allowanceRowsByKey.get(key);
+                                    const difference = Math.abs(meReportMoneyValue(row.difference || 0));
+                                    const canOverride = Boolean(clientId && key && difference > 0);
+                                    const included = allowanceRow?.included !== false && Boolean(allowanceRow);
+                                    const action = included ? "exclude" : "include";
+                                    const actionLabel = included ? "Exclude from CT" : "Include in CT";
+                                    return `
+                                        <tr>
+                                            <td>${escapeHTML(row.assetClass || "Fixed assets")}</td>
+                                            <td>${formatCurrency(row.balanceSheetClosingCost || 0)}</td>
+                                            <td>${formatCurrency(row.assetRegisterClosingCost || 0)}</td>
+                                            <td>${renderMeReportFixedAssetDifference(row.difference || 0)}</td>
+                                            <td>${escapeHTML(row.treatment || "Review")}${allowanceRow?.overrideStatus ? `<br><small>${escapeHTML(allowanceRow.overrideStatus)}</small>` : ""}</td>
+                                            <td>${canOverride ? `<button class="ghost-button me-report-fixed-asset-action" type="button" data-me-tax-line-action="${action}" data-me-tax-client="${escapeHTML(clientId)}" data-me-tax-step="capitalAllowances" data-me-tax-code="${escapeHTML(key)}">${actionLabel}</button>` : "--"}</td>
+                                        </tr>
+                                    `;
+                                }).join("") || '<tr><td colspan="6">No fixed asset reconciliation rows were extracted from this report.</td></tr>'}
                             </tbody>
                         </table>
                     </article>
@@ -26544,7 +26983,7 @@
                         panel = renderMeReportDividendsTab(summary);
                         break;
                     case "fixed-assets":
-                        panel = renderMeReportFixedAssetsTab(summary);
+                        panel = renderMeReportFixedAssetsTab(client, summary);
                         break;
                     case "insights":
                     default:
@@ -26638,6 +27077,7 @@
                             ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
                             ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
                         </div>
+                        ${renderMeReportTransferClassificationTable(summary)}
                         ${renderMeReportAiHelp(summary, "dividends")}
                         <div class="empty-state"><p class="eyebrow">Recommended wording</p><h4>DLA first, then dividends</h4><p>The director loan account appears to be ${Number(summary.dlaBalance || 0) >= 0 ? "in credit" : "overdrawn"} by ${formatCurrency(Math.abs(Number(summary.dlaBalance || 0)))}. After allowing for estimated corporation tax and dividends already taken, estimated further dividend capacity is ${formatCurrency(summary.dividendCapacity || 0)}.</p></div>
                     `;
@@ -26653,6 +27093,7 @@
                             ${renderMeReportMetric("Closing DLA", formatCurrency(summary.dlaBalance || 0))}
                             ${renderMeReportMetric("Status", String(summary.dlaStatus || "amber").toUpperCase())}
                         </div>
+                        ${renderMeReportTransferClassificationTable(summary)}
                         <div class="empty-state"><p class="eyebrow">Risk engine</p><h4>${Number(summary.dlaBalance || 0) < 0 ? "Must review overdrawn DLA" : "DLA does not show an overdrawn balance"}</h4><p>${Number(summary.dlaBalance || 0) < 0 ? "Possible s455 tax and illegal dividend risk have been flagged for accountant review." : "If the DLA is in credit, repayment should be considered before dividends."}</p></div>
                     `;
                 }
@@ -26931,11 +27372,57 @@
                         renderMeReportScreen();
                     });
                 });
+                document.querySelectorAll("[data-me-report-chart-account-row]").forEach((row) => {
+                    const toggle = () => {
+                        const key = row.dataset.meReportChartAccountRow || "";
+                        expandedMeReportChartAccountKey = expandedMeReportChartAccountKey === key ? "" : key;
+                        renderMeReportScreen();
+                    };
+                    row.addEventListener("click", (event) => {
+                        if (event.target.closest?.("button, input, select, textarea, a")) return;
+                        toggle();
+                    });
+                    row.addEventListener("keydown", (event) => {
+                        if (!["Enter", " "].includes(event.key)) return;
+                        event.preventDefault();
+                        toggle();
+                    });
+                });
+                document.querySelectorAll("[data-me-transfer-classification]").forEach((select) => {
+                    select.addEventListener("change", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMeReportTransferClassification(
+                            client.id,
+                            select.dataset.meTransferClassification || "",
+                            select.value || ""
+                        );
+                    });
+                });
+                document.querySelectorAll("[data-me-transfer-add-rule]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        addMeReportTransferClassificationRule(button.dataset.meTransferAddRule || client.id);
+                    });
+                });
                 document.querySelectorAll("[data-me-tax-adjust]").forEach((button) => {
                     button.addEventListener("click", (event) => {
                         event.preventDefault();
                         event.stopPropagation();
                         editMeReportTaxAdjustmentCodes(button.dataset.meTaxClient || client.id, button.dataset.meTaxStep || "");
+                    });
+                });
+                document.querySelectorAll("[data-me-tax-line-action]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMeReportTaxAdjustmentOverride(
+                            button.dataset.meTaxClient || client.id,
+                            button.dataset.meTaxStep || "",
+                            button.dataset.meTaxCode || "",
+                            button.dataset.meTaxLineAction === "include"
+                        );
                     });
                 });
             }
@@ -27005,7 +27492,10 @@
                 const client = meReportLossDialogClient();
                 const baseSummary = meReportBaseSummaryForClient(client || {});
                 const currentSummary = meReportAdjustedSummary(client || {}, baseSummary);
-                const nextSummary = meReportApplyBroughtForwardTradingLoss(currentSummary, client || {}, meReportLossDialogState?.value || 0);
+                const nextSummary = meReportApplyTransferClassificationOverrides(
+                    meReportApplyBroughtForwardTradingLoss(currentSummary, client || {}, meReportLossDialogState?.value || 0),
+                    client || {}
+                );
                 return { client, currentSummary, nextSummary };
             }
 
@@ -27159,22 +27649,97 @@
                 updateMeReportClientPreferences(clientId, { vatRegisteredConfirmed: true }, "VAT application confirmation saved for this client");
             }
 
+            async function setMeReportTransferClassification(clientId = "", rawKey = "", rawClassification = "") {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const key = meReportTransferRuleKey(rawKey);
+                const classification = meReportNormaliseTransferClassification(rawClassification);
+                if (!key) return showToast("Choose a transfer row first", "error");
+                if (!classification) return showToast("Choose a valid transfer treatment", "error");
+                const next = meReportCopyTransferOverrides(client.transferClassificationOverrides);
+                next[key] = classification;
+                await updateMeReportClientPreferences(
+                    client.id,
+                    { transferClassificationOverrides: next },
+                    `${key}: saved as ${meReportTransferClassificationLabel(classification)}`
+                );
+            }
+
+            async function addMeReportTransferClassificationRule(clientId = "") {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const description = window.prompt("Description text to remember", "");
+                if (description === null) return;
+                const key = meReportTransferRuleKey(description);
+                if (!key) return showToast("Enter description text to remember", "error");
+                const treatment = window.prompt("Treatment: dividend, directorLoan, wages or ignore", "directorLoan");
+                if (treatment === null) return;
+                const classification = meReportNormaliseTransferClassification(treatment);
+                if (!classification) return showToast("Use dividend, directorLoan, wages or ignore", "error");
+                await setMeReportTransferClassification(client.id, key, classification);
+            }
+
             function meReportCopyTaxOverrides(overrides = {}) {
                 return meReportNormaliseTaxAdjustmentOverrides(overrides);
+            }
+
+            function meReportBaseSummaryForTaxOverride(client = {}) {
+                const selectedSubmission = meReportClientSubmissions(client).find((item) => item.id === selectedMeReportSubmissionId);
+                return activeMeReportTab === "report-insights" && selectedSubmission?.calculation
+                    ? selectedSubmission.calculation
+                    : (client.summary || {});
+            }
+
+            function meReportTaxOverrideRowsForStep(summary = {}, config = {}, overrides = {}) {
+                return config.key === "capitalAllowances"
+                    ? meReportFixedAssetAllowanceRows(summary, overrides)
+                    : meReportTaxAccountRows(summary, config, overrides);
+            }
+
+            function meReportFindTaxOverrideSource(summary = {}, stepKey = "", code = "") {
+                return stepKey === "capitalAllowances"
+                    ? meReportFindFixedAssetAllowanceRow(summary, code)
+                    : meReportFindTaxAccount(summary, code);
+            }
+
+            async function setMeReportTaxAdjustmentOverride(clientId = "", stepKey = "", rawCode = "", include = true) {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const config = meReportTaxAdjustmentConfig(stepKey);
+                if (!config) return showToast("This CT line cannot be edited yet", "error");
+                const code = meReportNormaliseTaxCode(rawCode);
+                if (!code) return showToast("Choose a nominal code or fixed asset row", "error");
+                const baseSummary = meReportBaseSummaryForTaxOverride(client);
+                if (!meReportFindTaxOverrideSource(baseSummary, stepKey, code)) {
+                    const sourceLabel = stepKey === "capitalAllowances" ? "fixed asset reconciliation" : "trial balance";
+                    return showToast(`Code ${code} was not found in this report ${sourceLabel}`, "error");
+                }
+                const next = meReportCopyTaxOverrides(client.taxAdjustmentOverrides);
+                meReportTaxAdjustmentStepKeys().forEach((key) => {
+                    next[key].add = (next[key].add || []).filter((item) => item !== code);
+                    next[key].remove = (next[key].remove || []).filter((item) => item !== code);
+                });
+                if (include) {
+                    next[stepKey].add = [...new Set([...(next[stepKey].add || []), code])];
+                } else {
+                    next[stepKey].remove = [...new Set([...(next[stepKey].remove || []), code])];
+                }
+                await updateMeReportClientPreferences(
+                    client.id,
+                    { taxAdjustmentOverrides: next },
+                    include ? `${config.label}: ${code} included in CT estimate` : `${config.label}: ${code} excluded from CT estimate`
+                );
             }
 
             async function editMeReportTaxAdjustmentCodes(clientId = "", stepKey = "") {
                 const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
                 if (!client) return showToast("Select an ME Report client first", "error");
-                const config = meReportTaxAdjustmentStepDefinitions().find((item) => item.key === stepKey);
+                const config = meReportTaxAdjustmentConfig(stepKey);
                 if (!config) return showToast("This CT line cannot be edited yet", "error");
-                const selectedSubmission = meReportClientSubmissions(client).find((item) => item.id === selectedMeReportSubmissionId);
-                const baseSummary = activeMeReportTab === "report-insights" && selectedSubmission?.calculation
-                    ? selectedSubmission.calculation
-                    : (client.summary || {});
+                const baseSummary = meReportBaseSummaryForTaxOverride(client);
                 const overrides = meReportCopyTaxOverrides(client.taxAdjustmentOverrides);
                 const adjustedSummary = meReportAdjustedSummary(client, baseSummary);
-                const currentRows = meReportTaxAccountRows(adjustedSummary, config, overrides);
+                const currentRows = meReportTaxOverrideRowsForStep(adjustedSummary, config, overrides);
                 const includedCodes = currentRows.filter((row) => row.included !== false).map((row) => row.code).filter(Boolean);
                 const excludedCodes = currentRows.filter((row) => row.included === false).map((row) => row.code).filter(Boolean);
                 const promptText = [
@@ -27189,26 +27754,7 @@
                 const remove = rawValue.startsWith("-");
                 const code = meReportNormaliseTaxCode(remove ? rawValue.slice(1) : rawValue);
                 if (!code) return showToast("Enter a nominal code", "error");
-                if (!meReportFindTaxAccount(baseSummary, code)) {
-                    return showToast(`Code ${code} was not found in this report trial balance`, "error");
-                }
-                const next = meReportCopyTaxOverrides(overrides);
-                meReportTaxAdjustmentStepKeys().forEach((key) => {
-                    next[key].add = (next[key].add || []).filter((item) => item !== code);
-                    if (!remove || key === stepKey) {
-                        next[key].remove = (next[key].remove || []).filter((item) => item !== code);
-                    }
-                });
-                if (remove) {
-                    next[stepKey].remove = [...new Set([...(next[stepKey].remove || []), code])];
-                } else {
-                    next[stepKey].add = [...new Set([...(next[stepKey].add || []), code])];
-                }
-                await updateMeReportClientPreferences(
-                    client.id,
-                    { taxAdjustmentOverrides: next },
-                    remove ? `Code ${code} excluded from ${config.label}` : `Code ${code} included in ${config.label}`
-                );
+                await setMeReportTaxAdjustmentOverride(client.id, stepKey, code, !remove);
             }
 
             async function updateMeReportClientStatus(clientId, statusValue) {
