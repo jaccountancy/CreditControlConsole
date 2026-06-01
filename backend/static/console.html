@@ -4107,10 +4107,10 @@
             .invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 17%; }
             .invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 54px; }
             .invoice-table th, .invoice-table td {
-                padding: 16px 18px;
+                padding: 11px 16px;
                 border-bottom: 1px solid var(--line);
                 text-align: left;
-                vertical-align: top;
+                vertical-align: middle;
             }
             .invoice-table th {
                 font-size: 0.76rem;
@@ -4163,7 +4163,7 @@
             }
             body.is-dense .invoice-table th,
             body.is-dense .invoice-table td {
-                padding: 7px 12px;
+                padding: 5px 10px;
                 vertical-align: middle;
             }
             body.is-dense .invoice-table th {
@@ -4192,27 +4192,43 @@
             .column-hidden {
                 display: none;
             }
-            .client-name { font-weight: 800; margin-bottom: 4px; }
+            .client-title-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+                max-width: 100%;
+            }
+            .client-name {
+                min-width: 0;
+                margin-bottom: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                font-weight: 800;
+                line-height: 1.18;
+            }
             .client-group-anchor {
                 position: relative;
                 min-width: 0;
             }
             .client-inline-status {
-                display: flex;
+                display: inline-flex;
+                flex: 0 0 auto;
                 align-items: center;
                 flex-wrap: wrap;
-                gap: 6px;
-                margin-top: 6px;
+                gap: 5px;
+                margin-top: 0;
             }
             .client-open-count,
             .client-credit-flag {
                 display: inline-flex;
                 align-items: center;
                 border-radius: 999px;
-                padding: 5px 8px;
+                padding: 4px 8px;
                 background: rgba(30, 47, 77, 0.06);
                 color: var(--muted);
-                font-size: 0.76rem;
+                font-size: 0.72rem;
                 font-weight: 850;
             }
             .client-open-count {
@@ -4227,16 +4243,20 @@
                 color: var(--blue);
             }
             .client-inline-status .status-pill {
-                font-size: 0.76rem;
-                padding: 5px 8px;
+                font-size: 0.72rem;
+                padding: 4px 8px;
+                border-radius: 999px;
             }
             body.is-dense .client-name {
                 margin-bottom: 0;
                 font-size: 0.9rem;
                 line-height: 1.1;
             }
+            body.is-dense .client-title-row {
+                gap: 6px;
+            }
             body.is-dense .client-inline-status {
-                margin-top: 4px;
+                margin-top: 0;
             }
             body.is-dense .client-inline-status .status-pill,
             body.is-dense .client-open-count,
@@ -18093,7 +18113,6 @@
                         const creditState = clientCreditState(group.client);
                         const creditClass = creditState.status === "ready" ? "has-credit" : creditState.status === "loading" ? "is-loading" : "";
                         const clientName = group.client?.name || invoice?.customerName || "Unnamed client";
-                        const clientContact = group.client?.primaryPerson || group.client?.email || group.client?.phone || invoice?.customerContact || group.id;
                         const openInvoiceLabel = `${group.openCount.toLocaleString("en-GB")} open invoice${group.openCount === 1 ? "" : "s"}`;
                         const row = document.createElement("tr");
                         row.className = `client-group-row ${group.id === selectedClientId ? "is-selected" : ""} row-${category}`.trim();
@@ -18101,9 +18120,10 @@
                             <td class="select-cell"><input class="client-select" type="checkbox" aria-label="Select invoices for ${escapeHTML(clientName)}" ${isGroupSelected ? "checked" : ""} ${group.invoices.length ? "" : "disabled"}></td>
                             <td>
                                 <div class="client-group-anchor">
-                                    <div class="client-name">${escapeHTML(clientName)}</div>
-                                    <div class="client-subline">${escapeHTML(clientContact || "")}</div>
-                                    <div class="client-inline-status">${statusPill(invoice)}<span class="client-open-count">${escapeHTML(openInvoiceLabel)}</span></div>
+                                    <div class="client-title-row">
+                                        <div class="client-name" title="${escapeHTML(clientName)}">${escapeHTML(clientName)}</div>
+                                        <div class="client-inline-status">${statusPill(invoice)}<span class="client-open-count">${escapeHTML(openInvoiceLabel)}</span></div>
+                                    </div>
                                 </div>
                             </td>
                             <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(invoiceLineSummary(oldestInvoice))}</div><div class="invoice-subline">${escapeHTML(oldestInvoice?.invoiceNumber || "Invoice")} · due ${formatDate(oldestInvoice?.dueDate)}</div></div></div></td>
