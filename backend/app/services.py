@@ -10298,6 +10298,13 @@ ME_REPORT_BULK_SOFT_SKIP_RE = re.compile(
     r"\b(?:period|page|vat|company number|registration number|summary|cash at bank|accounts payable|accounts receivable|nominal ledger)\b",
     re.IGNORECASE,
 )
+ME_REPORT_BULK_PERIOD_SKIP_RE = re.compile(
+    r"\b(?:the\s+)?(?:\d{1,2}\s+)?(?:week|month|quarter|year)s?\s+ended\b|"
+    r"\b(?:period|quarter|year)\s+(?:end|ended|ending)\b|"
+    r"\bfor\s+the\s+\d{1,2}\s+(?:week|month|quarter|year)s?\b|"
+    r"\b(?:ended|ending)\s+\d{1,2}\s+(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b",
+    re.IGNORECASE,
+)
 ME_REPORT_BULK_ENTITY_RE = re.compile(
     r"\b(?:ltd|limited|llp|plc|group|holdings|services|solutions|consulting|properties|property|trading|tax|refunds|restaurant|cafe|logistics|boutique|houselife|accountants?)\b",
     re.IGNORECASE,
@@ -10322,6 +10329,8 @@ def _clean_me_report_bulk_client_candidate(value: str) -> str:
         return ""
     if re.fullmatch(r"(?:jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\s+\d{4}", candidate, re.IGNORECASE):
         return ""
+    if ME_REPORT_BULK_PERIOD_SKIP_RE.search(candidate):
+        return ""
     if ME_REPORT_BULK_HARD_SKIP_RE.search(candidate):
         return ""
     if ME_REPORT_BULK_SOFT_SKIP_RE.search(candidate) and not ME_REPORT_BULK_ENTITY_RE.search(candidate):
@@ -10344,7 +10353,7 @@ def _extract_me_report_bulk_pdf_lines(file_bytes: bytes) -> list[str]:
         reader = PdfReader(io.BytesIO(file_bytes))
         page_text = []
         for page_index, page in enumerate(reader.pages):
-            if page_index >= 2:
+            if page_index >= 5:
                 break
             page_text.append(page.extract_text() or "")
         text = "\n".join(page_text)
@@ -10353,8 +10362,7 @@ def _extract_me_report_bulk_pdf_lines(file_bytes: bytes) -> list[str]:
     return [line.strip() for line in str(text or "").splitlines() if line.strip()]
 
 
-def _extract_me_report_bulk_client_candidates(file_bytes: bytes, filename: str = "") -> list[str]:
-    lines = _extract_me_report_bulk_pdf_lines(file_bytes)
+def _extract_me_report_bulk_client_candidates_from_lines(lines: list[str], filename: str = "") -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
     label_patterns = (
@@ -10379,26 +10387,83 @@ def _extract_me_report_bulk_client_candidates(file_bytes: bytes, filename: str =
     return candidates
 
 
+def _extract_me_report_bulk_client_candidates(file_bytes: bytes, filename: str = "") -> list[str]:
+    return _extract_me_report_bulk_client_candidates_from_lines(_extract_me_report_bulk_pdf_lines(file_bytes), filename)
+
+
 def _extract_me_report_bulk_client_name(file_bytes: bytes, filename: str = "") -> str:
     candidates = _extract_me_report_bulk_client_candidates(file_bytes, filename)
     return candidates[0] if candidates else ""
 
 
-def _me_report_contact_match_for_name(user: dict, client_name: str) -> dict | None:
+def _me_report_contact_name_variants(name: str) -> list[str]:
+    raw_name = str(name or "").strip()
+    if not raw_name or re.search(r"\b(?:juk|jenius|jaccountancy)\b", raw_name, re.IGNORECASE):
+        return []
+    variants = {_normalise_contact_match_text(raw_name)}
+    suffixless = re.sub(r"\b(?:ltd|limited|llp|plc|inc|company|co)\b\.?", " ", raw_name, flags=re.IGNORECASE)
+    suffixless_key = _normalise_contact_match_text(suffixless)
+    if len(suffixless_key) >= 6:
+        variants.add(suffixless_key)
+    return [variant for variant in variants if len(variant) >= 5]
+
+
+def _me_report_contact_match_for_name_from_options(contacts: list[dict], client_name: str) -> dict | None:
     wanted = _normalise_contact_match_text(client_name)
     if not wanted:
         return None
-    contacts = _me_report_contact_options(user)
-    exact = [contact for contact in contacts if _normalise_contact_match_text(contact.get("name") or "") == wanted]
+    wanted_variants = _me_report_contact_name_variants(client_name)
+    if not wanted_variants:
+        wanted_variants = [wanted]
+    contact_variants = [(contact, _me_report_contact_name_variants(contact.get("name") or "")) for contact in contacts]
+    exact = [
+        contact
+        for contact, variants in contact_variants
+        if any(variant == wanted_variant for variant in variants for wanted_variant in wanted_variants)
+    ]
     if exact:
         return exact[0]
     contains = [
-        contact
-        for contact in contacts
-        if wanted in _normalise_contact_match_text(contact.get("name") or "")
-        or _normalise_contact_match_text(contact.get("name") or "") in wanted
+        (max(len(variant) for variant in variants), contact)
+        for contact, variants in contact_variants
+        if variants and any(
+            (wanted_variant in variant or variant in wanted_variant)
+            for variant in variants
+            for wanted_variant in wanted_variants
+        )
     ]
-    return contains[0] if contains else None
+    contains.sort(key=lambda item: item[0], reverse=True)
+    return contains[0][1] if contains else None
+
+
+def _me_report_contact_match_for_name(user: dict, client_name: str) -> dict | None:
+    return _me_report_contact_match_for_name_from_options(_me_report_contact_options(user), client_name)
+
+
+def _me_report_contact_match_for_bulk_text(contacts: list[dict], lines: list[str], filename: str = "") -> dict | None:
+    document_text = " ".join([filename, *lines[:120]])
+    haystack = _normalise_contact_match_text(document_text)
+    if not haystack:
+        return None
+    matches: list[tuple[int, dict]] = []
+    for contact in contacts:
+        variants = [variant for variant in _me_report_contact_name_variants(contact.get("name") or "") if len(variant) >= 6]
+        matched_variants = [variant for variant in variants if variant in haystack]
+        if matched_variants:
+            matches.append((max(len(variant) for variant in matched_variants), contact))
+    matches.sort(key=lambda item: item[0], reverse=True)
+    return matches[0][1] if matches else None
+
+
+def _me_report_contact_match_for_bulk_candidates(contacts: list[dict], candidate_names: list[str], lines: list[str], filename: str = "") -> tuple[dict | None, str]:
+    for candidate_name in candidate_names:
+        contact = _me_report_contact_match_for_name_from_options(contacts, candidate_name)
+        if contact:
+            return contact, candidate_name
+    contact = _me_report_contact_match_for_bulk_text(contacts, lines, filename)
+    if contact:
+        return contact, contact.get("name") or ""
+    return None, ""
 
 
 def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
@@ -10458,19 +10523,18 @@ def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
 
 async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -> dict:
     semaphore = asyncio.Semaphore(4)
+    contacts = _me_report_contact_options(user)
 
     async def process_file(file_item: dict) -> dict:
         async with semaphore:
             filename = file_item.get("filename") or "overview-report.pdf"
             content = file_item.get("content") or b""
-            candidate_names = _extract_me_report_bulk_client_candidates(content, filename)
-            detected_name = candidate_names[0] if candidate_names else _extract_me_report_bulk_client_name(content, filename)
-            contact = None
-            for candidate_name in candidate_names:
-                contact = _me_report_contact_match_for_name(user, candidate_name)
-                if contact:
-                    detected_name = candidate_name
-                    break
+            lines = _extract_me_report_bulk_pdf_lines(content)
+            candidate_names = _extract_me_report_bulk_client_candidates_from_lines(lines, filename)
+            detected_name = candidate_names[0] if candidate_names else ""
+            contact, matched_name = _me_report_contact_match_for_bulk_candidates(contacts, candidate_names, lines, filename)
+            if matched_name:
+                detected_name = matched_name
             if not contact:
                 return {
                     "filename": filename,
