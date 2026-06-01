@@ -1416,9 +1416,9 @@
                 box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
             }
             .lpc-topbar-summary {
-                flex-basis: 620px;
-                min-width: min(620px, 100%);
-                grid-template-columns: repeat(4, minmax(112px, 1fr));
+                flex-basis: 980px;
+                min-width: min(980px, 100%);
+                grid-template-columns: repeat(6, minmax(112px, 1fr));
             }
             .bad-debt-topbar-summary {
                 flex: 1 1 720px;
@@ -1563,6 +1563,7 @@
             }
             .jashflow-topbar-summary article,
             .lpc-topbar-summary article,
+            .lpc-topbar-summary button,
             .bank-account-topbar-summary article,
             .credit-control-topbar-summary article,
             .me-report-topbar-metrics article,
@@ -1576,6 +1577,7 @@
             }
             .jashflow-topbar-summary article::before,
             .lpc-topbar-summary article::before,
+            .lpc-topbar-summary button::before,
             .bank-account-topbar-summary article::before,
             .credit-control-topbar-summary article::before,
             .me-report-topbar-metrics article::before,
@@ -1595,6 +1597,7 @@
             }
             .jashflow-topbar-summary article:hover,
             .lpc-topbar-summary article:hover,
+            .lpc-topbar-summary button:hover,
             .bank-account-topbar-summary article:hover,
             .credit-control-topbar-summary article:hover,
             .me-report-topbar-metrics article:hover,
@@ -1605,6 +1608,7 @@
             }
             .jashflow-topbar-summary article:hover::before,
             .lpc-topbar-summary article:hover::before,
+            .lpc-topbar-summary button:hover::before,
             .bank-account-topbar-summary article:hover::before,
             .credit-control-topbar-summary article:hover::before,
             .me-report-topbar-metrics article:hover::before,
@@ -1625,6 +1629,19 @@
                 cursor: pointer;
                 font: inherit;
                 text-align: left;
+            }
+            .lpc-topbar-summary button {
+                border: 0;
+                color: var(--ink);
+                cursor: pointer;
+                font: inherit;
+                text-align: left;
+            }
+            .lpc-topbar-summary button:disabled {
+                color: var(--muted);
+                cursor: not-allowed;
+                opacity: 0.66;
+                transform: none;
             }
             .jashflow-topbar-summary span,
             .jashflow-topbar-summary strong,
@@ -1847,7 +1864,9 @@
                 grid-template-columns: repeat(4, minmax(58px, 1fr));
             }
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary {
-                grid-template-columns: repeat(4, minmax(72px, 1fr));
+                flex-basis: 620px;
+                min-width: min(620px, 100%);
+                grid-template-columns: repeat(6, minmax(72px, 1fr));
             }
             .ledger-topbar.is-topbar-dense .bad-debt-topbar-summary {
                 flex-basis: clamp(460px, 48vw, 720px);
@@ -1884,6 +1903,7 @@
             }
             .ledger-topbar.is-topbar-dense .jashflow-topbar-summary article,
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary article,
+            .ledger-topbar.is-topbar-dense .lpc-topbar-summary button,
             .ledger-topbar.is-topbar-dense .bank-account-topbar-summary article,
             .ledger-topbar.is-topbar-dense .credit-control-topbar-summary article,
             .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary article,
@@ -1892,6 +1912,7 @@
             }
             .ledger-topbar.is-topbar-dense .jashflow-topbar-summary span,
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary span,
+            .ledger-topbar.is-topbar-dense .lpc-topbar-summary button span,
             .ledger-topbar.is-topbar-dense .bank-account-topbar-summary span,
             .ledger-topbar.is-topbar-dense .credit-control-topbar-summary span,
             .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary span {
@@ -1900,6 +1921,7 @@
             }
             .ledger-topbar.is-topbar-dense .jashflow-topbar-summary strong,
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary strong,
+            .ledger-topbar.is-topbar-dense .lpc-topbar-summary button strong,
             .ledger-topbar.is-topbar-dense .bank-account-topbar-summary strong,
             .ledger-topbar.is-topbar-dense .credit-control-topbar-summary strong,
             .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary strong {
@@ -5493,6 +5515,23 @@
                 display: grid;
                 gap: 10px;
             }
+            .late-charge-panel-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 14px;
+                margin-bottom: 16px;
+            }
+            .late-charge-panel-head h3 {
+                margin: 2px 0 0;
+                color: var(--ink);
+                font-size: 1rem;
+                font-weight: 950;
+            }
+            .late-charge-panel-head .ghost-button {
+                min-height: 40px;
+                white-space: nowrap;
+            }
             .late-charge-bulk-toolbar {
                 display: flex;
                 flex-wrap: wrap;
@@ -7066,6 +7105,7 @@
                 font-weight: 800;
             }
             #meReportScreen .me-report-archive-button {
+                display: none !important;
                 border-color: rgba(255, 159, 47, 0.34);
                 background: var(--orange-soft);
                 color: #95620d;
@@ -11977,6 +12017,7 @@
                                 <p id="heroNoticesSummary">No active 7 day notices</p>
                             </button>
                         </div>
+                        <div class="lpc-topbar-summary" id="lpcTopbarSummary" aria-label="Late payment charges summary" hidden></div>
                         <div class="lpc-topbar-summary bad-debt-topbar-summary" id="badDebtTopbarSummary" aria-label="Bad debt ageing summary" hidden></div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
                         <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" role="status" aria-live="polite" hidden>
@@ -12597,14 +12638,14 @@
                     </section>
 
                     <section class="late-charges-screen detail-card" id="lateChargesScreen" hidden>
-                        <div class="detail-hero">
-                            <div class="detail-actions">
-                                <button class="ghost-button" id="selectAllLateChargesButton" type="button">Select all eligible</button>
-                                <button class="primary-button" id="raiseLateChargesButton" type="button">Raise selected charges</button>
-                            </div>
-                        </div>
-                        <div class="insights-grid lpc-ledger-metrics" id="lpcLedgerOverviewGrid" aria-label="LPC ledger overview"></div>
                         <section class="detail-panel">
+                            <div class="late-charge-panel-head">
+                                <div>
+                                    <p class="eyebrow">Late payment charge queue</p>
+                                    <h3>Review and post eligible charges</h3>
+                                </div>
+                                <button class="ghost-button" id="lpcRefreshDataButton" type="button">Refresh Data</button>
+                            </div>
                             <div class="late-charge-bulk-toolbar">
                                 <label class="search-wrap late-charge-search">
                                     <span class="search-icon">⌕</span>
@@ -17204,6 +17245,11 @@
                         factoryResetConsole();
                         return;
                     }
+                    const lpcRefreshDataButton = event.target.closest?.("#lpcRefreshDataButton");
+                    if (lpcRefreshDataButton) {
+                        handleTopbarRefreshData(event);
+                        return;
+                    }
                     const lateChargeSelectAll = event.target.closest?.("#selectAllLateChargesButton");
                     if (lateChargeSelectAll) {
                         event.preventDefault();
@@ -19395,15 +19441,45 @@
                 scrollConsoleToTop();
             }
 
-            function renderLpcLedgerOverview() {
-                const target = document.getElementById("lpcLedgerOverviewGrid");
-                if (!target) return;
+            function lpcOverviewMetricItems() {
                 const metrics = insightOverviewTopbarMetrics(localInsightsPayload("local").analytics || {});
+                return [
+                    ["Open ledger", metrics.openLedger, metrics.openInvoices],
+                    ["Overdue ratio", metrics.overdueRatio, "Overdue as a share of open debt"],
+                    ["Clients monitored", metrics.clientsMonitored, "Synced customer records"],
+                    ["Max overdue", metrics.maxOverdue, "Oldest open exposure"],
+                ];
+            }
+
+            function renderLpcTopbarSummary() {
+                const target = document.getElementById("lpcTopbarSummary");
+                if (!target) return;
+                target.hidden = activeView !== "late-charges";
+                if (target.hidden) {
+                    target.innerHTML = "";
+                    return;
+                }
+                const stats = latePaymentChargeReviewStats();
+                const selectedCount = selectedLateChargeInvoiceIds.size;
+                const eligibleCount = stats.visibleEligibleCount;
                 target.innerHTML = [
-                    insightCard("Open ledger", metrics.openLedger, metrics.openInvoices),
-                    insightCard("Overdue ratio", metrics.overdueRatio, "Overdue as a share of open debt"),
-                    insightCard("Clients monitored", metrics.clientsMonitored, "Synced customer records"),
-                    insightCard("Max overdue", metrics.maxOverdue, "Oldest open exposure"),
+                    ...lpcOverviewMetricItems().map(([label, value, detail]) => `
+                        <article>
+                            <span>${escapeHTML(label)}</span>
+                            <strong>${escapeHTML(value)}</strong>
+                            <p>${escapeHTML(detail)}</p>
+                        </article>
+                    `),
+                    `<button type="button" id="selectAllLateChargesButton" ${eligibleCount === 0 || isOperationRunning ? "disabled" : ""}>
+                        <span>Eligible charges</span>
+                        <strong>${eligibleCount ? `Select all ${eligibleCount.toLocaleString("en-GB")}` : "No eligible charges"}</strong>
+                        <p>${formatCurrency(stats.visibleEligibleAmount)} visible</p>
+                    </button>`,
+                    `<button type="button" id="raiseLateChargesButton" ${selectedCount === 0 || !isXeroConnected() || isOperationRunning ? "disabled" : ""}>
+                        <span>Post to Xero</span>
+                        <strong>${selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges"}</strong>
+                        <p>${selectedCount ? "Selected rows only" : "Select charges first"}</p>
+                    </button>`
                 ].join("");
             }
 
@@ -19411,10 +19487,8 @@
                 const screen = document.getElementById("lateChargesScreen");
                 const target = document.getElementById("lateChargesList");
                 const summary = document.getElementById("lateChargesSummary");
-                const raiseButton = document.getElementById("raiseLateChargesButton");
-                if (!screen || !target || !summary || !raiseButton) return;
+                if (!screen || !target || !summary) return;
 
-                renderLpcLedgerOverview();
                 const stats = latePaymentChargeReviewStats();
                 const invoices = stats.visible;
                 const validIds = new Set(stats.visibleEligible.map((invoice) => invoice.id));
@@ -19422,12 +19496,11 @@
                 latePaymentChargeBaseAmounts = new Map([...latePaymentChargeBaseAmounts].filter(([invoiceId]) => validIds.has(invoiceId)));
                 const eligibleCount = stats.visibleEligibleCount;
                 const selectedCount = selectedLateChargeInvoiceIds.size;
+                renderLpcTopbarSummary();
                 const filterLabel = lateChargeFilterLabels[lateChargeFilter] || lateChargeFilterLabels.active;
                 summary.textContent = stats.candidateCount
                     ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} open invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). ${eligibleCount.toLocaleString("en-GB")} visible charge${eligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)} including VAT.`
                     : "No open invoices are currently available for late payment charge review.";
-                raiseButton.disabled = selectedCount === 0 || !isXeroConnected() || isOperationRunning;
-                raiseButton.textContent = selectedCount ? `Raise ${selectedCount} charge${selectedCount === 1 ? "" : "s"}` : "Raise selected charges";
                 const searchInput = document.getElementById("lateChargeSearch");
                 if (searchInput && searchInput.value !== lateChargeSearchTerm) searchInput.value = lateChargeSearchTerm;
                 const filterSelect = document.getElementById("lateChargeFilterSelect");
@@ -19435,7 +19508,6 @@
                 const selectAllButton = document.getElementById("selectAllLateChargesButton");
                 if (selectAllButton) {
                     selectAllButton.disabled = eligibleCount === 0 || isOperationRunning;
-                    selectAllButton.textContent = eligibleCount ? `Select all ${eligibleCount.toLocaleString("en-GB")} eligible` : "No eligible charges";
                 }
                 const bulkSelect = document.getElementById("bulkLateChargeAmountSelect");
                 if (bulkSelect) {
@@ -24918,13 +24990,14 @@
                 const filename = String(submission?.filename || "").replace(/\.[^.]+$/, "").trim();
                 const cleanFilename = filename.replace(/\s[-–]\s/g, " · ");
                 const monthLabel = meReportSubmissionMonthYear(submission);
+                const bookkeepingLabel = meReportSubmissionBookkeepingLabel(submission);
                 const clientLabel = client.clientName || client.xeroContactName || "";
                 const genericFilename = /^(juk\s+)?overview\s+report$/i.test(cleanFilename) || /^month[-\s]*end\s+report$/i.test(cleanFilename);
                 if (cleanFilename && !genericFilename && (cleanFilename.includes(monthLabel) || (clientLabel && cleanFilename.includes(clientLabel)))) {
-                    return cleanFilename;
+                    return cleanFilename.includes("Bookkeeping") ? cleanFilename : `${cleanFilename} · Bookkeeping`;
                 }
-                if (clientLabel) return `${clientLabel} · ${monthLabel}`;
-                return cleanFilename || `ME Report · ${monthLabel}`;
+                if (clientLabel) return `${clientLabel} · ${bookkeepingLabel}`;
+                return cleanFilename || `ME Report · ${bookkeepingLabel}`;
             }
 
             function activeMeReportInsightMeta(context = activeMeReportInsightContext()) {
@@ -25161,7 +25234,7 @@
                 }
                 const archiveWorkspaceButton = document.getElementById("archiveMeReportWorkspaceButton");
                 if (archiveWorkspaceButton) {
-                    archiveWorkspaceButton.hidden = !workspaceClient;
+                    archiveWorkspaceButton.hidden = true;
                     archiveWorkspaceButton.disabled = meReportLoading || isMeReportProcessing;
                     archiveWorkspaceButton.textContent = workspaceClientArchived ? "Restore" : "Archive";
                 }
@@ -26811,6 +26884,11 @@
                 return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(date);
             }
 
+            function meReportSubmissionBookkeepingLabel(submission) {
+                const monthLabel = meReportSubmissionMonthYear(submission);
+                return monthLabel === "Undated reports" ? monthLabel : `${monthLabel} Bookkeeping`;
+            }
+
             function meReportPeriodRangeLabel(summary = {}) {
                 const start = summary.periodStart || summary.period?.start || summary.reportingPeriodStart || "";
                 const end = summary.periodEnd || summary.period?.end || summary.reportingPeriodEnd || "";
@@ -26944,7 +27022,7 @@
                     <div class="jashflow-detail-head me-report-report-toolbar me-report-report-summary-card">
                         <div>
                             <p class="eyebrow">JUK Overview Report insights</p>
-                            <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionMonthYear(submission))}</h3>
+                            <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionBookkeepingLabel(submission))}</h3>
                             <p class="detail-meta">${escapeHTML(submission?.filename || "Overview report")} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
                         </div>
                         <div class="detail-actions">
@@ -29895,7 +29973,7 @@
                 }
                 const topbar = document.querySelector(".ledger-topbar");
                 const topbarRefreshDataButton = document.getElementById("topbarRefreshDataButton");
-                const showTopbarRefreshAction = hideConnectAction;
+                const showTopbarRefreshAction = hideConnectAction && activeView !== "late-charges";
                 if (topbar) topbar.classList.toggle("has-topbar-refresh-action", showTopbarRefreshAction);
                 if (topbarRefreshDataButton) {
                     topbarRefreshDataButton.hidden = !showTopbarRefreshAction;
@@ -29910,12 +29988,25 @@
                     topbarRefreshDataButton.setAttribute("aria-label", topbarRefreshDataButton.title || "Refresh Data");
                     topbarRefreshDataButton.setAttribute("aria-disabled", String(topbarRefreshDataButton.disabled));
                 }
+                const lpcRefreshDataButton = document.getElementById("lpcRefreshDataButton");
+                if (lpcRefreshDataButton) {
+                    lpcRefreshDataButton.disabled = isSyncing || syncBlockedByRateLimit;
+                    lpcRefreshDataButton.textContent = syncBlockedByRateLimit
+                        ? "Xero limit reached"
+                        : isSyncing
+                        ? "Refreshing..."
+                        : isXeroConnected()
+                        ? "Refresh Data"
+                        : "Connect Xero";
+                    lpcRefreshDataButton.title = syncBlockedByRateLimit ? rateLimitCopy : "";
+                }
                 const jashflowTopbarSummary = document.getElementById("jashflowTopbarSummary");
                 if (jashflowTopbarSummary) jashflowTopbarSummary.hidden = activeView !== "jashflow";
                 const creditControlTopbarSummary = document.getElementById("creditControlTopbarSummary");
                 if (creditControlTopbarSummary) creditControlTopbarSummary.hidden = activeView !== "ledger";
                 const insightsTopbarSummary = document.getElementById("insightsTopbarSummary");
                 if (insightsTopbarSummary) insightsTopbarSummary.hidden = true;
+                renderLpcTopbarSummary();
                 renderBadDebtTopbarSummary();
                 renderBankAccountTopbarSummary();
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
