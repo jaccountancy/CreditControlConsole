@@ -7505,6 +7505,127 @@
                 background: rgba(255, 83, 83, 0.12);
                 border-color: rgba(255, 83, 83, 0.26);
             }
+            #meReportScreen .me-report-dla-hero {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                margin-bottom: 14px;
+                padding: 16px 18px;
+                border: 1px solid rgba(29, 103, 242, 0.12);
+                border-radius: 8px;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(246, 250, 255, 0.86));
+            }
+            #meReportScreen .me-report-dla-hero h3 {
+                margin: 3px 0 4px;
+                color: var(--ink);
+                font-size: 1.25rem;
+                font-weight: 950;
+            }
+            #meReportScreen .me-report-dla-status {
+                display: inline-flex;
+                align-items: center;
+                width: fit-content;
+                min-height: 24px;
+                border-radius: 999px;
+                padding: 4px 8px;
+                font-size: 0.72rem;
+                font-weight: 950;
+                line-height: 1;
+                white-space: nowrap;
+            }
+            #meReportScreen .me-report-dla-status.is-credit {
+                color: #15803d;
+                background: rgba(34, 197, 94, 0.12);
+                border: 1px solid rgba(34, 197, 94, 0.24);
+            }
+            #meReportScreen .me-report-dla-status.is-overdrawn {
+                color: #b42318;
+                background: rgba(255, 83, 83, 0.12);
+                border: 1px solid rgba(255, 83, 83, 0.26);
+            }
+            #meReportScreen .me-report-dla-status.is-nil {
+                color: #64748b;
+                background: rgba(100, 116, 139, 0.10);
+                border: 1px solid rgba(100, 116, 139, 0.18);
+            }
+            #meReportScreen .me-report-dla-layout {
+                display: grid;
+                grid-template-columns: minmax(280px, 0.9fr) minmax(520px, 1.6fr);
+                gap: 14px;
+                align-items: start;
+                margin-top: 14px;
+            }
+            #meReportScreen .me-report-dla-chart {
+                display: grid;
+                gap: 11px;
+                margin-top: 12px;
+            }
+            #meReportScreen .me-report-dla-bar-row,
+            #meReportScreen .me-report-dla-account-bar {
+                display: grid;
+                grid-template-columns: minmax(86px, 0.6fr) minmax(120px, 1fr) minmax(88px, auto);
+                gap: 10px;
+                align-items: center;
+                color: var(--ink);
+                font-size: 0.84rem;
+                font-weight: 850;
+            }
+            #meReportScreen .me-report-dla-bar-row strong,
+            #meReportScreen .me-report-dla-account-bar strong {
+                text-align: right;
+                font-weight: 950;
+                white-space: nowrap;
+            }
+            #meReportScreen .me-report-dla-bar-track {
+                height: 10px;
+                overflow: hidden;
+                border-radius: 999px;
+                background: rgba(30, 47, 77, 0.08);
+            }
+            #meReportScreen .me-report-dla-bar-track i {
+                display: block;
+                height: 100%;
+                min-width: 3%;
+                border-radius: inherit;
+            }
+            #meReportScreen .me-report-dla-bar-row.is-positive .me-report-dla-bar-track i,
+            #meReportScreen .me-report-dla-account-bar.is-positive .me-report-dla-bar-track i {
+                background: linear-gradient(90deg, #27b05f, #1d67f2);
+            }
+            #meReportScreen .me-report-dla-bar-row.is-negative .me-report-dla-bar-track i,
+            #meReportScreen .me-report-dla-account-bar.is-negative .me-report-dla-bar-track i {
+                background: linear-gradient(90deg, #ff5353, #ff9f2f);
+            }
+            #meReportScreen .me-report-dla-account-bars {
+                display: grid;
+                gap: 9px;
+                margin-top: 16px;
+                padding-top: 14px;
+                border-top: 1px solid var(--line);
+            }
+            #meReportScreen .me-report-dla-account-card table,
+            #meReportScreen .me-report-dla-transaction-card table {
+                min-width: 960px;
+            }
+            #meReportScreen .me-report-dla-account-card tr.is-dla-active td {
+                background: rgba(39, 176, 95, 0.045);
+            }
+            #meReportScreen .me-report-dla-setup-state {
+                display: block;
+                margin-bottom: 8px;
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            #meReportScreen .me-report-dla-account-action {
+                min-height: 30px;
+                padding: 6px 10px;
+                font-size: 0.72rem;
+                white-space: nowrap;
+            }
             #meReportScreen .me-report-account-row.has-transactions {
                 cursor: pointer;
                 transition: background 0.16s ease, box-shadow 0.16s ease;
@@ -11376,6 +11497,7 @@
                 .practice-pack-output-row,
                 .bank-statement-workspace,
                 .ignition-workspace,
+                .me-report-dla-layout,
                 .ignition-summary-grid,
                 .ignition-dataset-grid,
                 .ignition-report-row,
@@ -25589,6 +25711,261 @@
                 return meReportNormaliseTransferClassificationOverrides(overrides);
             }
 
+            function meReportNormaliseDlaAccountCode(value = "") {
+                return String(value || "")
+                    .trim()
+                    .toUpperCase()
+                    .replace(/\s+/g, " ")
+                    .slice(0, 80);
+            }
+
+            function meReportDlaAccountCode(account = {}) {
+                const directCode = meReportNormaliseDlaAccountCode(account.code || account.accountCode);
+                if (directCode) return directCode;
+                return meReportNormaliseDlaAccountCode(String(account.accountName || account.name || "").replace(/[^a-z0-9]+/gi, " "));
+            }
+
+            function meReportNormaliseDlaAccountOverrides(value = {}) {
+                let source = value;
+                if (typeof source === "string") {
+                    try {
+                        source = JSON.parse(source);
+                    } catch {
+                        source = {};
+                    }
+                }
+                if (!source || typeof source !== "object" || Array.isArray(source)) source = {};
+                const normaliseList = (items) => [...new Set((Array.isArray(items) ? items : [])
+                    .map(meReportNormaliseDlaAccountCode)
+                    .filter(Boolean))]
+                    .slice(0, 200);
+                return {
+                    include: normaliseList(source.include),
+                    exclude: normaliseList(source.exclude)
+                };
+            }
+
+            function meReportClientDlaAccountOverrides(client = {}) {
+                return meReportNormaliseDlaAccountOverrides(client.directorLoanAccountOverrides || client.summary?.directorLoanAccountOverrides);
+            }
+
+            function meReportCopyDlaAccountOverrides(overrides = {}) {
+                return meReportNormaliseDlaAccountOverrides(overrides);
+            }
+
+            function meReportDlaAccountDefaultMatch(account = {}) {
+                const text = meReportTrialBalanceAccountText(account);
+                if (!text || text.includes("dividend") || text.includes("corporation tax")) return false;
+                const compact = text.replace(/[^a-z0-9]+/g, "");
+                return (
+                    compact.includes("dla")
+                    || compact.includes("directorloan")
+                    || compact.includes("directorsloan")
+                    || (text.includes("director") && text.includes("loan"))
+                    || (text.includes("director") && text.includes("current account"))
+                    || (text.includes("amounts due") && text.includes("director"))
+                    || text.includes("due to director")
+                    || text.includes("due from director")
+                );
+            }
+
+            function meReportDlaAccountBalance(account = {}) {
+                if (Number.isFinite(Number(account.closingBalance))) {
+                    return meReportMoneyValue(account.closingBalance);
+                }
+                const debit = Number(account.debitYTD || 0);
+                const credit = Number(account.creditYTD || 0);
+                const sourceAmount = Number.isFinite(Number(account.amount)) && !Number.isFinite(Number(account.closingBalance))
+                    ? Number(account.amount)
+                    : debit - credit;
+                return meReportMoneyValue(-sourceAmount);
+            }
+
+            function meReportDlaAccountTransactions(account = {}) {
+                return meReportObjectRows(account.transactions).map((transaction) => {
+                    const amount = meReportMoneyValue(transaction.amount ?? transaction.value ?? 0);
+                    const description = String(transaction.description || transaction.label || "").trim();
+                    const date = String(transaction.date || "").trim();
+                    const source = String(transaction.source || transaction.sourceLabel || account.source || "Review of Transactions").trim();
+                    if (!description && !date && amount === 0) return null;
+                    return { ...transaction, amount, description, date, source };
+                }).filter(Boolean).slice(0, 160);
+            }
+
+            function meReportDlaAccountSource(account = {}) {
+                if (account.source) return String(account.source);
+                return account.sourcePage ? `Trial Balance, page ${account.sourcePage}` : "Trial Balance";
+            }
+
+            function meReportDlaAccountSourceRows(summary = {}) {
+                const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
+                if (trialBalanceAccounts.length) return trialBalanceAccounts;
+                const byCode = new Map();
+                [
+                    ...meReportObjectRows(summary.directorLoanAccountCandidates),
+                    ...meReportObjectRows(summary.directorLoanAccounts)
+                ].forEach((account) => {
+                    const code = meReportDlaAccountCode(account);
+                    if (code && !byCode.has(code)) byCode.set(code, account);
+                });
+                return Array.from(byCode.values());
+            }
+
+            function meReportDlaAccountData(summary = {}, overrides = {}) {
+                const normalisedOverrides = meReportNormaliseDlaAccountOverrides(overrides);
+                const includeCodes = new Set(normalisedOverrides.include || []);
+                const excludeCodes = new Set(normalisedOverrides.exclude || []);
+                const activeRows = [];
+                const candidateRows = [];
+                const allTransactions = [];
+                meReportDlaAccountSourceRows(summary).forEach((account) => {
+                    const code = meReportDlaAccountCode(account);
+                    if (!code) return;
+                    const defaultIncluded = Boolean(account.defaultIncluded || (account.included && !account.manualIncluded && !account.manualExcluded) || meReportDlaAccountDefaultMatch(account));
+                    const manualIncluded = includeCodes.has(code);
+                    const manualExcluded = excludeCodes.has(code);
+                    const transactions = meReportDlaAccountTransactions(account);
+                    const movement = Number.isFinite(Number(account.movement)) && !transactions.length
+                        ? meReportMoneyValue(account.movement)
+                        : meReportMoneyValue(transactions.reduce((sum, row) => sum + meReportMoneyValue(row.amount || 0), 0));
+                    const closingBalance = meReportDlaAccountBalance(account);
+                    const openingBalance = Number.isFinite(Number(account.openingBalance))
+                        ? meReportMoneyValue(account.openingBalance)
+                        : meReportMoneyValue(closingBalance - movement);
+                    const included = (defaultIncluded || manualIncluded) && !manualExcluded;
+                    const accountRow = {
+                        ...account,
+                        code,
+                        accountCode: account.accountCode || code,
+                        accountName: account.accountName || account.name || "Director loan account",
+                        accountType: account.accountType || "",
+                        openingBalance,
+                        movement,
+                        closingBalance,
+                        status: closingBalance < 0 ? "overdrawn" : (closingBalance > 0 ? "inCredit" : "nil"),
+                        transactionCount: transactions.length || Number(account.transactionCount || 0),
+                        transactions,
+                        source: meReportDlaAccountSource(account),
+                        defaultIncluded,
+                        manualIncluded,
+                        manualExcluded,
+                        included
+                    };
+                    if (included) {
+                        activeRows.push(accountRow);
+                        transactions.forEach((transaction) => {
+                            allTransactions.push({
+                                ...transaction,
+                                accountCode: code,
+                                accountName: accountRow.accountName
+                            });
+                        });
+                    }
+                    const text = meReportTrialBalanceAccountText(account);
+                    const candidate = defaultIncluded || manualIncluded || manualExcluded || account.included || (
+                        meReportTrialBalanceAccountIsBalanceSheet(account)
+                        && (text.includes("director") || text.includes("loan") || text.includes("current account") || text.includes("shareholder"))
+                    );
+                    if (candidate) candidateRows.push(accountRow);
+                });
+                const openingBalance = meReportMoneyValue(activeRows.reduce((sum, row) => sum + meReportMoneyValue(row.openingBalance), 0));
+                const movement = meReportMoneyValue(activeRows.reduce((sum, row) => sum + meReportMoneyValue(row.movement), 0));
+                const hasOverrideEntries = includeCodes.size > 0 || excludeCodes.size > 0;
+                const closingBalance = activeRows.length
+                    ? meReportMoneyValue(activeRows.reduce((sum, row) => sum + meReportMoneyValue(row.closingBalance), 0))
+                    : meReportMoneyValue(hasOverrideEntries ? 0 : (summary.dlaBalance || 0));
+                allTransactions.sort((a, b) => `${a.date || ""}${a.description || ""}`.localeCompare(`${b.date || ""}${b.description || ""}`));
+                return {
+                    accounts: activeRows,
+                    candidates: candidateRows,
+                    transactions: allTransactions.slice(0, 240),
+                    openingBalance,
+                    movement,
+                    closingBalance,
+                    accountCount: activeRows.length,
+                    transactionCount: allTransactions.length,
+                    overrides: normalisedOverrides
+                };
+            }
+
+            function meReportS455Rate(summary = {}) {
+                const periodEnd = new Date(summary.periodEnd || "");
+                const april2026RateChange = Date.UTC(2026, 3, 6);
+                if (Number.isFinite(periodEnd.getTime()) && periodEnd.getTime() >= april2026RateChange) return 35.75;
+                return 33.75;
+            }
+
+            function meReportApplyDlaAccountOverrides(summary = {}, client = {}) {
+                const result = meReportClonePlain(summary);
+                const overrides = meReportClientDlaAccountOverrides(client);
+                const accountData = meReportDlaAccountData(result, overrides);
+                const closingBalance = accountData.closingBalance;
+                const section455Rate = meReportS455Rate(result);
+                const section455Tax = meReportMoneyValue(Math.max(0, -closingBalance) * (section455Rate / 100));
+                const estimatedCt = meReportMoneyValue(result.estimatedCorporationTax || 0);
+                const dividendCapacity = Math.max(0, meReportMoneyValue(result.dividendCapacity || 0));
+                const tradingLossReliefUsed = Math.max(0, meReportMoneyValue(result.tradingLossReliefUsed || 0));
+                const creditDla = Math.max(0, closingBalance);
+                const overdrawnDla = Math.max(0, -closingBalance);
+                const hasDlaOverride = Boolean((overrides.include || []).length || (overrides.exclude || []).length);
+                result.directorLoanAccountOverrides = overrides;
+                result.directorLoanAccountOverrideClientId = client.id || result.directorLoanAccountOverrideClientId || "";
+                result.directorLoanAccounts = accountData.accounts;
+                result.directorLoanAccountCandidates = accountData.candidates;
+                result.directorLoanAccountTransactions = accountData.transactions;
+                result.dlaOpeningBalance = accountData.openingBalance;
+                result.dlaMovement = accountData.movement;
+                result.dlaAccountCount = accountData.accountCount;
+                result.dlaTransactionCount = accountData.transactionCount;
+                if (accountData.accountCount || hasDlaOverride || Number.isFinite(Number(result.dlaBalance))) {
+                    result.dlaBalance = closingBalance;
+                    result.directorLoanCreditBalance = creditDla;
+                    result.dlaStatus = closingBalance < 0 ? "red" : (closingBalance === 0 ? "amber" : "green");
+                    result.section455Rate = section455Rate;
+                    result.section455Tax = section455Tax;
+                    result.totalTaxExposure = meReportMoneyValue(estimatedCt + section455Tax);
+                    result.overdrawnDlaExposure = overdrawnDla;
+                    result.creditDlaAvailable = creditDla;
+                    result.totalPotentialExtraction = meReportMoneyValue(creditDla + dividendCapacity + tradingLossReliefUsed);
+                    result.dlaMitigationSchedule = overdrawnDla > 0 ? [
+                        { label: "Director repayment", amount: overdrawnDla, treatment: "Cleanest fix", note: "Repay the overdrawn balance into the company bank before the s455 trigger date where possible." },
+                        { label: "Dividend offset if reserves allow", amount: Math.min(overdrawnDla, dividendCapacity), treatment: "Use only with reserves", note: "Only credit a dividend to the DLA where distributable reserves and paperwork support it." },
+                        { label: "Section 455 exposure if still overdrawn", amount: section455Tax, treatment: `${formatPercent(section455Rate)} cash tax exposure`, note: "s455 is repayable after the loan is repaid, but it is still a cash outflow to plan for." }
+                    ] : [];
+                }
+                return result;
+            }
+
+            function meReportRefreshDlaExtractionNumbers(summary = {}) {
+                const result = { ...summary };
+                const closingBalance = meReportMoneyValue(result.dlaBalance || 0);
+                const section455Rate = Number(result.section455Rate || meReportS455Rate(result));
+                const section455Tax = meReportMoneyValue(Math.max(0, -closingBalance) * (section455Rate / 100));
+                const creditDla = Math.max(0, closingBalance);
+                const overdrawnDla = Math.max(0, -closingBalance);
+                const estimatedCt = meReportMoneyValue(result.estimatedCorporationTax || 0);
+                const dividendCapacity = Math.max(0, meReportMoneyValue(result.dividendCapacity || 0));
+                const tradingLossReliefUsed = Math.max(0, meReportMoneyValue(result.tradingLossReliefUsed || 0));
+                result.directorLoanCreditBalance = creditDla;
+                result.dlaStatus = closingBalance < 0 ? "red" : (closingBalance === 0 ? "amber" : "green");
+                result.section455Rate = section455Rate;
+                result.section455Tax = section455Tax;
+                result.totalTaxExposure = meReportMoneyValue(estimatedCt + section455Tax);
+                result.overdrawnDlaExposure = overdrawnDla;
+                result.creditDlaAvailable = creditDla;
+                result.totalPotentialExtraction = meReportMoneyValue(creditDla + dividendCapacity + tradingLossReliefUsed);
+                if (overdrawnDla > 0) {
+                    result.dlaMitigationSchedule = [
+                        { label: "Director repayment", amount: overdrawnDla, treatment: "Cleanest fix", note: "Repay the overdrawn balance into the company bank before the s455 trigger date where possible." },
+                        { label: "Dividend offset if reserves allow", amount: Math.min(overdrawnDla, dividendCapacity), treatment: "Use only with reserves", note: "Only credit a dividend to the DLA where distributable reserves and paperwork support it." },
+                        { label: "Section 455 exposure if still overdrawn", amount: section455Tax, treatment: `${formatPercent(section455Rate)} cash tax exposure`, note: "s455 is repayable after the loan is repaid, but it is still a cash outflow to plan for." }
+                    ];
+                } else {
+                    result.dlaMitigationSchedule = [];
+                }
+                return result;
+            }
+
             function meReportTransferClassificationLabel(value = "") {
                 const classification = meReportNormaliseTransferClassification(value) || value;
                 if (classification === "dividend") return "Dividend";
@@ -25675,7 +26052,7 @@
                 const transferRows = meReportTransferRows(result, overrides);
                 result.transferClassificationOverrides = overrides;
                 result.transferClassificationOverrideClientId = client.id || "";
-                if (!transferRows.length) return result;
+                if (!transferRows.length) return meReportRefreshDlaExtractionNumbers(result);
                 const dividendRows = transferRows.filter((row) => row.classification === "dividend");
                 const directorLoanRows = transferRows.filter((row) => row.classification === "directorLoan");
                 const wageRows = transferRows.filter((row) => row.classification === "wages");
@@ -25687,7 +26064,7 @@
                     : meReportMoneyValue(ytdProfit - estimatedCt);
                 const periodEndReserves = meReportMoneyValue(Number(result.openingRetainedReserves || 0) + currentYearEarnings - dividendsTaken);
                 const dividendCapacity = Math.max(0, periodEndReserves);
-                return {
+                return meReportRefreshDlaExtractionNumbers({
                     ...result,
                     directorTransferTransactions: transferRows,
                     dividendTransactions: dividendRows,
@@ -25698,7 +26075,7 @@
                     periodEndDistributableReserves: periodEndReserves,
                     dividendCapacity,
                     dividendCalculationSteps: meReportDividendStepsFromTransferRows(result, dividendRows, dividendsTaken, periodEndReserves, dividendCapacity)
-                };
+                });
             }
 
             function meReportTaxOverridesHaveEntries(overrides = {}) {
@@ -26178,7 +26555,7 @@
             }
 
             function meReportAdjustedSummary(client = {}, sourceSummary = {}) {
-                const summary = meReportClonePlain(sourceSummary);
+                const summary = meReportApplyDlaAccountOverrides(meReportClonePlain(sourceSummary), client);
                 const overrides = meReportClientTaxOverrides(client);
                 summary.taxAdjustmentOverrides = overrides;
                 summary.taxAdjustmentOverrideClientId = client.id || "";
@@ -26810,16 +27187,166 @@
                 `;
             }
 
-            function renderMeReportDlaTab(summary = {}) {
+            function renderMeReportDlaStatusPill(balance = 0) {
+                const value = meReportMoneyValue(balance);
+                const state = value < 0 ? "overdrawn" : (value > 0 ? "credit" : "nil");
+                const label = value < 0 ? "Overdrawn" : (value > 0 ? "In credit" : "Nil balance");
+                return `<span class="me-report-dla-status is-${state}">${escapeHTML(label)}</span>`;
+            }
+
+            function renderMeReportDlaMovementChart(data = {}) {
+                const rows = [
+                    ["Opening", data.openingBalance || 0],
+                    ["Movement", data.movement || 0],
+                    ["Closing", data.closingBalance || 0]
+                ];
+                const maxValue = Math.max(1, ...rows.map(([, value]) => Math.abs(Number(value || 0))));
+                const accountRows = meReportObjectRows(data.accounts);
                 return `
+                    <article class="me-report-insight-card me-report-dla-chart-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">DLA movement</p>
+                                <h3>${data.movement > 0 ? "Credit increased" : (data.movement < 0 ? "Balance reduced" : "No monthly movement")}</h3>
+                            </div>
+                            ${renderMeReportDlaStatusPill(data.closingBalance || 0)}
+                        </div>
+                        <div class="me-report-dla-chart" aria-label="Director loan opening, movement and closing balance">
+                            ${rows.map(([label, value]) => {
+                                const percent = Math.max(3, Math.round(Math.abs(Number(value || 0)) / maxValue * 100));
+                                return `<div class="me-report-dla-bar-row ${Number(value || 0) < 0 ? "is-negative" : "is-positive"}">
+                                    <span>${escapeHTML(label)}</span>
+                                    <div class="me-report-dla-bar-track"><i style="width: ${percent}%"></i></div>
+                                    <strong>${formatCurrency(value)}</strong>
+                                </div>`;
+                            }).join("")}
+                        </div>
+                        ${accountRows.length > 1 ? `<div class="me-report-dla-account-bars">
+                            ${accountRows.map((account) => {
+                                const value = meReportMoneyValue(account.closingBalance || 0);
+                                const percent = Math.max(3, Math.round(Math.abs(value) / maxValue * 100));
+                                return `<div class="me-report-dla-account-bar ${value < 0 ? "is-negative" : "is-positive"}">
+                                    <span>${escapeHTML(account.accountName || account.accountCode || "DLA account")}</span>
+                                    <div class="me-report-dla-bar-track"><i style="width: ${percent}%"></i></div>
+                                    <strong>${formatCurrency(value)}</strong>
+                                </div>`;
+                            }).join("")}
+                        </div>` : ""}
+                    </article>
+                `;
+            }
+
+            function renderMeReportDlaAccountControls(client = {}, summary = {}, data = {}) {
+                const clientId = summary.directorLoanAccountOverrideClientId || client.id || "";
+                const rows = meReportObjectRows(data.candidates).length ? meReportObjectRows(data.candidates) : meReportObjectRows(data.accounts);
+                return `
+                    <article class="me-report-insight-card me-report-table-card me-report-dla-account-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">DLA account setup</p>
+                                <h3>${data.accountCount.toLocaleString("en-GB")} active account${data.accountCount === 1 ? "" : "s"} · ${data.transactionCount.toLocaleString("en-GB")} transaction${data.transactionCount === 1 ? "" : "s"}</h3>
+                                <p class="detail-meta">These account choices are remembered for this client and reused on future uploads.</p>
+                            </div>
+                            ${clientId ? `<button class="ghost-button" type="button" data-me-dla-add-account="${escapeHTML(clientId)}">Add account by code</button>` : ""}
+                        </div>
+                        <table>
+                            <thead><tr><th>Account</th><th>Opening</th><th>Movement</th><th>Closing</th><th>Source</th><th>DLA setup</th></tr></thead>
+                            <tbody>
+                                ${rows.map((row) => {
+                                    const included = Boolean(row.included);
+                                    const action = included ? "exclude" : "include";
+                                    const actionLabel = included ? "Remove from DLA" : "Use as DLA";
+                                    const setup = row.manualExcluded
+                                        ? "Excluded by review"
+                                        : (row.manualIncluded ? "Included by review" : (included ? "Auto included" : "Candidate"));
+                                    return `<tr class="${included ? "is-dla-active" : ""}">
+                                        <td><strong>${escapeHTML(row.accountName || "Director loan account")}</strong><br><small>${escapeHTML(row.accountCode || row.code || "")} ${row.accountType ? `· ${escapeHTML(row.accountType)}` : ""}</small></td>
+                                        <td>${formatCurrency(row.openingBalance || 0)}</td>
+                                        <td>${formatCurrency(row.movement || 0)}</td>
+                                        <td>${renderMeReportDlaStatusPill(row.closingBalance || 0)}<br><strong>${formatCurrency(row.closingBalance || 0)}</strong></td>
+                                        <td>${escapeHTML(row.source || "Trial Balance")}</td>
+                                        <td><span class="me-report-dla-setup-state">${escapeHTML(setup)}</span>${clientId ? `<button class="ghost-button me-report-dla-account-action" type="button" data-me-dla-account-action="${action}" data-me-dla-client="${escapeHTML(clientId)}" data-me-dla-account-code="${escapeHTML(row.code || row.accountCode || "")}">${escapeHTML(actionLabel)}</button>` : ""}</td>
+                                    </tr>`;
+                                }).join("") || '<tr><td colspan="6">No director loan account was identified in this report. Add the nominal code to remember it for this client.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderMeReportDlaTransactions(data = {}) {
+                const rows = meReportObjectRows(data.transactions);
+                return `<article class="me-report-insight-card me-report-table-card me-report-dla-transaction-card">
+                    <div class="me-report-card-heading-row">
+                        <div>
+                            <p class="eyebrow">DLA transaction detail</p>
+                            <h3>${rows.length.toLocaleString("en-GB")} transaction${rows.length === 1 ? "" : "s"} pulled through</h3>
+                        </div>
+                    </div>
+                    <table>
+                        <thead><tr><th>Date</th><th>Account</th><th>Transaction</th><th>Amount</th><th>Source</th></tr></thead>
+                        <tbody>
+                            ${rows.map((row) => `<tr>
+                                <td>${row.date ? escapeHTML(formatDate(row.date)) : "--"}</td>
+                                <td><strong>${escapeHTML(row.accountName || "DLA")}</strong><br><small>${escapeHTML(row.accountCode || "")}</small></td>
+                                <td>${escapeHTML(row.description || "Director loan movement")}</td>
+                                <td>${formatCurrency(row.amount || 0)}</td>
+                                <td>${escapeHTML(row.source || "Review of Transactions")}</td>
+                            </tr>`).join("") || '<tr><td colspan="5">No individual DLA transactions were extracted. Check the source report includes nominal transaction detail for the DLA code.</td></tr>'}
+                        </tbody>
+                    </table>
+                </article>`;
+            }
+
+            function renderMeReportDlaDashboard(client = {}, summary = {}) {
+                const data = meReportDlaAccountData(summary, summary.directorLoanAccountOverrides || meReportClientDlaAccountOverrides(client));
+                const opening = data.accountCount ? data.openingBalance : meReportMoneyValue(summary.dlaOpeningBalance || summary.dlaBalance || 0);
+                const movement = data.accountCount ? data.movement : meReportMoneyValue(summary.dlaMovement || 0);
+                const closing = meReportMoneyValue(summary.dlaBalance ?? data.closingBalance);
+                const accountCount = Number(summary.dlaAccountCount ?? data.accountCount ?? 0);
+                const transactionCount = Number(summary.dlaTransactionCount ?? data.transactionCount ?? 0);
+                const chartData = { ...data, openingBalance: opening, movement, closingBalance: closing };
+                return `
+                    <div class="me-report-dla-hero">
+                        <div>
+                            <p class="eyebrow">Director loan account</p>
+                            <h3>${formatCurrency(closing)} closing balance</h3>
+                            <p class="detail-meta">${renderMeReportDlaStatusPill(closing)} ${accountCount ? `· ${accountCount.toLocaleString("en-GB")} account${accountCount === 1 ? "" : "s"} reviewed` : "· no DLA account confirmed yet"} · ${transactionCount.toLocaleString("en-GB")} transaction${transactionCount === 1 ? "" : "s"}.</p>
+                        </div>
+                    </div>
                     <div class="ignition-summary-grid">
-                        ${renderMeReportMetric("Closing DLA", formatCurrency(summary.dlaBalance || 0))}
-                        ${renderMeReportMetric("Status", String(summary.dlaStatus || "amber").toUpperCase())}
-                        ${renderMeReportMetric("DLA credit balance", formatCurrency(summary.directorLoanCreditBalance || 0))}
+                        ${renderMeReportMetric("Opening balance", formatCurrency(opening))}
+                        ${renderMeReportMetric("Month movement", formatCurrency(movement))}
+                        ${renderMeReportMetric("Closing DLA", formatCurrency(closing))}
+                        ${renderMeReportMetric("Status", closing < 0 ? "Overdrawn" : (closing > 0 ? "In credit" : "Nil"))}
+                        ${renderMeReportMetric("s455 exposure", formatCurrency(summary.section455Tax || 0), { detail: closing < 0 ? `${formatPercent(summary.section455Rate || meReportS455Rate(summary))} rate` : "No overdrawn exposure" })}
                         ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
                     </div>
+                    <div class="me-report-dla-layout">
+                        ${renderMeReportDlaMovementChart(chartData)}
+                        ${renderMeReportDlaAccountControls(client, summary, data)}
+                    </div>
+                    ${renderMeReportDlaTransactions(data)}
+                `;
+            }
+
+            function renderMeReportDlaTab(client = {}, summary = {}, options = {}) {
+                const closing = meReportMoneyValue(summary.dlaBalance || 0);
+                const head = options.showHead ? `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Director loan account</p>
+                            <h3>${escapeHTML(client.clientName || "Client")}</h3>
+                            <p class="detail-meta">DLA traffic light is ${escapeHTML(String(summary.dlaStatus || (closing < 0 ? "red" : closing > 0 ? "green" : "amber")).toUpperCase())}.</p>
+                        </div>
+                    </div>
+                ` : "";
+                return `
+                    ${head}
+                    ${renderMeReportDlaDashboard(client, summary)}
                     ${renderMeReportTransferClassificationTable(summary)}
-                    <div class="empty-state"><p class="eyebrow">Risk engine</p><h4>${Number(summary.dlaBalance || 0) < 0 ? "Must review overdrawn DLA" : "DLA does not show an overdrawn balance"}</h4><p>${Number(summary.dlaBalance || 0) < 0 ? "Possible s455 tax and illegal dividend risk have been flagged for accountant review." : "If the DLA is in credit, repayment should be considered before dividends."}</p></div>
+                    ${renderMeReportDlaMitigation(summary)}
+                    <div class="empty-state"><p class="eyebrow">Risk engine</p><h4>${closing < 0 ? "Must review overdrawn DLA" : "DLA does not show an overdrawn balance"}</h4><p>${closing < 0 ? "Possible s455 tax and illegal dividend risk have been flagged for accountant review." : "If the DLA is in credit, repayment should be considered before dividends."}</p></div>
                 `;
             }
 
@@ -26974,7 +27501,7 @@
                         panel = renderMeReportVatTab(client, summary);
                         break;
                     case "dla":
-                        panel = renderMeReportDlaTab(summary);
+                        panel = renderMeReportDlaTab(client, summary);
                         break;
                     case "tax":
                         panel = renderMeReportTaxTab(client, summary, broughtForwardTradingLoss);
@@ -27083,19 +27610,7 @@
                     `;
                 }
                 if (tab === "dla") {
-                    return `
-                        <div class="jashflow-detail-head"><div><p class="eyebrow">Director loan account</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">DLA traffic light is ${escapeHTML(String(summary.dlaStatus || "amber").toUpperCase())}.</p></div></div>
-                        <div class="ignition-summary-grid">
-                            ${renderMeReportMetric("Opening balance", "Awaiting confirmed opening")}
-                            ${renderMeReportMetric("Introduced/expenses", "Review in source report")}
-                            ${renderMeReportMetric("Drawings", "Review in source report")}
-                            ${renderMeReportMetric("Dividends/wages posted", "Review in source report")}
-                            ${renderMeReportMetric("Closing DLA", formatCurrency(summary.dlaBalance || 0))}
-                            ${renderMeReportMetric("Status", String(summary.dlaStatus || "amber").toUpperCase())}
-                        </div>
-                        ${renderMeReportTransferClassificationTable(summary)}
-                        <div class="empty-state"><p class="eyebrow">Risk engine</p><h4>${Number(summary.dlaBalance || 0) < 0 ? "Must review overdrawn DLA" : "DLA does not show an overdrawn balance"}</h4><p>${Number(summary.dlaBalance || 0) < 0 ? "Possible s455 tax and illegal dividend risk have been flagged for accountant review." : "If the DLA is in credit, repayment should be considered before dividends."}</p></div>
-                    `;
+                    return renderMeReportDlaTab(client, summary, { showHead: true });
                 }
                 return `
                     <div class="jashflow-detail-head">
@@ -27388,6 +27903,24 @@
                         toggle();
                     });
                 });
+                document.querySelectorAll("[data-me-dla-account-action]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setMeReportDlaAccountOverride(
+                            button.dataset.meDlaClient || client.id,
+                            button.dataset.meDlaAccountCode || "",
+                            button.dataset.meDlaAccountAction === "include"
+                        );
+                    });
+                });
+                document.querySelectorAll("[data-me-dla-add-account]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        addMeReportDlaAccountOverride(button.dataset.meDlaAddAccount || client.id);
+                    });
+                });
                 document.querySelectorAll("[data-me-transfer-classification]").forEach((select) => {
                     select.addEventListener("change", (event) => {
                         event.preventDefault();
@@ -27647,6 +28180,33 @@
                 const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
                 if (!window.confirm(`Confirm a VAT registration application has been made for ${client?.clientName || "this client"}? Today's date will be saved and VAT threshold warnings will be hidden for future uploads.`)) return;
                 updateMeReportClientPreferences(clientId, { vatRegisteredConfirmed: true }, "VAT application confirmation saved for this client");
+            }
+
+            async function setMeReportDlaAccountOverride(clientId = "", rawCode = "", include = true) {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const code = meReportNormaliseDlaAccountCode(rawCode);
+                if (!code) return showToast("Choose a DLA account first", "error");
+                const next = meReportCopyDlaAccountOverrides(client.directorLoanAccountOverrides);
+                next.include = (next.include || []).filter((item) => item !== code);
+                next.exclude = (next.exclude || []).filter((item) => item !== code);
+                if (include) next.include.push(code);
+                else next.exclude.push(code);
+                await updateMeReportClientPreferences(
+                    client.id,
+                    { directorLoanAccountOverrides: next },
+                    `${code}: ${include ? "saved as DLA account" : "removed from DLA account review"}`
+                );
+            }
+
+            async function addMeReportDlaAccountOverride(clientId = "") {
+                const client = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                if (!client) return showToast("Select an ME Report client first", "error");
+                const code = window.prompt("DLA nominal code or account name to remember for this client", "");
+                if (code === null) return;
+                const normalisedCode = meReportNormaliseDlaAccountCode(code);
+                if (!normalisedCode) return showToast("Enter the DLA nominal code or account name", "error");
+                await setMeReportDlaAccountOverride(client.id, normalisedCode, true);
             }
 
             async function setMeReportTransferClassification(clientId = "", rawKey = "", rawClassification = "") {

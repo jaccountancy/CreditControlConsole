@@ -6517,7 +6517,10 @@ def _me_report_is_vat_registration_exception(item: dict) -> bool:
 
 def _me_report_summary_for_client(summary: dict, client: dict) -> dict:
     prepared = _me_report_apply_transfer_classification_overrides(
-        _me_report_apply_brought_forward_loss(summary if isinstance(summary, dict) else {}, client),
+        _me_report_apply_brought_forward_loss(
+            _me_report_apply_director_loan_account_overrides(summary if isinstance(summary, dict) else {}, client),
+            client,
+        ),
         client,
     )
     if client.get("brought_forward_trading_loss_updated_at"):
@@ -6564,6 +6567,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         dismissed_warning_keys = []
     tax_adjustment_overrides = _normalise_me_report_tax_adjustment_overrides(row.get("tax_adjustment_overrides"))
     transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(row.get("transfer_classification_overrides"))
+    director_loan_account_overrides = _normalise_me_report_director_loan_account_overrides(row.get("director_loan_account_overrides"))
     return {
         "id": str(row["id"]),
         "clientName": row.get("client_name") or "",
@@ -6583,6 +6587,7 @@ def _serialize_me_report_client(row: dict, mappings: list[dict], reviews: list[d
         "dismissedWarningKeys": [str(item) for item in dismissed_warning_keys if str(item).strip()][:200],
         "taxAdjustmentOverrides": tax_adjustment_overrides,
         "transferClassificationOverrides": transfer_classification_overrides,
+        "directorLoanAccountOverrides": director_loan_account_overrides,
         "status": row.get("status") or "active",
         "lastSyncAt": _iso(row.get("last_sync_at")) or "",
         "lastCalculatedAt": _iso(row.get("last_calculated_at")) or "",
@@ -6734,6 +6739,30 @@ def _normalise_me_report_transfer_classification_overrides(value) -> dict:
         if key and classification in ME_REPORT_TRANSFER_CLASSIFICATIONS:
             result[key] = classification
             if len(result) >= 300:
+                break
+    return result
+
+
+def _normalise_me_report_director_loan_account_overrides(value) -> dict:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            value = {}
+    if not isinstance(value, dict):
+        value = {}
+    result = {"include": [], "exclude": []}
+    for direction in ("include", "exclude"):
+        raw_codes = value.get(direction)
+        if not isinstance(raw_codes, list):
+            raw_codes = []
+        seen = set()
+        for raw_code in raw_codes:
+            code = str(raw_code or "").strip().upper()
+            if code and code not in seen:
+                seen.add(code)
+                result[direction].append(code[:80])
+            if len(result[direction]) >= 200:
                 break
     return result
 
@@ -7005,6 +7034,9 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
     transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(client.get("transfer_classification_overrides"))
     if "transferClassificationOverrides" in payload:
         transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(payload.get("transferClassificationOverrides"))
+    director_loan_account_overrides = _normalise_me_report_director_loan_account_overrides(client.get("director_loan_account_overrides"))
+    if "directorLoanAccountOverrides" in payload:
+        director_loan_account_overrides = _normalise_me_report_director_loan_account_overrides(payload.get("directorLoanAccountOverrides"))
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -7017,6 +7049,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     dismissed_warning_keys = %s::jsonb,
                     tax_adjustment_overrides = %s::jsonb,
                     transfer_classification_overrides = %s::jsonb,
+                    director_loan_account_overrides = %s::jsonb,
                     updated_at = %s
                 WHERE id = %s
                   AND user_id = %s
@@ -7029,6 +7062,7 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                     json.dumps(dismissed_warning_keys, default=_json_default),
                     json.dumps(tax_adjustment_overrides, default=_json_default),
                     json.dumps(transfer_classification_overrides, default=_json_default),
+                    json.dumps(director_loan_account_overrides, default=_json_default),
                     now,
                     client_id,
                     user["id"],
@@ -7069,6 +7103,10 @@ def update_me_report_client(user: dict, client_id: str, payload: dict) -> dict:
                 for entry in tax_adjustment_overrides.values()
             ),
             "transfer_classification_override_count": len(transfer_classification_overrides),
+            "director_loan_account_override_count": (
+                len(director_loan_account_overrides.get("include") or [])
+                + len(director_loan_account_overrides.get("exclude") or [])
+            ),
         },
         user["id"],
     )
@@ -7555,7 +7593,7 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
         "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
         "For each Trial Balance account, include the transaction-level rows shown for that account in Review of Transactions or account detail pages; "
-        "this is especially important for Motor Vehicle Expenses. Return an empty transactions array when only the Trial Balance total is shown. "
+        "this is especially important for Motor Vehicle Expenses and Director Loan Account/current account codes. Return an empty transactions array when only the Trial Balance total is shown. "
         "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved "
         "when shown in brackets. Extract dividend transaction dates, descriptions and amounts only where the transaction or account "
         "explicitly says dividend or dividends. Do not treat director drawings, transfers, cash withdrawals, salary, wages, payroll, "
@@ -7707,6 +7745,106 @@ def _me_report_account_transactions(account: dict, limit: int = 80) -> list[dict
             "source": _me_report_source_page("Review of Transactions", source_page),
         })
     return rows[:limit]
+
+
+def _me_report_director_loan_account_code(account: dict) -> str:
+    code = str(account.get("accountCode") or account.get("code") or "").strip().upper()
+    if code:
+        return code[:80]
+    return re.sub(r"[^A-Z0-9]+", " ", str(account.get("accountName") or account.get("name") or "").upper()).strip()[:80]
+
+
+def _me_report_director_loan_account_default_match(account: dict) -> bool:
+    text = _me_report_account_text(account)
+    if not text:
+        return False
+    compact = re.sub(r"[^a-z0-9]+", "", text)
+    if "dividend" in text or "corporation tax" in text:
+        return False
+    return (
+        "dla" in compact
+        or "directorloan" in compact
+        or "directorsloan" in compact
+        or ("director" in text and "loan" in text)
+        or ("director" in text and "current account" in text)
+        or ("amounts due" in text and "director" in text)
+        or ("due to director" in text)
+        or ("due from director" in text)
+    )
+
+
+def _me_report_director_loan_account_balance(account: dict) -> Decimal:
+    return _money(-_me_report_account_amount(account))
+
+
+def _me_report_director_loan_account_data(accounts: list[dict], overrides: dict) -> dict:
+    normalised_overrides = _normalise_me_report_director_loan_account_overrides(overrides)
+    include_codes = set(normalised_overrides.get("include") or [])
+    exclude_codes = set(normalised_overrides.get("exclude") or [])
+    active_rows = []
+    candidate_rows = []
+    all_transactions = []
+    for account in accounts or []:
+        if not isinstance(account, dict):
+            continue
+        code = _me_report_director_loan_account_code(account)
+        if not code:
+            continue
+        default_match = _me_report_director_loan_account_default_match(account)
+        manual_include = code in include_codes
+        manual_exclude = code in exclude_codes
+        is_balance_sheet = _me_report_account_is_balance_sheet(account)
+        transactions = _me_report_account_transactions(account, limit=160)
+        movement = _money(sum(_money(row.get("amount")) for row in transactions))
+        closing_balance = _me_report_director_loan_account_balance(account)
+        opening_balance = _money(closing_balance - movement) if transactions else closing_balance
+        included = (default_match or manual_include) and not manual_exclude
+        account_row = {
+            "code": code,
+            "accountCode": str(account.get("accountCode") or ""),
+            "accountName": str(account.get("accountName") or account.get("name") or "Director loan account"),
+            "accountType": str(account.get("accountType") or ""),
+            "openingBalance": float(opening_balance),
+            "movement": float(_money(movement)),
+            "closingBalance": float(closing_balance),
+            "status": "overdrawn" if closing_balance < 0 else ("inCredit" if closing_balance > 0 else "nil"),
+            "transactionCount": len(transactions),
+            "transactions": transactions,
+            "source": _me_report_source_page("Trial Balance", account.get("sourcePage")),
+            "defaultIncluded": default_match,
+            "manualIncluded": manual_include,
+            "manualExcluded": manual_exclude,
+            "included": included,
+        }
+        if included:
+            active_rows.append(account_row)
+            for transaction in transactions:
+                all_transactions.append({
+                    **transaction,
+                    "accountCode": code,
+                    "accountName": account_row["accountName"],
+                })
+        if default_match or manual_include or manual_exclude or (is_balance_sheet and any(term in _me_report_account_text(account) for term in ("director", "loan", "current account", "shareholder"))):
+            candidate_rows.append(account_row)
+
+    opening_total = _money(sum(_money(row.get("openingBalance")) for row in active_rows))
+    movement_total = _money(sum(_money(row.get("movement")) for row in active_rows))
+    closing_total = _money(sum(_money(row.get("closingBalance")) for row in active_rows))
+    all_transactions = sorted(
+        all_transactions,
+        key=lambda row: (str(row.get("date") or ""), str(row.get("description") or "")),
+    )
+    return {
+        "accounts": active_rows[:40],
+        "candidates": candidate_rows[:160],
+        "transactions": all_transactions[:240],
+        "openingBalance": opening_total,
+        "movement": movement_total,
+        "closingBalance": closing_total,
+        "accountCount": len(active_rows),
+        "transactionCount": len(all_transactions),
+        "overrides": normalised_overrides,
+    }
 
 
 def _me_report_account_amount(account: dict) -> Decimal:
@@ -8265,6 +8403,35 @@ def _me_report_summary_rolling_turnover(summary: dict) -> Decimal:
     return _money(monthly_sales * Decimal(12)) if monthly_sales else Decimal("0.00")
 
 
+def _me_report_apply_director_loan_account_overrides(summary: dict, client: dict) -> dict:
+    if not isinstance(summary, dict):
+        return {}
+    result = dict(summary)
+    overrides = _normalise_me_report_director_loan_account_overrides(
+        client.get("director_loan_account_overrides") or result.get("directorLoanAccountOverrides")
+    )
+    accounts = [item for item in result.get("trialBalanceAccounts") or [] if isinstance(item, dict)]
+    account_data = _me_report_director_loan_account_data(accounts, overrides)
+    has_override = bool(overrides.get("include") or overrides.get("exclude"))
+    result.update({
+        "directorLoanAccountOverrides": overrides,
+        "directorLoanAccountOverrideClientId": str(client.get("id") or ""),
+        "directorLoanAccounts": account_data["accounts"],
+        "directorLoanAccountCandidates": account_data["candidates"],
+        "directorLoanAccountTransactions": account_data["transactions"],
+        "dlaOpeningBalance": float(account_data["openingBalance"]),
+        "dlaMovement": float(account_data["movement"]),
+        "dlaAccountCount": account_data["accountCount"],
+        "dlaTransactionCount": account_data["transactionCount"],
+    })
+    if account_data["accountCount"] or has_override:
+        closing_balance = _money(account_data["closingBalance"])
+        result["dlaBalance"] = float(closing_balance)
+        result["directorLoanCreditBalance"] = float(max(closing_balance, Decimal("0.00")))
+        result["dlaStatus"] = "red" if closing_balance < 0 else ("amber" if closing_balance == 0 else "green")
+    return result
+
+
 def _me_report_apply_brought_forward_loss(summary: dict, client: dict) -> dict:
     if not isinstance(summary, dict):
         return {}
@@ -8369,6 +8536,8 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     dividend_transactions = [item for item in extracted.get("dividendTransactions") or [] if isinstance(item, dict)]
     director_transfer_transactions = [item for item in extracted.get("directorTransferTransactions") or [] if isinstance(item, dict)]
     transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(client.get("transfer_classification_overrides"))
+    director_loan_account_overrides = _normalise_me_report_director_loan_account_overrides(client.get("director_loan_account_overrides"))
+    director_loan_account_data = _me_report_director_loan_account_data(trial_balance_accounts, director_loan_account_overrides)
     director_transfer_rows = _me_report_classified_director_transfers(
         dividend_transactions,
         director_transfer_transactions,
@@ -8539,7 +8708,12 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     trading_loss_relief_used = min(brought_forward_trading_loss, taxable_profit_before_losses)
     estimated_taxable_profit = max(Decimal("0.00"), _money(taxable_profit_before_losses - trading_loss_relief_used))
     estimated_ct, effective_rate, ct_rate_band, corporation_tax_breakdown = _me_report_corporation_tax_detail(estimated_taxable_profit)
-    dla_balance = _money(extracted.get("dlaBalance"))
+    has_director_loan_account_override = bool(director_loan_account_overrides.get("include") or director_loan_account_overrides.get("exclude"))
+    dla_balance = (
+        _money(director_loan_account_data["closingBalance"])
+        if director_loan_account_data["accountCount"] or has_director_loan_account_override
+        else _money(extracted.get("dlaBalance"))
+    )
     section455_rate = _me_report_s455_rate(period_end)
     section455_tax = _money(max(-dla_balance, Decimal("0.00")) * section455_rate)
     total_tax_exposure = _money(estimated_ct + section455_tax)
@@ -8806,9 +8980,18 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "wageTransferTransactions": wage_transfer_transactions[:120],
         "transferClassificationOverrides": transfer_classification_overrides,
         "transferClassificationOverrideClientId": str(client.get("id") or ""),
+        "directorLoanAccountOverrides": director_loan_account_overrides,
+        "directorLoanAccountOverrideClientId": str(client.get("id") or ""),
+        "directorLoanAccounts": director_loan_account_data["accounts"],
+        "directorLoanAccountCandidates": director_loan_account_data["candidates"],
+        "directorLoanAccountTransactions": director_loan_account_data["transactions"],
+        "dlaOpeningBalance": float(director_loan_account_data["openingBalance"]),
+        "dlaMovement": float(director_loan_account_data["movement"]),
+        "dlaAccountCount": director_loan_account_data["accountCount"],
+        "dlaTransactionCount": director_loan_account_data["transactionCount"],
         "periodEndDistributableReserves": float(period_end_distributable_reserves),
         "dividendCapacity": float(dividend_capacity),
-        "directorLoanCreditBalance": float(max(_money(extracted.get("dlaBalance")), Decimal("0.00"))),
+        "directorLoanCreditBalance": float(max(dla_balance, Decimal("0.00"))),
         "totalPotentialExtraction": extraction_summary["totalPotentialExtraction"],
         "extractionWaterfall": extraction_summary["waterfall"],
         "dlaMitigationSchedule": extraction_summary["mitigationSchedule"],
