@@ -24116,7 +24116,8 @@
             }
 
             function meReportVisibleExceptions(client = {}) {
-                return (client?.exceptions || []).filter((item) => !meReportExceptionSuppressed(client, item));
+                const exceptions = Array.isArray(client?.exceptions) ? client.exceptions : [];
+                return exceptions.filter((item) => !meReportExceptionSuppressed(client, item));
             }
 
             function meReportOpenReviewCount(client) {
@@ -24351,7 +24352,7 @@
                 if (activeView !== "me-report" || !meReportWorkspaceOpen || activeMeReportTab !== "report-insights") return null;
                 const client = selectedMeReportClient();
                 if (!client) return null;
-                const submissions = client.submissions || [];
+                const submissions = meReportClientSubmissions(client);
                 const submission = submissions.find((item) => item.id === selectedMeReportSubmissionId) || submissions.find(meReportSubmissionProcessed) || submissions[0];
                 if (!submission) return null;
                 const summary = submission?.calculation || client.summary || {};
@@ -24575,7 +24576,7 @@
                 const workspaceClientArchived = workspaceClient ? meReportClientStatus(workspaceClient) === "archived" : false;
                 const bulkSendButton = document.getElementById("bulkSendMeReportsButton");
                 const readyReportCount = activeClients.reduce((count, client) => (
-                    count + (client.reports || []).filter((report) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail)).length
+                    count + meReportClientReports(client).filter((report) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail)).length
                 ), 0);
                 if (bulkSendButton) {
                     bulkSendButton.disabled = meReportEmailSending || readyReportCount === 0;
@@ -24783,15 +24784,20 @@
             }
 
             function meReportTabHint(client, key) {
-                const summary = meReportAdjustedSummary(client, client.summary || {});
+                let summary = client?.summary || {};
+                try {
+                    summary = meReportAdjustedSummary(client, summary);
+                } catch (error) {
+                    console.warn("Unable to calculate ME Report tab hint", error);
+                }
                 if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Upload overview report";
-                if (key === "submission-history") return `${(client.submissions || []).length} uploaded`;
+                if (key === "submission-history") return `${meReportClientSubmissions(client).length} uploaded`;
                 if (key === "tax") return formatCurrency(summary.estimatedCorporationTax || 0);
                 if (key === "dividends") return formatCurrency(summary.dividendCapacity || 0);
-                if (key === "dla") return `${(summary.dlaStatus || "amber").toUpperCase()} · ${formatCurrency(summary.dlaBalance || 0)}`;
+                if (key === "dla") return `${String(summary.dlaStatus || "amber").toUpperCase()} · ${formatCurrency(summary.dlaBalance || 0)}`;
                 if (key === "alerts") return `${meReportOpenReviewCount(client)} open`;
-                if (key === "mappings") return `${(client.mappings || []).length} accounts`;
-                if (key === "reports") return `${(client.reports || []).length} generated`;
+                if (key === "mappings") return `${(Array.isArray(client.mappings) ? client.mappings : []).length} accounts`;
+                if (key === "reports") return `${meReportClientReports(client).length} generated`;
                 return "";
             }
 
@@ -25220,7 +25226,7 @@
             }
 
             function meReportBaseSummaryForClient(client = {}) {
-                const selectedSubmission = (client.submissions || []).find((item) => item.id === selectedMeReportSubmissionId);
+                const selectedSubmission = meReportClientSubmissions(client).find((item) => item.id === selectedMeReportSubmissionId);
                 if (activeMeReportTab === "report-insights" && selectedSubmission?.calculation) return selectedSubmission.calculation;
                 return client.summary || {};
             }
@@ -26154,7 +26160,7 @@
                 if (tab === "reports") return renderMeReportReports(client);
                 if (tab === "submission-history") return renderMeReportSubmissions(client);
                 if (tab === "report-insights") {
-                    const submissions = client.submissions || [];
+                    const submissions = meReportClientSubmissions(client);
                     const submission = submissions.find((item) => item.id === selectedMeReportSubmissionId) || submissions.find(meReportSubmissionProcessed) || submissions[0];
                     if (!submission) return renderMeReportSubmissions(client);
                     return renderMeReportSubmissionInsightPage(client, submission);
@@ -26246,7 +26252,7 @@
             }
 
             function renderMeReportSubmissions(client) {
-                const submissions = client.submissions || [];
+                const submissions = meReportClientSubmissions(client);
                 const grouped = groupedMeReportSubmissions(submissions);
                 return `
                     <div class="jashflow-detail-head me-report-report-toolbar">
@@ -26304,7 +26310,7 @@
             }
 
             function renderMeReportMappings(client) {
-                const mappings = client.mappings || [];
+                const mappings = Array.isArray(client.mappings) ? client.mappings : [];
                 if (!mappings.length) return '<div class="empty-state"><p class="eyebrow">Account mappings</p><h4>No account treatment review yet</h4><p>Upload the overview report so Jenius can extract the Trial Balance and propose account treatments for this client.</p></div>';
                 return `
                     <div class="jashflow-detail-head"><div><p class="eyebrow">AI/rules account treatment</p><h3>${mappings.length.toLocaleString("en-GB")} accounts</h3><p class="detail-meta">Approve, amend or mark accounts as needing review. Decisions are saved for this client.</p></div></div>
@@ -26346,7 +26352,7 @@
             }
 
             function renderMeReportReports(client) {
-                const reports = client.reports || [];
+                const reports = meReportClientReports(client);
                 return `
                     <div class="jashflow-detail-head"><div><p class="eyebrow">Reports</p><h3>${reports.length.toLocaleString("en-GB")} generated report${reports.length === 1 ? "" : "s"}</h3><p class="detail-meta">Generate creates a branded saved report record. Staff can open, review, approve and send from the saved output.</p></div></div>
                     <div class="bank-flag-list">
@@ -26381,7 +26387,7 @@
             }
 
             function showMeReportSubmissionPreview(client, submissionId) {
-                const submission = (client.submissions || []).find((item) => item.id === submissionId);
+                const submission = meReportClientSubmissions(client).find((item) => item.id === submissionId);
                 if (!submission) return showToast("Unable to find that uploaded report preview", "error");
                 const preview = document.getElementById("meReportSubmissionPreview");
                 if (!preview) return;
@@ -26738,7 +26744,7 @@
                 if (!client) return showToast("Select an ME Report client first", "error");
                 const config = meReportTaxAdjustmentStepDefinitions().find((item) => item.key === stepKey);
                 if (!config) return showToast("This CT line cannot be edited yet", "error");
-                const selectedSubmission = (client.submissions || []).find((item) => item.id === selectedMeReportSubmissionId);
+                const selectedSubmission = meReportClientSubmissions(client).find((item) => item.id === selectedMeReportSubmissionId);
                 const baseSummary = activeMeReportTab === "report-insights" && selectedSubmission?.calculation
                     ? selectedSubmission.calculation
                     : (client.summary || {});
@@ -27183,7 +27189,7 @@
             }
 
             async function bulkSendReadyMeReports() {
-                const reportRows = (meReportData.clients || []).flatMap((client) => (client.reports || []).map((report) => ({ client, report })));
+                const reportRows = (meReportData.clients || []).flatMap((client) => meReportClientReports(client).map((report) => ({ client, report })));
                 const ready = reportRows.filter(({ client, report }) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail));
                 if (!ready.length) return showToast("No generated ME Reports are ready to send", "error");
                 if (!window.confirm(`Send ${ready.length} generated ME Report email${ready.length === 1 ? "" : "s"} now? Each email will include the required BCC from settings.`)) return;
