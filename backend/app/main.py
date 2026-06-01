@@ -1300,16 +1300,14 @@ async def api_upload_me_report_submission(
     user: dict = Depends(require_panel_user),
 ):
     content = await file.read()
-    return {
-        "status": "ok",
-        "meReport": await upload_me_report_submission_pdf(
-            user,
-            client_id,
-            file.filename or "management-accounts.pdf",
-            file.content_type or "application/pdf",
-            content,
-        ),
-    }
+    _, payload = await upload_me_report_submission_pdf(
+        user,
+        client_id,
+        file.filename or "management-accounts.pdf",
+        file.content_type or "application/pdf",
+        content,
+    )
+    return {"status": "ok", "meReport": payload}
 
 
 @app.delete("/api/me-report/submissions/{submission_id}")

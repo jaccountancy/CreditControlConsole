@@ -8543,7 +8543,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     }
 
 
-async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: str, content_type: str, file_bytes: bytes) -> tuple[str, dict]:
     client = _me_report_client_row(user, client_id)
     if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF management accounts file.")
@@ -8653,7 +8653,7 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
         {"client_id": client_id, "filename": filename, "estimated_ct": str(estimated_ct), "dividend_capacity": str(dividend_capacity)},
         user["id"],
     )
-    return me_report_payload(user)
+    return str(submission_id), me_report_payload(user)
 
 
 def delete_me_report_submission(user: dict, submission_id: str) -> dict:
@@ -10558,7 +10558,7 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                 }
             client_id = _me_report_client_id_for_contact(user, contact)
             try:
-                await upload_me_report_submission_pdf(user, client_id, filename, file_item.get("content_type") or "application/pdf", content)
+                submission_id, _ = await upload_me_report_submission_pdf(user, client_id, filename, file_item.get("content_type") or "application/pdf", content)
                 report_result = generate_me_report(user, client_id, {})
                 return {
                     "index": file_index,
@@ -10566,6 +10566,8 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                     "status": "processed",
                     "detectedClientName": detected_name,
                     "clientId": client_id,
+                    "submissionId": submission_id,
+                    "xeroContactId": contact.get("xeroContactId") or "",
                     "reportId": (report_result.get("report") or {}).get("id") or "",
                     "clientName": contact.get("name") or detected_name,
                     "candidateNames": candidate_names[:8],

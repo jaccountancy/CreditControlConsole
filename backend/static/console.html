@@ -10271,6 +10271,131 @@
                 text-transform: none;
                 letter-spacing: 0;
             }
+            .me-report-bulk-match-row.is-confirmed {
+                background: var(--green-soft);
+                border-color: rgba(39, 176, 95, 0.32);
+            }
+            .me-report-bulk-match-row.is-delete {
+                background: var(--red-soft);
+                border-color: rgba(255, 83, 83, 0.32);
+            }
+            .me-report-bulk-match-row.is-rematch,
+            .me-report-bulk-match-row.is-needs-review {
+                background: var(--orange-soft);
+                border-color: rgba(255, 159, 47, 0.34);
+            }
+            .me-report-bulk-match-row.is-failed {
+                background: var(--red-soft);
+                border-color: rgba(255, 83, 83, 0.28);
+            }
+            .me-report-bulk-match-right {
+                display: grid;
+                gap: 10px;
+                align-content: end;
+            }
+            .me-report-bulk-match-meta {
+                display: grid;
+                gap: 4px;
+                min-width: 0;
+            }
+            .me-report-bulk-match-status {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .me-report-bulk-match-status.is-success { color: var(--green); }
+            .me-report-bulk-match-status.is-danger { color: var(--red); }
+            .me-report-bulk-match-status.is-warning { color: var(--orange); }
+            .me-report-bulk-match-meta strong {
+                font-size: 0.94rem;
+                font-weight: 900;
+                overflow-wrap: anywhere;
+            }
+            .me-report-bulk-match-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+            }
+            .me-report-bulk-match-actions button {
+                appearance: none;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 8px 14px;
+                background: #fff;
+                color: var(--ink);
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 800;
+                cursor: pointer;
+                transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+            }
+            .me-report-bulk-match-actions button:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+            .me-report-bulk-match-actions button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+            .me-report-bulk-match-actions .me-report-bulk-confirm {
+                width: 40px;
+                height: 40px;
+                padding: 0;
+                border-radius: 50%;
+                border-color: rgba(39, 176, 95, 0.4);
+                background: var(--green-soft);
+                color: var(--green);
+                font-size: 1.05rem;
+                font-weight: 950;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .me-report-bulk-match-actions .me-report-bulk-confirm:hover {
+                background: var(--green);
+                color: #fff;
+                border-color: var(--green);
+            }
+            .me-report-bulk-match-actions .me-report-bulk-reject {
+                width: 40px;
+                height: 40px;
+                padding: 0;
+                border-radius: 50%;
+                border-color: rgba(255, 83, 83, 0.4);
+                background: var(--red-soft);
+                color: var(--red);
+                font-size: 1.05rem;
+                font-weight: 950;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .me-report-bulk-match-actions .me-report-bulk-reject:hover {
+                background: var(--red);
+                color: #fff;
+                border-color: var(--red);
+            }
+            .me-report-bulk-match-actions .me-report-bulk-action-delete {
+                color: var(--red);
+                border-color: rgba(255, 83, 83, 0.4);
+            }
+            .me-report-bulk-match-actions .me-report-bulk-action-delete:hover {
+                background: var(--red);
+                color: #fff;
+                border-color: var(--red);
+            }
+            .me-report-bulk-match-actions .me-report-bulk-action-rematch {
+                color: var(--blue);
+                border-color: rgba(29, 103, 242, 0.4);
+            }
+            .me-report-bulk-match-actions .me-report-bulk-action-rematch:hover {
+                background: var(--blue);
+                color: #fff;
+                border-color: var(--blue);
+            }
+            .me-report-bulk-match-unavailable {
+                margin: 0;
+                color: var(--red);
+                font-size: 0.78rem;
+                font-weight: 800;
+            }
             @media (max-width: 780px) {
                 .me-report-bulk-match-row {
                     grid-template-columns: 1fr;
@@ -13204,16 +13329,16 @@
                         <form class="stack-form bank-account-dialog-form" id="meReportBulkMatchForm" novalidate>
                             <div class="developer-log-head">
                                 <div>
-                                    <h3 id="meReportBulkMatchTitle">Match ME Report clients</h3>
-                                    <p id="meReportBulkMatchSummary">Choose the Xero contact for each PDF that could not be matched from page one.</p>
+                                    <h3 id="meReportBulkMatchTitle">Review ME Report matches</h3>
+                                    <p id="meReportBulkMatchSummary">Tick to confirm each auto-matched PDF, or reject to delete it or pick a different Xero contact.</p>
                                 </div>
                                 <div class="developer-log-actions">
                                     <button class="ghost-button" id="closeMeReportBulkMatchPanelButton" type="button">Close</button>
-                                    <button class="primary-button" id="saveMeReportBulkMatchButton" type="submit">Process matches</button>
+                                    <button class="primary-button" id="saveMeReportBulkMatchButton" type="submit">Apply changes</button>
                                 </div>
                             </div>
                             <div class="me-report-bulk-match-body">
-                                <p class="me-report-bulk-match-help">The client name should be on the first page. If the parser cannot match it to Xero, select the correct contact here and the same PDF will be processed into that workspace.</p>
+                                <p class="me-report-bulk-match-help">Each uploaded PDF was matched automatically from page one. Confirm with the tick, or reject with the cross to delete the upload or pick a different Xero contact.</p>
                                 <div class="me-report-bulk-match-list" id="meReportBulkMatchList"></div>
                             </div>
                         </form>
@@ -24257,6 +24382,10 @@
                 };
             }
 
+            function meReportObjectRows(items) {
+                return Array.isArray(items) ? items.filter((item) => item && typeof item === "object") : [];
+            }
+
             function meReportClientStatus(client) {
                 return String(client?.status || "active").toLowerCase() === "archived" ? "archived" : "active";
             }
@@ -24487,8 +24616,7 @@
                                     <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(email)}</small></div>
                                 </div>
                             </td>
-                            <td><strong>${escapeHTML(client.bookkeepingFrequency || "Monthly")}</strong><small><span class="me-report-client-status is-${clientStatus}">${escapeHTML(clientStatus)}</span></small></td>
-                            <td><span class="me-report-table-light">${meReportTrafficLightIcon(light)}${escapeHTML(lightLabel)}</span></td>
+                            <td><span class="me-report-table-light">${meReportTrafficLightIcon(light)}${escapeHTML(lightLabel)}</span><small><span class="me-report-client-status is-${clientStatus}">${escapeHTML(clientStatus)}</span></small></td>
                             <td><strong>${openReviewCount.toLocaleString("en-GB")}</strong><small>open review point${openReviewCount === 1 ? "" : "s"}</small></td>
                             <td><strong>${submissions.length.toLocaleString("en-GB")}</strong><small>${latestSubmissionTime ? `Latest ${escapeHTML(formatDate(new Date(latestSubmissionTime)))}` : "No submissions"}</small></td>
                             <td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${readyReportCount ? `${readyReportCount.toLocaleString("en-GB")} ready to send` : "Latest activity"}</small></td>
@@ -24921,7 +25049,6 @@
                         <thead>
                             <tr>
                                 <th>${meReportClientSortButton("client", "Client")}</th>
-                                <th>${meReportClientSortButton("frequency", "Frequency")}</th>
                                 <th>${meReportClientSortButton("health", "Health")}</th>
                                 <th>${meReportClientSortButton("review", "Review")}</th>
                                 <th>${meReportClientSortButton("submissions", "Submissions")}</th>
@@ -25079,9 +25206,10 @@
             }
 
             function meReportTaxBreakdown(summary = {}) {
-                const detail = summary.corporationTaxBreakdown || {};
-                const lines = Array.isArray(detail.lines) && detail.lines.length
-                    ? detail.lines
+                const detail = summary.corporationTaxBreakdown && typeof summary.corporationTaxBreakdown === "object" ? summary.corporationTaxBreakdown : {};
+                const sourceLines = meReportObjectRows(detail.lines);
+                const lines = sourceLines.length
+                    ? sourceLines
                     : [{
                         label: summary.corporationTaxRateBand || "Corporation tax estimate",
                         amount: summary.estimatedTaxableProfit || 0,
@@ -25197,7 +25325,7 @@
             }
 
             function meReportBreakdownRowsFromAccounts(summary = {}, predicate) {
-                const accounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
+                const accounts = meReportObjectRows(summary.trialBalanceAccounts);
                 return accounts.filter((account) => account && predicate(account)).map((account) => ({
                     code: account.accountCode || "",
                     label: account.accountName || account.accountCode || "Nominal code",
@@ -25327,7 +25455,7 @@
             }
 
             function meReportTaxAccountRows(summary = {}, config = {}, overrides = {}) {
-                const accounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
+                const accounts = meReportObjectRows(summary.trialBalanceAccounts);
                 const stepOverrides = overrides[config.key] || {};
                 const addCodes = new Set(stepOverrides.add || []);
                 const removeCodes = new Set(stepOverrides.remove || []);
@@ -25360,7 +25488,7 @@
 
             function meReportFindTaxAccount(summary = {}, code = "") {
                 const normalised = meReportNormaliseTaxCode(code);
-                return (Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [])
+                return meReportObjectRows(summary.trialBalanceAccounts)
                     .find((account) => meReportNormaliseTaxCode(account.accountCode) === normalised) || null;
             }
 
@@ -25423,7 +25551,8 @@
             }
 
             function meReportUpdateTaxCalculationStepsForLoss(summary = {}, taxableBeforeLosses = 0, lossReliefUsed = 0, taxDetail = {}) {
-                const rows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
+                const sourceRows = meReportObjectRows(summary.taxCalculationSteps);
+                const rows = sourceRows.length ? sourceRows : meReportFallbackTaxSteps(summary);
                 const lossAvailable = Number(summary.broughtForwardTradingLoss || 0);
                 const taxableAfterLosses = Math.max(0, meReportMoneyValue(taxableBeforeLosses - lossReliefUsed));
                 const lossStep = {
@@ -25492,9 +25621,9 @@
             function meReportApplyBroughtForwardTradingLoss(summary = {}, client = {}, overrideLoss = null) {
                 const result = meReportClonePlain(summary);
                 const broughtForwardLoss = Math.max(0, meReportMoneyValue(overrideLoss ?? client.broughtForwardTradingLoss ?? result.broughtForwardTradingLoss ?? 0));
-                const taxableBeforeLosses = meReportTaxableProfitBeforeLosses(result);
-                const tradingLossReliefUsed = Math.min(broughtForwardLoss, taxableBeforeLosses);
-                const taxableAfterLosses = Math.max(0, meReportMoneyValue(taxableBeforeLosses - tradingLossReliefUsed));
+                const taxableProfitBeforeLosses = meReportTaxableProfitBeforeLosses(result);
+                const tradingLossReliefUsed = Math.min(broughtForwardLoss, taxableProfitBeforeLosses);
+                const taxableAfterLosses = Math.max(0, meReportMoneyValue(taxableProfitBeforeLosses - tradingLossReliefUsed));
                 const taxDetail = meReportCorporationTaxDetailFromProfit(taxableAfterLosses);
                 const estimatedCt = taxDetail.tax;
                 const currentYearProfit = meReportMoneyValue(result.yearToDateProfit || result.accountingProfit || 0);
@@ -25518,7 +25647,7 @@
                     currentYearEarnings,
                     periodEndDistributableReserves: periodEndReserves,
                     dividendCapacity: Math.max(0, periodEndReserves),
-                    taxCalculationSteps: meReportUpdateTaxCalculationStepsForLoss({ ...result, broughtForwardTradingLoss: broughtForwardLoss }, taxableBeforeLosses, tradingLossReliefUsed, taxDetail)
+                    taxCalculationSteps: meReportUpdateTaxCalculationStepsForLoss({ ...result, broughtForwardTradingLoss: broughtForwardLoss }, taxableProfitBeforeLosses, tradingLossReliefUsed, taxDetail)
                 };
             }
 
@@ -25542,7 +25671,7 @@
             }
 
             function meReportPreservedTaxAddBackRows(rows = []) {
-                return rows.filter((row) => {
+                return meReportObjectRows(rows).filter((row) => {
                     if (!row || meReportIsBaseTaxStep(row)) return false;
                     const label = String(row.label || "").toLowerCase();
                     const treatment = String(row.treatment || "").toLowerCase();
@@ -25552,7 +25681,7 @@
             }
 
             function meReportExistingCapitalAllowance(summary = {}, rows = []) {
-                const rowTotal = rows
+                const rowTotal = meReportObjectRows(rows)
                     .filter((row) => String(row.label || "").toLowerCase().includes("capital allowance"))
                     .reduce((sum, row) => sum + Number(row.amount || 0), 0);
                 const fallback = Number(summary.capitalAllowances || 0);
@@ -25560,7 +25689,8 @@
             }
 
             function meReportApplyTaxAdjustmentOverrides(summary = {}, client = {}, overrides = {}) {
-                const rows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
+                const sourceRows = meReportObjectRows(summary.taxCalculationSteps);
+                const rows = sourceRows.length ? sourceRows : meReportFallbackTaxSteps(summary);
                 const accountingProfit = meReportMoneyValue(summary.accountingProfit || summary.yearToDateProfit || 0);
                 const stepRows = meReportTaxAdjustmentStepDefinitions().map((config) => {
                     const breakdown = meReportTaxAccountRows(summary, config, overrides);
@@ -25723,7 +25853,7 @@
                         { label: "Estimated corporation tax provision", amount: -Math.abs(estimatedCt), source: "CT estimate", treatment: "Deduct" }
                     ];
                     if (label.includes("dividends declared")) {
-                        const transactions = Array.isArray(summary.dividendTransactions) ? summary.dividendTransactions : [];
+                        const transactions = meReportObjectRows(summary.dividendTransactions);
                         if (transactions.length) {
                             return transactions.map((transaction) => ({
                                 label: [transaction.date, transaction.description || "Dividend"].filter(Boolean).join(" - "),
@@ -25745,7 +25875,7 @@
             }
 
             function meReportCalculationBreakdown(row = {}, title = "", allRows = [], summary = {}) {
-                const explicit = Array.isArray(row.breakdown) ? row.breakdown.filter(Boolean) : [];
+                const explicit = meReportObjectRows(row.breakdown);
                 return explicit.length ? explicit : meReportFallbackStepBreakdown(row, title, allRows, summary);
             }
 
@@ -25816,7 +25946,7 @@
             }
 
             function renderMeReportCalculationTable(title, rows, summary = {}) {
-                const safeRows = Array.isArray(rows) ? rows : [];
+                const safeRows = meReportObjectRows(rows);
                 return `
                     <section>
                         <p class="eyebrow">${escapeHTML(title)}</p>
@@ -25847,17 +25977,18 @@
             }
 
             function renderMeReportAiHelp(summary = {}, mode = "all") {
-                const taxRows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
-                const dividendRows = Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary);
-                const balanceRows = Array.isArray(summary.balanceSheetChecks) ? summary.balanceSheetChecks : [];
-                const fixedAssetRows = Array.isArray(summary.fixedAssetChecks)
-                    ? summary.fixedAssetChecks.map((row) => ({
+                const sourceTaxRows = meReportObjectRows(summary.taxCalculationSteps);
+                const sourceDividendRows = meReportObjectRows(summary.dividendCalculationSteps);
+                const taxRows = sourceTaxRows.length ? sourceTaxRows : meReportFallbackTaxSteps(summary);
+                const dividendRows = sourceDividendRows.length ? sourceDividendRows : meReportFallbackDividendSteps(summary);
+                const balanceRows = meReportObjectRows(summary.balanceSheetChecks);
+                const fixedAssetRows = meReportObjectRows(summary.fixedAssetChecks)
+                    .map((row) => ({
                         label: row.assetClass || "Fixed assets",
                         amount: row.difference || 0,
                         treatment: row.treatment || "Review",
                         source: row.source || "Fixed Asset Reconciliation"
-                    }))
-                    : [];
+                    }));
                 const sourcePages = summary.sourcePagesReviewed || {};
                 const sections = Array.isArray(sourcePages.sectionsReviewed) && sourcePages.sectionsReviewed.length
                     ? sourcePages.sectionsReviewed.join(", ")
@@ -25980,8 +26111,8 @@
             }
 
             function meReportQualityItems(summary = {}) {
-                const chartIssues = Array.isArray(summary.chartOfAccountsIssues) ? summary.chartOfAccountsIssues : [];
-                const duplicates = Array.isArray(summary.duplicateTransactionRisks) ? summary.duplicateTransactionRisks : [];
+                const chartIssues = meReportObjectRows(summary.chartOfAccountsIssues);
+                const duplicates = meReportObjectRows(summary.duplicateTransactionRisks);
                 const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
                 return [
                     ...chartIssues.map((item) => ({
@@ -26048,8 +26179,10 @@
             }
 
             function renderMeReportAiCheckedTab(summary = {}) {
-                const taxRows = Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary);
-                const dividendRows = Array.isArray(summary.dividendCalculationSteps) && summary.dividendCalculationSteps.length ? summary.dividendCalculationSteps : meReportFallbackDividendSteps(summary);
+                const sourceTaxRows = meReportObjectRows(summary.taxCalculationSteps);
+                const sourceDividendRows = meReportObjectRows(summary.dividendCalculationSteps);
+                const taxRows = sourceTaxRows.length ? sourceTaxRows : meReportFallbackTaxSteps(summary);
+                const dividendRows = sourceDividendRows.length ? sourceDividendRows : meReportFallbackDividendSteps(summary);
                 const sourcePages = summary.sourcePagesReviewed || {};
                 const sections = Array.isArray(sourcePages.sectionsReviewed) && sourcePages.sectionsReviewed.length
                     ? sourcePages.sectionsReviewed.join(", ")
@@ -26070,9 +26203,9 @@
             }
 
             function renderMeReportChartOfAccountsTab(client = {}, summary = {}) {
-                const trialBalanceAccounts = Array.isArray(summary.trialBalanceAccounts) ? summary.trialBalanceAccounts : [];
-                const balanceRows = Array.isArray(summary.balanceSheetChecks) ? summary.balanceSheetChecks : [];
-                const mappings = Array.isArray(client.mappings) ? client.mappings : [];
+                const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
+                const balanceRows = meReportObjectRows(summary.balanceSheetChecks);
+                const mappings = meReportObjectRows(client.mappings);
                 const rows = trialBalanceAccounts.length
                     ? trialBalanceAccounts.map((account) => ({
                         code: account.accountCode,
@@ -26124,7 +26257,7 @@
             }
 
             function renderMeReportVatRollingSchedule(summary = {}) {
-                const rows = Array.isArray(summary.rollingVatTurnoverMonths) ? summary.rollingVatTurnoverMonths : [];
+                const rows = meReportObjectRows(summary.rollingVatTurnoverMonths);
                 if (!rows.length) return "";
                 const max = Math.max(1, ...rows.map((row) => Math.abs(Number(row.turnover || 0))));
                 const total = rows.reduce((sum, row) => sum + Number(row.turnover || 0), 0);
@@ -26212,7 +26345,7 @@
             }
 
             function renderMeReportWaterfall(title, rows = []) {
-                const safeRows = Array.isArray(rows) ? rows : [];
+                const safeRows = meReportObjectRows(rows);
                 if (!safeRows.length) return "";
                 return `<article class="me-report-insight-card">
                     <p class="eyebrow">${escapeHTML(title)}</p>
@@ -26228,7 +26361,7 @@
             }
 
             function renderMeReportDlaMitigation(summary = {}) {
-                const rows = Array.isArray(summary.dlaMitigationSchedule) ? summary.dlaMitigationSchedule : [];
+                const rows = meReportObjectRows(summary.dlaMitigationSchedule);
                 if (Number(summary.dlaBalance || 0) >= 0 || !rows.length) return "";
                 return `<article class="me-report-insight-card me-report-alert-card me-report-table-card">
                     <p class="eyebrow">Overdrawn DLA mitigation schedule</p>
@@ -26268,7 +26401,7 @@
             }
 
             function renderMeReportFixedAssetsTab(summary = {}) {
-                const fixedAssetRows = Array.isArray(summary.fixedAssetChecks) ? summary.fixedAssetChecks : [];
+                const fixedAssetRows = meReportObjectRows(summary.fixedAssetChecks);
                 return `
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Register total", formatCurrency(summary.fixedAssetRegisterTotal || 0))}
@@ -26298,24 +26431,41 @@
             function renderMeReportSubmissionTabPanel(client, summary, tab) {
                 const insights = summary.profitAndLossInsights || {};
                 const broughtForwardTradingLoss = meReportBroughtForwardTradingLoss(client, summary);
-                const panels = {
-                    insights: `
+                let panel = "";
+                switch (tab) {
+                    case "checked":
+                        panel = renderMeReportAiCheckedTab(summary);
+                        break;
+                    case "chart":
+                        panel = renderMeReportChartOfAccountsTab(client, summary);
+                        break;
+                    case "vat":
+                        panel = renderMeReportVatTab(client, summary);
+                        break;
+                    case "dla":
+                        panel = renderMeReportDlaTab(summary);
+                        break;
+                    case "tax":
+                        panel = renderMeReportTaxTab(client, summary, broughtForwardTradingLoss);
+                        break;
+                    case "dividends":
+                        panel = renderMeReportDividendsTab(summary);
+                        break;
+                    case "fixed-assets":
+                        panel = renderMeReportFixedAssetsTab(summary);
+                        break;
+                    case "insights":
+                    default:
+                        panel = `
                         <div class="me-report-insight-grid">
                             ${renderMeReportInsightList("Going well", insights.goingWell, ["Profit and loss data has been extracted and is ready for client commentary."])}
                             ${renderMeReportInsightList("Needs attention", insights.needsAttention, summary.warnings || ["Review CT, DLA, VAT and dividend assumptions before issuing advice."])}
                             ${renderMeReportInsightList("Priorities", insights.priorities, ["Approve exceptions, confirm tax treatment, then send the client report."])}
                         </div>
                         ${renderMeReportForecastBars(summary)}
-                    `,
-                    checked: renderMeReportAiCheckedTab(summary),
-                    chart: renderMeReportChartOfAccountsTab(client, summary),
-                    vat: renderMeReportVatTab(client, summary),
-                    dla: renderMeReportDlaTab(summary),
-                    tax: renderMeReportTaxTab(client, summary, broughtForwardTradingLoss),
-                    dividends: renderMeReportDividendsTab(summary),
-                    "fixed-assets": renderMeReportFixedAssetsTab(summary)
-                };
-                return `<section class="me-report-tab-panel">${panels[tab] || panels.insights}</section>`;
+                    `;
+                }
+                return `<section class="me-report-tab-panel">${panel}</section>`;
             }
 
             function renderMeReportSubmissionInsightPage(client, submission) {
@@ -26492,7 +26642,7 @@
             }
 
             function renderMeReportMappings(client) {
-                const mappings = Array.isArray(client.mappings) ? client.mappings : [];
+                const mappings = meReportObjectRows(client.mappings);
                 if (!mappings.length) return '<div class="empty-state"><p class="eyebrow">Account mappings</p><h4>No account treatment review yet</h4><p>Upload the overview report so Jenius can extract the Trial Balance and propose account treatments for this client.</p></div>';
                 return `
                     <div class="jashflow-detail-head"><div><p class="eyebrow">AI/rules account treatment</p><h3>${mappings.length.toLocaleString("en-GB")} accounts</h3><p class="detail-meta">Approve, amend or mark accounts as needing review. Decisions are saved for this client.</p></div></div>
