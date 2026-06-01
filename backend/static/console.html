@@ -10047,6 +10047,7 @@
             .developer-log-panel[hidden] { display: none; }
             #bankAccountPanel,
             #bankStatementUploadPanel,
+            #meReportBulkMatchPanel,
             #meReportLossPanel {
                 z-index: 260;
             }
@@ -10195,6 +10196,85 @@
             }
             .me-report-loss-card {
                 width: min(860px, 100%);
+            }
+            .me-report-bulk-match-card {
+                width: min(920px, 100%);
+            }
+            .me-report-bulk-match-body {
+                display: grid;
+                gap: 16px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .me-report-bulk-match-help {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: var(--blue-soft);
+                color: #4d6589;
+                font-size: 0.84rem;
+                font-weight: 800;
+                line-height: 1.45;
+            }
+            .me-report-bulk-match-list {
+                display: grid;
+                gap: 12px;
+            }
+            .me-report-bulk-match-row {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+                gap: 14px;
+                align-items: end;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .me-report-bulk-match-row strong,
+            .me-report-bulk-match-row small {
+                display: block;
+                min-width: 0;
+            }
+            .me-report-bulk-match-row strong {
+                overflow-wrap: anywhere;
+                font-size: 0.94rem;
+                font-weight: 950;
+            }
+            .me-report-bulk-match-row small {
+                margin-top: 4px;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 750;
+                line-height: 1.35;
+            }
+            .me-report-bulk-match-row label {
+                display: grid;
+                gap: 7px;
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .me-report-bulk-match-row select {
+                width: 100%;
+                min-height: 42px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 9px 10px;
+                background: #fff;
+                color: var(--ink);
+                font: inherit;
+                font-size: 0.88rem;
+                font-weight: 800;
+                text-transform: none;
+                letter-spacing: 0;
+            }
+            @media (max-width: 780px) {
+                .me-report-bulk-match-row {
+                    grid-template-columns: 1fr;
+                }
             }
             .me-report-loss-body {
                 display: grid;
@@ -13119,6 +13199,27 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="meReportBulkMatchPanel" aria-modal="true" role="dialog" aria-labelledby="meReportBulkMatchTitle" hidden>
+                    <div class="developer-log-card me-report-bulk-match-card">
+                        <form class="stack-form bank-account-dialog-form" id="meReportBulkMatchForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="meReportBulkMatchTitle">Match ME Report clients</h3>
+                                    <p id="meReportBulkMatchSummary">Choose the Xero contact for each PDF that could not be matched from page one.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeMeReportBulkMatchPanelButton" type="button">Close</button>
+                                    <button class="primary-button" id="saveMeReportBulkMatchButton" type="submit">Process matches</button>
+                                </div>
+                            </div>
+                            <div class="me-report-bulk-match-body">
+                                <p class="me-report-bulk-match-help">The client name should be on the first page. If the parser cannot match it to Xero, select the correct contact here and the same PDF will be processed into that workspace.</p>
+                                <div class="me-report-bulk-match-list" id="meReportBulkMatchList"></div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="quickNotePanel" aria-modal="true" role="dialog" aria-labelledby="quickNoteTitle" hidden>
                     <div class="developer-log-card">
                         <form class="stack-form" id="quickNoteForm">
@@ -13610,6 +13711,7 @@
             let meReportUploadProcessing = false;
             let meReportEmailSending = false;
             let meReportBulkUploading = false;
+            let meReportBulkManualMatchState = null;
             let meReportLossDialogState = null;
             let meReportCtCompsUploading = false;
             let expandedMeReportCalculationKey = "";
@@ -24539,6 +24641,18 @@
                 return Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
             }
 
+            function meReportContactOptionHTML(selectedId = "") {
+                const contacts = meReportContactOptions();
+                return [
+                    '<option value="">Choose Xero contact...</option>',
+                    ...contacts.map((contact) => {
+                        const contactId = contact.xeroContactId || "";
+                        const label = [contact.name || "Unnamed Xero contact", contact.email || ""].filter(Boolean).join(" - ");
+                        return `<option value="${escapeHTML(contactId)}"${contactId === selectedId ? " selected" : ""}>${escapeHTML(label)}</option>`;
+                    })
+                ].join("");
+            }
+
             function selectedMeReportFormContact() {
                 const contactId = document.getElementById("meReportXeroContactSelect")?.value || "";
                 return meReportContactOptions().find((contact) => contact.xeroContactId === contactId) || null;
@@ -26951,6 +27065,162 @@
                 }
             }
 
+            function meReportBulkReviewFileForItem(item, sourceFiles = []) {
+                const files = Array.from(sourceFiles || []);
+                const rawIndex = Number(item?.index);
+                if (Number.isInteger(rawIndex) && rawIndex >= 0 && rawIndex < files.length) return files[rawIndex];
+                const filename = item?.filename || "";
+                return files.find((file) => file.name === filename) || null;
+            }
+
+            function closeMeReportBulkMatchPanel() {
+                const panel = document.getElementById("meReportBulkMatchPanel");
+                if (panel) panel.hidden = true;
+                meReportBulkManualMatchState = null;
+            }
+
+            function renderMeReportBulkMatchPanel() {
+                const panel = document.getElementById("meReportBulkMatchPanel");
+                const list = document.getElementById("meReportBulkMatchList");
+                if (!panel || !list) return;
+                const state = meReportBulkManualMatchState || { pending: [], submitting: false };
+                const pending = state.pending || [];
+                const contacts = meReportContactOptions();
+                const summary = document.getElementById("meReportBulkMatchSummary");
+                if (summary) {
+                    summary.textContent = pending.length
+                        ? `Choose the Xero contact for ${pending.length.toLocaleString("en-GB")} PDF${pending.length === 1 ? "" : "s"} that could not be matched from page one.`
+                        : "No ME Report PDFs are waiting for a manual match.";
+                }
+                const saveButton = document.getElementById("saveMeReportBulkMatchButton");
+                if (saveButton) {
+                    saveButton.disabled = state.submitting || !pending.length || !contacts.length;
+                    saveButton.textContent = state.submitting ? "Processing..." : "Process matches";
+                }
+                if (!contacts.length) {
+                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No Xero contacts</p><h4>Sync Xero contacts before matching PDFs</h4><p>The manual match list needs the ME Report Xero contact dropdown data.</p></div>`;
+                    return;
+                }
+                if (!pending.length) {
+                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No matches needed</p><h4>Every uploaded PDF has either processed or failed for another reason</h4></div>`;
+                    return;
+                }
+                list.innerHTML = pending.map((entry, index) => {
+                    const item = entry.item || {};
+                    const candidates = [
+                        item.detectedClientName ? `Detected: ${item.detectedClientName}` : "",
+                        ...(Array.isArray(item.candidateNames) ? item.candidateNames : [])
+                            .filter(Boolean)
+                            .slice(0, 4)
+                            .map((candidate) => `Candidate: ${candidate}`)
+                    ].filter(Boolean).join(" · ");
+                    return `
+                        <div class="me-report-bulk-match-row" data-me-report-bulk-match-row="${index}">
+                            <div>
+                                <strong>${escapeHTML(item.filename || entry.file?.name || "ME Report PDF")}</strong>
+                                <small>${escapeHTML(candidates || item.message || "No client name could be matched automatically from page one.")}</small>
+                            </div>
+                            <label>
+                                Xero contact
+                                <select data-me-report-bulk-match-select="${index}" ${state.submitting ? "disabled" : ""}>
+                                    ${meReportContactOptionHTML(entry.contactId || "")}
+                                </select>
+                            </label>
+                        </div>
+                    `;
+                }).join("");
+            }
+
+            function openMeReportBulkMatchPanel(reviewItems = [], sourceFiles = []) {
+                const pending = reviewItems.map((item) => ({
+                    item,
+                    file: meReportBulkReviewFileForItem(item, sourceFiles),
+                    contactId: ""
+                })).filter((entry) => entry.file);
+                if (!pending.length) {
+                    showToast("Choose the unmatched ME Report PDF again to manually match it.", "error");
+                    return;
+                }
+                if (pending.length !== reviewItems.length) {
+                    showToast("Some unmatched PDFs could not be kept by the browser. Re-upload those files to match them manually.", "error");
+                }
+                meReportBulkManualMatchState = { pending, submitting: false };
+                const panel = document.getElementById("meReportBulkMatchPanel");
+                if (panel) panel.hidden = false;
+                renderMeReportBulkMatchPanel();
+                setTimeout(() => document.querySelector("[data-me-report-bulk-match-select]")?.focus(), 0);
+            }
+
+            function completeBulkMeReportUpload(response, sourceFiles = [], { allowManualMatch = true } = {}) {
+                meReportData = normaliseMeReportPayload(response);
+                meReportWorkspaceOpen = false;
+                const results = response?.bulk?.results || [];
+                const processed = results.filter((item) => item.status === "processed").length;
+                const needsReviewItems = results.filter((item) => item.status === "needs_review");
+                const failedItems = results.filter((item) => item.status === "failed");
+                const reviewItems = results.filter((item) => item.status !== "processed");
+                const needsReview = reviewItems.length;
+                const reviewNames = reviewItems
+                    .map((item) => item.clientName || item.detectedClientName || item.filename || "")
+                    .filter(Boolean)
+                    .slice(0, 3)
+                    .join(", ");
+                const reviewDetail = needsReview && reviewNames ? `: ${reviewNames}` : "";
+                ensureMeReportSelection();
+                showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review${reviewDetail}` : ""}.`, needsReview ? "warning" : "success");
+                showToast(`${processed} ME Report PDF${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
+                if (allowManualMatch && needsReviewItems.length) {
+                    openMeReportBulkMatchPanel(needsReviewItems, sourceFiles);
+                } else if (!needsReviewItems.length) {
+                    closeMeReportBulkMatchPanel();
+                }
+                if (failedItems.length && !needsReviewItems.length) {
+                    showToast(`${failedItems.length.toLocaleString("en-GB")} ME Report PDF${failedItems.length === 1 ? "" : "s"} failed during extraction. Open Developer log if it repeats.`, "error");
+                }
+                renderMeReportScreen();
+                return { processed, needsReview: needsReviewItems.length, failed: failedItems.length };
+            }
+
+            async function submitMeReportBulkManualMatches(event) {
+                event.preventDefault();
+                const state = meReportBulkManualMatchState;
+                if (!state?.pending?.length || state.submitting) return;
+                const selectedEntries = state.pending.map((entry, index) => ({
+                    ...entry,
+                    contactId: document.querySelector(`[data-me-report-bulk-match-select="${index}"]`)?.value || ""
+                }));
+                const missing = selectedEntries.filter((entry) => !entry.contactId);
+                if (missing.length) return showToast("Choose a Xero contact for every unmatched ME Report PDF.", "error");
+                const formData = new FormData();
+                const manualMatches = {};
+                selectedEntries.forEach((entry, index) => {
+                    formData.append("files", entry.file, entry.file.name || entry.item?.filename || "overview-report.pdf");
+                    manualMatches[String(index)] = entry.contactId;
+                });
+                formData.append("manualMatches", JSON.stringify(manualMatches));
+                state.pending = selectedEntries;
+                state.submitting = true;
+                meReportBulkUploading = true;
+                setAiLoading(true, `Jenius AI is processing ${selectedEntries.length} manually matched ME Report PDF${selectedEntries.length === 1 ? "" : "s"}.`);
+                renderMeReportBulkMatchPanel();
+                renderMeReportScreen();
+                try {
+                    const response = await requestFormData(api.endpoints.meReportBulkSubmissions, formData);
+                    completeBulkMeReportUpload(response, selectedEntries.map((entry) => entry.file));
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to process manually matched ME Report PDFs", "error");
+                } finally {
+                    if (meReportBulkManualMatchState) {
+                        meReportBulkManualMatchState.submitting = false;
+                        renderMeReportBulkMatchPanel();
+                    }
+                    meReportBulkUploading = false;
+                    setAiLoading(false);
+                    renderMeReportScreen();
+                }
+            }
+
             async function uploadBulkMeReportSubmissions(files) {
                 const selectedFiles = Array.from(files || []).filter((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""));
                 if (!selectedFiles.length) return showToast("Choose at least one PDF to bulk upload", "error");
@@ -26961,21 +27231,7 @@
                 renderMeReportScreen();
                 try {
                     const response = await requestFormData(api.endpoints.meReportBulkSubmissions, formData);
-                    meReportData = normaliseMeReportPayload(response);
-                    meReportWorkspaceOpen = false;
-                    const results = response?.bulk?.results || [];
-                    const processed = results.filter((item) => item.status === "processed").length;
-                    const reviewItems = results.filter((item) => item.status !== "processed");
-                    const needsReview = reviewItems.length;
-                    const reviewNames = reviewItems
-                        .map((item) => item.clientName || item.detectedClientName || item.filename || "")
-                        .filter(Boolean)
-                        .slice(0, 3)
-                        .join(", ");
-                    const reviewDetail = needsReview && reviewNames ? `: ${reviewNames}` : "";
-                    showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review${reviewDetail}` : ""}.`, needsReview ? "warning" : "success");
-                    showToast(`${processed} ME Report PDF${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
-                    renderMeReportScreen();
+                    completeBulkMeReportUpload(response, selectedFiles);
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to bulk upload ME Report PDFs", "error");
@@ -32620,6 +32876,11 @@
                 }
                 const bulkMeReportFiles = document.getElementById("meReportBulkSubmissionFiles");
                 if (bulkMeReportFiles) bulkMeReportFiles.addEventListener("change", (event) => uploadBulkMeReportSubmissions(event.target.files));
+                document.getElementById("meReportBulkMatchForm")?.addEventListener("submit", submitMeReportBulkManualMatches);
+                document.getElementById("closeMeReportBulkMatchPanelButton")?.addEventListener("click", closeMeReportBulkMatchPanel);
+                document.getElementById("meReportBulkMatchPanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "meReportBulkMatchPanel") closeMeReportBulkMatchPanel();
+                });
                 const reviewLateChargesButton = document.getElementById("reviewLateChargesButton");
                 if (reviewLateChargesButton) reviewLateChargesButton.addEventListener("click", () => {
                     closeToolbarMenus();

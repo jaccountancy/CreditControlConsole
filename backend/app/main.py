@@ -1164,15 +1164,31 @@ async def api_update_me_report_settings(request: Request, user: dict = Depends(r
 @app.post("/api/me-report/bulk-submissions")
 async def api_bulk_upload_me_report_submissions(
     files: list[UploadFile] = File(...),
+    manual_matches: str = Form("", alias="manualMatches"),
     user: dict = Depends(require_panel_user),
 ):
+    parsed_manual_matches = {}
+    if str(manual_matches or "").strip():
+        try:
+            loaded_matches = json.loads(manual_matches)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Manual ME Report matches must be valid JSON.") from exc
+        parsed_manual_matches = loaded_matches if isinstance(loaded_matches, dict) else {}
     file_payloads = []
-    for file in files:
+    for index, file in enumerate(files):
+        filename = file.filename or "overview-report.pdf"
+        manual_xero_contact_id = str(
+            parsed_manual_matches.get(str(index))
+            or parsed_manual_matches.get(filename)
+            or ""
+        ).strip()
         file_payloads.append(
             {
-                "filename": file.filename or "overview-report.pdf",
+                "index": index,
+                "filename": filename,
                 "content_type": file.content_type or "application/pdf",
                 "content": await file.read(),
+                "manual_xero_contact_id": manual_xero_contact_id,
             }
         )
     return {"status": "ok", **await bulk_upload_me_report_submission_pdfs(user, file_payloads)}

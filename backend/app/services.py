@@ -10346,14 +10346,14 @@ def _append_me_report_bulk_candidate(candidates: list[str], seen: set[str], valu
         candidates.append(candidate)
 
 
-def _extract_me_report_bulk_pdf_lines(file_bytes: bytes) -> list[str]:
+def _extract_me_report_bulk_pdf_lines(file_bytes: bytes, max_pages: int = 1) -> list[str]:
     try:
         from pypdf import PdfReader
 
         reader = PdfReader(io.BytesIO(file_bytes))
         page_text = []
         for page_index, page in enumerate(reader.pages):
-            if page_index >= 5:
+            if page_index >= max(1, max_pages):
                 break
             page_text.append(page.extract_text() or "")
         text = "\n".join(page_text)
@@ -10527,27 +10527,41 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
 
     async def process_file(file_item: dict) -> dict:
         async with semaphore:
+            file_index = file_item.get("index")
             filename = file_item.get("filename") or "overview-report.pdf"
             content = file_item.get("content") or b""
             lines = _extract_me_report_bulk_pdf_lines(content)
             candidate_names = _extract_me_report_bulk_client_candidates_from_lines(lines, filename)
             detected_name = candidate_names[0] if candidate_names else ""
-            contact, matched_name = _me_report_contact_match_for_bulk_candidates(contacts, candidate_names, lines, filename)
-            if matched_name:
-                detected_name = matched_name
-            if not contact:
+            manual_xero_contact_id = str(file_item.get("manual_xero_contact_id") or "").strip()
+            manual_contact = next((contact for contact in contacts if contact.get("xeroContactId") == manual_xero_contact_id), None) if manual_xero_contact_id else None
+            if manual_xero_contact_id and not manual_contact:
                 return {
+                    "index": file_index,
                     "filename": filename,
                     "status": "needs_review",
                     "detectedClientName": detected_name,
                     "candidateNames": candidate_names[:8],
-                    "message": "No matching Xero contact found from the PDF client/title lines or filename.",
+                    "message": "The selected Xero contact could not be found. Refresh ME Report data and choose the contact again.",
+                }
+            contact, matched_name = (manual_contact, manual_contact.get("name") or "") if manual_contact else _me_report_contact_match_for_bulk_candidates(contacts, candidate_names, lines, filename)
+            if matched_name:
+                detected_name = matched_name
+            if not contact:
+                return {
+                    "index": file_index,
+                    "filename": filename,
+                    "status": "needs_review",
+                    "detectedClientName": detected_name,
+                    "candidateNames": candidate_names[:8],
+                    "message": "No matching Xero contact found from the first page client lines or filename.",
                 }
             client_id = _me_report_client_id_for_contact(user, contact)
             try:
                 await upload_me_report_submission_pdf(user, client_id, filename, file_item.get("content_type") or "application/pdf", content)
                 report_result = generate_me_report(user, client_id, {})
                 return {
+                    "index": file_index,
                     "filename": filename,
                     "status": "processed",
                     "detectedClientName": detected_name,
@@ -10559,7 +10573,7 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                 }
             except Exception as exc:
                 logger.exception("Bulk ME Report upload failed for %s", filename)
-                return {"filename": filename, "status": "failed", "detectedClientName": detected_name, "clientName": contact.get("name") or "", "message": str(getattr(exc, "detail", exc))[:1000]}
+                return {"index": file_index, "filename": filename, "status": "failed", "detectedClientName": detected_name, "clientName": contact.get("name") or "", "message": str(getattr(exc, "detail", exc))[:1000]}
 
     results = await asyncio.gather(*(process_file(file_item) for file_item in files))
     record_audit_event("me_report_bulk_upload", user["id"], "me_report.bulk_upload", {"count": len(files), "results": results}, user["id"])
