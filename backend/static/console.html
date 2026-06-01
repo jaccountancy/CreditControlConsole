@@ -1420,6 +1420,18 @@
                 min-width: min(620px, 100%);
                 grid-template-columns: repeat(4, minmax(112px, 1fr));
             }
+            .bad-debt-topbar-summary {
+                flex: 1 1 720px;
+                min-width: min(560px, 100%);
+                max-width: none;
+                align-self: stretch;
+                grid-template-columns: repeat(4, minmax(116px, 1fr));
+                gap: 0;
+                border-color: rgba(var(--topbar-accent-rgb), 0.18);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.56);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+            }
             .bank-account-topbar-summary {
                 flex-basis: 780px;
                 min-width: min(760px, 100%);
@@ -1693,6 +1705,36 @@
                 font-weight: 800;
                 line-height: 1.2;
             }
+            .bad-debt-topbar-summary article {
+                display: grid;
+                align-content: center;
+                min-height: 58px;
+                padding: 9px 14px;
+                border-left: 1px solid rgba(61, 85, 130, 0.11);
+                background: transparent;
+            }
+            .bad-debt-topbar-summary article:first-child {
+                border-left: 0;
+            }
+            .bad-debt-topbar-summary article:hover {
+                background: rgba(255, 255, 255, 0.42);
+                transform: none;
+            }
+            .bad-debt-topbar-summary article::before,
+            .bad-debt-topbar-summary article:hover::before {
+                display: none;
+            }
+            .bad-debt-topbar-summary span {
+                font-size: 0.58rem;
+                letter-spacing: 0.08em;
+            }
+            .bad-debt-topbar-summary strong {
+                margin-top: 3px;
+                font-size: 0.92rem;
+            }
+            .bad-debt-topbar-summary p {
+                display: none;
+            }
             .credit-control-topbar-summary .late-charge-review-card strong {
                 color: var(--red);
             }
@@ -1712,6 +1754,12 @@
             .ledger-topbar.has-inline-status .insights-topbar-summary {
                 max-width: 760px;
                 grid-template-columns: repeat(4, minmax(84px, 1fr));
+            }
+            .ledger-topbar.has-inline-status .bad-debt-topbar-summary {
+                flex: 1 1 clamp(540px, 54vw, 900px);
+                min-width: min(520px, 100%);
+                max-width: 960px;
+                grid-template-columns: repeat(4, minmax(96px, 1fr));
             }
             .ledger-topbar.has-inline-status .bank-account-topbar-summary.is-bank-overview {
                 flex: 0 1 clamp(350px, 28vw, 520px);
@@ -1760,6 +1808,15 @@
             }
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary {
                 grid-template-columns: repeat(4, minmax(72px, 1fr));
+            }
+            .ledger-topbar.is-topbar-dense .bad-debt-topbar-summary {
+                flex-basis: clamp(460px, 48vw, 720px);
+                min-width: min(460px, 100%);
+                grid-template-columns: repeat(4, minmax(82px, 1fr));
+            }
+            .ledger-topbar.is-topbar-dense .bad-debt-topbar-summary article {
+                min-height: 44px;
+                padding: 7px 10px;
             }
             .ledger-topbar.is-topbar-dense .insights-topbar-summary {
                 flex-basis: 430px;
@@ -19078,10 +19135,21 @@
                 return !writtenOff;
             }
 
+            function badDebtInvoiceSortValue(invoice) {
+                return dateSortValue(invoice?.invoiceDate || invoice?.date || invoice?.dueDate);
+            }
+
+            function compareBadDebtInvoices(a, b) {
+                return badDebtInvoiceSortValue(a) - badDebtInvoiceSortValue(b)
+                    || dateSortValue(a?.dueDate) - dateSortValue(b?.dueDate)
+                    || String(a?.customerName || "").localeCompare(String(b?.customerName || ""))
+                    || String(a?.invoiceNumber || "").localeCompare(String(b?.invoiceNumber || ""));
+            }
+
             function badDebtReviewStats() {
                 const candidates = allInvoices()
                     .filter((invoice) => Number(invoice.amountDue || 0) > 0 || invoiceWriteOffRaised(invoice))
-                    .sort((a, b) => Number(b.amountDue || 0) - Number(a.amountDue || 0) || String(a.customerName || "").localeCompare(String(b.customerName || "")));
+                    .sort(compareBadDebtInvoices);
                 const visible = candidates.filter((invoice) => badDebtMatchesFilter(invoice) && badDebtMatchesSearch(invoice));
                 const eligible = candidates.filter((invoice) => isWriteOffCandidate(invoice) && !badDebtBlockReason(invoice));
                 const visibleEligible = visible.filter((invoice) => isWriteOffCandidate(invoice) && !badDebtBlockReason(invoice));
@@ -26897,8 +26965,15 @@
                     meReportWorkspaceOpen = false;
                     const results = response?.bulk?.results || [];
                     const processed = results.filter((item) => item.status === "processed").length;
-                    const needsReview = results.filter((item) => item.status !== "processed").length;
-                    showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review` : ""}.`, needsReview ? "warning" : "success");
+                    const reviewItems = results.filter((item) => item.status !== "processed");
+                    const needsReview = reviewItems.length;
+                    const reviewNames = reviewItems
+                        .map((item) => item.clientName || item.detectedClientName || item.filename || "")
+                        .filter(Boolean)
+                        .slice(0, 3)
+                        .join(", ");
+                    const reviewDetail = needsReview && reviewNames ? `: ${reviewNames}` : "";
+                    showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review${reviewDetail}` : ""}.`, needsReview ? "warning" : "success");
                     showToast(`${processed} ME Report PDF${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
                     renderMeReportScreen();
                 } catch (error) {
