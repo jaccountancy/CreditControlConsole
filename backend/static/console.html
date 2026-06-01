@@ -1112,6 +1112,129 @@
             .topbar-client-metrics article.is-urgent strong {
                 color: var(--red);
             }
+            .topbar-contact-details-panel {
+                flex: 1 0 100%;
+                display: grid;
+                gap: 12px;
+                padding: 12px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: #ffffff;
+                box-shadow: 0 12px 24px rgba(41, 79, 148, 0.08);
+            }
+            .topbar-contact-details-panel[hidden] {
+                display: none !important;
+            }
+            .topbar-contact-details-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 8px;
+            }
+            .topbar-contact-details-grid article {
+                min-width: 0;
+                display: grid;
+                gap: 3px;
+                padding: 9px 10px;
+                border: 1px solid rgba(61, 85, 130, 0.10);
+                border-radius: 12px;
+                background: var(--surface-soft);
+            }
+            .topbar-contact-details-grid span,
+            .topbar-contact-notes-head .eyebrow {
+                color: var(--muted);
+                font-size: 0.62rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .topbar-contact-details-grid strong,
+            .topbar-contact-details-grid a {
+                min-width: 0;
+                overflow: hidden;
+                color: var(--ink);
+                font-size: 0.86rem;
+                font-weight: 900;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .topbar-contact-details-grid a {
+                text-decoration: none;
+            }
+            .topbar-contact-details-grid a[href]:hover {
+                color: var(--blue);
+            }
+            .topbar-contact-note-form {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 8px;
+                align-items: end;
+            }
+            .topbar-contact-note-form textarea {
+                min-height: 54px;
+                resize: vertical;
+            }
+            .topbar-contact-note-form button {
+                min-height: 44px;
+            }
+            .topbar-contact-notes {
+                display: grid;
+                gap: 8px;
+            }
+            .topbar-contact-notes-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .topbar-contact-notes-head span {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+            }
+            .topbar-contact-notes-list {
+                max-height: 184px;
+                display: grid;
+                gap: 7px;
+                overflow: auto;
+            }
+            .topbar-contact-note-row {
+                display: grid;
+                gap: 4px;
+                padding: 9px 10px;
+                border: 1px solid rgba(61, 85, 130, 0.09);
+                border-radius: 12px;
+                background: rgba(248, 251, 255, 0.76);
+            }
+            .topbar-contact-note-row header {
+                display: flex;
+                align-items: baseline;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .topbar-contact-note-row strong {
+                color: var(--ink);
+                font-size: 0.8rem;
+                font-weight: 900;
+            }
+            .topbar-contact-note-row time {
+                flex: 0 0 auto;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+            }
+            .topbar-contact-note-row p,
+            .topbar-contact-empty {
+                color: #566173;
+                font-size: 0.8rem;
+                font-weight: 750;
+                line-height: 1.45;
+            }
+            .topbar-contact-empty {
+                padding: 10px;
+                border: 1px dashed rgba(61, 85, 130, 0.18);
+                border-radius: 12px;
+                background: var(--surface-soft);
+            }
             .bank-continuity-topbar-pill {
                 flex: 0 1 360px;
                 min-width: 250px;
@@ -11340,16 +11463,43 @@
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
                             <div class="topbar-client-pill" id="topbarClientPill">
-                                <button class="topbar-contact-strip" id="topbarClientButton" type="button">
+                                <button class="topbar-contact-strip" id="topbarClientButton" type="button" aria-expanded="false" aria-controls="topbarContactDetailsPanel">
                                     <span class="topbar-client-avatar" id="topbarClientAvatar">--</span>
                                     <span class="topbar-contact-copy">
                                         <strong id="topbarContactName">No client selected</strong>
                                         <small id="topbarContactMeta">Client account</small>
                                     </span>
                                 </button>
-                                <span class="topbar-client-status" id="topbarClientStatus">Current account state</span>
+                                <span class="topbar-client-status" id="topbarClientStatus">Up To Date</span>
                                 <div class="topbar-client-metrics" id="topbarClientMetrics" aria-label="Client account summary"></div>
                             </div>
+                            <section class="topbar-contact-details-panel" id="topbarContactDetailsPanel" aria-label="Contact details and notes" hidden>
+                                <div class="topbar-contact-details-grid" aria-label="Contact details">
+                                    <article>
+                                        <span>Contact</span>
+                                        <strong id="topbarContactPanelName">--</strong>
+                                    </article>
+                                    <article>
+                                        <span>Email</span>
+                                        <a id="topbarContactPanelEmail">--</a>
+                                    </article>
+                                    <article>
+                                        <span>Telephone</span>
+                                        <a id="topbarContactPanelPhone">--</a>
+                                    </article>
+                                </div>
+                                <form class="topbar-contact-note-form" id="topbarContactNoteForm">
+                                    <textarea id="topbarContactNoteInput" rows="3" placeholder="Add a contact note"></textarea>
+                                    <button class="primary-button" type="submit">Add note</button>
+                                </form>
+                                <div class="topbar-contact-notes">
+                                    <div class="topbar-contact-notes-head">
+                                        <p class="eyebrow">Recent notes</p>
+                                        <span id="topbarContactNotesCount">0 notes</span>
+                                    </div>
+                                    <div class="topbar-contact-notes-list" id="topbarContactNotesList"></div>
+                                </div>
+                            </section>
                             <div class="xero-connect-wrap client-action-menu-wrap topbar-client-action-wrap" id="clientActionMenuWrap">
                                 <button class="ghost-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Actions</button>
                                 <div class="xero-action-menu" id="clientActionMenu">
@@ -12423,7 +12573,7 @@
                                         <div class="panel-heading">
                                             <div>
                                                 <p class="eyebrow">Client transactions</p>
-                                                <h3>Unallocated invoice and cash movements</h3>
+                                                <h3>Outstanding Client Invoices</h3>
                                             </div>
                                             <div class="client-invoice-bulk-actions">
                                                 <label class="client-transaction-toggle">
@@ -13210,6 +13360,7 @@
             let showAllocatedClientTransactions = false;
             let selectedLateChargeInvoiceIds = new Set();
             let selectedBadDebtInvoiceIds = new Set();
+            let topbarContactDetailsOpen = false;
             let latePaymentChargeBaseAmounts = new Map();
             let lateChargeSearchTerm = "";
             let badDebtSearchTerm = "";
@@ -14897,10 +15048,53 @@
                     .filter(Boolean);
             }
 
+            function titleCaseInvoiceDescription(value) {
+                return String(value || "")
+                    .toLowerCase()
+                    .replace(/\b([a-z])/g, (match) => match.toUpperCase())
+                    .replace(/\bAi\b/g, "AI")
+                    .replace(/\bVat\b/g, "VAT")
+                    .replace(/\bUk\b/g, "UK");
+            }
+
+            function cleanInvoiceDescriptionPart(value) {
+                return String(value || "")
+                    .replace(/\bINV[-\s]?\d+\b/gi, "")
+                    .replace(/\binvoice\s*(number|no\.?|#)?\s*\d+\b/gi, "")
+                    .replace(/\b\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}\b/g, "")
+                    .replace(/\b\d{4}[\/.-]\d{1,2}[\/.-]\d{1,2}\b/g, "")
+                    .replace(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/gi, "")
+                    .replace(/\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{2,4}\b/gi, "")
+                    .replace(/\b(subsction|subsciption|subcription)\b/gi, "subscription")
+                    .replace(/\s*[-–—]\s*/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+            }
+
+            function subscriptionPlanInvoiceSummary(descriptions) {
+                const text = cleanInvoiceDescriptionPart(descriptions.join(" "));
+                if (!/\b(subscription|recurring|monthly)\b/i.test(text)) return "";
+                const planIndex = text.search(/\bplan\b/i);
+                if (planIndex < 0) return "";
+                const planWords = text
+                    .slice(0, planIndex)
+                    .split(/\s+/)
+                    .filter((word) => word && !/^(monthly|recurring|subscription|invoice|for|the|a|an)$/i.test(word));
+                const planName = titleCaseInvoiceDescription(planWords.slice(-2).join(" ")).trim();
+                if (!planName) return "";
+                return `${planName} Plan Subscription Invoice`;
+            }
+
             function invoiceLineSummary(invoice) {
                 const descriptions = invoiceLineDescriptions(invoice);
                 if (!descriptions.length) return "No Xero line description synced yet";
-                return descriptions.slice(0, 3).join(" · ");
+                const subscriptionSummary = subscriptionPlanInvoiceSummary(descriptions);
+                if (subscriptionSummary) return subscriptionSummary;
+                const cleaned = descriptions
+                    .map(cleanInvoiceDescriptionPart)
+                    .filter(Boolean)
+                    .map(titleCaseInvoiceDescription);
+                return (cleaned.length ? cleaned : descriptions).slice(0, 3).join(" · ");
             }
 
             function invoiceAmountBreakdown(invoice) {
@@ -16383,7 +16577,7 @@
                     if (topbarClientButton) {
                         event.preventDefault();
                         event.stopPropagation();
-                        openSelectedClientView();
+                        toggleTopbarContactDetails();
                         return;
                     }
                     const assignManagerButton = event.target.closest?.("#assignClientManagerButton, #actionCenterAssignClientManagerButton");
@@ -17173,7 +17367,11 @@
                 context.hidden = !topbarClient;
                 document.getElementById("clientActionMenuWrap")?.classList.remove("is-open");
                 document.getElementById("clientActionMenuButton")?.setAttribute("aria-expanded", "false");
-                if (!topbarClient) return;
+                if (!topbarClient) {
+                    topbarContactDetailsOpen = false;
+                    renderTopbarContactDetailsPanel(null);
+                    return;
+                }
                 const name = topbarClient.name || "Client";
                 const meta = clientTopbarMeta(topbarClient);
                 const avatar = document.getElementById("topbarClientAvatar");
@@ -17184,9 +17382,109 @@
                 if (contactName) contactName.textContent = topbarClient.primaryPerson || name;
                 if (contactMeta) contactMeta.textContent = meta;
                 if (button) {
-                    button.title = `${name}${meta ? ` · ${meta}` : ""}`;
-                    button.setAttribute("aria-label", `Open ${name} client workspace`);
+                    button.title = `${topbarContactDetailsOpen ? "Hide" : "Show"} contact details for ${name}${meta ? ` · ${meta}` : ""}`;
+                    button.setAttribute("aria-label", `${topbarContactDetailsOpen ? "Hide" : "Show"} contact details for ${name}`);
+                    button.setAttribute("aria-expanded", topbarContactDetailsOpen ? "true" : "false");
                 }
+                renderTopbarContactDetailsPanel(topbarClient);
+            }
+
+            function currentClientForTopbar() {
+                return activeView === "client"
+                    ? findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId)
+                    : null;
+            }
+
+            function setTopbarContactLink(element, value, hrefPrefix = "") {
+                if (!element) return;
+                const text = String(value || "").trim();
+                element.textContent = text || "--";
+                if (text && hrefPrefix) {
+                    const hrefValue = hrefPrefix === "tel:"
+                        ? text.replace(/[^\d+]/g, "")
+                        : encodeURI(text);
+                    element.href = `${hrefPrefix}${hrefValue}`;
+                } else {
+                    element.removeAttribute("href");
+                }
+            }
+
+            function topbarContactSortedNotes(client) {
+                return [...(client?.clientNotes || [])].sort((a, b) => {
+                    const first = Date.parse(b?.stamp || "");
+                    const second = Date.parse(a?.stamp || "");
+                    return (Number.isFinite(first) ? first : 0) - (Number.isFinite(second) ? second : 0);
+                });
+            }
+
+            function renderTopbarContactNotes(client) {
+                const list = document.getElementById("topbarContactNotesList");
+                const count = document.getElementById("topbarContactNotesCount");
+                if (!list) return;
+                const notes = topbarContactSortedNotes(client);
+                if (count) count.textContent = `${notes.length} note${notes.length === 1 ? "" : "s"}`;
+                list.innerHTML = "";
+                if (!notes.length) {
+                    const empty = document.createElement("p");
+                    empty.className = "topbar-contact-empty";
+                    empty.textContent = "No recent notes yet.";
+                    list.appendChild(empty);
+                    return;
+                }
+                notes.slice(0, 8).forEach((note) => {
+                    const row = document.createElement("article");
+                    row.className = "topbar-contact-note-row";
+                    const header = document.createElement("header");
+                    const title = document.createElement("strong");
+                    const stamp = document.createElement("time");
+                    const body = document.createElement("p");
+                    title.textContent = note.title || "Client note";
+                    stamp.textContent = note.stamp ? formatDateTime(note.stamp) : "--";
+                    if (note.stamp) stamp.dateTime = note.stamp;
+                    body.textContent = note.body || "";
+                    header.append(title, stamp);
+                    row.append(header, body);
+                    list.appendChild(row);
+                });
+            }
+
+            function renderTopbarContactDetailsPanel(client = currentClientForTopbar()) {
+                const panel = document.getElementById("topbarContactDetailsPanel");
+                const button = document.getElementById("topbarClientButton");
+                if (!panel) return;
+                const visible = Boolean(topbarContactDetailsOpen && activeView === "client" && client);
+                panel.hidden = !visible;
+                if (button) button.setAttribute("aria-expanded", visible ? "true" : "false");
+                if (!client) return;
+                const contactName = client.primaryPerson || client.name || "Contact";
+                const nameTarget = document.getElementById("topbarContactPanelName");
+                if (nameTarget) nameTarget.textContent = contactName;
+                setTopbarContactLink(document.getElementById("topbarContactPanelEmail"), client.email, "mailto:");
+                setTopbarContactLink(document.getElementById("topbarContactPanelPhone"), client.phone, "tel:");
+                renderTopbarContactNotes(client);
+            }
+
+            function toggleTopbarContactDetails() {
+                const client = currentClientForTopbar();
+                if (!client) return;
+                topbarContactDetailsOpen = !topbarContactDetailsOpen;
+                renderTopbarClientContext(client);
+            }
+
+            async function submitTopbarContactNote(event) {
+                event.preventDefault();
+                const client = currentClientForTopbar();
+                const input = document.getElementById("topbarContactNoteInput");
+                const body = input?.value.trim();
+                if (!client || !body) return;
+                input.value = "";
+                topbarContactDetailsOpen = true;
+                await saveClientNoteAndSync(client, body, {
+                    title: "Contact note",
+                    localMessage: "Contact note saved locally",
+                    syncedMessage: "Contact note saved and added to Xero",
+                    errorMessage: "Contact note saved, but could not be synced"
+                });
             }
 
             function renderClientSectionVisibility() {
@@ -17254,7 +17552,7 @@
                 if (hasLegal) return { label: "In Legal Escalation", tone: "is-legal" };
                 if (noticeInvoices.length) return { label: `7 Day Notice Sent · ${sevenDayNoticeCountdown(noticeInvoices[0])}`, tone: "" };
                 if (totals.overdueInvoiceCount) return { label: `${totals.maxOverdueDays} days overdue · ${formatCurrency(totals.overduePrincipal)} overdue`, tone: "" };
-                return { label: "Current account state", tone: "is-current" };
+                return { label: "Up To Date", tone: "is-current" };
             }
 
             function renderTopbarClientAccountSummary(client, openInvoices, totals, noticeInvoices, hasLegal) {
@@ -18213,7 +18511,7 @@
 
             function clientStatementEmptyState(target, client, rows, isLoading) {
                 if (!client) {
-                    renderTransactionEmpty(target, "No client", "Select a client", "Unallocated invoice and cash movements will appear here.");
+                    renderTransactionEmpty(target, "No client", "Select a client", "Outstanding Client Invoices will appear here.");
                     return true;
                 }
                 if (!state.organisation?.xeroConnected) {
@@ -29903,7 +30201,7 @@
                 document.getElementById("actionCenterAssignClientManagerButton")?.addEventListener("click", () => {
                     document.getElementById("assignClientManagerButton")?.click();
                 });
-                document.getElementById("topbarClientButton")?.addEventListener("click", openSelectedClientView);
+                document.getElementById("topbarContactNoteForm")?.addEventListener("submit", submitTopbarContactNote);
                 document.getElementById("assignClientManagerButton")?.addEventListener("click", assignCurrentClientManager);
             }
 
