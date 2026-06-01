@@ -1471,6 +1471,31 @@
                 gap: 6px;
                 border-radius: 18px;
             }
+            .me-report-topbar-actions.has-workspace-actions {
+                flex: 1 1 min(920px, 100%);
+                min-width: min(720px, 100%);
+                max-width: 1080px;
+            }
+            .me-report-topbar-actions.has-report-summary.has-workspace-actions {
+                flex-basis: min(1120px, 100%);
+                min-width: min(860px, 100%);
+                max-width: 1180px;
+            }
+            .me-report-topbar-core-actions,
+            .me-report-topbar-workspace-actions {
+                flex: 0 0 auto;
+                min-width: 0;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .me-report-topbar-workspace-actions {
+                padding-left: 6px;
+                border-left: 1px solid rgba(61, 85, 130, 0.14);
+            }
+            .me-report-topbar-workspace-actions[hidden] {
+                display: none;
+            }
             .me-report-topbar-metrics {
                 flex: 1 1 auto;
                 min-width: min(460px, 100%);
@@ -1503,18 +1528,33 @@
                 padding: 8px 12px;
             }
             @media (max-width: 1280px) {
-                .me-report-topbar-actions.has-report-summary {
+                .me-report-topbar-actions.has-report-summary,
+                .me-report-topbar-actions.has-workspace-actions {
                     flex-basis: 100%;
                     min-width: 0;
+                    max-width: none;
                 }
                 .me-report-topbar-metrics {
                     grid-template-columns: repeat(3, minmax(96px, 1fr));
                 }
             }
             @media (max-width: 760px) {
-                .me-report-topbar-actions.has-report-summary {
+                .me-report-topbar-actions.has-report-summary,
+                .me-report-topbar-actions.has-workspace-actions {
                     align-items: stretch;
                     flex-wrap: wrap;
+                    border-radius: 18px;
+                }
+                .me-report-topbar-core-actions,
+                .me-report-topbar-workspace-actions {
+                    flex: 1 1 100%;
+                    flex-wrap: wrap;
+                }
+                .me-report-topbar-workspace-actions {
+                    padding-left: 0;
+                    padding-top: 6px;
+                    border-left: 0;
+                    border-top: 1px solid rgba(61, 85, 130, 0.14);
                 }
                 .me-report-topbar-metrics {
                     flex-basis: 100%;
@@ -11757,8 +11797,15 @@
                         </nav>
                         <div class="me-report-topbar-actions" id="meReportTopbarActions" aria-label="ME Report actions" hidden>
                             <div class="me-report-topbar-metrics" id="meReportTopbarMetrics" aria-label="Selected ME Report summary" hidden></div>
-                            <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
-                            <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload JUK Overview Report</button>
+                            <div class="me-report-topbar-core-actions">
+                                <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
+                                <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload overview</button>
+                            </div>
+                            <div class="me-report-topbar-workspace-actions" id="meReportWorkspaceTopbarActions" hidden>
+                                <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send</button>
+                                <button class="ghost-button me-report-archive-button" id="archiveMeReportWorkspaceButton" type="button">Archive</button>
+                                <button class="ghost-button danger-button" id="deleteMeReportWorkspaceButton" type="button">Delete</button>
+                            </div>
                         </div>
                         <div class="header-xero-action" id="headerXeroAction">
                             <a class="primary-button action-link header-connect-button" id="headerConnectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start" aria-label="Connect Xero" title="Connect Xero">
@@ -12631,13 +12678,6 @@
                     </section>
 
                     <section class="late-charges-screen detail-card" id="meReportScreen" hidden>
-                        <div class="detail-hero">
-                            <div class="detail-actions">
-                                <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send</button>
-                                <button class="ghost-button me-report-archive-button" id="archiveMeReportWorkspaceButton" type="button" hidden>Archive workspace</button>
-                                <button class="ghost-button danger-button" id="deleteMeReportWorkspaceButton" type="button" hidden>Delete workspace</button>
-                            </div>
-                        </div>
                         <section class="detail-panel" id="meReportClientFormPanel" hidden>
                             <form class="bank-account-form" id="meReportClientForm">
                                 <label>
@@ -21572,9 +21612,52 @@
                 return null;
             }
 
+            function bankCleanExportText(value, maxLength = 120) {
+                return String(value ?? "").replace(/\s+/g, " ").trim().replace(/^[-\s:;,#]+|[-\s:;,#]+$/g, "").slice(0, maxLength);
+            }
+
+            function bankTransactionPayeeFromDescription(description) {
+                const original = bankCleanExportText(description);
+                if (!original) return "";
+                let payee = original.replace(/^(?:card\s+payment\s+to|card\s+purchase(?:\s+to)?|direct\s+debit\s+to|direct\s+credit\s+from|internet\s+banking\s+transfer\s+(?:to|from)|on-?line\s+banking\s+bill\s+payment\s+to|bill\s+payment\s+to|payment\s+to|standing\s+order\s+to|faster\s+payment\s+(?:to|from)|bank\s+giro\s+credit\s+from)\s+/i, "");
+                payee = payee
+                    .replace(/\s+(?:ref(?:erence)?\.?|reference)\s*[:#-]?.*$/i, "")
+                    .replace(/\s+on\s+\d{1,2}\s+[a-z]{3,9}\b.*$/i, "")
+                    .replace(/\s+at\s+\d{2}-\d{2}-\d{2}\b.*$/i, "")
+                    .replace(/\s+mobile-channel\b.*$/i, "");
+                return bankCleanExportText(payee || original);
+            }
+
+            function bankTransactionPayee(transaction) {
+                return bankCleanExportText(transaction?.payee || transaction?.counterparty || transaction?.merchant || transaction?.name)
+                    || bankTransactionPayeeFromDescription(transaction?.description);
+            }
+
+            function bankTransactionReferenceFromDescription(description) {
+                const text = bankCleanExportText(description, 180);
+                if (!text) return "";
+                const refMatch = text.match(/\b(?:ref(?:erence)?\.?|reference)\s*[:#-]?\s*(.+)$/i);
+                if (refMatch) {
+                    return bankCleanExportText(refMatch[1].replace(/\s+on\s+\d{1,2}\s+[a-z]{3,9}\b.*$/i, ""), 160);
+                }
+                const payee = bankTransactionPayeeFromDescription(text);
+                const dateMatch = text.match(/\bon\s+(\d{1,2}\s+[a-z]{3,9})\b/i);
+                if (dateMatch) return bankCleanExportText(payee ? `${payee} ${dateMatch[1]}` : dateMatch[1], 160);
+                const transferMatch = text.match(/\bat\s+(\d{2}-\d{2}-\d{2}(?:\s+[a-z-]+)?)\b/i);
+                if (transferMatch) return bankCleanExportText(payee ? `${payee} ${transferMatch[1]}` : transferMatch[1], 160);
+                return payee;
+            }
+
+            function bankTransactionReference(transaction) {
+                return bankCleanExportText(transaction?.reference || transaction?.ref || transaction?.paymentReference || transaction?.transactionReference, 160)
+                    || bankTransactionReferenceFromDescription(transaction?.description);
+            }
+
             function bankStatementSuggestionText(transaction) {
                 return [
                     transaction?.description,
+                    transaction?.payee,
+                    transaction?.reference,
                     transaction?.type
                 ].map((part) => String(part || "").toLowerCase()).join(" ");
             }
@@ -22049,6 +22132,8 @@
                 return [
                     transaction.date,
                     transaction.description,
+                    bankTransactionPayee(transaction),
+                    bankTransactionReference(transaction),
                     transaction.type,
                     transaction.amount,
                     transaction.balance,
@@ -23253,20 +23338,16 @@
             function exportBankTransactionsForXero() {
                 const account = selectedBankAccount();
                 if (!account) return;
-                const uploadById = bankUploadMap(account);
                 const rows = [
                     ["Date", "Amount", "Payee", "Description", "Reference", "Transaction Type"],
-                    ...bankAccountTransactionsAscending(account).map((row) => {
-                        const upload = uploadById.get(String(row.uploadId || ""));
-                        return [
-                            formatXeroBankDate(row.date),
-                            bankTransactionAmount(row).toFixed(2),
-                            "",
-                            row.description || "",
-                            upload?.filename || account.accountNumber || "",
-                            row.type || ""
-                        ];
-                    })
+                    ...bankAccountTransactionsAscending(account).map((row) => [
+                        formatXeroBankDate(row.date),
+                        bankTransactionAmount(row).toFixed(2),
+                        bankTransactionPayee(row),
+                        row.description || "",
+                        bankTransactionReference(row),
+                        row.type || ""
+                    ])
                 ];
                 downloadBankCsv(bankExportFilename(account, "xero-bank-statement"), rows);
             }
@@ -24692,11 +24773,18 @@
             function renderMeReportTopbarSummary() {
                 const actions = document.getElementById("meReportTopbarActions");
                 const target = document.getElementById("meReportTopbarMetrics");
+                const workspaceActions = document.getElementById("meReportWorkspaceTopbarActions");
                 if (!target) return;
                 const context = activeMeReportInsightContext();
                 const showSummary = Boolean(context);
+                const showWorkspaceActions = activeView === "me-report" && meReportWorkspaceOpen && Boolean(selectedMeReportClient());
                 target.hidden = !showSummary;
-                if (actions) actions.classList.toggle("has-report-summary", showSummary);
+                if (actions) {
+                    actions.hidden = activeView !== "me-report";
+                    actions.classList.toggle("has-report-summary", showSummary);
+                    actions.classList.toggle("has-workspace-actions", showWorkspaceActions);
+                }
+                if (workspaceActions) workspaceActions.hidden = !showWorkspaceActions;
                 if (!showSummary) {
                     target.innerHTML = "";
                     return;
@@ -24880,10 +24968,14 @@
                 const bulkUploadButton = document.getElementById("bulkUploadMeReportsButton");
                 if (bulkUploadButton) {
                     bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
-                    bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Upload JUK Overview Report";
+                    bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Upload overview";
                 }
                 const workspaceClient = meReportWorkspaceOpen ? selectedMeReportClient() : null;
                 const workspaceClientArchived = workspaceClient ? meReportClientStatus(workspaceClient) === "archived" : false;
+                const workspaceActionGroup = document.getElementById("meReportWorkspaceTopbarActions");
+                if (workspaceActionGroup) workspaceActionGroup.hidden = !workspaceClient;
+                const topbarActions = document.getElementById("meReportTopbarActions");
+                if (topbarActions) topbarActions.classList.toggle("has-workspace-actions", Boolean(workspaceClient));
                 const bulkSendButton = document.getElementById("bulkSendMeReportsButton");
                 const readyReportCount = activeClients.reduce((count, client) => (
                     count + meReportClientReports(client).filter((report) => !String(report.status || "").startsWith("sent") && (report.recipientEmail || client.reportRecipientEmail || client.xeroContactEmail)).length
@@ -24896,7 +24988,7 @@
                 if (archiveWorkspaceButton) {
                     archiveWorkspaceButton.hidden = !workspaceClient;
                     archiveWorkspaceButton.disabled = meReportLoading || isMeReportProcessing;
-                    archiveWorkspaceButton.textContent = workspaceClientArchived ? "Restore workspace" : "Archive workspace";
+                    archiveWorkspaceButton.textContent = workspaceClientArchived ? "Restore" : "Archive";
                 }
                 const deleteWorkspaceButton = document.getElementById("deleteMeReportWorkspaceButton");
                 if (deleteWorkspaceButton) {

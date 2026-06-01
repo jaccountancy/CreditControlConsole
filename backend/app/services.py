@@ -10615,10 +10615,12 @@ BANK_STATEMENT_EXTRACTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["date", "description", "amount", "balance", "type"],
+                "required": ["date", "description", "payee", "reference", "amount", "balance", "type"],
                 "properties": {
                     "date": {"type": "string"},
                     "description": {"type": "string"},
+                    "payee": {"type": "string"},
+                    "reference": {"type": "string"},
                     "amount": {"type": "number"},
                     "balance": {"type": ["number", "null"]},
                     "type": {"type": "string"},
@@ -10723,6 +10725,66 @@ def _bank_statement_quality_summary(transactions: list[dict]) -> dict:
     }
 
 
+def _clean_bank_statement_payee(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip(" -")[:120]
+
+
+def _bank_statement_payee_from_description(description) -> str:
+    text = _clean_bank_statement_payee(description)
+    if not text:
+        return ""
+    original = text
+    text = re.sub(
+        r"^(?:card\s+payment\s+to|card\s+purchase(?:\s+to)?|direct\s+debit\s+to|direct\s+credit\s+from|internet\s+banking\s+transfer\s+(?:to|from)|on-?line\s+banking\s+bill\s+payment\s+to|bill\s+payment\s+to|payment\s+to|standing\s+order\s+to|faster\s+payment\s+(?:to|from)|bank\s+giro\s+credit\s+from)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip(" -")
+    text = re.sub(r"\s+(?:ref(?:erence)?\.?|reference)\s*[:#-]?.*$", "", text, flags=re.IGNORECASE).strip(" -")
+    text = re.sub(r"\s+on\s+\d{1,2}\s+[a-z]{3,9}\b.*$", "", text, flags=re.IGNORECASE).strip(" -")
+    text = re.sub(r"\s+at\s+\d{2}-\d{2}-\d{2}\b.*$", "", text, flags=re.IGNORECASE).strip(" -")
+    text = re.sub(r"\s+mobile-channel\b.*$", "", text, flags=re.IGNORECASE).strip(" -")
+    return _clean_bank_statement_payee(text or original)
+
+
+def _bank_statement_transaction_payee(row: dict, raw_payload: dict) -> str:
+    for key in ("payee", "counterparty", "merchant", "name"):
+        payee = _clean_bank_statement_payee(raw_payload.get(key))
+        if payee:
+            return payee
+    return _bank_statement_payee_from_description(row.get("description"))
+
+
+def _clean_bank_statement_reference(value) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip(" -:;,#")[:160]
+
+
+def _bank_statement_reference_from_description(description) -> str:
+    text = _clean_bank_statement_reference(description)
+    if not text:
+        return ""
+    ref_match = re.search(r"\b(?:ref(?:erence)?\.?|reference)\s*[:#-]?\s*(.+)$", text, flags=re.IGNORECASE)
+    if ref_match:
+        reference = re.sub(r"\s+on\s+\d{1,2}\s+[a-z]{3,9}\b.*$", "", ref_match.group(1), flags=re.IGNORECASE)
+        return _clean_bank_statement_reference(reference)
+    payee = _bank_statement_payee_from_description(text)
+    date_match = re.search(r"\bon\s+(\d{1,2}\s+[a-z]{3,9})\b", text, flags=re.IGNORECASE)
+    if date_match:
+        return _clean_bank_statement_reference(f"{payee} {date_match.group(1)}" if payee else date_match.group(1))
+    transfer_match = re.search(r"\bat\s+(\d{2}-\d{2}-\d{2}(?:\s+[a-z-]+)?)\b", text, flags=re.IGNORECASE)
+    if transfer_match:
+        return _clean_bank_statement_reference(f"{payee} {transfer_match.group(1)}" if payee else transfer_match.group(1))
+    return payee
+
+
+def _bank_statement_transaction_reference(row: dict, raw_payload: dict) -> str:
+    for key in ("reference", "ref", "paymentReference", "transactionReference"):
+        reference = _clean_bank_statement_reference(raw_payload.get(key))
+        if reference:
+            return reference
+    return _bank_statement_reference_from_description(row.get("description"))
+
+
 def _serialize_bank_statement_transaction(row: dict) -> dict:
     raw_payload = row.get("raw") if isinstance(row.get("raw"), dict) else {}
     raw_amount = _money(row.get("amount"))
@@ -10736,6 +10798,8 @@ def _serialize_bank_statement_transaction(row: dict) -> dict:
         "uploadId": str(row.get("upload_id")) if row.get("upload_id") else "",
         "date": _iso(row.get("transaction_date")) or "",
         "description": row.get("description") or "",
+        "payee": _bank_statement_transaction_payee(row, raw_payload),
+        "reference": _bank_statement_transaction_reference(row, raw_payload),
         "amount": float(effective_amount),
         "rawAmount": float(raw_amount),
         "manualAmount": float(manual_amount) if manual_amount is not None else None,
@@ -11437,7 +11501,9 @@ def _bank_statement_extraction_prompt(account: dict, chunk_label: str, chunk_ind
         + chunk_instruction +
         "Use ISO dates in YYYY-MM-DD format. "
         "Use signed amounts: money paid in is positive, money paid out is negative. "
-        "Include every posted transaction line with date, description, amount, running balance where shown, and a short type. "
+        "Include every posted transaction line with date, description, payee, reference, amount, running balance where shown, and a short type. "
+        "For payee, extract the counterparty name only, removing bank wording such as Card Payment to, Direct Debit to, Direct Credit From, Ref, Reference, and transaction date suffixes; use an empty string only when no counterparty is visible. "
+        "For reference, use the visible Ref or Reference value from the narrative where present; otherwise generate a concise useful reference from the transaction wording, such as the card transaction date, transfer channel, or payee. "
         "Capture the running balance exactly as printed because Jenius checks previous balance plus the signed transaction amount against each extracted running balance. "
         "If PDF text is grouped by columns instead of rows, reconstruct each transaction by visual row order: date, narrative, debit or credit amount, then balance. "
         "For debit-column amounts use a negative amount; for credit-column amounts use a positive amount. "
