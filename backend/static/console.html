@@ -926,6 +926,7 @@
             .lpc-topbar-summary,
             .bank-account-topbar-summary,
             .credit-control-topbar-summary,
+            .insights-topbar-summary,
             .practice-pack-topbar-summary { order: 20; }
             .bank-continuity-topbar-pill { order: 24; }
             .ignition-topbar-tabs,
@@ -955,6 +956,7 @@
             .ledger-topbar.has-inline-status .lpc-topbar-summary,
             .ledger-topbar.has-inline-status .bank-account-topbar-summary,
             .ledger-topbar.has-inline-status .credit-control-topbar-summary,
+            .ledger-topbar.has-inline-status .insights-topbar-summary,
             .ledger-topbar.has-inline-status .practice-pack-topbar-summary,
             .ledger-topbar.has-inline-status .bank-continuity-topbar-pill,
             .ledger-topbar.has-inline-status .ignition-topbar-tabs,
@@ -971,6 +973,7 @@
             .lpc-topbar-summary,
             .bank-account-topbar-summary,
             .credit-control-topbar-summary,
+            .insights-topbar-summary,
             .practice-pack-topbar-summary,
             .ignition-topbar-tabs,
             .me-report-topbar-actions,
@@ -1160,6 +1163,81 @@
                 color: #177a3b;
                 font-size: 0.9rem;
                 font-weight: 950;
+            }
+            .insights-topbar-summary {
+                flex: 1 1 680px;
+                min-width: min(620px, 100%);
+                max-width: 900px;
+                order: 20;
+                display: grid;
+                grid-template-columns: repeat(4, minmax(104px, 1fr));
+                gap: 1px;
+                overflow: hidden;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                background: var(--line);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+            }
+            .insights-topbar-summary[hidden] {
+                display: none;
+            }
+            .insights-topbar-summary article {
+                position: relative;
+                min-width: 0;
+                padding: 9px 14px;
+                background: rgba(248, 251, 255, 0.94);
+            }
+            .insights-topbar-summary article:first-child {
+                border-radius: 999px 0 0 999px;
+            }
+            .insights-topbar-summary article:last-child {
+                border-radius: 0 999px 999px 0;
+            }
+            .insights-topbar-summary article::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 10px;
+                bottom: 10px;
+                width: 3px;
+                border-radius: 999px;
+                background: var(--topbar-accent);
+                opacity: 0;
+                transform: scaleY(0.48);
+                transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .insights-topbar-summary article:first-child::before,
+            .insights-topbar-summary article:hover::before {
+                opacity: 1;
+                transform: scaleY(1);
+            }
+            .insights-topbar-summary span,
+            .insights-topbar-summary strong,
+            .insights-topbar-summary p {
+                display: block;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .insights-topbar-summary span {
+                color: var(--muted);
+                font-size: 0.58rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .insights-topbar-summary strong {
+                margin-top: 3px;
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 950;
+            }
+            .insights-topbar-summary p {
+                margin: 2px 0 0;
+                color: var(--muted);
+                font-size: 0.62rem;
+                font-weight: 800;
+                line-height: 1.2;
             }
             .ledger-topbar.has-inline-status .topbar-client-context {
                 flex: 1 1 390px;
@@ -1502,10 +1580,15 @@
             .ledger-topbar.has-inline-status .jashflow-topbar-summary,
             .ledger-topbar.has-inline-status .lpc-topbar-summary,
             .ledger-topbar.has-inline-status .credit-control-topbar-summary,
+            .ledger-topbar.has-inline-status .insights-topbar-summary,
             .ledger-topbar.has-inline-status .bank-account-topbar-summary,
             .ledger-topbar.has-inline-status .practice-pack-topbar-summary {
                 flex: 1 1 480px;
                 min-width: min(480px, 100%);
+            }
+            .ledger-topbar.has-inline-status .insights-topbar-summary {
+                max-width: 760px;
+                grid-template-columns: repeat(4, minmax(84px, 1fr));
             }
             .ledger-topbar.has-inline-status .bank-account-topbar-summary.is-bank-overview {
                 flex: 0 1 clamp(350px, 28vw, 520px);
@@ -1538,6 +1621,7 @@
             .ledger-topbar.is-topbar-dense .jashflow-topbar-summary,
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary,
             .ledger-topbar.is-topbar-dense .credit-control-topbar-summary,
+            .ledger-topbar.is-topbar-dense .insights-topbar-summary,
             .ledger-topbar.is-topbar-dense .bank-account-topbar-summary,
             .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary {
                 flex-basis: 330px;
@@ -1553,6 +1637,25 @@
             }
             .ledger-topbar.is-topbar-dense .lpc-topbar-summary {
                 grid-template-columns: repeat(4, minmax(72px, 1fr));
+            }
+            .ledger-topbar.is-topbar-dense .insights-topbar-summary {
+                flex-basis: 430px;
+                min-width: min(430px, 100%);
+                grid-template-columns: repeat(4, minmax(76px, 1fr));
+            }
+            .ledger-topbar.is-topbar-dense .insights-topbar-summary article {
+                padding: 7px 10px;
+            }
+            .ledger-topbar.is-topbar-dense .insights-topbar-summary span {
+                font-size: 0.5rem;
+                letter-spacing: 0.06em;
+            }
+            .ledger-topbar.is-topbar-dense .insights-topbar-summary strong {
+                margin-top: 2px;
+                font-size: 0.74rem;
+            }
+            .ledger-topbar.is-topbar-dense .insights-topbar-summary p {
+                font-size: 0.56rem;
             }
             .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary {
                 flex-basis: 430px;
@@ -1586,6 +1689,7 @@
             .ledger-topbar.is-topbar-stacked .jashflow-topbar-summary,
             .ledger-topbar.is-topbar-stacked .lpc-topbar-summary,
             .ledger-topbar.is-topbar-stacked .credit-control-topbar-summary,
+            .ledger-topbar.is-topbar-stacked .insights-topbar-summary,
             .ledger-topbar.is-topbar-stacked .bank-account-topbar-summary,
             .ledger-topbar.is-topbar-stacked .practice-pack-topbar-summary,
             .ledger-topbar.is-topbar-stacked .ignition-topbar-tabs,
@@ -1602,6 +1706,7 @@
             .ledger-topbar.is-topbar-stacked .jashflow-topbar-summary,
             .ledger-topbar.is-topbar-stacked .lpc-topbar-summary,
             .ledger-topbar.is-topbar-stacked .credit-control-topbar-summary,
+            .ledger-topbar.is-topbar-stacked .insights-topbar-summary,
             .ledger-topbar.is-topbar-stacked .bank-account-topbar-summary,
             .ledger-topbar.is-topbar-stacked .practice-pack-topbar-summary,
             .ledger-topbar.is-topbar-stacked .ignition-topbar-tabs,
@@ -4370,6 +4475,9 @@
                 gap: 14px;
                 margin-bottom: 18px;
             }
+            .lpc-ledger-metrics {
+                margin: 0 0 18px;
+            }
             .insight-card,
             .insight-chart,
             .insights-empty {
@@ -4449,6 +4557,65 @@
             .insight-table td:last-child,
             .insight-table th:last-child {
                 text-align: right;
+            }
+            .ai-summary-card {
+                display: grid;
+                gap: 12px;
+            }
+            .ai-summary-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .ai-summary-head mark {
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                padding: 5px 9px;
+                font-size: 0.68rem;
+                font-weight: 950;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .ai-summary-card h3 {
+                margin: 0;
+                font-size: 1.18rem;
+                line-height: 1.24;
+            }
+            .ai-summary-lead,
+            .ai-summary-note {
+                margin: 0;
+                color: var(--ink);
+                font-weight: 800;
+                line-height: 1.52;
+            }
+            .ai-summary-note {
+                color: var(--muted);
+                font-size: 0.9rem;
+            }
+            .ai-summary-points {
+                display: grid;
+                gap: 8px;
+            }
+            .ai-summary-point {
+                display: grid;
+                grid-template-columns: 9px minmax(0, 1fr);
+                align-items: start;
+                gap: 9px;
+                color: var(--ink);
+                font-weight: 800;
+                line-height: 1.45;
+            }
+            .ai-summary-point::before {
+                content: "";
+                width: 9px;
+                height: 9px;
+                margin-top: 0.42em;
+                border-radius: 999px;
+                background: var(--blue);
+                box-shadow: 0 0 0 4px rgba(29, 103, 242, 0.10);
             }
             .bar-track {
                 height: 12px;
@@ -4792,6 +4959,22 @@
             }
             .client-main-panel {
                 min-width: 0;
+            }
+            .client-screen .xero-client-header-actions,
+            .client-screen .xero-client-tabs.client-section-nav,
+            .client-screen .legacy-client-section-nav,
+            .client-screen .client-sidebar {
+                display: none !important;
+            }
+            .client-screen .xero-client-avatar,
+            .client-screen .xero-client-title {
+                grid-row: 1;
+            }
+            .client-screen .client-workspace-layout {
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .client-screen .client-main-panel {
+                grid-column: 1 / -1;
             }
             .client-summary-panel,
             .client-main-panel,
@@ -5180,21 +5363,149 @@
                 margin-top: 14px;
             }
             .practice-pack-form {
+                position: relative;
                 display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
-                gap: 12px;
+                grid-template-columns: minmax(0, 1fr) minmax(180px, 0.24fr);
+                gap: 16px;
                 align-items: end;
+                padding: 18px;
+                border: 1px solid rgba(29, 103, 242, 0.14);
+                border-radius: 20px;
+                background:
+                    linear-gradient(135deg, rgba(248, 251, 255, 0.98), rgba(255, 255, 255, 0.94)),
+                    linear-gradient(90deg, rgba(29, 103, 242, 0.08), rgba(39, 176, 95, 0.06));
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 14px 34px rgba(41, 79, 148, 0.06);
+                overflow: hidden;
             }
-            .practice-pack-form label {
+            .practice-pack-form.is-generating::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.7) 44%, transparent 72%);
+                transform: translateX(-120%);
+                animation: practice-pack-upload-sheen 1.55s ease-in-out infinite;
+                pointer-events: none;
+            }
+            .practice-pack-upload-grid {
+                position: relative;
+                z-index: 1;
                 display: grid;
-                gap: 7px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 14px;
+                min-width: 0;
+            }
+            .practice-pack-upload-card {
+                position: relative;
+                display: grid;
+                grid-template-columns: 48px minmax(0, 1fr);
+                gap: 12px;
+                align-items: start;
+                min-height: 142px;
+                padding: 16px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 18px;
+                background: rgba(255, 255, 255, 0.84);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+                transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+            }
+            .practice-pack-upload-card:hover,
+            .practice-pack-upload-card:focus-within,
+            .practice-pack-upload-card.is-dragover {
+                transform: translateY(-2px);
+                border-color: rgba(29, 103, 242, 0.3);
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: 0 16px 32px rgba(29, 103, 242, 0.1);
+            }
+            .practice-pack-upload-card.is-loaded {
+                border-color: rgba(39, 176, 95, 0.3);
+                background: linear-gradient(135deg, rgba(232, 248, 238, 0.72), rgba(255, 255, 255, 0.94));
+            }
+            .practice-pack-upload-mark {
+                width: 48px;
+                height: 48px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 14px;
+                background: linear-gradient(135deg, var(--blue), var(--green));
+                color: #fff;
+                font-size: 0.78rem;
+                font-weight: 950;
+                letter-spacing: 0.04em;
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.18);
+            }
+            .practice-pack-upload-copy {
+                min-width: 0;
+                display: grid;
+                gap: 6px;
+            }
+            .practice-pack-upload-copy span,
+            .practice-pack-upload-copy strong,
+            .practice-pack-upload-copy small {
+                display: block;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .practice-pack-upload-copy span,
+            .practice-pack-month-control span {
                 color: var(--muted);
                 font-size: 0.72rem;
                 font-weight: 900;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
             }
-            .practice-pack-form input,
+            .practice-pack-upload-copy strong {
+                color: var(--ink);
+                font-size: 1rem;
+                font-weight: 950;
+            }
+            .practice-pack-upload-copy small {
+                color: #657690;
+                font-size: 0.8rem;
+                font-weight: 800;
+            }
+            .practice-pack-upload-button {
+                width: fit-content;
+                min-height: 34px;
+                margin-top: 4px;
+                padding: 7px 12px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                font: inherit;
+                font-size: 0.78rem;
+                font-weight: 950;
+                cursor: pointer;
+                transition: transform 0.18s ease, background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+            }
+            .practice-pack-upload-button:hover,
+            .practice-pack-upload-button:focus-visible {
+                transform: translateY(-1px);
+                background: var(--blue);
+                color: #fff;
+                box-shadow: 0 10px 20px rgba(29, 103, 242, 0.14);
+                outline: none;
+            }
+            .practice-pack-form input[type="file"] {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                opacity: 0;
+                pointer-events: none;
+            }
+            .practice-pack-actions {
+                position: relative;
+                z-index: 1;
+                display: grid;
+                gap: 12px;
+                align-self: stretch;
+            }
+            .practice-pack-month-control {
+                display: grid;
+                gap: 7px;
+            }
             .practice-pack-form select {
                 width: 100%;
                 min-height: 42px;
@@ -5206,6 +5517,128 @@
                 font: inherit;
                 font-weight: 750;
                 text-transform: none;
+            }
+            .practice-pack-generate-button {
+                min-height: 52px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 9px;
+                white-space: nowrap;
+            }
+            .practice-pack-generate-button:disabled {
+                cursor: not-allowed;
+                opacity: 0.62;
+            }
+            .practice-pack-generate-mark {
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: currentColor;
+                box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.18);
+            }
+            .practice-pack-form.is-ready .practice-pack-generate-mark {
+                animation: practice-pack-ready-dot 1.4s ease-in-out infinite;
+            }
+            .practice-pack-processing {
+                position: relative;
+                display: grid;
+                gap: 16px;
+                padding: 20px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 20px;
+                background: linear-gradient(135deg, rgba(233, 241, 255, 0.9), rgba(232, 248, 238, 0.7), rgba(255, 255, 255, 0.94));
+                box-shadow: 0 18px 42px rgba(29, 103, 242, 0.08);
+                overflow: hidden;
+            }
+            .practice-pack-processing::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.66) 42%, transparent 68%);
+                transform: translateX(-120%);
+                animation: practice-pack-upload-sheen 1.5s ease-in-out infinite;
+                pointer-events: none;
+            }
+            .practice-pack-processing > * {
+                position: relative;
+                z-index: 1;
+            }
+            .practice-pack-processing-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 14px;
+                flex-wrap: wrap;
+            }
+            .practice-pack-processing-head span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .practice-pack-processing-head strong {
+                display: block;
+                margin-top: 4px;
+                color: var(--ink);
+                font-size: 1.12rem;
+                font-weight: 950;
+            }
+            .practice-pack-processing-meter {
+                height: 9px;
+                border-radius: 999px;
+                background: rgba(255, 255, 255, 0.82);
+                overflow: hidden;
+                box-shadow: inset 0 1px 3px rgba(30, 47, 77, 0.08);
+            }
+            .practice-pack-processing-meter span {
+                display: block;
+                width: 68%;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, var(--blue), var(--green), var(--orange));
+                animation: practice-pack-progress 1.35s ease-in-out infinite;
+            }
+            .practice-pack-processing-steps {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+            }
+            .practice-pack-processing-steps span {
+                min-width: 0;
+                padding: 10px 12px;
+                border: 1px solid rgba(255, 255, 255, 0.72);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.72);
+                color: #52647e;
+                font-size: 0.78rem;
+                font-weight: 900;
+                text-align: center;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            @keyframes practice-pack-upload-sheen {
+                0% { transform: translateX(-120%); }
+                58%, 100% { transform: translateX(130%); }
+            }
+            @keyframes practice-pack-ready-dot {
+                0%, 100% { transform: scale(0.85); opacity: 0.72; }
+                50% { transform: scale(1.08); opacity: 1; }
+            }
+            @keyframes practice-pack-progress {
+                0% { transform: translateX(-72%); }
+                50% { transform: translateX(22%); }
+                100% { transform: translateX(120%); }
+            }
+            @media (max-width: 860px) {
+                .practice-pack-form,
+                .practice-pack-upload-grid,
+                .practice-pack-processing-steps {
+                    grid-template-columns: 1fr;
+                }
             }
             .practice-pack-output-grid {
                 display: grid;
@@ -5453,7 +5886,7 @@
             }
             .jashflow-list-toolbar {
                 align-items: flex-start;
-                justify-content: flex-end;
+                justify-content: space-between;
             }
             .jashflow-toolbar-actions {
                 display: flex;
@@ -5461,13 +5894,15 @@
                 justify-content: flex-end;
                 gap: 8px;
                 flex-wrap: wrap;
+                margin-left: auto;
             }
             .jashflow-loan-controls {
                 display: flex;
                 align-items: flex-end;
-                justify-content: flex-end;
+                justify-content: flex-start;
                 gap: 10px;
                 flex-wrap: wrap;
+                margin-right: auto;
             }
             .jashflow-loan-control {
                 display: grid;
@@ -6212,10 +6647,10 @@
             #meReportScreen .me-report-client-controls {
                 display: flex;
                 align-items: center;
-                justify-content: flex-end;
+                justify-content: flex-start;
                 gap: 8px;
                 flex-wrap: wrap;
-                flex: 1;
+                flex: 1 1 100%;
                 min-width: min(620px, 100%);
             }
             #meReportScreen .me-report-client-search {
@@ -6953,6 +7388,121 @@
             .bank-account-toolbar .search-wrap {
                 max-width: 420px;
             }
+            .bank-ai-autocat-toggle {
+                position: relative;
+                isolation: isolate;
+                flex: 0 1 390px;
+                min-height: 58px;
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 11px;
+                padding: 9px 11px;
+                border: 1px solid rgba(29, 103, 242, 0.14);
+                border-radius: 16px;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.92));
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+                cursor: pointer;
+                overflow: hidden;
+                transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+            }
+            .bank-ai-autocat-toggle:hover,
+            .bank-ai-autocat-toggle:focus-within {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.25);
+                box-shadow: 0 14px 30px rgba(29, 103, 242, 0.1);
+            }
+            .bank-ai-autocat-toggle input {
+                position: absolute;
+                opacity: 0;
+                pointer-events: none;
+            }
+            .bank-ai-autocat-switch {
+                width: 52px;
+                height: 30px;
+                display: inline-flex;
+                align-items: center;
+                padding: 3px;
+                border-radius: 999px;
+                background: #dce5f2;
+                box-shadow: inset 0 1px 4px rgba(30, 47, 77, 0.16);
+                transition: background 0.24s ease, box-shadow 0.24s ease;
+            }
+            .bank-ai-autocat-switch span {
+                width: 24px;
+                height: 24px;
+                border-radius: 50%;
+                background: #ffffff;
+                box-shadow: 0 5px 12px rgba(30, 47, 77, 0.18);
+                transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .bank-ai-autocat-copy {
+                min-width: 0;
+                display: grid;
+                gap: 2px;
+            }
+            .bank-ai-autocat-copy strong,
+            .bank-ai-autocat-copy small {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .bank-ai-autocat-copy strong {
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 950;
+            }
+            .bank-ai-autocat-copy small {
+                color: var(--muted);
+                font-size: 0.73rem;
+                font-weight: 850;
+            }
+            .bank-ai-autocat-orb {
+                position: relative;
+                width: 34px;
+                height: 34px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 12px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                font-size: 0.66rem;
+                font-weight: 950;
+                letter-spacing: 0.04em;
+                box-shadow: inset 0 0 0 1px rgba(29, 103, 242, 0.1);
+            }
+            .bank-ai-autocat-toggle.is-on {
+                border-color: rgba(39, 176, 95, 0.26);
+                background: linear-gradient(135deg, rgba(232, 248, 238, 0.96), rgba(233, 241, 255, 0.92));
+                box-shadow: 0 16px 34px rgba(39, 176, 95, 0.12);
+            }
+            .bank-ai-autocat-toggle.is-on .bank-ai-autocat-switch {
+                background: linear-gradient(135deg, var(--blue), var(--green));
+                box-shadow: inset 0 1px 4px rgba(30, 47, 77, 0.18), 0 8px 18px rgba(39, 176, 95, 0.2);
+            }
+            .bank-ai-autocat-toggle.is-on .bank-ai-autocat-switch span {
+                transform: translateX(22px);
+            }
+            .bank-ai-autocat-toggle.is-on .bank-ai-autocat-orb {
+                background: linear-gradient(135deg, var(--blue), var(--green));
+                color: #ffffff;
+            }
+            .bank-ai-autocat-toggle.is-running::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                z-index: -1;
+                background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+                transform: translateX(-110%);
+                animation: bank-ai-autocat-scan 1.15s ease-in-out infinite;
+            }
+            .bank-ai-autocat-toggle.is-running .bank-ai-autocat-orb {
+                animation: bank-ai-autocat-pulse 0.9s ease-in-out infinite;
+            }
+            .bank-ai-autocat-toggle.is-disabled {
+                opacity: 0.64;
+                cursor: not-allowed;
+            }
             .bank-transaction-table,
             .bank-upload-history-table {
                 width: 100%;
@@ -7035,6 +7585,12 @@
             }
             .bank-transaction-table tbody tr.bank-transaction-row-is-overridden {
                 background: rgba(233, 241, 255, 0.36);
+            }
+            .bank-transaction-table tbody tr.bank-transaction-row-is-categorised {
+                background: rgba(232, 248, 238, 0.22);
+            }
+            .bank-transaction-table tbody tr.bank-transaction-row-ai-applied {
+                animation: bank-ai-row-apply 1.35s ease both;
             }
             .bank-transaction-description-cell {
                 position: relative;
@@ -7179,6 +7735,10 @@
                 font-weight: 950;
                 letter-spacing: 0.03em;
             }
+            .bank-xero-suggestion.is-applied .bank-xero-ai-mark {
+                background: linear-gradient(135deg, var(--green), var(--blue));
+                box-shadow: 0 8px 18px rgba(39, 176, 95, 0.22);
+            }
             .bank-xero-suggestion-copy {
                 min-width: 0;
                 display: grid;
@@ -7232,6 +7792,17 @@
                 font-size: 0.72rem;
                 font-weight: 900;
             }
+            .bank-xero-applied-badge {
+                display: inline-flex;
+                align-items: center;
+                min-height: 22px;
+                padding: 2px 8px;
+                border-radius: 999px;
+                background: var(--blue-soft);
+                color: var(--blue);
+                font-size: 0.68rem;
+                font-weight: 950;
+            }
             .bank-xero-reason {
                 color: #6d7d96 !important;
                 line-height: 1.3;
@@ -7239,6 +7810,19 @@
                 -webkit-line-clamp: 2;
                 -webkit-box-orient: vertical;
                 overflow: hidden;
+            }
+            @keyframes bank-ai-autocat-scan {
+                0% { transform: translateX(-110%); }
+                100% { transform: translateX(110%); }
+            }
+            @keyframes bank-ai-autocat-pulse {
+                0%, 100% { transform: scale(1); box-shadow: 0 8px 18px rgba(39, 176, 95, 0.14); }
+                50% { transform: scale(1.08); box-shadow: 0 14px 30px rgba(29, 103, 242, 0.24); }
+            }
+            @keyframes bank-ai-row-apply {
+                0% { box-shadow: inset 4px 0 0 rgba(29, 103, 242, 0); background: rgba(233, 241, 255, 0.08); }
+                35% { box-shadow: inset 4px 0 0 var(--green); background: rgba(232, 248, 238, 0.72); }
+                100% { box-shadow: inset 4px 0 0 rgba(39, 176, 95, 0.18); background: rgba(232, 248, 238, 0.22); }
             }
             .bank-upload-failure-advice {
                 margin-top: 7px;
@@ -8008,8 +8592,10 @@
             .ignition-client-controls {
                 display: flex;
                 align-items: center;
+                justify-content: flex-start;
                 gap: 8px;
                 flex-wrap: wrap;
+                flex: 1 1 100%;
             }
             .ignition-client-search {
                 min-width: min(320px, 100%);
@@ -10443,6 +11029,7 @@
             .ledger-topbar.is-topbar-status-only .jashflow-topbar-summary:not([hidden]),
             .ledger-topbar.is-topbar-status-only .lpc-topbar-summary:not([hidden]),
             .ledger-topbar.is-topbar-status-only .credit-control-topbar-summary:not([hidden]),
+            .ledger-topbar.is-topbar-status-only .insights-topbar-summary:not([hidden]),
             .ledger-topbar.is-topbar-status-only .bank-account-topbar-summary:not([hidden]),
             .ledger-topbar.is-topbar-status-only .practice-pack-topbar-summary:not([hidden]),
             .ledger-topbar.is-topbar-status-only .bank-continuity-topbar-pill:not([hidden]),
@@ -10735,7 +11322,6 @@
                             <button type="button" data-ignition-tab="renewals">Renewals</button>
                             <button type="button" data-ignition-tab="staff-income">Income by staff</button>
                             <button type="button" data-ignition-tab="subscriptions">Subscriptions</button>
-                            <button type="button" data-ignition-tab="renewal-analysis">Renewal vs new work</button>
                             <button type="button" data-ignition-tab="creators">Proposal creators</button>
                         </nav>
                         <div class="me-report-topbar-actions" id="meReportTopbarActions" aria-label="ME Report actions" hidden>
@@ -11305,6 +11891,7 @@
                                 <button class="primary-button" id="raiseLateChargesButton" type="button">Raise selected charges</button>
                             </div>
                         </div>
+                        <div class="insights-grid lpc-ledger-metrics" id="lpcLedgerOverviewGrid" aria-label="LPC ledger overview"></div>
                         <section class="detail-panel">
                             <div class="late-charge-bulk-toolbar">
                                 <label class="search-wrap late-charge-search">
@@ -11642,32 +12229,51 @@
                         </div>
                         <section class="detail-panel practice-pack-panel">
                             <form class="practice-pack-form" id="practicePackForm">
-                                <label>
-                                    BM Client File CSV
-                                    <input id="practicePackClientFile" type="file" accept=".csv,text/csv" required>
-                                </label>
-                                <label>
-                                    BM Task File CSV
-                                    <input id="practicePackTaskFile" type="file" accept=".csv,text/csv" required>
-                                </label>
-                                <label>
-                                    Month
-                                    <select id="practicePackMonthSelect">
-                                        <option value="January">January</option>
-                                        <option value="February">February</option>
-                                        <option value="March">March</option>
-                                        <option value="April">April</option>
-                                        <option value="May" selected>May</option>
-                                        <option value="June">June</option>
-                                        <option value="July">July</option>
-                                        <option value="August">August</option>
-                                        <option value="September">September</option>
-                                        <option value="October">October</option>
-                                        <option value="November">November</option>
-                                        <option value="December">December</option>
-                                    </select>
-                                </label>
-                                <button class="primary-button" id="practicePackGenerateButton" type="submit">Generate PDFs</button>
+                                <div class="practice-pack-upload-grid" aria-label="BM CSV uploads">
+                                    <article class="practice-pack-upload-card" data-practice-pack-file-card="client">
+                                        <span class="practice-pack-upload-mark" aria-hidden="true">BM</span>
+                                        <span class="practice-pack-upload-copy">
+                                            <span>Client file</span>
+                                            <strong id="practicePackClientFileName">BM Client File CSV</strong>
+                                            <small id="practicePackClientFileMeta">No file selected</small>
+                                            <button class="practice-pack-upload-button" id="practicePackClientUploadButton" type="button">Upload client CSV</button>
+                                        </span>
+                                    </article>
+                                    <article class="practice-pack-upload-card" data-practice-pack-file-card="task">
+                                        <span class="practice-pack-upload-mark" aria-hidden="true">PDF</span>
+                                        <span class="practice-pack-upload-copy">
+                                            <span>Task file</span>
+                                            <strong id="practicePackTaskFileName">BM Task File CSV</strong>
+                                            <small id="practicePackTaskFileMeta">No file selected</small>
+                                            <button class="practice-pack-upload-button" id="practicePackTaskUploadButton" type="button">Upload task CSV</button>
+                                        </span>
+                                    </article>
+                                </div>
+                                <div class="practice-pack-actions">
+                                    <label class="practice-pack-month-control">
+                                        <span>Pack month</span>
+                                        <select id="practicePackMonthSelect">
+                                            <option value="January">January</option>
+                                            <option value="February">February</option>
+                                            <option value="March">March</option>
+                                            <option value="April">April</option>
+                                            <option value="May" selected>May</option>
+                                            <option value="June">June</option>
+                                            <option value="July">July</option>
+                                            <option value="August">August</option>
+                                            <option value="September">September</option>
+                                            <option value="October">October</option>
+                                            <option value="November">November</option>
+                                            <option value="December">December</option>
+                                        </select>
+                                    </label>
+                                    <button class="primary-button practice-pack-generate-button" id="practicePackGenerateButton" type="submit" disabled>
+                                        <span class="practice-pack-generate-mark" aria-hidden="true"></span>
+                                        <span id="practicePackGenerateLabel">Upload files first</span>
+                                    </button>
+                                </div>
+                                <input id="practicePackClientFile" type="file" accept=".csv,text/csv">
+                                <input id="practicePackTaskFile" type="file" accept=".csv,text/csv">
                             </form>
                             <p class="late-charge-summary" id="practicePackSummary">Awaiting BM Client File CSV and BM Task File CSV.</p>
                             <div class="practice-pack-output-list" id="practicePackOutputList">
@@ -11695,10 +12301,8 @@
                                 <button type="button" data-insight-section="ageing">Ageing</button>
                                 <button type="button" data-insight-section="workflows">Workflows</button>
                                 <button type="button" data-insight-section="lpcs">LPCs</button>
-                                <button type="button" data-insight-section="ai">AI actions</button>
                                 <button type="button" data-insight-section="customer-intelligence">Customer Intelligence</button>
                                 <button type="button" data-insight-section="debt-analysis">Debt Analysis</button>
-                                <button type="button" data-insight-section="ai-copilot">AI Copilot</button>
                                 <button type="button" data-insight-section="loans-provided">Loans provided</button>
                                 <button type="button" data-insight-section="bank-extraction">Bank Statement Extraction</button>
                                 <button type="button" data-insight-section="settled-invoices">Settled Invoice Analysis</button>
@@ -12705,6 +13309,11 @@
             let bankStatementAccountOpen = false;
             let bankStatementAccountTab = "transactions";
             let bankStatementTransactionSearchTerm = "";
+            let bankStatementAiAutocategorisationEnabled = false;
+            let bankStatementAiAutocategorisationRunning = false;
+            let bankStatementAiAutocategorisationAccountId = "";
+            let bankStatementAiAutocategorisationResult = null;
+            let bankStatementAiAutocategorisedTransactionIds = new Set();
             let bankStatementUploadingAccountId = "";
             let bankStatementUploadingFilename = "";
             let bankStatementUploadStartedAt = 0;
@@ -12726,7 +13335,7 @@
             let ignitionClientSearchTerm = "";
             let ignitionClientSortMode = "activity-desc";
             let ignitionClientFilter = "all";
-            const ignitionTabKeys = new Set(["overview", "clients", "renewals", "staff-income", "subscriptions", "renewal-analysis", "creators"]);
+            const ignitionTabKeys = new Set(["overview", "clients", "renewals", "staff-income", "subscriptions", "creators"]);
             let activeIgnitionTab = "overview";
             let meReportData = { clients: [], summary: {}, treatmentCategories: [], settings: {}, xero: {}, syncRun: null, activeSyncRun: null };
             let meReportClientStatusFilter = ["active", "archived", "all"].includes(persistedUIState.meReportClientStatusFilter)
@@ -13026,6 +13635,7 @@
                         bankStatementUploadSource: config.endpoints?.bankStatementUploadSource || "/api/bank-statements/uploads/:uploadId/source",
                         bankStatementUploadRetry: config.endpoints?.bankStatementUploadRetry || "/api/bank-statements/uploads/:uploadId/retry",
                         bankStatementTransactionOverride: config.endpoints?.bankStatementTransactionOverride || "/api/bank-statements/transactions/:transactionId/override",
+                        bankStatementTransactionCategorise: config.endpoints?.bankStatementTransactionCategorise || "/api/bank-statements/accounts/:accountId/transactions/categorise",
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
@@ -15160,6 +15770,7 @@
                     ".jashflow-topbar-summary",
                     ".lpc-topbar-summary",
                     ".credit-control-topbar-summary",
+                    ".insights-topbar-summary",
                     ".bank-account-topbar-summary",
                     ".practice-pack-topbar-summary",
                     ".bank-continuity-topbar-pill",
@@ -15180,6 +15791,7 @@
                     ".jashflow-topbar-summary:not([hidden]), " +
                     ".lpc-topbar-summary:not([hidden]), " +
                     ".credit-control-topbar-summary:not([hidden]), " +
+                    ".insights-topbar-summary:not([hidden]), " +
                     ".bank-account-topbar-summary:not([hidden]), " +
                     ".practice-pack-topbar-summary:not([hidden]), " +
                     ".me-report-topbar-actions.has-report-summary:not([hidden]), " +
@@ -17940,6 +18552,18 @@
                 scrollConsoleToTop();
             }
 
+            function renderLpcLedgerOverview() {
+                const target = document.getElementById("lpcLedgerOverviewGrid");
+                if (!target) return;
+                const metrics = insightOverviewTopbarMetrics(localInsightsPayload("local").analytics || {});
+                target.innerHTML = [
+                    insightCard("Open ledger", metrics.openLedger, metrics.openInvoices),
+                    insightCard("Overdue ratio", metrics.overdueRatio, "Overdue as a share of open debt"),
+                    insightCard("Clients monitored", metrics.clientsMonitored, "Synced customer records"),
+                    insightCard("Max overdue", metrics.maxOverdue, "Oldest open exposure"),
+                ].join("");
+            }
+
             function renderLateChargesScreen() {
                 const screen = document.getElementById("lateChargesScreen");
                 const target = document.getElementById("lateChargesList");
@@ -17947,6 +18571,7 @@
                 const raiseButton = document.getElementById("raiseLateChargesButton");
                 if (!screen || !target || !summary || !raiseButton) return;
 
+                renderLpcLedgerOverview();
                 const stats = latePaymentChargeReviewStats();
                 const invoices = stats.visible;
                 const validIds = new Set(stats.visibleEligible.map((invoice) => invoice.id));
@@ -20535,17 +21160,38 @@
                 });
             }
 
+            function bankTransactionAppliedAiCategory(transaction) {
+                const category = transaction?.aiCategory || {};
+                if (!category.applied && !(category.code || category.name || category.tag)) return null;
+                return {
+                    code: String(category.code || ""),
+                    name: String(category.name || ""),
+                    tag: String(category.tag || "Review"),
+                    confidence: Number(category.confidence || 0),
+                    reason: String(category.reason || "Applied by AI autocategorisation."),
+                    source: String(category.source || "AI autocategorisation"),
+                    appliedAt: String(category.appliedAt || "")
+                };
+            }
+
+            function bankTransactionDisplayXeroMapping(transaction) {
+                return bankTransactionAppliedAiCategory(transaction) || bankStatementSuggestedXeroMapping(transaction);
+            }
+
             function bankStatementXeroSuggestionMarkup(transaction, upload) {
-                const suggestion = bankStatementSuggestedXeroMapping(transaction);
+                const appliedCategory = bankTransactionAppliedAiCategory(transaction);
+                const suggestion = appliedCategory || bankStatementSuggestedXeroMapping(transaction);
+                const applied = Boolean(appliedCategory);
                 const title = [
-                    `${suggestion.code} ${suggestion.name}`,
+                    applied ? `Applied: ${suggestion.code} ${suggestion.name}` : `${suggestion.code} ${suggestion.name}`,
                     suggestion.reason,
                     `AI tag: ${suggestion.tag}`,
                     `Confidence: ${suggestion.confidence}%`,
+                    applied && suggestion.appliedAt ? `Applied ${formatDate(suggestion.appliedAt)}` : "",
                     upload?.filename ? `Source upload: ${upload.filename}` : ""
                 ].filter(Boolean).join(" - ");
                 return `
-                    <span class="bank-xero-suggestion" title="${escapeHTML(title)}">
+                    <span class="bank-xero-suggestion ${applied ? "is-applied" : ""}" title="${escapeHTML(title)}">
                         <span class="bank-xero-ai-mark" aria-hidden="true">AI</span>
                         <span class="bank-xero-suggestion-copy">
                             <strong class="bank-xero-suggestion-code">
@@ -20555,6 +21201,7 @@
                             <small class="bank-xero-suggestion-meta">
                                 <span class="bank-xero-tag">${escapeHTML(suggestion.tag || "Review")}</span>
                                 <span class="bank-xero-confidence">${Number(suggestion.confidence || 0)}% · ${escapeHTML(suggestion.source)}</span>
+                                ${applied ? '<span class="bank-xero-applied-badge">Applied</span>' : ""}
                             </small>
                             <small class="bank-xero-reason">${escapeHTML(suggestion.reason)}</small>
                         </span>
@@ -20759,7 +21406,7 @@
             function bankTransactionMatchesSearch(transaction, upload, term) {
                 const query = String(term || "").trim().toLowerCase();
                 if (!query) return true;
-                const suggestion = bankStatementSuggestedXeroMapping(transaction);
+                const suggestion = bankTransactionDisplayXeroMapping(transaction);
                 return [
                     transaction.date,
                     transaction.description,
@@ -20771,6 +21418,104 @@
                     suggestion.name,
                     suggestion.tag
                 ].join(" ").toLowerCase().includes(query);
+            }
+
+            function syncBankAiAutocategorisationAccount(account) {
+                const accountId = account?.id || "";
+                if (bankStatementAiAutocategorisationAccountId === accountId) return;
+                bankStatementAiAutocategorisationAccountId = accountId;
+                bankStatementAiAutocategorisationEnabled = false;
+                bankStatementAiAutocategorisationRunning = false;
+                bankStatementAiAutocategorisationResult = null;
+                bankStatementAiAutocategorisedTransactionIds = new Set();
+            }
+
+            function bankStatementAiAutocategorisationSuggestions(transactions) {
+                return (transactions || []).map((transaction) => {
+                    const suggestion = bankStatementSuggestedXeroMapping(transaction);
+                    return {
+                        transactionId: transaction.id || "",
+                        code: suggestion.code || "",
+                        name: suggestion.name || "",
+                        tag: suggestion.tag || "Review",
+                        confidence: Number(suggestion.confidence || 0),
+                        reason: suggestion.reason || "",
+                        source: suggestion.source || "AI autocategorisation"
+                    };
+                }).filter((suggestion) => suggestion.transactionId && (suggestion.code || suggestion.name || suggestion.tag));
+            }
+
+            function bankStatementAiAutocategorisationSummary(transactions) {
+                const total = Number((transactions || []).length);
+                const applied = (transactions || []).filter(bankTransactionAppliedAiCategory).length;
+                const ready = bankStatementAiAutocategorisationSuggestions(transactions).length;
+                return { total, applied, ready };
+            }
+
+            async function setBankStatementAiAutocategorisation(enabled) {
+                if (enabled) {
+                    await applyBankStatementAiAutocategorisation();
+                    return;
+                }
+                bankStatementAiAutocategorisationEnabled = false;
+                bankStatementAiAutocategorisationResult = null;
+                bankStatementAiAutocategorisedTransactionIds = new Set();
+                showToast("AI autocategorisation is off. Existing applied categories remain saved.", "info");
+                renderBankStatementsScreen();
+            }
+
+            async function applyBankStatementAiAutocategorisation() {
+                const account = selectedBankAccount();
+                if (!account) return showToast("Select a bank account before using AI autocategorisation", "error");
+                const transactions = bankAccountTransactionsAscending(account);
+                const suggestions = bankStatementAiAutocategorisationSuggestions(transactions);
+                if (!suggestions.length) return showToast("No bank transactions are available to categorise", "info");
+
+                bankStatementAiAutocategorisationEnabled = true;
+                bankStatementAiAutocategorisationRunning = true;
+                bankStatementAiAutocategorisationAccountId = account.id || "";
+                bankStatementAiAutocategorisationResult = { appliedCount: 0, totalCount: suggestions.length };
+                bankStatementAiAutocategorisedTransactionIds = new Set(suggestions.map((suggestion) => String(suggestion.transactionId || "")));
+                setAiLoading(true, `Jenius AI is autocategorising ${suggestions.length.toLocaleString("en-GB")} bank transaction${suggestions.length === 1 ? "" : "s"}.`);
+                renderBankStatementsScreen();
+
+                try {
+                    await ensureXeroAccountsForBankSuggestions();
+                    const latestAccount = selectedBankAccount() || account;
+                    const latestTransactions = bankAccountTransactionsAscending(latestAccount);
+                    const latestSuggestions = bankStatementAiAutocategorisationSuggestions(latestTransactions);
+                    const response = await requestJSON(
+                        api.endpoints.bankStatementTransactionCategorise,
+                        {
+                            method: "POST",
+                            body: JSON.stringify({ suggestions: latestSuggestions })
+                        },
+                        { accountId: latestAccount.id }
+                    );
+                    bankStatementData = normaliseBankStatementPayload(response);
+                    selectedBankAccountId = latestAccount.id || selectedBankAccountId;
+                    ensureBankStatementSelection();
+                    bankStatementAiAutocategorisationResult = {
+                        appliedCount: latestSuggestions.length,
+                        totalCount: latestTransactions.length,
+                        appliedAt: new Date().toISOString()
+                    };
+                    bankStatementAiAutocategorisedTransactionIds = new Set(latestSuggestions.map((suggestion) => String(suggestion.transactionId || "")));
+                    showToast(`AI autocategorised ${latestSuggestions.length.toLocaleString("en-GB")} transaction${latestSuggestions.length === 1 ? "" : "s"}`, "success");
+                } catch (error) {
+                    bankStatementAiAutocategorisationEnabled = false;
+                    bankStatementAiAutocategorisationResult = null;
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to apply AI autocategorisation", "error");
+                } finally {
+                    bankStatementAiAutocategorisationRunning = false;
+                    setAiLoading(false);
+                    renderBankStatementsScreen();
+                    window.setTimeout(() => {
+                        bankStatementAiAutocategorisedTransactionIds = new Set();
+                        if (activeView === "bank-statements") renderBankStatementsScreen();
+                    }, 2600);
+                }
             }
 
             function bankCsvEscape(value) {
@@ -21455,7 +22200,7 @@
                         </div>
                         <div class="bank-account-actions">
                             <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
-                            <button class="ghost-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction running" : "Upload and extract"}</button>
+                            <button class="primary-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction Running" : "Upload and Extract"}</button>
                             <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
                             <button class="ghost-button" id="exportBankTransactionsButton" type="button" ${transactions.length ? "" : "disabled"}>Export transactions</button>
                             <button class="primary-button" id="exportBankTransactionsXeroButton" type="button" ${transactions.length ? "" : "disabled"}>Export Xero CSV</button>
@@ -21846,7 +22591,7 @@
                         const amount = bankTransactionAmount(row);
                         const balance = bankTransactionBalance(row);
                         const upload = uploadById.get(String(row.uploadId || ""));
-                        const suggestion = bankStatementSuggestedXeroMapping(row);
+                        const suggestion = bankTransactionDisplayXeroMapping(row);
                         return [
                         row.date || "",
                         row.description || "",
@@ -27140,6 +27885,8 @@
                 if (jashflowTopbarSummary) jashflowTopbarSummary.hidden = activeView !== "jashflow";
                 const creditControlTopbarSummary = document.getElementById("creditControlTopbarSummary");
                 if (creditControlTopbarSummary) creditControlTopbarSummary.hidden = activeView !== "ledger";
+                const insightsTopbarSummary = document.getElementById("insightsTopbarSummary");
+                if (insightsTopbarSummary) insightsTopbarSummary.hidden = true;
                 renderBadDebtTopbarSummary();
                 renderBankAccountTopbarSummary();
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -27476,6 +28223,7 @@
             function openInsightsScreen() {
                 activeView = "insights";
                 activeInsightsSection = activeInsightsSection || "overview";
+                if (activeInsightsSection === "ai" || activeInsightsSection === "ai-copilot") activeInsightsSection = "overview";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
@@ -27493,6 +28241,35 @@
                 }
             }
 
+            function insightOverviewTopbarMetrics(analytics = {}) {
+                const totals = insightTotals(analytics);
+                const totalOutstanding = Number(totals.totalOutstanding || 0);
+                const totalOverdue = Number(totals.totalOverdue || 0);
+                const overdueRatio = totalOutstanding ? (totalOverdue / totalOutstanding) * 100 : 0;
+                const openInvoiceCount = Number(totals.openInvoiceCount || 0);
+                return {
+                    openLedger: formatCurrency(totalOutstanding),
+                    openInvoices: `${openInvoiceCount.toLocaleString("en-GB")} open invoice${openInvoiceCount === 1 ? "" : "s"}`,
+                    overdueRatio: formatPercent(overdueRatio),
+                    clientsMonitored: Number(totals.customerCount || state.customers.length).toLocaleString("en-GB"),
+                    maxOverdue: `${Number(totals.maxDaysOverdue || 0).toLocaleString("en-GB")} days`,
+                };
+            }
+
+            function renderInsightsTopbarSummary() {
+                const summary = document.getElementById("insightsTopbarSummary");
+                if (!summary) return;
+                summary.hidden = activeView !== "insights";
+                if (summary.hidden) return;
+                const payload = insightsData || localInsightsPayload("local");
+                const metrics = insightOverviewTopbarMetrics(payload.analytics || {});
+                document.getElementById("insightsTopbarOpenLedger").textContent = metrics.openLedger;
+                document.getElementById("insightsTopbarOpenInvoices").textContent = metrics.openInvoices;
+                document.getElementById("insightsTopbarOverdueRatio").textContent = metrics.overdueRatio;
+                document.getElementById("insightsTopbarClients").textContent = metrics.clientsMonitored;
+                document.getElementById("insightsTopbarMaxOverdue").textContent = metrics.maxOverdue;
+            }
+
             function renderInsightsScreen() {
                 const screen = document.getElementById("insightsScreen");
                 if (!screen) return;
@@ -27501,6 +28278,7 @@
                     return;
                 }
                 screen.hidden = false;
+                if (activeInsightsSection === "ai" || activeInsightsSection === "ai-copilot") activeInsightsSection = "overview";
                 startInsightsClock();
                 document.querySelectorAll("[data-insight-section]").forEach((button) => {
                     button.classList.toggle("is-active", button.dataset.insightSection === activeInsightsSection);
@@ -27518,14 +28296,6 @@
                     target.innerHTML = `<div class="insights-empty"><span class="sync-inline-spinner" aria-hidden="true"></span><strong>Jenius AI is analysing the Xero data</strong><p>Building customer rankings, workflow charts, ageing buckets and AI actions.</p></div>`;
                     return;
                 }
-                const summaryCards = `
-                    <div class="insights-grid">
-                        ${insightCard("Outstanding", formatCurrency(totals.totalOutstanding), `${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices`)}
-                        ${insightCard("Overdue", formatCurrency(totals.totalOverdue), `${Number(totals.maxDaysOverdue || 0).toLocaleString("en-GB")} max days overdue`)}
-                        ${insightCard("Payment plans", formatCurrency(totals.paymentPlanValue), "Committed plan balance")}
-                        ${insightCard("Legal", formatCurrency(totals.legalValue), "Escalated balance")}
-                    </div>
-                `;
                 const sections = {
                     overview: overviewInsights(analytics, ai),
                     customers: topCustomersInsights(analytics),
@@ -27533,10 +28303,8 @@
                     ageing: ageingInsights(analytics),
                     workflows: workflowInsights(analytics),
                     lpcs: latePaymentChargeInsights(),
-                    ai: aiCopilotInsights(ai, analytics),
                     "customer-intelligence": customerIntelligenceInsights(analytics),
                     "debt-analysis": debtAnalysisInsights(analytics),
-                    "ai-copilot": aiCopilotInsights(ai, analytics),
                     "loans-provided": loansProvidedInsights(),
                     "bank-extraction": bankStatementExtractionInsights(),
                     "settled-invoices": settledInvoiceAnalysisInsights()
@@ -27549,7 +28317,24 @@
             }
 
             function aiSummary(ai) {
-                return `<section class="insight-chart"><span>AI summary</span><h3>${escapeHTML(ai.status === "ready" ? "OpenAI analysis" : "Calculated analysis")}</h3><p>${escapeHTML(ai.summary || "No insight summary is available yet.")}</p><p>${escapeHTML(ai.narrative || "")}</p></section>`;
+                const summary = ai.summary || "No insight summary is available yet.";
+                const sentences = (String(summary).match(/[^.!?]+[.!?]*/g) || [String(summary)])
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                const lead = sentences.shift() || summary;
+                const points = sentences.slice(0, 3);
+                const statusLabel = ai.status === "ready" ? "OpenAI" : "Local";
+                const narrative = String(ai.narrative || "").trim();
+                return `<section class="insight-chart ai-summary-card">
+                    <div class="ai-summary-head">
+                        <span>AI summary</span>
+                        <mark>${escapeHTML(statusLabel)}</mark>
+                    </div>
+                    <h3>${escapeHTML(ai.status === "ready" ? "Collection analysis" : "Calculated ledger analysis")}</h3>
+                    <p class="ai-summary-lead">${escapeHTML(lead)}</p>
+                    ${points.length ? `<div class="ai-summary-points">${points.map((point) => `<p class="ai-summary-point">${escapeHTML(point)}</p>`).join("")}</div>` : ""}
+                    ${narrative ? `<p class="ai-summary-note">${escapeHTML(narrative)}</p>` : ""}
+                </section>`;
             }
 
             function barChart(title, rows, valueKey, labelKey = "label") {
@@ -27729,12 +28514,7 @@
                         urgency: Number(totals.legalValue || 0) > 0 ? "medium" : "low",
                     },
                 ];
-                return `${insightCardGrid([
-                    ["Open ledger", formatCurrency(totals.totalOutstanding || 0), `${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices`],
-                    ["Overdue ratio", formatPercent(overdueRatio), "Overdue as a share of open debt"],
-                    ["Clients monitored", Number(totals.customerCount || state.customers.length).toLocaleString("en-GB"), "Synced customer records"],
-                    ["Max overdue", `${Number(totals.maxDaysOverdue || 0).toLocaleString("en-GB")} days`, "Oldest open exposure"],
-                ])}<div class="insight-two-column">${aiSummary(ai)}<section class="insight-chart"><span>Control actions</span>${insightActionCards(actionRows)}</section></div><div class="insight-two-column">${donutChart("Outstanding by status", statusCounts, "value")}${barChart("Status value mix", statusCounts, "value")}</div>`;
+                return `<div class="insight-two-column">${aiSummary(ai)}<section class="insight-chart"><span>Control Actions</span>${insightActionCards(actionRows)}</section></div><div class="insight-two-column">${donutChart("Outstanding by status", statusCounts, "value")}${barChart("Status value mix", statusCounts, "value")}</div>`;
             }
 
             function topCustomersInsights(analytics) {
@@ -28513,24 +29293,131 @@
                 }
             }
 
+            function practicePackInputForKind(kind) {
+                return document.getElementById(kind === "task" ? "practicePackTaskFile" : "practicePackClientFile");
+            }
+
+            function practicePackSelectedFiles() {
+                return {
+                    client: document.getElementById("practicePackClientFile")?.files?.[0] || null,
+                    task: document.getElementById("practicePackTaskFile")?.files?.[0] || null
+                };
+            }
+
+            function practicePackLooksLikeCsv(file) {
+                return Boolean(file) && (/\.csv$/i.test(file.name || "") || /csv/i.test(file.type || ""));
+            }
+
+            function setPracticePackInputFile(kind, file) {
+                const input = practicePackInputForKind(kind);
+                if (!input || !file) return false;
+                if (!practicePackLooksLikeCsv(file)) {
+                    showToast("Choose a BM CSV file.", "error");
+                    return false;
+                }
+                try {
+                    const transfer = new DataTransfer();
+                    transfer.items.add(file);
+                    input.files = transfer.files;
+                    updatePracticePackUploadState();
+                    return true;
+                } catch (error) {
+                    showToast("Use the upload button to choose this CSV file.", "info");
+                    return false;
+                }
+            }
+
+            function updatePracticePackUploadState() {
+                const form = document.getElementById("practicePackForm");
+                if (!form) return;
+                const files = practicePackSelectedFiles();
+                const bothReady = Boolean(files.client && files.task);
+                const updateCard = (kind, file, defaultName) => {
+                    const card = document.querySelector(`[data-practice-pack-file-card="${kind}"]`);
+                    const nameTarget = document.getElementById(kind === "task" ? "practicePackTaskFileName" : "practicePackClientFileName");
+                    const metaTarget = document.getElementById(kind === "task" ? "practicePackTaskFileMeta" : "practicePackClientFileMeta");
+                    if (card) {
+                        card.classList.toggle("is-loaded", Boolean(file));
+                        card.classList.toggle("is-generating", practicePackGenerating);
+                    }
+                    if (nameTarget) nameTarget.textContent = file?.name || defaultName;
+                    if (metaTarget) {
+                        metaTarget.textContent = file
+                            ? `${formatBytes(Number(file.size || 0))} selected`
+                            : "No file selected";
+                    }
+                };
+                updateCard("client", files.client, "BM Client File CSV");
+                updateCard("task", files.task, "BM Task File CSV");
+                form.classList.toggle("is-ready", bothReady && !practicePackGenerating);
+                form.classList.toggle("is-generating", practicePackGenerating);
+
+                const generateButton = document.getElementById("practicePackGenerateButton");
+                const generateLabel = document.getElementById("practicePackGenerateLabel");
+                if (generateButton) {
+                    generateButton.disabled = practicePackGenerating || !bothReady;
+                    generateButton.setAttribute("aria-busy", String(practicePackGenerating));
+                }
+                if (generateLabel) {
+                    generateLabel.textContent = practicePackGenerating
+                        ? "Building PDF ZIP"
+                        : bothReady ? "Generate PDF ZIP" : "Upload files first";
+                }
+            }
+
+            function handlePracticePackFileChange(kind) {
+                const input = practicePackInputForKind(kind);
+                const file = input?.files?.[0] || null;
+                if (file && !practicePackLooksLikeCsv(file)) {
+                    input.value = "";
+                    showToast("Choose a BM CSV file.", "error");
+                }
+                updatePracticePackUploadState();
+                renderPracticePackScreen();
+            }
+
+            function wirePracticePackUploadCard(kind) {
+                const card = document.querySelector(`[data-practice-pack-file-card="${kind}"]`);
+                if (!card || card.dataset.practicePackDropWired === "true") return;
+                card.dataset.practicePackDropWired = "true";
+                ["dragenter", "dragover"].forEach((eventName) => {
+                    card.addEventListener(eventName, (event) => {
+                        event.preventDefault();
+                        card.classList.add("is-dragover");
+                    });
+                });
+                ["dragleave", "drop"].forEach((eventName) => {
+                    card.addEventListener(eventName, (event) => {
+                        event.preventDefault();
+                        card.classList.remove("is-dragover");
+                    });
+                });
+                card.addEventListener("drop", (event) => {
+                    const file = event.dataTransfer?.files?.[0] || null;
+                    if (setPracticePackInputFile(kind, file)) renderPracticePackScreen();
+                });
+            }
+
             async function generatePracticePack(event) {
                 event?.preventDefault();
                 if (practicePackGenerating) return;
                 const clientFile = document.getElementById("practicePackClientFile")?.files?.[0];
                 const taskFile = document.getElementById("practicePackTaskFile")?.files?.[0];
                 const generateButton = document.getElementById("practicePackGenerateButton") || document.querySelector("#practicePackForm button[type='submit']");
-                const generateButtonLabel = generateButton?.textContent || "Generate PDFs";
+                const generateLabel = document.getElementById("practicePackGenerateLabel");
+                const generateButtonLabel = generateLabel?.textContent || "Generate PDF ZIP";
                 if (!clientFile || !taskFile) {
                     showToast("Upload both BM CSV files before generating the practice pack.", "info");
+                    updatePracticePackUploadState();
                     return;
                 }
                 const month = currentPracticePackMonth();
                 practicePackGenerating = true;
                 if (generateButton) {
                     generateButton.disabled = true;
-                    generateButton.textContent = "Generating PDFs...";
                     generateButton.setAttribute("aria-busy", "true");
                 }
+                if (generateLabel) generateLabel.textContent = "Building PDF ZIP";
                 renderPracticePackScreen();
                 renderGlobalActivityCard();
                 updateTopbarInlineStatusState();
@@ -28581,9 +29468,9 @@
                     practicePackGenerating = false;
                     if (generateButton) {
                         generateButton.disabled = false;
-                        generateButton.textContent = generateButtonLabel;
                         generateButton.removeAttribute("aria-busy");
                     }
+                    if (generateLabel) generateLabel.textContent = generateButtonLabel;
                     renderPracticePackScreen();
                     renderGlobalActivityCard();
                     updateTopbarInlineStatusState();
@@ -28643,12 +29530,14 @@
             function renderPracticePackScreen() {
                 initialisePracticePackMonth();
                 const month = practicePackGenerating ? currentPracticePackMonth() : (practicePackResult?.month || currentPracticePackMonth());
+                const selectedFiles = practicePackSelectedFiles();
                 renderPracticePackTopbarSummary(month);
+                updatePracticePackUploadState();
 
                 const summary = document.getElementById("practicePackSummary");
                 if (summary) {
                     if (practicePackGenerating) {
-                        summary.textContent = "Generating practice pack PDFs. This can take a minute while the tasks are grouped and the ZIP is built.";
+                        summary.textContent = "Building the BM Practice Pack ZIP from the selected client and task files.";
                     } else if (practicePackResult) {
                         const unmatched = Number(practicePackResult.unmatchedTaskCount || 0);
                         const grouping = practicePackResult.grouping?.engine === "openai"
@@ -28658,6 +29547,8 @@
                                 : " using local service grouping";
                         const totalMrr = Number(practicePackResult.totalMrr || 0);
                         summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} PDF file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${grouping}${totalMrr ? `, total MRR ${formatCurrency(totalMrr)}` : ""}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
+                    } else if (selectedFiles.client && selectedFiles.task) {
+                        summary.textContent = "BM Client File and BM Task File are ready for processing.";
                     } else {
                         summary.textContent = "Awaiting BM Client File CSV and BM Task File CSV.";
                     }
@@ -28666,7 +29557,23 @@
                 const outputList = document.getElementById("practicePackOutputList");
                 if (!outputList) return;
                 if (practicePackGenerating && !practicePackResult) {
-                    outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">Generating PDFs</p><h4>Building the ZIP</h4><p>Keep this window open while the practice pack is prepared.</p></div>';
+                    outputList.innerHTML = `
+                        <div class="practice-pack-processing" role="status" aria-live="polite">
+                            <div class="practice-pack-processing-head">
+                                <div>
+                                    <span>Generating PDFs</span>
+                                    <strong>Building the BM Practice Pack ZIP</strong>
+                                </div>
+                                <span class="sync-inline-spinner" aria-hidden="true"></span>
+                            </div>
+                            <div class="practice-pack-processing-meter" aria-hidden="true"><span></span></div>
+                            <div class="practice-pack-processing-steps" aria-hidden="true">
+                                <span>Reading client file</span>
+                                <span>Grouping BM tasks</span>
+                                <span>Preparing ZIP</span>
+                            </div>
+                        </div>
+                    `;
                     return;
                 }
                 if (!practicePackResult) {
@@ -28715,11 +29622,34 @@
                     clearButton.dataset.practicePackWired = "true";
                     clearButton.addEventListener("click", clearPracticePackScreen);
                 }
+                const clientUploadButton = document.getElementById("practicePackClientUploadButton");
+                if (clientUploadButton && clientUploadButton.dataset.practicePackWired !== "true") {
+                    clientUploadButton.dataset.practicePackWired = "true";
+                    clientUploadButton.addEventListener("click", () => practicePackInputForKind("client")?.click());
+                }
+                const taskUploadButton = document.getElementById("practicePackTaskUploadButton");
+                if (taskUploadButton && taskUploadButton.dataset.practicePackWired !== "true") {
+                    taskUploadButton.dataset.practicePackWired = "true";
+                    taskUploadButton.addEventListener("click", () => practicePackInputForKind("task")?.click());
+                }
+                const clientFileInput = document.getElementById("practicePackClientFile");
+                if (clientFileInput && clientFileInput.dataset.practicePackWired !== "true") {
+                    clientFileInput.dataset.practicePackWired = "true";
+                    clientFileInput.addEventListener("change", () => handlePracticePackFileChange("client"));
+                }
+                const taskFileInput = document.getElementById("practicePackTaskFile");
+                if (taskFileInput && taskFileInput.dataset.practicePackWired !== "true") {
+                    taskFileInput.dataset.practicePackWired = "true";
+                    taskFileInput.addEventListener("change", () => handlePracticePackFileChange("task"));
+                }
+                wirePracticePackUploadCard("client");
+                wirePracticePackUploadCard("task");
                 const monthSelect = document.getElementById("practicePackMonthSelect");
                 if (monthSelect && monthSelect.dataset.practicePackWired !== "true") {
                     monthSelect.dataset.practicePackWired = "true";
                     monthSelect.addEventListener("change", renderPracticePackScreen);
                 }
+                updatePracticePackUploadState();
                 const ignitionBMDataButton = document.getElementById("uploadIgnitionBMDataButton");
                 if (ignitionBMDataButton && ignitionBMDataButton.dataset.practicePackWired !== "true") {
                     ignitionBMDataButton.dataset.practicePackWired = "true";

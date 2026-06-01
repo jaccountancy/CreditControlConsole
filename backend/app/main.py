@@ -128,6 +128,7 @@ from .services import (
     bulk_update_invoice_status,
     bulk_send_me_report_emails,
     bulk_upload_me_report_submission_pdfs,
+    categorise_bank_statement_transactions,
     exchange_gmail_code_for_tokens,
     fetch_gmail_profile,
     gmail_authorize_url,
@@ -1414,6 +1415,12 @@ def api_bank_statement_upload_source(upload_id: str, user: dict = Depends(requir
 async def api_override_bank_statement_transaction(transaction_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "bankStatements": override_bank_statement_transaction(user, transaction_id, payload)}
+
+
+@app.post("/api/bank-statements/accounts/{account_id}/transactions/categorise")
+async def api_categorise_bank_statement_transactions(account_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "bankStatements": categorise_bank_statement_transactions(user, account_id, payload)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

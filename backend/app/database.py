@@ -717,6 +717,14 @@ CREATE TABLE IF NOT EXISTS bank_statement_transactions (
     manual_override_note TEXT,
     manual_override_at TIMESTAMPTZ,
     manual_override_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    ai_category_code TEXT,
+    ai_category_name TEXT,
+    ai_category_tag TEXT,
+    ai_category_confidence INTEGER NOT NULL DEFAULT 0,
+    ai_category_reason TEXT,
+    ai_category_source TEXT,
+    ai_category_applied_at TIMESTAMPTZ,
+    ai_category_applied_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     UNIQUE (bank_account_id, source_hash)
 );
 
@@ -735,6 +743,14 @@ ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_balance 
 ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_override_note TEXT;
 ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_override_at TIMESTAMPTZ;
 ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS manual_override_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_code TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_name TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_tag TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_confidence INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_reason TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_source TEXT;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_applied_at TIMESTAMPTZ;
+ALTER TABLE bank_statement_transactions ADD COLUMN IF NOT EXISTS ai_category_applied_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS bank_statement_transactions_account_date_idx
 ON bank_statement_transactions (bank_account_id, transaction_date, created_at);

@@ -10571,6 +10571,16 @@ def _serialize_bank_statement_transaction(row: dict) -> dict:
         "manualBalance": float(manual_balance) if manual_balance is not None else None,
         "manualOverrideNote": row.get("manual_override_note") or "",
         "manualOverrideAt": _iso(row.get("manual_override_at")) or "",
+        "aiCategory": {
+            "code": row.get("ai_category_code") or "",
+            "name": row.get("ai_category_name") or "",
+            "tag": row.get("ai_category_tag") or "",
+            "confidence": int(row.get("ai_category_confidence") or 0),
+            "reason": row.get("ai_category_reason") or "",
+            "source": row.get("ai_category_source") or "",
+            "appliedAt": _iso(row.get("ai_category_applied_at")) or "",
+            "applied": bool(row.get("ai_category_code") or row.get("ai_category_name") or row.get("ai_category_tag")),
+        },
         "type": row.get("transaction_type") or "",
         "createdAt": _iso(row.get("created_at")) or "",
         "sourceChunk": raw_payload.get("_sourceChunk") or "",
@@ -10965,6 +10975,114 @@ def override_bank_statement_transaction(user: dict, transaction_id: str, payload
             "original_amount": f"{_money(row.get('amount')):.2f}",
             "manual_amount": f"{manual_amount:.2f}",
             "note": note,
+        },
+        user["id"],
+    )
+    return bank_statement_payload(user)
+
+
+def categorise_bank_statement_transactions(user: dict, account_id: str, payload: dict) -> dict:
+    tenant_id = _bank_statement_tenant_id(user)
+    raw_suggestions = payload.get("suggestions")
+    if not isinstance(raw_suggestions, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send at least one AI category suggestion.")
+
+    suggestions = []
+    for item in raw_suggestions[:2000]:
+        if not isinstance(item, dict):
+            continue
+        transaction_id = str(item.get("transactionId") or item.get("id") or "").strip()
+        try:
+            transaction_uuid = UUID(transaction_id)
+        except Exception:
+            continue
+        code = str(item.get("code") or "").strip()[:40]
+        name = str(item.get("name") or "").strip()[:160]
+        tag = str(item.get("tag") or "").strip()[:80]
+        reason = str(item.get("reason") or "").strip()[:600]
+        source = str(item.get("source") or "").strip()[:80]
+        try:
+            confidence = int(round(float(item.get("confidence") or 0)))
+        except Exception:
+            confidence = 0
+        confidence = max(0, min(100, confidence))
+        if not (code or name or tag):
+            continue
+        suggestions.append({
+            "transaction_id": str(transaction_uuid),
+            "code": code,
+            "name": name,
+            "tag": tag,
+            "confidence": confidence,
+            "reason": reason,
+            "source": source,
+        })
+
+    if not suggestions:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid AI categories were available to apply.")
+
+    applied_at = utcnow()
+    applied_count = 0
+    account_row = None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT accounts.id AS account_id,
+                       customers.name AS customer_name
+                FROM bank_statement_accounts AS accounts
+                JOIN bank_statement_clients AS clients ON clients.id = accounts.extraction_client_id
+                JOIN customers ON customers.id = clients.customer_id
+                WHERE accounts.id = %s
+                  AND clients.tenant_id = %s
+                  AND clients.status = 'active'
+                """,
+                (account_id, tenant_id),
+            )
+            account_row = cursor.fetchone()
+            if account_row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank statement account not found.")
+
+            for suggestion in suggestions:
+                cursor.execute(
+                    """
+                    UPDATE bank_statement_transactions
+                    SET ai_category_code = %s,
+                        ai_category_name = %s,
+                        ai_category_tag = %s,
+                        ai_category_confidence = %s,
+                        ai_category_reason = %s,
+                        ai_category_source = %s,
+                        ai_category_applied_at = %s,
+                        ai_category_applied_by_user_id = %s
+                    WHERE id = %s
+                      AND bank_account_id = %s
+                    """,
+                    (
+                        suggestion["code"],
+                        suggestion["name"],
+                        suggestion["tag"],
+                        suggestion["confidence"],
+                        suggestion["reason"],
+                        suggestion["source"],
+                        applied_at,
+                        user["id"],
+                        suggestion["transaction_id"],
+                        account_id,
+                    ),
+                )
+                applied_count += max(0, int(cursor.rowcount or 0))
+        connection.commit()
+
+    record_audit_event(
+        "bank_statement_account",
+        str(account_id),
+        "bank_statement.transactions_ai_categorised",
+        {
+            "account_id": str(account_row["account_id"]) if account_row else str(account_id),
+            "customer_name": account_row.get("customer_name") if account_row else "",
+            "suggestion_count": len(suggestions),
+            "applied_count": applied_count,
         },
         user["id"],
     )
