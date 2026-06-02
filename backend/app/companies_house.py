@@ -2106,6 +2106,103 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
     }
 
 
+def sync_xero_lock_date_company_records(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    user_id = str((user or {}).get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User session is missing.")
+
+    max_companies = int(payload.get("limit") or 250)
+    if max_companies < 1:
+        max_companies = 1
+    if max_companies > 1000:
+        max_companies = 1000
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT UPPER(TRIM(m.company_number)) AS company_number
+                FROM xero_tenant_company_mappings m
+                INNER JOIN xero_connections x ON x.tenant_id = m.tenant_id
+                WHERE x.user_id = %s
+                  AND TRIM(m.company_number) <> ''
+                ORDER BY UPPER(TRIM(m.company_number)) ASC
+                LIMIT %s
+                """,
+                (user_id, max_companies),
+            )
+            company_rows = cursor.fetchall() or []
+        connection.commit()
+
+    company_numbers = [
+        normalise_company_number(row.get("company_number"))
+        for row in company_rows
+        if normalise_company_number(row.get("company_number"))
+    ]
+    if not company_numbers:
+        return {
+            "summary": {
+                "targetCount": 0,
+                "syncedCount": 0,
+                "failedCount": 0,
+            },
+            "synced": [],
+            "failed": [],
+        }
+
+    synced: list[dict] = []
+    failed: list[dict] = []
+    for company_number in company_numbers:
+        try:
+            snapshot = _fetch_ch_company_snapshot(company_number)
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO ch_companies (company_number, company_name, updated_at)
+                        VALUES (%s, %s, NOW())
+                        ON CONFLICT (company_number) DO UPDATE
+                        SET company_name = COALESCE(NULLIF(EXCLUDED.company_name, ''), ch_companies.company_name),
+                            updated_at = NOW()
+                        RETURNING id
+                        """,
+                        (
+                            company_number,
+                            snapshot.get("companyName") or "",
+                        ),
+                    )
+                    row = cursor.fetchone() or {}
+                    company_id = str(row.get("id") or "")
+                    if not company_id:
+                        raise RuntimeError("Unable to resolve CH company ID for sync.")
+                    _apply_company_snapshot(cursor, company_id, snapshot)
+                connection.commit()
+            synced.append(
+                {
+                    "companyNumber": company_number,
+                    "companyName": str(snapshot.get("companyName") or ""),
+                }
+            )
+        except Exception as exc:
+            failed.append(
+                {
+                    "companyNumber": company_number,
+                    "reason": str(exc) or "Unexpected sync failure.",
+                }
+            )
+
+    return {
+        "summary": {
+            "targetCount": len(company_numbers),
+            "syncedCount": len(synced),
+            "failedCount": len(failed),
+        },
+        "synced": synced,
+        "failed": failed,
+    }
+
+
 def _normalise_header(header: str) -> str:
     return re.sub(r"\s+", " ", str(header or "").strip().lower())
 
@@ -3056,7 +3153,6 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         next_due = row.get("next_due_date")
         has_auth = bool(row.get("auth_code_on_file"))
         made_up_to = row.get("next_made_up_to_date")
-        due_in_days = (next_due - today).days if isinstance(next_due, date) else None
         if internal_status in {"paused", "do_not_file", "inactive"}:
             reason = f"Internal status is '{internal_status}'."
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
@@ -3099,16 +3195,6 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             continue
         if not isinstance(made_up_to, date):
             reason = "Missing made up to date. Sync Companies House company data before submitting CS01."
-            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
-            skipped.append({
-                "companyId": company_id,
-                "companyNumber": company_number,
-                "companyName": company_name,
-                "reason": reason,
-            })
-            continue
-        if due_in_days is not None and due_in_days > 60:
-            reason = f"Due date is outside workflow window ({due_in_days} days)."
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append({
                 "companyId": company_id,

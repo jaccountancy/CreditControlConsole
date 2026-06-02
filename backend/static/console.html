@@ -17646,6 +17646,7 @@
                                         <button class="primary-button" id="connectXeroLockDateButton" type="button">Connect Client Xeros</button>
                                         <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Numbers</button>
                                         <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
+                                        <button class="ghost-button danger-button" id="deleteSelectedXeroLockDateButton" type="button">Delete Selected</button>
                                         <div class="xero-lock-columns">
                                             <button class="ghost-button" id="xeroLockDateColumnsButton" type="button" aria-expanded="false" aria-controls="xeroLockDateColumnsMenu">Columns</button>
                                             <div class="xero-lock-columns-menu" id="xeroLockDateColumnsMenu" hidden>
@@ -17670,6 +17671,7 @@
                                 <table class="ch-table xero-lock-table" id="xeroLockDateTable" aria-label="Xero lock dates">
                                     <thead>
                                         <tr>
+                                            <th><input id="xeroLockDateSelectAll" type="checkbox" aria-label="Select all tenants"></th>
                                             <th>Tenant</th>
                                             <th>Current Xero Lock Date</th>
                                             <th>Last Accounts Submitted</th>
@@ -19332,6 +19334,7 @@
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
             let xeroLockDateSearchTerm = "";
+            let selectedXeroLockDateTenantIds = new Set();
             let xeroLockDateColumnSettings = { showCompanyNumber: false, menuOpen: false };
             let settingsLockDateSearchTerm = "";
             let xeroLockDateCHHealth = { loading: false, ok: null, checkedAt: "", message: "Companies House API status not checked yet." };
@@ -26939,6 +26942,10 @@
                         rows,
                         meta: payload?.meta || {}
                     };
+                    const visibleTenantIds = new Set(rows.map((row) => String(row?.tenantId || "")).filter(Boolean));
+                    selectedXeroLockDateTenantIds = new Set(
+                        [...selectedXeroLockDateTenantIds].filter((tenantId) => visibleTenantIds.has(String(tenantId || "")))
+                    );
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 } catch (error) {
@@ -26974,6 +26981,20 @@
                 }
             }
 
+            async function disconnectXeroLockDateTenant(tenantId) {
+                const safeTenantId = String(tenantId || "").trim();
+                if (!safeTenantId) return false;
+                await requestJSON(api.endpoints.disconnect, {
+                    method: "POST",
+                    body: JSON.stringify({ tenantId: safeTenantId })
+                });
+                xeroLockDateOverview.rows = (xeroLockDateOverview.rows || []).filter(
+                    (item) => String(item?.tenantId || "") !== safeTenantId
+                );
+                selectedXeroLockDateTenantIds.delete(safeTenantId);
+                return true;
+            }
+
             async function deleteXeroLockDateTenant(tenantId, button) {
                 const safeTenantId = String(tenantId || "").trim();
                 if (!safeTenantId) return;
@@ -26985,17 +27006,42 @@
                 if (!confirmed) return;
                 button?.setAttribute("disabled", "disabled");
                 try {
-                    await requestJSON(api.endpoints.disconnect, {
-                        method: "POST",
-                        body: JSON.stringify({ tenantId: safeTenantId })
-                    });
-                    xeroLockDateOverview.rows = (xeroLockDateOverview.rows || []).filter(
-                        (item) => String(item?.tenantId || "") !== safeTenantId
-                    );
+                    await disconnectXeroLockDateTenant(safeTenantId);
                     await loadXeroLockDateOverview(true);
                     showToast("Client removed from lock-date list", "success");
                 } catch (error) {
                     showToast(error.message || "Unable to delete client from lock-date list", "error");
+                } finally {
+                    button?.removeAttribute("disabled");
+                }
+            }
+
+            async function deleteSelectedXeroLockDateTenants(button) {
+                const tenantIds = [...selectedXeroLockDateTenantIds].filter(Boolean);
+                if (!tenantIds.length) return;
+                const selectedRows = (xeroLockDateOverview.rows || []).filter((row) => tenantIds.includes(String(row?.tenantId || "")));
+                const selectedNames = selectedRows.map((row) => String(row?.tenantName || "")).filter(Boolean);
+                const sampleNames = selectedNames.slice(0, 3).join(", ");
+                const suffix = selectedNames.length > 3 ? ` and ${selectedNames.length - 3} more` : "";
+                const confirmed = window.confirm(
+                    `Delete ${tenantIds.length.toLocaleString("en-GB")} selected client${tenantIds.length === 1 ? "" : "s"} from the Xero lock-date list by disconnecting their Xero tenants?${sampleNames ? `\n\n${sampleNames}${suffix}` : ""}`
+                );
+                if (!confirmed) return;
+                button?.setAttribute("disabled", "disabled");
+                let deletedCount = 0;
+                const failed = [];
+                try {
+                    for (const tenantId of tenantIds) {
+                        try {
+                            const deleted = await disconnectXeroLockDateTenant(tenantId);
+                            if (deleted) deletedCount += 1;
+                        } catch (error) {
+                            failed.push(String(error?.message || tenantId));
+                        }
+                    }
+                    await loadXeroLockDateOverview(true);
+                    if (deletedCount) showToast(`${deletedCount.toLocaleString("en-GB")} client${deletedCount === 1 ? "" : "s"} removed`, "success");
+                    if (failed.length) showToast(`Failed to remove ${failed.length.toLocaleString("en-GB")} client${failed.length === 1 ? "" : "s"}.`, "error");
                 } finally {
                     button?.removeAttribute("disabled");
                 }
@@ -27193,6 +27239,8 @@
                 const columnsButton = document.getElementById("xeroLockDateColumnsButton");
                 const columnsMenu = document.getElementById("xeroLockDateColumnsMenu");
                 const companyNumberToggle = document.getElementById("xeroLockDateShowCompanyNumberColumn");
+                const selectAllToggle = document.getElementById("xeroLockDateSelectAll");
+                const deleteSelectedButton = document.getElementById("deleteSelectedXeroLockDateButton");
                 if (!summary || !body || !health) return;
                 if (table) table.classList.toggle("show-company-number-column", !!xeroLockDateColumnSettings.showCompanyNumber);
                 if (columnsMenu) columnsMenu.hidden = !xeroLockDateColumnSettings.menuOpen;
@@ -27278,6 +27326,17 @@
                         searchMeta.textContent = "";
                     }
                 }
+                const filteredTenantIds = filteredRows.map((row) => String(row?.tenantId || "")).filter(Boolean);
+                const selectedFilteredCount = filteredTenantIds.filter((tenantId) => selectedXeroLockDateTenantIds.has(tenantId)).length;
+                if (selectAllToggle) {
+                    selectAllToggle.checked = filteredTenantIds.length > 0 && selectedFilteredCount === filteredTenantIds.length;
+                    selectAllToggle.indeterminate = selectedFilteredCount > 0 && selectedFilteredCount < filteredTenantIds.length;
+                }
+                if (deleteSelectedButton) {
+                    const selectedCount = selectedXeroLockDateTenantIds.size;
+                    deleteSelectedButton.disabled = selectedCount === 0 || xeroLockDateLoading;
+                    deleteSelectedButton.textContent = selectedCount > 0 ? `Delete Selected (${selectedCount})` : "Delete Selected";
+                }
                 body.innerHTML = filteredRows.length
                     ? filteredRows.map((row) => {
                         const tenantId = String(row?.tenantId || "");
@@ -27286,10 +27345,20 @@
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
-                        const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
+                        const chLabel = [
+                            companiesHouse?.companyName,
+                            companiesHouse?.clientName,
+                            mapping?.companyName,
+                            mapping?.clientName,
+                            row?.tenantName,
+                        ].filter(Boolean).join(" · ");
                         const chCompanyRecord = chLabel || "No mapped company details";
+                        const isSelected = selectedXeroLockDateTenantIds.has(tenantId);
                         return `
                             <tr>
+                                <td class="select-cell">
+                                    <input type="checkbox" data-xero-lock-select="${escapeHTML(tenantId)}" aria-label="Select ${escapeHTML(row?.tenantName || "tenant")}" ${isSelected ? "checked" : ""}>
+                                </td>
                                 <td class="xero-lock-tenant-cell">
                                     <strong>${escapeHTML(row?.tenantName || "Xero organisation")}</strong>
                                     ${row?.isMainTenant ? `<span class="ch-pill is-info xero-lock-date-main-pill">Main tenant</span>` : ""}
@@ -27330,7 +27399,7 @@
                             </tr>
                         `;
                     }).join("")
-                    : `<tr><td colspan="${xeroLockDateColumnSettings.showCompanyNumber ? 6 : 5}"><div class="ch-empty-state">${
+                    : `<tr><td colspan="${xeroLockDateColumnSettings.showCompanyNumber ? 7 : 6}"><div class="ch-empty-state">${
                         rows.length ? "No tenants match this search." : "Connect Xero tenants to view lock dates."
                     }</div></td></tr>`;
                 body.querySelectorAll("[data-xero-lock-map-save]").forEach((button) => {
@@ -27350,6 +27419,29 @@
                         deleteXeroLockDateTenant(tenantId, button);
                     });
                 });
+                body.querySelectorAll("[data-xero-lock-select]").forEach((checkbox) => {
+                    if (checkbox.dataset.xeroLockSelectWired === "true") return;
+                    checkbox.dataset.xeroLockSelectWired = "true";
+                    checkbox.addEventListener("change", () => {
+                        const tenantId = checkbox.dataset.xeroLockSelect || "";
+                        if (!tenantId) return;
+                        if (checkbox.checked) selectedXeroLockDateTenantIds.add(tenantId);
+                        else selectedXeroLockDateTenantIds.delete(tenantId);
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                });
+                if (selectAllToggle && selectAllToggle.dataset.xeroLockSelectAllWired !== "true") {
+                    selectAllToggle.dataset.xeroLockSelectAllWired = "true";
+                    selectAllToggle.addEventListener("change", () => {
+                        const targetChecked = !!selectAllToggle.checked;
+                        const visibleIds = filteredRows.map((row) => String(row?.tenantId || "")).filter(Boolean);
+                        visibleIds.forEach((tenantId) => {
+                            if (targetChecked) selectedXeroLockDateTenantIds.add(tenantId);
+                            else selectedXeroLockDateTenantIds.delete(tenantId);
+                        });
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                }
             }
 
             function renderSettingsLockDateMapping() {
@@ -27417,7 +27509,13 @@
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
                         const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
-                        const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
+                        const chLabel = [
+                            companiesHouse?.companyName,
+                            companiesHouse?.clientName,
+                            mapping?.companyName,
+                            mapping?.clientName,
+                            row?.tenantName,
+                        ].filter(Boolean).join(" · ");
                         const chCompanyRecord = chLabel || "No mapped company details";
                         return `
                             <tr>
@@ -46958,6 +47056,13 @@
                         populateMissingXeroLockDateMappings(populateXeroLockDateMappingsButton);
                     });
                 }
+                const deleteSelectedXeroLockDateButton = document.getElementById("deleteSelectedXeroLockDateButton");
+                if (deleteSelectedXeroLockDateButton && deleteSelectedXeroLockDateButton.dataset.lockDateWired !== "true") {
+                    deleteSelectedXeroLockDateButton.dataset.lockDateWired = "true";
+                    deleteSelectedXeroLockDateButton.addEventListener("click", () => {
+                        deleteSelectedXeroLockDateTenants(deleteSelectedXeroLockDateButton);
+                    });
+                }
                 const settingsRefreshLockDateMappingsButton = document.getElementById("settingsRefreshLockDateMappingsButton");
                 if (settingsRefreshLockDateMappingsButton && settingsRefreshLockDateMappingsButton.dataset.lockDateWired !== "true") {
                     settingsRefreshLockDateMappingsButton.dataset.lockDateWired = "true";
@@ -48213,7 +48318,7 @@
                         .map(([reason, count]) => `${count.toLocaleString("en-GB")} ${reason.toLowerCase()}`)
                         .join(" · ");
                     chSetWorkflowStatus(
-                        `${selectedCount.toLocaleString("en-GB")} selected, 0 ready to submit. ${reasonText || "Check auth code, authority status, and due date window."}`,
+                        `${selectedCount.toLocaleString("en-GB")} selected, 0 ready to submit. ${reasonText || "Check auth code, authority status, and Companies House made-up-to date."}`,
                         "error"
                     );
                     return;

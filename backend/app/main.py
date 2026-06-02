@@ -44,6 +44,7 @@ from .companies_house import (
     replay_dead_letter_submissions,
     run_companies_house_submission_reconciliation,
     save_companies_house_settings,
+    sync_xero_lock_date_company_records,
     submission_reconciliation_report,
     start_companies_house_auto_sync_worker,
     sync_companies_house_companies,
@@ -1054,6 +1055,11 @@ async def api_xero_lock_dates(
     force: bool = Query(False, alias="force"),
     user: dict = Depends(require_panel_user),
 ):
+    if force:
+        try:
+            sync_xero_lock_date_company_records(user, {"limit": 1000})
+        except Exception as exc:
+            logger.warning("Unable to resync mapped Companies House records during lock-date refresh: %s", exc)
     return {"status": "ok", **await xero_lock_date_overview_payload(user, force_refresh=force)}
 
 
