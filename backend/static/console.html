@@ -440,22 +440,23 @@
             }
             .sidebar-support-mark {
                 position: relative;
-                width: 34px;
-                height: 34px;
+                width: 42px;
+                height: 42px;
                 display: inline-grid;
                 place-items: center;
-                border-radius: 12px;
-                background: linear-gradient(135deg, var(--blue), #2a8dcd);
+                border-radius: 14px;
+                background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.12) 38%, rgba(0, 0, 0, 0) 44%), linear-gradient(145deg, #2a8dcd, var(--blue));
                 color: #ffffff;
-                box-shadow: 0 10px 18px rgba(29, 103, 242, 0.2);
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.24);
+                overflow: visible;
             }
             .app-sidebar-brand.is-support-warning .sidebar-support-mark {
-                background: linear-gradient(135deg, var(--orange), #f05f57);
-                box-shadow: 0 10px 18px rgba(255, 159, 47, 0.2);
+                background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.1) 38%, rgba(0, 0, 0, 0) 44%), linear-gradient(145deg, var(--orange), #f05f57);
+                box-shadow: 0 12px 24px rgba(255, 159, 47, 0.22);
             }
             .app-sidebar-brand.is-support-error .sidebar-support-mark {
-                background: linear-gradient(135deg, var(--red), #bb3f5c);
-                box-shadow: 0 10px 18px rgba(255, 83, 83, 0.22);
+                background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.1) 38%, rgba(0, 0, 0, 0) 44%), linear-gradient(145deg, var(--red), #bb3f5c);
+                box-shadow: 0 12px 24px rgba(255, 83, 83, 0.24);
             }
             .sidebar-support-mark::after {
                 content: "";
@@ -465,14 +466,34 @@
                 border-radius: 16px;
                 animation: sidebar-support-ring 1.6s ease-out infinite;
             }
-            .sidebar-support-mark svg {
-                width: 18px;
-                height: 18px;
-                fill: none;
-                stroke: currentColor;
-                stroke-width: 2.4;
-                stroke-linecap: round;
-                stroke-linejoin: round;
+            .sidebar-support-orb {
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background: rgba(255, 255, 255, 0.96);
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55);
+                animation: sidebar-support-orb-pulse 1.45s ease-in-out infinite;
+            }
+            .sidebar-support-orbit {
+                position: absolute;
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                border: 2px solid rgba(255, 255, 255, 0.72);
+                border-left-color: rgba(255, 255, 255, 0.16);
+                border-right-color: rgba(255, 255, 255, 0.16);
+                animation: sidebar-support-orbit-spin 1.2s linear infinite;
+            }
+            .sidebar-support-orbit.is-alt {
+                width: 32px;
+                height: 32px;
+                border-width: 1.8px;
+                border-top-color: rgba(255, 255, 255, 0.88);
+                border-bottom-color: rgba(255, 255, 255, 0.2);
+                border-left-color: rgba(255, 255, 255, 0.26);
+                border-right-color: rgba(255, 255, 255, 0.26);
+                animation-duration: 1.8s;
+                animation-direction: reverse;
             }
             .sidebar-support-copy {
                 min-width: 0;
@@ -694,25 +715,23 @@
                 padding: 10px 12px;
                 gap: 6px;
             }
+            .sidebar-support-bubble .sidebar-support-head {
+                grid-template-columns: 1fr;
+                justify-items: center;
+            }
             .sidebar-support-bubble .sidebar-support-state,
             .sidebar-support-bubble .sidebar-support-detail,
             .sidebar-support-bubble .sidebar-support-progress,
             .sidebar-support-bubble .sidebar-support-meta {
                 display: none;
             }
+            .sidebar-support-bubble .sidebar-support-copy,
             .sidebar-support-bubble .sidebar-support-kicker {
-                font-size: 0.62rem;
-                letter-spacing: 0.12em;
+                display: none;
             }
-            .sidebar-support-bubble .sidebar-support-title {
-                font-size: 0.74rem;
-                font-weight: 800;
-                color: rgba(117, 132, 163, 0.95);
-            }
+            .sidebar-support-bubble .sidebar-support-foot,
             .sidebar-support-bubble .sidebar-support-notice {
-                margin-left: 28px;
-                font-size: 0.66rem;
-                color: rgba(129, 146, 176, 0.86);
+                display: none;
             }
             body.has-sidebar-support-bubble .ledger-topbar #syncInlineBanner:not(.is-dismissible):not(.is-error):not(.is-success):not(.is-warning),
             body.has-sidebar-support-bubble .ledger-topbar #aiInlineBanner,
@@ -733,6 +752,14 @@
             @keyframes sidebar-support-ring {
                 0% { opacity: 0.55; transform: scale(0.84); }
                 100% { opacity: 0; transform: scale(1.18); }
+            }
+            @keyframes sidebar-support-orb-pulse {
+                0%, 100% { transform: scale(0.88); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5); }
+                50% { transform: scale(1); box-shadow: 0 0 0 8px rgba(255, 255, 255, 0); }
+            }
+            @keyframes sidebar-support-orbit-spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
             }
             .app-sidebar-card {
                 flex: 1 1 auto;
@@ -15314,7 +15341,9 @@
                         <span class="sidebar-support-bubble" id="sidebarSupportBubble" role="status" aria-live="polite" aria-atomic="true" hidden>
                             <span class="sidebar-support-head">
                                 <span class="sidebar-support-mark" aria-hidden="true">
-                                    <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3v4"></path><path d="M12 17v4"></path><path d="M4.9 4.9l2.8 2.8"></path><path d="M16.3 16.3l2.8 2.8"></path><path d="M3 12h4"></path><path d="M17 12h4"></path><path d="M4.9 19.1l2.8-2.8"></path><path d="M16.3 7.7l2.8-2.8"></path></svg>
+                                    <span class="sidebar-support-orb"></span>
+                                    <span class="sidebar-support-orbit"></span>
+                                    <span class="sidebar-support-orbit is-alt"></span>
                                 </span>
                                 <span class="sidebar-support-copy">
                                     <span class="sidebar-support-kicker" id="sidebarSupportKicker">Working</span>
