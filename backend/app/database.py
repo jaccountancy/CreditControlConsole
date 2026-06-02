@@ -1329,9 +1329,6 @@ CREATE TABLE IF NOT EXISTS ch_submissions (
 
 CREATE INDEX IF NOT EXISTS ch_submissions_company_idx ON ch_submissions (company_id, submitted_at DESC);
 CREATE INDEX IF NOT EXISTS ch_submissions_status_idx ON ch_submissions (status, submitted_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS ch_submissions_idempotency_idx
-ON ch_submissions (idempotency_key)
-WHERE idempotency_key <> '';
 
 ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT '';
 ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS attempt_type TEXT NOT NULL DEFAULT 'submit';
