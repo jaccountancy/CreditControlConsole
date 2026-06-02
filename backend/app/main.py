@@ -28,8 +28,15 @@ from .auth import (
     xero_authorize_url,
 )
 from .companies_house import (
+    commit_clients_import,
+    dashboard_summary as companies_house_dashboard_summary,
     get_companies_house_settings,
+    get_company_detail,
+    list_companies,
+    list_imports as list_companies_house_imports,
+    parse_clients_import,
     save_companies_house_settings,
+    update_company,
 )
 from .config import get_settings
 from .database import ensure_schema, get_connection
@@ -973,6 +980,67 @@ async def api_companies_house_settings_save(request: Request, user: dict = Depen
     payload = await request.json()
     updated = save_companies_house_settings(user, payload)
     return {"status": "ok", "settings": updated}
+
+
+@app.get("/api/companies-house/dashboard")
+def api_companies_house_dashboard(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **companies_house_dashboard_summary()}
+
+
+@app.get("/api/companies-house/companies")
+def api_companies_house_list(
+    search: str = Query("", alias="search"),
+    internal_status: str = Query("", alias="internalStatus"),
+    missing_auth: bool = Query(False, alias="missingAuth"),
+    due_soon: bool = Query(False, alias="dueSoon"),
+    overdue: bool = Query(False, alias="overdue"),
+    user: dict = Depends(require_panel_user),
+):
+    companies = list_companies({
+        "search": search,
+        "internalStatus": internal_status,
+        "missingAuth": missing_auth,
+        "dueSoon": due_soon,
+        "overdue": overdue,
+    })
+    return {"status": "ok", "companies": companies}
+
+
+@app.get("/api/companies-house/companies/{company_id}")
+def api_companies_house_company_detail(company_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "company": get_company_detail(company_id)}
+
+
+@app.patch("/api/companies-house/companies/{company_id}")
+async def api_companies_house_company_update(
+    company_id: str, request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    return {"status": "ok", "company": update_company(company_id, payload, user)}
+
+
+@app.post("/api/companies-house/import/clients/preview")
+async def api_companies_house_import_clients_preview(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    content = await file.read()
+    preview = parse_clients_import(content, file.filename or "clients.csv")
+    return {"status": "ok", "preview": preview}
+
+
+@app.post("/api/companies-house/import/clients/commit")
+async def api_companies_house_import_clients_commit(
+    request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    preview = payload.get("preview") or {}
+    return {"status": "ok", "result": commit_clients_import(user, preview)}
+
+
+@app.get("/api/companies-house/imports")
+def api_companies_house_imports_list(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "imports": list_companies_house_imports()}
 
 
 @app.post("/api/panel/factory-reset")
