@@ -14918,31 +14918,41 @@
             #xeroLockDateScreen .late-charge-summary + .late-charge-summary {
                 margin-top: -8px;
             }
-            .xero-lock-date-stats {
+            .xero-lock-date-top-pill {
+                margin: 0;
+                padding: 12px 14px;
+                border-radius: 14px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                background: linear-gradient(145deg, rgba(233, 241, 255, 0.9), rgba(255, 255, 255, 0.95));
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                gap: 8px;
+            }
+            .xero-lock-date-stats {
+                display: flex;
+                flex-wrap: wrap;
                 gap: 10px;
             }
             .xero-lock-date-stat {
-                padding: 11px 12px;
-                border-radius: 12px;
-                border: 1px solid var(--line);
+                padding: 6px 10px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
                 background: rgba(255, 255, 255, 0.92);
-                display: grid;
-                gap: 4px;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
             }
             .xero-lock-date-stat span {
                 color: var(--muted);
-                font-size: 0.72rem;
+                font-size: 0.68rem;
                 font-weight: 900;
                 letter-spacing: 0.07em;
                 text-transform: uppercase;
             }
             .xero-lock-date-stat strong {
                 color: var(--ink);
-                font-size: 1.08rem;
+                font-size: 0.88rem;
                 font-weight: 950;
-                line-height: 1.15;
+                line-height: 1;
             }
             #xeroLockDateScreen .ch-companies-table-wrap {
                 overflow: auto;
@@ -15019,30 +15029,55 @@
                 gap: 16px;
             }
 
-            .hmrc648-kpi-grid {
+            .hmrc648-top-pill {
+                margin: 0;
+                padding: 12px 14px;
+                border-radius: 14px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                background: linear-gradient(145deg, rgba(233, 241, 255, 0.9), rgba(255, 255, 255, 0.95));
                 display: grid;
+                gap: 8px;
+            }
+
+            .hmrc648-kpi-grid {
+                display: flex;
+                flex-wrap: wrap;
                 gap: 10px;
-                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             }
 
             .hmrc648-kpi-grid article {
-                border: 1px solid var(--line);
-                border-radius: 12px;
-                padding: 10px 12px;
-                background: #fff;
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 999px;
+                padding: 6px 10px;
+                background: rgba(255, 255, 255, 0.92);
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
             }
 
             .hmrc648-kpi-grid article span {
-                font-size: 12px;
+                font-size: 11px;
+                font-weight: 900;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
                 color: var(--muted);
             }
 
             .hmrc648-kpi-grid article strong {
-                font-size: 22px;
+                font-size: 14px;
                 line-height: 1;
+            }
+
+            .hmrc648-queue-card {
+                min-height: min(72vh, 920px);
+                display: grid;
+                grid-template-rows: auto auto 1fr;
+                gap: 10px;
+            }
+
+            .hmrc648-queue-card .ch-companies-table-wrap {
+                max-height: none;
+                overflow: auto;
             }
 
             .hmrc648-workspace {
@@ -15084,6 +15119,10 @@
                 gap: 6px;
                 font-size: 12px;
                 color: var(--muted);
+            }
+
+            .hmrc648-queue-tools .detail-actions {
+                margin-left: auto;
             }
 
             .hmrc648-queue-tools select {
@@ -15138,10 +15177,29 @@
                 gap: 6px;
             }
 
+            .hmrc648-create-picker {
+                display: grid;
+                gap: 8px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .hmrc648-create-picker .is-wide {
+                grid-column: 1 / -1;
+            }
+
+            .hmrc648-modal-panel {
+                width: min(980px, 96vw);
+            }
+
             @media (max-width: 1080px) {
-                .hmrc648-workspace,
                 .hmrc648-form-grid {
                     grid-template-columns: 1fr;
+                }
+                .hmrc648-create-picker {
+                    grid-template-columns: 1fr;
+                }
+                .hmrc648-queue-tools .detail-actions {
+                    margin-left: 0;
                 }
             }
 
@@ -16844,205 +16902,252 @@
                                     <p class="detail-meta">Create 64-8 submissions for SA, PAYE and CT, track HMRC letter turnaround, and capture authority codes before activation in Agent Gateway.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="primary-button" id="hmrc648OpenCreateModalButton" type="button">Create request</button>
+                                    <button class="ghost-button" id="hmrc648OpenHistoryScreenButton" type="button">History & audit</button>
                                     <button class="ghost-button" id="hmrc648RefreshButton" type="button">Refresh</button>
                                 </div>
                             </div>
-                            <p class="late-charge-summary" id="hmrc648StatusMeta">Loading HMRC 64-8 requests…</p>
-                            <div class="hmrc648-kpi-grid" id="hmrc648KpiGrid"></div>
-                            <section class="hmrc648-workspace">
-                                <article class="hmrc648-card">
-                                    <h4>Create 64-8 request</h4>
-                                    <form id="hmrc648CreateForm" class="hmrc648-form-grid">
-                                        <label>
-                                            Client
-                                            <select id="hmrc648CreateClient"></select>
-                                        </label>
-                                        <label>
-                                            Client name
-                                            <input id="hmrc648CreateClientName" type="text" placeholder="Client legal name" required>
-                                        </label>
-                                        <label>
-                                            Contact name
-                                            <input id="hmrc648CreateContactName" type="text" placeholder="Primary contact">
-                                        </label>
-                                        <label>
-                                            Contact email
-                                            <input id="hmrc648CreateContactEmail" type="email" placeholder="client@example.com">
-                                        </label>
-                                        <label>
-                                            Contact phone
-                                            <input id="hmrc648CreateContactPhone" type="text" placeholder="Telephone">
-                                        </label>
-                                        <label>
-                                            Company number
-                                            <input id="hmrc648CreateCompanyNumber" type="text" placeholder="Companies House number">
-                                        </label>
-                                        <label>
-                                            SA UTR
-                                            <input id="hmrc648CreateSaUtr" type="text" placeholder="Self Assessment UTR">
-                                        </label>
-                                        <label>
-                                            CT UTR
-                                            <input id="hmrc648CreateCtUtr" type="text" placeholder="Corporation Tax UTR">
-                                        </label>
-                                        <label>
-                                            PAYE reference
-                                            <input id="hmrc648CreatePayeRef" type="text" placeholder="123/AB45678">
-                                        </label>
-                                        <label>
-                                            Submission channel
-                                            <select id="hmrc648CreateChannel">
-                                                <option value="online">Online</option>
-                                                <option value="paper">Paper</option>
-                                            </select>
-                                        </label>
-                                        <label class="is-wide">
-                                            Postal address
-                                            <textarea id="hmrc648CreatePostalAddress" rows="3" placeholder="Address used for HMRC code letter delivery"></textarea>
-                                        </label>
-                                        <label class="is-wide">
-                                            Internal notes
-                                            <textarea id="hmrc648CreateNotes" rows="3" placeholder="Engagement notes, evidence, and submission context"></textarea>
-                                        </label>
-                                        <div class="hmrc648-service-checks is-wide">
-                                            <label><input id="hmrc648CreateIncludeSa" type="checkbox" checked> SA</label>
-                                            <label><input id="hmrc648CreateIncludePaye" type="checkbox"> PAYE</label>
-                                            <label><input id="hmrc648CreateIncludeCt" type="checkbox"> CT</label>
-                                        </div>
-                                        <div class="detail-actions is-wide">
-                                            <button class="primary-button" type="submit">Create request</button>
-                                        </div>
-                                    </form>
-                                    <p class="settings-help" id="hmrc648CreateStatus">Select a client and choose the tax services for authority.</p>
-                                </article>
-                                <article class="hmrc648-card hmrc648-card-wide">
-                                    <h4>Submission queue</h4>
-                                    <div class="hmrc648-queue-tools">
-                                        <label>
-                                            Filter
-                                            <select id="hmrc648StatusFilter">
-                                                <option value="all">All</option>
-                                                <option value="draft">Draft</option>
-                                                <option value="prepared">Prepared</option>
-                                                <option value="awaiting_code">Awaiting code</option>
-                                                <option value="code_received">Code received</option>
-                                                <option value="authorised">Authorised</option>
-                                                <option value="rejected">Rejected</option>
-                                                <option value="cancelled">Cancelled</option>
-                                            </select>
-                                        </label>
-                                        <label>
-                                            <input id="hmrc648OverdueOnly" type="checkbox">
-                                            Overdue code only
-                                        </label>
-                                        <label>
-                                            <input id="hmrc648SentOnly" type="checkbox">
-                                            Sent only
-                                        </label>
-                                        <div class="detail-actions">
-                                            <button class="ghost-button" id="hmrc648ExportButton" type="button">Export CSV</button>
-                                            <button class="ghost-button" id="hmrc648ReloadHistoryButton" type="button">Reload history</button>
-                                        </div>
+                            <article class="hmrc648-top-pill">
+                                <p class="late-charge-summary" id="hmrc648StatusMeta">Loading HMRC 64-8 requests…</p>
+                                <div class="hmrc648-kpi-grid" id="hmrc648KpiGrid"></div>
+                            </article>
+                            <article class="hmrc648-card hmrc648-queue-card">
+                                <h4>Submission queue</h4>
+                                <div class="hmrc648-queue-tools">
+                                    <label>
+                                        Filter
+                                        <select id="hmrc648StatusFilter">
+                                            <option value="all">All</option>
+                                            <option value="draft">Draft</option>
+                                            <option value="prepared">Prepared</option>
+                                            <option value="awaiting_code">Awaiting code</option>
+                                            <option value="code_received">Code received</option>
+                                            <option value="authorised">Authorised</option>
+                                            <option value="rejected">Rejected</option>
+                                            <option value="cancelled">Cancelled</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        <input id="hmrc648OverdueOnly" type="checkbox">
+                                        Overdue code only
+                                    </label>
+                                    <label>
+                                        <input id="hmrc648SentOnly" type="checkbox">
+                                        Sent only
+                                    </label>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="hmrc648ExportButton" type="button">Export CSV</button>
                                     </div>
-                                    <div class="ch-companies-table-wrap">
-                                        <table class="ch-table" aria-label="HMRC 64-8 request queue">
-                                            <thead>
-                                                <tr>
-                                                    <th>Client</th>
-                                                    <th>Services</th>
-                                                    <th>Status</th>
-                                                    <th>Submitted</th>
-                                                    <th>Code due</th>
-                                                    <th>Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="hmrc648QueueBody"></tbody>
-                                        </table>
-                                    </div>
-                                </article>
-                                <article class="hmrc648-card">
-                                    <h4>Request detail</h4>
-                                    <form id="hmrc648DetailForm" class="hmrc648-form-grid">
-                                        <input id="hmrc648DetailId" type="hidden">
-                                        <label>
-                                            Client name
-                                            <input id="hmrc648DetailClientName" type="text" required>
-                                        </label>
-                                        <label>
-                                            Status
-                                            <select id="hmrc648DetailStatus">
-                                                <option value="draft">Draft</option>
-                                                <option value="prepared">Prepared</option>
-                                                <option value="submitted">Submitted</option>
-                                                <option value="awaiting_code">Awaiting code</option>
-                                                <option value="code_received">Code received</option>
-                                                <option value="authorised">Authorised</option>
-                                                <option value="rejected">Rejected</option>
-                                                <option value="cancelled">Cancelled</option>
-                                            </select>
-                                        </label>
-                                        <label>
-                                            HMRC submission ref
-                                            <input id="hmrc648DetailSubmissionRef" type="text" placeholder="Optional reference">
-                                        </label>
-                                        <label>
-                                            Submitted at
-                                            <input id="hmrc648DetailSubmittedAt" type="datetime-local">
-                                        </label>
-                                        <label>
-                                            Code expected by
-                                            <input id="hmrc648DetailExpectedBy" type="date">
-                                        </label>
-                                        <label>
-                                            Authority code
-                                            <input id="hmrc648DetailAuthorityCode" type="text" placeholder="Code from client letter">
-                                        </label>
-                                        <label class="is-wide">
-                                            Notes
-                                            <textarea id="hmrc648DetailNotes" rows="3"></textarea>
-                                        </label>
-                                        <div class="detail-actions is-wide">
-                                            <button class="ghost-button" id="hmrc648SubmitActionButton" type="button">Mark submitted</button>
-                                            <button class="ghost-button" id="hmrc648CaptureCodeButton" type="button">Capture code</button>
-                                            <button class="ghost-button" id="hmrc648ReminderButton" type="button">Log reminder</button>
-                                            <button class="primary-button" type="submit">Save changes</button>
-                                        </div>
-                                    </form>
-                                    <p class="settings-help" id="hmrc648DetailStatusMessage">Select a request from the queue.</p>
-                                </article>
-                                <article class="hmrc648-card hmrc648-card-wide">
-                                    <h4>History and audit</h4>
-                                    <p class="detail-meta" id="hmrc648HistoryMeta">Loading history…</p>
-                                    <div class="ch-companies-table-wrap">
-                                        <table class="ch-table" aria-label="HMRC 64-8 history">
-                                            <thead>
-                                                <tr>
-                                                    <th>When</th>
-                                                    <th>Client</th>
-                                                    <th>Event</th>
-                                                    <th>Request</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="hmrc648HistoryBody"></tbody>
-                                        </table>
-                                    </div>
-                                    <h4>Clients sent to HMRC</h4>
-                                    <div class="ch-companies-table-wrap">
-                                        <table class="ch-table" aria-label="HMRC sent clients">
-                                            <thead>
-                                                <tr>
-                                                    <th>Client</th>
-                                                    <th>Requests sent</th>
-                                                    <th>Latest sent</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="hmrc648SentClientsBody"></tbody>
-                                        </table>
-                                    </div>
-                                </article>
-                            </section>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="HMRC 64-8 request queue">
+                                        <thead>
+                                            <tr>
+                                                <th>Client</th>
+                                                <th>Services</th>
+                                                <th>Status</th>
+                                                <th>Submitted</th>
+                                                <th>Code due</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="hmrc648QueueBody"></tbody>
+                                    </table>
+                                </div>
+                            </article>
                         </section>
                     </section>
+
+                    <section class="late-charges-screen detail-card" id="hmrc648HistoryScreen" hidden>
+                        <section class="detail-panel hmrc648-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Audit trail</p>
+                                    <h3>HMRC 64-8 history and audit</h3>
+                                    <p class="detail-meta">Review all 64-8 events and a summary of clients sent to HMRC.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="hmrc648HistoryBackButton" type="button">Back to queue</button>
+                                    <button class="ghost-button" id="hmrc648ReloadHistoryButton" type="button">Reload history</button>
+                                </div>
+                            </div>
+                            <article class="hmrc648-card">
+                                <h4>History and audit</h4>
+                                <p class="detail-meta" id="hmrc648HistoryMeta">Loading history…</p>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="HMRC 64-8 history">
+                                        <thead>
+                                            <tr>
+                                                <th>When</th>
+                                                <th>Client</th>
+                                                <th>Event</th>
+                                                <th>Request</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="hmrc648HistoryBody"></tbody>
+                                    </table>
+                                </div>
+                                <h4>Clients sent to HMRC</h4>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="HMRC sent clients">
+                                        <thead>
+                                            <tr>
+                                                <th>Client</th>
+                                                <th>Requests sent</th>
+                                                <th>Latest sent</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="hmrc648SentClientsBody"></tbody>
+                                    </table>
+                                </div>
+                            </article>
+                        </section>
+                    </section>
+
+                    <div class="company-secretarial-modal" id="hmrc648CreateModal" hidden>
+                        <div class="company-secretarial-modal-panel hmrc648-modal-panel" role="dialog" aria-modal="true" aria-labelledby="hmrc648CreateTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Create request</p>
+                                    <h4 id="hmrc648CreateTitle">Create HMRC 64-8 request</h4>
+                                    <p class="detail-meta">Start from an existing client or manual entry, then submit with the required services.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="hmrc648CreateModalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <form id="hmrc648CreateForm" class="hmrc648-form-grid">
+                                <div class="hmrc648-create-picker is-wide">
+                                    <label class="is-wide">
+                                        Search existing client
+                                        <input id="hmrc648CreateClientSearch" type="search" placeholder="Search by client name, email or phone">
+                                    </label>
+                                    <label>
+                                        Existing client
+                                        <select id="hmrc648CreateClient"></select>
+                                    </label>
+                                    <label>
+                                        Client name
+                                        <input id="hmrc648CreateClientName" type="text" placeholder="Client legal name" required>
+                                    </label>
+                                </div>
+                                <label>
+                                    Contact name
+                                    <input id="hmrc648CreateContactName" type="text" placeholder="Primary contact">
+                                </label>
+                                <label>
+                                    Contact email
+                                    <input id="hmrc648CreateContactEmail" type="email" placeholder="client@example.com">
+                                </label>
+                                <label>
+                                    Contact phone
+                                    <input id="hmrc648CreateContactPhone" type="text" placeholder="Telephone">
+                                </label>
+                                <label>
+                                    Company number
+                                    <input id="hmrc648CreateCompanyNumber" type="text" placeholder="Companies House number">
+                                </label>
+                                <label>
+                                    SA UTR
+                                    <input id="hmrc648CreateSaUtr" type="text" placeholder="Self Assessment UTR">
+                                </label>
+                                <label>
+                                    CT UTR
+                                    <input id="hmrc648CreateCtUtr" type="text" placeholder="Corporation Tax UTR">
+                                </label>
+                                <label>
+                                    PAYE reference
+                                    <input id="hmrc648CreatePayeRef" type="text" placeholder="123/AB45678">
+                                </label>
+                                <label>
+                                    Submission channel
+                                    <select id="hmrc648CreateChannel">
+                                        <option value="online">Online</option>
+                                        <option value="paper">Paper</option>
+                                    </select>
+                                </label>
+                                <label class="is-wide">
+                                    Postal address
+                                    <textarea id="hmrc648CreatePostalAddress" rows="3" placeholder="Address used for HMRC code letter delivery"></textarea>
+                                </label>
+                                <label class="is-wide">
+                                    Internal notes
+                                    <textarea id="hmrc648CreateNotes" rows="3" placeholder="Engagement notes, evidence, and submission context"></textarea>
+                                </label>
+                                <div class="hmrc648-service-checks is-wide">
+                                    <label><input id="hmrc648CreateIncludeSa" type="checkbox" checked> SA</label>
+                                    <label><input id="hmrc648CreateIncludePaye" type="checkbox"> PAYE</label>
+                                    <label><input id="hmrc648CreateIncludeCt" type="checkbox"> CT</label>
+                                </div>
+                                <div class="detail-actions is-wide">
+                                    <button class="primary-button" type="submit">Create request</button>
+                                </div>
+                            </form>
+                            <p class="settings-help" id="hmrc648CreateStatus">Select a client and choose the tax services for authority.</p>
+                        </div>
+                    </div>
+
+                    <div class="company-secretarial-modal" id="hmrc648DetailModal" hidden>
+                        <div class="company-secretarial-modal-panel hmrc648-modal-panel" role="dialog" aria-modal="true" aria-labelledby="hmrc648DetailTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Request manager</p>
+                                    <h4 id="hmrc648DetailTitle">HMRC 64-8 request detail</h4>
+                                    <p class="detail-meta">Update submission state, capture code, and log reminders from one place.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="hmrc648DetailModalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <form id="hmrc648DetailForm" class="hmrc648-form-grid">
+                                <input id="hmrc648DetailId" type="hidden">
+                                <label>
+                                    Client name
+                                    <input id="hmrc648DetailClientName" type="text" required>
+                                </label>
+                                <label>
+                                    Status
+                                    <select id="hmrc648DetailStatus">
+                                        <option value="draft">Draft</option>
+                                        <option value="prepared">Prepared</option>
+                                        <option value="submitted">Submitted</option>
+                                        <option value="awaiting_code">Awaiting code</option>
+                                        <option value="code_received">Code received</option>
+                                        <option value="authorised">Authorised</option>
+                                        <option value="rejected">Rejected</option>
+                                        <option value="cancelled">Cancelled</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    HMRC submission ref
+                                    <input id="hmrc648DetailSubmissionRef" type="text" placeholder="Optional reference">
+                                </label>
+                                <label>
+                                    Submitted at
+                                    <input id="hmrc648DetailSubmittedAt" type="datetime-local">
+                                </label>
+                                <label>
+                                    Code expected by
+                                    <input id="hmrc648DetailExpectedBy" type="date">
+                                </label>
+                                <label>
+                                    Authority code
+                                    <input id="hmrc648DetailAuthorityCode" type="text" placeholder="Code from client letter">
+                                </label>
+                                <label class="is-wide">
+                                    Notes
+                                    <textarea id="hmrc648DetailNotes" rows="3"></textarea>
+                                </label>
+                                <div class="detail-actions is-wide">
+                                    <button class="ghost-button" id="hmrc648SubmitActionButton" type="button">Mark submitted</button>
+                                    <button class="ghost-button" id="hmrc648CaptureCodeButton" type="button">Capture code</button>
+                                    <button class="ghost-button" id="hmrc648ReminderButton" type="button">Log reminder</button>
+                                    <button class="primary-button" type="submit">Save changes</button>
+                                </div>
+                            </form>
+                            <p class="settings-help" id="hmrc648DetailStatusMessage">Select a request from the queue.</p>
+                        </div>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="amlVerificationScreen" hidden>
                         <section class="detail-panel">
@@ -17075,9 +17180,11 @@
                                     <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
                                 </div>
                             </div>
-                            <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
-                            <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
-                            <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
+                            <article class="xero-lock-date-top-pill">
+                                <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
+                                <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
+                                <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
+                            </article>
                             <div class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Xero lock dates">
                                     <thead>
@@ -18599,6 +18706,7 @@
             let hmrc648StatusFilter = "all";
             let hmrc648OverdueOnly = false;
             let hmrc648SentOnly = false;
+            let hmrc648CreateClientSearchTerm = "";
             const topbarViewTitles = {
                 ledger: "Credit Control",
                 client: "Client",
@@ -18610,6 +18718,7 @@
                 "confirmation-statements": "Confirmation Statements",
                 "company-secretarial": "Company Secretarial",
                 "hmrc-64-8s": "HMRC 64-8s",
+                "hmrc-64-8-history": "HMRC 64-8 History",
                 "aml-verification": "AML Verification",
                 "xero-lock-date": "Xero Lock Date",
                 jashflow: "Jashflow",
@@ -18631,6 +18740,7 @@
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
                 "company-secretarial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
                 "hmrc-64-8s": "Track HMRC 64-8 authority requests, evidence and status updates.",
+                "hmrc-64-8-history": "Review HMRC 64-8 audit history and sent-client summaries.",
                 "aml-verification": "Review AML/KYC readiness and unresolved compliance blockers.",
                 "xero-lock-date": "Review lock dates across all connected Xero tenants and flag filed accounts that are still unlocked.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
@@ -26350,10 +26460,10 @@
                             { label: "Needs mapping", value: unmapped.toLocaleString("en-GB") },
                             { label: "Flagged mismatches", value: flagged.toLocaleString("en-GB") }
                         ].map((card) => `
-                            <article class="xero-lock-date-stat">
+                            <span class="xero-lock-date-stat">
                                 <span>${escapeHTML(card.label)}</span>
                                 <strong>${escapeHTML(card.value)}</strong>
-                            </article>
+                            </span>
                         `).join("");
                     }
                 }
