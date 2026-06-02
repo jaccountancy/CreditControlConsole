@@ -15215,8 +15215,9 @@
             }
             #xeroLockDateScreen .xero-lock-date-hero {
                 display: grid;
-                grid-template-columns: minmax(0, 1fr) auto;
+                grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
                 gap: 14px 18px;
+                align-items: start;
             }
             #xeroLockDateScreen .xero-lock-date-hero-main {
                 min-width: 0;
@@ -15231,8 +15232,23 @@
                 flex-wrap: wrap;
                 justify-content: flex-end;
             }
-            #xeroLockDateScreen .xero-lock-date-hero .detail-actions {
-                align-self: start;
+            #xeroLockDateScreen .xero-lock-date-control-stack {
+                min-width: 0;
+                display: grid;
+                gap: 12px;
+                align-content: start;
+            }
+            #xeroLockDateScreen .xero-lock-date-control-stack .detail-actions {
+                justify-content: stretch;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+            #xeroLockDateScreen .xero-lock-date-control-stack .detail-actions .ghost-button,
+            #xeroLockDateScreen .xero-lock-date-control-stack .detail-actions .primary-button {
+                width: 100%;
+                min-height: 44px;
+                justify-content: center;
             }
             #xeroLockDateScreen .late-charge-summary {
                 margin: 0;
@@ -15247,33 +15263,71 @@
                 margin: 0;
                 display: grid;
                 gap: 6px;
-                padding: 4px 0 2px;
+                padding: 12px 14px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.76);
             }
             .xero-lock-date-stats {
                 display: flex;
                 flex-wrap: wrap;
                 gap: 10px;
             }
-            .xero-lock-date-search {
-                display: flex;
-                flex-wrap: wrap;
-                align-items: center;
-                gap: 10px;
+            #xeroLockDateScreen .xero-lock-date-search {
+                display: grid;
+                gap: 8px;
+                padding: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.82);
             }
-            .xero-lock-date-search label {
-                min-width: 240px;
-                flex: 1 1 360px;
+            #xeroLockDateScreen .xero-lock-date-search label {
+                min-width: 0;
                 display: grid;
                 gap: 6px;
             }
-            .xero-lock-date-search span {
+            #xeroLockDateScreen .xero-lock-date-search span {
                 color: var(--muted);
                 font-size: 0.7rem;
                 font-weight: 900;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
             }
-            .xero-lock-date-search input[type="search"] {
+            #xeroLockDateScreen .xero-lock-date-search input[type="search"] {
+                width: 100%;
+                min-height: 44px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 0 12px;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 760;
+                color: var(--ink);
+                background: #fff;
+            }
+            #xeroLockDateSearchMeta {
+                margin-top: 0;
+            }
+            .settings-panel .xero-lock-date-search {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+            }
+            .settings-panel .xero-lock-date-search label {
+                min-width: 240px;
+                flex: 1 1 360px;
+                display: grid;
+                gap: 6px;
+            }
+            .settings-panel .xero-lock-date-search span {
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .settings-panel .xero-lock-date-search input[type="search"] {
                 width: 100%;
                 min-height: 40px;
                 border: 1px solid var(--line);
@@ -15373,12 +15427,13 @@
                 #xeroLockDateScreen .xero-lock-date-hero {
                     grid-template-columns: minmax(0, 1fr);
                 }
-                #xeroLockDateScreen .detail-actions {
+                #xeroLockDateScreen .xero-lock-date-control-stack .detail-actions {
                     width: 100%;
-                    justify-content: flex-start;
+                    grid-template-columns: minmax(0, 1fr);
                 }
-                #xeroLockDateScreen .detail-actions .ghost-button {
-                    flex: 1 1 170px;
+                #xeroLockDateScreen .xero-lock-date-control-stack .detail-actions .ghost-button,
+                #xeroLockDateScreen .xero-lock-date-control-stack .detail-actions .primary-button {
+                    min-height: 42px;
                 }
             }
             .hmrc648-panel {
@@ -17547,21 +17602,23 @@
                                     <div class="xero-lock-date-overview-strip">
                                         <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
                                         <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
-                                        <p class="late-charge-summary" id="xeroLockDateSearchMeta" hidden></p>
                                         <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
+                                    </div>
+                                </div>
+                                <div class="xero-lock-date-control-stack">
+                                    <div class="detail-actions">
+                                        <button class="primary-button" id="connectXeroLockDateButton" type="button">Connect Client Xeros</button>
+                                        <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
+                                        <button class="ghost-button" id="identifyXeroLockMismatchesButton" type="button">Identify Lock Mismatches</button>
+                                        <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
                                     </div>
                                     <div class="xero-lock-date-search">
                                         <label for="xeroLockDateSearchInput">
                                             <span>Search tenants and mapping</span>
                                             <input id="xeroLockDateSearchInput" type="search" placeholder="Tenant, tenant ID, CH number, company name, or status">
                                         </label>
+                                        <p class="late-charge-summary" id="xeroLockDateSearchMeta" hidden></p>
                                     </div>
-                                </div>
-                                <div class="detail-actions">
-                                    <button class="primary-button" id="connectXeroLockDateButton" type="button">Connect Client Xeros</button>
-                                    <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
-                                    <button class="ghost-button" id="identifyXeroLockMismatchesButton" type="button">Identify Lock Mismatches</button>
-                                    <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
                                 </div>
                             </div>
                             <div class="ch-companies-table-wrap">
