@@ -13810,6 +13810,15 @@
             .ch-companies-toolbar input[type="search"], .ch-companies-toolbar select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--ink); }
             .ch-companies-toolbar input[type="search"] { flex: 1 1 240px; min-width: 200px; }
             .ch-companies-toolbar label.ch-checkbox-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+            .ch-workflow-card { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; border-radius: 14px; background: linear-gradient(145deg, rgba(29,103,242,0.10), rgba(29,103,242,0.02)); border: 1px solid rgba(29,103,242,0.26); box-shadow: var(--shadow); }
+            .ch-workflow-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+            .ch-workflow-head .ch-section-title { font-size: 16px; }
+            .ch-workflow-head .ch-section-sub { font-size: 13px; max-width: 760px; }
+            .ch-workflow-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+            .ch-workflow-steps article { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-strong); }
+            .ch-workflow-steps article span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+            .ch-workflow-steps article strong { font-size: 20px; color: var(--ink); line-height: 1.1; }
+            .ch-workflow-steps article small { font-size: 12px; color: var(--muted); }
             .ch-companies-table-wrap { overflow-x: auto; background: var(--surface-strong); border-radius: 14px; border: 1px solid var(--line); }
             .ch-table { width: 100%; border-collapse: collapse; font-size: 13px; }
             .ch-table th, .ch-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -14861,10 +14870,43 @@
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterOverdue"> Overdue</label>
                                     <button class="ghost-button" type="button" id="chCompaniesReloadButton">Refresh</button>
                                 </div>
+                                <article class="ch-workflow-card" id="chWorkflowCard">
+                                    <div class="ch-workflow-head">
+                                        <div>
+                                            <p class="ch-section-title">Bulk workflow</p>
+                                            <p class="ch-section-sub">Select eligible companies, submit statements in bulk, then raise Xero invoices in bulk.</p>
+                                        </div>
+                                        <span class="ch-pill is-info" id="chWorkflowSelectionPill">0 selected</span>
+                                    </div>
+                                    <div class="ch-workflow-steps">
+                                        <article>
+                                            <span>Step 1</span>
+                                            <strong id="chWorkflowEligibleCount">0 eligible</strong>
+                                            <small>Due within 60 days with auth code</small>
+                                        </article>
+                                        <article>
+                                            <span>Step 2</span>
+                                            <strong id="chWorkflowReadyToSubmitCount">0 ready</strong>
+                                            <small>Selected and ready for submission</small>
+                                        </article>
+                                        <article>
+                                            <span>Step 3</span>
+                                            <strong id="chWorkflowReadyToInvoiceCount">0 ready</strong>
+                                            <small>Submitted and not yet invoiced</small>
+                                        </article>
+                                    </div>
+                                    <div class="ch-settings-actions">
+                                        <button class="ghost-button" type="button" id="chWorkflowSelectEligibleButton">Select all eligible</button>
+                                        <button class="primary-button" type="button" id="chWorkflowSubmitSelectedButton">Submit selected</button>
+                                        <button class="primary-button" type="button" id="chWorkflowInvoiceSelectedButton">Raise invoices</button>
+                                        <span class="ch-settings-status is-muted" id="chWorkflowStatus">Select clients to start the workflow.</span>
+                                    </div>
+                                </article>
                                 <div class="ch-companies-table-wrap">
                                     <table class="ch-table" id="chCompaniesTable">
                                         <thead>
                                             <tr>
+                                                <th><input type="checkbox" id="chCompaniesSelectAll" aria-label="Select all visible companies"></th>
                                                 <th>Company</th>
                                                 <th>Number</th>
                                                 <th>Client</th>
@@ -14926,7 +14968,7 @@
                                     </form>
                                     <div class="ch-settings-actions">
                                         <button class="primary-button" type="button" id="chCompanyDetailSave">Save changes</button>
-                                        <span class="ch-settings-status is-muted" id="chCompanyDetailStatus"></span>
+                                        <span class="ch-settings-status is-muted" id="chCompanyDetailStatusMessage"></span>
                                     </div>
                                     <section>
                                         <p class="ch-section-title">Filing history</p>
@@ -14960,6 +15002,7 @@
                                         <table class="ch-table" id="chImportPreviewTable">
                                             <thead>
                                                 <tr>
+                                                    <th>Include</th>
                                                     <th>Line</th>
                                                     <th>Action</th>
                                                     <th>Company number</th>
@@ -16870,6 +16913,9 @@
             let practicePackGenerating = false;
             let practicePackAssignments = loadPracticePackAssignments();
             let practicePackHistory = loadPracticePackHistory();
+            let practicePackServerRuns = [];
+            let practicePackRunsLoading = false;
+            let practicePackRunsLoaded = false;
             let practicePackClientCsvData = null;
             let practicePackTaskCsvData = null;
             let practicePackTaskDraftRows = [];
@@ -17182,6 +17228,8 @@
                         meReportSettings: config.endpoints?.meReportSettings || "/api/me-report/settings",
                         insights: config.endpoints?.insights || "/api/insights",
                         practicePackGenerate: config.endpoints?.practicePackGenerate || "/api/practice-packs/generate",
+                        practicePackRuns: config.endpoints?.practicePackRuns || "/api/practice-packs/runs",
+                        practicePackRunDownload: config.endpoints?.practicePackRunDownload || "/api/practice-packs/runs/:runId/download",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
                         factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -17336,6 +17384,69 @@
                 }
             }
 
+            function normalisePracticePackRunRecord(record) {
+                if (!record || typeof record !== "object") return null;
+                const ownerSummaries = Array.isArray(record.ownerSummaries)
+                    ? record.ownerSummaries.map(normalisePracticePackOwnerSummary).filter(Boolean)
+                    : [];
+                return {
+                    id: String(record.id || ""),
+                    month: String(record.month || ""),
+                    generatedAt: String(record.generatedAt || ""),
+                    expiresAt: String(record.expiresAt || ""),
+                    ownerSummaries,
+                    filename: String(record.filename || ""),
+                    taskCount: Number(record.taskCount || 0),
+                    clientCount: Number(record.clientCount || 0),
+                    staffPackCount: Number(record.staffPackCount || 0),
+                    unmatchedTaskCount: Number(record.unmatchedTaskCount || 0),
+                    totalMrr: Number(record.totalMrr || 0),
+                    serviceCount: Number(record.serviceCount || 0),
+                    fileCount: Number(record.fileCount || 0),
+                    zipByteSize: Number(record.zipByteSize || 0),
+                    files: Array.isArray(record.files)
+                        ? record.files
+                            .filter((file) => file && typeof file === "object")
+                            .map((file) => ({
+                                name: String(file.name || ""),
+                                byteSize: Number(file.byteSize || 0),
+                                contentType: String(file.contentType || "")
+                            }))
+                        : []
+                };
+            }
+
+            function serverPracticePackHistoryPayload() {
+                return {
+                    records: (practicePackServerRuns || []).map((record) => ({
+                        month: record.month || "",
+                        generatedAt: record.generatedAt || "",
+                        ownerSummaries: Array.isArray(record.ownerSummaries) ? record.ownerSummaries : []
+                    }))
+                };
+            }
+
+            async function refreshPracticePackRuns(options = {}) {
+                if (practicePackRunsLoading) return;
+                const silent = Boolean(options.silent);
+                practicePackRunsLoading = true;
+                try {
+                    const payload = await requestJSON(api.endpoints.practicePackRuns);
+                    const runs = Array.isArray(payload?.runs)
+                        ? payload.runs.map((record) => normalisePracticePackRunRecord(record)).filter(Boolean)
+                        : [];
+                    practicePackServerRuns = runs;
+                    practicePackRunsLoaded = true;
+                    if (!silent && activeView === "practice-packs") renderPracticePackScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else console.error("Unable to load retained practice packs", error);
+                    practicePackRunsLoaded = true;
+                } finally {
+                    practicePackRunsLoading = false;
+                }
+            }
+
             function normalisePracticePackOwnerSummary(summary) {
                 if (!summary || typeof summary !== "object") return null;
                 const owner = String(summary.owner || "").trim();
@@ -17393,6 +17504,14 @@
                     localStorage.setItem(PRACTICE_PACK_HISTORY_KEY, JSON.stringify({ records }));
                 } catch (error) {
                     console.warn("Unable to persist Practice Pack history", error);
+                }
+                const retained = normalisePracticePackRunRecord(result?.retainedRun);
+                if (retained) {
+                    practicePackServerRuns = [
+                        retained,
+                        ...practicePackServerRuns.filter((record) => record.id && record.id !== retained.id)
+                    ];
+                    practicePackRunsLoaded = true;
                 }
             }
 
@@ -19599,6 +19718,7 @@
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                refreshPracticePackRuns({ silent: false });
                 scrollConsoleToTop();
             }
 
@@ -37961,12 +38081,36 @@
                 return new Blob(chunks, { type });
             }
 
-            function downloadPracticePackZip() {
-                if (!practicePackResult?.zipBlob) {
+            async function downloadPracticePackZip() {
+                if (practicePackResult?.zipBlob) {
+                    downloadPracticePackBlob(practicePackResult.zipBlob, practicePackResult.filename);
+                    return;
+                }
+                const saved = latestPracticePackRecord();
+                if (!saved?.id) {
                     showToast("Generate the practice pack ZIP first.", "info");
                     return;
                 }
-                downloadPracticePackBlob(practicePackResult.zipBlob, practicePackResult.filename);
+                try {
+                    const response = await fetch(endpointURL(api.endpoints.practicePackRunDownload, { runId: saved.id }), {
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() }
+                    });
+                    if (response.status === 401 || response.status === 403) {
+                        throw new AuthRequiredError("Your session has expired. Sign in with Xero again before downloading.");
+                    }
+                    if (!response.ok) {
+                        throw new Error(`Unable to download this ZIP (${response.status}).`);
+                    }
+                    const blob = await response.blob();
+                    downloadPracticePackBlob(blob, saved.filename || "practice-pack.zip");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                        return;
+                    }
+                    showToast(error.message || "Unable to download this practice pack.", "error");
+                }
             }
 
             async function uploadIgnitionBMDataFile(file) {
@@ -38145,7 +38289,10 @@
                     formData.append("clientFile", clientFile);
                     formData.append("taskFile", taskFile);
                     formData.append("month", month);
-                    formData.append("history", JSON.stringify(practicePackHistory || loadPracticePackHistory()));
+                    const historyPayload = practicePackServerRuns.length
+                        ? serverPracticePackHistoryPayload()
+                        : (practicePackHistory || loadPracticePackHistory());
+                    formData.append("history", JSON.stringify(historyPayload));
                     const result = await requestFormData(api.endpoints.practicePackGenerate, formData);
                     if (!result?.zipBase64) throw new Error("The backend did not return a practice pack ZIP.");
                     const filename = result.filename || `${practicePackFileNamePart(month)}-practice-pack.zip`;
@@ -38154,8 +38301,8 @@
                         ...result,
                         filename,
                         zipBlob,
-                        month,
-                        generatedAt: new Date().toISOString(),
+                        month: result.month || month,
+                        generatedAt: result.generatedAt || new Date().toISOString(),
                         files: Array.isArray(result.files) ? result.files : [],
                         taskSummaries: Array.isArray(result.taskSummaries) ? result.taskSummaries : [],
                         clientAssignments: Array.isArray(result.clientAssignments) ? result.clientAssignments : [],
@@ -38176,6 +38323,7 @@
                     };
                     persistPracticePackAssignments();
                     persistPracticePackHistory(practicePackResult);
+                    refreshPracticePackRuns({ silent: true });
                     renderPracticePackScreen();
                     renderIgnitionStaffFeeWidget();
                     downloadPracticePackZip();
@@ -38210,55 +38358,14 @@
             }
 
             function latestPracticePackRecord() {
-                const records = Array.isArray(practicePackHistory?.records) ? practicePackHistory.records : [];
-                return records[0] || null;
+                const retained = Array.isArray(practicePackServerRuns) ? practicePackServerRuns : [];
+                if (retained.length) return retained[0];
+                const localRecords = Array.isArray(practicePackHistory?.records) ? practicePackHistory.records : [];
+                return localRecords[0] || null;
             }
 
             function practicePackDisplayResult() {
                 return practicePackResult || latestPracticePackRecord();
-            }
-
-            function practicePackSubmissionsTableMarkup() {
-                const records = Array.isArray(practicePackHistory?.records) ? practicePackHistory.records : [];
-                if (!records.length) return "";
-                return `
-                    <div class="practice-pack-submissions">
-                        <div class="practice-pack-submissions-head">
-                            <strong>Saved submissions</strong>
-                            <small>${records.length.toLocaleString("en-GB")} recent generation${records.length === 1 ? "" : "s"} kept in this browser.</small>
-                        </div>
-                        <div class="practice-pack-submissions-table-wrap">
-                            <table class="practice-pack-submissions-table">
-                                <thead>
-                                    <tr>
-                                        <th>Generated</th>
-                                        <th>Month</th>
-                                        <th>ZIP</th>
-                                        <th>Clients</th>
-                                        <th>Tasks</th>
-                                        <th>Staff packs</th>
-                                        <th>Unmatched</th>
-                                        <th>Total MRR</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${records.map((record) => `
-                                        <tr>
-                                            <td>${escapeHTML(record.generatedAt ? new Date(record.generatedAt).toLocaleString("en-GB") : "--")}</td>
-                                            <td>${escapeHTML(record.month || "--")}</td>
-                                            <td>${escapeHTML(record.filename || "--")}</td>
-                                            <td>${formatInteger(record.clientCount || 0)}</td>
-                                            <td>${formatInteger(record.taskCount || 0)}</td>
-                                            <td>${formatInteger(record.staffPackCount || 0)}</td>
-                                            <td>${formatInteger(record.unmatchedTaskCount || 0)}</td>
-                                            <td>${formatCurrency(record.totalMrr || 0)}</td>
-                                        </tr>
-                                    `).join("")}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                `;
             }
 
             function practicePackTopbarCards(month = currentPracticePackMonth()) {
@@ -38319,9 +38426,12 @@
                                 ? " using Jenius AI with local fallback"
                                 : "";
                         const totalMrr = Number(displayResult.totalMrr || 0);
-                        const fileCount = Number(displayResult.fileCount || displayResult.files?.length || 0);
+                        const expiryLabel = displayResult.expiresAt
+                            ? ` It stays available until ${new Date(displayResult.expiresAt).toLocaleString("en-GB")}.`
+                            : "";
+                        const monthLabel = displayResult.month || month;
                         const generated = displayResult.generatedAt ? ` on ${new Date(displayResult.generatedAt).toLocaleString("en-GB")}` : "";
-                        summary.textContent = `Generated ${fileCount.toLocaleString("en-GB")} PDF file${fileCount === 1 ? "" : "s"} in ${displayResult.filename || "practice-pack.zip"}${generated}${grouping}${totalMrr ? `, total MRR ${formatCurrency(totalMrr)}` : ""}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
+                        summary.textContent = `Latest pack: ${monthLabel} practice pack generated${generated}${grouping}${totalMrr ? `, total MRR ${formatCurrency(totalMrr)}` : ""}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.${expiryLabel}`;
                     } else if (selectedFiles.client && selectedFiles.task) {
                         summary.textContent = "BM Client File and BM Task File are ready for processing.";
                     } else {
@@ -38352,32 +38462,24 @@
                     return;
                 }
                 if (!displayResult) {
-                    outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>';
+                    if (practicePackRunsLoading || !practicePackRunsLoaded) {
+                        outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading saved packs</p><h4>Checking retained practice packs</h4><p>Practice packs are retained for 24 hours after generation.</p></div>';
+                    } else {
+                        outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner, then stays available for 24 hours.</p></div>';
+                    }
                     return;
                 }
-                const serviceRows = Array.isArray(practicePackResult?.serviceSummaries) ? practicePackResult.serviceSummaries : [];
-                const displayFiles = Array.isArray(displayResult.files) ? displayResult.files : [];
-                const canDownloadCurrentZip = Boolean(practicePackResult?.zipBlob);
+                const canDownloadCurrentZip = Boolean(practicePackResult?.zipBlob || displayResult?.id);
+                const expiresAtMs = displayResult?.expiresAt ? Date.parse(displayResult.expiresAt) : NaN;
+                const isExpired = Number.isFinite(expiresAtMs) ? expiresAtMs <= Date.now() : false;
+                const expiryNote = displayResult?.expiresAt
+                    ? `Expires ${new Date(displayResult.expiresAt).toLocaleString("en-GB")}`
+                    : "Expires after 24 hours";
                 outputList.innerHTML = `
                     <div class="practice-pack-output-row">
-                        <div><span>ZIP ready</span><strong>${escapeHTML(displayResult.filename || "practice-pack.zip")}</strong><small>${formatBytes(displayResult.zipBlob?.size || displayResult.zipByteSize || 0)} generated ${displayResult.generatedAt ? new Date(displayResult.generatedAt).toLocaleString("en-GB") : "--"} · total MRR ${formatCurrency(displayResult.totalMrr || 0)}</small></div>
-                        <button class="primary-button" id="practicePackDownloadZipButton" type="button" ${canDownloadCurrentZip ? "" : "disabled"}>${canDownloadCurrentZip ? "Download" : "Download unavailable after refresh"}</button>
+                        <div><span>${escapeHTML(displayResult.month || month)} practice pack</span><strong>${escapeHTML(displayResult.filename || "practice-pack.zip")}</strong><small>${formatBytes(displayResult.zipBlob?.size || displayResult.zipByteSize || 0)} generated ${displayResult.generatedAt ? new Date(displayResult.generatedAt).toLocaleString("en-GB") : "--"} · ${escapeHTML(expiryNote)} · total MRR ${formatCurrency(displayResult.totalMrr || 0)}</small></div>
+                        <button class="primary-button" id="practicePackDownloadZipButton" type="button" ${canDownloadCurrentZip && !isExpired ? "" : "disabled"}>${canDownloadCurrentZip && !isExpired ? "Download" : "Expired after 24h"}</button>
                     </div>
-                    ${serviceRows.length ? `
-                        <div class="practice-pack-output-row">
-                            <div>
-                                <span>AI reviewed service groups</span>
-                                <strong>${serviceRows.length.toLocaleString("en-GB")} grouped service section${serviceRows.length === 1 ? "" : "s"}</strong>
-                                <small>${serviceRows.map((row) => `${row.serviceName || "Other"}: ${Number(row.taskCount || 0).toLocaleString("en-GB")} tasks${Number(row.mrr || 0) ? ` · ${formatCurrency(row.mrr)} MRR` : ""}`).join(" · ")}</small>
-                            </div>
-                        </div>
-                    ` : ""}
-                    ${displayFiles.map((file) => `
-                        <div class="practice-pack-output-row">
-                            <div><span>${escapeHTML(file.contentType === "application/pdf" ? "PDF file" : "File")}</span><strong>${escapeHTML(file.name)}</strong><small>${formatBytes(Number(file.byteSize || 0))}</small></div>
-                        </div>
-                    `).join("")}
-                    ${practicePackSubmissionsTableMarkup()}
                 `;
                 document.getElementById("practicePackDownloadZipButton")?.addEventListener("click", downloadPracticePackZip);
             }
@@ -41523,10 +41625,12 @@
                 tabLoaded: { dashboard: false, companies: false, import: false, audit: false, settings: false },
                 companies: [],
                 selectedCompanyId: null,
+                selectedCompanyIds: new Set(),
                 companyDetail: null,
                 companyFilters: { search: "", internalStatus: "all", missingAuth: false, dueSoon: false, overdue: false },
                 importPreview: null,
                 importBusy: false,
+                workflowBusy: false,
             };
 
             const CH_INTERNAL_STATUS_LABELS = {
@@ -41649,15 +41753,88 @@
                 return `<span class="ch-pill is-warn">Missing</span>`;
             }
 
+            function chSetWorkflowStatus(text, tone = "muted") {
+                const node = document.getElementById("chWorkflowStatus");
+                if (!node) return;
+                node.textContent = text || "";
+                node.classList.remove("is-muted", "is-success", "is-error");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function chSelectedCompanyIds() {
+                return Array.from(companiesHouseState.selectedCompanyIds || []).filter(Boolean);
+            }
+
+            function chSelectedCompanies() {
+                const selected = new Set(chSelectedCompanyIds());
+                return (companiesHouseState.companies || []).filter((company) => selected.has(String(company.id || "")));
+            }
+
+            function chUpdateWorkflowControls() {
+                const selectedCompanies = chSelectedCompanies();
+                const selectedCount = selectedCompanies.length;
+                const selectedEligibleForSubmission = selectedCompanies.filter((company) => company.eligibleForSubmission).length;
+                const selectedEligibleForInvoicing = selectedCompanies.filter((company) => company.eligibleForInvoicing).length;
+                const eligibleTotal = (companiesHouseState.companies || []).filter((company) => company.eligibleForSubmission).length;
+                const selectAll = document.getElementById("chCompaniesSelectAll");
+                const visible = companiesHouseState.companies || [];
+                const selectedVisible = visible.filter((company) => (companiesHouseState.selectedCompanyIds || new Set()).has(String(company.id || "")));
+                if (selectAll) {
+                    const checked = visible.length > 0 && selectedVisible.length === visible.length;
+                    selectAll.checked = checked;
+                    selectAll.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visible.length;
+                }
+                const submitButton = document.getElementById("chWorkflowSubmitSelectedButton");
+                const invoiceButton = document.getElementById("chWorkflowInvoiceSelectedButton");
+                const selectEligibleButton = document.getElementById("chWorkflowSelectEligibleButton");
+                const selectionPill = document.getElementById("chWorkflowSelectionPill");
+                const eligibleCount = document.getElementById("chWorkflowEligibleCount");
+                const readySubmitCount = document.getElementById("chWorkflowReadyToSubmitCount");
+                const readyInvoiceCount = document.getElementById("chWorkflowReadyToInvoiceCount");
+                if (selectionPill) selectionPill.textContent = `${selectedCount.toLocaleString("en-GB")} selected`;
+                if (eligibleCount) eligibleCount.textContent = `${eligibleTotal.toLocaleString("en-GB")} eligible`;
+                if (readySubmitCount) readySubmitCount.textContent = `${selectedEligibleForSubmission.toLocaleString("en-GB")} ready`;
+                if (readyInvoiceCount) readyInvoiceCount.textContent = `${selectedEligibleForInvoicing.toLocaleString("en-GB")} ready`;
+                if (submitButton) submitButton.disabled = companiesHouseState.workflowBusy || selectedEligibleForSubmission === 0;
+                if (invoiceButton) invoiceButton.disabled = companiesHouseState.workflowBusy || selectedEligibleForInvoicing === 0;
+                if (selectEligibleButton) selectEligibleButton.disabled = companiesHouseState.workflowBusy;
+                if (!selectedCount) {
+                    chSetWorkflowStatus("Select clients to start the workflow.", "muted");
+                    return;
+                }
+                chSetWorkflowStatus(
+                    `${selectedCount.toLocaleString("en-GB")} selected · ${selectedEligibleForSubmission.toLocaleString("en-GB")} ready to submit · ${selectedEligibleForInvoicing.toLocaleString("en-GB")} ready to invoice`,
+                    "muted"
+                );
+            }
+
             function renderCompaniesHouseCompaniesTable() {
                 const body = document.getElementById("chCompaniesTableBody");
                 if (!body) return;
                 const companies = companiesHouseState.companies || [];
                 if (!companies.length) {
-                    body.innerHTML = `<tr><td colspan="7" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="8" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
+                    chUpdateWorkflowControls();
                     return;
                 }
-                body.innerHTML = companies.map((company) => `<tr data-company-id="${escapeHTML(company.id || "")}" class="${company.id === companiesHouseState.selectedCompanyId ? "is-selected" : ""}"><td><strong>${escapeHTML(company.companyName || "—")}</strong></td><td>${escapeHTML(company.companyNumber || "—")}</td><td>${escapeHTML(company.clientName || "—")}<br><small style="color: var(--muted)">${escapeHTML(company.clientId || "")}</small></td><td>${chCompanyStatusCell(company)}</td><td>${chCompanyDueCell(company)}</td><td>${chCompanyAuthCell(company)}</td><td>${escapeHTML(company.assignedStaffName || "—")}</td></tr>`).join("");
+                body.innerHTML = companies.map((company) => {
+                    const companyId = String(company.id || "");
+                    const isChecked = companiesHouseState.selectedCompanyIds.has(companyId);
+                    const latestSubmissionLabel = company.latestSubmissionStatus
+                        ? `${company.latestSubmissionStatus}${company.latestSubmissionXeroInvoiceId ? " · invoiced" : ""}`
+                        : "No submission";
+                    return `<tr data-company-id="${escapeHTML(companyId)}" class="${company.id === companiesHouseState.selectedCompanyId ? "is-selected" : ""}">
+                        <td><input type="checkbox" data-ch-select-company value="${escapeHTML(companyId)}" ${isChecked ? "checked" : ""} aria-label="Select ${escapeHTML(company.companyName || "company")}"></td>
+                        <td><strong>${escapeHTML(company.companyName || "—")}</strong><br><small style="color: var(--muted)">${escapeHTML(latestSubmissionLabel)}</small></td>
+                        <td>${escapeHTML(company.companyNumber || "—")}</td>
+                        <td>${escapeHTML(company.clientName || "—")}<br><small style="color: var(--muted)">${escapeHTML(company.clientId || "")}</small></td>
+                        <td>${chCompanyStatusCell(company)}</td>
+                        <td>${chCompanyDueCell(company)}</td>
+                        <td>${chCompanyAuthCell(company)}</td>
+                        <td>${escapeHTML(company.assignedStaffName || "—")}</td>
+                    </tr>`;
+                }).join("");
+                chUpdateWorkflowControls();
             }
 
             async function loadCompaniesHouseCompanies(force = false) {
@@ -41673,12 +41850,109 @@
                 try {
                     const payload = await requestJSON(`/api/companies-house/companies${query ? `?${query}` : ""}`);
                     companiesHouseState.companies = payload?.companies || [];
+                    const visibleIds = new Set((companiesHouseState.companies || []).map((company) => String(company.id || "")));
+                    companiesHouseState.selectedCompanyIds = new Set(
+                        chSelectedCompanyIds().filter((companyId) => visibleIds.has(companyId))
+                    );
                     companiesHouseState.tabLoaded.companies = true;
                     renderCompaniesHouseCompaniesTable();
                 } catch (error) {
                     console.error("Unable to load companies", error);
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error?.message || "Unable to load companies.", "error");
+                }
+            }
+
+            function selectEligibleCompaniesForWorkflow() {
+                const eligible = (companiesHouseState.companies || [])
+                    .filter((company) => company.eligibleForSubmission)
+                    .map((company) => String(company.id || ""));
+                companiesHouseState.selectedCompanyIds = new Set(eligible);
+                renderCompaniesHouseCompaniesTable();
+                chSetWorkflowStatus(
+                    `${eligible.length.toLocaleString("en-GB")} eligible companies selected for bulk submission.`,
+                    "success"
+                );
+            }
+
+            async function submitSelectedCompaniesWorkflow() {
+                if (companiesHouseState.workflowBusy) return;
+                const selected = chSelectedCompanies().filter((company) => company.eligibleForSubmission);
+                if (!selected.length) {
+                    chSetWorkflowStatus("Select at least one eligible company (due ≤60 days with auth code) before submitting.", "error");
+                    return;
+                }
+                if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to workflow queue?`)) return;
+                companiesHouseState.workflowBusy = true;
+                chUpdateWorkflowControls();
+                chSetWorkflowStatus("Submitting selected companies…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/submissions/bulk", {
+                        method: "POST",
+                        body: JSON.stringify({ companyIds: selected.map((company) => String(company.id || "")) }),
+                    });
+                    const result = payload?.result || {};
+                    const submittedCount = Number(result.submittedCount || 0);
+                    const skippedCount = Number(result.skippedCount || 0);
+                    chSetWorkflowStatus(
+                        `Submitted ${submittedCount.toLocaleString("en-GB")} and skipped ${skippedCount.toLocaleString("en-GB")}.`,
+                        skippedCount ? "error" : "success"
+                    );
+                    companiesHouseState.tabLoaded.dashboard = false;
+                    companiesHouseState.tabLoaded.companies = false;
+                    await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
+                    showToast(`Companies House workflow submission complete: ${submittedCount} submitted, ${skippedCount} skipped.`, skippedCount ? "info" : "success");
+                } catch (error) {
+                    console.error("Unable to submit selected companies", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    chSetWorkflowStatus(error?.message || "Unable to submit selected companies.", "error");
+                    showToast(error?.message || "Unable to submit selected companies.", "error");
+                } finally {
+                    companiesHouseState.workflowBusy = false;
+                    chUpdateWorkflowControls();
+                }
+            }
+
+            async function raiseSelectedWorkflowInvoices() {
+                if (companiesHouseState.workflowBusy) return;
+                const selected = chSelectedCompanies().filter((company) => company.eligibleForInvoicing);
+                if (!selected.length) {
+                    chSetWorkflowStatus("Select at least one company with a submitted filing and no linked Xero invoice.", "error");
+                    return;
+                }
+                if (!window.confirm(`Raise Xero invoices for ${selected.length} selected submission${selected.length === 1 ? "" : "s"}?`)) return;
+                companiesHouseState.workflowBusy = true;
+                chUpdateWorkflowControls();
+                chSetWorkflowStatus("Raising Xero invoices…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/submissions/invoices/bulk", {
+                        method: "POST",
+                        body: JSON.stringify({ companyIds: selected.map((company) => String(company.id || "")) }),
+                    });
+                    const result = payload?.result || {};
+                    const createdCount = Number(result.createdCount || 0);
+                    const skippedCount = Number(result.skippedCount || 0);
+                    const failedCount = Number(result.failedCount || 0);
+                    const hasProblems = skippedCount > 0 || failedCount > 0;
+                    chSetWorkflowStatus(
+                        `Raised ${createdCount.toLocaleString("en-GB")} invoices · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed.`,
+                        hasProblems ? "error" : "success"
+                    );
+                    companiesHouseState.tabLoaded.companies = false;
+                    await loadCompaniesHouseCompanies(true);
+                    showToast(`Bulk Xero invoice run complete: ${createdCount} created, ${failedCount} failed.`, hasProblems ? "info" : "success");
+                } catch (error) {
+                    console.error("Unable to raise Xero invoices", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    chSetWorkflowStatus(error?.message || "Unable to raise Xero invoices.", "error");
+                    showToast(error?.message || "Unable to raise Xero invoices.", "error");
+                } finally {
+                    companiesHouseState.workflowBusy = false;
+                    chUpdateWorkflowControls();
                 }
             }
 
@@ -41733,6 +42007,15 @@
                 if (submissionsBody) {
                     submissionsBody.innerHTML = submissions.length ? submissions.map((submission) => `<tr><td>${escapeHTML(submission.submissionReference || submission.transactionId || "—")}</td><td><span class="ch-pill ${submission.status === "accepted" ? "is-good" : submission.status === "rejected" ? "is-bad" : "is-info"}">${escapeHTML(submission.status || "submitted")}</span></td><td>${escapeHTML(chFormatDateTime(submission.submittedAt))}</td><td>£${Number(submission.feeAmount || 0).toFixed(2)}</td><td>${escapeHTML(submission.xeroInvoiceId || "—")}</td></tr>`).join("") : `<tr><td colspan="5" class="ch-empty-state">No filings yet.</td></tr>`;
                 }
+                chSetCompanyDetailStatus("", "muted");
+            }
+
+            function chSetCompanyDetailStatus(text, tone = "muted") {
+                const node = document.getElementById("chCompanyDetailStatusMessage");
+                if (!node) return;
+                node.textContent = text || "";
+                node.classList.remove("is-muted", "is-success", "is-error");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
             }
 
             async function saveCompaniesHouseCompanyDetail() {
@@ -41747,15 +42030,27 @@
                     contactPhone: document.getElementById("chCompanyDetailPhone")?.value || "",
                     notes: document.getElementById("chCompanyDetailNotes")?.value || "",
                 };
+                const saveButton = document.getElementById("chCompanyDetailSave");
+                if (saveButton) saveButton.disabled = true;
+                chSetCompanyDetailStatus("Saving…", "muted");
                 try {
                     const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, { method: "PATCH", body: JSON.stringify(body) });
                     companiesHouseState.companyDetail = payload?.company || companiesHouseState.companyDetail;
                     renderCompaniesHouseCompanyDetail();
+                    chSetCompanyDetailStatus("Saved.", "success");
                     showToast("Company saved.", "success");
                     loadCompaniesHouseCompanies(true);
                 } catch (error) {
                     console.error("Unable to save company", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                        chSetCompanyDetailStatus("Session expired. Sign in again to save changes.", "error");
+                    } else {
+                        chSetCompanyDetailStatus(error?.message || "Unable to save company.", "error");
+                    }
                     showToast(error?.message || "Unable to save company.", "error");
+                } finally {
+                    if (saveButton) saveButton.disabled = false;
                 }
             }
 
@@ -41763,12 +42058,18 @@
                 const summary = document.getElementById("chImportSummary");
                 if (!summary) return;
                 if (!preview) { summary.hidden = true; return; }
+                const rows = Array.isArray(preview.rows) ? preview.rows : [];
+                const selectedRows = rows.filter((row) => row.included !== false && !(row.errors || []).length);
+                const selectedCreate = selectedRows.filter((row) => row.action === "create").length;
+                const selectedUpdate = selectedRows.filter((row) => row.action === "update").length;
                 summary.hidden = false;
                 summary.innerHTML = [
                     { label: "Total rows", value: preview.totalRows, tone: "" },
-                    { label: "Will create", value: preview.createCount, tone: "" },
-                    { label: "Will update", value: preview.updateCount, tone: "" },
+                    { label: "Selected rows", value: selectedRows.length, tone: "" },
+                    { label: "Will create", value: selectedCreate, tone: "" },
+                    { label: "Will update", value: selectedUpdate, tone: "" },
                     { label: "Errors", value: preview.errorCount, tone: preview.errorCount ? "is-error" : "" },
+                    { label: "Excluded", value: Math.max(0, rows.length - selectedRows.length - Number(preview.errorCount || 0)), tone: "" },
                     { label: "Auth codes in file", value: preview.authCodesInFile, tone: "" },
                 ].map((tile) => `<article class="${tile.tone}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
             }
@@ -41782,8 +42083,22 @@
                 body.innerHTML = preview.rows.slice(0, 500).map((row) => {
                     const action = row.action || (row.errors?.length ? "error" : "skip");
                     const errorText = (row.errors || []).join(" · ");
-                    return `<tr class="ch-import-row ${action === "create" ? "is-create" : action === "update" ? "is-update" : action === "error" ? "is-error" : ""}"><td>${row.lineNumber || ""}</td><td><span class="ch-pill ${action === "create" ? "is-good" : action === "update" ? "is-info" : action === "error" ? "is-bad" : ""}">${escapeHTML(action)}</span></td><td>${escapeHTML(row.data?.company_number || "—")}</td><td>${escapeHTML(row.data?.company_name || "—")}</td><td>${escapeHTML(row.data?.client_name || row.data?.client_id || "—")}</td><td>${row.data?.auth_code ? "✓ in file" : "—"}</td><td>${escapeHTML(errorText || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td></tr>`;
+                    const warnings = (row.warnings || []).join(" · ");
+                    const included = row.included !== false && action !== "error";
+                    return `<tr class="ch-import-row ${action === "create" ? "is-create" : action === "update" ? "is-update" : action === "error" ? "is-error" : ""}">
+                        <td><input type="checkbox" data-ch-import-include data-line="${Number(row.lineNumber || 0)}" ${included ? "checked" : ""} ${action === "error" ? "disabled" : ""}></td>
+                        <td>${row.lineNumber || ""}</td>
+                        <td><span class="ch-pill ${action === "create" ? "is-good" : action === "update" ? "is-info" : action === "error" ? "is-bad" : ""}">${escapeHTML(action)}</span></td>
+                        <td>${escapeHTML(row.data?.company_number || "—")}</td>
+                        <td>${escapeHTML(row.data?.company_name || "—")}</td>
+                        <td>${escapeHTML(row.data?.client_name || row.data?.client_id || "—")}</td>
+                        <td>${row.data?.auth_code ? "✓ in file" : "—"}</td>
+                        <td>${escapeHTML(errorText || warnings || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td>
+                    </tr>`;
                 }).join("");
+                const commit = document.getElementById("chImportCommitButton");
+                const selectedRows = preview.rows.filter((row) => row.included !== false && !(row.errors || []).length && (row.action === "create" || row.action === "update"));
+                if (commit) commit.hidden = selectedRows.length === 0;
             }
 
             function chSetImportStatus(text, tone) {
@@ -41800,6 +42115,12 @@
                 const file = fileInput?.files?.[0];
                 if (!file) { chSetImportStatus("Choose a CSV first.", "error"); return; }
                 companiesHouseState.importBusy = true;
+                const previewButton = document.getElementById("chImportPreviewButton");
+                const commitButton = document.getElementById("chImportCommitButton");
+                const resetButton = document.getElementById("chImportResetButton");
+                if (previewButton) previewButton.disabled = true;
+                if (commitButton) commitButton.disabled = true;
+                if (resetButton) resetButton.disabled = true;
                 chSetImportStatus("Uploading and parsing…", "muted");
                 try {
                     const form = new FormData();
@@ -41817,14 +42138,19 @@
                     chRenderImportPreview(companiesHouseState.importPreview);
                     const commit = document.getElementById("chImportCommitButton");
                     const reset = document.getElementById("chImportResetButton");
-                    if (commit) commit.hidden = !companiesHouseState.importPreview || !(companiesHouseState.importPreview.createCount + companiesHouseState.importPreview.updateCount);
+                    const previewRows = companiesHouseState.importPreview?.rows || [];
+                    const importableRows = previewRows.filter((row) => row.included !== false && !(row.errors || []).length && (row.action === "create" || row.action === "update"));
+                    if (commit) commit.hidden = !companiesHouseState.importPreview || !importableRows.length;
                     if (reset) reset.hidden = false;
-                    chSetImportStatus(`Preview ready. ${companiesHouseState.importPreview?.createCount || 0} to create, ${companiesHouseState.importPreview?.updateCount || 0} to update, ${companiesHouseState.importPreview?.errorCount || 0} errors.`, "muted");
+                    chSetImportStatus(`Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected for import, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`, "muted");
                 } catch (error) {
                     console.error("Unable to preview client import", error);
                     chSetImportStatus(error?.message || "Unable to preview.", "error");
                 } finally {
                     companiesHouseState.importBusy = false;
+                    if (previewButton) previewButton.disabled = !(fileInput?.files?.length);
+                    if (commitButton) commitButton.disabled = false;
+                    if (resetButton) resetButton.disabled = false;
                 }
             }
 
@@ -41832,8 +42158,19 @@
                 if (companiesHouseState.importBusy) return;
                 const preview = companiesHouseState.importPreview;
                 if (!preview) { chSetImportStatus("Run a preview first.", "error"); return; }
-                if (!window.confirm(`Commit ${preview.createCount + preview.updateCount} rows (${preview.errorCount} errors will be skipped)?`)) return;
+                const importableRows = (preview.rows || []).filter((row) => row.included !== false && !(row.errors || []).length && (row.action === "create" || row.action === "update"));
+                if (!importableRows.length) {
+                    chSetImportStatus("No rows are selected for import.", "error");
+                    return;
+                }
+                if (!window.confirm(`Commit ${importableRows.length} selected rows? (${preview.errorCount || 0} error rows will be skipped)`)) return;
                 companiesHouseState.importBusy = true;
+                const previewButton = document.getElementById("chImportPreviewButton");
+                const commitButton = document.getElementById("chImportCommitButton");
+                const resetButton = document.getElementById("chImportResetButton");
+                if (previewButton) previewButton.disabled = true;
+                if (commitButton) commitButton.disabled = true;
+                if (resetButton) resetButton.disabled = true;
                 chSetImportStatus("Committing import…", "muted");
                 try {
                     const payload = await requestJSON("/api/companies-house/import/clients/commit", { method: "POST", body: JSON.stringify({ preview }) });
@@ -41842,6 +42179,12 @@
                     companiesHouseState.tabLoaded.dashboard = false;
                     companiesHouseState.tabLoaded.companies = false;
                     companiesHouseState.tabLoaded.audit = false;
+                    companiesHouseState.importPreview = null;
+                    const summary = document.getElementById("chImportSummary");
+                    const wrap = document.getElementById("chImportPreviewWrap");
+                    if (summary) summary.hidden = true;
+                    if (wrap) wrap.hidden = true;
+                    if (commitButton) commitButton.hidden = true;
                     loadCompaniesHouseImports(true);
                     showToast("Companies House import completed.", "success");
                 } catch (error) {
@@ -41849,6 +42192,9 @@
                     chSetImportStatus(error?.message || "Unable to commit.", "error");
                 } finally {
                     companiesHouseState.importBusy = false;
+                    if (previewButton) previewButton.disabled = !(document.getElementById("chImportFile")?.files?.length);
+                    if (commitButton) commitButton.disabled = false;
+                    if (resetButton) resetButton.disabled = false;
                 }
             }
 
@@ -41909,11 +42255,38 @@
                     companiesHouseState.companyFilters.overdue = !!event.target.checked;
                     loadCompaniesHouseCompanies(true);
                 });
+                document.getElementById("chCompaniesSelectAll")?.addEventListener("change", (event) => {
+                    const checked = !!event.target.checked;
+                    const next = new Set(companiesHouseState.selectedCompanyIds || []);
+                    (companiesHouseState.companies || []).forEach((company) => {
+                        const companyId = String(company.id || "");
+                        if (!companyId) return;
+                        if (checked) next.add(companyId);
+                        else next.delete(companyId);
+                    });
+                    companiesHouseState.selectedCompanyIds = next;
+                    renderCompaniesHouseCompaniesTable();
+                });
                 document.getElementById("chCompaniesTableBody")?.addEventListener("click", (event) => {
+                    if (event.target.closest?.("[data-ch-select-company]")) return;
                     const row = event.target.closest("tr[data-company-id]");
                     if (!row) return;
                     openCompaniesHouseCompanyDetail(row.dataset.companyId);
                 });
+                document.getElementById("chCompaniesTableBody")?.addEventListener("change", (event) => {
+                    const checkbox = event.target.closest?.("[data-ch-select-company]");
+                    if (!checkbox) return;
+                    const companyId = String(checkbox.value || "");
+                    if (!companyId) return;
+                    const next = new Set(companiesHouseState.selectedCompanyIds || []);
+                    if (checkbox.checked) next.add(companyId);
+                    else next.delete(companyId);
+                    companiesHouseState.selectedCompanyIds = next;
+                    chUpdateWorkflowControls();
+                });
+                document.getElementById("chWorkflowSelectEligibleButton")?.addEventListener("click", selectEligibleCompaniesForWorkflow);
+                document.getElementById("chWorkflowSubmitSelectedButton")?.addEventListener("click", submitSelectedCompaniesWorkflow);
+                document.getElementById("chWorkflowInvoiceSelectedButton")?.addEventListener("click", raiseSelectedWorkflowInvoices);
                 document.getElementById("chCompanyDetailClose")?.addEventListener("click", () => {
                     const card = document.getElementById("chCompanyDetailCard"); if (card) card.hidden = true;
                     companiesHouseState.selectedCompanyId = null;
@@ -41929,6 +42302,17 @@
                 document.getElementById("chImportPreviewButton")?.addEventListener("click", previewCompaniesHouseImport);
                 document.getElementById("chImportCommitButton")?.addEventListener("click", commitCompaniesHouseImport);
                 document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
+                document.getElementById("chImportPreviewBody")?.addEventListener("change", (event) => {
+                    const checkbox = event.target.closest?.("[data-ch-import-include]");
+                    if (!checkbox || !companiesHouseState.importPreview?.rows) return;
+                    const lineNumber = Number(checkbox.dataset.line || 0);
+                    companiesHouseState.importPreview.rows = companiesHouseState.importPreview.rows.map((row) => {
+                        if (Number(row.lineNumber || 0) !== lineNumber) return row;
+                        return { ...row, included: !!checkbox.checked };
+                    });
+                    chRenderImportSummary(companiesHouseState.importPreview);
+                    chRenderImportPreview(companiesHouseState.importPreview);
+                });
             }
 
             async function init() {

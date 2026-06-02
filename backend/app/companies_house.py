@@ -1,15 +1,20 @@
 import csv
+import hashlib
 import io
 import json
 import re
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 
+import httpx
 from fastapi import HTTPException, status
 
 from .config import get_settings
 from .database import get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret
+from .services import get_xero_connection_for_user
+from .xero import create_sales_invoice
 
 CH_API_KEY_LABEL = "ch:api_key"
 CH_PRESENTER_AUTH_LABEL = "ch:presenter_auth"
@@ -37,6 +42,11 @@ CLIENT_IMPORT_HEADER_ALIASES = {
     "contact_phone": {"contact phone", "phone", "telephone", "phone number"},
     "assigned_staff": {"assigned staff", "assigned staff member", "staff", "owner", "manager", "account manager"},
     "notes": {"notes", "note", "internal notes", "comment"},
+    "company_type": {"company type", "type", "legal type", "entity type"},
+    "period_end": {"confirmation statement period end", "statement period end", "made up to", "period end", "confirmation period end"},
+    "period_start": {"confirmation statement period start", "statement period start", "period start"},
+    "due_date": {"due date", "next due date", "confirmation due date", "next confirmation due"},
+    "manager_reference": {"client manager", "manager reference", "relationship manager", "manager ref", "portfolio manager"},
 }
 
 COMPANY_NUMBER_RE = re.compile(r"^[A-Z0-9]{1,2}\d{6,}$|^\d{8}$|^[A-Z]{2}\d{6}$")
@@ -313,6 +323,164 @@ def _resolve_header_map(headers: list[str]) -> dict[str, int]:
     return mapping
 
 
+def _load_last_import_header_profile() -> dict[str, str]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT summary
+                FROM ch_imports
+                WHERE import_type = 'clients'
+                  AND status = 'completed'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    summary = row.get("summary") or {}
+    profile = summary.get("headerProfile") if isinstance(summary, dict) else {}
+    if not isinstance(profile, dict):
+        return {}
+    return {str(key): str(value) for key, value in profile.items() if key in CLIENT_IMPORT_HEADER_ALIASES and value}
+
+
+def _apply_header_profile(headers: list[str], mapping: dict[str, int], profile: dict[str, str]) -> dict[str, int]:
+    if not profile:
+        return mapping
+    header_index = {_normalise_header(header): idx for idx, header in enumerate(headers)}
+    output = dict(mapping)
+    for canonical, header_name in profile.items():
+        if canonical in output:
+            continue
+        idx = header_index.get(_normalise_header(header_name))
+        if idx is not None:
+            output[canonical] = idx
+    return output
+
+
+def _ai_resolve_header_map(headers: list[str], current_map: dict[str, int]) -> dict[str, int]:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return current_map
+    unresolved = [key for key in CLIENT_IMPORT_HEADER_ALIASES.keys() if key not in current_map]
+    if not unresolved:
+        return current_map
+    try:
+        request_body = {
+            "model": settings.openai_model or "gpt-4.1-mini",
+            "input": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Map CSV headers to canonical Companies House client import fields. "
+                        "Return strict JSON only."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "canonicalFields": unresolved,
+                            "headers": headers,
+                            "rules": [
+                                "Return object with key 'mapping'.",
+                                "Each mapping value must be exact header text from provided headers.",
+                                "Do not guess when unclear; omit that field.",
+                            ],
+                        }
+                    ),
+                },
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "csv_header_mapping",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "mapping": {
+                                "type": "object",
+                                "additionalProperties": {"type": "string"},
+                            }
+                        },
+                        "required": ["mapping"],
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                }
+            },
+        }
+        with httpx.Client(timeout=20.0) as client:
+            response = client.post(
+                "https://api.openai.com/v1/responses",
+                headers={
+                    "Authorization": f"Bearer {settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=request_body,
+            )
+        if response.is_error:
+            return current_map
+        payload = response.json()
+        output_text = ""
+        for item in payload.get("output") or []:
+            for content in item.get("content") or []:
+                text_value = content.get("text")
+                if text_value:
+                    output_text += text_value
+        if not output_text.strip():
+            return current_map
+        parsed = json.loads(output_text)
+        mapping = dict(current_map)
+        header_to_index = {_normalise_header(header): idx for idx, header in enumerate(headers)}
+        for canonical, header in (parsed.get("mapping") or {}).items():
+            if canonical in mapping:
+                continue
+            idx = header_to_index.get(_normalise_header(header))
+            if idx is not None and canonical in CLIENT_IMPORT_HEADER_ALIASES:
+                mapping[canonical] = idx
+        return mapping
+    except Exception:
+        return current_map
+
+
+def _parse_date_from_text(value: object) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for fmt in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%Y/%m/%d",
+    ):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _looks_private_limited(row_payload: dict) -> bool:
+    company_type = str(row_payload.get("company_type") or "").strip().lower()
+    company_name = str(row_payload.get("company_name") or row_payload.get("client_name") or "").strip().lower()
+    combined = f"{company_type} {company_name}".strip()
+    exclude_terms = ("sole trader", "self employed", "self-employed", "individual", "partnership", "llp")
+    if any(term in combined for term in exclude_terms):
+        return False
+    if "private limited" in combined:
+        return True
+    if re.search(r"\bltd\b", company_name) or "limited" in company_name:
+        return True
+    return False
+
+
 def _coerce_text(value: object, limit: int = 500) -> str:
     text = "" if value is None else str(value)
     text = text.replace("\r", " ").strip()
@@ -363,7 +531,10 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         ) from exc
 
     headers = [_coerce_text(value, 120) for value in header_row]
+    prior_profile = _load_last_import_header_profile()
     column_map = _resolve_header_map(headers)
+    column_map = _apply_header_profile(headers, column_map, prior_profile)
+    column_map = _ai_resolve_header_map(headers, column_map)
     if "company_number" not in column_map:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -383,8 +554,13 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         for canonical, column_index in column_map.items():
             value = raw_row[column_index] if column_index < len(raw_row) else ""
             row_payload[canonical] = _coerce_text(value, 2000 if canonical == "notes" else 250)
+        row_payload["assigned_staff"] = row_payload.get("assigned_staff") or row_payload.get("manager_reference") or ""
         company_number = normalise_company_number(row_payload.get("company_number"))
         row_payload["company_number"] = company_number
+        period_end = _parse_date_from_text(row_payload.get("period_end"))
+        due_date = _parse_date_from_text(row_payload.get("due_date"))
+        row_payload["period_end_iso"] = period_end.isoformat() if period_end else ""
+        row_payload["due_date_iso"] = due_date.isoformat() if due_date else ""
 
         row_errors: list[str] = []
         if not company_number:
@@ -404,6 +580,7 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             "lineNumber": index,
             "data": row_payload,
             "errors": row_errors,
+            "warnings": [],
         })
 
     valid_numbers = [row["data"]["company_number"] for row in parsed_rows if row["data"]["company_number"] and not row["errors"]]
@@ -414,6 +591,7 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
     skip_count = 0
     error_count = 0
     auth_codes_in_file = 0
+    selected_count = 0
 
     for row in parsed_rows:
         data = row["data"]
@@ -422,9 +600,19 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             row["errors"].append("Duplicate company number within this file.")
         if data.get("auth_code"):
             auth_codes_in_file += 1
+        if not _looks_private_limited(data):
+            row["included"] = False
+            if not row["errors"]:
+                row["warnings"] = (row.get("warnings") or []) + ["Excluded automatically: not a private limited company."]
+        else:
+            row["included"] = True
         if row["errors"]:
             error_count += 1
             row["action"] = "error"
+            continue
+        if not row.get("included", True):
+            skip_count += 1
+            row["action"] = "skip"
             continue
         if company_number in existing:
             update_count += 1
@@ -436,6 +624,7 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         else:
             create_count += 1
             row["action"] = "create"
+        selected_count += 1
 
     if not parsed_rows:
         skip_count = 0
@@ -448,8 +637,14 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         "skipCount": skip_count,
         "errorCount": error_count,
         "authCodesInFile": auth_codes_in_file,
+        "selectedCount": selected_count,
         "rows": parsed_rows,
         "headers": headers,
+        "headerProfile": {
+            canonical: headers[index]
+            for canonical, index in column_map.items()
+            if 0 <= index < len(headers)
+        },
         "duplicateNumbers": sorted(duplicate_numbers),
     }
 
@@ -466,9 +661,11 @@ def _upsert_company(cursor, data: dict, user_id: str | None) -> tuple[str, str]:
             contact_email,
             contact_phone,
             assigned_staff_name,
-            notes
+            notes,
+            next_made_up_to_date,
+            next_due_date
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULLIF(%s, '')::date, NULLIF(%s, '')::date)
         ON CONFLICT (company_number) DO UPDATE
         SET company_name = COALESCE(NULLIF(EXCLUDED.company_name, ''), ch_companies.company_name),
             client_id = COALESCE(NULLIF(EXCLUDED.client_id, ''), ch_companies.client_id),
@@ -477,6 +674,8 @@ def _upsert_company(cursor, data: dict, user_id: str | None) -> tuple[str, str]:
             contact_phone = COALESCE(NULLIF(EXCLUDED.contact_phone, ''), ch_companies.contact_phone),
             assigned_staff_name = COALESCE(NULLIF(EXCLUDED.assigned_staff_name, ''), ch_companies.assigned_staff_name),
             notes = COALESCE(NULLIF(EXCLUDED.notes, ''), ch_companies.notes),
+            next_made_up_to_date = COALESCE(EXCLUDED.next_made_up_to_date, ch_companies.next_made_up_to_date),
+            next_due_date = COALESCE(EXCLUDED.next_due_date, ch_companies.next_due_date),
             updated_at = NOW()
         RETURNING id, company_number, (xmax = 0) AS created
         """,
@@ -489,6 +688,8 @@ def _upsert_company(cursor, data: dict, user_id: str | None) -> tuple[str, str]:
             data.get("contact_phone") or "",
             data.get("assigned_staff") or "",
             data.get("notes") or "",
+            data.get("period_end_iso") or "",
+            data.get("due_date_iso") or "",
         ),
     )
     row = cursor.fetchone()
@@ -549,6 +750,9 @@ def commit_clients_import(user: dict, preview: dict) -> dict:
 
             for row in rows:
                 data = row.get("data") or {}
+                if row.get("included") is False:
+                    skipped_count += 1
+                    continue
                 if row.get("errors"):
                     skipped_count += 1
                     errors_committed.append({
@@ -612,6 +816,7 @@ def commit_clients_import(user: dict, preview: dict) -> dict:
                 "updateCount": updated_count,
                 "skipCount": skipped_count,
                 "authCodesSaved": auth_codes_saved,
+                "headerProfile": preview.get("headerProfile") or {},
             }
             cursor.execute(
                 """
@@ -668,6 +873,28 @@ def _date_or_none(value):
 
 
 def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
+    today = date.today()
+    next_due = row.get("next_due_date")
+    if isinstance(next_due, date):
+        due_in_days = (next_due - today).days
+    else:
+        due_in_days = None
+    latest_submission_status = row.get("latest_submission_status") or ""
+    latest_submission_invoice_id = row.get("latest_submission_xero_invoice_id") or ""
+    internal_status = row.get("internal_status") or "active"
+    blocked_internal = internal_status in {"paused", "do_not_file", "inactive"}
+    has_due_date = isinstance(next_due, date)
+    has_auth = bool(row.get("auth_code_on_file"))
+    eligible_for_submission = bool(
+        has_due_date
+        and not blocked_internal
+        and has_auth
+        and (due_in_days is None or due_in_days <= 60)
+    )
+    eligible_for_invoicing = bool(
+        latest_submission_status in {"submitted", "accepted"}
+        and not latest_submission_invoice_id
+    )
     return {
         "id": str(row.get("id")) if row.get("id") else None,
         "companyNumber": row.get("company_number") or "",
@@ -696,6 +923,14 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "authCodeOnFile": bool(row.get("auth_code_on_file")) if include_auth else None,
         "authCodeHint": row.get("auth_code_hint") or "" if include_auth else "",
         "authCodeUploadedAt": row.get("auth_code_uploaded_at").isoformat() if include_auth and row.get("auth_code_uploaded_at") else None,
+        "latestSubmissionId": str(row.get("latest_submission_id")) if row.get("latest_submission_id") else "",
+        "latestSubmissionStatus": latest_submission_status,
+        "latestSubmissionAt": row.get("latest_submission_at").isoformat() if row.get("latest_submission_at") else None,
+        "latestSubmissionReference": row.get("latest_submission_reference") or "",
+        "latestSubmissionXeroInvoiceId": latest_submission_invoice_id,
+        "dueInDays": due_in_days,
+        "eligibleForSubmission": eligible_for_submission,
+        "eligibleForInvoicing": eligible_for_invoicing,
     }
 
 
@@ -735,9 +970,21 @@ def list_companies(filters: dict | None = None) -> list[dict]:
         SELECT c.*,
                (a.id IS NOT NULL) AS auth_code_on_file,
                a.code_hint AS auth_code_hint,
-               a.uploaded_at AS auth_code_uploaded_at
+               a.uploaded_at AS auth_code_uploaded_at,
+               latest.id AS latest_submission_id,
+               latest.status AS latest_submission_status,
+               latest.submitted_at AS latest_submission_at,
+               latest.submission_reference AS latest_submission_reference,
+               latest.xero_invoice_id AS latest_submission_xero_invoice_id
         FROM ch_companies c
         LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+        LEFT JOIN LATERAL (
+            SELECT s.id, s.status, s.submitted_at, s.submission_reference, s.xero_invoice_id
+            FROM ch_submissions s
+            WHERE s.company_id = c.id
+            ORDER BY s.submitted_at DESC
+            LIMIT 1
+        ) latest ON TRUE
         {where_sql}
         ORDER BY
             CASE WHEN c.next_due_date IS NULL THEN 1 ELSE 0 END,
@@ -753,6 +1000,418 @@ def list_companies(filters: dict | None = None) -> list[dict]:
         connection.commit()
 
     return [_serialise_company_row(row) for row in rows]
+
+
+def _chunk_company_ids(company_ids: list[str]) -> list[str]:
+    normalised = [str(company_id or "").strip() for company_id in company_ids]
+    return [company_id for company_id in normalised if company_id]
+
+
+def _resolve_submission_candidates(company_ids: list[str]) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT c.*,
+                       (a.id IS NOT NULL) AS auth_code_on_file,
+                       a.code_hint AS auth_code_hint,
+                       a.uploaded_at AS auth_code_uploaded_at
+                FROM ch_companies c
+                LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+                WHERE c.id = ANY(%s)
+                ORDER BY
+                    CASE WHEN c.next_due_date IS NULL THEN 1 ELSE 0 END,
+                    c.next_due_date ASC,
+                    c.company_name ASC
+                """,
+                (company_ids,),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    return rows
+
+
+def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    if not company_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one company.")
+    if len(company_ids) > 500:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 500 companies per bulk submission.")
+
+    user_id = user.get("id") if isinstance(user, dict) else None
+    companies = _resolve_submission_candidates(company_ids)
+    found_ids = {str(row.get("id")) for row in companies if row.get("id")}
+    missing_ids = [company_id for company_id in company_ids if company_id not in found_ids]
+
+    submitted: list[dict] = []
+    skipped: list[dict] = []
+    now = utcnow()
+    today = date.today()
+
+    for row in companies:
+        company_id = str(row.get("id") or "")
+        company_number = row.get("company_number") or ""
+        internal_status = row.get("internal_status") or "active"
+        next_due = row.get("next_due_date")
+        has_auth = bool(row.get("auth_code_on_file"))
+        due_in_days = (next_due - today).days if isinstance(next_due, date) else None
+        if internal_status in {"paused", "do_not_file", "inactive"}:
+            skipped.append({
+                "companyId": company_id,
+                "companyNumber": company_number,
+                "companyName": row.get("company_name") or "",
+                "reason": f"Internal status is '{internal_status}'.",
+            })
+            continue
+        if not has_auth:
+            skipped.append({
+                "companyId": company_id,
+                "companyNumber": company_number,
+                "companyName": row.get("company_name") or "",
+                "reason": "Missing Companies House authentication code.",
+            })
+            continue
+        if due_in_days is not None and due_in_days > 60:
+            skipped.append({
+                "companyId": company_id,
+                "companyNumber": company_number,
+                "companyName": row.get("company_name") or "",
+                "reason": f"Due date is outside workflow window ({due_in_days} days).",
+            })
+            continue
+
+        submission_reference = f"CS-{company_number or company_id[:8].upper()}-{now.strftime('%Y%m%d%H%M%S')}"
+        transaction_id = f"txn-{uuid4().hex[:20]}"
+        fee_amount = Decimal("0.00")
+        status_value = "submitted"
+        response_payload = {
+            "queuedAt": now.isoformat(),
+            "source": "bulk_workflow",
+            "mode": "workflow",
+            "companyNumber": company_number,
+        }
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO ch_submissions (
+                        company_id,
+                        submission_reference,
+                        transaction_id,
+                        fee_amount,
+                        status,
+                        response_payload,
+                        submitted_by_user_id,
+                        submitted_at,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        company_id,
+                        submission_reference,
+                        transaction_id,
+                        fee_amount,
+                        status_value,
+                        json.dumps(response_payload),
+                        user_id,
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                submission_id = str(cursor.fetchone()["id"])
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_submission', %s, 'bulk_submission_queued', %s::jsonb, %s)
+                    """,
+                    (
+                        submission_id,
+                        json.dumps({
+                            "companyId": company_id,
+                            "companyNumber": company_number,
+                            "workflow": "confirmation_statement_bulk",
+                        }),
+                        user_id,
+                    ),
+                )
+            connection.commit()
+
+        submitted.append({
+            "submissionId": submission_id,
+            "companyId": company_id,
+            "companyName": row.get("company_name") or "",
+            "companyNumber": company_number,
+            "status": status_value,
+            "submittedAt": now.isoformat(),
+            "submissionReference": submission_reference,
+            "transactionId": transaction_id,
+        })
+
+    for missing_id in missing_ids:
+        skipped.append({
+            "companyId": missing_id,
+            "companyNumber": "",
+            "companyName": "",
+            "reason": "Company not found.",
+        })
+
+    return {
+        "submittedCount": len(submitted),
+        "skippedCount": len(skipped),
+        "submitted": submitted,
+        "skipped": skipped,
+    }
+
+
+def _resolve_company_contact_for_invoice(cursor, company: dict) -> dict:
+    client_id = str(company.get("client_id") or "").strip()
+    client_name = str(company.get("client_name") or "").strip()
+    contact_email = str(company.get("contact_email") or "").strip().lower()
+    candidates: list[dict] = []
+
+    if client_id:
+        cursor.execute(
+            """
+            SELECT id, xero_contact_id, name, email
+            FROM customers
+            WHERE id::text = %s OR xero_contact_id = %s
+            LIMIT 1
+            """,
+            (client_id, client_id),
+        )
+        row = cursor.fetchone()
+        if row:
+            candidates.append(row)
+
+    if not candidates and client_name:
+        cursor.execute(
+            """
+            SELECT id, xero_contact_id, name, email
+            FROM customers
+            WHERE LOWER(name) = LOWER(%s)
+            ORDER BY updated_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            (client_name,),
+        )
+        row = cursor.fetchone()
+        if row:
+            candidates.append(row)
+
+    if not candidates and contact_email:
+        cursor.execute(
+            """
+            SELECT id, xero_contact_id, name, email
+            FROM customers
+            WHERE LOWER(COALESCE(email, '')) = %s
+            ORDER BY updated_at DESC NULLS LAST
+            LIMIT 1
+            """,
+            (contact_email,),
+        )
+        row = cursor.fetchone()
+        if row:
+            candidates.append(row)
+
+    return candidates[0] if candidates else {}
+
+
+async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    if not company_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one company.")
+    if len(company_ids) > 500:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 500 companies per bulk invoice run.")
+
+    settings_row = _ensure_settings_row()
+    account_code = str(settings_row.get("xero_invoice_account_code") or "").strip()
+    item_code = str(settings_row.get("xero_invoice_item_code") or "").strip()
+    description = str(settings_row.get("xero_invoice_description") or "Companies House confirmation statement filing").strip()
+    tax_type = str(settings_row.get("xero_invoice_tax_type") or "NONE").strip() or "NONE"
+    configured_unit_amount = Decimal(str(settings_row.get("xero_invoice_unit_amount") or 0)).quantize(Decimal("0.01"))
+    if configured_unit_amount <= Decimal("0.00"):
+        configured_unit_amount = Decimal("13.00")
+
+    connection_row = get_xero_connection_for_user(user["id"])
+    user_id = user.get("id") if isinstance(user, dict) else None
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT c.id AS company_id,
+                       c.company_number,
+                       c.company_name,
+                       c.client_id,
+                       c.client_name,
+                       c.contact_email,
+                       s.id AS submission_id,
+                       s.status AS submission_status,
+                       s.submission_reference,
+                       s.submitted_at,
+                       s.fee_amount,
+                       s.xero_invoice_id
+                FROM ch_companies c
+                JOIN LATERAL (
+                    SELECT *
+                    FROM ch_submissions s
+                    WHERE s.company_id = c.id
+                    ORDER BY s.submitted_at DESC
+                    LIMIT 1
+                ) s ON TRUE
+                WHERE c.id = ANY(%s)
+                """,
+                (company_ids,),
+            )
+            targets = cursor.fetchall() or []
+        connection.commit()
+
+    created: list[dict] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    now = utcnow()
+    invoice_date = now.date().isoformat()
+
+    for row in targets:
+        company_id = str(row.get("company_id") or "")
+        submission_id = str(row.get("submission_id") or "")
+        status_value = str(row.get("submission_status") or "")
+        company_name = row.get("company_name") or row.get("client_name") or "Client"
+        company_number = row.get("company_number") or ""
+        existing_invoice_id = row.get("xero_invoice_id") or ""
+
+        if not submission_id:
+            skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": "No submission found."})
+            continue
+        if status_value not in {"submitted", "accepted"}:
+            skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": f"Latest submission status is '{status_value}'."})
+            continue
+        if existing_invoice_id:
+            skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": f"Invoice already linked ({existing_invoice_id})."})
+            continue
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM ch_companies WHERE id = %s", (company_id,))
+                company_row = cursor.fetchone() or {}
+                contact_row = _resolve_company_contact_for_invoice(cursor, company_row)
+            connection.commit()
+
+        xero_contact_id = str(contact_row.get("xero_contact_id") or "").strip()
+        line_amount = Decimal(str(row.get("fee_amount") or 0)).quantize(Decimal("0.01"))
+        if line_amount <= Decimal("0.00"):
+            line_amount = configured_unit_amount
+
+        line_item = {
+            "Description": f"{description} ({company_number})" if company_number else description,
+            "Quantity": 1,
+            "UnitAmount": float(line_amount),
+            "TaxType": tax_type,
+        }
+        if account_code:
+            line_item["AccountCode"] = account_code
+        if item_code:
+            line_item["ItemCode"] = item_code
+
+        contact_payload = {"ContactID": xero_contact_id} if xero_contact_id else {"Name": company_name}
+        invoice_payload = {
+            "Type": "ACCREC",
+            "Contact": contact_payload,
+            "Date": invoice_date,
+            "DueDate": invoice_date,
+            "Reference": f"CH CS filing {company_number}" if company_number else "CH CS filing",
+            "Status": "AUTHORISED",
+            "LineAmountTypes": "Exclusive",
+            "LineItems": [line_item],
+        }
+        idempotency_seed = json.dumps(
+            {"submissionId": submission_id, "companyId": company_id, "amount": str(line_amount)},
+            sort_keys=True,
+        )
+        idempotency_key = f"ch-cs-invoice-{hashlib.sha256(idempotency_seed.encode()).hexdigest()[:32]}"
+
+        try:
+            xero_response = await create_sales_invoice(connection_row, invoice_payload, idempotency_key=idempotency_key)
+            created_invoice = ((xero_response or {}).get("Invoices") or [{}])[0]
+            xero_invoice_id = created_invoice.get("InvoiceID") or created_invoice.get("ID") or ""
+            xero_invoice_number = created_invoice.get("InvoiceNumber") or ""
+            if not xero_invoice_id:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Xero created an invoice for {company_name} but did not return InvoiceID.",
+                )
+        except HTTPException as exc:
+            failed.append({
+                "companyId": company_id,
+                "companyName": company_name,
+                "companyNumber": company_number,
+                "submissionId": submission_id,
+                "reason": str(exc.detail) if isinstance(exc.detail, str) else str((exc.detail or {}).get("message") or "Xero invoice creation failed."),
+            })
+            continue
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE ch_submissions
+                    SET xero_invoice_id = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                    """,
+                    (xero_invoice_id, now, submission_id),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_submission', %s, 'xero_invoice_created', %s::jsonb, %s)
+                    """,
+                    (
+                        submission_id,
+                        json.dumps(
+                            {
+                                "companyId": company_id,
+                                "companyNumber": company_number,
+                                "xeroInvoiceId": xero_invoice_id,
+                                "xeroInvoiceNumber": xero_invoice_number,
+                            }
+                        ),
+                        user_id,
+                    ),
+                )
+            connection.commit()
+
+        created.append({
+            "companyId": company_id,
+            "companyName": company_name,
+            "companyNumber": company_number,
+            "submissionId": submission_id,
+            "xeroInvoiceId": xero_invoice_id,
+            "xeroInvoiceNumber": xero_invoice_number,
+            "amount": float(line_amount),
+        })
+
+    found_company_ids = {str(row.get("company_id")) for row in targets if row.get("company_id")}
+    for company_id in company_ids:
+        if company_id in found_company_ids:
+            continue
+        skipped.append({"companyId": company_id, "companyName": "", "companyNumber": "", "reason": "Company not found or no submissions exist."})
+
+    return {
+        "createdCount": len(created),
+        "skippedCount": len(skipped),
+        "failedCount": len(failed),
+        "created": created,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
 def get_company_detail(company_id: str) -> dict:

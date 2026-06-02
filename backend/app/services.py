@@ -8,6 +8,7 @@ import logging
 import re
 import signal
 import smtplib
+import threading
 import zipfile
 from calendar import monthrange
 from collections import defaultdict
@@ -16,7 +17,7 @@ from decimal import Decimal
 from email.message import EmailMessage
 from email.utils import formataddr
 from urllib.parse import urlencode
-from uuid import UUID
+from uuid import UUID, uuid4
 from xml.sax.saxutils import escape as xml_escape
 
 import httpx
@@ -60,6 +61,8 @@ BANK_STATEMENT_RETRY_MAX_OUTPUT_TOKENS = 32000
 BANK_STATEMENT_TEXT_CHUNK_MAX_LINES = 70
 BANK_STATEMENT_TEXT_CHUNK_OVERLAP_LINES = 4
 PRACTICE_PACK_MAX_CSV_BYTES = 12 * 1024 * 1024
+PRACTICE_PACK_RETENTION = timedelta(hours=24)
+PRACTICE_PACK_RETENTION_LIMIT = 24
 ACCREC_INVOICE_WHERE = 'Type=="ACCREC"'
 OUTSTANDING_INVOICE_WHERE = 'Type=="ACCREC"&&Status!="VOIDED"&&Status!="DELETED"&&Status!="PAID"'
 PAID_INVOICE_WHERE = 'Type=="ACCREC"&&Status=="PAID"'
@@ -140,6 +143,8 @@ DATABASE_METRIC_TABLES = {
 _PREVIOUS_SIGTERM_HANDLER = None
 _SYNC_SIGNAL_HANDLERS_INSTALLED = False
 DEVELOPER_LOG_CLEAR_EVENT_TYPE = "developer.logs.cleared"
+_PRACTICE_PACK_RETENTION_LOCK = threading.Lock()
+_PRACTICE_PACK_RETENTION_BY_USER: dict[str, list[dict]] = {}
 
 
 def _json_default(value):
@@ -16419,6 +16424,89 @@ def _practice_pack_history_records(history_payload: str | dict | list | None) ->
     return sorted(cleaned, key=lambda item: item.get("generatedAt") or "", reverse=True)
 
 
+def _practice_pack_retention_cleanup(user_id: str | None = None, now: datetime | None = None) -> None:
+    cutoff = now or utcnow()
+    with _PRACTICE_PACK_RETENTION_LOCK:
+        target_ids = [user_id] if user_id else list(_PRACTICE_PACK_RETENTION_BY_USER.keys())
+        for target_user_id in target_ids:
+            rows = _PRACTICE_PACK_RETENTION_BY_USER.get(target_user_id) or []
+            active_rows = [row for row in rows if isinstance(row.get("expiresAt"), datetime) and row["expiresAt"] > cutoff]
+            if active_rows:
+                _PRACTICE_PACK_RETENTION_BY_USER[target_user_id] = active_rows[:PRACTICE_PACK_RETENTION_LIMIT]
+            elif target_user_id in _PRACTICE_PACK_RETENTION_BY_USER:
+                del _PRACTICE_PACK_RETENTION_BY_USER[target_user_id]
+
+
+def _practice_pack_public_record(row: dict) -> dict:
+    return {
+        "id": str(row.get("id") or ""),
+        "month": str(row.get("month") or ""),
+        "generatedAt": _iso(row.get("generatedAt")),
+        "expiresAt": _iso(row.get("expiresAt")),
+        "filename": str(row.get("filename") or ""),
+        "taskCount": int(row.get("taskCount") or 0),
+        "clientCount": int(row.get("clientCount") or 0),
+        "staffPackCount": int(row.get("staffPackCount") or 0),
+        "unmatchedTaskCount": int(row.get("unmatchedTaskCount") or 0),
+        "totalMrr": float(row.get("totalMrr") or 0),
+        "serviceCount": int(row.get("serviceCount") or 0),
+        "fileCount": int(row.get("fileCount") or 0),
+        "zipByteSize": int(row.get("zipByteSize") or 0),
+        "files": row.get("files") if isinstance(row.get("files"), list) else [],
+        "ownerSummaries": row.get("ownerSummaries") if isinstance(row.get("ownerSummaries"), list) else [],
+    }
+
+
+def _practice_pack_store_retained_run(user: dict, payload: dict, zip_bytes: bytes) -> dict:
+    user_id = str(user["id"])
+    now = utcnow()
+    record = {
+        "id": str(uuid4()),
+        "month": str(payload.get("month") or ""),
+        "generatedAt": now,
+        "expiresAt": now + PRACTICE_PACK_RETENTION,
+        "filename": str(payload.get("filename") or "practice-pack.zip"),
+        "taskCount": int(payload.get("taskCount") or 0),
+        "clientCount": int(payload.get("clientCount") or 0),
+        "staffPackCount": int(payload.get("staffPackCount") or 0),
+        "unmatchedTaskCount": int(payload.get("unmatchedTaskCount") or 0),
+        "totalMrr": float(payload.get("totalMrr") or 0),
+        "serviceCount": int(payload.get("serviceCount") or 0),
+        "fileCount": int(payload.get("fileCount") or len(payload.get("files") or [])),
+        "zipByteSize": len(zip_bytes or b""),
+        "files": payload.get("files") if isinstance(payload.get("files"), list) else [],
+        "ownerSummaries": payload.get("ownerSummaries") if isinstance(payload.get("ownerSummaries"), list) else [],
+        "zipBytes": bytes(zip_bytes or b""),
+    }
+    with _PRACTICE_PACK_RETENTION_LOCK:
+        existing = _PRACTICE_PACK_RETENTION_BY_USER.get(user_id) or []
+        keep = [row for row in existing if isinstance(row.get("expiresAt"), datetime) and row["expiresAt"] > now]
+        _PRACTICE_PACK_RETENTION_BY_USER[user_id] = [record, *keep][:PRACTICE_PACK_RETENTION_LIMIT]
+    return _practice_pack_public_record(record)
+
+
+def list_retained_practice_pack_runs(user: dict) -> list[dict]:
+    _practice_pack_retention_cleanup(str(user["id"]))
+    with _PRACTICE_PACK_RETENTION_LOCK:
+        rows = _PRACTICE_PACK_RETENTION_BY_USER.get(str(user["id"])) or []
+        return [_practice_pack_public_record(row) for row in rows]
+
+
+def retained_practice_pack_download(user: dict, run_id: str) -> dict:
+    _practice_pack_retention_cleanup(str(user["id"]))
+    with _PRACTICE_PACK_RETENTION_LOCK:
+        rows = _PRACTICE_PACK_RETENTION_BY_USER.get(str(user["id"])) or []
+        row = next((item for item in rows if str(item.get("id")) == str(run_id)), None)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Practice pack ZIP is unavailable or has expired.")
+    return {
+        "filename": str(row.get("filename") or "practice-pack.zip"),
+        "contentType": "application/zip",
+        "bytes": row.get("zipBytes") or b"",
+        "expiresAt": _iso(row.get("expiresAt")),
+    }
+
+
 def _practice_pack_previous_owner_summary(history_records: list[dict], owner: str, month_label: str) -> dict | None:
     owner_key = _practice_pack_normalise_header(owner)
     for record in history_records:
@@ -17313,7 +17401,8 @@ async def practice_pack_payload(
         }
         for task in all_tasks
     ]
-    return {
+    generated_at = utcnow()
+    payload = {
         "status": "ok",
         "filename": f"{_practice_pack_file_name_part(month_label)}-practice-pack.zip",
         "zipBase64": base64.b64encode(zip_buffer.getvalue()).decode("ascii"),
@@ -17354,7 +17443,12 @@ async def practice_pack_payload(
             }
             for service_name, stats in sorted(service_stats.items(), key=lambda item: _practice_pack_service_sort_key(item[0]))
         ],
+        "month": month_label,
+        "generatedAt": _iso(generated_at),
     }
+    retained = _practice_pack_store_retained_run(user, payload, zip_buffer.getvalue())
+    payload["retainedRun"] = retained
+    return payload
 
 
 async def _generate_openai_insights(analytics: dict) -> dict:

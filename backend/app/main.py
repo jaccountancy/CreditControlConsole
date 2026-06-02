@@ -28,6 +28,8 @@ from .auth import (
     xero_authorize_url,
 )
 from .companies_house import (
+    bulk_raise_submission_invoices,
+    bulk_submit_confirmation_statements,
     commit_clients_import,
     dashboard_summary as companies_house_dashboard_summary,
     get_companies_house_settings,
@@ -95,6 +97,8 @@ from .services import (
     panel_payload,
     pending_xero_actions_payload,
     practice_pack_payload,
+    list_retained_practice_pack_runs,
+    retained_practice_pack_download,
     process_pending_xero_actions,
     override_bank_statement_transaction,
     bank_statement_upload_source_file,
@@ -887,6 +891,18 @@ async def api_practice_pack_generate(
     )
 
 
+@app.get("/api/practice-packs/runs")
+def api_practice_pack_runs(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "runs": list_retained_practice_pack_runs(user)}
+
+
+@app.get("/api/practice-packs/runs/{run_id}/download")
+def api_practice_pack_download(run_id: str, user: dict = Depends(require_panel_user)):
+    download = retained_practice_pack_download(user, run_id)
+    headers = {"Content-Disposition": f'attachment; filename="{download["filename"]}"'}
+    return Response(content=download["bytes"], media_type=download["contentType"], headers=headers)
+
+
 @app.post("/api/panel/sync")
 async def api_panel_sync(request: Request, user: dict = Depends(require_panel_user)):
     try:
@@ -1041,6 +1057,22 @@ async def api_companies_house_import_clients_commit(
 @app.get("/api/companies-house/imports")
 def api_companies_house_imports_list(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "imports": list_companies_house_imports()}
+
+
+@app.post("/api/companies-house/submissions/bulk")
+async def api_companies_house_submit_bulk(
+    request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    return {"status": "ok", "result": bulk_submit_confirmation_statements(user, payload)}
+
+
+@app.post("/api/companies-house/submissions/invoices/bulk")
+async def api_companies_house_invoice_bulk(
+    request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    return {"status": "ok", "result": await bulk_raise_submission_invoices(user, payload)}
 
 
 @app.post("/api/panel/factory-reset")
