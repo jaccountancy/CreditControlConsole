@@ -20482,6 +20482,12 @@
                 return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(xeroConnectionReturnURL())}`;
             }
 
+            function forceXeroConnectURL() {
+                const base = loginURL();
+                if (!base) return "";
+                return `${base}${base.includes("?") ? "&" : "?"}force=1`;
+            }
+
             function xeroConnectionReturnURL() {
                 try {
                     const url = new URL(window.location.href);
@@ -46461,7 +46467,7 @@
                     settingsConnectClientXerosButton.dataset.lockDateWired = "true";
                     settingsConnectClientXerosButton.addEventListener("click", (event) => {
                         event.preventDefault();
-                        const url = loginURL();
+                        const url = forceXeroConnectURL();
                         if (!url) {
                             window.alert("Unable to start the Xero login flow.");
                             return;
@@ -46475,7 +46481,7 @@
                     connectXeroLockDateButton.dataset.lockDateWired = "true";
                     connectXeroLockDateButton.addEventListener("click", (event) => {
                         event.preventDefault();
-                        const url = loginURL();
+                        const url = forceXeroConnectURL();
                         if (!url) {
                             window.alert("Unable to start the Xero login flow.");
                             return;

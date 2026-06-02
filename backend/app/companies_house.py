@@ -1758,6 +1758,39 @@ def _company_name_match_score(candidate_name: str, tenant_name: str) -> int:
     return int(round(ratio * 80))
 
 
+def _score_company_candidate(candidate: dict, tenant_name: str) -> int:
+    company_name = str(candidate.get("companyName") or candidate.get("company_name") or "").strip()
+    client_name = str(candidate.get("clientName") or candidate.get("client_name") or "").strip()
+    company_status = str(candidate.get("companyStatus") or candidate.get("company_status") or "").strip().lower()
+    base_score = max(
+        _company_name_match_score(company_name, tenant_name),
+        _company_name_match_score(client_name, tenant_name),
+    )
+    status_boost = 5 if company_status == "active" else 0
+    return base_score + status_boost
+
+
+def _best_company_match_candidate(candidates: list[dict], tenant_name: str) -> tuple[dict | None, int, int, bool]:
+    scored: list[tuple[int, dict]] = []
+    for candidate in candidates or []:
+        if not isinstance(candidate, dict):
+            continue
+        candidate_number = normalise_company_number(
+            candidate.get("companyNumber") or candidate.get("company_number")
+        )
+        if not _is_valid_company_number(candidate_number):
+            continue
+        score = _score_company_candidate(candidate, tenant_name)
+        scored.append((score, candidate))
+    if not scored:
+        return None, 0, 0, False
+    scored.sort(key=lambda row: row[0], reverse=True)
+    top_score, top_item = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0
+    confident = top_score >= 75 and (top_score - second_score >= 12 or top_score >= 92)
+    return top_item, top_score, second_score, confident
+
+
 def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     user_id = str((user or {}).get("id") or "").strip()
@@ -1802,6 +1835,14 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
             )
             mapping_rows = cursor.fetchall() or []
             mapping_by_tenant = {str(row.get("tenant_id") or "").strip(): row for row in mapping_rows}
+            cursor.execute(
+                """
+                SELECT company_number, company_name, client_name, company_status
+                FROM ch_companies
+                WHERE company_number <> ''
+                """
+            )
+            local_company_rows = cursor.fetchall() or []
         connection.commit()
 
     pending_tenants = []
@@ -1844,6 +1885,50 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
                         "tenantId": tenant_id,
                         "tenantName": tenant_name,
                         "reason": "Tenant name could not be converted into a valid Companies House search query.",
+                    }
+                )
+                continue
+            local_match, local_top_score, local_second_score, local_confident = _best_company_match_candidate(
+                local_company_rows,
+                tenant_name,
+            )
+            if local_match and local_confident:
+                company_number = normalise_company_number(local_match.get("company_number"))
+                company_name = str(local_match.get("company_name") or "").strip()
+                with get_connection() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            INSERT INTO xero_tenant_company_mappings (
+                                tenant_id, company_number, client_name, company_name, notes, updated_by_user_id, created_at, updated_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (tenant_id) DO UPDATE
+                            SET company_number = EXCLUDED.company_number,
+                                client_name = EXCLUDED.client_name,
+                                company_name = EXCLUDED.company_name,
+                                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                                updated_at = EXCLUDED.updated_at
+                            """,
+                            (
+                                tenant_id,
+                                company_number,
+                                tenant_name,
+                                company_name,
+                                "Auto-populated from imported Companies House company list.",
+                                user_id,
+                                now,
+                                now,
+                            ),
+                        )
+                    connection.commit()
+                populated.append(
+                    {
+                        "tenantId": tenant_id,
+                        "tenantName": tenant_name,
+                        "companyNumber": company_number,
+                        "companyName": company_name,
+                        "confidenceScore": local_top_score,
                     }
                 )
                 continue
@@ -1903,25 +1988,20 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
                     skipped.append({"tenantId": tenant_id, "tenantName": tenant_name, "reason": "No CH search matches."})
                     continue
 
-                scored: list[tuple[int, dict]] = []
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    candidate_number = normalise_company_number(item.get("company_number"))
-                    if not _is_valid_company_number(candidate_number):
-                        continue
-                    candidate_name = str(item.get("title") or "").strip()
-                    score = _company_name_match_score(candidate_name, tenant_name)
-                    status_boost = 5 if str(item.get("company_status") or "").strip().lower() == "active" else 0
-                    scored.append((score + status_boost, item))
-                if not scored:
+                ch_candidates = [
+                    {
+                        "company_number": item.get("company_number"),
+                        "company_name": item.get("title"),
+                        "client_name": "",
+                        "company_status": item.get("company_status"),
+                    }
+                    for item in items
+                    if isinstance(item, dict)
+                ]
+                top_item, top_score, second_score, confident = _best_company_match_candidate(ch_candidates, tenant_name)
+                if not top_item:
                     skipped.append({"tenantId": tenant_id, "tenantName": tenant_name, "reason": "No valid CH company number in results."})
                     continue
-
-                scored.sort(key=lambda row: row[0], reverse=True)
-                top_score, top_item = scored[0]
-                second_score = scored[1][0] if len(scored) > 1 else 0
-                confident = top_score >= 75 and (top_score - second_score >= 12 or top_score >= 92)
                 if not confident:
                     skipped.append(
                         {
