@@ -902,7 +902,7 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
             if company_numbers:
                 cursor.execute(
                     """
-                    SELECT company_number, company_name, client_name, last_filed_date, next_made_up_to_date, filing_history
+                    SELECT company_number, company_name, client_name, last_filed_date, next_made_up_to_date, next_due_date, filing_history
                     FROM ch_companies
                     WHERE UPPER(company_number) = ANY(%s)
                     """,
@@ -979,6 +979,7 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
 
         accounts_filed_date = _latest_accounts_filed_date(ch_row)
         accounts_year_end_date = _companies_house_year_end_date(ch_row)
+        ch_next_due_date = _parse_date_value((ch_row or {}).get("next_due_date"))
         xero_effective_lock_date = max(
             [lock_date for lock_date in (period_lock_date, end_of_year_lock_date) if lock_date],
             default=None,
@@ -1007,6 +1008,7 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
                     "clientName": str((ch_row or {}).get("client_name") or ""),
                     "accountsFiledDate": accounts_filed_date.isoformat() if accounts_filed_date else "",
                     "yearEndDate": accounts_year_end_date.isoformat() if accounts_year_end_date else "",
+                    "nextDueDate": ch_next_due_date.isoformat() if ch_next_due_date else "",
                 },
                 "flags": {
                     "accountsFiledNotLocked": accounts_filed_not_locked,
