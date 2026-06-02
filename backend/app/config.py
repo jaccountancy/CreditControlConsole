@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     gmail_client_secret: str | None = None
     gmail_redirect_uri: str | None = None
     gmail_scopes: str = "openid email https://www.googleapis.com/auth/gmail.send"
+    companies_house_environment: str = "sandbox"
+    companies_house_api_key: str | None = None
+    companies_house_presenter_id: str | None = None
+    companies_house_presenter_auth: str | None = None
+    companies_house_credit_account: str | None = None
+    companies_house_sandbox_api_base: str = "https://api-sandbox.company-information.service.gov.uk"
+    companies_house_production_api_base: str = "https://api.company-information.service.gov.uk"
 
     model_config = SettingsConfigDict(
         env_file=".env",

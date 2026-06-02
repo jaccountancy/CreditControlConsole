@@ -1207,6 +1207,130 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS audit_events_entity_idx
 ON audit_events (entity_type, entity_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ch_settings (
+    singleton_id INTEGER PRIMARY KEY DEFAULT 1 CHECK (singleton_id = 1),
+    environment TEXT NOT NULL DEFAULT 'sandbox',
+    api_key_encrypted TEXT NOT NULL DEFAULT '',
+    api_key_hint TEXT NOT NULL DEFAULT '',
+    presenter_id TEXT NOT NULL DEFAULT '',
+    presenter_auth_encrypted TEXT NOT NULL DEFAULT '',
+    presenter_auth_hint TEXT NOT NULL DEFAULT '',
+    credit_account_number TEXT NOT NULL DEFAULT '',
+    xero_invoice_account_code TEXT NOT NULL DEFAULT '',
+    xero_invoice_item_code TEXT NOT NULL DEFAULT '',
+    xero_invoice_description TEXT NOT NULL DEFAULT 'Companies House confirmation statement filing',
+    xero_invoice_unit_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    xero_invoice_tax_type TEXT NOT NULL DEFAULT 'NONE',
+    notify_email TEXT NOT NULL DEFAULT '',
+    auto_sync_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ch_companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_number TEXT NOT NULL UNIQUE,
+    company_name TEXT NOT NULL DEFAULT '',
+    client_id TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    contact_email TEXT NOT NULL DEFAULT '',
+    contact_phone TEXT NOT NULL DEFAULT '',
+    assigned_staff_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    assigned_staff_name TEXT NOT NULL DEFAULT '',
+    registered_office TEXT NOT NULL DEFAULT '',
+    company_status TEXT NOT NULL DEFAULT '',
+    incorporation_date DATE,
+    sic_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+    officers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    pscs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    share_capital JSONB NOT NULL DEFAULT '{}'::jsonb,
+    next_made_up_to_date DATE,
+    next_due_date DATE,
+    last_filed_date DATE,
+    filing_history JSONB NOT NULL DEFAULT '[]'::jsonb,
+    internal_status TEXT NOT NULL DEFAULT 'active',
+    notes TEXT NOT NULL DEFAULT '',
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_companies_client_idx ON ch_companies (client_id);
+CREATE INDEX IF NOT EXISTS ch_companies_due_idx ON ch_companies (next_due_date);
+CREATE INDEX IF NOT EXISTS ch_companies_status_idx ON ch_companies (internal_status);
+
+CREATE TABLE IF NOT EXISTS ch_auth_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL UNIQUE REFERENCES ch_companies(id) ON DELETE CASCADE,
+    code_encrypted TEXT NOT NULL,
+    code_hint TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_used_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ch_drafts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES ch_companies(id) ON DELETE CASCADE,
+    made_up_to_date DATE,
+    snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    validation_results JSONB NOT NULL DEFAULT '{}'::jsonb,
+    warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status TEXT NOT NULL DEFAULT 'draft',
+    prepared_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    prepared_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_drafts_company_idx ON ch_drafts (company_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ch_submissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID NOT NULL REFERENCES ch_companies(id) ON DELETE CASCADE,
+    draft_id UUID REFERENCES ch_drafts(id) ON DELETE SET NULL,
+    submission_reference TEXT NOT NULL DEFAULT '',
+    transaction_id TEXT NOT NULL DEFAULT '',
+    fee_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    payment_reference TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'submitted',
+    rejection_reason TEXT NOT NULL DEFAULT '',
+    response_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    xero_invoice_id TEXT NOT NULL DEFAULT '',
+    submitted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_submissions_company_idx ON ch_submissions (company_id, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS ch_submissions_status_idx ON ch_submissions (status, submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS ch_imports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    import_type TEXT NOT NULL DEFAULT 'clients',
+    filename TEXT NOT NULL DEFAULT '',
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    created_count INTEGER NOT NULL DEFAULT 0,
+    updated_count INTEGER NOT NULL DEFAULT 0,
+    skipped_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0,
+    errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'completed',
+    uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ch_imports_created_idx ON ch_imports (created_at DESC);
 """
 
 

@@ -27,6 +27,10 @@ from .auth import (
     start_oauth_state,
     xero_authorize_url,
 )
+from .companies_house import (
+    get_companies_house_settings,
+    save_companies_house_settings,
+)
 from .config import get_settings
 from .database import ensure_schema, get_connection
 from .security import create_session
@@ -956,6 +960,18 @@ async def api_xero_posting_settings(request: Request, user: dict = Depends(requi
     payload = await request.json()
     settings_payload = await save_posting_settings(user, payload)
     return {"status": "ok", **settings_payload, "panel": panel_payload(user)}
+
+
+@app.get("/api/companies-house/settings")
+def api_companies_house_settings_get(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "settings": get_companies_house_settings()}
+
+
+@app.post("/api/companies-house/settings")
+async def api_companies_house_settings_save(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    updated = save_companies_house_settings(user, payload)
+    return {"status": "ok", "settings": updated}
 
 
 @app.post("/api/panel/factory-reset")
