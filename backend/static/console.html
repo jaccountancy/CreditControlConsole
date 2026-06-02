@@ -15180,6 +15180,14 @@
             .ch-table tbody tr { cursor: pointer; }
             .ch-table tbody tr:hover { background: var(--blue-soft); }
             .ch-table tbody tr.is-selected { background: var(--blue-soft); }
+            .ch-overdue-warning {
+                display: inline-block;
+                margin-top: 4px;
+                color: var(--red);
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+            }
             .ch-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: var(--surface-soft); color: var(--muted); }
             .ch-pill.is-good { background: var(--green-soft); color: var(--green); }
             .ch-pill.is-warn { background: var(--orange-soft); color: var(--orange); }
@@ -17074,6 +17082,7 @@
                                                 <th>Period End</th>
                                                 <th>Deadline</th>
                                                 <th>Auth code</th>
+                                                <th>Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody id="chCompaniesTableBody"></tbody>
@@ -19502,6 +19511,7 @@
             let xeroAccountsLoaded = false;
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
+            let xeroLockDateFullRefreshRunning = false;
             let xeroLockDateSearchTerm = "";
             let selectedXeroLockDateTenantIds = new Set();
             let xeroLockDateColumnSettings = { showCompanyNumber: false, menuOpen: false };
@@ -27427,6 +27437,56 @@
                 }
             }
 
+            function renderXeroLockDateRefreshButtons() {
+                const refreshBusy = xeroLockDateFullRefreshRunning || xeroLockDateLoading;
+                const refreshLabel = xeroLockDateFullRefreshRunning ? "Refreshing..." : "Refresh";
+                const refreshXeroLockDateButton = document.getElementById("refreshXeroLockDateButton");
+                const settingsRefreshLockDateMappingsButton = document.getElementById("settingsRefreshLockDateMappingsButton");
+                if (refreshXeroLockDateButton) {
+                    refreshXeroLockDateButton.disabled = refreshBusy;
+                    refreshXeroLockDateButton.textContent = refreshLabel;
+                }
+                if (settingsRefreshLockDateMappingsButton) {
+                    settingsRefreshLockDateMappingsButton.disabled = refreshBusy;
+                    settingsRefreshLockDateMappingsButton.textContent = refreshLabel;
+                }
+            }
+
+            async function refreshXeroLockDateDataForAllClients() {
+                if (xeroLockDateFullRefreshRunning) return;
+                xeroLockDateFullRefreshRunning = true;
+                if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
+                try {
+                    const syncResponse = await requestJSON("/api/companies-house/sync", {
+                        method: "POST",
+                        body: JSON.stringify({ limit: 500, mode: "manual" }),
+                    });
+                    await Promise.all([
+                        loadXeroLockDateOverview(true),
+                        loadXeroLockDateCHHealth(true),
+                    ]);
+                    const result = syncResponse?.result || {};
+                    const synced = Number(result.syncedCount || 0);
+                    const failed = Number(result.failedCount || 0);
+                    showToast(
+                        `Refresh complete: Companies House ${synced.toLocaleString("en-GB")} updated${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}. Xero lock dates reloaded.`,
+                        failed ? "info" : "success"
+                    );
+                } catch (error) {
+                    console.error("Unable to refresh lock-date data", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        showToast(error?.message || "Unable to refresh lock-date data.", "error");
+                    }
+                } finally {
+                    xeroLockDateFullRefreshRunning = false;
+                    if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
+                }
+            }
+
             function renderXeroLockDateScreen() {
                 const summary = document.getElementById("xeroLockDateSummary");
                 const health = document.getElementById("xeroLockDateCHHealth");
@@ -27441,6 +27501,7 @@
                 const selectAllToggle = document.getElementById("xeroLockDateSelectAll");
                 const deleteSelectedButton = document.getElementById("deleteSelectedXeroLockDateButton");
                 if (!summary || !body || !health) return;
+                renderXeroLockDateRefreshButtons();
                 if (table) table.classList.toggle("show-company-number-column", !!xeroLockDateColumnSettings.showCompanyNumber);
                 if (columnsMenu) columnsMenu.hidden = !xeroLockDateColumnSettings.menuOpen;
                 if (columnsButton) columnsButton.setAttribute("aria-expanded", xeroLockDateColumnSettings.menuOpen ? "true" : "false");
@@ -27655,6 +27716,7 @@
                 const searchMeta = document.getElementById("settingsLockDateMappingsSearchMeta");
                 const body = document.getElementById("settingsLockDateMappingsTableBody");
                 if (!summary || !health || !body) return;
+                renderXeroLockDateRefreshButtons();
                 if (xeroLockDateLoading) {
                     summary.textContent = "Loading tenant lock-date mappings…";
                 } else {
@@ -47242,8 +47304,7 @@
                 if (refreshXeroLockDateButton && refreshXeroLockDateButton.dataset.lockDateWired !== "true") {
                     refreshXeroLockDateButton.dataset.lockDateWired = "true";
                     refreshXeroLockDateButton.addEventListener("click", () => {
-                        loadXeroLockDateOverview(true);
-                        loadXeroLockDateCHHealth(true);
+                        refreshXeroLockDateDataForAllClients();
                     });
                 }
                 const xeroLockDateColumnsButton = document.getElementById("xeroLockDateColumnsButton");
@@ -47274,8 +47335,7 @@
                 if (settingsRefreshLockDateMappingsButton && settingsRefreshLockDateMappingsButton.dataset.lockDateWired !== "true") {
                     settingsRefreshLockDateMappingsButton.dataset.lockDateWired = "true";
                     settingsRefreshLockDateMappingsButton.addEventListener("click", () => {
-                        loadXeroLockDateOverview(true);
-                        loadXeroLockDateCHHealth(true);
+                        refreshXeroLockDateDataForAllClients();
                     });
                 }
                 const settingsConnectClientXerosButton = document.getElementById("settingsConnectClientXerosButton");
@@ -48417,8 +48477,12 @@
 
             function chCompanyDueCell(company) {
                 const className = chDueClass(company.nextDueDate);
+                const daysUntil = chDaysUntil(company.nextDueDate);
                 const text = company.nextDueDate ? chFormatDate(company.nextDueDate) : "—";
-                return `<span class="ch-pill ${className}">${escapeHTML(text)}</span>`;
+                const overdueWarning = daysUntil !== null && daysUntil < 0
+                    ? `<br><small class="ch-overdue-warning">Overdue by ${Math.abs(daysUntil).toLocaleString("en-GB")} day${Math.abs(daysUntil) === 1 ? "" : "s"}</small>`
+                    : "";
+                return `<span class="ch-pill ${className}">${escapeHTML(text)}</span>${overdueWarning}`;
             }
 
             function chCompanyStatusCell(company) {
@@ -48538,7 +48602,7 @@
                 if (!body) return;
                 const companies = companiesHouseState.companies || [];
                 if (!companies.length) {
-                    body.innerHTML = `<tr><td colspan="7" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="8" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
                     chUpdateWorkflowControls();
                     return;
                 }
@@ -48556,6 +48620,7 @@
                         <td><span class="ch-pill">${escapeHTML(company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—")}</span></td>
                         <td>${chCompanyDueCell(company)}</td>
                         <td>${chCompanyAuthCell(company)}</td>
+                        <td><button class="ghost-button danger-button" type="button" data-ch-delete-company="${escapeHTML(companyId)}">Delete</button></td>
                     </tr>`;
                 }).join("");
                 chUpdateWorkflowControls();
@@ -48586,6 +48651,40 @@
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error?.message || "Unable to load companies.", "error");
                     renderConfirmationStatementsTopbarSummary();
+                }
+            }
+
+            async function deleteCompaniesHouseCompany(companyId, button = null) {
+                const safeCompanyId = String(companyId || "").trim();
+                if (!safeCompanyId) return;
+                const company = (companiesHouseState.companies || []).find((item) => String(item?.id || "") === safeCompanyId) || null;
+                const companyName = company?.companyName || "this company";
+                if (!window.confirm(`Delete ${companyName} from the Companies House list? This will remove its local auth code, drafts, and submissions from the console.`)) return;
+                button?.setAttribute("disabled", "disabled");
+                try {
+                    const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(safeCompanyId)}`, {
+                        method: "DELETE",
+                    });
+                    const deletedName = String(payload?.result?.companyName || companyName || "Company");
+                    companiesHouseState.selectedCompanyIds?.delete?.(safeCompanyId);
+                    if (String(companiesHouseState.selectedCompanyId || "") === safeCompanyId) {
+                        companiesHouseState.selectedCompanyId = null;
+                        const detailCard = document.getElementById("chCompanyDetailCard");
+                        if (detailCard) detailCard.hidden = true;
+                    }
+                    companiesHouseState.tabLoaded.dashboard = false;
+                    companiesHouseState.tabLoaded.companies = false;
+                    await Promise.all([
+                        loadCompaniesHouseDashboard(true),
+                        loadCompaniesHouseCompanies(true),
+                    ]);
+                    showToast(`${deletedName} deleted.`, "success");
+                } catch (error) {
+                    console.error("Unable to delete company", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error?.message || "Unable to delete company.", "error");
+                } finally {
+                    button?.removeAttribute("disabled");
                 }
             }
 
@@ -49298,6 +49397,13 @@
                     renderCompaniesHouseCompaniesTable();
                 });
                 document.getElementById("chCompaniesTableBody")?.addEventListener("click", (event) => {
+                    const deleteButton = event.target.closest?.("[data-ch-delete-company]");
+                    if (deleteButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        deleteCompaniesHouseCompany(deleteButton.dataset.chDeleteCompany || "", deleteButton);
+                        return;
+                    }
                     if (event.target.closest?.("[data-ch-select-company]")) return;
                     const row = event.target.closest("tr[data-company-id]");
                     if (!row) return;

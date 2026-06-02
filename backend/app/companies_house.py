@@ -54,7 +54,15 @@ CLIENT_IMPORT_HEADER_ALIASES = {
     "client_id": {"client id", "client reference", "client ref", "reference", "ref", "bm id", "bm client id"},
     "company_name": {"company name", "company", "registered name", "limited company", "ltd name"},
     "company_number": {"company number", "company no", "company no.", "crn", "registration number", "companies house number", "ch number"},
-    "auth_code": {"authentication code", "auth code", "auth", "ch auth code", "companies house authentication code"},
+    "auth_code": {
+        "authentication code",
+        "auth code",
+        "auth",
+        "ch auth code",
+        "ch authentication code",
+        "company authentication code",
+        "companies house authentication code",
+    },
     "contact_email": {"contact email", "email", "primary email", "email address"},
     "contact_phone": {"contact phone", "phone", "telephone", "phone number"},
     "assigned_staff": {"assigned staff", "assigned staff member", "staff", "owner", "manager", "account manager"},
@@ -2519,6 +2527,13 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             ),
         )
 
+    normalised_headers = [_normalise_header(header) for header in headers]
+    auth_fallback_indexes = [
+        idx
+        for idx, header in enumerate(normalised_headers)
+        if ("auth" in header or "authentication" in header) and "code" in header
+    ]
+
     parsed_rows: list[dict] = []
     errors: list[dict] = []
     seen_numbers: set[str] = set()
@@ -2529,6 +2544,13 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         for canonical, column_index in column_map.items():
             value = raw_row[column_index] if column_index < len(raw_row) else ""
             row_payload[canonical] = _coerce_text(value, 2000 if canonical == "notes" else 250)
+        if _is_blank_text(row_payload.get("auth_code")) and auth_fallback_indexes:
+            for fallback_index in auth_fallback_indexes:
+                value = raw_row[fallback_index] if fallback_index < len(raw_row) else ""
+                candidate = _coerce_text(value, 250)
+                if candidate:
+                    row_payload["auth_code"] = candidate
+                    break
         # BM export contract: confirmation statement period end is always JN, deadline is always JO.
         period_end_from_jn = raw_row[CLIENT_IMPORT_PERIOD_END_COLUMN_INDEX] if CLIENT_IMPORT_PERIOD_END_COLUMN_INDEX < len(raw_row) else ""
         deadline_from_jo = raw_row[CLIENT_IMPORT_DEADLINE_COLUMN_INDEX] if CLIENT_IMPORT_DEADLINE_COLUMN_INDEX < len(raw_row) else ""
@@ -4198,6 +4220,65 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
         connection.commit()
 
     return get_company_detail(company_id)
+
+
+def delete_company(company_id: str, user: dict) -> dict:
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, company_number, company_name
+                FROM ch_companies
+                WHERE id = %s
+                """,
+                (company_id,),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found.")
+
+            company_number = normalise_company_number(existing.get("company_number"))
+            company_name = existing.get("company_name") or ""
+            mapping_delete_count = 0
+            if company_number:
+                cursor.execute(
+                    """
+                    DELETE FROM xero_tenant_company_mappings
+                    WHERE UPPER(TRIM(company_number)) = %s
+                    """,
+                    (company_number,),
+                )
+                mapping_delete_count = cursor.rowcount or 0
+
+            cursor.execute("DELETE FROM ch_companies WHERE id = %s", (company_id,))
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found.")
+
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_company', %s, 'company_deleted', %s::jsonb, %s)
+                """,
+                (
+                    company_id,
+                    json.dumps(
+                        {
+                            "companyNumber": company_number,
+                            "companyName": company_name,
+                            "removedTenantMappings": mapping_delete_count,
+                        }
+                    ),
+                    user_id,
+                ),
+            )
+        connection.commit()
+    return {
+        "companyId": company_id,
+        "companyNumber": company_number,
+        "companyName": company_name,
+        "removedTenantMappings": mapping_delete_count,
+    }
 
 
 def dashboard_summary() -> dict:

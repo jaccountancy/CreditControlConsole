@@ -32,6 +32,7 @@ from .companies_house import (
     bulk_submit_confirmation_statements,
     commit_clients_import,
     dashboard_summary as companies_house_dashboard_summary,
+    delete_company,
     export_submission_attempts_csv,
     get_companies_house_settings,
     get_company_detail,
@@ -1150,6 +1151,11 @@ async def api_companies_house_company_update(
 ):
     payload = await request.json()
     return {"status": "ok", "company": update_company(company_id, payload, user)}
+
+
+@app.delete("/api/companies-house/companies/{company_id}")
+def api_companies_house_company_delete(company_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "result": delete_company(company_id, user)}
 
 
 @app.post("/api/companies-house/import/clients/preview")
