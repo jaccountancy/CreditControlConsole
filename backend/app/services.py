@@ -785,9 +785,6 @@ def _companies_house_year_end_date(ch_row: dict | None) -> date | None:
     if not ch_row:
         return None
     candidates: list[date] = []
-    next_made_up_to_date = _parse_date_value(ch_row.get("next_made_up_to_date"))
-    if next_made_up_to_date:
-        candidates.append(next_made_up_to_date)
     filing_history = ch_row.get("filing_history") or []
     if not isinstance(filing_history, list):
         filing_history = []
