@@ -15045,6 +15045,9 @@
                                                     <th>Company number</th>
                                                     <th>Company name</th>
                                                     <th>Client</th>
+                                                    <th>Period end</th>
+                                                    <th>Due date</th>
+                                                    <th>Manager</th>
                                                     <th>Auth code</th>
                                                     <th>Notes / errors</th>
                                                 </tr>
@@ -42361,6 +42364,9 @@
                     const errorText = (row.errors || []).join(" · ");
                     const warnings = (row.warnings || []).join(" · ");
                     const included = row.included !== false && action !== "error";
+                    const periodEnd = row.data?.period_end_iso || row.data?.period_end || "";
+                    const dueDate = row.data?.due_date_iso || row.data?.due_date || "";
+                    const manager = row.data?.manager_reference || row.data?.assigned_staff || "";
                     return `<tr class="ch-import-row ${action === "create" ? "is-create" : action === "update" ? "is-update" : action === "error" ? "is-error" : ""}">
                         <td><input type="checkbox" data-ch-import-include data-line="${Number(row.lineNumber || 0)}" ${included ? "checked" : ""} ${action === "error" ? "disabled" : ""}></td>
                         <td>${row.lineNumber || ""}</td>
@@ -42368,6 +42374,9 @@
                         <td>${escapeHTML(row.data?.company_number || "—")}</td>
                         <td>${escapeHTML(row.data?.company_name || "—")}</td>
                         <td>${escapeHTML(row.data?.client_name || row.data?.client_id || "—")}</td>
+                        <td>${escapeHTML(periodEnd ? chFormatDate(periodEnd) : "—")}</td>
+                        <td>${escapeHTML(dueDate ? chFormatDate(dueDate) : "—")}</td>
+                        <td>${escapeHTML(manager || "—")}</td>
                         <td>${row.data?.auth_code ? "✓ in file" : "—"}</td>
                         <td>${escapeHTML(errorText || warnings || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td>
                     </tr>`;
