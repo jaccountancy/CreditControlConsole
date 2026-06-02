@@ -1717,6 +1717,223 @@ def _is_valid_company_number(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Z0-9]{8}", value))
 
 
+def _normalise_company_name_for_match(value: str) -> str:
+    text = re.sub(r"[^a-z0-9 ]+", " ", str(value or "").lower())
+    text = re.sub(r"\b(ltd|limited|plc|llp|the|uk)\b", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _company_name_match_score(candidate_name: str, tenant_name: str) -> int:
+    candidate = _normalise_company_name_for_match(candidate_name)
+    tenant = _normalise_company_name_for_match(tenant_name)
+    if not candidate or not tenant:
+        return 0
+    if candidate == tenant:
+        return 100
+    if candidate.startswith(tenant) or tenant.startswith(candidate):
+        return 90
+    candidate_tokens = set(candidate.split())
+    tenant_tokens = set(tenant.split())
+    if not candidate_tokens or not tenant_tokens:
+        return 0
+    overlap = len(candidate_tokens & tenant_tokens)
+    ratio = overlap / max(len(candidate_tokens), len(tenant_tokens))
+    return int(round(ratio * 80))
+
+
+def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    user_id = str((user or {}).get("id") or "").strip()
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User session is missing.")
+
+    settings_row = _ensure_settings_row()
+    environment = str(settings_row.get("environment") or "sandbox").strip().lower()
+    api_key = decrypt_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure a Companies House API key before populating company numbers.",
+        )
+
+    max_tenants = int(payload.get("limit") or 250)
+    if max_tenants < 1:
+        max_tenants = 1
+    if max_tenants > 1000:
+        max_tenants = 1000
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT tenant_id, tenant_name
+                FROM xero_connections
+                WHERE user_id = %s
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                """,
+                (user_id,),
+            )
+            tenant_rows = cursor.fetchall() or []
+            tenant_ids = [str(row.get("tenant_id") or "").strip() for row in tenant_rows if row.get("tenant_id")]
+            cursor.execute(
+                """
+                SELECT tenant_id, company_number, company_name, client_name
+                FROM xero_tenant_company_mappings
+                WHERE tenant_id = ANY(%s)
+                """,
+                (tenant_ids or [""],),
+            )
+            mapping_rows = cursor.fetchall() or []
+            mapping_by_tenant = {str(row.get("tenant_id") or "").strip(): row for row in mapping_rows}
+        connection.commit()
+
+    pending_tenants = []
+    for row in tenant_rows:
+        tenant_id = str(row.get("tenant_id") or "").strip()
+        if not tenant_id:
+            continue
+        mapped_number = str((mapping_by_tenant.get(tenant_id) or {}).get("company_number") or "").strip()
+        if mapped_number:
+            continue
+        pending_tenants.append(
+            {
+                "tenantId": tenant_id,
+                "tenantName": str(row.get("tenant_name") or "").strip(),
+            }
+        )
+    pending_tenants = pending_tenants[:max_tenants]
+
+    base_url = _companies_house_api_base(environment)
+    populated: list[dict] = []
+    skipped: list[dict] = []
+    failed: list[dict] = []
+    now = utcnow()
+
+    with _companies_house_http_client(api_key) as client:
+        for tenant in pending_tenants:
+            tenant_id = tenant["tenantId"]
+            tenant_name = tenant["tenantName"]
+            query_text = tenant_name.strip()
+            if not query_text:
+                skipped.append({"tenantId": tenant_id, "tenantName": tenant_name, "reason": "Tenant name is empty."})
+                continue
+            try:
+                response = client.get(
+                    f"{base_url}/search/companies",
+                    params={"q": query_text, "items_per_page": 8},
+                )
+                if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Companies House rejected the API credentials while searching for company numbers.",
+                    )
+                if response.is_error:
+                    failed.append(
+                        {
+                            "tenantId": tenant_id,
+                            "tenantName": tenant_name,
+                            "reason": f"Companies House search failed ({response.status_code}).",
+                        }
+                    )
+                    continue
+                payload_data = response.json() if response.content else {}
+                items = payload_data.get("items") if isinstance(payload_data, dict) else []
+                if not isinstance(items, list) or not items:
+                    skipped.append({"tenantId": tenant_id, "tenantName": tenant_name, "reason": "No CH search matches."})
+                    continue
+
+                scored: list[tuple[int, dict]] = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate_number = normalise_company_number(item.get("company_number"))
+                    if not _is_valid_company_number(candidate_number):
+                        continue
+                    candidate_name = str(item.get("title") or "").strip()
+                    score = _company_name_match_score(candidate_name, tenant_name)
+                    status_boost = 5 if str(item.get("company_status") or "").strip().lower() == "active" else 0
+                    scored.append((score + status_boost, item))
+                if not scored:
+                    skipped.append({"tenantId": tenant_id, "tenantName": tenant_name, "reason": "No valid CH company number in results."})
+                    continue
+
+                scored.sort(key=lambda row: row[0], reverse=True)
+                top_score, top_item = scored[0]
+                second_score = scored[1][0] if len(scored) > 1 else 0
+                confident = top_score >= 75 and (top_score - second_score >= 12 or top_score >= 92)
+                if not confident:
+                    skipped.append(
+                        {
+                            "tenantId": tenant_id,
+                            "tenantName": tenant_name,
+                            "reason": f"Match confidence too low (top {top_score}, next {second_score}).",
+                        }
+                    )
+                    continue
+
+                company_number = normalise_company_number(top_item.get("company_number"))
+                company_name = str(top_item.get("title") or "").strip()
+                with get_connection() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            INSERT INTO xero_tenant_company_mappings (
+                                tenant_id, company_number, client_name, company_name, notes, updated_by_user_id, created_at, updated_at
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (tenant_id) DO UPDATE
+                            SET company_number = EXCLUDED.company_number,
+                                client_name = EXCLUDED.client_name,
+                                company_name = EXCLUDED.company_name,
+                                updated_by_user_id = EXCLUDED.updated_by_user_id,
+                                updated_at = EXCLUDED.updated_at
+                            """,
+                            (
+                                tenant_id,
+                                company_number,
+                                tenant_name,
+                                company_name,
+                                "Auto-populated from Companies House search.",
+                                user_id,
+                                now,
+                                now,
+                            ),
+                        )
+                    connection.commit()
+                populated.append(
+                    {
+                        "tenantId": tenant_id,
+                        "tenantName": tenant_name,
+                        "companyNumber": company_number,
+                        "companyName": company_name,
+                        "confidenceScore": top_score,
+                    }
+                )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.exception("Unable to auto-populate CH number for tenant %s", tenant_id)
+                failed.append(
+                    {
+                        "tenantId": tenant_id,
+                        "tenantName": tenant_name,
+                        "reason": str(exc) or "Unexpected error during CH search.",
+                    }
+                )
+
+    return {
+        "summary": {
+            "reviewedTenants": len(pending_tenants),
+            "populatedCount": len(populated),
+            "skippedCount": len(skipped),
+            "failedCount": len(failed),
+        },
+        "populated": populated,
+        "skipped": skipped,
+        "failed": failed,
+    }
+
+
 def _normalise_header(header: str) -> str:
     return re.sub(r"\s+", " ", str(header or "").strip().lower())
 

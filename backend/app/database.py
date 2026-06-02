@@ -1412,6 +1412,69 @@ CREATE TABLE IF NOT EXISTS ch_imports (
 );
 
 CREATE INDEX IF NOT EXISTS ch_imports_created_idx ON ch_imports (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS hmrc_64_8_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    client_id TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    client_contact_name TEXT NOT NULL DEFAULT '',
+    client_contact_email TEXT NOT NULL DEFAULT '',
+    client_contact_phone TEXT NOT NULL DEFAULT '',
+    postal_address TEXT NOT NULL DEFAULT '',
+    sa_utr TEXT NOT NULL DEFAULT '',
+    ct_utr TEXT NOT NULL DEFAULT '',
+    paye_reference TEXT NOT NULL DEFAULT '',
+    company_number TEXT NOT NULL DEFAULT '',
+    include_sa BOOLEAN NOT NULL DEFAULT FALSE,
+    include_paye BOOLEAN NOT NULL DEFAULT FALSE,
+    include_ct BOOLEAN NOT NULL DEFAULT FALSE,
+    status TEXT NOT NULL DEFAULT 'draft',
+    submission_channel TEXT NOT NULL DEFAULT 'online',
+    hmrc_submission_reference TEXT NOT NULL DEFAULT '',
+    submitted_at TIMESTAMPTZ,
+    expected_code_by DATE,
+    authority_code TEXT NOT NULL DEFAULT '',
+    authority_code_received_at TIMESTAMPTZ,
+    authority_activated_at TIMESTAMPTZ,
+    notes TEXT NOT NULL DEFAULT '',
+    evidence_links JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS postal_address TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS sa_utr TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS ct_utr TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS paye_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS company_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_sa BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_paye BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS include_ct BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS submission_channel TEXT NOT NULL DEFAULT 'online';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS hmrc_submission_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS expected_code_by DATE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS authority_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS authority_code_received_at TIMESTAMPTZ;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS authority_activated_at TIMESTAMPTZ;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS evidence_links JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS hmrc_64_8_requests_user_idx
+ON hmrc_64_8_requests (created_by_user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS hmrc_64_8_requests_status_idx
+ON hmrc_64_8_requests (status, submitted_at DESC);
 """
 
 

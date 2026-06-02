@@ -40,6 +40,7 @@ from .companies_house import (
     list_imports as list_companies_house_imports,
     list_submission_attempts,
     parse_clients_import,
+    populate_xero_lock_date_company_numbers,
     replay_dead_letter_submissions,
     run_companies_house_submission_reconciliation,
     save_companies_house_settings,
@@ -152,6 +153,8 @@ from .services import (
     update_me_report_mapping,
     update_me_report_settings,
     xero_lock_date_overview_payload,
+    xero_lock_date_mismatch_payload,
+    xero_lock_date_mismatch_pdf,
     xero_chart_of_accounts_payload,
     bank_statement_payload,
     bulk_update_invoice_status,
@@ -175,6 +178,13 @@ from .ignition import (
     exchange_ignition_code_for_tokens,
     ignition_authorize_url,
     store_ignition_connection,
+)
+from .hmrc_648 import (
+    capture_hmrc_64_8_code,
+    create_hmrc_64_8_request,
+    hmrc_64_8_payload,
+    submit_hmrc_64_8_request,
+    update_hmrc_64_8_request,
 )
 from .xero import XeroConfigurationError, exchange_code_for_tokens, fetch_connections, fetch_user_profile, store_login
 
@@ -1044,6 +1054,34 @@ async def api_xero_lock_dates(
     return {"status": "ok", **await xero_lock_date_overview_payload(user, force_refresh=force)}
 
 
+@app.post("/api/xero/lock-dates/populate-mappings")
+async def api_xero_lock_dates_populate_mappings(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", **populate_xero_lock_date_company_numbers(user, payload)}
+
+
+@app.get("/api/xero/lock-dates/mismatches")
+async def api_xero_lock_date_mismatches(
+    force: bool = Query(False, alias="force"),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await xero_lock_date_mismatch_payload(user, force_refresh=force)}
+
+
+@app.get("/api/xero/lock-dates/mismatches/report.pdf")
+async def api_xero_lock_date_mismatches_pdf(
+    force: bool = Query(False, alias="force"),
+    user: dict = Depends(require_panel_user),
+):
+    payload = await xero_lock_date_mismatch_payload(user, force_refresh=force)
+    pdf_bytes, filename = xero_lock_date_mismatch_pdf(payload.get("rows") or [], str(payload.get("generatedAt") or ""))
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.post("/api/xero/tenant-mappings/{tenant_id}")
 async def api_xero_tenant_mapping_save(tenant_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
@@ -1209,6 +1247,35 @@ async def api_companies_house_reconcile_submissions(
 ):
     payload = await request.json()
     return {"status": "ok", "result": run_companies_house_submission_reconciliation(payload)}
+
+
+@app.get("/api/hmrc-64-8")
+def api_hmrc_64_8(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **hmrc_64_8_payload(user)}
+
+
+@app.post("/api/hmrc-64-8/requests")
+async def api_hmrc_64_8_create(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "request": create_hmrc_64_8_request(user, payload), **hmrc_64_8_payload(user)}
+
+
+@app.post("/api/hmrc-64-8/requests/{request_id}")
+async def api_hmrc_64_8_update(request_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "request": update_hmrc_64_8_request(user, request_id, payload), **hmrc_64_8_payload(user)}
+
+
+@app.post("/api/hmrc-64-8/requests/{request_id}/submit")
+async def api_hmrc_64_8_submit(request_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "request": submit_hmrc_64_8_request(user, request_id, payload), **hmrc_64_8_payload(user)}
+
+
+@app.post("/api/hmrc-64-8/requests/{request_id}/capture-code")
+async def api_hmrc_64_8_capture_code(request_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "request": capture_hmrc_64_8_code(user, request_id, payload), **hmrc_64_8_payload(user)}
 
 
 @app.post("/api/panel/factory-reset")

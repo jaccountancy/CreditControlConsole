@@ -838,6 +838,125 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
     }
 
 
+def _xero_lock_date_mismatch_rows(overview_rows: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for row in overview_rows or []:
+        flags = row.get("flags") or {}
+        if not bool(flags.get("accountsFiledNotLocked")):
+            continue
+        mapping = row.get("mapping") or {}
+        companies_house = row.get("companiesHouse") or {}
+        lock_date = row.get("periodLockDate") or row.get("endOfYearLockDate") or ""
+        rows.append(
+            {
+                "tenantId": str(row.get("tenantId") or ""),
+                "tenantName": str(row.get("tenantName") or ""),
+                "companyNumber": str(mapping.get("companyNumber") or companies_house.get("companyNumber") or ""),
+                "companyName": str(companies_house.get("companyName") or mapping.get("companyName") or ""),
+                "clientName": str(companies_house.get("clientName") or mapping.get("clientName") or ""),
+                "xeroLockDate": str(lock_date or ""),
+                "accountsFiledDate": str(companies_house.get("accountsFiledDate") or ""),
+                "reason": "Accounts are filed at Companies House but Xero period lock date is missing or older than the filed date.",
+            }
+        )
+    return rows
+
+
+async def xero_lock_date_mismatch_payload(user: dict, force_refresh: bool = False) -> dict:
+    overview = await xero_lock_date_overview_payload(user, force_refresh=force_refresh)
+    mismatches = _xero_lock_date_mismatch_rows(overview.get("rows") or [])
+    generated_at = utcnow().isoformat()
+    return {
+        "generatedAt": generated_at,
+        "rows": mismatches,
+        "summary": {
+            "mismatchCount": len(mismatches),
+            "tenantCount": len(overview.get("rows") or []),
+        },
+    }
+
+
+def xero_lock_date_mismatch_pdf(rows: list[dict], generated_at: str) -> tuple[bytes, str]:
+    lines = [
+        "Xero Lock-Date Mismatches",
+        f"Generated: {generated_at}",
+        "",
+    ]
+    for row in rows or []:
+        tenant = str(row.get("tenantName") or "Unknown tenant")
+        company_name = str(row.get("companyName") or row.get("clientName") or "Unknown company")
+        company_number = str(row.get("companyNumber") or "")
+        lock_date = str(row.get("xeroLockDate") or "Not set")
+        filed_date = str(row.get("accountsFiledDate") or "Unknown")
+        label = f"{tenant} | {company_name}"
+        if company_number:
+            label = f"{label} ({company_number})"
+        lines.append(f"- {label} | Lock: {lock_date} | Filed: {filed_date}")
+    if len(lines) == 3:
+        lines.append("No lock mismatches found.")
+
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except Exception:
+        return _minimal_me_report_pdf(lines), "xero-lock-date-mismatches.pdf"
+
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        title="Xero Lock-Date Mismatches",
+        author="Credit Control Console",
+        leftMargin=32,
+        rightMargin=32,
+        topMargin=32,
+        bottomMargin=32,
+    )
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("Xero Lock-Date Mismatches", styles["Title"]),
+        Paragraph(f"Generated: {generated_at}", styles["Normal"]),
+        Spacer(1, 12),
+    ]
+    table_rows = [["Tenant", "Company", "CH Number", "Xero Lock Date", "CH Submitted Accounts"]]
+    for row in rows or []:
+        table_rows.append(
+            [
+                str(row.get("tenantName") or ""),
+                str(row.get("companyName") or row.get("clientName") or ""),
+                str(row.get("companyNumber") or ""),
+                str(row.get("xeroLockDate") or "Not set"),
+                str(row.get("accountsFiledDate") or "Unknown"),
+            ]
+        )
+    if len(table_rows) == 1:
+        table_rows.append(["-", "No lock mismatches found", "-", "-", "-"])
+    table = Table(table_rows, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d67f2")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d8dfef")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f8ff")]),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.append(table)
+    document.build(story)
+    return buffer.getvalue(), "xero-lock-date-mismatches.pdf"
+
+
 async def save_posting_settings(user: dict, payload: dict) -> dict:
     connection_row = get_xero_connection_for_user(user["id"])
     accounts = await _fetch_xero_chart_of_accounts(connection_row)

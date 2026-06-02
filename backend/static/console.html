@@ -690,6 +690,30 @@
                 font-size: 0.62rem;
                 font-weight: 800;
             }
+            .sidebar-support-bubble {
+                padding: 10px 12px;
+                gap: 6px;
+            }
+            .sidebar-support-bubble .sidebar-support-state,
+            .sidebar-support-bubble .sidebar-support-detail,
+            .sidebar-support-bubble .sidebar-support-progress,
+            .sidebar-support-bubble .sidebar-support-meta {
+                display: none;
+            }
+            .sidebar-support-bubble .sidebar-support-kicker {
+                font-size: 0.62rem;
+                letter-spacing: 0.12em;
+            }
+            .sidebar-support-bubble .sidebar-support-title {
+                font-size: 0.74rem;
+                font-weight: 800;
+                color: rgba(117, 132, 163, 0.95);
+            }
+            .sidebar-support-bubble .sidebar-support-notice {
+                margin-left: 28px;
+                font-size: 0.66rem;
+                color: rgba(129, 146, 176, 0.86);
+            }
             body.has-sidebar-support-bubble .ledger-topbar #syncInlineBanner:not(.is-dismissible):not(.is-error):not(.is-success):not(.is-warning),
             body.has-sidebar-support-bubble .ledger-topbar #aiInlineBanner,
             body.has-sidebar-support-bubble .ledger-topbar #ignitionTopbarWidget {
@@ -14801,12 +14825,117 @@
             .xero-lock-date-mapping-input { width: 130px; }
             .xero-lock-date-flag-cell { min-width: 210px; }
             .xero-lock-date-main-pill { margin-left: 6px; }
+            .hmrc648-panel {
+                gap: 16px;
+            }
+
+            .hmrc648-kpi-grid {
+                display: grid;
+                gap: 10px;
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            }
+
+            .hmrc648-kpi-grid article {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 10px 12px;
+                background: #fff;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+
+            .hmrc648-kpi-grid article span {
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .hmrc648-kpi-grid article strong {
+                font-size: 22px;
+                line-height: 1;
+            }
+
+            .hmrc648-workspace {
+                display: grid;
+                gap: 16px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .hmrc648-card {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                padding: 16px;
+                background: #fff;
+            }
+
+            .hmrc648-card h4 {
+                margin: 0 0 10px;
+            }
+
+            .hmrc648-card-wide {
+                grid-column: 1 / -1;
+            }
+
+            #hmrc648QueueBody tr.is-selected td {
+                background: var(--blue-soft);
+            }
+
+            .hmrc648-form-grid {
+                display: grid;
+                gap: 10px;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .hmrc648-form-grid label {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .hmrc648-form-grid input,
+            .hmrc648-form-grid select,
+            .hmrc648-form-grid textarea {
+                width: 100%;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 10px;
+                font: inherit;
+                color: var(--ink);
+                background: #fff;
+            }
+
+            .hmrc648-form-grid .is-wide {
+                grid-column: 1 / -1;
+            }
+
+            .hmrc648-service-checks {
+                display: flex;
+                gap: 14px;
+                align-items: center;
+                flex-wrap: wrap;
+            }
+
+            .hmrc648-service-checks label {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            @media (max-width: 1080px) {
+                .hmrc648-workspace,
+                .hmrc648-form-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+
                 </style>
             </head>
             <body>
                 <div class="console-app">
                 <aside class="app-sidebar" aria-label="Main navigation">
-                    <button class="app-sidebar-brand" id="sidebarSupportBubbleToggle" type="button" aria-label="Open notifications">
+                    <button class="app-sidebar-brand" id="sidebarSupportBubbleToggle" type="button" aria-label="Background processing status">
                         <img class="app-sidebar-logo" src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy">
                         <span class="sidebar-support-bubble" id="sidebarSupportBubble" role="status" aria-live="polite" aria-atomic="true" hidden>
                             <span class="sidebar-support-head">
@@ -14823,7 +14952,7 @@
                             <span class="sidebar-support-progress" aria-hidden="true"><span id="sidebarSupportProgressFill"></span></span>
                             <span class="sidebar-support-foot">
                                 <small class="sidebar-support-meta" id="sidebarSupportMeta">Starting</small>
-                                <small class="sidebar-support-notice">Press this card to open the notifications centre</small>
+                                <small class="sidebar-support-notice">Background processing status</small>
                             </span>
                             <div class="sidebar-support-history" id="sidebarSupportHistory" hidden></div>
                         </span>
@@ -14931,6 +15060,10 @@
                             <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="lock-date-mapping">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 14h3"></path><path d="M13 14h3"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Lock-Date Mapping</strong><span>Tenant company links</span></span>
                             </button>
                             <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
@@ -15597,6 +15730,33 @@
                                         <button class="primary-button" id="savePostingSettingsButton" type="submit">Save codes</button>
                                     </div>
                                 </form>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="lock-date-mapping">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Xero lock controls</p>
+                                        <h3>Tenant to Companies House mapping</h3>
+                                    </div>
+                                    <button class="ghost-button" id="settingsRefreshLockDateMappingsButton" type="button">Refresh</button>
+                                </div>
+                                <p class="settings-help" id="settingsLockDateMappingsSummary">Load tenants to configure mapping.</p>
+                                <p class="settings-help" id="settingsLockDateMappingsHealth">Companies House API status not checked yet.</p>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table" aria-label="Xero lock-date mapping settings">
+                                        <thead>
+                                            <tr>
+                                                <th>Tenant</th>
+                                                <th>Xero Lock Date</th>
+                                                <th>Year-end lock</th>
+                                                <th>CH Submitted Accounts</th>
+                                                <th>CH number mapping</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="settingsLockDateMappingsTableBody"></tbody>
+                                    </table>
+                                </div>
                             </section>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="outbox">
@@ -16460,19 +16620,153 @@
                     </section>
 
                     <section class="late-charges-screen detail-card" id="hmrc648Screen" hidden>
-                        <section class="detail-panel">
+                        <section class="detail-panel hmrc648-panel">
                             <div class="detail-hero">
                                 <div>
                                     <p class="eyebrow">HMRC authority workspace</p>
                                     <h3>HMRC 64-8 Authorisations</h3>
-                                    <p class="detail-meta">Track agent authority requests, signature evidence, and submission status for HMRC 64-8 records.</p>
+                                    <p class="detail-meta">Create 64-8 submissions for SA, PAYE and CT, track HMRC letter turnaround, and capture authority codes before activation in Agent Gateway.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="hmrc648RefreshButton" type="button">Refresh</button>
                                 </div>
                             </div>
-                            <article class="empty-state-panel">
-                                <p class="eyebrow">Operational status</p>
-                                <h4 id="hmrc648StatusTitle">No HMRC 64-8 requests loaded</h4>
-                                <p id="hmrc648StatusMeta">Use this area to manage outstanding authority forms and evidence pack links.</p>
-                            </article>
+                            <p class="late-charge-summary" id="hmrc648StatusMeta">Loading HMRC 64-8 requests…</p>
+                            <div class="hmrc648-kpi-grid" id="hmrc648KpiGrid"></div>
+                            <section class="hmrc648-workspace">
+                                <article class="hmrc648-card">
+                                    <h4>Create 64-8 request</h4>
+                                    <form id="hmrc648CreateForm" class="hmrc648-form-grid">
+                                        <label>
+                                            Client
+                                            <select id="hmrc648CreateClient"></select>
+                                        </label>
+                                        <label>
+                                            Client name
+                                            <input id="hmrc648CreateClientName" type="text" placeholder="Client legal name" required>
+                                        </label>
+                                        <label>
+                                            Contact name
+                                            <input id="hmrc648CreateContactName" type="text" placeholder="Primary contact">
+                                        </label>
+                                        <label>
+                                            Contact email
+                                            <input id="hmrc648CreateContactEmail" type="email" placeholder="client@example.com">
+                                        </label>
+                                        <label>
+                                            Contact phone
+                                            <input id="hmrc648CreateContactPhone" type="text" placeholder="Telephone">
+                                        </label>
+                                        <label>
+                                            Company number
+                                            <input id="hmrc648CreateCompanyNumber" type="text" placeholder="Companies House number">
+                                        </label>
+                                        <label>
+                                            SA UTR
+                                            <input id="hmrc648CreateSaUtr" type="text" placeholder="Self Assessment UTR">
+                                        </label>
+                                        <label>
+                                            CT UTR
+                                            <input id="hmrc648CreateCtUtr" type="text" placeholder="Corporation Tax UTR">
+                                        </label>
+                                        <label>
+                                            PAYE reference
+                                            <input id="hmrc648CreatePayeRef" type="text" placeholder="123/AB45678">
+                                        </label>
+                                        <label>
+                                            Submission channel
+                                            <select id="hmrc648CreateChannel">
+                                                <option value="online">Online</option>
+                                                <option value="paper">Paper</option>
+                                            </select>
+                                        </label>
+                                        <label class="is-wide">
+                                            Postal address
+                                            <textarea id="hmrc648CreatePostalAddress" rows="3" placeholder="Address used for HMRC code letter delivery"></textarea>
+                                        </label>
+                                        <label class="is-wide">
+                                            Internal notes
+                                            <textarea id="hmrc648CreateNotes" rows="3" placeholder="Engagement notes, evidence, and submission context"></textarea>
+                                        </label>
+                                        <div class="hmrc648-service-checks is-wide">
+                                            <label><input id="hmrc648CreateIncludeSa" type="checkbox" checked> SA</label>
+                                            <label><input id="hmrc648CreateIncludePaye" type="checkbox"> PAYE</label>
+                                            <label><input id="hmrc648CreateIncludeCt" type="checkbox"> CT</label>
+                                        </div>
+                                        <div class="detail-actions is-wide">
+                                            <button class="primary-button" type="submit">Create request</button>
+                                        </div>
+                                    </form>
+                                    <p class="settings-help" id="hmrc648CreateStatus">Select a client and choose the tax services for authority.</p>
+                                </article>
+                                <article class="hmrc648-card hmrc648-card-wide">
+                                    <h4>Submission queue</h4>
+                                    <div class="ch-companies-table-wrap">
+                                        <table class="ch-table" aria-label="HMRC 64-8 request queue">
+                                            <thead>
+                                                <tr>
+                                                    <th>Client</th>
+                                                    <th>Services</th>
+                                                    <th>Status</th>
+                                                    <th>Submitted</th>
+                                                    <th>Code due</th>
+                                                    <th>Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="hmrc648QueueBody"></tbody>
+                                        </table>
+                                    </div>
+                                </article>
+                                <article class="hmrc648-card">
+                                    <h4>Request detail</h4>
+                                    <form id="hmrc648DetailForm" class="hmrc648-form-grid">
+                                        <input id="hmrc648DetailId" type="hidden">
+                                        <label>
+                                            Client name
+                                            <input id="hmrc648DetailClientName" type="text" required>
+                                        </label>
+                                        <label>
+                                            Status
+                                            <select id="hmrc648DetailStatus">
+                                                <option value="draft">Draft</option>
+                                                <option value="prepared">Prepared</option>
+                                                <option value="submitted">Submitted</option>
+                                                <option value="awaiting_code">Awaiting code</option>
+                                                <option value="code_received">Code received</option>
+                                                <option value="authorised">Authorised</option>
+                                                <option value="rejected">Rejected</option>
+                                                <option value="cancelled">Cancelled</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            HMRC submission ref
+                                            <input id="hmrc648DetailSubmissionRef" type="text" placeholder="Optional reference">
+                                        </label>
+                                        <label>
+                                            Submitted at
+                                            <input id="hmrc648DetailSubmittedAt" type="datetime-local">
+                                        </label>
+                                        <label>
+                                            Code expected by
+                                            <input id="hmrc648DetailExpectedBy" type="date">
+                                        </label>
+                                        <label>
+                                            Authority code
+                                            <input id="hmrc648DetailAuthorityCode" type="text" placeholder="Code from client letter">
+                                        </label>
+                                        <label class="is-wide">
+                                            Notes
+                                            <textarea id="hmrc648DetailNotes" rows="3"></textarea>
+                                        </label>
+                                        <div class="detail-actions is-wide">
+                                            <button class="ghost-button" id="hmrc648SubmitActionButton" type="button">Mark submitted</button>
+                                            <button class="ghost-button" id="hmrc648CaptureCodeButton" type="button">Capture code</button>
+                                            <button class="primary-button" type="submit">Save changes</button>
+                                        </div>
+                                    </form>
+                                    <p class="settings-help" id="hmrc648DetailStatusMessage">Select a request from the queue.</p>
+                                </article>
+                            </section>
                         </section>
                     </section>
 
@@ -16502,6 +16796,8 @@
                                     <p class="detail-meta">Monitor all connected Xero organisations, map each tenant to a Companies House company, and flag accounts filed where period lock dates are still open.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
+                                    <button class="ghost-button" id="identifyXeroLockMismatchesButton" type="button">Identify Lock Mismatches</button>
                                     <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
                                 </div>
                             </div>
@@ -16512,9 +16808,9 @@
                                     <thead>
                                         <tr>
                                             <th>Tenant</th>
-                                            <th>Period lock</th>
+                                            <th>Xero Lock Date</th>
                                             <th>Year-end lock</th>
-                                            <th>Companies House accounts filed</th>
+                                            <th>CH Submitted Accounts</th>
                                             <th>CH number mapping</th>
                                             <th>Flag</th>
                                         </tr>
@@ -16524,6 +16820,36 @@
                             </div>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="xeroLockMismatchModal" hidden>
+                        <div class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="xeroLockMismatchTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Lock mismatch review</p>
+                                    <h4 id="xeroLockMismatchTitle">Accounts Submitted But Xero Lock Dates Open</h4>
+                                    <p class="detail-meta" id="xeroLockMismatchSummary">Checking lock mismatches…</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="xeroLockMismatchDownloadPdfButton" type="button">Download PDF</button>
+                                    <button class="ghost-button" id="xeroLockMismatchCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Lock mismatch list">
+                                    <thead>
+                                        <tr>
+                                            <th>Tenant</th>
+                                            <th>Company</th>
+                                            <th>CH Number</th>
+                                            <th>Xero Lock Date</th>
+                                            <th>CH Submitted Accounts</th>
+                                            <th>Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="xeroLockMismatchTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="jashflowScreen" hidden>
                         <section class="detail-panel jashflow-panel" id="jashflowFormsPanel" hidden>
@@ -17986,6 +18312,12 @@
             let companySecretarialStatusFilter = "all";
             let companySecretarialTypeFilter = "all";
             let companySecretarialRiskFilter = "all";
+            const hmrc648State = {
+                requests: [],
+                summary: { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 }
+            };
+            let hmrc648Loading = false;
+            let hmrc648SelectedRequestId = "";
             const topbarViewTitles = {
                 ledger: "Credit Control",
                 client: "Client",
@@ -18113,6 +18445,8 @@
             let xeroLockDateLoading = false;
             let xeroLockDateCHHealth = { loading: false, ok: null, checkedAt: "", message: "Companies House API status not checked yet." };
             const xeroLockDateCHHealthCacheMs = 10 * 60 * 1000;
+            let xeroLockMismatchLoading = false;
+            let xeroLockMismatchData = { generatedAt: "", rows: [], summary: {} };
             const bankStatementChartOfAccountsFallback = [
                 { code: "200", name: "Sales", type: "Revenue", taxType: "20% (VAT on Income)" },
                 { code: "260", name: "Other Revenue", type: "Revenue", taxType: "20% (VAT on Income)" },
@@ -18693,6 +19027,9 @@
                         xeroAccounts: config.endpoints?.xeroAccounts || "/api/xero/chart-of-accounts",
                         postingSettings: config.endpoints?.postingSettings || "/api/xero/posting-settings",
                         xeroLockDates: config.endpoints?.xeroLockDates || "/api/xero/lock-dates",
+                        xeroLockPopulateMappings: config.endpoints?.xeroLockPopulateMappings || "/api/xero/lock-dates/populate-mappings",
+                        xeroLockMismatches: config.endpoints?.xeroLockMismatches || "/api/xero/lock-dates/mismatches",
+                        xeroLockMismatchesPdf: config.endpoints?.xeroLockMismatchesPdf || "/api/xero/lock-dates/mismatches/report.pdf",
                         xeroTenantMapping: config.endpoints?.xeroTenantMapping || "/api/xero/tenant-mappings/:tenantId",
                         jashflow: config.endpoints?.jashflow || "/api/jashflow",
                         jashflowLoans: config.endpoints?.jashflowLoans || "/api/jashflow/loans",
@@ -18752,6 +19089,11 @@
                         companySecretarialValidate: config.endpoints?.companySecretarialValidate || "/api/company-secretarial/filings/:filingId/validate",
                         companySecretarialSubmit: config.endpoints?.companySecretarialSubmit || "/api/company-secretarial/filings/:filingId/submit",
                         companySecretarialComplete: config.endpoints?.companySecretarialComplete || "/api/company-secretarial/filings/:filingId/complete",
+                        hmrc648: config.endpoints?.hmrc648 || "/api/hmrc-64-8",
+                        hmrc648Requests: config.endpoints?.hmrc648Requests || "/api/hmrc-64-8/requests",
+                        hmrc648Request: config.endpoints?.hmrc648Request || "/api/hmrc-64-8/requests/:requestId",
+                        hmrc648Submit: config.endpoints?.hmrc648Submit || "/api/hmrc-64-8/requests/:requestId/submit",
+                        hmrc648CaptureCode: config.endpoints?.hmrc648CaptureCode || "/api/hmrc-64-8/requests/:requestId/capture-code",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
                         factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -21703,7 +22045,6 @@
                     }
                     const supportBubbleToggle = event.target.closest?.("#sidebarSupportBubbleToggle");
                     if (supportBubbleToggle) {
-                        openNotificationsScreen();
                         event.preventDefault();
                         event.stopPropagation();
                         return;
@@ -24585,6 +24926,7 @@
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                loadHmrc648Requests();
                 scrollConsoleToTop();
             }
 
@@ -24957,16 +25299,327 @@
                 updateCompanySecretarialWizardFieldsPreview();
             }
 
-            function renderHmrc648Screen() {
-                const title = document.getElementById("hmrc648StatusTitle");
-                const meta = document.getElementById("hmrc648StatusMeta");
-                if (!title || !meta) return;
+            function hmrc648StatusLabel(value) {
+                const statusValue = String(value || "draft").toLowerCase();
+                return {
+                    draft: "Draft",
+                    prepared: "Prepared",
+                    submitted: "Submitted",
+                    awaiting_code: "Awaiting code",
+                    code_received: "Code received",
+                    authorised: "Authorised",
+                    rejected: "Rejected",
+                    cancelled: "Cancelled",
+                }[statusValue] || "Draft";
+            }
+
+            function hmrc648StatusClass(value) {
+                const statusValue = String(value || "draft").toLowerCase();
+                if (statusValue === "authorised") return "is-good";
+                if (statusValue === "awaiting_code" || statusValue === "submitted" || statusValue === "code_received") return "is-warn";
+                if (statusValue === "rejected" || statusValue === "cancelled") return "is-bad";
+                return "is-info";
+            }
+
+            function hmrc648ClientOptions() {
                 const customers = Array.isArray(state.customers) ? state.customers : [];
-                const activeCustomers = customers.filter((customer) => String(customer?.status || "").toLowerCase() !== "inactive");
-                title.textContent = activeCustomers.length
-                    ? `${activeCustomers.length.toLocaleString("en-GB")} clients available for authority tracking`
-                    : "No active client records available";
-                meta.textContent = "Operational actions: initiate 64-8 request, collect signed authority, verify HMRC acknowledgement, and archive evidence against each client.";
+                return customers
+                    .filter((customer) => customer?.id)
+                    .map((customer) => ({
+                        id: String(customer.id),
+                        name: String(customer.name || ""),
+                        email: String(customer.email || ""),
+                        phone: String(customer.phone || ""),
+                    }))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            function hmrc648CurrentRequest() {
+                return (hmrc648State.requests || []).find((row) => String(row.id || "") === String(hmrc648SelectedRequestId || "")) || null;
+            }
+
+            function hmrc648SetCreateStatus(message, tone = "muted") {
+                const node = document.getElementById("hmrc648CreateStatus");
+                if (!node) return;
+                node.textContent = message || "";
+                node.classList.remove("is-success", "is-error", "is-muted");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function hmrc648SetDetailStatus(message, tone = "muted") {
+                const node = document.getElementById("hmrc648DetailStatusMessage");
+                if (!node) return;
+                node.textContent = message || "";
+                node.classList.remove("is-success", "is-error", "is-muted");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function hmrc648FillCreateClientOptions() {
+                const select = document.getElementById("hmrc648CreateClient");
+                if (!select) return;
+                const clients = hmrc648ClientOptions();
+                const currentValue = String(select.value || "");
+                select.innerHTML = [
+                    `<option value="">Manual entry</option>`,
+                    ...clients.map((client) => `<option value="${escapeHTML(client.id)}">${escapeHTML(client.name || "Unnamed client")}</option>`)
+                ].join("");
+                if (clients.some((client) => client.id === currentValue)) {
+                    select.value = currentValue;
+                }
+            }
+
+            function hmrc648ApplyClientPreset() {
+                const select = document.getElementById("hmrc648CreateClient");
+                const clientId = String(select?.value || "");
+                if (!clientId) return;
+                const client = hmrc648ClientOptions().find((row) => row.id === clientId);
+                if (!client) return;
+                const nameInput = document.getElementById("hmrc648CreateClientName");
+                const emailInput = document.getElementById("hmrc648CreateContactEmail");
+                const phoneInput = document.getElementById("hmrc648CreateContactPhone");
+                if (nameInput && !String(nameInput.value || "").trim()) nameInput.value = client.name || "";
+                if (emailInput && !String(emailInput.value || "").trim()) emailInput.value = client.email || "";
+                if (phoneInput && !String(phoneInput.value || "").trim()) phoneInput.value = client.phone || "";
+            }
+
+            function hmrc648ResetDetailForm() {
+                hmrc648SelectedRequestId = "";
+                const detailForm = document.getElementById("hmrc648DetailForm");
+                if (detailForm) detailForm.reset();
+                const detailId = document.getElementById("hmrc648DetailId");
+                if (detailId) detailId.value = "";
+                hmrc648SetDetailStatus("Select a request from the queue.", "muted");
+            }
+
+            function hmrc648PopulateDetail(request) {
+                const detailId = document.getElementById("hmrc648DetailId");
+                if (detailId) detailId.value = request?.id || "";
+                const setValue = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (node) node.value = value == null ? "" : String(value);
+                };
+                setValue("hmrc648DetailClientName", request?.clientName || "");
+                setValue("hmrc648DetailStatus", request?.status || "draft");
+                setValue("hmrc648DetailSubmissionRef", request?.hmrcSubmissionReference || "");
+                setValue("hmrc648DetailExpectedBy", request?.expectedCodeBy || "");
+                setValue("hmrc648DetailAuthorityCode", request?.authorityCode || "");
+                setValue("hmrc648DetailNotes", request?.notes || "");
+                setValue("hmrc648DetailSubmittedAt", isoToLocalDatetimeInput(request?.submittedAt || ""));
+                hmrc648SetDetailStatus(
+                    request?.updatedAt ? `Last updated ${chFormatDateTime(request.updatedAt)}.` : "Ready.",
+                    "muted"
+                );
+            }
+
+            function renderHmrc648Screen() {
+                const meta = document.getElementById("hmrc648StatusMeta");
+                const queueBody = document.getElementById("hmrc648QueueBody");
+                const kpiGrid = document.getElementById("hmrc648KpiGrid");
+                if (!meta || !queueBody || !kpiGrid) return;
+                hmrc648FillCreateClientOptions();
+                const summary = hmrc648State.summary || { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 };
+                kpiGrid.innerHTML = [
+                    ["Total requests", summary.total || 0],
+                    ["Draft", summary.draft || 0],
+                    ["Awaiting code", summary.awaitingCode || 0],
+                    ["Authorised", summary.authorised || 0],
+                    ["Code overdue", summary.overdueCode || 0],
+                ].map(([label, value]) => `<article><span>${escapeHTML(label)}</span><strong>${Number(value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
+                if (hmrc648Loading) {
+                    meta.textContent = "Loading HMRC 64-8 requests…";
+                } else if (!hmrc648State.requests.length) {
+                    meta.textContent = "No HMRC 64-8 requests yet. Create the first submission request for SA, PAYE, or CT.";
+                } else {
+                    meta.textContent = `${hmrc648State.requests.length.toLocaleString("en-GB")} request(s) loaded. Capture authority codes as soon as letters are received from clients.`;
+                }
+                queueBody.innerHTML = hmrc648State.requests.length
+                    ? hmrc648State.requests.map((row) => {
+                        const rowId = String(row.id || "");
+                        const services = (row.services || []).length ? row.services.join(", ") : "None";
+                        const isSelected = rowId === String(hmrc648SelectedRequestId || "");
+                        return `<tr data-hmrc648-row-id="${escapeHTML(rowId)}" class="${isSelected ? "is-selected" : ""}">
+                            <td><strong>${escapeHTML(row.clientName || "Unnamed client")}</strong><br><small>${escapeHTML(row.clientContactEmail || row.clientContactPhone || "")}</small></td>
+                            <td>${escapeHTML(services)}</td>
+                            <td><span class="ch-pill ${hmrc648StatusClass(row.status)}">${escapeHTML(hmrc648StatusLabel(row.status))}</span></td>
+                            <td>${escapeHTML(row.submittedAt ? chFormatDateTime(row.submittedAt) : "—")}</td>
+                            <td>${escapeHTML(row.expectedCodeBy ? chFormatDate(row.expectedCodeBy) : "—")}</td>
+                            <td>
+                                <button class="ghost-button" type="button" data-hmrc648-select="${escapeHTML(rowId)}">Open</button>
+                            </td>
+                        </tr>`;
+                    }).join("")
+                    : `<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No requests</p><h4>Create your first HMRC 64-8 request</h4><p>Use the create form to initiate authority letters for SA, PAYE, and CT.</p></div></td></tr>`;
+                const activeRequest = hmrc648CurrentRequest();
+                if (activeRequest) hmrc648PopulateDetail(activeRequest);
+                else hmrc648ResetDetailForm();
+            }
+
+            async function loadHmrc648Requests(force = false) {
+                if (hmrc648Loading && !force) return;
+                hmrc648Loading = true;
+                if (activeView === "hmrc-64-8s") renderHmrc648Screen();
+                try {
+                    const payload = await requestJSON(api.endpoints.hmrc648);
+                    hmrc648State.requests = Array.isArray(payload?.requests) ? payload.requests : [];
+                    hmrc648State.summary = payload?.summary || { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 };
+                    if (!hmrc648CurrentRequest() && hmrc648State.requests.length) {
+                        hmrc648SelectedRequestId = String(hmrc648State.requests[0].id || "");
+                    }
+                } catch (error) {
+                    console.error("Unable to load HMRC 64-8 requests", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else if (activeView === "hmrc-64-8s") showToast(error?.message || "Unable to load HMRC 64-8 requests", "error");
+                } finally {
+                    hmrc648Loading = false;
+                    if (activeView === "hmrc-64-8s") renderHmrc648Screen();
+                }
+            }
+
+            async function submitHmrc648Create(event) {
+                event.preventDefault();
+                const body = {
+                    clientId: document.getElementById("hmrc648CreateClient")?.value || "",
+                    clientName: document.getElementById("hmrc648CreateClientName")?.value || "",
+                    clientContactName: document.getElementById("hmrc648CreateContactName")?.value || "",
+                    clientContactEmail: document.getElementById("hmrc648CreateContactEmail")?.value || "",
+                    clientContactPhone: document.getElementById("hmrc648CreateContactPhone")?.value || "",
+                    companyNumber: document.getElementById("hmrc648CreateCompanyNumber")?.value || "",
+                    saUtr: document.getElementById("hmrc648CreateSaUtr")?.value || "",
+                    ctUtr: document.getElementById("hmrc648CreateCtUtr")?.value || "",
+                    payeReference: document.getElementById("hmrc648CreatePayeRef")?.value || "",
+                    postalAddress: document.getElementById("hmrc648CreatePostalAddress")?.value || "",
+                    notes: document.getElementById("hmrc648CreateNotes")?.value || "",
+                    submissionChannel: document.getElementById("hmrc648CreateChannel")?.value || "online",
+                    includeSa: !!document.getElementById("hmrc648CreateIncludeSa")?.checked,
+                    includePaye: !!document.getElementById("hmrc648CreateIncludePaye")?.checked,
+                    includeCt: !!document.getElementById("hmrc648CreateIncludeCt")?.checked,
+                };
+                hmrc648SetCreateStatus("Creating request…", "muted");
+                try {
+                    const payload = await requestJSON(api.endpoints.hmrc648Requests, { method: "POST", body: JSON.stringify(body) });
+                    hmrc648State.requests = Array.isArray(payload?.requests) ? payload.requests : hmrc648State.requests;
+                    hmrc648State.summary = payload?.summary || hmrc648State.summary;
+                    hmrc648SelectedRequestId = String(payload?.request?.id || hmrc648SelectedRequestId || "");
+                    document.getElementById("hmrc648CreateForm")?.reset();
+                    document.getElementById("hmrc648CreateIncludeSa").checked = true;
+                    hmrc648SetCreateStatus("Request created.", "success");
+                    showToast("HMRC 64-8 request created", "success");
+                    renderHmrc648Screen();
+                } catch (error) {
+                    console.error("Unable to create HMRC 64-8 request", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    hmrc648SetCreateStatus(error?.message || "Unable to create request.", "error");
+                    showToast(error?.message || "Unable to create HMRC 64-8 request", "error");
+                }
+            }
+
+            async function submitHmrc648Detail(event) {
+                event.preventDefault();
+                const requestId = String(document.getElementById("hmrc648DetailId")?.value || "");
+                if (!requestId) {
+                    hmrc648SetDetailStatus("Select a request first.", "error");
+                    return;
+                }
+                const body = {
+                    clientName: document.getElementById("hmrc648DetailClientName")?.value || "",
+                    status: document.getElementById("hmrc648DetailStatus")?.value || "draft",
+                    hmrcSubmissionReference: document.getElementById("hmrc648DetailSubmissionRef")?.value || "",
+                    submittedAt: localDatetimeInputToISOString(document.getElementById("hmrc648DetailSubmittedAt")?.value),
+                    expectedCodeBy: document.getElementById("hmrc648DetailExpectedBy")?.value || "",
+                    authorityCode: document.getElementById("hmrc648DetailAuthorityCode")?.value || "",
+                    notes: document.getElementById("hmrc648DetailNotes")?.value || "",
+                };
+                hmrc648SetDetailStatus("Saving changes…", "muted");
+                try {
+                    const payload = await requestJSON(api.endpoints.hmrc648Request, { method: "POST", body: JSON.stringify(body) }, { requestId });
+                    hmrc648State.requests = Array.isArray(payload?.requests) ? payload.requests : hmrc648State.requests;
+                    hmrc648State.summary = payload?.summary || hmrc648State.summary;
+                    hmrc648SetDetailStatus("Saved.", "success");
+                    showToast("HMRC 64-8 request saved", "success");
+                    renderHmrc648Screen();
+                } catch (error) {
+                    console.error("Unable to save HMRC 64-8 request", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    hmrc648SetDetailStatus(error?.message || "Unable to save request.", "error");
+                    showToast(error?.message || "Unable to save HMRC 64-8 request", "error");
+                }
+            }
+
+            async function markHmrc648Submitted() {
+                const requestId = String(document.getElementById("hmrc648DetailId")?.value || "");
+                if (!requestId) {
+                    hmrc648SetDetailStatus("Select a request first.", "error");
+                    return;
+                }
+                const body = {
+                    hmrcSubmissionReference: document.getElementById("hmrc648DetailSubmissionRef")?.value || "",
+                    submittedAt: localDatetimeInputToISOString(document.getElementById("hmrc648DetailSubmittedAt")?.value) || new Date().toISOString(),
+                    expectedCodeBy: document.getElementById("hmrc648DetailExpectedBy")?.value || "",
+                    notes: document.getElementById("hmrc648DetailNotes")?.value || "",
+                };
+                hmrc648SetDetailStatus("Marking as submitted…", "muted");
+                try {
+                    const payload = await requestJSON(api.endpoints.hmrc648Submit, { method: "POST", body: JSON.stringify(body) }, { requestId });
+                    hmrc648State.requests = Array.isArray(payload?.requests) ? payload.requests : hmrc648State.requests;
+                    hmrc648State.summary = payload?.summary || hmrc648State.summary;
+                    hmrc648SetDetailStatus("Submission status updated.", "success");
+                    showToast("Request marked as submitted to HMRC", "success");
+                    renderHmrc648Screen();
+                } catch (error) {
+                    console.error("Unable to mark HMRC 64-8 as submitted", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    hmrc648SetDetailStatus(error?.message || "Unable to mark submitted.", "error");
+                    showToast(error?.message || "Unable to mark as submitted", "error");
+                }
+            }
+
+            async function captureHmrc648Code() {
+                const requestId = String(document.getElementById("hmrc648DetailId")?.value || "");
+                if (!requestId) {
+                    hmrc648SetDetailStatus("Select a request first.", "error");
+                    return;
+                }
+                const authorityCode = String(document.getElementById("hmrc648DetailAuthorityCode")?.value || "").trim();
+                if (!authorityCode) {
+                    hmrc648SetDetailStatus("Enter the client authority code first.", "error");
+                    return;
+                }
+                const activateNow = window.confirm("Mark this 64-8 as authorised now? Choose Cancel to save code as received only.");
+                hmrc648SetDetailStatus("Capturing code…", "muted");
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.hmrc648CaptureCode,
+                        { method: "POST", body: JSON.stringify({ authorityCode, activateNow, notes: document.getElementById("hmrc648DetailNotes")?.value || "" }) },
+                        { requestId }
+                    );
+                    hmrc648State.requests = Array.isArray(payload?.requests) ? payload.requests : hmrc648State.requests;
+                    hmrc648State.summary = payload?.summary || hmrc648State.summary;
+                    hmrc648SetDetailStatus(activateNow ? "Code captured and request marked authorised." : "Code captured.", "success");
+                    showToast(activateNow ? "Authority code captured and marked authorised" : "Authority code captured", "success");
+                    renderHmrc648Screen();
+                } catch (error) {
+                    console.error("Unable to capture HMRC 64-8 code", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    hmrc648SetDetailStatus(error?.message || "Unable to capture code.", "error");
+                    showToast(error?.message || "Unable to capture authority code", "error");
+                }
+            }
+
+            function wireHmrc648UI() {
+                document.getElementById("hmrc648RefreshButton")?.addEventListener("click", () => loadHmrc648Requests(true));
+                document.getElementById("hmrc648CreateForm")?.addEventListener("submit", submitHmrc648Create);
+                document.getElementById("hmrc648CreateClient")?.addEventListener("change", hmrc648ApplyClientPreset);
+                document.getElementById("hmrc648DetailForm")?.addEventListener("submit", submitHmrc648Detail);
+                document.getElementById("hmrc648SubmitActionButton")?.addEventListener("click", markHmrc648Submitted);
+                document.getElementById("hmrc648CaptureCodeButton")?.addEventListener("click", captureHmrc648Code);
+                document.getElementById("hmrc648QueueBody")?.addEventListener("click", (event) => {
+                    const button = event.target.closest?.("[data-hmrc648-select]");
+                    const row = event.target.closest?.("[data-hmrc648-row-id]");
+                    const requestId = String(button?.dataset.hmrc648Select || row?.dataset.hmrc648RowId || "");
+                    if (!requestId) return;
+                    hmrc648SelectedRequestId = requestId;
+                    renderHmrc648Screen();
+                });
             }
 
             function renderAmlVerificationScreen() {
@@ -24994,6 +25647,7 @@
                 if (xeroLockDateLoading && !force) return;
                 xeroLockDateLoading = true;
                 if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 try {
                     const endpoint = `${api.endpoints.xeroLockDates}${force ? "?force=1" : ""}`;
                     const payload = await requestJSON(endpoint);
@@ -25004,12 +25658,15 @@
                         meta: payload?.meta || {}
                     };
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 } catch (error) {
                     console.error("Unable to load Xero lock-date overview", error);
                     if (activeView === "xero-lock-date") showToast(error.message || "Unable to load lock-date overview", "error");
+                    if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") showToast(error.message || "Unable to load lock-date overview", "error");
                 } finally {
                     xeroLockDateLoading = false;
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 }
             }
 
@@ -25035,6 +25692,111 @@
                 }
             }
 
+            async function populateMissingXeroLockDateMappings(button) {
+                button?.setAttribute("disabled", "disabled");
+                try {
+                    const payload = await requestJSON(api.endpoints.xeroLockPopulateMappings, {
+                        method: "POST",
+                        body: JSON.stringify({}),
+                    });
+                    const summary = payload?.summary || {};
+                    await loadXeroLockDateOverview(true);
+                    const populated = Number(summary.populatedCount || 0);
+                    const skipped = Number(summary.skippedCount || 0);
+                    const failed = Number(summary.failedCount || 0);
+                    showToast(
+                        `Populate complete: ${populated} mapped, ${skipped} skipped${failed ? `, ${failed} failed` : ""}.`,
+                        failed ? "info" : "success"
+                    );
+                } catch (error) {
+                    showToast(error.message || "Unable to populate company numbers", "error");
+                } finally {
+                    button?.removeAttribute("disabled");
+                }
+            }
+
+            function closeXeroLockMismatchModal() {
+                const modal = document.getElementById("xeroLockMismatchModal");
+                if (modal) modal.hidden = true;
+            }
+
+            function renderXeroLockMismatchModal() {
+                const summary = document.getElementById("xeroLockMismatchSummary");
+                const body = document.getElementById("xeroLockMismatchTableBody");
+                if (!summary || !body) return;
+                const rows = Array.isArray(xeroLockMismatchData.rows) ? xeroLockMismatchData.rows : [];
+                if (xeroLockMismatchLoading) {
+                    summary.textContent = "Checking lock mismatches…";
+                } else {
+                    const generatedAt = xeroLockMismatchData.generatedAt
+                        ? new Date(xeroLockMismatchData.generatedAt).toLocaleString("en-GB")
+                        : "now";
+                    summary.textContent = rows.length
+                        ? `${rows.length.toLocaleString("en-GB")} mismatch${rows.length === 1 ? "" : "es"} found. Generated: ${generatedAt}.`
+                        : `No lock mismatches found. Generated: ${generatedAt}.`;
+                }
+                body.innerHTML = rows.length
+                    ? rows.map((row) => `
+                        <tr>
+                            <td>${escapeHTML(row?.tenantName || "")}</td>
+                            <td>${escapeHTML(row?.companyName || row?.clientName || "")}</td>
+                            <td>${escapeHTML(row?.companyNumber || "")}</td>
+                            <td>${escapeHTML(row?.xeroLockDate ? formatDate(row.xeroLockDate) : "Not set")}</td>
+                            <td>${escapeHTML(row?.accountsFiledDate ? formatDate(row.accountsFiledDate) : "Unknown")}</td>
+                            <td>${escapeHTML(row?.reason || "")}</td>
+                        </tr>
+                    `).join("")
+                    : '<tr><td colspan="6"><div class="ch-empty-state">No mismatches to review.</div></td></tr>';
+            }
+
+            async function identifyXeroLockMismatches(force = true) {
+                const modal = document.getElementById("xeroLockMismatchModal");
+                if (modal) modal.hidden = false;
+                xeroLockMismatchLoading = true;
+                renderXeroLockMismatchModal();
+                try {
+                    const endpoint = `${api.endpoints.xeroLockMismatches}${force ? "?force=1" : ""}`;
+                    const payload = await requestJSON(endpoint);
+                    xeroLockMismatchData = {
+                        generatedAt: String(payload?.generatedAt || ""),
+                        rows: Array.isArray(payload?.rows) ? payload.rows : [],
+                        summary: payload?.summary || {},
+                    };
+                    renderXeroLockMismatchModal();
+                } catch (error) {
+                    showToast(error.message || "Unable to identify lock mismatches", "error");
+                    xeroLockMismatchData = { generatedAt: "", rows: [], summary: {} };
+                    renderXeroLockMismatchModal();
+                } finally {
+                    xeroLockMismatchLoading = false;
+                    renderXeroLockMismatchModal();
+                }
+            }
+
+            async function downloadXeroLockMismatchPdf() {
+                try {
+                    const response = await fetch(`${api.baseUrl}${api.endpoints.xeroLockMismatchesPdf}?force=1`, {
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() },
+                    });
+                    if (!response.ok) {
+                        const message = `Unable to download PDF (${response.status})`;
+                        throw new Error(message);
+                    }
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const anchor = document.createElement("a");
+                    anchor.href = url;
+                    anchor.download = "xero-lock-date-mismatches.pdf";
+                    document.body.appendChild(anchor);
+                    anchor.click();
+                    anchor.remove();
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    showToast(error.message || "Unable to download mismatch PDF", "error");
+                }
+            }
+
             async function loadXeroLockDateCHHealth(force = false) {
                 if (xeroLockDateCHHealth.loading) return;
                 const checkedAtMs = xeroLockDateCHHealth.checkedAt ? Date.parse(xeroLockDateCHHealth.checkedAt) : 0;
@@ -25043,6 +25805,7 @@
                 xeroLockDateCHHealth.loading = true;
                 xeroLockDateCHHealth.message = "Checking Companies House API connection…";
                 if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 try {
                     const payload = await requestJSON("/api/companies-house/settings/test-connection", {
                         method: "POST",
@@ -25069,6 +25832,7 @@
                 } finally {
                     xeroLockDateCHHealth.loading = false;
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 }
             }
 
@@ -25146,6 +25910,83 @@
                     button.addEventListener("click", () => {
                         const tenantId = button.dataset.xeroLockMapSave || "";
                         const input = body.querySelector(`[data-xero-lock-map-company-number="${CSS.escape(tenantId)}"]`);
+                        saveXeroLockDateMapping(tenantId, input?.value || "", button);
+                    });
+                });
+            }
+
+            function renderSettingsLockDateMapping() {
+                const summary = document.getElementById("settingsLockDateMappingsSummary");
+                const health = document.getElementById("settingsLockDateMappingsHealth");
+                const body = document.getElementById("settingsLockDateMappingsTableBody");
+                if (!summary || !health || !body) return;
+                if (xeroLockDateLoading) {
+                    summary.textContent = "Loading tenant lock-date mappings…";
+                } else {
+                    const rows = xeroLockDateOverview.rows || [];
+                    const mapped = rows.filter((row) => String(row?.mapping?.companyNumber || "").trim()).length;
+                    const unmapped = rows.filter((row) => row?.flags?.mappingMissing).length;
+                    summary.textContent = rows.length
+                        ? `${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} loaded · ${mapped.toLocaleString("en-GB")} mapped · ${unmapped.toLocaleString("en-GB")} unmapped.`
+                        : "No Xero tenants are connected yet.";
+                }
+                const checkedAtLabel = xeroLockDateCHHealth.checkedAt
+                    ? new Date(xeroLockDateCHHealth.checkedAt).toLocaleString("en-GB")
+                    : "Not checked yet";
+                health.textContent = `${xeroLockDateCHHealth.message || "Companies House API status not checked yet."} Last checked: ${checkedAtLabel}.`;
+
+                const rows = xeroLockDateOverview.rows || [];
+                body.innerHTML = rows.length
+                    ? rows.map((row) => {
+                        const tenantId = String(row?.tenantId || "");
+                        const mapping = row?.mapping || {};
+                        const companiesHouse = row?.companiesHouse || {};
+                        const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
+                        const mappingMissing = Boolean(row?.flags?.mappingMissing);
+                        const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
+                        const yearEndLock = row?.endOfYearLockDate ? formatDate(row.endOfYearLockDate) : "Not set";
+                        const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
+                        const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
+                        return `
+                            <tr>
+                                <td>
+                                    <strong>${escapeHTML(row?.tenantName || "Xero organisation")}</strong>
+                                    <small>${escapeHTML(tenantId)}</small>
+                                </td>
+                                <td>${escapeHTML(periodLock)}</td>
+                                <td>${escapeHTML(yearEndLock)}</td>
+                                <td>
+                                    <strong>${escapeHTML(filedDate)}</strong>
+                                    <small>${escapeHTML(chLabel || "No mapped company details")}</small>
+                                </td>
+                                <td>
+                                    <input
+                                        class="xero-lock-date-mapping-input"
+                                        type="text"
+                                        value="${escapeHTML(mapping?.companyNumber || "")}"
+                                        data-settings-lock-map-company-number="${escapeHTML(tenantId)}"
+                                        placeholder="Company no."
+                                    >
+                                    <button class="ghost-button" type="button" data-settings-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                </td>
+                                <td class="xero-lock-date-flag-cell">
+                                    ${isFlagged
+                                        ? '<span class="ch-pill is-bad">Accounts filed but period not locked</span>'
+                                        : mappingMissing
+                                            ? '<span class="ch-pill is-warn">Mapping required</span>'
+                                            : '<span class="ch-pill is-good">Mapping saved</span>'}
+                                    ${row?.xeroError ? `<small>${escapeHTML(row.xeroError)}</small>` : ""}
+                                </td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : '<tr><td colspan="6"><div class="ch-empty-state">Connect Xero tenants to configure saved mappings.</div></td></tr>';
+                body.querySelectorAll("[data-settings-lock-map-save]").forEach((button) => {
+                    if (button.dataset.settingsLockMapWired === "true") return;
+                    button.dataset.settingsLockMapWired = "true";
+                    button.addEventListener("click", () => {
+                        const tenantId = button.dataset.settingsLockMapSave || "";
+                        const input = body.querySelector(`[data-settings-lock-map-company-number="${CSS.escape(tenantId)}"]`);
                         saveXeroLockDateMapping(tenantId, input?.value || "", button);
                     });
                 });
@@ -39259,7 +40100,7 @@
                 brand.classList.toggle("is-support-live", state?.tone === "live");
                 brand.classList.toggle("is-history-open", Boolean(state && sidebarSupportHistoryOpen && sidebarSupportHistory.length));
                 bubble.hidden = !state;
-                brand.setAttribute("aria-label", state ? `${state.title}. ${state.detail}` : "Open notifications");
+                brand.setAttribute("aria-label", state ? `${state.title}. ${state.detail}` : "Background processing status");
                 brand.title = state ? `${state.title} - ${state.detail}` : "";
                 if (!state) {
                     sidebarSupportHistoryOpen = false;
@@ -39286,21 +40127,8 @@
                                 : "Active";
                 }
                 if (history) {
-                    const rows = sidebarSupportHistory;
-                    history.hidden = rows.length === 0;
-                    history.innerHTML = rows.length
-                        ? `<div class="sidebar-support-history-head">
-                            <strong>${rows.length.toLocaleString("en-GB")} recent notification${rows.length === 1 ? "" : "s"}</strong>
-                            <button class="sidebar-support-clear-all" id="sidebarSupportClearAll" type="button">Clear all</button>
-                        </div>${rows.map((item, index) => `
-                        <article class="sidebar-support-history-item">
-                            <span>${escapeHTML(item.kicker || "Update")} · ${escapeHTML(formatActivityTime(item.at))}</span>
-                            <strong>${escapeHTML(item.title || "Jenius update")}</strong>
-                            <small>${escapeHTML(item.meta || item.detail || "Working")}</small>
-                            <button class="sidebar-support-clear-item" type="button" data-sidebar-support-clear-index="${index}">Clear</button>
-                        </article>
-                    `).join("")}`
-                        : "";
+                    history.hidden = true;
+                    history.innerHTML = "";
                 }
                 if (progressFill) progressFill.style.width = `${supportBubblePercent(state.progress, 42)}%`;
             }
@@ -43682,6 +44510,11 @@
                     title: "Mapping Changes / COA",
                     meta: "Review posting defaults and chart-of-account assumptions."
                 },
+                "lock-date-mapping": {
+                    eyebrow: "Lock-date mapping",
+                    title: "Xero Lock-Date Mapping",
+                    meta: "Map each connected Xero tenant to a Companies House company number and keep it saved."
+                },
                 outbox: {
                     eyebrow: "Xero outbox",
                     title: "Xero Outbox / Pending",
@@ -43746,6 +44579,7 @@
                     button.classList.toggle("is-active", button.dataset.settingsNav === activeSettingsSection);
                 });
                 document.getElementById("factoryOpenResetPageButton")?.classList.toggle("is-active", activeSettingsSection === "factory-reset");
+                if (activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
             }
 
             function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
@@ -43759,6 +44593,10 @@
                 loadPendingXeroActions();
                 loadDeveloperLog();
                 if (activeSettingsSection === "mapping") loadXeroPostingSettings();
+                if (activeSettingsSection === "lock-date-mapping") {
+                    loadXeroLockDateOverview();
+                    loadXeroLockDateCHHealth();
+                }
                 if (activeSettingsSection === "ignition-connection") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
                 document.getElementById("menuSettingsButton")?.blur();
@@ -44392,6 +45230,14 @@
                 if (refreshXeroLockDateButton && refreshXeroLockDateButton.dataset.lockDateWired !== "true") {
                     refreshXeroLockDateButton.dataset.lockDateWired = "true";
                     refreshXeroLockDateButton.addEventListener("click", () => {
+                        loadXeroLockDateOverview(true);
+                        loadXeroLockDateCHHealth(true);
+                    });
+                }
+                const settingsRefreshLockDateMappingsButton = document.getElementById("settingsRefreshLockDateMappingsButton");
+                if (settingsRefreshLockDateMappingsButton && settingsRefreshLockDateMappingsButton.dataset.lockDateWired !== "true") {
+                    settingsRefreshLockDateMappingsButton.dataset.lockDateWired = "true";
+                    settingsRefreshLockDateMappingsButton.addEventListener("click", () => {
                         loadXeroLockDateOverview(true);
                         loadXeroLockDateCHHealth(true);
                     });
@@ -46317,6 +47163,7 @@
                     wireBulkActions,
                     wireCompaniesHouseSettings,
                     wireCompanySecretarialUI,
+                    wireHmrc648UI,
                     wireCompaniesHouseUI,
                 ].forEach((wire) => {
                     try {
@@ -46343,6 +47190,9 @@
                 if (activeView === "confirmation-statements") {
                     activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                     loadCompaniesHouseSettings();
+                }
+                if (activeView === "hmrc-64-8s") {
+                    loadHmrc648Requests();
                 }
                 const activePanelSyncRun = activeSyncRunFromPanel(panelPayload);
                 if (returnedFromXeroConnection) {
