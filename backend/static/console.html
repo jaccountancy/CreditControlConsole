@@ -12383,6 +12383,24 @@
                 color: #b43a3a;
                 outline: none;
             }
+            .operation-review-table input[type="text"],
+            .operation-review-table input[type="datetime-local"],
+            .operation-review-table select {
+                width: 100%;
+                font: inherit;
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: var(--ink);
+                background: #fff;
+                border: 1px solid var(--line);
+                border-radius: 9px;
+                padding: 7px 9px;
+            }
+            .operation-review-muted {
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 700;
+            }
             .operation-review-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -17066,7 +17084,7 @@
                                     </div>
                                     <div class="ch-settings-actions">
                                         <button class="ghost-button" type="button" id="chWorkflowSelectEligibleButton">Select all eligible</button>
-                                        <button class="primary-button" type="button" id="chWorkflowSubmitSelectedButton">Submit selected</button>
+                                        <button class="primary-button" type="button" id="chWorkflowSubmitSelectedButton">Review & submit selected</button>
                                         <button class="primary-button" type="button" id="chWorkflowInvoiceSelectedButton">Raise invoices</button>
                                         <span class="ch-settings-status is-muted" id="chWorkflowStatus">Select clients to start the workflow.</span>
                                     </div>
@@ -48242,6 +48260,13 @@
                 inactive: "Inactive",
             };
 
+            const CH_FILING_AUTHORITY_LABELS = {
+                pending: "Pending",
+                authorised: "Authorised",
+                expired: "Expired",
+                revoked: "Revoked",
+            };
+
             function chFormatDate(value) {
                 if (!value) return "—";
                 try { return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); } catch { return value; }
@@ -48577,7 +48602,7 @@
                 if (eligibleCount) eligibleCount.textContent = `${eligibleTotal.toLocaleString("en-GB")} eligible`;
                 if (readySubmitCount) readySubmitCount.textContent = `${selectedEligibleForSubmission.toLocaleString("en-GB")} ready`;
                 if (readyInvoiceCount) readyInvoiceCount.textContent = `${selectedEligibleForInvoicing.toLocaleString("en-GB")} ready`;
-                if (submitButton) submitButton.disabled = companiesHouseState.workflowBusy || selectedEligibleForSubmission === 0;
+                if (submitButton) submitButton.disabled = companiesHouseState.workflowBusy || selectedCount === 0;
                 if (invoiceButton) invoiceButton.disabled = companiesHouseState.workflowBusy || selectedEligibleForInvoicing === 0;
                 if (selectEligibleButton) selectEligibleButton.disabled = companiesHouseState.workflowBusy;
                 if (!selectedCount) {
@@ -48720,23 +48745,235 @@
                 selectEligibleCompaniesForWorkflow();
             }
 
+            function chBuildSubmissionPreflightSummary(selectedCompanies = []) {
+                const rows = [];
+                const changeRequired = [];
+                const warningOnly = [];
+                const submitCandidates = [];
+                selectedCompanies.forEach((company) => {
+                    const reasons = chSubmissionIneligibilityReasons(company);
+                    const filedRecently = chFiledWithinLast12Months(company.lastFiledDate);
+                    const warningMessages = [];
+                    if (filedRecently) {
+                        warningMessages.push(`Filed in last 12 months (${chFormatDate(company.lastFiledDate)})`);
+                    }
+                    const requiresChanges = reasons.length > 0;
+                    const readiness = requiresChanges ? "Needs changes" : warningMessages.length ? "Ready (warning)" : "Ready";
+                    const allMessages = [...reasons, ...warningMessages];
+                    rows.push({
+                        companyId: String(company.id || ""),
+                        companyName: String(company.companyName || "—"),
+                        companyNumber: String(company.companyNumber || "—"),
+                        readiness,
+                        details: allMessages.length ? allMessages.join(" | ") : "No changes required. Ready to process.",
+                    });
+                    if (requiresChanges) {
+                        changeRequired.push(company);
+                    } else {
+                        submitCandidates.push(company);
+                        if (warningMessages.length) warningOnly.push(company);
+                    }
+                });
+                return { rows, changeRequired, warningOnly, submitCandidates };
+            }
+
+            async function chShowWorkflowChangesDialog(companies = []) {
+                const rows = companies.map((company) => ({
+                    companyId: String(company.id || ""),
+                    companyName: String(company.companyName || "—"),
+                    companyNumber: String(company.companyNumber || "—"),
+                    issues: chSubmissionIneligibilityReasons(company),
+                    filingAuthorityStatus: String(company.filingAuthorityStatus || "pending"),
+                    filingAuthorityReference: String(company.filingAuthorityReference || ""),
+                    filingAuthorityReceivedAt: isoToLocalDatetimeInput(company.filingAuthorityReceivedAt),
+                    filingAuthorityExpiresAt: isoToLocalDatetimeInput(company.filingAuthorityExpiresAt),
+                }));
+                const rowById = new Map(rows.map((row) => [row.companyId, row]));
+                const reviewResult = await showOperationReviewDialog({
+                    eyebrow: "Confirmation statements",
+                    title: "Full review for clients needing changes",
+                    subtitle: "Update required fields in one place, save, then re-run submission.",
+                    confirmLabel: "Save changes",
+                    cancelLabel: "Back",
+                    summaryChips: [
+                        `${rows.length.toLocaleString("en-GB")} need changes`,
+                        "Bulk-edit authority details",
+                    ],
+                    columns: [{ key: "companyName", label: "Company" }],
+                    rows: [{ companyName: "Loading..." }],
+                    onRender: ({ body }) => {
+                        const options = Object.entries(CH_FILING_AUTHORITY_LABELS)
+                            .map(([value, label]) => `<option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`)
+                            .join("");
+                        body.innerHTML = `
+                            <div class="operation-review-table-wrap">
+                                <table class="operation-review-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Company</th>
+                                            <th>Issues found</th>
+                                            <th>Filing authority</th>
+                                            <th>Reference</th>
+                                            <th>Received at</th>
+                                            <th>Expires at</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${rows.map((row) => `
+                                            <tr data-ch-review-company-id="${escapeHTML(row.companyId)}">
+                                                <td>
+                                                    <strong>${escapeHTML(row.companyName)}</strong><br>
+                                                    <small class="operation-review-muted">${escapeHTML(row.companyNumber)}</small>
+                                                </td>
+                                                <td>${escapeHTML(row.issues.join(" | "))}</td>
+                                                <td>
+                                                    <select data-ch-review-field="filingAuthorityStatus">
+                                                        ${options}
+                                                    </select>
+                                                </td>
+                                                <td><input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Authority reference"></td>
+                                                <td><input type="datetime-local" data-ch-review-field="filingAuthorityReceivedAt" value="${escapeHTML(row.filingAuthorityReceivedAt)}"></td>
+                                                <td><input type="datetime-local" data-ch-review-field="filingAuthorityExpiresAt" value="${escapeHTML(row.filingAuthorityExpiresAt)}"></td>
+                                            </tr>
+                                        `).join("")}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                        body.querySelectorAll("tr[data-ch-review-company-id]").forEach((tr) => {
+                            const companyId = String(tr.getAttribute("data-ch-review-company-id") || "");
+                            const row = rowById.get(companyId);
+                            const statusSelect = tr.querySelector('[data-ch-review-field="filingAuthorityStatus"]');
+                            if (statusSelect && row) statusSelect.value = row.filingAuthorityStatus;
+                        });
+                    },
+                    resultProvider: () => {
+                        const updates = [];
+                        const rowNodes = document.querySelectorAll("#operationReviewBody tr[data-ch-review-company-id]");
+                        rowNodes.forEach((tr) => {
+                            const companyId = String(tr.getAttribute("data-ch-review-company-id") || "");
+                            const original = rowById.get(companyId);
+                            if (!original) return;
+                            const nextStatus = String(tr.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
+                            const nextReference = String(tr.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
+                            const nextReceived = localDatetimeInputToISOString(String(tr.querySelector('[data-ch-review-field="filingAuthorityReceivedAt"]')?.value || ""));
+                            const nextExpires = localDatetimeInputToISOString(String(tr.querySelector('[data-ch-review-field="filingAuthorityExpiresAt"]')?.value || ""));
+                            const originalReceived = localDatetimeInputToISOString(original.filingAuthorityReceivedAt);
+                            const originalExpires = localDatetimeInputToISOString(original.filingAuthorityExpiresAt);
+                            const changed = (
+                                nextStatus !== original.filingAuthorityStatus
+                                || nextReference !== original.filingAuthorityReference
+                                || nextReceived !== originalReceived
+                                || nextExpires !== originalExpires
+                            );
+                            if (!changed) return;
+                            updates.push({
+                                companyId,
+                                body: {
+                                    filingAuthorityStatus: nextStatus,
+                                    filingAuthorityReference: nextReference,
+                                    filingAuthorityReceivedAt: nextReceived,
+                                    filingAuthorityExpiresAt: nextExpires,
+                                },
+                            });
+                        });
+                        return updates;
+                    },
+                });
+                if (!reviewResult) return false;
+                const updates = Array.isArray(reviewResult) ? reviewResult : [];
+                if (!updates.length) {
+                    showToast("No changes entered. Re-run when updates are required.", "info");
+                    return true;
+                }
+                let successCount = 0;
+                const failures = [];
+                for (const update of updates) {
+                    try {
+                        await requestJSON(`/api/companies-house/companies/${encodeURIComponent(update.companyId)}`, {
+                            method: "PATCH",
+                            body: JSON.stringify(update.body),
+                        });
+                        successCount += 1;
+                    } catch (error) {
+                        failures.push({
+                            companyId: update.companyId,
+                            reason: error?.message || "Unable to save company changes.",
+                        });
+                    }
+                }
+                if (successCount) showToast(`${successCount.toLocaleString("en-GB")} client change${successCount === 1 ? "" : "s"} saved.`, "success");
+                if (failures.length) {
+                    showToast(`${failures.length.toLocaleString("en-GB")} client change${failures.length === 1 ? "" : "s"} failed to save.`, "error");
+                    return false;
+                }
+                return true;
+            }
+
             async function submitSelectedCompaniesWorkflow() {
                 if (companiesHouseState.workflowBusy) return;
-                const selected = chSelectedCompanies().filter((company) => company.eligibleForSubmission);
-                if (!selected.length) {
-                    chSetWorkflowStatus("Select at least one eligible company (auth code and filing authority required) before submitting.", "error");
+                const initiallySelected = chSelectedCompanies();
+                if (!initiallySelected.length) {
+                    chSetWorkflowStatus("Select at least one company before running the confirmation workflow.", "error");
                     return;
                 }
-                const recentFiledCompanies = selected.filter((company) => chFiledWithinLast12Months(company.lastFiledDate));
-                if (recentFiledCompanies.length) {
-                    const listed = recentFiledCompanies
+
+                const initialPreflight = chBuildSubmissionPreflightSummary(initiallySelected);
+                const preflightConfirmed = await showOperationReviewDialog({
+                    eyebrow: "Confirmation statements",
+                    title: "Pre-submit workflow check",
+                    subtitle: "Confirm which clients are ready now and which need updates before processing.",
+                    confirmLabel: initialPreflight.changeRequired.length ? "Open full review" : "Continue to submit",
+                    cancelLabel: "Cancel",
+                    summaryChips: [
+                        `${initiallySelected.length.toLocaleString("en-GB")} selected`,
+                        `${initialPreflight.submitCandidates.length.toLocaleString("en-GB")} ready now`,
+                        `${initialPreflight.changeRequired.length.toLocaleString("en-GB")} need changes`,
+                        `${initialPreflight.warningOnly.length.toLocaleString("en-GB")} warnings`,
+                    ],
+                    columns: [
+                        { key: "companyName", label: "Company" },
+                        { key: "companyNumber", label: "Number" },
+                        { key: "readiness", label: "Readiness" },
+                        { key: "details", label: "Check details" },
+                    ],
+                    rows: initialPreflight.rows,
+                });
+                if (!preflightConfirmed) return;
+
+                if (initialPreflight.changeRequired.length) {
+                    const reviewed = await chShowWorkflowChangesDialog(initialPreflight.changeRequired);
+                    if (!reviewed) return;
+                    const selectedIds = new Set(initiallySelected.map((company) => String(company.id || "")));
+                    await loadCompaniesHouseCompanies(true);
+                    companiesHouseState.selectedCompanyIds = new Set(
+                        (companiesHouseState.companies || [])
+                            .map((company) => String(company.id || ""))
+                            .filter((companyId) => selectedIds.has(companyId))
+                    );
+                    renderCompaniesHouseCompaniesTable();
+                }
+
+                const selected = chSelectedCompanies().filter((company) => company.eligibleForSubmission);
+                if (!selected.length) {
+                    chSetWorkflowStatus("No selected clients are ready after review. Complete required changes and try again.", "error");
+                    return;
+                }
+                const finalPreflight = chBuildSubmissionPreflightSummary(selected);
+                const unresolvedChanges = finalPreflight.changeRequired.length;
+                if (unresolvedChanges) {
+                    chSetWorkflowStatus(`${unresolvedChanges.toLocaleString("en-GB")} selected client${unresolvedChanges === 1 ? "" : "s"} still need changes before submission.`, "error");
+                    return;
+                }
+                if (finalPreflight.warningOnly.length) {
+                    const listed = finalPreflight.warningOnly
                         .slice(0, 4)
                         .map((company) => `${company.companyName || company.companyNumber || "Company"} (${chFormatDate(company.lastFiledDate)})`)
                         .join("\n- ");
-                    const more = recentFiledCompanies.length > 4
-                        ? `\n- Plus ${recentFiledCompanies.length - 4} more`
+                    const more = finalPreflight.warningOnly.length > 4
+                        ? `\n- Plus ${finalPreflight.warningOnly.length - 4} more`
                         : "";
-                    const warningPrompt = `Warning: ${recentFiledCompanies.length} selected compan${recentFiledCompanies.length === 1 ? "y was" : "ies were"} filed in the last 12 months.\n\n- ${listed}${more}\n\nContinue with submission anyway?`;
+                    const warningPrompt = `Warning: ${finalPreflight.warningOnly.length} selected compan${finalPreflight.warningOnly.length === 1 ? "y was" : "ies were"} filed in the last 12 months.\n\n- ${listed}${more}\n\nContinue with submission anyway?`;
                     if (!window.confirm(warningPrompt)) return;
                 }
                 if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to Companies House?`)) return;
