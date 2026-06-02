@@ -48835,6 +48835,24 @@
                 return { rows, changeRequired, warningOnly, submitCandidates };
             }
 
+            function chBuildSubmissionFinalReviewRows(selectedCompanies = []) {
+                return selectedCompanies.map((company) => {
+                    const filedRecently = chFiledWithinLast12Months(company.lastFiledDate);
+                    const warningText = filedRecently
+                        ? `Filed in last 12 months (${chFormatDate(company.lastFiledDate)})`
+                        : "No warnings";
+                    return {
+                        companyName: String(company.companyName || "—"),
+                        companyNumber: String(company.companyNumber || "—"),
+                        madeUpToDate: company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—",
+                        dueDate: company.nextDueDate ? chFormatDate(company.nextDueDate) : "—",
+                        filingAuthority: CH_FILING_AUTHORITY_LABELS[String(company.filingAuthorityStatus || "pending").toLowerCase()] || String(company.filingAuthorityStatus || "Pending"),
+                        authCode: company.authCodeOnFile ? `On file (${company.authCodeHint || "stored"})` : "Missing",
+                        warning: warningText,
+                    };
+                });
+            }
+
             async function chShowWorkflowChangesDialog(companies = []) {
                 const rows = companies.map((company) => ({
                     companyId: String(company.id || ""),
@@ -49026,7 +49044,35 @@
                     const warningPrompt = `Warning: ${finalPreflight.warningOnly.length} selected compan${finalPreflight.warningOnly.length === 1 ? "y was" : "ies were"} filed in the last 12 months.\n\n- ${listed}${more}\n\nContinue with submission anyway?`;
                     if (!window.confirm(warningPrompt)) return;
                 }
-                if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to Companies House?`)) return;
+                const finalRows = chBuildSubmissionFinalReviewRows(selected);
+                const finalReviewConfirmed = await showOperationReviewDialog({
+                    eyebrow: "Confirmation statements",
+                    title: "Final submission review",
+                    subtitle: "Confirm the filing information below before sending to Companies House.",
+                    confirmLabel: "Submit to Companies House",
+                    cancelLabel: "Back",
+                    summaryChips: [
+                        `${selected.length.toLocaleString("en-GB")} ready to submit`,
+                        `${finalPreflight.warningOnly.length.toLocaleString("en-GB")} warning${finalPreflight.warningOnly.length === 1 ? "" : "s"}`,
+                    ],
+                    columns: [
+                        { key: "companyName", label: "Company" },
+                        { key: "companyNumber", label: "Number" },
+                        { key: "madeUpToDate", label: "Made up to" },
+                        { key: "dueDate", label: "Due date" },
+                        { key: "filingAuthority", label: "Filing authority" },
+                        { key: "authCode", label: "Authentication code" },
+                        { key: "warning", label: "Warnings" },
+                    ],
+                    rows: finalRows,
+                    onRender: ({ body }) => {
+                        const note = document.createElement("div");
+                        note.className = "operation-review-muted";
+                        note.textContent = "Only companies shown here will be submitted. Edit company details first if anything is incorrect.";
+                        body.prepend(note);
+                    },
+                });
+                if (!finalReviewConfirmed) return;
                 companiesHouseState.workflowBusy = true;
                 chUpdateWorkflowControls();
                 chSetWorkflowStatus("Submitting selected companies…", "muted");
