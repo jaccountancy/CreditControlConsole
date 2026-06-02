@@ -14888,6 +14888,7 @@
                                 </div>
                                 <div class="developer-log-actions">
                                     <button class="ghost-button" id="closeMeReportLossPanelButton" type="button">Close</button>
+                                    <button class="ghost-button" id="confirmNoTradingLossButton" type="button">Confirm no B/F losses</button>
                                     <button class="primary-button" id="saveMeReportLossButton" type="submit">Confirm changes</button>
                                 </div>
                             </div>
@@ -30860,7 +30861,7 @@
                 const clientId = summary.taxAdjustmentOverrideClientId || client.id || "";
                 return `
                     <div class="ignition-summary-grid">
-                        ${renderMeReportMetric("Register total", formatCurrency(fixedAssetTotals.registerTotal))}
+                        ${renderMeReportMetric("Fixed asset register", formatCurrency(fixedAssetTotals.registerTotal))}
                         ${renderMeReportMetric("Balance Sheet fixed assets", formatCurrency(fixedAssetTotals.balanceSheetTotal))}
                         ${renderMeReportMetric("Difference", formatCurrency(fixedAssetTotals.differenceTotal))}
                         ${renderMeReportMetric("Review count", Number(summary.capitalAllowanceReviewCount || fixedAssetRows.length || 0).toLocaleString("en-GB"))}
@@ -33286,8 +33287,8 @@
                     return {
                         kicker: "Processing",
                         title: "Building practice pack",
-                        detail: "Generating management and staff PDFs for the selected month.",
-                        meta: `${currentPracticePackMonth()} pack in progress`,
+                        detail: `Building the Jaccountancy practice packs for ${currentPracticePackPeriodLabel()}.`,
+                        meta: `${currentPracticePackPeriodLabel()} pack in progress`,
                         progress: 44
                     };
                 }
@@ -34460,6 +34461,12 @@
                 return document.getElementById("practicePackMonthSelect")?.value || new Date().toLocaleString("en-GB", { month: "long" });
             }
 
+            function currentPracticePackPeriodLabel() {
+                const month = currentPracticePackMonth();
+                if (/\b\d{4}\b/.test(month)) return month;
+                return `${month} ${new Date().getFullYear()}`;
+            }
+
             function initialisePracticePackMonth() {
                 const select = document.getElementById("practicePackMonthSelect");
                 if (!select || select.dataset.initialised === "true") return;
@@ -35091,7 +35098,7 @@
                 if (practicePackGenerating) {
                     cards[0] = {
                         label: "Generating PDFs",
-                        value: "Building pack",
+                        value: `Building ${currentPracticePackPeriodLabel()}`,
                         className: "is-practice-pack-generating",
                         loading: true
                     };
@@ -35125,7 +35132,7 @@
                 const summary = document.getElementById("practicePackSummary");
                 if (summary) {
                     if (practicePackGenerating) {
-                        summary.textContent = "Building the BM Practice Pack ZIP from the selected client and task files.";
+                        summary.textContent = `Building the Jaccountancy practice packs for ${currentPracticePackPeriodLabel()}.`;
                     } else if (practicePackResult) {
                         const unmatched = Number(practicePackResult.unmatchedTaskCount || 0);
                         const grouping = practicePackResult.grouping?.engine === "openai"
@@ -35150,7 +35157,7 @@
                             <div class="practice-pack-processing-head">
                                 <div>
                                     <span>Generating PDFs</span>
-                                    <strong>Building the BM Practice Pack ZIP</strong>
+                                    <strong>${escapeHTML(`Building the Jaccountancy practice packs for ${currentPracticePackPeriodLabel()}`)}</strong>
                                 </div>
                                 <span class="sync-inline-spinner" aria-hidden="true"></span>
                             </div>
@@ -38334,6 +38341,7 @@
                     wireSevenDayNoticeCard,
                     wireForms,
                     wireBulkActions,
+                    wireCompaniesHouseSettings,
                 ].forEach((wire) => {
                     try {
                         wire();
