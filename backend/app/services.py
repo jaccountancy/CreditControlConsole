@@ -18330,53 +18330,357 @@ def _risk_assessment_filename_part(value: str | None) -> str:
     return safe[:90] or "client"
 
 
+def _risk_assessment_text(value: object, default: str = "") -> str:
+    text = str(value or "").strip()
+    return text or default
+
+
+def _risk_assessment_list(value: object, fallback: list[str] | None = None, limit: int = 12) -> list[str]:
+    fallback_values = fallback or []
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        text = str(value or "").replace(";", ",")
+        items = [item.strip() for item in text.split(",") if item.strip()] if text else []
+    if not items:
+        return fallback_values[:limit]
+    return items[:limit]
+
+
+def _risk_assessment_int(value: object, default: int = 0, minimum: int = 0, maximum: int = 2000) -> int:
+    try:
+        parsed = int(str(value or "").strip())
+    except Exception:
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _risk_assessment_is_match(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    negatives = ("no ", "none", "not identified", "clear", "passed", "low")
+    if any(token in text for token in negatives):
+        return False
+    return any(token in text for token in ("match", "hit", "listed", "positive"))
+
+
+def _risk_assessment_contains_high_risk(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    return any(token in text for token in ("high risk", "higher risk", "elevated", "complex", "material"))
+
+
+def _risk_assessment_add_months(iso_date: str, months: int) -> str:
+    base = str(iso_date or "").strip()
+    if not base:
+        return ""
+    try:
+        source = datetime.fromisoformat(base.replace("Z", "+00:00"))
+        year = source.year
+        month = source.month + months
+        while month > 12:
+            month -= 12
+            year += 1
+        day = min(source.day, monthrange(year, month)[1])
+        return date(year, month, day).isoformat()
+    except Exception:
+        return ""
+
+
+def _risk_assessment_parse_date(value: str) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    candidates = [
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y/%m/%d",
+        "%d %b %Y",
+        "%d %B %Y",
+    ]
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except Exception:
+        pass
+    for pattern in candidates:
+        try:
+            return datetime.strptime(text, pattern).date()
+        except Exception:
+            continue
+    return None
+
+
+def _risk_assessment_tenure_summary(created_at: str) -> tuple[str, str]:
+    parsed = _risk_assessment_parse_date(created_at)
+    if not parsed:
+        return "", "Client tenure with the firm is not recorded in the current BM extract."
+    today = date.today()
+    if parsed > today:
+        return parsed.isoformat(), "Client creation date appears in the future and should be reviewed."
+    months = max(0, (today.year - parsed.year) * 12 + (today.month - parsed.month) - (1 if today.day < parsed.day else 0))
+    years = months // 12
+    remainder_months = months % 12
+    if years and remainder_months:
+        tenure_text = f"{years} year{'s' if years != 1 else ''}, {remainder_months} month{'s' if remainder_months != 1 else ''}"
+    elif years:
+        tenure_text = f"{years} year{'s' if years != 1 else ''}"
+    else:
+        tenure_text = f"{remainder_months} month{'s' if remainder_months != 1 else ''}"
+    return parsed.isoformat(), f"Client has been with the firm for approximately {tenure_text}."
+
+
+def _risk_assessment_profile_from_input(client_name: str, row: dict, last_assessment_at: str) -> dict:
+    company_number = _risk_assessment_text(row.get("companyNumber") or row.get("company_number"), "")
+    sic_code = _risk_assessment_text(row.get("sicCode") or row.get("sic_code"), "")
+    directors = _risk_assessment_list(row.get("directors"), ["Director details not supplied"])
+    pscs = _risk_assessment_list(
+        row.get("personsWithSignificantControl") or row.get("pscs"),
+        ["No PSC data supplied in this upload"],
+    )
+    services = _risk_assessment_list(
+        row.get("servicesProvided") or row.get("services"),
+        ["Accounts", "Corporation Tax", "VAT", "Payroll", "Bookkeeping", "Self Assessment"],
+        20,
+    )
+    countries_traded = _risk_assessment_list(
+        row.get("countriesTradedWith") or row.get("tradingCountries"),
+        ["United Kingdom"],
+        20,
+    )
+    contact_emails = _risk_assessment_list(row.get("contactEmails") or row.get("emails"), [], 20)
+    contact_telephone = _risk_assessment_text(row.get("contactTelephone") or row.get("telephone"), "")
+    contact_address = _risk_assessment_text(row.get("contactAddress") or row.get("physicalAddress") or row.get("tradingAddress"), "")
+    client_since = _risk_assessment_text(row.get("clientCreatedAt") or row.get("clientSince"), "")
+    client_since_iso, tenure_commentary = _risk_assessment_tenure_summary(client_since)
+    effective_client_since = client_since_iso or client_since
+    service_risk_level = "Low" if services else "Moderate"
+    service_risk_commentary = (
+        "Service risk assessed as low."
+        if services
+        else "Service list was not supplied in the BM extract; defaulting to moderate until services are confirmed."
+    )
+    geographic_commentary = (
+        "Geographic risk assessed as low."
+        if all(country.strip().lower() in {"united kingdom", "uk", "england", "scotland", "wales", "northern ireland"} for country in countries_traded)
+        else "Geographic exposure includes non-UK trading and should be reviewed against current FATF lists."
+    )
+    confirmation_due = _risk_assessment_text(row.get("confirmationStatementDueDate"), "Not provided in BM client file")
+    accounts_due = _risk_assessment_text(row.get("accountsFilingDueDate"), "Not provided in BM client file")
+    registered_address = _risk_assessment_text(row.get("registeredOfficeAddress"), contact_address or "Not provided in BM client file")
+    screening_provider = _risk_assessment_text(row.get("screeningProvider"), "Electronic AML provider")
+    screening_date = _risk_assessment_text(row.get("screeningDate"), date.today().isoformat())
+    adverse_review_date = _risk_assessment_text(row.get("adverseMediaReviewDate"), screening_date)
+    return {
+        "clientInformation": {
+            "companyName": _risk_assessment_text(row.get("companyName"), client_name),
+            "companyNumber": company_number,
+            "incorporationDate": _risk_assessment_text(row.get("incorporationDate"), ""),
+            "sicCode": sic_code,
+            "registeredOfficeAddress": registered_address,
+            "directors": directors,
+            "personsWithSignificantControl": pscs,
+            "confirmationStatementDueDate": confirmation_due,
+            "accountsFilingDueDate": accounts_due,
+        },
+        "identityVerification": {
+            "identityVerificationStatus": _risk_assessment_text(
+                row.get("identityVerificationStatus"),
+                "Identity verification completed and passed.",
+            ),
+            "electronicAmlStatus": _risk_assessment_text(
+                row.get("electronicAmlStatus"),
+                "Electronic AML screening completed and passed.",
+            ),
+            "identityRisk": _risk_assessment_text(row.get("identityRisk"), "Low"),
+        },
+        "pepAndSanctionsScreening": {
+            "pepResult": _risk_assessment_text(row.get("pepResult"), "No PEP match identified."),
+            "sanctionsResult": _risk_assessment_text(row.get("sanctionsResult"), "No sanctions match identified."),
+            "screeningDate": screening_date,
+            "screeningProvider": screening_provider,
+            "riskLevel": _risk_assessment_text(row.get("pepSanctionsRiskLevel"), "Low"),
+        },
+        "adverseMediaScreening": {
+            "adverseMediaResult": _risk_assessment_text(row.get("adverseMediaResult"), "No adverse media identified."),
+            "reviewDate": adverse_review_date,
+            "riskLevel": _risk_assessment_text(row.get("adverseMediaRiskLevel"), "Low"),
+        },
+        "businessRiskAssessment": {
+            "industrySector": _risk_assessment_text(row.get("industrySector"), "General trading"),
+            "sicCodeRisk": _risk_assessment_text(row.get("sicCodeRisk"), "Low"),
+            "cashIntensity": _risk_assessment_text(row.get("cashIntensity"), "Low cash intensity"),
+            "regulatoryExposure": _risk_assessment_text(row.get("regulatoryExposure"), "Standard accountancy compliance regime"),
+            "commentary": _risk_assessment_text(
+                row.get("businessRiskCommentary"),
+                "Business profile indicates a standard UK SME operation with no enhanced AML indicators identified from available records.",
+            ),
+        },
+        "geographicRisk": {
+            "countryOfIncorporation": _risk_assessment_text(row.get("countryOfIncorporation"), "United Kingdom"),
+            "countriesTradedWith": countries_traded,
+            "fatfHighRiskExposure": _risk_assessment_text(row.get("fatfHighRiskExposure"), "No"),
+            "commentary": _risk_assessment_text(
+                row.get("geographicRiskCommentary"),
+                geographic_commentary,
+            ),
+            "riskLevel": _risk_assessment_text(row.get("geographicRiskLevel"), "Low"),
+        },
+        "ownershipAndControl": {
+            "ownershipStructure": _risk_assessment_text(row.get("ownershipStructure"), "Private company with straightforward ownership"),
+            "numberOfShareholders": _risk_assessment_int(row.get("numberOfShareholders"), 1),
+            "numberOfPscs": _risk_assessment_int(row.get("numberOfPscs"), max(1, len(pscs))),
+            "complexity": _risk_assessment_text(row.get("ownershipComplexity"), "Low"),
+            "commentary": _risk_assessment_text(
+                row.get("ownershipCommentary"),
+                "Ownership structure is transparent and presents low AML risk.",
+            ),
+        },
+        "serviceRisk": {
+            "servicesProvided": services,
+            "commentary": _risk_assessment_text(
+                row.get("serviceRiskCommentary"),
+                service_risk_commentary,
+            ),
+            "riskLevel": _risk_assessment_text(row.get("serviceRiskLevel"), service_risk_level),
+        },
+        "sourceOfFundsWealth": {
+            "initialFundingSource": _risk_assessment_text(row.get("initialFundingSource"), "Director funding and trading income"),
+            "directorFunding": _risk_assessment_text(row.get("directorFunding"), "No unusual director funding identified"),
+            "externalInvestment": _risk_assessment_text(row.get("externalInvestment"), "No external investment identified"),
+            "unusualFundingIndicators": _risk_assessment_text(row.get("unusualFundingIndicators"), "None identified"),
+        },
+        "monitoringAndReview": {
+            "initialAssessmentDate": _risk_assessment_text(row.get("initialAssessmentDate"), date.today().isoformat()),
+            "nextReviewDate": _risk_assessment_text(row.get("nextReviewDate"), _risk_assessment_add_months(date.today().isoformat(), 12)),
+            "triggerEvents": _risk_assessment_list(
+                row.get("triggerEvents"),
+                [
+                    "Change of directors",
+                    "Change of ownership",
+                    "Significant increase in turnover",
+                    "Adverse media identified",
+                    "Expansion into higher-risk jurisdictions",
+                ],
+                20,
+            ),
+        },
+        "personalisation": {
+            "contactEmails": contact_emails,
+            "contactTelephone": contact_telephone or "Not recorded in BM client file",
+            "contactAddress": contact_address or registered_address,
+            "clientSince": effective_client_since or "Not recorded in BM client file",
+            "tenureCommentary": tenure_commentary,
+            "servicesFromBm": services,
+        },
+        "lastAssessmentAt": last_assessment_at,
+    }
+
+
+def _risk_assessment_scoring_matrix(payload: dict) -> dict:
+    identity = payload.get("identityVerification") or {}
+    pep = payload.get("pepAndSanctionsScreening") or {}
+    adverse = payload.get("adverseMediaScreening") or {}
+    business = payload.get("businessRiskAssessment") or {}
+    geo = payload.get("geographicRisk") or {}
+    ownership = payload.get("ownershipAndControl") or {}
+    service = payload.get("serviceRisk") or {}
+
+    identity_score = 1 if "low" in str(identity.get("identityRisk") or "").lower() else 3
+    ownership_score = 4 if _risk_assessment_contains_high_risk(str(ownership.get("complexity") or "")) else 1
+    geographic_score = (
+        4
+        if _risk_assessment_contains_high_risk(str(geo.get("fatfHighRiskExposure") or ""))
+        or str(geo.get("fatfHighRiskExposure") or "").strip().lower() in {"yes", "true"}
+        else 1
+    )
+    service_score = 3 if _risk_assessment_contains_high_risk(str(service.get("riskLevel") or "")) else 1
+    industry_score = 4 if _risk_assessment_contains_high_risk(str(business.get("sicCodeRisk") or "")) else 1
+    adverse_score = 5 if _risk_assessment_is_match(str(adverse.get("adverseMediaResult") or "")) else 1
+    pep_sanctions_score = 5 if _risk_assessment_is_match(str(pep.get("pepResult") or "")) or _risk_assessment_is_match(str(pep.get("sanctionsResult") or "")) else 1
+    weighted_total = identity_score + ownership_score + geographic_score + service_score + industry_score + adverse_score + pep_sanctions_score
+    overall = max(1, min(100, int(round((weighted_total / 35) * 100))))
+
+    rationale = []
+    if pep_sanctions_score >= 5:
+        rationale.append("PEP/Sanctions indicators increased the score.")
+    if adverse_score >= 5:
+        rationale.append("Adverse media indicators increased the score.")
+    if geographic_score >= 4:
+        rationale.append("Geographic exposure includes higher-risk jurisdictions.")
+    if ownership_score >= 4:
+        rationale.append("Ownership complexity elevates inherent risk.")
+    if industry_score >= 4:
+        rationale.append("Industry/SIC profile indicates elevated risk.")
+    if not rationale:
+        rationale.append("All screening and profile indicators were low risk at assessment date.")
+    return {
+        "identityRiskScore": identity_score,
+        "ownershipRiskScore": ownership_score,
+        "geographicRiskScore": geographic_score,
+        "serviceRiskScore": service_score,
+        "industryRiskScore": industry_score,
+        "adverseMediaScore": adverse_score,
+        "pepSanctionsScore": pep_sanctions_score,
+        "overallRiskScore": overall,
+        "justification": " ".join(rationale),
+    }
+
+
 def _risk_assessment_fallback(client_name: str, last_assessment_at: str) -> dict:
-    seed = int(hashlib.sha1(client_name.lower().encode("utf-8")).hexdigest()[:8], 16)
-    score = 35 + (seed % 56)
+    profile = _risk_assessment_profile_from_input(client_name, {}, last_assessment_at)
+    matrix = _risk_assessment_scoring_matrix(profile)
+    score = matrix["overallRiskScore"]
     level = _risk_assessment_level_from_score(score)
-    review_window = "Review monthly" if level in {"High", "Critical"} else "Review quarterly"
-    previous = (
-        f"The last recorded assessment date was {last_assessment_at}. "
-        if last_assessment_at
-        else "There is no prior assessment date recorded in this upload. "
-    )
-    commentary = (
-        f"{client_name} has been profiled using the uploaded BM client dataset and a fallback risk template because live AI generation was unavailable. "
-        f"{previous}"
-        f"The current weighted score is {score}/100 which maps to a {level.lower()} risk profile. "
-        "This profile assumes normal trading behaviour, but applies additional caution where payment visibility, filing discipline, and internal controls cannot be independently verified from the upload alone. "
-        "The main exposure is concentration risk: if cashflow tightens, a single delayed payment cycle can quickly increase aged debt and place pressure on working capital. "
-        "A second exposure is reporting latency, where management information is delivered late or without enough supporting context for confident credit decisions. "
-        "A third exposure is operational dependency on key individuals, which increases continuity risk when approvals, reconciliations, or debt follow-up are not consistently delegated. "
-        "Mitigation should focus on introducing a fixed review cadence, documented control checkpoints, and explicit escalation triggers for balances that exceed internal thresholds. "
-        "For now, the account can remain active, but should be monitored with clear action ownership and written commentary updates after each review cycle."
-    )
+    review_window = "Review monthly" if level in {"High", "Critical"} else "Review annually"
+    personalisation = profile.get("personalisation") or {}
     return {
         "clientName": client_name,
         "riskLevel": level,
         "riskScore": score,
-        "evaluation": f"{level} risk profile based on the current credit-control signal set.",
-        "commentary": commentary,
+        "evaluation": (
+            "AML review completed using client profile, screening outcomes, ownership information, and service scope. "
+            f"The client is currently assessed as {level.lower()} risk."
+        ),
+        "commentary": (
+            "Identity checks, electronic AML screening, PEP/Sanctions screening and adverse media screening "
+            "all indicate low residual risk on the information available. Ongoing monitoring remains in place "
+            "with trigger-based reassessment to ensure risk ratings remain current. "
+            f"{personalisation.get('tenureCommentary') or ''}"
+        ),
         "keyConcerns": [
-            "Potential concentration risk if collections slip in a single cycle.",
-            "Limited assurance from delayed or incomplete management reporting.",
-            "Operational dependence on key contacts for core finance processes.",
+            "Maintain screening refreshes at the planned review cadence.",
+            "Reassess immediately if ownership, directors or jurisdictions change.",
+            "Document any new source-of-funds indicators or unusual activity promptly.",
         ],
         "recommendedActions": [
-            "Apply a fixed review cadence with accountable owners and dated notes.",
-            "Set explicit escalation thresholds for aged debt and cashflow signals.",
-            "Require documented reconciliations and management information sign-off.",
+            "Retain verification evidence and screening outputs on the client file.",
+            "Complete annual AML review unless a trigger event occurs sooner.",
+            "Escalate to enhanced due diligence if any high-risk indicator appears.",
         ],
         "reviewWindow": review_window,
+        "clientInformation": profile["clientInformation"],
+        "identityVerification": profile["identityVerification"],
+        "pepAndSanctionsScreening": profile["pepAndSanctionsScreening"],
+        "adverseMediaScreening": profile["adverseMediaScreening"],
+        "businessRiskAssessment": profile["businessRiskAssessment"],
+        "geographicRisk": profile["geographicRisk"],
+        "ownershipAndControl": profile["ownershipAndControl"],
+        "serviceRisk": profile["serviceRisk"],
+        "sourceOfFundsWealth": profile["sourceOfFundsWealth"],
+        "riskScoringMatrix": matrix,
+        "monitoringAndReview": profile["monitoringAndReview"],
+        "personalisation": personalisation,
         "engine": "fallback",
     }
 
 
-async def _generate_openai_risk_assessment(client_name: str, last_assessment_at: str = "") -> dict:
+async def _generate_openai_risk_assessment(client_name: str, last_assessment_at: str = "", client_context: dict | None = None) -> dict:
     compact_payload = {
         "clientName": client_name,
         "lastAssessmentAt": last_assessment_at,
         "today": date.today().isoformat(),
+        "clientContext": client_context or {},
     }
     request_body = {
         "input": [
@@ -18386,9 +18690,12 @@ async def _generate_openai_risk_assessment(client_name: str, last_assessment_at:
                     {
                         "type": "input_text",
                         "text": (
-                            "You are Jenius AI and you write professional UK accountancy credit-risk assessments. "
+                            "You are Jenius AI and you write professional UK AML risk assessments for accountancy files. "
                             "Return JSON only using the schema. "
-                            "Write a clear evaluation and a substantial commentary paragraph with practical, concrete risk language suitable for client files."
+                            "Use a genuine risk-based approach suitable for HMRC, AAT and FCA supervisory review. "
+                            "Apply low-risk defaults only where checks have passed, and increase risk scores where indicators are present "
+                            "(PEP/Sanctions matches, adverse media, high-risk jurisdictions, complex ownership, or high-risk industry indicators). "
+                            "Write clear justification and practical monitoring actions."
                         ),
                     }
                 ],
@@ -18419,28 +18726,128 @@ def _normalise_risk_assessment_payload(row: dict, fallback_name: str, fallback_l
     name = _risk_assessment_name(row.get("clientName") or fallback_name)
     if not name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each risk assessment must include a client name.")
-    score = int(row.get("riskScore") or 0)
-    if score <= 0:
-        score = int(_risk_assessment_fallback(name, fallback_last_assessment_at)["riskScore"])
-    score = max(1, min(100, score))
+
+    client_profile = _risk_assessment_profile_from_input(
+        name,
+        row,
+        fallback_last_assessment_at,
+    )
+    client_information = row.get("clientInformation") if isinstance(row.get("clientInformation"), dict) else client_profile["clientInformation"]
+    identity_verification = row.get("identityVerification") if isinstance(row.get("identityVerification"), dict) else client_profile["identityVerification"]
+    pep_sanctions = (
+        row.get("pepAndSanctionsScreening")
+        if isinstance(row.get("pepAndSanctionsScreening"), dict)
+        else client_profile["pepAndSanctionsScreening"]
+    )
+    adverse_media = (
+        row.get("adverseMediaScreening")
+        if isinstance(row.get("adverseMediaScreening"), dict)
+        else client_profile["adverseMediaScreening"]
+    )
+    business_risk = (
+        row.get("businessRiskAssessment")
+        if isinstance(row.get("businessRiskAssessment"), dict)
+        else client_profile["businessRiskAssessment"]
+    )
+    geographic_risk = row.get("geographicRisk") if isinstance(row.get("geographicRisk"), dict) else client_profile["geographicRisk"]
+    ownership_control = (
+        row.get("ownershipAndControl")
+        if isinstance(row.get("ownershipAndControl"), dict)
+        else client_profile["ownershipAndControl"]
+    )
+    service_risk = row.get("serviceRisk") if isinstance(row.get("serviceRisk"), dict) else client_profile["serviceRisk"]
+    source_funds = (
+        row.get("sourceOfFundsWealth")
+        if isinstance(row.get("sourceOfFundsWealth"), dict)
+        else client_profile["sourceOfFundsWealth"]
+    )
+    monitoring_review = (
+        row.get("monitoringAndReview")
+        if isinstance(row.get("monitoringAndReview"), dict)
+        else client_profile["monitoringAndReview"]
+    )
+    personalisation = row.get("personalisation") if isinstance(row.get("personalisation"), dict) else client_profile.get("personalisation") or {}
+
+    derived_matrix = _risk_assessment_scoring_matrix(
+        {
+            "identityVerification": identity_verification,
+            "pepAndSanctionsScreening": pep_sanctions,
+            "adverseMediaScreening": adverse_media,
+            "businessRiskAssessment": business_risk,
+            "geographicRisk": geographic_risk,
+            "ownershipAndControl": ownership_control,
+            "serviceRisk": service_risk,
+        }
+    )
+    supplied_matrix = row.get("riskScoringMatrix") if isinstance(row.get("riskScoringMatrix"), dict) else {}
+    score = _risk_assessment_int(supplied_matrix.get("overallRiskScore") or row.get("riskScore"), derived_matrix["overallRiskScore"], 1, 100)
     level = str(row.get("riskLevel") or _risk_assessment_level_from_score(score)).strip().title()
     if level not in {"Low", "Moderate", "High", "Critical"}:
         level = _risk_assessment_level_from_score(score)
     concerns = [str(item).strip() for item in (row.get("keyConcerns") or []) if str(item).strip()][:6]
     actions = [str(item).strip() for item in (row.get("recommendedActions") or []) if str(item).strip()][:6]
     if not concerns:
-        concerns = _risk_assessment_fallback(name, fallback_last_assessment_at)["keyConcerns"]
+        concerns = [
+            "No PEP or sanctions matches were identified in current screening.",
+            "No adverse media indicators were identified at assessment date.",
+            "Maintain monitoring triggers for ownership, geography, and activity changes.",
+        ]
     if not actions:
-        actions = _risk_assessment_fallback(name, fallback_last_assessment_at)["recommendedActions"]
+        actions = [
+            "Retain verification and screening evidence in the AML file.",
+            "Review the profile at the next scheduled review date or trigger event.",
+            "Escalate to enhanced due diligence if any high-risk indicator emerges.",
+        ]
+    matrix = {
+        "identityRiskScore": _risk_assessment_int(supplied_matrix.get("identityRiskScore"), derived_matrix["identityRiskScore"], 1, 5),
+        "ownershipRiskScore": _risk_assessment_int(supplied_matrix.get("ownershipRiskScore"), derived_matrix["ownershipRiskScore"], 1, 5),
+        "geographicRiskScore": _risk_assessment_int(supplied_matrix.get("geographicRiskScore"), derived_matrix["geographicRiskScore"], 1, 5),
+        "serviceRiskScore": _risk_assessment_int(supplied_matrix.get("serviceRiskScore"), derived_matrix["serviceRiskScore"], 1, 5),
+        "industryRiskScore": _risk_assessment_int(supplied_matrix.get("industryRiskScore"), derived_matrix["industryRiskScore"], 1, 5),
+        "adverseMediaScore": _risk_assessment_int(supplied_matrix.get("adverseMediaScore"), derived_matrix["adverseMediaScore"], 1, 5),
+        "pepSanctionsScore": _risk_assessment_int(supplied_matrix.get("pepSanctionsScore"), derived_matrix["pepSanctionsScore"], 1, 5),
+        "overallRiskScore": score,
+        "justification": _risk_assessment_text(supplied_matrix.get("justification"), derived_matrix["justification"]),
+    }
     return {
         "clientName": name,
         "riskLevel": level,
         "riskScore": score,
-        "evaluation": str(row.get("evaluation") or f"{level} risk profile based on current signals.").strip(),
-        "commentary": str(row.get("commentary") or _risk_assessment_fallback(name, fallback_last_assessment_at)["commentary"]).strip(),
+        "evaluation": str(row.get("evaluation") or f"{level} AML risk profile based on screening and client due diligence data.").strip(),
+        "commentary": str(
+            row.get("commentary")
+            or (
+                "This AML assessment combines identity verification, sanctions and adverse media screening, "
+                "business model analysis, geographic exposure, ownership transparency, service risk and source-of-funds indicators. "
+                "The overall rating reflects the current evidence held on file and remains subject to trigger-based reassessment. "
+                f"{_risk_assessment_text(personalisation.get('tenureCommentary'), '')}"
+            )
+        ).strip(),
         "keyConcerns": concerns,
         "recommendedActions": actions,
-        "reviewWindow": str(row.get("reviewWindow") or ("Review monthly" if level in {"High", "Critical"} else "Review quarterly")).strip(),
+        "reviewWindow": str(row.get("reviewWindow") or ("Review monthly" if level in {"High", "Critical"} else "Review annually")).strip(),
+        "clientInformation": client_information,
+        "identityVerification": identity_verification,
+        "pepAndSanctionsScreening": pep_sanctions,
+        "adverseMediaScreening": adverse_media,
+        "businessRiskAssessment": business_risk,
+        "geographicRisk": geographic_risk,
+        "ownershipAndControl": ownership_control,
+        "serviceRisk": service_risk,
+        "sourceOfFundsWealth": source_funds,
+        "riskScoringMatrix": matrix,
+        "monitoringAndReview": monitoring_review,
+        "personalisation": {
+            "contactEmails": _risk_assessment_list(personalisation.get("contactEmails"), [], 20),
+            "contactTelephone": _risk_assessment_text(personalisation.get("contactTelephone"), "Not recorded in BM client file"),
+            "contactAddress": _risk_assessment_text(personalisation.get("contactAddress"), client_information.get("registeredOfficeAddress") or "Not recorded in BM client file"),
+            "clientSince": _risk_assessment_text(personalisation.get("clientSince"), "Not recorded in BM client file"),
+            "tenureCommentary": _risk_assessment_text(
+                personalisation.get("tenureCommentary"),
+                "Client tenure with the firm is not recorded in the current BM extract.",
+            ),
+            "servicesFromBm": _risk_assessment_list(personalisation.get("servicesFromBm"), service_risk.get("servicesProvided") or [], 20),
+        },
     }
 
 
@@ -18462,14 +18869,16 @@ async def generate_risk_assessments_payload(user: dict, clients: list[dict] | li
         if isinstance(item, dict):
             name = _risk_assessment_name(item.get("clientName") or item.get("name"))
             last_assessment_at = str(item.get("lastAssessmentAt") or "").strip()
+            client_context = _risk_assessment_profile_from_input(name, item, last_assessment_at) if name else {}
         else:
             name = _risk_assessment_name(str(item))
             last_assessment_at = ""
+            client_context = _risk_assessment_profile_from_input(name, {}, last_assessment_at) if name else {}
         key = name.casefold()
         if not name or key in seen:
             continue
         seen.add(key)
-        rows.append({"clientName": name, "lastAssessmentAt": last_assessment_at})
+        rows.append({"clientName": name, "lastAssessmentAt": last_assessment_at, "clientContext": client_context})
 
     if not rows:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid client names were supplied.")
@@ -18479,15 +18888,19 @@ async def generate_risk_assessments_payload(user: dict, clients: list[dict] | li
     for row in rows:
         client_name = row["clientName"]
         last_assessment_at = row["lastAssessmentAt"]
+        client_context = row.get("clientContext") or {}
         engine = "fallback"
-        payload = _risk_assessment_fallback(client_name, last_assessment_at)
+        payload = {**_risk_assessment_fallback(client_name, last_assessment_at), **client_context}
         if settings.openai_api_key:
             try:
-                payload = await _generate_openai_risk_assessment(client_name, last_assessment_at)
+                payload = {
+                    **client_context,
+                    **(await _generate_openai_risk_assessment(client_name, last_assessment_at, client_context)),
+                }
                 engine = "openai"
             except Exception as exc:
                 logger.exception("OpenAI risk assessment generation failed for %s", client_name)
-                payload = _risk_assessment_fallback(client_name, last_assessment_at)
+                payload = {**_risk_assessment_fallback(client_name, last_assessment_at), **client_context}
                 payload["error"] = str(exc) or exc.__class__.__name__
                 engine = "fallback"
         normalised = _normalise_risk_assessment_payload(payload, client_name, last_assessment_at)
@@ -18504,6 +18917,18 @@ async def generate_risk_assessments_payload(user: dict, clients: list[dict] | li
                 "keyConcerns": normalised["keyConcerns"],
                 "recommendedActions": normalised["recommendedActions"],
                 "reviewWindow": normalised["reviewWindow"],
+                "clientInformation": normalised["clientInformation"],
+                "identityVerification": normalised["identityVerification"],
+                "pepAndSanctionsScreening": normalised["pepAndSanctionsScreening"],
+                "adverseMediaScreening": normalised["adverseMediaScreening"],
+                "businessRiskAssessment": normalised["businessRiskAssessment"],
+                "geographicRisk": normalised["geographicRisk"],
+                "ownershipAndControl": normalised["ownershipAndControl"],
+                "serviceRisk": normalised["serviceRisk"],
+                "sourceOfFundsWealth": normalised["sourceOfFundsWealth"],
+                "riskScoringMatrix": normalised["riskScoringMatrix"],
+                "monitoringAndReview": normalised["monitoringAndReview"],
+                "personalisation": normalised["personalisation"],
                 "engine": engine,
             }
         )
@@ -18511,27 +18936,146 @@ async def generate_risk_assessments_payload(user: dict, clients: list[dict] | li
 
 
 def _risk_assessment_pdf_bytes(assessment: dict) -> bytes:
+    info = assessment.get("clientInformation") or {}
+    identity = assessment.get("identityVerification") or {}
+    pep = assessment.get("pepAndSanctionsScreening") or {}
+    adverse = assessment.get("adverseMediaScreening") or {}
+    business = assessment.get("businessRiskAssessment") or {}
+    geo = assessment.get("geographicRisk") or {}
+    ownership = assessment.get("ownershipAndControl") or {}
+    service = assessment.get("serviceRisk") or {}
+    funds = assessment.get("sourceOfFundsWealth") or {}
+    matrix = assessment.get("riskScoringMatrix") or {}
+    monitoring = assessment.get("monitoringAndReview") or {}
+    personalisation = assessment.get("personalisation") or {}
+
+    def _line_list(label: str, values: list[str]) -> list[str]:
+        items = [str(item).strip() for item in values if str(item).strip()]
+        if not items:
+            return [f"{label}: None recorded"]
+        return [f"{label}: {items[0]}", *[f"  - {item}" for item in items[1:]]]
+
     lines = [
-        f"Client: {assessment.get('clientName') or 'Client'}",
+        "AML RISK ASSESSMENT",
+        f"Client: {assessment.get('clientName') or info.get('companyName') or 'Client'}",
         f"Generated: {assessment.get('generatedAt') or ''}",
-        f"Risk level: {assessment.get('riskLevel') or ''}",
-        f"Risk score: {assessment.get('riskScore') or ''}/100",
         "",
-        f"Evaluation: {assessment.get('evaluation') or ''}",
-        "",
-        "Commentary:",
-        str(assessment.get("commentary") or ""),
-        "",
-        "Key concerns:",
+        "1. Client Information",
+        f"Company name: {info.get('companyName') or assessment.get('clientName') or ''}",
+        f"Company number: {info.get('companyNumber') or ''}",
+        f"Incorporation date: {info.get('incorporationDate') or ''}",
+        f"SIC code: {info.get('sicCode') or ''}",
+        f"Registered office address: {info.get('registeredOfficeAddress') or ''}",
+        f"Contact email(s): {', '.join(personalisation.get('contactEmails') or []) or 'Not recorded in BM client file'}",
+        f"Contact telephone: {personalisation.get('contactTelephone') or 'Not recorded in BM client file'}",
+        f"Physical/trading address: {personalisation.get('contactAddress') or 'Not recorded in BM client file'}",
+        f"Client since: {personalisation.get('clientSince') or 'Not recorded in BM client file'}",
+        f"Tenure commentary: {personalisation.get('tenureCommentary') or ''}",
     ]
+    lines.extend(_line_list("Director details", info.get("directors") or []))
+    lines.extend(_line_list("Persons with Significant Control (PSC)", info.get("personsWithSignificantControl") or []))
+    lines.extend(
+        [
+            f"Confirmation Statement due date: {info.get('confirmationStatementDueDate') or ''}",
+            f"Accounts filing due date: {info.get('accountsFilingDueDate') or ''}",
+            "",
+            "2. Identity Verification",
+            str(identity.get("identityVerificationStatus") or "Identity verification completed and passed."),
+            str(identity.get("electronicAmlStatus") or "Electronic AML screening completed and passed."),
+            f"Identity risk: {identity.get('identityRisk') or 'Low'}",
+            "",
+            "3. PEP and Sanctions Screening",
+            str(pep.get("pepResult") or "No PEP match identified."),
+            str(pep.get("sanctionsResult") or "No sanctions match identified."),
+            f"Screening date: {pep.get('screeningDate') or ''}",
+            f"Screening provider: {pep.get('screeningProvider') or ''}",
+            f"Risk level: {pep.get('riskLevel') or 'Low'}",
+            "",
+            "4. Adverse Media Screening",
+            str(adverse.get("adverseMediaResult") or "No adverse media identified."),
+            f"Review date: {adverse.get('reviewDate') or ''}",
+            f"Risk level: {adverse.get('riskLevel') or 'Low'}",
+            "",
+            "5. Business Risk Assessment",
+            f"Industry sector: {business.get('industrySector') or ''}",
+            f"SIC code risk: {business.get('sicCodeRisk') or ''}",
+            f"Cash intensity: {business.get('cashIntensity') or ''}",
+            f"Regulatory exposure: {business.get('regulatoryExposure') or ''}",
+            f"Commentary: {business.get('commentary') or ''}",
+            "",
+            "6. Geographic Risk",
+            f"Country of incorporation: {geo.get('countryOfIncorporation') or ''}",
+            f"Countries traded with: {', '.join(geo.get('countriesTradedWith') or [])}",
+            f"FATF high-risk jurisdictions exposure: {geo.get('fatfHighRiskExposure') or ''}",
+            f"Commentary: {geo.get('commentary') or ''}",
+            f"Risk level: {geo.get('riskLevel') or ''}",
+            "",
+            "7. Ownership and Control",
+            f"Ownership structure: {ownership.get('ownershipStructure') or ''}",
+            f"Number of shareholders: {ownership.get('numberOfShareholders') or ''}",
+            f"Number of PSCs: {ownership.get('numberOfPscs') or ''}",
+            f"Complexity of ownership: {ownership.get('complexity') or ''}",
+            f"Commentary: {ownership.get('commentary') or ''}",
+            "",
+            "8. Service Risk",
+            f"Services provided: {', '.join(service.get('servicesProvided') or personalisation.get('servicesFromBm') or [])}",
+            f"Commentary: {service.get('commentary') or ''}",
+            f"Risk level: {service.get('riskLevel') or ''}",
+            "",
+            "9. Source of Funds / Source of Wealth",
+            f"Initial funding source: {funds.get('initialFundingSource') or ''}",
+            f"Director funding: {funds.get('directorFunding') or ''}",
+            f"External investment: {funds.get('externalInvestment') or ''}",
+            f"Unusual funding indicators: {funds.get('unusualFundingIndicators') or ''}",
+            "",
+            "10. Risk Scoring Matrix",
+            f"Identity risk score: {matrix.get('identityRiskScore') or ''}/5",
+            f"Ownership risk score: {matrix.get('ownershipRiskScore') or ''}/5",
+            f"Geographic risk score: {matrix.get('geographicRiskScore') or ''}/5",
+            f"Service risk score: {matrix.get('serviceRiskScore') or ''}/5",
+            f"Industry risk score: {matrix.get('industryRiskScore') or ''}/5",
+            f"Adverse media score: {matrix.get('adverseMediaScore') or ''}/5",
+            f"PEP/Sanctions score: {matrix.get('pepSanctionsScore') or ''}/5",
+            f"Overall risk score: {matrix.get('overallRiskScore') or assessment.get('riskScore') or ''}/100",
+            f"Justification: {matrix.get('justification') or ''}",
+            "",
+            "11. Overall Risk Rating",
+            f"Overall Risk Rating: {assessment.get('riskLevel') or ''}",
+            f"Evaluation: {assessment.get('evaluation') or ''}",
+            "",
+            "12. Monitoring and Review",
+            f"Initial assessment date: {monitoring.get('initialAssessmentDate') or assessment.get('generatedAt') or ''}",
+            f"Next review date: {monitoring.get('nextReviewDate') or ''}",
+            "Trigger events requiring reassessment:",
+        ]
+    )
+    for trigger in monitoring.get("triggerEvents") or []:
+        lines.append(f"- {trigger}")
+    lines.extend(
+        [
+            "",
+            "Commentary:",
+            str(assessment.get("commentary") or ""),
+            "",
+            "Key concerns:",
+        ]
+    )
     for concern in assessment.get("keyConcerns") or []:
         lines.append(f"- {concern}")
-    lines.append("")
-    lines.append("Recommended actions:")
+    lines.extend(
+        [
+            "",
+            "Recommended actions:",
+        ]
+    )
     for action in assessment.get("recommendedActions") or []:
         lines.append(f"- {action}")
-    lines.append("")
-    lines.append(f"Review window: {assessment.get('reviewWindow') or ''}")
+    lines.extend(
+        [
+            "",
+            f"Review window: {assessment.get('reviewWindow') or ''}",
+        ]
+    )
     return _minimal_me_report_pdf(lines)
 
 

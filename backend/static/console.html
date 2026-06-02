@@ -19807,6 +19807,18 @@
                     keyConcerns,
                     recommendedActions,
                     reviewWindow: String(record.reviewWindow || "").trim(),
+                    clientInformation: record.clientInformation && typeof record.clientInformation === "object" ? record.clientInformation : {},
+                    identityVerification: record.identityVerification && typeof record.identityVerification === "object" ? record.identityVerification : {},
+                    pepAndSanctionsScreening: record.pepAndSanctionsScreening && typeof record.pepAndSanctionsScreening === "object" ? record.pepAndSanctionsScreening : {},
+                    adverseMediaScreening: record.adverseMediaScreening && typeof record.adverseMediaScreening === "object" ? record.adverseMediaScreening : {},
+                    businessRiskAssessment: record.businessRiskAssessment && typeof record.businessRiskAssessment === "object" ? record.businessRiskAssessment : {},
+                    geographicRisk: record.geographicRisk && typeof record.geographicRisk === "object" ? record.geographicRisk : {},
+                    ownershipAndControl: record.ownershipAndControl && typeof record.ownershipAndControl === "object" ? record.ownershipAndControl : {},
+                    serviceRisk: record.serviceRisk && typeof record.serviceRisk === "object" ? record.serviceRisk : {},
+                    sourceOfFundsWealth: record.sourceOfFundsWealth && typeof record.sourceOfFundsWealth === "object" ? record.sourceOfFundsWealth : {},
+                    riskScoringMatrix: record.riskScoringMatrix && typeof record.riskScoringMatrix === "object" ? record.riskScoringMatrix : {},
+                    monitoringAndReview: record.monitoringAndReview && typeof record.monitoringAndReview === "object" ? record.monitoringAndReview : {},
+                    personalisation: record.personalisation && typeof record.personalisation === "object" ? record.personalisation : {},
                     engine: String(record.engine || "local")
                 };
             }
@@ -39660,7 +39672,38 @@
                         return {
                             clientName: item.clientName,
                             matchKey,
-                            lastAssessmentAt: latest?.generatedAt || ""
+                            lastAssessmentAt: latest?.generatedAt || "",
+                            companyName: item.companyName || item.clientName,
+                            companyNumber: item.companyNumber || "",
+                            incorporationDate: item.incorporationDate || "",
+                            sicCode: item.sicCode || "",
+                            registeredOfficeAddress: item.registeredOfficeAddress || "",
+                            directors: Array.isArray(item.directors) ? item.directors : [],
+                            personsWithSignificantControl: Array.isArray(item.personsWithSignificantControl) ? item.personsWithSignificantControl : [],
+                            confirmationStatementDueDate: item.confirmationStatementDueDate || "",
+                            accountsFilingDueDate: item.accountsFilingDueDate || "",
+                            industrySector: item.industrySector || "",
+                            countriesTradedWith: Array.isArray(item.countriesTradedWith) ? item.countriesTradedWith : [],
+                            countryOfIncorporation: item.countryOfIncorporation || "",
+                            servicesProvided: Array.isArray(item.servicesProvided) ? item.servicesProvided : [],
+                            ownershipStructure: item.ownershipStructure || "",
+                            numberOfShareholders: item.numberOfShareholders || "",
+                            numberOfPscs: item.numberOfPscs || "",
+                            screeningProvider: item.screeningProvider || "",
+                            screeningDate: item.screeningDate || "",
+                            pepResult: item.pepResult || "",
+                            sanctionsResult: item.sanctionsResult || "",
+                            adverseMediaResult: item.adverseMediaResult || "",
+                            adverseMediaReviewDate: item.adverseMediaReviewDate || "",
+                            fatfHighRiskExposure: item.fatfHighRiskExposure || "",
+                            initialFundingSource: item.initialFundingSource || "",
+                            directorFunding: item.directorFunding || "",
+                            externalInvestment: item.externalInvestment || "",
+                            unusualFundingIndicators: item.unusualFundingIndicators || "",
+                            contactEmails: Array.isArray(item.contactEmails) ? item.contactEmails : [],
+                            contactTelephone: item.contactTelephone || "",
+                            contactAddress: item.contactAddress || "",
+                            clientCreatedAt: item.clientCreatedAt || ""
                         };
                     });
                     riskAssessmentDraftClients = clients;
@@ -39703,7 +39746,38 @@
                         body: JSON.stringify({
                             clients: selected.map((client) => ({
                                 clientName: client.clientName,
-                                lastAssessmentAt: client.lastAssessmentAt || ""
+                                lastAssessmentAt: client.lastAssessmentAt || "",
+                                companyName: client.companyName || client.clientName,
+                                companyNumber: client.companyNumber || "",
+                                incorporationDate: client.incorporationDate || "",
+                                sicCode: client.sicCode || "",
+                                registeredOfficeAddress: client.registeredOfficeAddress || "",
+                                directors: Array.isArray(client.directors) ? client.directors : [],
+                                personsWithSignificantControl: Array.isArray(client.personsWithSignificantControl) ? client.personsWithSignificantControl : [],
+                                confirmationStatementDueDate: client.confirmationStatementDueDate || "",
+                                accountsFilingDueDate: client.accountsFilingDueDate || "",
+                                industrySector: client.industrySector || "",
+                                countriesTradedWith: Array.isArray(client.countriesTradedWith) ? client.countriesTradedWith : [],
+                                countryOfIncorporation: client.countryOfIncorporation || "",
+                                servicesProvided: Array.isArray(client.servicesProvided) ? client.servicesProvided : [],
+                                ownershipStructure: client.ownershipStructure || "",
+                                numberOfShareholders: client.numberOfShareholders || "",
+                                numberOfPscs: client.numberOfPscs || "",
+                                screeningProvider: client.screeningProvider || "",
+                                screeningDate: client.screeningDate || "",
+                                pepResult: client.pepResult || "",
+                                sanctionsResult: client.sanctionsResult || "",
+                                adverseMediaResult: client.adverseMediaResult || "",
+                                adverseMediaReviewDate: client.adverseMediaReviewDate || "",
+                                fatfHighRiskExposure: client.fatfHighRiskExposure || "",
+                                initialFundingSource: client.initialFundingSource || "",
+                                directorFunding: client.directorFunding || "",
+                                externalInvestment: client.externalInvestment || "",
+                                unusualFundingIndicators: client.unusualFundingIndicators || "",
+                                contactEmails: Array.isArray(client.contactEmails) ? client.contactEmails : [],
+                                contactTelephone: client.contactTelephone || "",
+                                contactAddress: client.contactAddress || "",
+                                clientCreatedAt: client.clientCreatedAt || ""
                             }))
                         })
                     });
@@ -42225,11 +42299,27 @@
             function practicePackClientAssignmentsFromData(clientData) {
                 const clientNameColumns = ["Client Name", "Client", "Name", "ClientName", "Company Name", "Company", "Contact", "Customer Name", "Organisation", "Organisation Name", "Business Name"];
                 const clientManagerColumns = ["Client Manager", "Manager", "Manager Name", "Account Manager", "Account Manager Name", "Client Owner", "Owner", "Assigned Manager", "Relationship Manager", "Partner", "Staff", "Staff Member", "Bookkeeper", "Assigned To"];
+                const listField = (value) => String(value || "").split(/[,\n;]+/).map((item) => item.trim()).filter(Boolean);
+                const extractEmails = (text) => {
+                    const matches = String(text || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+                    return [...new Set(matches.map((value) => value.trim().toLowerCase()))];
+                };
                 const clientIndex = new Map();
                 const rows = Array.isArray(clientData?.rows) ? clientData.rows : [];
+                const headers = Array.isArray(clientData?.headers) ? clientData.headers : [];
+                const lastHeader = headers.length ? headers[headers.length - 1] : "";
                 rows.forEach((row, index) => {
                     const name = practicePackColumnValue(row, clientNameColumns) || `Client ${index + 1}`;
                     const manager = practicePackColumnValue(row, clientManagerColumns) || "Unassigned";
+                    const notes = practicePackColumnValue(row, ["Notes", "Client Notes", "Contact Notes", "Comments", "Commentary"]);
+                    const emailField = practicePackColumnValue(row, ["Email", "Email Address", "Primary Email", "Contact Email", "Client Email"]);
+                    const contactEmails = [...new Set([
+                        ...extractEmails(emailField),
+                        ...extractEmails(notes)
+                    ])];
+                    const servicesField = practicePackColumnValue(row, ["Services Provided", "Services", "Service Lines"]);
+                    const lastColumnValue = lastHeader ? String(row?.[lastHeader] || "").trim() : "";
+                    const parsedServices = listField(servicesField || lastColumnValue);
                     const key = normalisePracticePackName(name) || `client${index + 1}`;
                     if (!clientIndex.has(key)) {
                         clientIndex.set(key, {
@@ -42237,7 +42327,38 @@
                             matchKey: normalisePracticePackClientMatchName(name),
                             clientName: name,
                             manager,
-                            source: "BM Data File"
+                            source: "BM Data File",
+                            companyName: practicePackColumnValue(row, ["Company Name", "Client Name", "Client", "Name"]) || name,
+                            companyNumber: practicePackColumnValue(row, ["Company Number", "Company No", "Company Registration Number", "CRN"]),
+                            incorporationDate: practicePackColumnValue(row, ["Incorporation Date", "Date Incorporated"]),
+                            sicCode: practicePackColumnValue(row, ["SIC Code", "SIC", "Primary SIC"]),
+                            registeredOfficeAddress: practicePackColumnValue(row, ["Registered Office Address", "Registered Address", "Office Address"]),
+                            directors: listField(practicePackColumnValue(row, ["Directors", "Director Details", "Director"])),
+                            personsWithSignificantControl: listField(practicePackColumnValue(row, ["Persons with Significant Control", "PSC", "PSCs", "People with Significant Control"])),
+                            confirmationStatementDueDate: practicePackColumnValue(row, ["Confirmation Statement Due Date", "CS Due Date", "Confirmation Due"]),
+                            accountsFilingDueDate: practicePackColumnValue(row, ["Accounts Filing Due Date", "Accounts Due Date", "Accounts Due"]),
+                            industrySector: practicePackColumnValue(row, ["Industry Sector", "Industry", "Sector"]),
+                            countriesTradedWith: listField(practicePackColumnValue(row, ["Countries Traded With", "Trading Countries", "Countries", "Jurisdictions"])),
+                            countryOfIncorporation: practicePackColumnValue(row, ["Country of Incorporation", "Incorporation Country", "Country"]),
+                            servicesProvided: parsedServices,
+                            ownershipStructure: practicePackColumnValue(row, ["Ownership Structure", "Shareholding Structure"]),
+                            numberOfShareholders: practicePackColumnValue(row, ["Number of Shareholders", "Shareholders"]),
+                            numberOfPscs: practicePackColumnValue(row, ["Number of PSCs", "PSC Count"]),
+                            screeningProvider: practicePackColumnValue(row, ["Screening Provider", "AML Provider", "KYC Provider"]),
+                            screeningDate: practicePackColumnValue(row, ["Screening Date", "AML Screening Date", "PEP Screening Date"]),
+                            pepResult: practicePackColumnValue(row, ["PEP Result", "PEP Screening Result"]),
+                            sanctionsResult: practicePackColumnValue(row, ["Sanctions Result", "Sanctions Screening Result"]),
+                            adverseMediaResult: practicePackColumnValue(row, ["Adverse Media Result", "Media Result"]),
+                            adverseMediaReviewDate: practicePackColumnValue(row, ["Adverse Media Review Date", "Media Review Date"]),
+                            fatfHighRiskExposure: practicePackColumnValue(row, ["FATF High Risk Exposure", "High Risk Jurisdiction Exposure"]),
+                            initialFundingSource: practicePackColumnValue(row, ["Initial Funding Source", "Source of Funds"]),
+                            directorFunding: practicePackColumnValue(row, ["Director Funding"]),
+                            externalInvestment: practicePackColumnValue(row, ["External Investment"]),
+                            unusualFundingIndicators: practicePackColumnValue(row, ["Unusual Funding Indicators", "Funding Indicators"]),
+                            contactEmails,
+                            contactTelephone: practicePackColumnValue(row, ["Telephone", "Phone", "Contact Number", "Mobile", "Landline"]),
+                            contactAddress: practicePackColumnValue(row, ["Physical Address", "Trading Address", "Client Address", "Address"]),
+                            clientCreatedAt: practicePackColumnValue(row, ["Client Since", "Creation Date", "Created At", "Date Added", "Start Date"])
                         });
                     }
                 });
