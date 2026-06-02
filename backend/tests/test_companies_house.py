@@ -79,6 +79,16 @@ class CompaniesHouseTests(unittest.TestCase):
         errors = ch._validate_cs01_payload(row, date.today())
         self.assertTrue(any("Company number" in err for err in errors))
 
+    def test_validate_cs01_payload_requires_made_up_to_date(self):
+        row = {
+            "company_number": "12345678",
+            "next_due_date": date.today(),
+            "next_made_up_to_date": None,
+            "share_capital": {},
+        }
+        errors = ch._validate_cs01_payload(row, date.today())
+        self.assertTrue(any("Made up to date is required" in err for err in errors))
+
     def test_validate_cs01_payload_rejects_psc_and_exemption_mix(self):
         row = {
             "company_number": "12345678",

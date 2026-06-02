@@ -1045,6 +1045,11 @@ def _validate_cs01_payload(company_row: dict, review_date: date, cs_payload: dic
     company_number = normalise_company_number(company_row.get("company_number"))
     if not _is_valid_company_number(company_number):
         errors.append("Company number must be 8 alphanumeric characters.")
+    made_up_to = company_row.get("next_made_up_to_date")
+    if not isinstance(made_up_to, date):
+        errors.append("Made up to date is required before submitting CS01.")
+    elif review_date != made_up_to:
+        errors.append("Review date must match the recorded made up to date.")
     next_due = company_row.get("next_due_date")
     if isinstance(next_due, date) and review_date > next_due:
         errors.append("Review date cannot be after the recorded due date.")
@@ -2315,6 +2320,7 @@ def _date_or_none(value):
 def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     today = date.today()
     next_due = row.get("next_due_date")
+    next_made_up_to = row.get("next_made_up_to_date")
     if isinstance(next_due, date):
         due_in_days = (next_due - today).days
     else:
@@ -2324,9 +2330,11 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     internal_status = row.get("internal_status") or "active"
     blocked_internal = internal_status in {"paused", "do_not_file", "inactive"}
     has_due_date = isinstance(next_due, date)
+    has_made_up_to_date = isinstance(next_made_up_to, date)
     has_auth = bool(row.get("auth_code_on_file"))
     eligible_for_submission = bool(
         has_due_date
+        and has_made_up_to_date
         and not blocked_internal
         and has_auth
         and str(row.get("filing_authority_status") or "pending") == "authorised"
@@ -2556,6 +2564,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         filing_authority_expires_at = row.get("filing_authority_expires_at")
         next_due = row.get("next_due_date")
         has_auth = bool(row.get("auth_code_on_file"))
+        made_up_to = row.get("next_made_up_to_date")
         due_in_days = (next_due - today).days if isinstance(next_due, date) else None
         if internal_status in {"paused", "do_not_file", "inactive"}:
             reason = f"Internal status is '{internal_status}'."
@@ -2589,6 +2598,16 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             continue
         if not has_auth:
             reason = "Missing Companies House authentication code."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
+            skipped.append({
+                "companyId": company_id,
+                "companyNumber": company_number,
+                "companyName": company_name,
+                "reason": reason,
+            })
+            continue
+        if not isinstance(made_up_to, date):
+            reason = "Missing made up to date. Sync Companies House company data before submitting CS01."
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append({
                 "companyId": company_id,
@@ -2671,8 +2690,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
 
         submission_reference = _ch_submission_number()
         transaction_id = _ch_txn_id()
-        made_up_to = row.get("next_made_up_to_date")
-        review_date = made_up_to if isinstance(made_up_to, date) and made_up_to <= today else today
+        review_date = made_up_to
         cs_payload = _build_cs01_payload(row)
         validation_errors = _validate_cs01_payload(row, review_date, cs_payload=cs_payload)
         if validation_errors:
