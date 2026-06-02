@@ -15415,6 +15415,41 @@
                 font-size: 0.8rem;
                 font-weight: 900;
             }
+            .xero-lock-columns {
+                position: relative;
+                display: inline-flex;
+            }
+            .xero-lock-columns-menu {
+                position: absolute;
+                top: calc(100% + 6px);
+                right: 0;
+                z-index: 12;
+                min-width: 220px;
+                padding: 10px 12px;
+                border-radius: 12px;
+                border: 1px solid var(--line);
+                background: #fff;
+                box-shadow: var(--shadow);
+            }
+            .xero-lock-columns-menu label {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: var(--ink);
+            }
+            .xero-lock-columns-menu input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                accent-color: var(--blue);
+            }
+            .xero-lock-table .xero-lock-company-number-column {
+                display: none;
+            }
+            .xero-lock-table.show-company-number-column .xero-lock-company-number-column {
+                display: table-cell;
+            }
             #xeroLockDateScreen .ch-pill {
                 font-size: 0.73rem;
                 letter-spacing: 0.05em;
@@ -17610,6 +17645,15 @@
                                         <button class="primary-button" id="connectXeroLockDateButton" type="button">Connect Client Xeros</button>
                                         <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Numbers</button>
                                         <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
+                                        <div class="xero-lock-columns">
+                                            <button class="ghost-button" id="xeroLockDateColumnsButton" type="button" aria-expanded="false" aria-controls="xeroLockDateColumnsMenu">Columns</button>
+                                            <div class="xero-lock-columns-menu" id="xeroLockDateColumnsMenu" hidden>
+                                                <label for="xeroLockDateShowCompanyNumberColumn">
+                                                    <input id="xeroLockDateShowCompanyNumberColumn" type="checkbox">
+                                                    Show company number column
+                                                </label>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="xero-lock-date-search">
                                         <label for="xeroLockDateSearchInput">
@@ -17622,14 +17666,13 @@
                             </div>
                             <p class="detail-meta" id="xeroLockDateMismatchWarning" hidden></p>
                             <div class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="Xero lock dates">
+                                <table class="ch-table xero-lock-table" id="xeroLockDateTable" aria-label="Xero lock dates">
                                     <thead>
                                         <tr>
                                             <th>Tenant</th>
                                             <th>Current Xero Lock Date</th>
-                                            <th>Last Accounts Submitted (CH)</th>
                                             <th>CH Company Record</th>
-                                            <th>CH number mapping</th>
+                                            <th class="xero-lock-company-number-column">CH number mapping</th>
                                             <th>Flag</th>
                                         </tr>
                                     </thead>
@@ -19287,6 +19330,7 @@
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
             let xeroLockDateSearchTerm = "";
+            let xeroLockDateColumnSettings = { showCompanyNumber: false, menuOpen: false };
             let settingsLockDateSearchTerm = "";
             let xeroLockDateCHHealth = { loading: false, ok: null, checkedAt: "", message: "Companies House API status not checked yet." };
             const xeroLockDateCHHealthCacheMs = 10 * 60 * 1000;
@@ -27143,7 +27187,15 @@
                 const searchMeta = document.getElementById("xeroLockDateSearchMeta");
                 const mismatchWarning = document.getElementById("xeroLockDateMismatchWarning");
                 const body = document.getElementById("xeroLockDateTableBody");
+                const table = document.getElementById("xeroLockDateTable");
+                const columnsButton = document.getElementById("xeroLockDateColumnsButton");
+                const columnsMenu = document.getElementById("xeroLockDateColumnsMenu");
+                const companyNumberToggle = document.getElementById("xeroLockDateShowCompanyNumberColumn");
                 if (!summary || !body || !health) return;
+                if (table) table.classList.toggle("show-company-number-column", !!xeroLockDateColumnSettings.showCompanyNumber);
+                if (columnsMenu) columnsMenu.hidden = !xeroLockDateColumnSettings.menuOpen;
+                if (columnsButton) columnsButton.setAttribute("aria-expanded", xeroLockDateColumnSettings.menuOpen ? "true" : "false");
+                if (companyNumberToggle) companyNumberToggle.checked = !!xeroLockDateColumnSettings.showCompanyNumber;
                 if (xeroLockDateLoading) {
                     summary.textContent = "Loading lock-date data…";
                     if (stats) stats.innerHTML = "";
@@ -27231,7 +27283,6 @@
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
-                        const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
                         const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
                         const chCompanyRecord = chLabel || "No mapped company details";
                         return `
@@ -27244,15 +27295,11 @@
                                     <strong>${escapeHTML(periodLock)}</strong>
                                     <small>Current lock date in Xero</small>
                                 </td>
-                                <td class="xero-lock-date-cell">
-                                    <strong>${escapeHTML(filedDate)}</strong>
-                                    <small>Last accounts submitted at Companies House</small>
-                                </td>
                                 <td class="xero-lock-submitted-cell">
                                     <strong>${escapeHTML(chCompanyRecord)}</strong>
-                                    <small>${escapeHTML(mapping?.companyNumber ? `CH number ${mapping.companyNumber}` : "No CH number mapped")}</small>
+                                    <small>${escapeHTML(mapping?.companyNumber ? "Company mapping saved" : "No company mapping saved")}</small>
                                 </td>
-                                <td class="xero-lock-mapping-cell">
+                                <td class="xero-lock-mapping-cell xero-lock-company-number-column">
                                     <div class="xero-lock-mapping-controls">
                                         <input
                                             class="xero-lock-date-mapping-input"
@@ -27276,7 +27323,7 @@
                             </tr>
                         `;
                     }).join("")
-                    : `<tr><td colspan="6"><div class="ch-empty-state">${
+                    : `<tr><td colspan="${xeroLockDateColumnSettings.showCompanyNumber ? 5 : 4}"><div class="ch-empty-state">${
                         rows.length ? "No tenants match this search." : "Connect Xero tenants to view lock dates."
                     }</div></td></tr>`;
                 body.querySelectorAll("[data-xero-lock-map-save]").forEach((button) => {
@@ -46887,6 +46934,16 @@
                         loadXeroLockDateCHHealth(true);
                     });
                 }
+                const xeroLockDateColumnsButton = document.getElementById("xeroLockDateColumnsButton");
+                if (xeroLockDateColumnsButton && xeroLockDateColumnsButton.dataset.lockDateWired !== "true") {
+                    xeroLockDateColumnsButton.dataset.lockDateWired = "true";
+                    xeroLockDateColumnsButton.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        xeroLockDateColumnSettings.menuOpen = !xeroLockDateColumnSettings.menuOpen;
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                }
                 const populateXeroLockDateMappingsButton = document.getElementById("populateXeroLockDateMappingsButton");
                 if (populateXeroLockDateMappingsButton && populateXeroLockDateMappingsButton.dataset.lockDateWired !== "true") {
                     populateXeroLockDateMappingsButton.dataset.lockDateWired = "true";
@@ -47213,6 +47270,27 @@
                     xeroLockDateSearchInput.value = xeroLockDateSearchTerm;
                     xeroLockDateSearchInput.addEventListener("input", (event) => {
                         xeroLockDateSearchTerm = event.target.value || "";
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                }
+                const xeroLockDateShowCompanyNumberColumn = document.getElementById("xeroLockDateShowCompanyNumberColumn");
+                if (xeroLockDateShowCompanyNumberColumn && xeroLockDateShowCompanyNumberColumn.dataset.lockDateWired !== "true") {
+                    xeroLockDateShowCompanyNumberColumn.dataset.lockDateWired = "true";
+                    xeroLockDateShowCompanyNumberColumn.checked = !!xeroLockDateColumnSettings.showCompanyNumber;
+                    xeroLockDateShowCompanyNumberColumn.addEventListener("change", (event) => {
+                        xeroLockDateColumnSettings.showCompanyNumber = !!event.target.checked;
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                }
+                if (document.body.dataset.lockDateColumnsDismissWired !== "true") {
+                    document.body.dataset.lockDateColumnsDismissWired = "true";
+                    document.addEventListener("click", (event) => {
+                        const menu = document.getElementById("xeroLockDateColumnsMenu");
+                        const button = document.getElementById("xeroLockDateColumnsButton");
+                        if (!xeroLockDateColumnSettings.menuOpen) return;
+                        const target = event.target;
+                        if ((menu && menu.contains(target)) || (button && button.contains(target))) return;
+                        xeroLockDateColumnSettings.menuOpen = false;
                         if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                     });
                 }
