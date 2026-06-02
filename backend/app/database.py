@@ -59,6 +59,23 @@ ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS updated_at TIM
 
 CREATE INDEX IF NOT EXISTS xero_tenant_company_mappings_company_number_idx ON xero_tenant_company_mappings (company_number);
 
+CREATE TABLE IF NOT EXISTS xero_lock_date_snapshots (
+    tenant_id TEXT PRIMARY KEY,
+    period_lock_date DATE,
+    end_of_year_lock_date DATE,
+    base_currency TEXT NOT NULL DEFAULT '',
+    xero_error TEXT NOT NULL DEFAULT '',
+    last_synced_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS period_lock_date DATE;
+ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS end_of_year_lock_date DATE;
+ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS base_currency TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS xero_error TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
+ALTER TABLE xero_lock_date_snapshots ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

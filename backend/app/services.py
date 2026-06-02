@@ -102,6 +102,7 @@ LATE_PAYMENT_CHARGE_VAT_RATE = Decimal("0.20")
 OPENAI_INSIGHTS_TIMEOUT_SECONDS = 135
 RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
 XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
+XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
 SYNC_PHASE_CREDITS = "customer_credits"
@@ -333,34 +334,74 @@ def get_xero_connection_for_user(user_id: str) -> dict:
     return max(rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
 
 
-def disconnect_xero(user: dict) -> dict:
+def disconnect_xero(user: dict, tenant_id: str | None = None, disconnect_all: bool = False) -> dict:
+    tenant_id = str(tenant_id or "").strip()
+    selected_tenant_id = ""
+    fallback_connection_id = ""
+    user_rows = list_xero_connections_for_user(user["id"], include_fallback=False)
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+
+    if disconnect_all:
+        pass
+    elif tenant_id:
+        selected_tenant_id = tenant_id
+    elif user_rows:
+        selected = max(user_rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
+        selected_tenant_id = str(selected.get("tenant_id") or "").strip()
+    else:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, tenant_id
+                    FROM xero_connections
+                    ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                    LIMIT 1
+                    """
+                )
+                fallback = cursor.fetchone() or {}
+                cursor.execute("SELECT COUNT(*) AS count FROM xero_connections")
+                total = int((cursor.fetchone() or {}).get("count") or 0)
+            connection.commit()
+        if total == 1 and fallback.get("id"):
+            fallback_connection_id = str(fallback.get("id") or "").strip()
+            selected_tenant_id = str(fallback.get("tenant_id") or "").strip()
+
+    disconnected_tenant_names: list[str] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                WITH user_connection AS (
-                    SELECT id
-                    FROM xero_connections
+            if disconnect_all:
+                cursor.execute(
+                    """
+                    DELETE FROM xero_connections
                     WHERE user_id = %s
-                ),
-                fallback_connection AS (
-                    SELECT id
-                    FROM xero_connections
-                    WHERE (SELECT COUNT(*) FROM xero_connections) = 1
-                      AND NOT EXISTS (SELECT 1 FROM user_connection)
-                    LIMIT 1
+                    RETURNING tenant_name
+                    """,
+                    (user["id"],),
                 )
-                DELETE FROM xero_connections
-                WHERE id IN (
-                    SELECT id FROM user_connection
-                    UNION
-                    SELECT id FROM fallback_connection
+                disconnected_tenant_names = [str(row.get("tenant_name") or "") for row in cursor.fetchall() or []]
+            elif fallback_connection_id:
+                cursor.execute(
+                    """
+                    DELETE FROM xero_connections
+                    WHERE id = %s
+                    RETURNING tenant_name
+                    """,
+                    (fallback_connection_id,),
                 )
-                RETURNING tenant_name
-                """,
-                (user["id"],),
-            )
-            row = cursor.fetchone()
+                disconnected_tenant_names = [str(row.get("tenant_name") or "") for row in cursor.fetchall() or []]
+            elif selected_tenant_id:
+                cursor.execute(
+                    """
+                    DELETE FROM xero_connections
+                    WHERE user_id = %s
+                      AND tenant_id = %s
+                    RETURNING tenant_name
+                    """,
+                    (user["id"], selected_tenant_id),
+                )
+                disconnected_tenant_names = [str(row.get("tenant_name") or "") for row in cursor.fetchall() or []]
+
             cursor.execute(
                 """
                 UPDATE sync_runs
@@ -377,24 +418,62 @@ def disconnect_xero(user: dict) -> dict:
                 (
                     "failed",
                     "Sync stopped",
-                    "Xero was disconnected before the sync completed.",
+                    "A Xero tenant was disconnected before the sync completed.",
                     "Xero is disconnected. Reconnect Xero before syncing again.",
                     utcnow(),
                     "xero",
                     user["id"],
                 ),
             )
+        if not disconnected_tenant_names:
+            connection.rollback()
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No matching Xero tenant connection was found.")
         connection.commit()
 
-    if row:
+    for tenant_name in disconnected_tenant_names:
         record_audit_event(
             "xero_connection",
             str(user["id"]),
             "xero.disconnected",
-            {"tenant_name": row.get("tenant_name")},
+            {"tenant_name": tenant_name},
             user["id"],
         )
-    return {"disconnected": bool(row), "tenant_name": row.get("tenant_name") if row else None}
+
+    return {
+        "disconnected": True,
+        "tenant_name": disconnected_tenant_names[0] if disconnected_tenant_names else None,
+        "tenant_names": disconnected_tenant_names,
+        "disconnected_count": len(disconnected_tenant_names),
+    }
+
+
+def _upsert_xero_lock_date_snapshot(
+    tenant_id: str,
+    period_lock_date: date | None,
+    end_of_year_lock_date: date | None,
+    base_currency: str,
+    xero_error: str,
+    synced_at: datetime,
+) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO xero_lock_date_snapshots (
+                    tenant_id, period_lock_date, end_of_year_lock_date, base_currency, xero_error, last_synced_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET period_lock_date = EXCLUDED.period_lock_date,
+                    end_of_year_lock_date = EXCLUDED.end_of_year_lock_date,
+                    base_currency = EXCLUDED.base_currency,
+                    xero_error = EXCLUDED.xero_error,
+                    last_synced_at = EXCLUDED.last_synced_at,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (tenant_id, period_lock_date, end_of_year_lock_date, base_currency, xero_error, synced_at, synced_at),
+            )
+        connection.commit()
 
 
 def _default_posting_settings(tenant_id: str | None = None) -> dict:
@@ -587,11 +666,19 @@ def save_xero_tenant_company_mapping(user: dict, tenant_id: str, payload: dict) 
     return _serialise_tenant_mapping(mapping_row, tenant_id)
 
 
-async def xero_lock_date_overview_payload(user: dict) -> dict:
+async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = False) -> dict:
     preferred_tenant_name = get_settings().xero_primary_tenant_name
     connection_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
     if not connection_rows:
-        return {"mainTenantName": preferred_tenant_name, "rows": []}
+        return {
+            "mainTenantName": preferred_tenant_name,
+            "rows": [],
+            "meta": {
+                "refreshedTenants": 0,
+                "cachedTenants": 0,
+                "forcedRefresh": force_refresh,
+            },
+        }
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -606,6 +693,16 @@ async def xero_lock_date_overview_payload(user: dict) -> dict:
             )
             mapping_rows = cursor.fetchall() or []
             mapping_by_tenant = {str(row.get("tenant_id") or ""): row for row in mapping_rows}
+            cursor.execute(
+                """
+                SELECT *
+                FROM xero_lock_date_snapshots
+                WHERE tenant_id = ANY(%s)
+                """,
+                (tenant_ids or [""],),
+            )
+            snapshot_rows = cursor.fetchall() or []
+            snapshot_by_tenant = {str(row.get("tenant_id") or ""): row for row in snapshot_rows}
             company_numbers = [
                 str(row.get("company_number") or "").strip().upper()
                 for row in mapping_rows
@@ -626,34 +723,72 @@ async def xero_lock_date_overview_payload(user: dict) -> dict:
         connection.commit()
 
     rows: list[dict] = []
+    refreshed_tenants = 0
+    cached_tenants = 0
+    now = utcnow()
     for connection_row in sorted(
         connection_rows,
         key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name),
         reverse=True,
     ):
         tenant_id = str(connection_row.get("tenant_id") or "").strip()
+        snapshot_row = snapshot_by_tenant.get(tenant_id) or {}
         mapping_row = mapping_by_tenant.get(tenant_id)
         mapping = _serialise_tenant_mapping(mapping_row, tenant_id)
         mapped_company_number = mapping.get("companyNumber") or ""
         ch_row = ch_by_company_number.get(mapped_company_number)
-        period_lock_date = None
-        end_of_year_lock_date = None
-        currency = ""
-        xero_error = ""
-        try:
-            organisation_payload = await xero_api_get(connection_row, XERO_ORGANISATION_URL)
-            organisations = organisation_payload.get("Organisations") or []
-            organisation = organisations[0] if organisations else {}
-            period_lock_date = _parse_xero_lock_date(organisation.get("PeriodLockDate"))
-            end_of_year_lock_date = _parse_xero_lock_date(organisation.get("EndOfYearLockDate"))
-            currency = str(organisation.get("BaseCurrency") or "").strip()
-        except HTTPException as exc:
-            detail = exc.detail
-            if isinstance(detail, dict):
-                xero_error = str(detail.get("message") or detail)
-            else:
-                xero_error = str(detail)
+        period_lock_date = _parse_date_value(snapshot_row.get("period_lock_date"))
+        end_of_year_lock_date = _parse_date_value(snapshot_row.get("end_of_year_lock_date"))
+        currency = str(snapshot_row.get("base_currency") or "").strip()
+        xero_error = str(snapshot_row.get("xero_error") or "").strip()
+        snapshot_synced_at = snapshot_row.get("last_synced_at")
+        connection_updated_at = connection_row.get("updated_at")
+        refresh_due = force_refresh or snapshot_synced_at is None
+        if not refresh_due and snapshot_synced_at:
+            refresh_due = (now - snapshot_synced_at) >= XERO_LOCK_DATE_CACHE_TTL
+        if not refresh_due and snapshot_synced_at and connection_updated_at:
+            refresh_due = connection_updated_at > snapshot_synced_at
+        data_source = "cache"
+
+        if refresh_due:
+            try:
+                organisation_payload = await xero_api_get(connection_row, XERO_ORGANISATION_URL)
+                organisations = organisation_payload.get("Organisations") or []
+                organisation = organisations[0] if organisations else {}
+                period_lock_date = _parse_xero_lock_date(organisation.get("PeriodLockDate"))
+                end_of_year_lock_date = _parse_xero_lock_date(organisation.get("EndOfYearLockDate"))
+                currency = str(organisation.get("BaseCurrency") or "").strip()
+                xero_error = ""
+                refreshed_tenants += 1
+                data_source = "live"
+                _upsert_xero_lock_date_snapshot(
+                    tenant_id,
+                    period_lock_date,
+                    end_of_year_lock_date,
+                    currency,
+                    xero_error,
+                    now,
+                )
+            except HTTPException as exc:
+                detail = exc.detail
+                if isinstance(detail, dict):
+                    xero_error = str(detail.get("message") or detail)
+                else:
+                    xero_error = str(detail)
+                data_source = "cache" if snapshot_row else "error"
+                _upsert_xero_lock_date_snapshot(
+                    tenant_id,
+                    period_lock_date,
+                    end_of_year_lock_date,
+                    currency,
+                    xero_error,
+                    now,
+                )
+        else:
+            cached_tenants += 1
+
         accounts_filed_date = _latest_accounts_filed_date(ch_row)
+        mapping_missing = not mapped_company_number
         accounts_filed_not_locked = bool(
             accounts_filed_date and (period_lock_date is None or period_lock_date < accounts_filed_date)
         )
@@ -676,7 +811,10 @@ async def xero_lock_date_overview_payload(user: dict) -> dict:
                 },
                 "flags": {
                     "accountsFiledNotLocked": accounts_filed_not_locked,
+                    "mappingMissing": mapping_missing,
                 },
+                "dataSource": data_source,
+                "lastSyncedAt": _iso(snapshot_row.get("last_synced_at")) or "",
                 "xeroError": xero_error,
             }
         )
@@ -689,7 +827,15 @@ async def xero_lock_date_overview_payload(user: dict) -> dict:
         ),
         reverse=True,
     )
-    return {"mainTenantName": preferred_tenant_name, "rows": rows}
+    return {
+        "mainTenantName": preferred_tenant_name,
+        "rows": rows,
+        "meta": {
+            "refreshedTenants": refreshed_tenants,
+            "cachedTenants": cached_tenants,
+            "forcedRefresh": force_refresh,
+        },
+    }
 
 
 async def save_posting_settings(user: dict, payload: dict) -> dict:

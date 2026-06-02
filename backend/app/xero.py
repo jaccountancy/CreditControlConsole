@@ -416,6 +416,22 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                 (email, full_name, utcnow(), utcnow()),
             )
             user = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT tenant_id
+                FROM xero_connections
+                WHERE user_id = %s
+                """,
+                (user["id"],),
+            )
+            existing_rows = cursor.fetchall() or []
+            existing_tenant_ids = {
+                str(row.get("tenant_id") or "").strip()
+                for row in existing_rows
+                if str(row.get("tenant_id") or "").strip()
+            }
+            refreshed_existing_tenant_count = 0
+            new_tenant_names: list[str] = []
 
             xero_connection = None
             seen_tenant_ids: set[str] = set()
@@ -424,6 +440,11 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                 if not candidate_tenant_id or candidate_tenant_id in seen_tenant_ids:
                     continue
                 seen_tenant_ids.add(candidate_tenant_id)
+                tenant_name = str(connection_item.get("tenantName", "Xero Organisation") or "Xero Organisation")
+                if candidate_tenant_id in existing_tenant_ids:
+                    refreshed_existing_tenant_count += 1
+                else:
+                    new_tenant_names.append(tenant_name)
                 cursor.execute(
                     """
                     INSERT INTO xero_connections (
@@ -455,7 +476,7 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                         user["id"],
                         profile.get("sub", ""),
                         candidate_tenant_id,
-                        connection_item.get("tenantName", "Xero Organisation"),
+                        tenant_name,
                         connection_item.get("tenantType"),
                         token_payload["access_token"],
                         token_payload["refresh_token"],
@@ -476,7 +497,16 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
                 xero_connection = cursor.fetchone()
             connection.commit()
 
-    return {"user": user, "connection": xero_connection}
+    return {
+        "user": user,
+        "connection": xero_connection,
+        "tenant_sync_summary": {
+            "total_tenants": len(seen_tenant_ids),
+            "new_tenants_count": len(new_tenant_names),
+            "new_tenant_names": new_tenant_names[:8],
+            "refreshed_existing_tenants_count": refreshed_existing_tenant_count,
+        },
+    }
 
 
 def _modified_since_header_value(modified_since: datetime | None) -> str | None:

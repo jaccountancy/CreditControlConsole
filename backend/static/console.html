@@ -14728,7 +14728,7 @@
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                             <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>Companies House</span></span>
                         </a>
-                        <a class="app-nav-button" href="#credit-control-company-secretarial" data-app-nav="company-secretarial">
+                        <a class="app-nav-button" href="#credit-control-company-secreterial" data-app-nav="company-secreterial">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 4h7l5 5v11H7z"></path><path d="M14 4v5h5"></path><path d="M10 12h6"></path><path d="M10 16h6"></path></svg></span>
                             <span class="app-nav-copy"><strong>Company Secretarial</strong><span>Submissions</span></span>
                         </a>
@@ -16380,6 +16380,7 @@
                                 </div>
                             </div>
                             <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
+                            <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
                             <div class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Xero lock dates">
                                     <thead>
@@ -17973,8 +17974,10 @@
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
-            let xeroLockDateOverview = { mainTenantName: "", rows: [] };
+            let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
+            let xeroLockDateCHHealth = { loading: false, ok: null, checkedAt: "", message: "Companies House API status not checked yet." };
+            const xeroLockDateCHHealthCacheMs = 10 * 60 * 1000;
             const bankStatementChartOfAccountsFallback = [
                 { code: "200", name: "Sales", type: "Revenue", taxType: "20% (VAT on Income)" },
                 { code: "260", name: "Other Revenue", type: "Revenue", taxType: "20% (VAT on Income)" },
@@ -19459,7 +19462,15 @@
             }
 
             function consumeXeroConnectionReturn() {
-                const result = { connected: false, syncRunId: "", syncStarted: false };
+                const result = {
+                    connected: false,
+                    syncRunId: "",
+                    syncStarted: false,
+                    newTenantsCount: 0,
+                    refreshedTenantsCount: 0,
+                    totalTenantsCount: 0,
+                    newTenantNames: []
+                };
                 const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
                 if (!isHostedPage) return result;
                 try {
@@ -19470,17 +19481,29 @@
                     const sessionToken = url.searchParams.get("panel_session") || hashParams.get("panel_session") || "";
                     const syncRunId = url.searchParams.get("sync_run") || hashParams.get("sync_run") || "";
                     const syncStarted = url.searchParams.get("sync_started") || hashParams.get("sync_started") || "";
+                    const newTenants = url.searchParams.get("xero_new_tenants") || hashParams.get("xero_new_tenants") || "";
+                    const refreshedTenants = url.searchParams.get("xero_refreshed_tenants") || hashParams.get("xero_refreshed_tenants") || "";
+                    const totalTenants = url.searchParams.get("xero_total_tenants") || hashParams.get("xero_total_tenants") || "";
+                    const newTenantNamesText = url.searchParams.get("xero_new_tenant_names") || hashParams.get("xero_new_tenant_names") || "";
                     if (!connected && !sessionToken && !syncRunId) return result;
                     if (sessionToken) storePanelSessionToken(sessionToken);
                     url.searchParams.delete("xero");
                     url.searchParams.delete("panel_session");
                     url.searchParams.delete("sync_run");
                     url.searchParams.delete("sync_started");
+                    url.searchParams.delete("xero_new_tenants");
+                    url.searchParams.delete("xero_refreshed_tenants");
+                    url.searchParams.delete("xero_total_tenants");
+                    url.searchParams.delete("xero_new_tenant_names");
                     if (hashLooksParametric) {
                         hashParams.delete("xero");
                         hashParams.delete("panel_session");
                         hashParams.delete("sync_run");
                         hashParams.delete("sync_started");
+                        hashParams.delete("xero_new_tenants");
+                        hashParams.delete("xero_refreshed_tenants");
+                        hashParams.delete("xero_total_tenants");
+                        hashParams.delete("xero_new_tenant_names");
                         const nextHash = hashParams.toString();
                         url.hash = nextHash ? `#${nextHash}` : "";
                     }
@@ -19488,10 +19511,37 @@
                     result.connected = connected || Boolean(sessionToken);
                     result.syncRunId = syncRunId;
                     result.syncStarted = syncStarted === "1" || syncStarted === "true";
+                    result.newTenantsCount = Math.max(0, Number(newTenants || 0) || 0);
+                    result.refreshedTenantsCount = Math.max(0, Number(refreshedTenants || 0) || 0);
+                    result.totalTenantsCount = Math.max(0, Number(totalTenants || 0) || 0);
+                    result.newTenantNames = String(newTenantNamesText || "")
+                        .split("|")
+                        .map((item) => item.trim())
+                        .filter(Boolean);
                     return result;
                 } catch {
                     return result;
                 }
+            }
+
+            function xeroConnectionPopupMessage(connectionReturn) {
+                const newCount = Number(connectionReturn?.newTenantsCount || 0);
+                const refreshedCount = Number(connectionReturn?.refreshedTenantsCount || 0);
+                const totalCount = Number(connectionReturn?.totalTenantsCount || 0);
+                const lines = [
+                    "Xero connection refresh completed.",
+                    `New Xero accounts added: ${newCount}.`,
+                    `Existing Xero connections refreshed: ${refreshedCount}.`,
+                ];
+                if (totalCount > 0) {
+                    lines.push(`Total linked Xero accounts: ${totalCount}.`);
+                }
+                const names = Array.isArray(connectionReturn?.newTenantNames) ? connectionReturn.newTenantNames : [];
+                if (names.length) {
+                    lines.push("");
+                    lines.push(`New accounts: ${names.join(", ")}`);
+                }
+                return lines.join("\n");
             }
 
             function ignitionConnectionReturnURL() {
@@ -21298,8 +21348,13 @@
             async function disconnectXero(event = null) {
                 event?.preventDefault?.();
                 if (!window.confirm("Disconnect this Xero organisation from the console? Existing ledger rows will remain visible until the next sync.")) return;
+                const mainTenant = (xeroLockDateOverview.rows || []).find((row) => row?.isMainTenant) || (xeroLockDateOverview.rows || [])[0] || null;
+                const tenantId = String(mainTenant?.tenantId || state?.organisation?.tenantId || "");
                 try {
-                    await requestJSON(api.endpoints.disconnect, { method: "POST" });
+                    await requestJSON(api.endpoints.disconnect, {
+                        method: "POST",
+                        body: JSON.stringify({ tenantId })
+                    });
                     state.organisation = { ...emptyData.organisation, lastSync: "Xero disconnected" };
                     clearSyncFailureBanner();
                     persistState();
@@ -24414,6 +24469,7 @@
                 closeToolbarMenus();
                 renderAll();
                 loadXeroLockDateOverview();
+                loadXeroLockDateCHHealth();
                 scrollConsoleToTop();
             }
 
@@ -24804,11 +24860,13 @@
                 xeroLockDateLoading = true;
                 if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                 try {
-                    const payload = await requestJSON(api.endpoints.xeroLockDates);
+                    const endpoint = `${api.endpoints.xeroLockDates}${force ? "?force=1" : ""}`;
+                    const payload = await requestJSON(endpoint);
                     const rows = Array.isArray(payload?.rows) ? payload.rows : [];
                     xeroLockDateOverview = {
                         mainTenantName: String(payload?.mainTenantName || ""),
-                        rows
+                        rows,
+                        meta: payload?.meta || {}
                     };
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                 } catch (error) {
@@ -24842,19 +24900,64 @@
                 }
             }
 
+            async function loadXeroLockDateCHHealth(force = false) {
+                if (xeroLockDateCHHealth.loading) return;
+                const checkedAtMs = xeroLockDateCHHealth.checkedAt ? Date.parse(xeroLockDateCHHealth.checkedAt) : 0;
+                const cacheValid = checkedAtMs && (Date.now() - checkedAtMs) < xeroLockDateCHHealthCacheMs;
+                if (!force && cacheValid && xeroLockDateCHHealth.ok !== null) return;
+                xeroLockDateCHHealth.loading = true;
+                xeroLockDateCHHealth.message = "Checking Companies House API connection…";
+                if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                try {
+                    const payload = await requestJSON("/api/companies-house/settings/test-connection", {
+                        method: "POST",
+                        body: JSON.stringify({}),
+                    });
+                    const result = payload?.result || {};
+                    const envLabel = result.environment === "production" ? "production" : "sandbox";
+                    const latency = Number(result.durationMs || 0);
+                    const sampleCount = Number(result.sampleResultCount || 0);
+                    const checkedAt = new Date().toISOString();
+                    xeroLockDateCHHealth = {
+                        loading: false,
+                        ok: true,
+                        checkedAt,
+                        message: `Companies House API connected (${envLabel}) · ${latency}ms · sample results ${sampleCount}.`,
+                    };
+                } catch (error) {
+                    xeroLockDateCHHealth = {
+                        loading: false,
+                        ok: false,
+                        checkedAt: new Date().toISOString(),
+                        message: error?.message || "Companies House API check failed.",
+                    };
+                } finally {
+                    xeroLockDateCHHealth.loading = false;
+                    if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                }
+            }
+
             function renderXeroLockDateScreen() {
                 const summary = document.getElementById("xeroLockDateSummary");
+                const health = document.getElementById("xeroLockDateCHHealth");
                 const body = document.getElementById("xeroLockDateTableBody");
-                if (!summary || !body) return;
+                if (!summary || !body || !health) return;
                 if (xeroLockDateLoading) {
                     summary.textContent = "Loading lock-date data…";
                 } else {
                     const rows = xeroLockDateOverview.rows || [];
                     const flagged = rows.filter((row) => row?.flags?.accountsFiledNotLocked).length;
+                    const unmapped = rows.filter((row) => row?.flags?.mappingMissing).length;
+                    const refreshed = Number(xeroLockDateOverview.meta?.refreshedTenants || 0);
+                    const cached = Number(xeroLockDateOverview.meta?.cachedTenants || 0);
                     summary.textContent = rows.length
-                        ? `${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} loaded · ${flagged.toLocaleString("en-GB")} flagged for filed accounts without a period lock.`
+                        ? `${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} loaded · ${flagged.toLocaleString("en-GB")} flagged · ${unmapped.toLocaleString("en-GB")} unmapped · ${refreshed.toLocaleString("en-GB")} refreshed · ${cached.toLocaleString("en-GB")} cached.`
                         : "No Xero tenants are connected yet.";
                 }
+                const checkedAtLabel = xeroLockDateCHHealth.checkedAt
+                    ? new Date(xeroLockDateCHHealth.checkedAt).toLocaleString("en-GB")
+                    : "Not checked yet";
+                health.textContent = `${xeroLockDateCHHealth.message || "Companies House API status not checked yet."} Last checked: ${checkedAtLabel}.`;
                 const rows = xeroLockDateOverview.rows || [];
                 body.innerHTML = rows.length
                     ? rows.map((row) => {
@@ -24862,6 +24965,7 @@
                         const mapping = row?.mapping || {};
                         const companiesHouse = row?.companiesHouse || {};
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
+                        const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
                         const yearEndLock = row?.endOfYearLockDate ? formatDate(row.endOfYearLockDate) : "Not set";
                         const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
@@ -24890,7 +24994,11 @@
                                     <button class="ghost-button" type="button" data-xero-lock-map-save="${escapeHTML(tenantId)}">Save</button>
                                 </td>
                                 <td class="xero-lock-date-flag-cell">
-                                    ${isFlagged ? '<span class="ch-pill is-bad">Accounts filed but period not locked</span>' : '<span class="ch-pill is-good">No lock issue detected</span>'}
+                                    ${isFlagged
+                                        ? '<span class="ch-pill is-bad">Accounts filed but period not locked</span>'
+                                        : mappingMissing
+                                            ? '<span class="ch-pill is-warn">Mapping needed to evaluate filing lock status</span>'
+                                            : '<span class="ch-pill is-good">No lock issue detected</span>'}
                                     ${row?.xeroError ? `<small>${escapeHTML(row.xeroError)}</small>` : ""}
                                 </td>
                             </tr>
@@ -43840,7 +43948,10 @@
                 const refreshXeroLockDateButton = document.getElementById("refreshXeroLockDateButton");
                 if (refreshXeroLockDateButton && refreshXeroLockDateButton.dataset.lockDateWired !== "true") {
                     refreshXeroLockDateButton.dataset.lockDateWired = "true";
-                    refreshXeroLockDateButton.addEventListener("click", () => loadXeroLockDateOverview(true));
+                    refreshXeroLockDateButton.addEventListener("click", () => {
+                        loadXeroLockDateOverview(true);
+                        loadXeroLockDateCHHealth(true);
+                    });
                 }
                 const menuBankStatementsButton = document.getElementById("menuBankStatementsButton");
                 if (menuBankStatementsButton) menuBankStatementsButton.addEventListener("click", openBankStatementsScreen);
@@ -45798,6 +45909,9 @@
                         "success",
                         XERO_CONNECTED_NOTICE_DURATION_MS
                     );
+                    window.setTimeout(() => {
+                        window.alert(xeroConnectionPopupMessage(xeroConnectionReturn));
+                    }, 120);
                 }
                 if (returnedFromIgnitionConnection) {
                     showToast(

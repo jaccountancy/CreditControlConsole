@@ -598,6 +598,13 @@ async def auth_xero_callback(request: Request, code: str, state: str):
         sync_run, sync_started = queue_initial_xero_sync(login["user"])
         redirect_to = normalise_oauth_redirect(state_row["redirect_to"] or "/")
         redirect_params = {"xero": "connected"}
+        tenant_sync_summary = login.get("tenant_sync_summary") or {}
+        redirect_params["xero_new_tenants"] = str(int(tenant_sync_summary.get("new_tenants_count") or 0))
+        redirect_params["xero_refreshed_tenants"] = str(int(tenant_sync_summary.get("refreshed_existing_tenants_count") or 0))
+        redirect_params["xero_total_tenants"] = str(int(tenant_sync_summary.get("total_tenants") or 0))
+        new_tenant_names = tenant_sync_summary.get("new_tenant_names") or []
+        if new_tenant_names:
+            redirect_params["xero_new_tenant_names"] = "|".join(str(name or "").strip() for name in new_tenant_names if str(name or "").strip())
         if sync_run:
             redirect_params["sync_run"] = str(sync_run["id"])
             redirect_params["sync_started"] = "1" if sync_started else "0"
@@ -1006,8 +1013,15 @@ def api_developer_logs_clear(user: dict = Depends(require_panel_user)):
 
 
 @app.post("/api/xero/disconnect")
-def api_xero_disconnect(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **disconnect_xero(user)}
+async def api_xero_disconnect(request: Request, user: dict = Depends(require_panel_user)):
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    tenant_id = str(payload.get("tenantId") or "").strip()
+    disconnect_all = bool(payload.get("disconnectAll"))
+    return {"status": "ok", **disconnect_xero(user, tenant_id=tenant_id, disconnect_all=disconnect_all)}
 
 
 @app.get("/api/xero/chart-of-accounts")
@@ -1023,8 +1037,11 @@ async def api_xero_posting_settings(request: Request, user: dict = Depends(requi
 
 
 @app.get("/api/xero/lock-dates")
-async def api_xero_lock_dates(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **await xero_lock_date_overview_payload(user)}
+async def api_xero_lock_dates(
+    force: bool = Query(False, alias="force"),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **await xero_lock_date_overview_payload(user, force_refresh=force)}
 
 
 @app.post("/api/xero/tenant-mappings/{tenant_id}")
