@@ -181,7 +181,7 @@ def test_companies_house_connection() -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Environment must be 'sandbox' or 'production'.",
         )
-    api_key = decrypt_api_key()
+    api_key = _validated_companies_house_api_key(decrypt_api_key())
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -282,7 +282,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
         api_key_encrypted = existing.get("api_key_encrypted") or ""
         api_key_hint = existing.get("api_key_hint") or ""
     else:
-        api_key_value = str(new_api_key).strip()
+        api_key_value = _validated_companies_house_api_key(str(new_api_key))
         if api_key_value:
             api_key_encrypted = encrypt_secret(api_key_value, CH_API_KEY_LABEL)
             api_key_hint = _mask(api_key_value)
@@ -383,6 +383,24 @@ def decrypt_api_key() -> str:
         settings = get_settings()
         return (settings.companies_house_api_key or "").strip()
     return decrypt_secret(row["api_key_encrypted"], CH_API_KEY_LABEL)
+
+
+def _validated_companies_house_api_key(value: str) -> str:
+    api_key = str(value or "").strip()
+    if not api_key:
+        return ""
+    lowered = api_key.lower()
+    if lowered.startswith("basic ") or lowered.startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Companies House API key is invalid. Save only the raw API key (not a Basic/Bearer Authorization header).",
+        )
+    if any(char.isspace() for char in api_key):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Companies House API key is invalid. Remove spaces and save only the raw key value.",
+        )
+    return api_key
 
 
 def decrypt_presenter_auth() -> str:
@@ -513,7 +531,7 @@ def _fetch_ch_company_snapshot(company_number: str) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid company number.")
     settings_row = _ensure_settings_row()
     environment = str(settings_row.get("environment") or "sandbox").strip().lower()
-    api_key = decrypt_api_key()
+    api_key = _validated_companies_house_api_key(decrypt_api_key())
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1971,7 +1989,16 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
                         error_detail = (response.text or "").strip()
                     if len(error_detail) > 180:
                         error_detail = f"{error_detail[:177]}..."
-                    reason = f"Companies House search failed ({response.status_code})."
+                    if (
+                        response.status_code == status.HTTP_400_BAD_REQUEST
+                        and "invalid authorization header" in error_detail.lower()
+                    ):
+                        reason = (
+                            "Companies House rejected the API key format. "
+                            "In Settings, save only the raw API key (no Basic/Bearer prefix, no spaces)."
+                        )
+                    else:
+                        reason = f"Companies House search failed ({response.status_code})."
                     if error_detail:
                         reason = f"{reason} {error_detail}"
                     failed.append(
