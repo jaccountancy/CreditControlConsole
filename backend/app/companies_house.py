@@ -478,6 +478,8 @@ def _looks_private_limited(row_payload: dict) -> bool:
         return True
     if re.search(r"\bltd\b", company_name) or "limited" in company_name:
         return True
+    if "limited company" in company_type or "ltd company" in company_type:
+        return True
     return False
 
 
@@ -592,6 +594,7 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
     error_count = 0
     auth_codes_in_file = 0
     selected_count = 0
+    excluded_non_ltd_count = 0
 
     for row in parsed_rows:
         data = row["data"]
@@ -600,18 +603,13 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             row["errors"].append("Duplicate company number within this file.")
         if data.get("auth_code"):
             auth_codes_in_file += 1
-        if not _looks_private_limited(data):
-            row["included"] = False
-            if not row["errors"]:
-                row["warnings"] = (row.get("warnings") or []) + ["Excluded automatically: not a private limited company."]
-        else:
-            row["included"] = True
+        row["included"] = _looks_private_limited(data)
         if row["errors"]:
             error_count += 1
             row["action"] = "error"
             continue
-        if not row.get("included", True):
-            skip_count += 1
+        if not row["included"]:
+            excluded_non_ltd_count += 1
             row["action"] = "skip"
             continue
         if company_number in existing:
@@ -628,17 +626,20 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
 
     if not parsed_rows:
         skip_count = 0
+    visible_rows = [row for row in parsed_rows if row.get("included") or row.get("errors")]
 
     return {
         "filename": filename,
         "totalRows": len(parsed_rows),
+        "visibleRows": len(visible_rows),
         "createCount": create_count,
         "updateCount": update_count,
         "skipCount": skip_count,
         "errorCount": error_count,
         "authCodesInFile": auth_codes_in_file,
         "selectedCount": selected_count,
-        "rows": parsed_rows,
+        "excludedNonLtdCount": excluded_non_ltd_count,
+        "rows": visible_rows,
         "headers": headers,
         "headerProfile": {
             canonical: headers[index]
@@ -753,6 +754,14 @@ def commit_clients_import(user: dict, preview: dict) -> dict:
                 if row.get("included") is False:
                     skipped_count += 1
                     continue
+                if not _looks_private_limited(data):
+                    skipped_count += 1
+                    errors_committed.append({
+                        "lineNumber": row.get("lineNumber"),
+                        "errors": ["Excluded: non-Ltd entity."],
+                        "companyNumber": data.get("company_number"),
+                    })
+                    continue
                 if row.get("errors"):
                     skipped_count += 1
                     errors_committed.append({
@@ -817,6 +826,7 @@ def commit_clients_import(user: dict, preview: dict) -> dict:
                 "skipCount": skipped_count,
                 "authCodesSaved": auth_codes_saved,
                 "headerProfile": preview.get("headerProfile") or {},
+                "excludedNonLtdCount": int(preview.get("excludedNonLtdCount") or 0),
             }
             cursor.execute(
                 """

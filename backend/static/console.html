@@ -42344,11 +42344,12 @@
                 summary.hidden = false;
                 summary.innerHTML = [
                     { label: "Total rows", value: preview.totalRows, tone: "" },
+                    { label: "Shown in preview", value: preview.visibleRows ?? rows.length, tone: "" },
                     { label: "Selected rows", value: selectedRows.length, tone: "" },
                     { label: "Will create", value: selectedCreate, tone: "" },
                     { label: "Will update", value: selectedUpdate, tone: "" },
                     { label: "Errors", value: preview.errorCount, tone: preview.errorCount ? "is-error" : "" },
-                    { label: "Excluded", value: Math.max(0, rows.length - selectedRows.length - Number(preview.errorCount || 0)), tone: "" },
+                    { label: "Excluded non-Ltd", value: preview.excludedNonLtdCount || 0, tone: "" },
                     { label: "Auth codes in file", value: preview.authCodesInFile, tone: "" },
                 ].map((tile) => `<article class="${tile.tone}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
             }
@@ -42427,7 +42428,10 @@
                     const importableRows = previewRows.filter((row) => row.included !== false && !(row.errors || []).length && (row.action === "create" || row.action === "update"));
                     if (commit) commit.hidden = !companiesHouseState.importPreview || !importableRows.length;
                     if (reset) reset.hidden = false;
-                    chSetImportStatus(`Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected for import, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`, "muted");
+                    chSetImportStatus(
+                        `Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected for import, ${(companiesHouseState.importPreview?.excludedNonLtdCount || 0).toLocaleString("en-GB")} non-Ltd excluded, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`,
+                        "muted"
+                    );
                 } catch (error) {
                     console.error("Unable to preview client import", error);
                     chSetImportStatus(error?.message || "Unable to preview.", "error");
