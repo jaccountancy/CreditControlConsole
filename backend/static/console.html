@@ -16443,9 +16443,9 @@
                                         <thead>
                                             <tr>
                                                 <th>Tenant</th>
-                                                <th>Xero Lock Date</th>
-                                                <th>Year-end lock</th>
-                                                <th>CH Submitted Accounts</th>
+                                                <th>Current Xero Lock Date</th>
+                                                <th>Last Accounts Submitted (CH)</th>
+                                                <th>CH Company Record</th>
                                                 <th>CH number mapping</th>
                                                 <th>Status</th>
                                             </tr>
@@ -17626,9 +17626,9 @@
                                     <thead>
                                         <tr>
                                             <th>Tenant</th>
-                                            <th>Xero Lock Date</th>
-                                            <th>Year-end lock</th>
-                                            <th>CH Submitted Accounts</th>
+                                            <th>Current Xero Lock Date</th>
+                                            <th>Last Accounts Submitted (CH)</th>
+                                            <th>CH Company Record</th>
                                             <th>CH number mapping</th>
                                             <th>Flag</th>
                                         </tr>
@@ -27204,9 +27204,9 @@
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
-                        const yearEndLock = row?.endOfYearLockDate ? formatDate(row.endOfYearLockDate) : "Not set";
                         const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
                         const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
+                        const chCompanyRecord = chLabel || "No mapped company details";
                         return `
                             <tr>
                                 <td class="xero-lock-tenant-cell">
@@ -27216,15 +27216,15 @@
                                 </td>
                                 <td class="xero-lock-date-cell">
                                     <strong>${escapeHTML(periodLock)}</strong>
-                                    <small>Period lock</small>
+                                    <small>Current lock date in Xero</small>
                                 </td>
                                 <td class="xero-lock-date-cell">
-                                    <strong>${escapeHTML(yearEndLock)}</strong>
-                                    <small>Year-end lock</small>
+                                    <strong>${escapeHTML(filedDate)}</strong>
+                                    <small>Last accounts submitted at Companies House</small>
                                 </td>
                                 <td class="xero-lock-submitted-cell">
-                                    <strong>${escapeHTML(filedDate)}</strong>
-                                    <small>${escapeHTML(chLabel || "No mapped company details")}</small>
+                                    <strong>${escapeHTML(chCompanyRecord)}</strong>
+                                    <small>${escapeHTML(mapping?.companyNumber ? `CH number ${mapping.companyNumber}` : "No CH number mapped")}</small>
                                 </td>
                                 <td class="xero-lock-mapping-cell">
                                     <div class="xero-lock-mapping-controls">
@@ -27327,9 +27327,9 @@
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
-                        const yearEndLock = row?.endOfYearLockDate ? formatDate(row.endOfYearLockDate) : "Not set";
                         const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
                         const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
+                        const chCompanyRecord = chLabel || "No mapped company details";
                         return `
                             <tr>
                                 <td>
@@ -27337,10 +27337,10 @@
                                     <small>${escapeHTML(tenantId)}</small>
                                 </td>
                                 <td>${escapeHTML(periodLock)}</td>
-                                <td>${escapeHTML(yearEndLock)}</td>
+                                <td>${escapeHTML(filedDate)}</td>
                                 <td>
-                                    <strong>${escapeHTML(filedDate)}</strong>
-                                    <small>${escapeHTML(chLabel || "No mapped company details")}</small>
+                                    <strong>${escapeHTML(chCompanyRecord)}</strong>
+                                    <small>${escapeHTML(mapping?.companyNumber ? `CH number ${mapping.companyNumber}` : "No CH number mapped")}</small>
                                 </td>
                                 <td>
                                     <input
