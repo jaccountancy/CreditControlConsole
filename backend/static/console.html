@@ -17301,6 +17301,7 @@
                                     </div>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="primary-button" id="connectXeroLockDateButton" type="button">Connect Client Xeros</button>
                                     <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
                                     <button class="ghost-button" id="identifyXeroLockMismatchesButton" type="button">Identify Lock Mismatches</button>
                                     <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
@@ -46469,6 +46470,20 @@
                         window.location.assign(url);
                     });
                 }
+                const connectXeroLockDateButton = document.getElementById("connectXeroLockDateButton");
+                if (connectXeroLockDateButton && connectXeroLockDateButton.dataset.lockDateWired !== "true") {
+                    connectXeroLockDateButton.dataset.lockDateWired = "true";
+                    connectXeroLockDateButton.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        const url = loginURL();
+                        if (!url) {
+                            window.alert("Unable to start the Xero login flow.");
+                            return;
+                        }
+                        showToast("Opening Xero connection", "info");
+                        window.location.assign(url);
+                    });
+                }
                 const menuBankStatementsButton = document.getElementById("menuBankStatementsButton");
                 if (menuBankStatementsButton) menuBankStatementsButton.addEventListener("click", openBankStatementsScreen);
                 const menuIgnitionButton = document.getElementById("menuIgnitionButton");
@@ -47600,6 +47615,24 @@
                 return (companiesHouseState.companies || []).filter((company) => selected.has(String(company.id || "")));
             }
 
+            function chSubmissionIneligibilityReasons(company) {
+                const reasons = [];
+                const dueInDays = Number(company?.dueInDays);
+                const hasDueInDays = Number.isFinite(dueInDays);
+                const internalStatus = String(company?.internalStatus || "active");
+                const authorityStatus = String(company?.filingAuthorityStatus || "pending").toLowerCase();
+                const authorityExpiresAt = company?.filingAuthorityExpiresAt ? new Date(company.filingAuthorityExpiresAt) : null;
+                const now = new Date();
+                if (!company?.nextDueDate) reasons.push("Missing next due date");
+                if (!company?.nextMadeUpToDate) reasons.push("Missing made-up-to date");
+                if (!company?.authCodeOnFile) reasons.push("Missing auth code");
+                if (["paused", "do_not_file", "inactive"].includes(internalStatus)) reasons.push(`Blocked by internal status (${internalStatus.replace(/_/g, " ")})`);
+                if (authorityStatus !== "authorised") reasons.push("Filing authority not authorised");
+                if (authorityExpiresAt instanceof Date && !Number.isNaN(authorityExpiresAt.getTime()) && authorityExpiresAt < now) reasons.push("Filing authority expired");
+                if (hasDueInDays && dueInDays > 60) reasons.push("Due date is more than 60 days away");
+                return reasons;
+            }
+
             function chUpdateWorkflowControls() {
                 chRenderWorkflowVisibility();
                 if (!companiesHouseState.workflowOpen) return;
@@ -47632,6 +47665,26 @@
                 if (selectEligibleButton) selectEligibleButton.disabled = companiesHouseState.workflowBusy;
                 if (!selectedCount) {
                     chSetWorkflowStatus("Select clients to start the workflow.", "muted");
+                    return;
+                }
+                if (!selectedEligibleForSubmission) {
+                    const countsByReason = new Map();
+                    selectedCompanies.forEach((company) => {
+                        const reasons = chSubmissionIneligibilityReasons(company);
+                        if (!reasons.length) reasons.push("Not currently eligible for submission");
+                        reasons.forEach((reason) => {
+                            countsByReason.set(reason, Number(countsByReason.get(reason) || 0) + 1);
+                        });
+                    });
+                    const reasonText = Array.from(countsByReason.entries())
+                        .sort((left, right) => right[1] - left[1])
+                        .slice(0, 3)
+                        .map(([reason, count]) => `${count.toLocaleString("en-GB")} ${reason.toLowerCase()}`)
+                        .join(" · ");
+                    chSetWorkflowStatus(
+                        `${selectedCount.toLocaleString("en-GB")} selected, 0 ready to submit. ${reasonText || "Check auth code, authority status, and due date window."}`,
+                        "error"
+                    );
                     return;
                 }
                 chSetWorkflowStatus(
@@ -48092,7 +48145,49 @@
                     chSetImportStatus("No rows are selected for import.", "error");
                     return;
                 }
-                if (!window.confirm(`Commit ${importableRows.length} selected rows? (${preview.errorCount || 0} error rows will be skipped)`)) return;
+                const createCount = importableRows.filter((row) => row.action === "create").length;
+                const updateCount = importableRows.filter((row) => row.action === "update").length;
+                const errorCount = Number(preview.errorCount || 0);
+                const reviewRequiredCount = Number(preview.reviewRequiredCount || 0);
+                const excludedNonLtdCount = Number(preview.excludedNonLtdCount || 0);
+                const reviewRows = importableRows.map((row) => {
+                    const companyName = row.data?.company_name || row.data?.client_name || "—";
+                    const companyNumber = row.data?.company_number || "—";
+                    const notes = (row.warnings || []).join(" · ")
+                        || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || "existing company"}` : "")
+                        || "";
+                    return {
+                        line: Number(row.lineNumber || 0),
+                        action: String(row.action || "").toUpperCase(),
+                        company: companyName,
+                        companyNumber,
+                        notes,
+                    };
+                });
+                const proceed = await showOperationReviewDialog({
+                    eyebrow: "Confirmation Statements",
+                    title: "Commit import",
+                    subtitle: "Review selected rows before committing. Error rows are skipped automatically.",
+                    confirmLabel: "Commit import",
+                    cancelLabel: "Cancel",
+                    summaryChips: [
+                        `${importableRows.length.toLocaleString("en-GB")} selected`,
+                        `${createCount.toLocaleString("en-GB")} create`,
+                        `${updateCount.toLocaleString("en-GB")} update`,
+                        `${errorCount.toLocaleString("en-GB")} errors skipped`,
+                        `${reviewRequiredCount.toLocaleString("en-GB")} needs review`,
+                        `${excludedNonLtdCount.toLocaleString("en-GB")} excluded non-Ltd`,
+                    ],
+                    columns: [
+                        { key: "line", label: "Line", kind: "number" },
+                        { key: "action", label: "Action" },
+                        { key: "company", label: "Company / Client" },
+                        { key: "companyNumber", label: "Company number" },
+                        { key: "notes", label: "Notes" },
+                    ],
+                    rows: reviewRows,
+                });
+                if (!proceed) return;
                 companiesHouseState.importBusy = true;
                 const previewButton = document.getElementById("chImportPreviewButton");
                 const commitButton = document.getElementById("chImportCommitButton");

@@ -1830,9 +1830,22 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
         for tenant in pending_tenants:
             tenant_id = tenant["tenantId"]
             tenant_name = tenant["tenantName"]
-            query_text = tenant_name.strip()
+            query_text = re.sub(r"\s+", " ", str(tenant_name or "").strip())
+            # Companies House search rejects certain malformed queries (400), so strip unsafe characters first.
+            query_text = re.sub(r"[^A-Za-z0-9 &'().,/-]", " ", query_text)
+            query_text = re.sub(r"\s+", " ", query_text).strip()
             if not query_text:
                 skipped.append({"tenantId": tenant_id, "tenantName": tenant_name, "reason": "Tenant name is empty."})
+                continue
+            query_alnum = re.sub(r"[^A-Za-z0-9]", "", query_text)
+            if len(query_alnum) < 2:
+                skipped.append(
+                    {
+                        "tenantId": tenant_id,
+                        "tenantName": tenant_name,
+                        "reason": "Tenant name could not be converted into a valid Companies House search query.",
+                    }
+                )
                 continue
             try:
                 response = client.get(
@@ -1845,11 +1858,42 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
                         detail="Companies House rejected the API credentials while searching for company numbers.",
                     )
                 if response.is_error:
+                    error_detail = ""
+                    content_type = response.headers.get("content-type", "")
+                    if "application/json" in content_type:
+                        try:
+                            error_payload = response.json()
+                        except ValueError:
+                            error_payload = None
+                        if isinstance(error_payload, dict):
+                            if isinstance(error_payload.get("errors"), list):
+                                flattened = [
+                                    str(item.get("error") or item.get("message") or "").strip()
+                                    for item in error_payload["errors"]
+                                    if isinstance(item, dict)
+                                ]
+                                error_detail = "; ".join([item for item in flattened if item])
+                            if not error_detail:
+                                error_detail = str(
+                                    error_payload.get("error")
+                                    or error_payload.get("message")
+                                    or error_payload.get("detail")
+                                    or ""
+                                ).strip()
+                        elif isinstance(error_payload, str):
+                            error_detail = error_payload.strip()
+                    if not error_detail:
+                        error_detail = (response.text or "").strip()
+                    if len(error_detail) > 180:
+                        error_detail = f"{error_detail[:177]}..."
+                    reason = f"Companies House search failed ({response.status_code})."
+                    if error_detail:
+                        reason = f"{reason} {error_detail}"
                     failed.append(
                         {
                             "tenantId": tenant_id,
                             "tenantName": tenant_name,
-                            "reason": f"Companies House search failed ({response.status_code}).",
+                            "reason": f"{reason} Query: \"{query_text}\".",
                         }
                     )
                     continue
