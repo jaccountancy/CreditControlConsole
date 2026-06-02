@@ -283,7 +283,14 @@ async def fetch_ignition_collection(connection_row: dict, endpoint: str, modifie
     cursor = None
     last_meta: dict = {}
     page_limit = IGNITION_PAGE_LIMIT
+    page_count = 0
+    max_pages = 2000
+    empty_page_streak = 0
+    seen_cursors: set[str] = set()
     while True:
+        page_count += 1
+        if page_count > max_pages:
+            break
         params = {"limit": page_limit}
         if modified_since is not None:
             params["updated_since"] = _ignition_modified_since_param(modified_since)
@@ -304,11 +311,19 @@ async def fetch_ignition_collection(connection_row: dict, endpoint: str, modifie
         if not isinstance(batch, list):
             batch = []
         rows.extend(batch)
+        empty_page_streak = empty_page_streak + 1 if not batch else 0
         last_meta = payload.get("meta") or {}
         pagination = last_meta.get("pagination") or {}
-        if not pagination.get("has_more"):
+        has_more = bool(pagination.get("has_more"))
+        if not has_more:
             break
-        cursor = pagination.get("next_cursor")
-        if not cursor:
+        next_cursor = str(pagination.get("next_cursor") or "").strip()
+        if not next_cursor:
             break
+        if empty_page_streak >= 3:
+            break
+        if next_cursor in seen_cursors:
+            break
+        seen_cursors.add(next_cursor)
+        cursor = next_cursor
     return rows, last_meta
