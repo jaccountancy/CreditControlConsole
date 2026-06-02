@@ -14255,8 +14255,18 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
 
 async def create_ignition_renewal_run(user: dict) -> dict:
     connection = get_ignition_connection_for_user(user["id"])
-    proposals, _meta = await fetch_ignition_collection(connection, "/reporting/proposals")
-    _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
+    proposals_source = "live"
+    refresh_error_message = ""
+    try:
+        proposals, _meta = await fetch_ignition_collection(connection, "/reporting/proposals")
+        _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
+    except HTTPException as exc:
+        detail = exc.detail
+        if isinstance(detail, dict):
+            refresh_error_message = str(detail.get("message") or detail.get("error") or "")
+        else:
+            refresh_error_message = str(detail or "")
+        proposals_source = "cached"
 
     window_start = utcnow().date()
     window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
@@ -14272,6 +14282,14 @@ async def create_ignition_renewal_run(user: dict) -> dict:
                 (user["id"],),
             )
             records = cursor.fetchall()
+            if proposals_source == "cached" and not records:
+                message = (
+                    "Ignition proposals could not be refreshed and there is no cached proposal data to build a renewals round. "
+                    "Run an Ignition sync, then retry."
+                )
+                if refresh_error_message:
+                    message = f"{message} Provider response: {refresh_error_message}"
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
             candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
 
             cursor.execute("SELECT proposal_external_id FROM ignition_renewal_items WHERE user_id = %s", (user["id"],))
@@ -14338,6 +14356,8 @@ async def create_ignition_renewal_run(user: dict) -> dict:
             "window_weeks": IGNITION_RENEWAL_WINDOW_WEEKS,
             "picked": len(inserted),
             "skipped_previously_picked": skipped_count,
+            "proposal_source": proposals_source,
+            "refresh_error": refresh_error_message,
         },
         user["id"],
     )
