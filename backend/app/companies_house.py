@@ -3322,6 +3322,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     today = date.today()
     next_due = row.get("next_due_date")
     next_made_up_to = row.get("next_made_up_to_date")
+    last_filed = row.get("last_filed_date")
     if isinstance(next_due, date):
         due_in_days = (next_due - today).days
     else:
@@ -3334,6 +3335,30 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     has_due_date = isinstance(next_due, date)
     has_made_up_to_date = isinstance(next_made_up_to, date)
     has_auth = bool(row.get("auth_code_on_file"))
+    submission_issues: list[str] = []
+    if not has_due_date:
+        submission_issues.append("Missing next due date.")
+    if not has_made_up_to_date:
+        submission_issues.append("Missing made-up-to date.")
+    if not has_auth:
+        submission_issues.append("Missing authentication code.")
+    if blocked_internal:
+        submission_issues.append(f"Blocked by internal status ({internal_status.replace('_', ' ')}).")
+    if str(row.get("filing_authority_status") or "pending") != "authorised":
+        submission_issues.append("Filing authority is not authorised.")
+    authority_expires_at = row.get("filing_authority_expires_at")
+    if authority_expires_at is not None:
+        if not isinstance(authority_expires_at, datetime) or authority_expires_at.date() < today:
+            submission_issues.append("Filing authority has expired.")
+    filed_within_last_12_months = bool(
+        isinstance(last_filed, date)
+        and last_filed >= (today - timedelta(days=365))
+    )
+    submission_warnings: list[str] = []
+    if filed_within_last_12_months:
+        submission_warnings.append(
+            f"Recently filed on {last_filed.isoformat()}. Usually not due yet; submit early only if changes are required."
+        )
     eligible_for_submission = bool(
         has_due_date
         and has_made_up_to_date
@@ -3372,6 +3397,10 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "nextMadeUpToDate": _date_or_none(row.get("next_made_up_to_date")),
         "nextDueDate": _date_or_none(row.get("next_due_date")),
         "lastFiledDate": _date_or_none(row.get("last_filed_date")),
+        "filedWithinLast12Months": filed_within_last_12_months,
+        "submissionWarnings": submission_warnings,
+        "submissionIssues": submission_issues,
+        "recommendedWorkflowAction": "changes-required" if submission_issues else "no-changes",
         "filingHistory": row.get("filing_history") or [],
         "internalStatus": row.get("internal_status") or "active",
         "filingAuthorityStatus": row.get("filing_authority_status") or "pending",
