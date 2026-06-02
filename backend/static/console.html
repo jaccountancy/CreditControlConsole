@@ -6475,6 +6475,54 @@
                 color: var(--muted);
                 font-weight: 750;
             }
+            .practice-pack-submissions {
+                padding: 14px;
+                border-radius: 16px;
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.78);
+                display: grid;
+                gap: 10px;
+            }
+            .practice-pack-submissions-head {
+                display: flex;
+                justify-content: space-between;
+                gap: 8px;
+                align-items: baseline;
+                flex-wrap: wrap;
+            }
+            .practice-pack-submissions-head small {
+                color: var(--muted);
+                font-weight: 750;
+            }
+            .practice-pack-submissions-table-wrap {
+                overflow: auto;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+            }
+            .practice-pack-submissions-table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 760px;
+            }
+            .practice-pack-submissions-table th,
+            .practice-pack-submissions-table td {
+                padding: 9px 11px;
+                border-bottom: 1px solid rgba(61, 85, 130, 0.08);
+                font-size: 0.78rem;
+                text-align: left;
+                white-space: nowrap;
+            }
+            .practice-pack-submissions-table thead th {
+                background: rgba(233, 241, 255, 0.65);
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .practice-pack-submissions-table tbody tr:last-child td {
+                border-bottom: 0;
+            }
             .practice-pack-review {
                 display: grid;
                 gap: 12px;
@@ -16626,6 +16674,7 @@
             let practicePackResult = null;
             let practicePackGenerating = false;
             let practicePackAssignments = loadPracticePackAssignments();
+            let practicePackHistory = loadPracticePackHistory();
             let practicePackClientCsvData = null;
             let practicePackTaskCsvData = null;
             let practicePackTaskDraftRows = [];
@@ -17054,6 +17103,31 @@
                     return {
                         records: records
                             .filter((record) => record && typeof record === "object" && Array.isArray(record.ownerSummaries))
+                            .map((record) => ({
+                                month: String(record.month || ""),
+                                generatedAt: String(record.generatedAt || ""),
+                                ownerSummaries: Array.isArray(record.ownerSummaries)
+                                    ? record.ownerSummaries.map(normalisePracticePackOwnerSummary).filter(Boolean)
+                                    : [],
+                                filename: String(record.filename || ""),
+                                taskCount: Number(record.taskCount || 0),
+                                clientCount: Number(record.clientCount || 0),
+                                staffPackCount: Number(record.staffPackCount || 0),
+                                unmatchedTaskCount: Number(record.unmatchedTaskCount || 0),
+                                totalMrr: Number(record.totalMrr || 0),
+                                serviceCount: Number(record.serviceCount || 0),
+                                fileCount: Number(record.fileCount || 0),
+                                zipByteSize: Number(record.zipByteSize || 0),
+                                files: Array.isArray(record.files)
+                                    ? record.files
+                                        .filter((file) => file && typeof file === "object")
+                                        .map((file) => ({
+                                            name: String(file.name || ""),
+                                            byteSize: Number(file.byteSize || 0),
+                                            contentType: String(file.contentType || "")
+                                        }))
+                                    : []
+                            }))
                             .slice(0, 18)
                     };
                 } catch {
@@ -17092,11 +17166,26 @@
                 const ownerSummaries = Array.isArray(result?.ownerSummaries)
                     ? result.ownerSummaries.map(normalisePracticePackOwnerSummary).filter(Boolean)
                     : [];
-                if (!ownerSummaries.length) return;
                 const current = {
                     month: String(result.month || currentPracticePackMonth() || ""),
                     generatedAt: String(result.generatedAt || new Date().toISOString()),
-                    ownerSummaries
+                    ownerSummaries,
+                    filename: String(result.filename || ""),
+                    taskCount: Number(result.taskCount || 0),
+                    clientCount: Number(result.clientCount || 0),
+                    staffPackCount: Number(result.staffPackCount || 0),
+                    unmatchedTaskCount: Number(result.unmatchedTaskCount || 0),
+                    totalMrr: Number(result.totalMrr || 0),
+                    serviceCount: Number(result.serviceCount || 0),
+                    fileCount: Number(Array.isArray(result.files) ? result.files.length : 0),
+                    zipByteSize: Number(result.zipBlob?.size || 0),
+                    files: Array.isArray(result.files)
+                        ? result.files.map((file) => ({
+                            name: String(file.name || ""),
+                            byteSize: Number(file.byteSize || 0),
+                            contentType: String(file.contentType || "")
+                        }))
+                        : []
                 };
                 try {
                     const history = loadPracticePackHistory();
@@ -17104,6 +17193,7 @@
                         current,
                         ...history.records.filter((record) => record.generatedAt !== current.generatedAt)
                     ].slice(0, 18);
+                    practicePackHistory = { records };
                     localStorage.setItem(PRACTICE_PACK_HISTORY_KEY, JSON.stringify({ records }));
                 } catch (error) {
                     console.warn("Unable to persist Practice Pack history", error);
@@ -37684,7 +37774,7 @@
                     formData.append("clientFile", clientFile);
                     formData.append("taskFile", taskFile);
                     formData.append("month", month);
-                    formData.append("history", JSON.stringify(loadPracticePackHistory()));
+                    formData.append("history", JSON.stringify(practicePackHistory || loadPracticePackHistory()));
                     const result = await requestFormData(api.endpoints.practicePackGenerate, formData);
                     if (!result?.zipBase64) throw new Error("The backend did not return a practice pack ZIP.");
                     const filename = result.filename || `${practicePackFileNamePart(month)}-practice-pack.zip`;
@@ -37748,14 +37838,67 @@
                 showToast("Practice pack cleared.", "info");
             }
 
+            function latestPracticePackRecord() {
+                const records = Array.isArray(practicePackHistory?.records) ? practicePackHistory.records : [];
+                return records[0] || null;
+            }
+
+            function practicePackDisplayResult() {
+                return practicePackResult || latestPracticePackRecord();
+            }
+
+            function practicePackSubmissionsTableMarkup() {
+                const records = Array.isArray(practicePackHistory?.records) ? practicePackHistory.records : [];
+                if (!records.length) return "";
+                return `
+                    <div class="practice-pack-submissions">
+                        <div class="practice-pack-submissions-head">
+                            <strong>Saved submissions</strong>
+                            <small>${records.length.toLocaleString("en-GB")} recent generation${records.length === 1 ? "" : "s"} kept in this browser.</small>
+                        </div>
+                        <div class="practice-pack-submissions-table-wrap">
+                            <table class="practice-pack-submissions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Generated</th>
+                                        <th>Month</th>
+                                        <th>ZIP</th>
+                                        <th>Clients</th>
+                                        <th>Tasks</th>
+                                        <th>Staff packs</th>
+                                        <th>Unmatched</th>
+                                        <th>Total MRR</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${records.map((record) => `
+                                        <tr>
+                                            <td>${escapeHTML(record.generatedAt ? new Date(record.generatedAt).toLocaleString("en-GB") : "--")}</td>
+                                            <td>${escapeHTML(record.month || "--")}</td>
+                                            <td>${escapeHTML(record.filename || "--")}</td>
+                                            <td>${formatInteger(record.clientCount || 0)}</td>
+                                            <td>${formatInteger(record.taskCount || 0)}</td>
+                                            <td>${formatInteger(record.staffPackCount || 0)}</td>
+                                            <td>${formatInteger(record.unmatchedTaskCount || 0)}</td>
+                                            <td>${formatCurrency(record.totalMrr || 0)}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
             function practicePackTopbarCards(month = currentPracticePackMonth()) {
+                const displayResult = practicePackDisplayResult();
                 const cards = [
-                    { label: "Clients", value: formatInteger(practicePackResult?.clientCount || 0) },
-                    { label: "Tasks", value: formatInteger(practicePackResult?.taskCount || 0) },
-                    { label: "Total MRR", value: formatCurrency(practicePackResult?.totalMrr || 0) },
-                    { label: "Staff packs", value: formatInteger(practicePackResult?.staffPackCount || 0) },
+                    { label: "Clients", value: formatInteger(displayResult?.clientCount || 0) },
+                    { label: "Tasks", value: formatInteger(displayResult?.taskCount || 0) },
+                    { label: "Total MRR", value: formatCurrency(displayResult?.totalMrr || 0) },
+                    { label: "Staff packs", value: formatInteger(displayResult?.staffPackCount || 0) },
                     { label: "Manager assignments", value: formatInteger(practicePackAssignmentRows().length) },
-                    { label: "Month", value: month }
+                    { label: "Month", value: practicePackGenerating ? month : (displayResult?.month || month) }
                 ];
                 if (practicePackGenerating) {
                     cards[0] = {
@@ -37786,7 +37929,9 @@
 
             function renderPracticePackScreen() {
                 initialisePracticePackMonth();
-                const month = practicePackGenerating ? currentPracticePackMonth() : (practicePackResult?.month || currentPracticePackMonth());
+                practicePackHistory = loadPracticePackHistory();
+                const displayResult = practicePackDisplayResult();
+                const month = practicePackGenerating ? currentPracticePackMonth() : (displayResult?.month || currentPracticePackMonth());
                 const selectedFiles = practicePackSelectedFiles();
                 renderPracticePackTopbarSummary(month);
                 updatePracticePackUploadState();
@@ -37795,15 +37940,17 @@
                 if (summary) {
                     if (practicePackGenerating) {
                         summary.textContent = `Building the Jaccountancy practice packs for ${currentPracticePackPeriodLabel()}.`;
-                    } else if (practicePackResult) {
-                        const unmatched = Number(practicePackResult.unmatchedTaskCount || 0);
-                        const grouping = practicePackResult.grouping?.engine === "openai"
+                    } else if (displayResult) {
+                        const unmatched = Number(displayResult.unmatchedTaskCount || 0);
+                        const grouping = practicePackResult?.grouping?.engine === "openai"
                             ? " using Jenius AI service grouping"
-                            : practicePackResult.grouping?.engine === "openai_partial"
+                            : practicePackResult?.grouping?.engine === "openai_partial"
                                 ? " using Jenius AI with local fallback"
-                                : " using local service grouping";
-                        const totalMrr = Number(practicePackResult.totalMrr || 0);
-                        summary.textContent = `Generated ${practicePackResult.files.length.toLocaleString("en-GB")} PDF file${practicePackResult.files.length === 1 ? "" : "s"} in ${practicePackResult.filename}${grouping}${totalMrr ? `, total MRR ${formatCurrency(totalMrr)}` : ""}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
+                                : "";
+                        const totalMrr = Number(displayResult.totalMrr || 0);
+                        const fileCount = Number(displayResult.fileCount || displayResult.files?.length || 0);
+                        const generated = displayResult.generatedAt ? ` on ${new Date(displayResult.generatedAt).toLocaleString("en-GB")}` : "";
+                        summary.textContent = `Generated ${fileCount.toLocaleString("en-GB")} PDF file${fileCount === 1 ? "" : "s"} in ${displayResult.filename || "practice-pack.zip"}${generated}${grouping}${totalMrr ? `, total MRR ${formatCurrency(totalMrr)}` : ""}${unmatched ? `, with ${unmatched.toLocaleString("en-GB")} task${unmatched === 1 ? "" : "s"} not matched back to the BM Client File` : ""}.`;
                     } else if (selectedFiles.client && selectedFiles.task) {
                         summary.textContent = "BM Client File and BM Task File are ready for processing.";
                     } else {
@@ -37833,15 +37980,17 @@
                     `;
                     return;
                 }
-                if (!practicePackResult) {
+                if (!displayResult) {
                     outputList.innerHTML = '<div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>';
                     return;
                 }
-                const serviceRows = Array.isArray(practicePackResult.serviceSummaries) ? practicePackResult.serviceSummaries : [];
+                const serviceRows = Array.isArray(practicePackResult?.serviceSummaries) ? practicePackResult.serviceSummaries : [];
+                const displayFiles = Array.isArray(displayResult.files) ? displayResult.files : [];
+                const canDownloadCurrentZip = Boolean(practicePackResult?.zipBlob);
                 outputList.innerHTML = `
                     <div class="practice-pack-output-row">
-                        <div><span>ZIP ready</span><strong>${escapeHTML(practicePackResult.filename)}</strong><small>${formatBytes(practicePackResult.zipBlob?.size || 0)} generated ${new Date(practicePackResult.generatedAt).toLocaleString("en-GB")} · total MRR ${formatCurrency(practicePackResult.totalMrr || 0)}</small></div>
-                        <button class="primary-button" id="practicePackDownloadZipButton" type="button">Download</button>
+                        <div><span>ZIP ready</span><strong>${escapeHTML(displayResult.filename || "practice-pack.zip")}</strong><small>${formatBytes(displayResult.zipBlob?.size || displayResult.zipByteSize || 0)} generated ${displayResult.generatedAt ? new Date(displayResult.generatedAt).toLocaleString("en-GB") : "--"} · total MRR ${formatCurrency(displayResult.totalMrr || 0)}</small></div>
+                        <button class="primary-button" id="practicePackDownloadZipButton" type="button" ${canDownloadCurrentZip ? "" : "disabled"}>${canDownloadCurrentZip ? "Download" : "Download unavailable after refresh"}</button>
                     </div>
                     ${serviceRows.length ? `
                         <div class="practice-pack-output-row">
@@ -37852,11 +38001,12 @@
                             </div>
                         </div>
                     ` : ""}
-                    ${practicePackResult.files.map((file) => `
+                    ${displayFiles.map((file) => `
                         <div class="practice-pack-output-row">
                             <div><span>${escapeHTML(file.contentType === "application/pdf" ? "PDF file" : "File")}</span><strong>${escapeHTML(file.name)}</strong><small>${formatBytes(Number(file.byteSize || 0))}</small></div>
                         </div>
                     `).join("")}
+                    ${practicePackSubmissionsTableMarkup()}
                 `;
                 document.getElementById("practicePackDownloadZipButton")?.addEventListener("click", downloadPracticePackZip);
             }
