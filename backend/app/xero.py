@@ -346,7 +346,11 @@ def _parse_xero_connection_timestamp(value) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _choose_xero_connection(connections: list[dict]) -> dict:
+def _normalised_tenant_name(value: str | None) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _choose_xero_connection(connections: list[dict], preferred_tenant_name: str | None = None) -> dict:
     def connection_rank(index_and_connection: tuple[int, dict]) -> tuple[int, datetime, datetime, int]:
         index, connection = index_and_connection
         tenant_type = str(connection.get("tenantType") or "").upper()
@@ -354,6 +358,16 @@ def _choose_xero_connection(connections: list[dict]) -> dict:
         updated_at = _parse_xero_connection_timestamp(connection.get("updatedDateUtc"))
         created_at = _parse_xero_connection_timestamp(connection.get("createdDateUtc"))
         return accounting_tenant, updated_at, created_at, -index
+
+    preferred_name = _normalised_tenant_name(preferred_tenant_name)
+    if preferred_name:
+        preferred_connections = [
+            item
+            for item in enumerate(connections)
+            if _normalised_tenant_name(item[1].get("tenantName")) == preferred_name
+        ]
+        if preferred_connections:
+            return max(preferred_connections, key=connection_rank)[1]
 
     return max(enumerate(connections), key=connection_rank)[1]
 
@@ -376,7 +390,8 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
             },
         )
 
-    chosen = _choose_xero_connection(connections)
+    settings = get_settings()
+    chosen = _choose_xero_connection(connections, settings.xero_primary_tenant_name)
     tenant_id = chosen["tenantId"]
     expires_at = utcnow() + timedelta(seconds=token_payload["expires_in"])
     email = profile.get("email") or f'{profile.get("sub")}@xero.local'
@@ -402,46 +417,64 @@ def store_login(profile: dict, token_payload: dict, connections: list[dict]) -> 
             )
             user = cursor.fetchone()
 
-            cursor.execute(
-                """
-                DELETE FROM xero_connections
-                WHERE user_id = %s
-                   OR tenant_id = %s
-                """,
-                (user["id"], tenant_id),
-            )
-            cursor.execute(
-                """
-                INSERT INTO xero_connections (
-                    user_id,
-                    xero_user_id,
-                    tenant_id,
-                    tenant_name,
-                    tenant_type,
-                    access_token,
-                    refresh_token,
-                    expires_at,
-                    scope,
-                    updated_at
+            xero_connection = None
+            seen_tenant_ids: set[str] = set()
+            for connection_item in connections:
+                candidate_tenant_id = str(connection_item.get("tenantId") or "").strip()
+                if not candidate_tenant_id or candidate_tenant_id in seen_tenant_ids:
+                    continue
+                seen_tenant_ids.add(candidate_tenant_id)
+                cursor.execute(
+                    """
+                    INSERT INTO xero_connections (
+                        user_id,
+                        xero_user_id,
+                        tenant_id,
+                        tenant_name,
+                        tenant_type,
+                        access_token,
+                        refresh_token,
+                        expires_at,
+                        scope,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (tenant_id) DO UPDATE
+                    SET user_id = EXCLUDED.user_id,
+                        xero_user_id = EXCLUDED.xero_user_id,
+                        tenant_name = EXCLUDED.tenant_name,
+                        tenant_type = EXCLUDED.tenant_type,
+                        access_token = EXCLUDED.access_token,
+                        refresh_token = EXCLUDED.refresh_token,
+                        expires_at = EXCLUDED.expires_at,
+                        scope = EXCLUDED.scope,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING *
+                    """,
+                    (
+                        user["id"],
+                        profile.get("sub", ""),
+                        candidate_tenant_id,
+                        connection_item.get("tenantName", "Xero Organisation"),
+                        connection_item.get("tenantType"),
+                        token_payload["access_token"],
+                        token_payload["refresh_token"],
+                        expires_at,
+                        token_payload.get("scope", ""),
+                        utcnow(),
+                    ),
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING *
-                """,
-                (
-                    user["id"],
-                    profile.get("sub", ""),
-                    tenant_id,
-                    chosen.get("tenantName", "Xero Organisation"),
-                    chosen.get("tenantType"),
-                    token_payload["access_token"],
-                    token_payload["refresh_token"],
-                    expires_at,
-                    token_payload.get("scope", ""),
-                    utcnow(),
-                ),
-            )
-            xero_connection = cursor.fetchone()
+                updated_connection = cursor.fetchone()
+                if candidate_tenant_id == tenant_id:
+                    xero_connection = updated_connection
         connection.commit()
+
+    if xero_connection is None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM xero_connections WHERE tenant_id = %s", (tenant_id,))
+                xero_connection = cursor.fetchone()
+            connection.commit()
 
     return {"user": user, "connection": xero_connection}
 

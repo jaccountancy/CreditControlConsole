@@ -101,6 +101,7 @@ DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT = LATE_PAYMENT_CHARGE_BASE_AMOUNTS[0]
 LATE_PAYMENT_CHARGE_VAT_RATE = Decimal("0.20")
 OPENAI_INSIGHTS_TIMEOUT_SECONDS = 135
 RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
+XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
 SYNC_PHASE_CREDITS = "customer_credits"
@@ -276,25 +277,60 @@ def record_audit_event(entity_type: str, entity_id: str, event_type: str, payloa
         connection.commit()
 
 
-def get_xero_connection_for_user(user_id: str) -> dict:
+def _normalised_tenant_name(value: str | None) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _is_preferred_xero_tenant(connection_row: dict, preferred_tenant_name: str | None) -> bool:
+    if not preferred_tenant_name:
+        return False
+    return _normalised_tenant_name(connection_row.get("tenant_name")) == _normalised_tenant_name(preferred_tenant_name)
+
+
+def _xero_connection_sort_key(connection_row: dict, preferred_tenant_name: str | None = None) -> tuple[int, int, datetime, datetime]:
+    preferred = 1 if _is_preferred_xero_tenant(connection_row, preferred_tenant_name) else 0
+    tenant_type = str(connection_row.get("tenant_type") or "").upper()
+    accounting_tenant = 1 if tenant_type == "ORGANISATION" else 0
+    updated_at = connection_row.get("updated_at") or datetime.min.replace(tzinfo=timezone.utc)
+    created_at = connection_row.get("created_at") or datetime.min.replace(tzinfo=timezone.utc)
+    return preferred, accounting_tenant, updated_at, created_at
+
+
+def list_xero_connections_for_user(user_id: str, include_fallback: bool = True) -> list[dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM xero_connections WHERE user_id = %s", (user_id,))
-            row = cursor.fetchone()
-            if row is None:
-                cursor.execute(
-                    """
-                    SELECT *
-                    FROM xero_connections
-                    ORDER BY updated_at DESC NULLS LAST, created_at DESC
-                    LIMIT 1
-                    """
-                )
-                row = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT *
+                FROM xero_connections
+                WHERE user_id = %s
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall() or []
+            if rows or not include_fallback:
+                connection.commit()
+                return rows
+            cursor.execute(
+                """
+                SELECT *
+                FROM xero_connections
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+                """
+            )
+            fallback_row = cursor.fetchone()
         connection.commit()
-    if row is None:
+    return [fallback_row] if fallback_row else []
+
+
+def get_xero_connection_for_user(user_id: str) -> dict:
+    rows = list_xero_connections_for_user(user_id, include_fallback=True)
+    if not rows:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
-    return row
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    return max(rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
 
 
 def disconnect_xero(user: dict) -> dict:
@@ -447,6 +483,213 @@ async def xero_chart_of_accounts_payload(user: dict) -> dict:
         "postingSettings": posting_settings_for_tenant(connection_row.get("tenant_id")),
         "xeroAccounts": accounts,
     }
+
+
+def _parse_xero_lock_date(value: str | None) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.startswith("/Date("):
+        match = re.search(r"/Date\((-?\d+)", text)
+        if not match:
+            return None
+        try:
+            milliseconds = int(match.group(1))
+        except ValueError:
+            return None
+        return datetime.fromtimestamp(milliseconds / 1000, tz=timezone.utc).date()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _parse_date_value(value) -> date | None:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def _latest_accounts_filed_date(ch_row: dict | None) -> date | None:
+    if not ch_row:
+        return None
+    latest = ch_row.get("last_filed_date")
+    filing_history = ch_row.get("filing_history") or []
+    if not isinstance(filing_history, list):
+        filing_history = []
+    for item in filing_history:
+        if not isinstance(item, dict):
+            continue
+        filing_type = str(item.get("type") or "").strip().upper()
+        description = str(item.get("description") or "").strip().lower()
+        category = str(item.get("category") or "").strip().lower()
+        is_accounts_filing = filing_type.startswith("AA") or "accounts" in description or category == "accounts"
+        if not is_accounts_filing:
+            continue
+        filed_on = _parse_date_value(item.get("date"))
+        if filed_on and (latest is None or filed_on > latest):
+            latest = filed_on
+    return latest
+
+
+def _serialise_tenant_mapping(mapping_row: dict | None, tenant_id: str) -> dict:
+    mapping_row = mapping_row or {}
+    return {
+        "tenantId": tenant_id,
+        "companyNumber": str(mapping_row.get("company_number") or "").strip().upper(),
+        "clientName": str(mapping_row.get("client_name") or "").strip(),
+        "companyName": str(mapping_row.get("company_name") or "").strip(),
+        "notes": str(mapping_row.get("notes") or "").strip(),
+        "updatedAt": _iso(mapping_row.get("updated_at")) or "",
+    }
+
+
+def save_xero_tenant_company_mapping(user: dict, tenant_id: str, payload: dict) -> dict:
+    tenant_id = str(tenant_id or "").strip()
+    if not tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant ID is required.")
+    company_number = str(payload.get("companyNumber") or "").strip().upper()
+    if company_number and not re.fullmatch(r"[A-Z0-9]{2,12}", company_number):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company number format is invalid.")
+    client_name = str(payload.get("clientName") or "").strip()
+    company_name = str(payload.get("companyName") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO xero_tenant_company_mappings (
+                    tenant_id, company_number, client_name, company_name, notes, updated_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE
+                SET company_number = EXCLUDED.company_number,
+                    client_name = EXCLUDED.client_name,
+                    company_name = EXCLUDED.company_name,
+                    notes = EXCLUDED.notes,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING *
+                """,
+                (tenant_id, company_number, client_name, company_name, notes, user.get("id"), now, now),
+            )
+            mapping_row = cursor.fetchone()
+        connection.commit()
+    return _serialise_tenant_mapping(mapping_row, tenant_id)
+
+
+async def xero_lock_date_overview_payload(user: dict) -> dict:
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    connection_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    if not connection_rows:
+        return {"mainTenantName": preferred_tenant_name, "rows": []}
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            tenant_ids = [str(row.get("tenant_id") or "").strip() for row in connection_rows if row.get("tenant_id")]
+            cursor.execute(
+                """
+                SELECT *
+                FROM xero_tenant_company_mappings
+                WHERE tenant_id = ANY(%s)
+                """,
+                (tenant_ids or [""],),
+            )
+            mapping_rows = cursor.fetchall() or []
+            mapping_by_tenant = {str(row.get("tenant_id") or ""): row for row in mapping_rows}
+            company_numbers = [
+                str(row.get("company_number") or "").strip().upper()
+                for row in mapping_rows
+                if str(row.get("company_number") or "").strip()
+            ]
+            ch_by_company_number: dict[str, dict] = {}
+            if company_numbers:
+                cursor.execute(
+                    """
+                    SELECT company_number, company_name, client_name, last_filed_date, filing_history
+                    FROM ch_companies
+                    WHERE UPPER(company_number) = ANY(%s)
+                    """,
+                    (company_numbers,),
+                )
+                for row in cursor.fetchall() or []:
+                    ch_by_company_number[str(row.get("company_number") or "").strip().upper()] = row
+        connection.commit()
+
+    rows: list[dict] = []
+    for connection_row in sorted(
+        connection_rows,
+        key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name),
+        reverse=True,
+    ):
+        tenant_id = str(connection_row.get("tenant_id") or "").strip()
+        mapping_row = mapping_by_tenant.get(tenant_id)
+        mapping = _serialise_tenant_mapping(mapping_row, tenant_id)
+        mapped_company_number = mapping.get("companyNumber") or ""
+        ch_row = ch_by_company_number.get(mapped_company_number)
+        period_lock_date = None
+        end_of_year_lock_date = None
+        currency = ""
+        xero_error = ""
+        try:
+            organisation_payload = await xero_api_get(connection_row, XERO_ORGANISATION_URL)
+            organisations = organisation_payload.get("Organisations") or []
+            organisation = organisations[0] if organisations else {}
+            period_lock_date = _parse_xero_lock_date(organisation.get("PeriodLockDate"))
+            end_of_year_lock_date = _parse_xero_lock_date(organisation.get("EndOfYearLockDate"))
+            currency = str(organisation.get("BaseCurrency") or "").strip()
+        except HTTPException as exc:
+            detail = exc.detail
+            if isinstance(detail, dict):
+                xero_error = str(detail.get("message") or detail)
+            else:
+                xero_error = str(detail)
+        accounts_filed_date = _latest_accounts_filed_date(ch_row)
+        accounts_filed_not_locked = bool(
+            accounts_filed_date and (period_lock_date is None or period_lock_date < accounts_filed_date)
+        )
+        rows.append(
+            {
+                "tenantId": tenant_id,
+                "tenantName": str(connection_row.get("tenant_name") or ""),
+                "tenantType": str(connection_row.get("tenant_type") or ""),
+                "isMainTenant": _is_preferred_xero_tenant(connection_row, preferred_tenant_name),
+                "xeroConnectionUpdatedAt": _iso(connection_row.get("updated_at")) or "",
+                "periodLockDate": period_lock_date.isoformat() if period_lock_date else "",
+                "endOfYearLockDate": end_of_year_lock_date.isoformat() if end_of_year_lock_date else "",
+                "baseCurrency": currency,
+                "mapping": mapping,
+                "companiesHouse": {
+                    "companyNumber": mapped_company_number,
+                    "companyName": str((ch_row or {}).get("company_name") or ""),
+                    "clientName": str((ch_row or {}).get("client_name") or ""),
+                    "accountsFiledDate": accounts_filed_date.isoformat() if accounts_filed_date else "",
+                },
+                "flags": {
+                    "accountsFiledNotLocked": accounts_filed_not_locked,
+                },
+                "xeroError": xero_error,
+            }
+        )
+
+    rows.sort(
+        key=lambda row: (
+            1 if row.get("flags", {}).get("accountsFiledNotLocked") else 0,
+            1 if row.get("isMainTenant") else 0,
+            row.get("tenantName", "").lower(),
+        ),
+        reverse=True,
+    )
+    return {"mainTenantName": preferred_tenant_name, "rows": rows}
 
 
 async def save_posting_settings(user: dict, payload: dict) -> dict:

@@ -6437,16 +6437,17 @@
             }
             .company-secretarial-summary-grid {
                 display: grid;
-                grid-template-columns: repeat(6, minmax(0, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
                 gap: 12px;
+                margin-top: 12px;
             }
             .company-secretarial-summary-grid article {
                 display: grid;
                 gap: 4px;
-                padding: 12px;
+                padding: 10px 12px;
                 border: 1px solid var(--line);
-                border-radius: 14px;
-                background: rgba(248, 251, 255, 0.86);
+                border-radius: 12px;
+                background: rgba(248, 251, 255, 0.72);
             }
             .company-secretarial-summary-grid span {
                 color: var(--muted);
@@ -6472,6 +6473,8 @@
             }
             .company-secretarial-table-wrap {
                 overflow-x: auto;
+                max-height: calc(100vh - 320px);
+                overflow-y: auto;
             }
             .company-secretarial-table {
                 width: 100%;
@@ -6491,6 +6494,10 @@
                 font-weight: 900;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                background: var(--surface-soft);
             }
             .company-secretarial-table td {
                 font-size: 0.84rem;
@@ -6711,6 +6718,37 @@
                 font-size: 0.77rem;
                 font-weight: 800;
             }
+            .company-secretarial-modal {
+                position: fixed;
+                inset: 0;
+                background: rgba(18, 34, 68, 0.34);
+                backdrop-filter: blur(2px);
+                display: grid;
+                place-items: center;
+                padding: 24px;
+                z-index: 1100;
+            }
+            .company-secretarial-modal-panel {
+                width: min(980px, 100%);
+                max-height: calc(100vh - 48px);
+                overflow: auto;
+                border-radius: 18px;
+                border: 1px solid var(--line);
+                background: var(--surface-strong);
+                box-shadow: 0 26px 60px rgba(29, 45, 86, 0.28);
+                padding: 22px;
+                display: grid;
+                gap: 14px;
+            }
+            .company-secretarial-modal-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .company-secretarial-modal-head .detail-actions {
+                margin-left: auto;
+            }
             @media (max-width: 1260px) {
                 .company-secretarial-summary-grid {
                     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6728,6 +6766,13 @@
                 }
                 .company-secretarial-mini-grid {
                     grid-template-columns: 1fr;
+                }
+                .company-secretarial-modal {
+                    padding: 12px;
+                }
+                .company-secretarial-modal-panel {
+                    max-height: calc(100vh - 24px);
+                    padding: 16px;
                 }
             }
             .late-charge-filter-button.is-active {
@@ -14473,6 +14518,31 @@
             .ch-import-row.is-create td { background: rgba(39, 176, 95, 0.05); }
             .ch-section-title { font-size: 14px; font-weight: 700; color: var(--ink); margin: 0; }
             .ch-section-sub { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+            .risk-assessment-picker-controls {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .risk-assessment-picker-controls input[type="search"],
+            .risk-assessment-picker-controls select {
+                font: inherit;
+                padding: 8px 10px;
+                border-radius: 8px;
+                border: 1px solid var(--line);
+                background: var(--surface-soft);
+                color: var(--ink);
+            }
+            .risk-assessment-picker-controls input[type="search"] {
+                min-width: 220px;
+                flex: 1 1 280px;
+            }
+            .risk-assessment-picker-controls .ghost-button {
+                white-space: nowrap;
+            }
+            .xero-lock-date-mapping-input { width: 130px; }
+            .xero-lock-date-flag-cell { min-width: 210px; }
+            .xero-lock-date-main-pill { margin-left: 6px; }
                 </style>
             </head>
             <body>
@@ -14526,7 +14596,7 @@
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                             <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>Companies House</span></span>
                         </a>
-                        <a class="app-nav-button" href="#credit-control-company-secreterial" data-app-nav="company-secreterial">
+                        <a class="app-nav-button" href="#credit-control-company-secretarial" data-app-nav="company-secretarial">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 4h7l5 5v11H7z"></path><path d="M14 4v5h5"></path><path d="M10 12h6"></path><path d="M10 16h6"></path></svg></span>
                             <span class="app-nav-copy"><strong>Company Secretarial</strong><span>Submissions</span></span>
                         </a>
@@ -14534,9 +14604,9 @@
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path><path d="m15 17 2 2 3-3"></path></svg></span>
                             <span class="app-nav-copy"><strong>HMRC 64-8s</strong><span>Agent authority</span></span>
                         </a>
-                        <a class="app-nav-button" href="#credit-control-aml-verification" data-app-nav="aml-verification">
-                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5 6v6c0 4.7 2.8 8.3 7 9 4.2-.7 7-4.3 7-9V6l-7-3Z"></path><circle cx="12" cy="11" r="2"></circle><path d="M12 13v3"></path></svg></span>
-                            <span class="app-nav-copy"><strong>AML Verification</strong><span>KYC checks</span></span>
+                        <a class="app-nav-button" href="#credit-control-xero-lock-date" data-app-nav="xero-lock-date">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><circle cx="12" cy="15" r="1.2"></circle></svg></span>
+                            <span class="app-nav-copy"><strong>Xero Lock Date</strong><span>Period locks</span></span>
                         </a>
                         <a class="app-nav-button" href="#credit-control-jashflow" data-app-nav="jashflow">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 17 9 12l4 4 7-9"></path><path d="M15 7h5v5"></path><path d="M4 21h16"></path></svg></span>
@@ -15502,6 +15572,16 @@
                                     <input id="riskAssessmentsBmCsvInput" type="file" accept=".csv,text/csv">
                                 </label>
                                 <p class="settings-help" id="riskAssessmentsCsvStatus">Upload a BM Client CSV to load clients for selection.</p>
+                                <div class="risk-assessment-picker-controls">
+                                    <input id="riskAssessmentsClientSearchInput" type="search" placeholder="Search clients">
+                                    <select id="riskAssessmentsClientFilterSelect" aria-label="Filter client rows">
+                                        <option value="all">All clients</option>
+                                        <option value="no-prior">No prior assessment</option>
+                                        <option value="has-prior">Has prior assessment</option>
+                                    </select>
+                                    <button class="ghost-button" id="riskAssessmentsSelectAllButton" type="button">Select all shown</button>
+                                    <button class="ghost-button" id="riskAssessmentsDeselectAllButton" type="button">Deselect all shown</button>
+                                </div>
                                 <div class="ch-companies-table-wrap" id="riskAssessmentsClientPicker" hidden></div>
                                 <div class="detail-actions">
                                     <button class="primary-button" id="riskAssessmentsGenerateButton" type="button">Generate selected</button>
@@ -15769,6 +15849,7 @@
                                     <div class="ch-settings-actions">
                                         <button class="primary-button" type="button" id="chImportPreviewButton" disabled>Preview import</button>
                                         <button class="primary-button" type="button" id="chImportCommitButton" hidden>Commit import</button>
+                                        <button class="ghost-button" type="button" id="chImportDeselectAllButton" hidden>Deselect all</button>
                                         <button class="ghost-button" type="button" id="chImportResetButton" hidden>Start over</button>
                                         <span class="ch-settings-status is-muted" id="chImportStatus"></span>
                                     </div>
@@ -15781,10 +15862,9 @@
                                                     <th>Line</th>
                                                     <th>Action</th>
                                                     <th>Company number</th>
-                                                    <th>Company name</th>
-                                                    <th>Client</th>
+                                                    <th>Company / client</th>
                                                     <th>Period end</th>
-                                                    <th>Due date</th>
+                                                    <th>Deadline</th>
                                                     <th>Manager</th>
                                                     <th>Auth code</th>
                                                     <th>Notes / errors</th>
@@ -15991,17 +16071,17 @@
                     <section class="late-charges-screen detail-card" id="companySecreterialScreen" hidden>
                         <section class="detail-panel company-secretarial-workspace">
                             <div class="detail-hero">
-                                <div>
+                                <div class="company-secretarial-hero-copy">
                                     <p class="eyebrow">Non-CS01 secretarial operating system</p>
                                     <h3>Company Secretarial Submission System</h3>
                                     <p class="detail-meta">Controlled workflow for incorporations, NM01, AD01, DS01, officers, PSCs, share updates, approvals, evidence capture, submission tracking and permanent audit trail. CS01 remains out of scope in this page.</p>
+                                    <div class="company-secretarial-summary-grid" id="companySecretarialSummaryGrid"></div>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="companySecretarialSeedDemoButton" type="button">Load sample queue</button>
                                     <button class="primary-button" id="companySecretarialCreateDraftButton" type="button">Create filing draft</button>
                                 </div>
                             </div>
-                            <div class="company-secretarial-summary-grid" id="companySecretarialSummaryGrid"></div>
                             <div class="company-secretarial-toolbar">
                                 <label class="search-wrap">
                                     <span class="search-icon">⌕</span>
@@ -16031,126 +16111,156 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="company-secretarial-columns">
-                                <div class="company-secretarial-stack">
-                                    <article class="me-report-insight-card me-report-table-card">
-                                        <div class="me-report-card-heading-row">
-                                            <div>
-                                                <p class="eyebrow">Operational queue</p>
-                                                <h3 id="companySecretarialQueueTitle">No filings in queue</h3>
-                                                <p class="detail-meta">Each filing records company data, approvals, evidence, submission method, Companies House response and post-submission actions.</p>
-                                            </div>
-                                        </div>
-                                        <div class="company-secretarial-table-wrap">
-                                            <table class="company-secretarial-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Company / filing</th>
-                                                        <th>Status</th>
-                                                        <th>Risk</th>
-                                                        <th>Approvals</th>
-                                                        <th>Mode / due</th>
-                                                        <th>Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="companySecretarialTableBody"></tbody>
-                                            </table>
-                                        </div>
-                                    </article>
-                                    <article class="company-secretarial-card">
-                                        <div>
-                                            <p class="eyebrow">Filing wizard</p>
-                                            <h4>Create and validate filing draft</h4>
-                                            <p>Configuration-led entry point for AD01, NM01, DS01 and wider filing types. The wizard blocks weak submissions before queueing.</p>
-                                        </div>
-                                        <form class="company-secretarial-form-grid" id="companySecretarialWizardForm">
-                                            <label>
-                                                Filing type
-                                                <select id="companySecretarialWizardType" required></select>
-                                            </label>
-                                            <label>
-                                                Company
-                                                <select id="companySecretarialWizardCompany" required></select>
-                                            </label>
-                                            <label>
-                                                Effective date
-                                                <input id="companySecretarialWizardEffectiveDate" type="date" required>
-                                            </label>
-                                            <label>
-                                                Submission mode
-                                                <select id="companySecretarialWizardMode" required>
-                                                    <option value="api">Mode 1 · Full API / software filing</option>
-                                                    <option value="assisted">Mode 2 · Assisted filing</option>
-                                                    <option value="manual">Mode 3 · Manual filing pack</option>
-                                                </select>
-                                            </label>
-                                            <label>
-                                                Companies House fee (£)
-                                                <input id="companySecretarialWizardFee" type="number" min="0" step="0.01" value="0.00">
-                                            </label>
-                                            <label>
-                                                Assigned to
-                                                <input id="companySecretarialWizardAssignee" type="text" placeholder="Client Manager" value="Client Manager">
-                                            </label>
-                                            <label class="is-wide">
-                                                Required fields snapshot
-                                                <input id="companySecretarialWizardFieldsPreview" type="text" readonly>
-                                            </label>
-                                            <label class="is-wide">
-                                                Instruction / notes
-                                                <textarea id="companySecretarialWizardNotes" placeholder="Instruction summary, key risks, missing evidence, override reason, special handling..."></textarea>
-                                            </label>
-                                            <div class="company-secretarial-form-ticks is-wide">
-                                                <label><input id="companySecretarialWizardEvidence" type="checkbox"> Supporting evidence attached</label>
-                                                <label><input id="companySecretarialWizardClientApproval" type="checkbox"> Client approval captured</label>
-                                                <label><input id="companySecretarialWizardInternalApproval" type="checkbox"> Internal review completed</label>
-                                            </div>
-                                            <div class="detail-actions is-wide">
-                                                <button class="ghost-button" id="companySecretarialWizardValidateButton" type="button">Run validation</button>
-                                                <button class="primary-button" type="submit">Create draft filing</button>
-                                            </div>
-                                        </form>
-                                        <p class="company-secretarial-status-line" id="companySecretarialWizardStatus">Select filing type and company to start.</p>
-                                    </article>
+                            <article class="me-report-insight-card me-report-table-card">
+                                <div class="me-report-card-heading-row">
+                                    <div>
+                                        <p class="eyebrow">Operational queue</p>
+                                        <h3 id="companySecretarialQueueTitle">No filings in queue</h3>
+                                        <p class="detail-meta">Each filing records company data, approvals, evidence, submission method, Companies House response and post-submission actions.</p>
+                                    </div>
                                 </div>
-                                <div class="company-secretarial-stack">
-                                    <article class="company-secretarial-card">
-                                        <div>
-                                            <p class="eyebrow">Lifecycle controls</p>
-                                            <h4>Required controlled lifecycle</h4>
-                                        </div>
-                                        <ol class="company-secretarial-lifecycle" id="companySecretarialLifecycleList"></ol>
-                                    </article>
-                                    <article class="company-secretarial-card">
-                                        <div>
-                                            <p class="eyebrow">Statutory registers</p>
-                                            <h4>Register maintenance status</h4>
-                                        </div>
-                                        <ul class="company-secretarial-register-list" id="companySecretarialRegisterList"></ul>
-                                    </article>
-                                    <article class="company-secretarial-card">
-                                        <div>
-                                            <p class="eyebrow">Filing type registry</p>
-                                            <h4>Configuration-led filing definitions</h4>
-                                            <p>CS01 intentionally excluded for phase one scope.</p>
-                                        </div>
-                                        <div class="company-secretarial-registry" id="companySecretarialRegistryList"></div>
-                                    </article>
-                                    <article class="company-secretarial-card">
-                                        <div>
-                                            <p class="eyebrow">Delivery roadmap</p>
-                                            <h4>Recommended build phases</h4>
-                                        </div>
-                                        <ol class="company-secretarial-phase-list" id="companySecretarialPhaseList"></ol>
-                                    </article>
-                                    <article class="company-secretarial-card">
-                                        <div>
-                                            <p class="eyebrow">Risk and billing controls</p>
-                                            <h4>Live control metrics</h4>
-                                        </div>
-                                        <div class="company-secretarial-mini-grid" id="companySecretarialControlGrid"></div>
-                                    </article>
+                                <div class="company-secretarial-table-wrap">
+                                    <table class="company-secretarial-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Company / filing</th>
+                                                <th>Status</th>
+                                                <th>Risk</th>
+                                                <th>Approvals</th>
+                                                <th>Mode / due</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="companySecretarialTableBody"></tbody>
+                                    </table>
                                 </div>
+                            </article>
+                            <div class="company-secretarial-modal" id="companySecretarialWizardModal" hidden>
+                                <div class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="companySecretarialWizardModalTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Filing Wizard</p>
+                                            <h4 id="companySecretarialWizardModalTitle">Create and validate filing draft</h4>
+                                            <p class="detail-meta">Build high-quality filing drafts with clear validation before they enter the queue.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" type="button" id="companySecretarialWizardCloseButton">Close</button>
+                                        </div>
+                                    </div>
+                                    <form class="company-secretarial-form-grid" id="companySecretarialWizardForm">
+                                        <label>
+                                            Filing type
+                                            <select id="companySecretarialWizardType" required></select>
+                                        </label>
+                                        <label>
+                                            Company
+                                            <select id="companySecretarialWizardCompany" required></select>
+                                        </label>
+                                        <label>
+                                            Effective date
+                                            <input id="companySecretarialWizardEffectiveDate" type="date" required>
+                                        </label>
+                                        <label>
+                                            Submission mode
+                                            <select id="companySecretarialWizardMode" required>
+                                                <option value="api">Mode 1 · Full API / software filing</option>
+                                                <option value="assisted">Mode 2 · Assisted filing</option>
+                                                <option value="manual">Mode 3 · Manual filing pack</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Companies House fee (£)
+                                            <input id="companySecretarialWizardFee" type="number" min="0" step="0.01" value="0.00">
+                                        </label>
+                                        <label>
+                                            Assigned to
+                                            <input id="companySecretarialWizardAssignee" type="text" placeholder="Client Manager" value="Client Manager">
+                                        </label>
+                                        <label class="is-wide">
+                                            Required fields snapshot
+                                            <input id="companySecretarialWizardFieldsPreview" type="text" readonly>
+                                        </label>
+                                        <label class="is-wide">
+                                            Instruction / notes
+                                            <textarea id="companySecretarialWizardNotes" placeholder="Instruction summary, key risks, missing evidence, override reason, special handling..."></textarea>
+                                        </label>
+                                        <div class="company-secretarial-form-ticks is-wide">
+                                            <label><input id="companySecretarialWizardEvidence" type="checkbox"> Supporting evidence attached</label>
+                                            <label><input id="companySecretarialWizardClientApproval" type="checkbox"> Client approval captured</label>
+                                            <label><input id="companySecretarialWizardInternalApproval" type="checkbox"> Internal review completed</label>
+                                        </div>
+                                        <div class="detail-actions is-wide">
+                                            <button class="ghost-button" id="companySecretarialWizardValidateButton" type="button">Run validation</button>
+                                            <button class="primary-button" type="submit">Create draft filing</button>
+                                        </div>
+                                    </form>
+                                    <p class="company-secretarial-status-line" id="companySecretarialWizardStatus">Select filing type and company to start.</p>
+                                </div>
+                            </div>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="hmrc648Screen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">HMRC authority workspace</p>
+                                    <h3>HMRC 64-8 Authorisations</h3>
+                                    <p class="detail-meta">Track agent authority requests, signature evidence, and submission status for HMRC 64-8 records.</p>
+                                </div>
+                            </div>
+                            <article class="empty-state-panel">
+                                <p class="eyebrow">Operational status</p>
+                                <h4 id="hmrc648StatusTitle">No HMRC 64-8 requests loaded</h4>
+                                <p id="hmrc648StatusMeta">Use this area to manage outstanding authority forms and evidence pack links.</p>
+                            </article>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="amlVerificationScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Compliance controls</p>
+                                    <h3>AML Verification</h3>
+                                    <p class="detail-meta">Review KYC status, unresolved AML flags, and client risk blockers before high-risk filing submissions.</p>
+                                </div>
+                            </div>
+                            <article class="empty-state-panel">
+                                <p class="eyebrow">Operational status</p>
+                                <h4 id="amlVerificationStatusTitle">AML review queue not loaded</h4>
+                                <p id="amlVerificationStatusMeta">This screen highlights unresolved AML and dispute blockers relevant to company secretarial filing controls.</p>
+                            </article>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="xeroLockDateScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Cross-tenant lock controls</p>
+                                    <h3>Xero lock-date overview</h3>
+                                    <p class="detail-meta">Monitor all connected Xero organisations, map each tenant to a Companies House company, and flag accounts filed where period lock dates are still open.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
+                            <div class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Xero lock dates">
+                                    <thead>
+                                        <tr>
+                                            <th>Tenant</th>
+                                            <th>Period lock</th>
+                                            <th>Year-end lock</th>
+                                            <th>Companies House accounts filed</th>
+                                            <th>CH number mapping</th>
+                                            <th>Flag</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="xeroLockDateTableBody"></tbody>
+                                </table>
                             </div>
                         </section>
                     </section>
@@ -17585,7 +17695,10 @@
                 "bad-debt": "Bad Debt",
                 "risk-assessments": "Risk Assessments",
                 "confirmation-statements": "Confirmation Statements",
-                "company-secreterial": "Company Secretarial",
+                "company-secretarial": "Company Secretarial",
+                "hmrc-64-8s": "HMRC 64-8s",
+                "aml-verification": "AML Verification",
+                "xero-lock-date": "Xero Lock Date",
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 ignition: "Ignition",
@@ -17602,7 +17715,10 @@
                 "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
                 "risk-assessments": "Review client credit exposure and maintain a consistent risk assessment process.",
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
-                "company-secreterial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
+                "company-secretarial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
+                "hmrc-64-8s": "Track HMRC 64-8 authority requests, evidence and status updates.",
+                "aml-verification": "Review AML/KYC readiness and unresolved compliance blockers.",
+                "xero-lock-date": "Review lock dates across all connected Xero tenants and flag filed accounts that are still unlocked.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 ignition: "Sync and analyse Ignition clients, proposals, fees, payments, collections, and renewal data.",
@@ -17679,6 +17795,8 @@
             let riskAssessmentDraftClients = [];
             let riskAssessmentSelectedClientKeys = new Set();
             let riskAssessmentLastCsvFileName = "";
+            let riskAssessmentClientSearchQuery = "";
+            let riskAssessmentClientFilter = "all";
             let confirmationStatementsOnboardingDismissed = loadConfirmationStatementsOnboardingDismissed();
             let topbarContactDetailsOpen = false;
             let latePaymentChargeBaseAmounts = new Map();
@@ -17690,6 +17808,8 @@
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
+            let xeroLockDateOverview = { mainTenantName: "", rows: [] };
+            let xeroLockDateLoading = false;
             const bankStatementChartOfAccountsFallback = [
                 { code: "200", name: "Sales", type: "Revenue", taxType: "20% (VAT on Income)" },
                 { code: "260", name: "Other Revenue", type: "Revenue", taxType: "20% (VAT on Income)" },
@@ -18269,6 +18389,8 @@
                         pendingXeroActionsSync: config.endpoints?.pendingXeroActionsSync || "/api/xero/pending-actions/sync",
                         xeroAccounts: config.endpoints?.xeroAccounts || "/api/xero/chart-of-accounts",
                         postingSettings: config.endpoints?.postingSettings || "/api/xero/posting-settings",
+                        xeroLockDates: config.endpoints?.xeroLockDates || "/api/xero/lock-dates",
+                        xeroTenantMapping: config.endpoints?.xeroTenantMapping || "/api/xero/tenant-mappings/:tenantId",
                         jashflow: config.endpoints?.jashflow || "/api/jashflow",
                         jashflowLoans: config.endpoints?.jashflowLoans || "/api/jashflow/loans",
                         jashflowLoan: config.endpoints?.jashflowLoan || "/api/jashflow/loans/:loanId",
@@ -18322,6 +18444,11 @@
                         practicePackRunDownload: config.endpoints?.practicePackRunDownload || "/api/practice-packs/runs/:runId/download",
                         riskAssessmentsGenerate: config.endpoints?.riskAssessmentsGenerate || "/api/risk-assessments/generate",
                         riskAssessmentsExportZip: config.endpoints?.riskAssessmentsExportZip || "/api/risk-assessments/export-zip",
+                        companySecretarialFilings: config.endpoints?.companySecretarialFilings || "/api/company-secretarial/filings",
+                        companySecretarialFiling: config.endpoints?.companySecretarialFiling || "/api/company-secretarial/filings/:filingId",
+                        companySecretarialValidate: config.endpoints?.companySecretarialValidate || "/api/company-secretarial/filings/:filingId/validate",
+                        companySecretarialSubmit: config.endpoints?.companySecretarialSubmit || "/api/company-secretarial/filings/:filingId/submit",
+                        companySecretarialComplete: config.endpoints?.companySecretarialComplete || "/api/company-secretarial/filings/:filingId/complete",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
                         factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -20583,7 +20710,10 @@
                 if (activeView === "bad-debt") return "bad-debt";
                 if (activeView === "risk-assessments") return "risk-assessments";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
-                if (activeView === "company-secreterial") return "company-secreterial";
+                if (activeView === "company-secretarial" || activeView === "company-secreterial") return "company-secretarial";
+                if (activeView === "hmrc-64-8s") return "hmrc-64-8s";
+                if (activeView === "aml-verification") return "aml-verification";
+                if (activeView === "xero-lock-date") return "xero-lock-date";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank-statements";
                 if (activeView === "ignition" || activeView === "ignition-clients") return "ignition";
@@ -20724,7 +20854,10 @@
                 if (activeView === "bad-debt") return "danger";
                 if (activeView === "risk-assessments") return "danger";
                 if (activeView === "confirmation-statements") return "credit";
-                if (activeView === "company-secreterial") return "credit";
+                if (activeView === "company-secretarial" || activeView === "company-secreterial") return "credit";
+                if (activeView === "hmrc-64-8s") return "credit";
+                if (activeView === "aml-verification") return "credit";
+                if (activeView === "xero-lock-date") return "credit";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank";
                 if (isIgnitionView()) return "ignition";
@@ -20840,7 +20973,10 @@
                 setElementVisible(document.getElementById("badDebtScreen"), activeView === "bad-debt");
                 setElementVisible(document.getElementById("riskAssessmentsScreen"), activeView === "risk-assessments");
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
-                setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secreterial");
+                setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secretarial" || activeView === "company-secreterial");
+                setElementVisible(document.getElementById("hmrc648Screen"), activeView === "hmrc-64-8s");
+                setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
+                setElementVisible(document.getElementById("xeroLockDateScreen"), activeView === "xero-lock-date");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
@@ -20850,7 +20986,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "company-secreterial", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -20905,7 +21041,10 @@
                 if (section === "bad-debt") return openBadDebtScreen();
                 if (section === "risk-assessments") return openRiskAssessmentsScreen();
                 if (section === "confirmation-statements") return openConfirmationStatementsScreen();
-                if (section === "company-secreterial") return openCompanySecreterialScreen();
+                if (section === "company-secretarial" || section === "company-secreterial") return openCompanySecreterialScreen();
+                if (section === "hmrc-64-8s") return openHmrc648Screen();
+                if (section === "aml-verification") return openAmlVerificationScreen();
+                if (section === "xero-lock-date") return openXeroLockDateScreen();
                 if (section === "jashflow") return openJashflowScreen();
                 if (section === "bank-statements") return openBankStatementsScreen();
                 if (section === "ignition") return openIgnitionScreen();
@@ -21083,7 +21222,11 @@
                 "bad-debt": "credit-control-bad-debt",
                 "risk-assessments": "credit-control-risk-assessments",
                 "confirmation-statements": "credit-control-confirmation-statements",
+                "company-secretarial": "credit-control-company-secretarial",
                 "company-secreterial": "credit-control-company-secreterial",
+                "hmrc-64-8s": "credit-control-hmrc-64-8s",
+                "aml-verification": "credit-control-aml-verification",
+                "xero-lock-date": "credit-control-xero-lock-date",
                 jashflow: "credit-control-jashflow",
                 "bank-statements": "credit-control-bank-statements",
                 ignition: "credit-control-ignition",
@@ -22474,6 +22617,7 @@
                 const lateChargesScreen = document.getElementById("lateChargesScreen");
                 const badDebtScreen = document.getElementById("badDebtScreen");
                 const riskAssessmentsScreen = document.getElementById("riskAssessmentsScreen");
+                const xeroLockDateScreen = document.getElementById("xeroLockDateScreen");
                 const jashflowScreen = document.getElementById("jashflowScreen");
                 const bankStatementsScreen = document.getElementById("bankStatementsScreen");
                 const ignitionScreen = document.getElementById("ignitionScreen");
@@ -22490,7 +22634,10 @@
                 if (activeView === "confirmation-statements" && typeof loadCompaniesHouseSettings === "function") {
                     loadCompaniesHouseSettings();
                 }
-                setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secreterial");
+                setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secretarial" || activeView === "company-secreterial");
+                setElementVisible(document.getElementById("hmrc648Screen"), activeView === "hmrc-64-8s");
+                setElementVisible(document.getElementById("amlVerificationScreen"), activeView === "aml-verification");
+                setElementVisible(xeroLockDateScreen, activeView === "xero-lock-date");
                 setElementVisible(jashflowScreen, activeView === "jashflow");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
                 setElementVisible(ignitionScreen, activeView === "ignition");
@@ -24063,11 +24210,39 @@
             }
 
             function openCompanySecreterialScreen() {
-                activeView = "company-secreterial";
+                activeView = "company-secretarial";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                scrollConsoleToTop();
+            }
+
+            function openHmrc648Screen() {
+                activeView = "hmrc-64-8s";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+            }
+
+            function openAmlVerificationScreen() {
+                activeView = "aml-verification";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+            }
+
+            function openXeroLockDateScreen() {
+                activeView = "xero-lock-date";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                loadXeroLockDateOverview();
                 scrollConsoleToTop();
             }
 
@@ -24418,6 +24593,148 @@
                     ].map(([label, value]) => `<article><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`).join("");
                 }
                 updateCompanySecretarialWizardFieldsPreview();
+            }
+
+            function renderHmrc648Screen() {
+                const title = document.getElementById("hmrc648StatusTitle");
+                const meta = document.getElementById("hmrc648StatusMeta");
+                if (!title || !meta) return;
+                const customers = Array.isArray(state.customers) ? state.customers : [];
+                const activeCustomers = customers.filter((customer) => String(customer?.status || "").toLowerCase() !== "inactive");
+                title.textContent = activeCustomers.length
+                    ? `${activeCustomers.length.toLocaleString("en-GB")} clients available for authority tracking`
+                    : "No active client records available";
+                meta.textContent = "Operational actions: initiate 64-8 request, collect signed authority, verify HMRC acknowledgement, and archive evidence against each client.";
+            }
+
+            function renderAmlVerificationScreen() {
+                const title = document.getElementById("amlVerificationStatusTitle");
+                const meta = document.getElementById("amlVerificationStatusMeta");
+                if (!title || !meta) return;
+                const customers = Array.isArray(state.customers) ? state.customers : [];
+                const unresolved = customers.filter((customer) => {
+                    const risk = String(customer?.riskRating || customer?.risk || "").toLowerCase();
+                    const aml = String(customer?.amlStatus || "").toLowerCase();
+                    const status = String(customer?.status || "").toLowerCase();
+                    return aml.includes("pending") || aml.includes("review") || risk === "high" || status.includes("dispute");
+                });
+                title.textContent = unresolved.length
+                    ? `${unresolved.length.toLocaleString("en-GB")} client${unresolved.length === 1 ? "" : "s"} need AML review`
+                    : "No AML blockers detected in loaded client data";
+                meta.textContent = "High-risk company secretarial filings should remain blocked until AML/KYC, debt-dispute, and engagement controls are explicitly cleared.";
+            }
+
+            function normaliseCompanyNumberInput(value) {
+                return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+            }
+
+            async function loadXeroLockDateOverview(force = false) {
+                if (xeroLockDateLoading && !force) return;
+                xeroLockDateLoading = true;
+                if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.xeroLockDates);
+                    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    xeroLockDateOverview = {
+                        mainTenantName: String(payload?.mainTenantName || ""),
+                        rows
+                    };
+                    if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                } catch (error) {
+                    console.error("Unable to load Xero lock-date overview", error);
+                    if (activeView === "xero-lock-date") showToast(error.message || "Unable to load lock-date overview", "error");
+                } finally {
+                    xeroLockDateLoading = false;
+                    if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                }
+            }
+
+            async function saveXeroLockDateMapping(tenantId, nextCompanyNumber, button) {
+                const companyNumber = normaliseCompanyNumberInput(nextCompanyNumber);
+                button?.setAttribute("disabled", "disabled");
+                try {
+                    const payload = await requestJSON(endpointURL(api.endpoints.xeroTenantMapping, { tenantId }), {
+                        method: "POST",
+                        body: JSON.stringify({ companyNumber })
+                    });
+                    const mapping = payload?.mapping || {};
+                    xeroLockDateOverview.rows = (xeroLockDateOverview.rows || []).map((row) => {
+                        if (String(row?.tenantId || "") !== String(tenantId || "")) return row;
+                        return { ...row, mapping: { ...(row.mapping || {}), ...mapping } };
+                    });
+                    await loadXeroLockDateOverview(true);
+                    showToast("Mapping saved", "success");
+                } catch (error) {
+                    showToast(error.message || "Unable to save mapping", "error");
+                } finally {
+                    button?.removeAttribute("disabled");
+                }
+            }
+
+            function renderXeroLockDateScreen() {
+                const summary = document.getElementById("xeroLockDateSummary");
+                const body = document.getElementById("xeroLockDateTableBody");
+                if (!summary || !body) return;
+                if (xeroLockDateLoading) {
+                    summary.textContent = "Loading lock-date data…";
+                } else {
+                    const rows = xeroLockDateOverview.rows || [];
+                    const flagged = rows.filter((row) => row?.flags?.accountsFiledNotLocked).length;
+                    summary.textContent = rows.length
+                        ? `${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} loaded · ${flagged.toLocaleString("en-GB")} flagged for filed accounts without a period lock.`
+                        : "No Xero tenants are connected yet.";
+                }
+                const rows = xeroLockDateOverview.rows || [];
+                body.innerHTML = rows.length
+                    ? rows.map((row) => {
+                        const tenantId = String(row?.tenantId || "");
+                        const mapping = row?.mapping || {};
+                        const companiesHouse = row?.companiesHouse || {};
+                        const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
+                        const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
+                        const yearEndLock = row?.endOfYearLockDate ? formatDate(row.endOfYearLockDate) : "Not set";
+                        const filedDate = companiesHouse?.accountsFiledDate ? formatDate(companiesHouse.accountsFiledDate) : "None";
+                        const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
+                        return `
+                            <tr>
+                                <td>
+                                    <strong>${escapeHTML(row?.tenantName || "Xero organisation")}</strong>
+                                    ${row?.isMainTenant ? `<span class="ch-pill is-info xero-lock-date-main-pill">Main tenant</span>` : ""}
+                                    <small>${escapeHTML(tenantId)}</small>
+                                </td>
+                                <td>${escapeHTML(periodLock)}</td>
+                                <td>${escapeHTML(yearEndLock)}</td>
+                                <td>
+                                    <strong>${escapeHTML(filedDate)}</strong>
+                                    <small>${escapeHTML(chLabel || "No mapped company details")}</small>
+                                </td>
+                                <td>
+                                    <input
+                                        class="xero-lock-date-mapping-input"
+                                        type="text"
+                                        value="${escapeHTML(mapping?.companyNumber || "")}"
+                                        data-xero-lock-map-company-number="${escapeHTML(tenantId)}"
+                                        placeholder="Company no."
+                                    >
+                                    <button class="ghost-button" type="button" data-xero-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                </td>
+                                <td class="xero-lock-date-flag-cell">
+                                    ${isFlagged ? '<span class="ch-pill is-bad">Accounts filed but period not locked</span>' : '<span class="ch-pill is-good">No lock issue detected</span>'}
+                                    ${row?.xeroError ? `<small>${escapeHTML(row.xeroError)}</small>` : ""}
+                                </td>
+                            </tr>
+                        `;
+                    }).join("")
+                    : '<tr><td colspan="6"><div class="ch-empty-state">Connect Xero tenants to view lock dates.</div></td></tr>';
+                body.querySelectorAll("[data-xero-lock-map-save]").forEach((button) => {
+                    if (button.dataset.xeroLockMapWired === "true") return;
+                    button.dataset.xeroLockMapWired = "true";
+                    button.addEventListener("click", () => {
+                        const tenantId = button.dataset.xeroLockMapSave || "";
+                        const input = body.querySelector(`[data-xero-lock-map-company-number="${CSS.escape(tenantId)}"]`);
+                        saveXeroLockDateMapping(tenantId, input?.value || "", button);
+                    });
+                });
             }
 
             function updateCompanySecretarialWizardFieldsPreview() {
@@ -37007,6 +37324,20 @@
                 return `<span class="ch-pill ${tone}">${escapeHTML(value)}</span>`;
             }
 
+            function filteredRiskAssessmentDraftClients() {
+                const query = String(riskAssessmentClientSearchQuery || "").trim().toLowerCase();
+                const filter = String(riskAssessmentClientFilter || "all");
+                return riskAssessmentDraftClients.filter((client) => {
+                    const name = String(client.clientName || "").toLowerCase();
+                    const matchesSearch = !query || name.includes(query);
+                    const hasPriorAssessment = Boolean(client.lastAssessmentAt);
+                    const matchesFilter = filter === "all"
+                        || (filter === "no-prior" && !hasPriorAssessment)
+                        || (filter === "has-prior" && hasPriorAssessment);
+                    return matchesSearch && matchesFilter;
+                });
+            }
+
             function renderRiskAssessmentClientPicker() {
                 const target = document.getElementById("riskAssessmentsClientPicker");
                 if (!target) return;
@@ -37015,7 +37346,18 @@
                     target.innerHTML = "";
                     return;
                 }
+                const filteredClients = filteredRiskAssessmentDraftClients();
                 target.hidden = false;
+                if (!filteredClients.length) {
+                    target.innerHTML = `
+                        <table class="ch-table">
+                            <tbody>
+                                <tr><td class="ch-empty-state">No clients match your search/filter.</td></tr>
+                            </tbody>
+                        </table>
+                    `;
+                    return;
+                }
                 target.innerHTML = `
                     <table class="ch-table">
                         <thead>
@@ -37026,7 +37368,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${riskAssessmentDraftClients.map((client) => `
+                            ${filteredClients.map((client) => `
                                 <tr>
                                     <td><input type="checkbox" data-risk-assessment-client-key="${escapeHTML(client.matchKey)}" ${riskAssessmentSelectedClientKeys.has(client.matchKey) ? "checked" : ""}></td>
                                     <td>${escapeHTML(client.clientName)}</td>
@@ -37055,6 +37397,7 @@
                 const status = document.getElementById("riskAssessmentsCsvStatus");
                 const generateButton = document.getElementById("riskAssessmentsGenerateButton");
                 const selectedCount = riskAssessmentSelectedClientKeys.size;
+                const filteredCount = filteredRiskAssessmentDraftClients().length;
 
                 if (builder) builder.hidden = !riskAssessmentBuilderOpen;
                 if (createButton) createButton.disabled = riskAssessmentGenerating;
@@ -37069,7 +37412,7 @@
                     if (!riskAssessmentDraftClients.length) {
                         status.textContent = "Upload a BM Client CSV to load clients for selection.";
                     } else {
-                        status.textContent = `${riskAssessmentDraftClients.length.toLocaleString("en-GB")} clients loaded from ${riskAssessmentLastCsvFileName || "CSV"}. Select clients to generate detailed risk assessments.`;
+                        status.textContent = `${riskAssessmentDraftClients.length.toLocaleString("en-GB")} clients loaded from ${riskAssessmentLastCsvFileName || "CSV"} · ${filteredCount.toLocaleString("en-GB")} shown · ${selectedCount.toLocaleString("en-GB")} selected.`;
                     }
                 }
 
@@ -37110,8 +37453,14 @@
                 riskAssessmentDraftClients = [];
                 riskAssessmentSelectedClientKeys.clear();
                 riskAssessmentLastCsvFileName = "";
+                riskAssessmentClientSearchQuery = "";
+                riskAssessmentClientFilter = "all";
                 const input = document.getElementById("riskAssessmentsBmCsvInput");
                 if (input) input.value = "";
+                const searchInput = document.getElementById("riskAssessmentsClientSearchInput");
+                if (searchInput) searchInput.value = "";
+                const filterSelect = document.getElementById("riskAssessmentsClientFilterSelect");
+                if (filterSelect) filterSelect.value = "all";
                 renderRiskAssessmentsScreen();
             }
 
@@ -37146,6 +37495,20 @@
                     console.error("Unable to parse BM CSV for risk assessments", error);
                     showToast("Unable to read the BM Client CSV file.", "error");
                 }
+                renderRiskAssessmentsScreen();
+            }
+
+            function selectAllFilteredRiskAssessmentClients() {
+                filteredRiskAssessmentDraftClients().forEach((client) => {
+                    riskAssessmentSelectedClientKeys.add(client.matchKey);
+                });
+                renderRiskAssessmentsScreen();
+            }
+
+            function deselectAllFilteredRiskAssessmentClients() {
+                filteredRiskAssessmentDraftClients().forEach((client) => {
+                    riskAssessmentSelectedClientKeys.delete(client.matchKey);
+                });
                 renderRiskAssessmentsScreen();
             }
 
@@ -37784,7 +38147,9 @@
                     "bad-debt": "Bad Debt",
                     "risk-assessments": "Risk Assessments",
                     "confirmation-statements": "Confirmation Statements",
-                    "company-secreterial": "Company Secretarial",
+                    "company-secretarial": "Company Secretarial",
+                    "hmrc-64-8s": "HMRC 64-8s",
+                    "aml-verification": "AML Verification",
                     jashflow: "Jashflow",
                     "bank-statements": "Bank Statements",
                     ignition: "Ignition",
@@ -37809,6 +38174,7 @@
                 }
                 if (activeView === "ignition-clients") return "Client register";
                 if (activeView === "confirmation-statements") return `${(companiesHouseState.companies || []).length.toLocaleString("en-GB")} companies in workflow`;
+                if (activeView === "xero-lock-date") return `${(xeroLockDateOverview.rows || []).length.toLocaleString("en-GB")} Xero tenants`;
                 if (activeView === "settings") return syncScopeLabels[syncSettings.invoiceScope] || "System settings";
                 return "Opened from sidebar";
             }
@@ -38360,7 +38726,10 @@
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
                 else if (activeView === "risk-assessments") activeNavSection = "risk-assessments";
                 else if (activeView === "confirmation-statements") activeNavSection = "confirmation-statements";
-                else if (activeView === "company-secreterial") activeNavSection = "company-secreterial";
+                else if (activeView === "company-secretarial" || activeView === "company-secreterial") activeNavSection = "company-secretarial";
+                else if (activeView === "hmrc-64-8s") activeNavSection = "hmrc-64-8s";
+                else if (activeView === "aml-verification") activeNavSection = "aml-verification";
+                else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
                 else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "settings") activeNavSection = "settings";
@@ -40768,6 +41137,32 @@
                         await loadRiskAssessmentBmCsv(event.target.files?.[0]);
                     });
                 }
+                const searchInput = document.getElementById("riskAssessmentsClientSearchInput");
+                if (searchInput && searchInput.dataset.riskWired !== "true") {
+                    searchInput.dataset.riskWired = "true";
+                    searchInput.addEventListener("input", (event) => {
+                        riskAssessmentClientSearchQuery = String(event.target.value || "");
+                        renderRiskAssessmentsScreen();
+                    });
+                }
+                const filterSelect = document.getElementById("riskAssessmentsClientFilterSelect");
+                if (filterSelect && filterSelect.dataset.riskWired !== "true") {
+                    filterSelect.dataset.riskWired = "true";
+                    filterSelect.addEventListener("change", (event) => {
+                        riskAssessmentClientFilter = String(event.target.value || "all");
+                        renderRiskAssessmentsScreen();
+                    });
+                }
+                const selectAllButton = document.getElementById("riskAssessmentsSelectAllButton");
+                if (selectAllButton && selectAllButton.dataset.riskWired !== "true") {
+                    selectAllButton.dataset.riskWired = "true";
+                    selectAllButton.addEventListener("click", selectAllFilteredRiskAssessmentClients);
+                }
+                const deselectAllButton = document.getElementById("riskAssessmentsDeselectAllButton");
+                if (deselectAllButton && deselectAllButton.dataset.riskWired !== "true") {
+                    deselectAllButton.dataset.riskWired = "true";
+                    deselectAllButton.addEventListener("click", deselectAllFilteredRiskAssessmentClients);
+                }
             }
 
             function renderAll() {
@@ -40793,6 +41188,9 @@
                 renderRiskAssessmentsScreen();
                 renderConfirmationStatementsScreen();
                 renderCompanySecretarialScreen();
+                renderHmrc648Screen();
+                renderAmlVerificationScreen();
+                renderXeroLockDateScreen();
                 renderJashflowScreen();
                 renderBankStatementsScreen();
                 renderBankAccountPanel();
@@ -43164,6 +43562,11 @@
                 if (menuBadDebtButton) menuBadDebtButton.addEventListener("click", openBadDebtScreen);
                 const menuJashflowButton = document.getElementById("menuJashflowButton");
                 if (menuJashflowButton) menuJashflowButton.addEventListener("click", openJashflowScreen);
+                const refreshXeroLockDateButton = document.getElementById("refreshXeroLockDateButton");
+                if (refreshXeroLockDateButton && refreshXeroLockDateButton.dataset.lockDateWired !== "true") {
+                    refreshXeroLockDateButton.dataset.lockDateWired = "true";
+                    refreshXeroLockDateButton.addEventListener("click", () => loadXeroLockDateOverview(true));
+                }
                 const menuBankStatementsButton = document.getElementById("menuBankStatementsButton");
                 if (menuBankStatementsButton) menuBankStatementsButton.addEventListener("click", openBankStatementsScreen);
                 const menuIgnitionButton = document.getElementById("menuIgnitionButton");
@@ -44601,13 +45004,16 @@
                 const pagerStatus = document.getElementById("chImportPagerStatus");
                 const prevButton = document.getElementById("chImportPrevPageButton");
                 const nextButton = document.getElementById("chImportNextPageButton");
+                const deselectAllButton = document.getElementById("chImportDeselectAllButton");
                 if (!wrap || !body) return;
                 if (!preview || !preview.rows || !preview.rows.length) {
                     wrap.hidden = true;
                     if (pager) pager.hidden = true;
+                    if (deselectAllButton) deselectAllButton.hidden = true;
                     return;
                 }
                 wrap.hidden = false;
+                if (deselectAllButton) deselectAllButton.hidden = false;
                 const pageSize = Math.max(50, Number(companiesHouseState.importPreviewPageSize || 500));
                 const totalRows = preview.rows.length;
                 const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
@@ -44621,17 +45027,20 @@
                     const warnings = (row.warnings || []).join(" · ");
                     const included = row.included !== false && action !== "error";
                     const periodEnd = row.data?.period_end_iso || row.data?.period_end || "";
-                    const dueDate = row.data?.due_date_iso || row.data?.due_date || "";
+                    const deadline = row.data?.due_date_iso || row.data?.due_date || "";
                     const manager = row.data?.manager_reference || row.data?.assigned_staff || "";
+                    const companyName = row.data?.company_name || "";
+                    const clientName = row.data?.client_name || row.data?.client_id || "";
+                    const companyLabel = companyName || clientName || "—";
+                    const showClientSubline = clientName && clientName !== companyName;
                     return `<tr class="ch-import-row ${action === "create" ? "is-create" : action === "update" ? "is-update" : action === "error" ? "is-error" : ""}">
                         <td><input type="checkbox" data-ch-import-include data-line="${Number(row.lineNumber || 0)}" ${included ? "checked" : ""} ${action === "error" ? "disabled" : ""}></td>
                         <td>${row.lineNumber || ""}</td>
                         <td><span class="ch-pill ${action === "create" ? "is-good" : action === "update" ? "is-info" : action === "error" ? "is-bad" : ""}">${escapeHTML(action)}</span></td>
                         <td>${escapeHTML(row.data?.company_number || "—")}</td>
-                        <td>${escapeHTML(row.data?.company_name || "—")}</td>
-                        <td>${escapeHTML(row.data?.client_name || row.data?.client_id || "—")}</td>
+                        <td>${escapeHTML(companyLabel)}${showClientSubline ? `<br><small>${escapeHTML(clientName)}</small>` : ""}</td>
                         <td>${escapeHTML(periodEnd ? chFormatDate(periodEnd) : "—")}</td>
-                        <td>${escapeHTML(dueDate ? chFormatDate(dueDate) : "—")}</td>
+                        <td>${escapeHTML(deadline ? chFormatDate(deadline) : "—")}</td>
                         <td>${escapeHTML(manager || "—")}</td>
                         <td>${row.data?.auth_code ? "✓ in file" : "—"}</td>
                         <td>${escapeHTML(errorText || warnings || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td>
@@ -44662,9 +45071,11 @@
                 companiesHouseState.importBusy = true;
                 const previewButton = document.getElementById("chImportPreviewButton");
                 const commitButton = document.getElementById("chImportCommitButton");
+                const deselectAllButton = document.getElementById("chImportDeselectAllButton");
                 const resetButton = document.getElementById("chImportResetButton");
                 if (previewButton) previewButton.disabled = true;
                 if (commitButton) commitButton.disabled = true;
+                if (deselectAllButton) deselectAllButton.disabled = true;
                 if (resetButton) resetButton.disabled = true;
                 chSetImportStatus("Uploading and parsing…", "muted");
                 try {
@@ -44683,10 +45094,12 @@
                     chRenderImportSummary(companiesHouseState.importPreview);
                     chRenderImportPreview(companiesHouseState.importPreview);
                     const commit = document.getElementById("chImportCommitButton");
+                    const deselect = document.getElementById("chImportDeselectAllButton");
                     const reset = document.getElementById("chImportResetButton");
                     const previewRows = companiesHouseState.importPreview?.rows || [];
                     const importableRows = previewRows.filter((row) => row.included !== false && !(row.errors || []).length && (row.action === "create" || row.action === "update"));
                     if (commit) commit.hidden = !companiesHouseState.importPreview || !importableRows.length;
+                    if (deselect) deselect.hidden = !companiesHouseState.importPreview || !previewRows.length;
                     if (reset) reset.hidden = false;
                     chSetImportStatus(
                         `Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected, ${(companiesHouseState.importPreview?.excludedNonLtdCount || 0).toLocaleString("en-GB")} non-Ltd auto-excluded, ${(companiesHouseState.importPreview?.reviewRequiredCount || 0).toLocaleString("en-GB")} need review, ${(companiesHouseState.importPreview?.authCodeBackfillCount || 0).toLocaleString("en-GB")} auth-code backfills, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`,
@@ -44699,6 +45112,7 @@
                     companiesHouseState.importBusy = false;
                     if (previewButton) previewButton.disabled = !(fileInput?.files?.length);
                     if (commitButton) commitButton.disabled = false;
+                    if (deselectAllButton) deselectAllButton.disabled = false;
                     if (resetButton) resetButton.disabled = false;
                 }
             }
@@ -44716,9 +45130,11 @@
                 companiesHouseState.importBusy = true;
                 const previewButton = document.getElementById("chImportPreviewButton");
                 const commitButton = document.getElementById("chImportCommitButton");
+                const deselectAllButton = document.getElementById("chImportDeselectAllButton");
                 const resetButton = document.getElementById("chImportResetButton");
                 if (previewButton) previewButton.disabled = true;
                 if (commitButton) commitButton.disabled = true;
+                if (deselectAllButton) deselectAllButton.disabled = true;
                 if (resetButton) resetButton.disabled = true;
                 chSetImportStatus("Committing import…", "muted");
                 try {
@@ -44737,6 +45153,7 @@
                     if (wrap) wrap.hidden = true;
                     if (pager) pager.hidden = true;
                     if (commitButton) commitButton.hidden = true;
+                    if (deselectAllButton) deselectAllButton.hidden = true;
                     loadCompaniesHouseImports(true);
                     showToast("Companies House import completed.", "success");
                 } catch (error) {
@@ -44746,8 +45163,20 @@
                     companiesHouseState.importBusy = false;
                     if (previewButton) previewButton.disabled = !(document.getElementById("chImportFile")?.files?.length);
                     if (commitButton) commitButton.disabled = false;
+                    if (deselectAllButton) deselectAllButton.disabled = false;
                     if (resetButton) resetButton.disabled = false;
                 }
+            }
+
+            function deselectAllCompaniesHouseImportRows() {
+                if (!companiesHouseState.importPreview?.rows?.length) return;
+                companiesHouseState.importPreview.rows = companiesHouseState.importPreview.rows.map((row) => ({
+                    ...row,
+                    included: false,
+                }));
+                chRenderImportSummary(companiesHouseState.importPreview);
+                chRenderImportPreview(companiesHouseState.importPreview);
+                chSetImportStatus("All preview rows deselected.", "muted");
             }
 
             function resetCompaniesHouseImport() {
@@ -44757,6 +45186,7 @@
                 const summary = document.getElementById("chImportSummary"); if (summary) summary.hidden = true;
                 const wrap = document.getElementById("chImportPreviewWrap"); if (wrap) wrap.hidden = true;
                 const commit = document.getElementById("chImportCommitButton"); if (commit) commit.hidden = true;
+                const deselect = document.getElementById("chImportDeselectAllButton"); if (deselect) deselect.hidden = true;
                 const reset = document.getElementById("chImportResetButton"); if (reset) reset.hidden = true;
                 chSetImportStatus("", "muted");
             }
@@ -44998,6 +45428,7 @@
                 });
                 document.getElementById("chImportPreviewButton")?.addEventListener("click", previewCompaniesHouseImport);
                 document.getElementById("chImportCommitButton")?.addEventListener("click", commitCompaniesHouseImport);
+                document.getElementById("chImportDeselectAllButton")?.addEventListener("click", deselectAllCompaniesHouseImportRows);
                 document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
                 document.getElementById("chSubmissionAttemptsRefreshButton")?.addEventListener("click", () => loadCompaniesHouseImports(true));
                 document.getElementById("chSubmissionReplaySelectedButton")?.addEventListener("click", replaySelectedDeadLetterSubmissions);

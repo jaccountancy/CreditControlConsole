@@ -32,9 +32,32 @@ CREATE TABLE IF NOT EXISTS xero_connections (
     scope TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (user_id),
     UNIQUE (tenant_id)
 );
+
+ALTER TABLE xero_connections DROP CONSTRAINT IF EXISTS xero_connections_user_id_key;
+CREATE INDEX IF NOT EXISTS xero_connections_user_idx ON xero_connections (user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS xero_tenant_company_mappings (
+    tenant_id TEXT PRIMARY KEY,
+    company_number TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    company_name TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS company_number TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS company_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE xero_tenant_company_mappings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS xero_tenant_company_mappings_company_number_idx ON xero_tenant_company_mappings (company_number);
 
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

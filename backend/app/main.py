@@ -129,6 +129,7 @@ from .services import (
     run_sync,
     run_sync_job,
     save_posting_settings,
+    save_xero_tenant_company_mapping,
     serialize_sync_run,
     serialize_xero_rate_limit,
     serialize_ignition_sync_run,
@@ -150,6 +151,7 @@ from .services import (
     update_me_report_exception,
     update_me_report_mapping,
     update_me_report_settings,
+    xero_lock_date_overview_payload,
     xero_chart_of_accounts_payload,
     bank_statement_payload,
     bulk_update_invoice_status,
@@ -1018,6 +1020,18 @@ async def api_xero_posting_settings(request: Request, user: dict = Depends(requi
     payload = await request.json()
     settings_payload = await save_posting_settings(user, payload)
     return {"status": "ok", **settings_payload, "panel": panel_payload(user)}
+
+
+@app.get("/api/xero/lock-dates")
+async def api_xero_lock_dates(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await xero_lock_date_overview_payload(user)}
+
+
+@app.post("/api/xero/tenant-mappings/{tenant_id}")
+async def api_xero_tenant_mapping_save(tenant_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    mapping = save_xero_tenant_company_mapping(user, tenant_id, payload)
+    return {"status": "ok", "mapping": mapping}
 
 
 @app.get("/api/companies-house/settings")

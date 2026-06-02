@@ -65,6 +65,8 @@ CLIENT_IMPORT_HEADER_ALIASES = {
     "due_date": {"due date", "next due date", "confirmation due date", "next confirmation due"},
     "manager_reference": {"client manager", "manager reference", "relationship manager", "manager ref", "portfolio manager"},
 }
+CLIENT_IMPORT_PERIOD_END_COLUMN_INDEX = 273  # Excel column JN
+CLIENT_IMPORT_DEADLINE_COLUMN_INDEX = 274  # Excel column JO
 
 COMPANY_NUMBER_RE = re.compile(r"^[A-Z0-9]{1,2}\d{6,}$|^\d{8}$|^[A-Z]{2}\d{6}$")
 MAX_COMPANIES_HOUSE_SYNC_BATCH = 500
@@ -1975,6 +1977,11 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         for canonical, column_index in column_map.items():
             value = raw_row[column_index] if column_index < len(raw_row) else ""
             row_payload[canonical] = _coerce_text(value, 2000 if canonical == "notes" else 250)
+        # BM export contract: confirmation statement period end is always JN, deadline is always JO.
+        period_end_from_jn = raw_row[CLIENT_IMPORT_PERIOD_END_COLUMN_INDEX] if CLIENT_IMPORT_PERIOD_END_COLUMN_INDEX < len(raw_row) else ""
+        deadline_from_jo = raw_row[CLIENT_IMPORT_DEADLINE_COLUMN_INDEX] if CLIENT_IMPORT_DEADLINE_COLUMN_INDEX < len(raw_row) else ""
+        row_payload["period_end"] = _coerce_text(period_end_from_jn, 250)
+        row_payload["due_date"] = _coerce_text(deadline_from_jo, 250)
         row_payload["assigned_staff"] = row_payload.get("assigned_staff") or row_payload.get("manager_reference") or ""
         company_number = normalise_company_number(row_payload.get("company_number"))
         row_payload["company_number"] = company_number
