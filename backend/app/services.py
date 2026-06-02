@@ -16026,6 +16026,14 @@ def _practice_pack_task_overdue(status_text: str | None, due_date: str | None) -
     return bool(parsed and not _practice_pack_task_complete(status_text) and parsed < date.today())
 
 
+def _practice_pack_task_overdue_days(status_text: str | None, due_date: str | None) -> int:
+    parsed = _practice_pack_due_date(due_date)
+    if not parsed or _practice_pack_task_complete(status_text):
+        return 0
+    delta = (date.today() - parsed).days
+    return delta if delta > 0 else 0
+
+
 def _practice_pack_percentage(part: int | float, whole: int | float) -> float:
     return round((float(part) / float(whole)) * 100, 1) if whole else 0.0
 
@@ -16084,6 +16092,10 @@ def _practice_pack_owner_commentary_fallback(summary: dict) -> dict:
     open_count = int(summary.get("openCount") or 0)
     overdue_percent = _practice_pack_percentage(overdue_count, task_count)
     open_percent = _practice_pack_percentage(open_count, task_count)
+    very_old_overdue_count = int(summary.get("veryOldOverdueCount") or 0)
+    oldest_overdue_days = int(summary.get("oldestOverdueDays") or 0)
+    jow_outstanding_count = int(summary.get("jowOutstandingCount") or 0)
+    jow_overdue_count = int(summary.get("jowOverdueCount") or 0)
     movement = ""
     if previous_count not in (None, ""):
         direction = "increase" if int(change or 0) > 0 else "decrease" if int(change or 0) < 0 else "no movement"
@@ -16104,6 +16116,10 @@ def _practice_pack_owner_commentary_fallback(summary: dict) -> dict:
     ]
     if other_count:
         bullets.append(f"{other_count:,} task{'s' if other_count != 1 else ''} sit in Other and may need a manual category check.")
+    if very_old_overdue_count:
+        bullets.append(f"{very_old_overdue_count:,} overdue task{'s are' if very_old_overdue_count != 1 else ' is'} older than 90 days; oldest is {oldest_overdue_days:,} days overdue.")
+    if jow_outstanding_count:
+        bullets.append(f"{jow_outstanding_count:,} outstanding JOW/JOWSA task{'s need' if jow_outstanding_count != 1 else ' needs'} attention, with {jow_overdue_count:,} already overdue.")
     return {
         "summary": f"{owner}'s practice pack covers {client_count:,} active client{'s' if client_count != 1 else ''} and {task_count:,} open workflows, led by {busiest}.",
         "bullets": bullets[:4],
@@ -16118,6 +16134,10 @@ def _practice_pack_owner_summaries(staff_tasks: dict[str, list[dict]], history_r
         open_count = 0
         completed_count = 0
         overdue_count = 0
+        very_old_overdue_count = 0
+        oldest_overdue_days = 0
+        jow_outstanding_count = 0
+        jow_overdue_count = 0
         for task in tasks:
             client_key = task.get("clientKey") or _practice_pack_client_match_key(task.get("clientName")) or task.get("clientName") or "client"
             clients.setdefault(client_key, {
@@ -16127,9 +16147,18 @@ def _practice_pack_owner_summaries(staff_tasks: dict[str, list[dict]], history_r
             service = _practice_pack_allowed_service_name(task.get("serviceName"))
             service_counts[service] = service_counts.get(service, 0) + 1
             complete = _practice_pack_task_complete(task.get("status"))
+            overdue_days = _practice_pack_task_overdue_days(task.get("status"), task.get("dueDate"))
+            overdue = overdue_days > 0
+            very_old_overdue_count += 1 if overdue_days >= 90 else 0
+            oldest_overdue_days = max(oldest_overdue_days, overdue_days)
             completed_count += 1 if complete else 0
             open_count += 0 if complete else 1
-            overdue_count += 1 if _practice_pack_task_overdue(task.get("status"), task.get("dueDate")) else 0
+            overdue_count += 1 if overdue else 0
+            task_text = f"{task.get('taskName') or ''} {task.get('rawServiceName') or ''}"
+            is_jow_task = bool(re.search(r"\b(jowsa|jow)\b", task_text, re.IGNORECASE))
+            if is_jow_task and not complete:
+                jow_outstanding_count += 1
+                jow_overdue_count += 1 if overdue else 0
 
         client_count = len(clients)
         limited_count = sum(1 for client in clients.values() if client.get("isLimitedCompany"))
@@ -16165,6 +16194,10 @@ def _practice_pack_owner_summaries(staff_tasks: dict[str, list[dict]], history_r
             "clientCountChangePercent": change_percent,
             "taskCountChange": task_change,
             "taskCountChangePercent": task_change_percent,
+            "veryOldOverdueCount": very_old_overdue_count,
+            "oldestOverdueDays": oldest_overdue_days,
+            "jowOutstandingCount": jow_outstanding_count,
+            "jowOverdueCount": jow_overdue_count,
         }
         summary["commentary"] = _practice_pack_owner_commentary_fallback(summary)
         summaries.append(summary)
@@ -16199,6 +16232,10 @@ async def _practice_pack_owner_commentaries(owner_summaries: list[dict]) -> dict
             "clientCountChangePercent": summary["clientCountChangePercent"],
             "taskCountChange": summary["taskCountChange"],
             "taskCountChangePercent": summary["taskCountChangePercent"],
+            "veryOldOverdueCount": summary["veryOldOverdueCount"],
+            "oldestOverdueDays": summary["oldestOverdueDays"],
+            "jowOutstandingCount": summary["jowOutstandingCount"],
+            "jowOverdueCount": summary["jowOverdueCount"],
         })
     request_body = {
         "input": [
@@ -16211,6 +16248,7 @@ async def _practice_pack_owner_commentaries(owner_summaries: list[dict]) -> dict
                             "You write concise first-page commentary for staff practice-pack PDFs. "
                             "Return JSON only. Use only the supplied figures. Do not invent last-month values when previousClientCount is null. "
                             "Mention client count, task count, meaningful month-on-month movement in clients and tasks where available, limited-company percentage, the busiest service section, overdue/open work, and Other-category review points when relevant. "
+                            "Explicitly mention very old overdue items where veryOldOverdueCount > 0 and call out outstanding JOW/JOWSA tasks where jowOutstandingCount > 0. "
                             "Add practical discussion points for workload risk and task backlogs. Use a professional UK accountancy operations tone. "
                             "Keep each summary to one sentence and each bullet under 30 words."
                         ),
@@ -16514,7 +16552,7 @@ def _practice_pack_pdf_bytes(
         else:
             table_data.append([_practice_pack_pdf_cell("No rows in this section.", body_style), *["" for _ in columns[1:]]])
         table = Table(table_data, colWidths=widths, repeatRows=1, splitByRow=1)
-        table.setStyle(TableStyle([
+        style_commands = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E67F2")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -16526,7 +16564,12 @@ def _practice_pack_pdf_bytes(
             ("RIGHTPADDING", (0, 0), (-1, -1), 5),
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ]))
+        ]
+        for table_row_index in section.get("overdueRows") or []:
+            if table_row_index <= 0:
+                continue
+            style_commands.append(("BACKGROUND", (0, table_row_index), (-1, table_row_index), colors.HexColor("#FFF4F1")))
+        table.setStyle(TableStyle(style_commands))
         story.extend([table, Spacer(1, 6)])
 
     document.build(story)
@@ -16575,14 +16618,24 @@ def _practice_pack_sections(tasks: list[dict], include_owner: bool) -> list[dict
     for service_name in sorted(by_service, key=_practice_pack_service_sort_key):
         service_tasks = sorted(by_service[service_name], key=_practice_pack_task_sort_key)
         rows = []
+        overdue_rows = []
+        overdue_count = 0
         for task in service_tasks:
+            overdue = _practice_pack_task_overdue(task.get("status"), task.get("dueDate"))
+            due_date_display = task.get("dueDate") or ""
+            status_display = task.get("status") or "No status"
+            if overdue:
+                overdue_count += 1
+                due_date_display = f"{due_date_display} (OVERDUE)" if due_date_display else "OVERDUE"
+                status_display = f"{status_display} [OVERDUE]"
+                overdue_rows.append(len(rows) + 1)  # +1 because table row 0 is the header
             if include_owner:
                 rows.append([
                     task.get("owner") or "Unassigned",
                     task.get("clientName") or "No client",
                     task.get("taskName") or "",
-                    task.get("status") or "No status",
-                    task.get("dueDate") or "",
+                    status_display,
+                    due_date_display,
                     task.get("progressNote") or "",
                     task.get("matchedClient") or "Unmatched",
                 ])
@@ -16590,11 +16643,14 @@ def _practice_pack_sections(tasks: list[dict], include_owner: bool) -> list[dict
                 rows.append([
                     task.get("clientName") or "No client",
                     task.get("taskName") or "",
-                    task.get("status") or "No status",
-                    task.get("dueDate") or "",
+                    status_display,
+                    due_date_display,
                     task.get("progressNote") or "",
                 ])
-        sections.append({"heading": f"{service_name} ({len(service_tasks):,} task{'s' if len(service_tasks) != 1 else ''})", "rows": rows})
+        heading = f"{service_name} ({len(service_tasks):,} task{'s' if len(service_tasks) != 1 else ''})"
+        if overdue_count:
+            heading = f"{heading} - {overdue_count:,} overdue"
+        sections.append({"heading": heading, "rows": rows, "overdueRows": overdue_rows, "overdueCount": overdue_count})
     return sections or [{"heading": "No tasks", "rows": []}]
 
 
