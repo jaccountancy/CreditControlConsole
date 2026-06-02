@@ -26928,6 +26928,33 @@
                 }
             }
 
+            async function deleteXeroLockDateTenant(tenantId, button) {
+                const safeTenantId = String(tenantId || "").trim();
+                if (!safeTenantId) return;
+                const row = (xeroLockDateOverview.rows || []).find((item) => String(item?.tenantId || "") === safeTenantId) || null;
+                const tenantName = String(row?.tenantName || "this client");
+                const confirmed = window.confirm(
+                    `Delete ${tenantName} from this Xero lock-date list by disconnecting its Xero tenant?`
+                );
+                if (!confirmed) return;
+                button?.setAttribute("disabled", "disabled");
+                try {
+                    await requestJSON(api.endpoints.disconnect, {
+                        method: "POST",
+                        body: JSON.stringify({ tenantId: safeTenantId })
+                    });
+                    xeroLockDateOverview.rows = (xeroLockDateOverview.rows || []).filter(
+                        (item) => String(item?.tenantId || "") !== safeTenantId
+                    );
+                    await loadXeroLockDateOverview(true);
+                    showToast("Client removed from lock-date list", "success");
+                } catch (error) {
+                    showToast(error.message || "Unable to delete client from lock-date list", "error");
+                } finally {
+                    button?.removeAttribute("disabled");
+                }
+            }
+
             async function populateMissingXeroLockDateMappings(button, options = {}) {
                 const silent = Boolean(options?.silent);
                 button?.setAttribute("disabled", "disabled");
@@ -27212,7 +27239,6 @@
                                 <td class="xero-lock-tenant-cell">
                                     <strong>${escapeHTML(row?.tenantName || "Xero organisation")}</strong>
                                     ${row?.isMainTenant ? `<span class="ch-pill is-info xero-lock-date-main-pill">Main tenant</span>` : ""}
-                                    <small>${escapeHTML(tenantId)}</small>
                                 </td>
                                 <td class="xero-lock-date-cell">
                                     <strong>${escapeHTML(periodLock)}</strong>
@@ -27236,6 +27262,7 @@
                                             placeholder="Company no."
                                         >
                                         <button class="ghost-button" type="button" data-xero-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                        <button class="ghost-button danger-button" type="button" data-xero-lock-map-delete="${escapeHTML(tenantId)}">Delete</button>
                                     </div>
                                 </td>
                                 <td class="xero-lock-date-flag-cell">
@@ -27259,6 +27286,14 @@
                         const tenantId = button.dataset.xeroLockMapSave || "";
                         const input = body.querySelector(`[data-xero-lock-map-company-number="${CSS.escape(tenantId)}"]`);
                         saveXeroLockDateMapping(tenantId, input?.value || "", button);
+                    });
+                });
+                body.querySelectorAll("[data-xero-lock-map-delete]").forEach((button) => {
+                    if (button.dataset.xeroLockDeleteWired === "true") return;
+                    button.dataset.xeroLockDeleteWired = "true";
+                    button.addEventListener("click", () => {
+                        const tenantId = button.dataset.xeroLockMapDelete || "";
+                        deleteXeroLockDateTenant(tenantId, button);
                     });
                 });
             }
@@ -27334,7 +27369,6 @@
                             <tr>
                                 <td>
                                     <strong>${escapeHTML(row?.tenantName || "Xero organisation")}</strong>
-                                    <small>${escapeHTML(tenantId)}</small>
                                 </td>
                                 <td>${escapeHTML(periodLock)}</td>
                                 <td>${escapeHTML(filedDate)}</td>
@@ -27343,14 +27377,17 @@
                                     <small>${escapeHTML(mapping?.companyNumber ? `CH number ${mapping.companyNumber}` : "No CH number mapped")}</small>
                                 </td>
                                 <td>
-                                    <input
-                                        class="xero-lock-date-mapping-input"
-                                        type="text"
-                                        value="${escapeHTML(mapping?.companyNumber || "")}"
-                                        data-settings-lock-map-company-number="${escapeHTML(tenantId)}"
-                                        placeholder="Company no."
-                                    >
-                                    <button class="ghost-button" type="button" data-settings-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                    <div class="xero-lock-mapping-controls">
+                                        <input
+                                            class="xero-lock-date-mapping-input"
+                                            type="text"
+                                            value="${escapeHTML(mapping?.companyNumber || "")}"
+                                            data-settings-lock-map-company-number="${escapeHTML(tenantId)}"
+                                            placeholder="Company no."
+                                        >
+                                        <button class="ghost-button" type="button" data-settings-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                        <button class="ghost-button danger-button" type="button" data-settings-lock-map-delete="${escapeHTML(tenantId)}">Delete</button>
+                                    </div>
                                 </td>
                                 <td class="xero-lock-date-flag-cell">
                                     ${isFlagged
@@ -27373,6 +27410,14 @@
                         const tenantId = button.dataset.settingsLockMapSave || "";
                         const input = body.querySelector(`[data-settings-lock-map-company-number="${CSS.escape(tenantId)}"]`);
                         saveXeroLockDateMapping(tenantId, input?.value || "", button);
+                    });
+                });
+                body.querySelectorAll("[data-settings-lock-map-delete]").forEach((button) => {
+                    if (button.dataset.settingsLockDeleteWired === "true") return;
+                    button.dataset.settingsLockDeleteWired = "true";
+                    button.addEventListener("click", () => {
+                        const tenantId = button.dataset.settingsLockMapDelete || "";
+                        deleteXeroLockDateTenant(tenantId, button);
                     });
                 });
             }
