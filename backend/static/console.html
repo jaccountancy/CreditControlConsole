@@ -13016,9 +13016,24 @@
             }
             }
             .jashflow-topbar-summary {
-                flex-basis: 760px;
-                min-width: min(740px, 100%);
-                grid-template-columns: repeat(5, minmax(86px, 1fr));
+                flex-basis: 860px;
+                min-width: min(840px, 100%);
+                grid-template-columns: repeat(5, minmax(86px, 1fr)) auto;
+            }
+            .ledger-topbar.has-inline-status .jashflow-topbar-summary {
+                grid-template-columns: repeat(5, minmax(70px, 1fr)) auto;
+            }
+            .ledger-topbar.is-topbar-dense .jashflow-topbar-summary {
+                grid-template-columns: repeat(5, minmax(58px, 1fr)) auto;
+            }
+            .ledger-topbar.is-topbar-dense .jashflow-topbar-post-button {
+                width: 32px;
+                min-width: 32px;
+                padding: 6px;
+            }
+            .ledger-topbar.is-topbar-dense .jashflow-topbar-post-button:hover,
+            .ledger-topbar.is-topbar-dense .jashflow-topbar-post-button:focus-visible {
+                width: 178px;
             }
             .jashflow-action-button {
                 min-height: 34px;
@@ -13063,6 +13078,76 @@
                 box-shadow: 0 10px 22px rgba(39, 176, 95, 0.18);
             }
             .jashflow-action-button[hidden] { display: none; }
+            .jashflow-topbar-post-button {
+                min-width: 36px;
+                width: 36px;
+                min-height: 100%;
+                padding: 8px;
+                border: 0;
+                border-radius: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                background: linear-gradient(135deg, rgba(29, 103, 242, 0.98), rgba(42, 141, 205, 0.98));
+                color: #ffffff;
+                cursor: pointer;
+                overflow: hidden;
+                transition: width 0.24s cubic-bezier(0.16, 1, 0.3, 1), background 0.22s ease, transform 0.22s ease, opacity 0.22s ease;
+            }
+            .jashflow-topbar-post-button:hover,
+            .jashflow-topbar-post-button:focus-visible {
+                width: 210px;
+                justify-content: flex-start;
+                padding-inline: 10px 12px;
+                transform: translateY(-1px);
+                outline: none;
+                background: linear-gradient(135deg, #1b5fe0, #217fbb);
+            }
+            .jashflow-topbar-post-button:active {
+                transform: translateY(0);
+            }
+            .jashflow-topbar-post-button:disabled {
+                background: rgba(133, 147, 173, 0.32);
+                color: rgba(255, 255, 255, 0.92);
+                cursor: not-allowed;
+                transform: none;
+                opacity: 0.94;
+            }
+            .jashflow-topbar-post-icon {
+                flex: 0 0 20px;
+                width: 20px;
+                height: 20px;
+                display: inline-grid;
+                place-items: center;
+            }
+            .jashflow-topbar-post-icon svg {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2.3;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .jashflow-topbar-summary .jashflow-topbar-post-label {
+                max-width: 0;
+                opacity: 0;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                font-size: 0.72rem;
+                font-weight: 950;
+                letter-spacing: 0.01em;
+                text-transform: none;
+                color: inherit;
+                transition: max-width 0.2s ease, opacity 0.16s ease;
+            }
+            .jashflow-topbar-post-button:hover .jashflow-topbar-post-label,
+            .jashflow-topbar-post-button:focus-visible .jashflow-topbar-post-label {
+                max-width: 170px;
+                opacity: 1;
+            }
             .ledger-topbar.has-inline-status,
             .ledger-topbar.has-inline-status.has-topbar-refresh-action,
             body.is-ledger-view .ledger-topbar.has-inline-status,
@@ -13144,12 +13229,28 @@
             }
             @media (max-width: 1220px) {
                 .jashflow-topbar-summary {
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
                 }
             }
             @media (max-width: 560px) {
                 .jashflow-topbar-summary {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
+                .jashflow-topbar-post-button {
+                    width: 100%;
+                    min-height: 42px;
+                    border-radius: 0 0 12px 12px;
+                    grid-column: 1 / -1;
+                    justify-content: flex-start;
+                    padding-inline: 10px 12px;
+                }
+                .jashflow-topbar-post-button:hover,
+                .jashflow-topbar-post-button:focus-visible {
+                    width: 100%;
+                }
+                .jashflow-topbar-summary .jashflow-topbar-post-label {
+                    max-width: 170px;
+                    opacity: 1;
                 }
                 .jashflow-action-button {
                     flex: 1 1 140px;
@@ -13475,6 +13576,12 @@
                                 <span>Balance Owed</span>
                                 <strong id="jashflowBalanceTotal">£0.00</strong>
                             </article>
+                            <button class="jashflow-topbar-post-button" id="postJashflowInterestTopbarButton" type="button" aria-label="Post interest" title="Post interest">
+                                <span class="jashflow-topbar-post-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14"></path><path d="M5 12h14"></path><path d="m14 7 5 5-5 5"></path></svg>
+                                </span>
+                                <span class="jashflow-topbar-post-label" id="postJashflowInterestTopbarLabel">Post interest</span>
+                            </button>
                         </div>
                         <div class="credit-control-topbar-summary" id="creditControlTopbarSummary" aria-label="Credit control summary" hidden>
                             <article>
@@ -14316,7 +14423,6 @@
                                 </label>
                                 <button class="ghost-button" id="reloadJashflowInterestAccountsButton" type="button">Reload account codes</button>
                                 <button class="ghost-button" type="submit">Save setup</button>
-                                <button class="primary-button" id="postJashflowInterestButton" type="button">Post uninvoiced interest</button>
                                 <p class="jashflow-posting-status jashflow-form-wide" id="jashflowInterestPostingStatus">Set the account code and review the posting report before creating invoices.</p>
                                 <div class="jashflow-interest-report jashflow-form-wide" id="jashflowInterestPostingReport"></div>
                             </form>
@@ -22483,7 +22589,8 @@
                 }
                 const periodEndInput = document.getElementById("jashflowInterestPeriodEndInput");
                 if (periodEndInput && !periodEndInput.value) periodEndInput.value = localDateKey();
-                const postButton = document.getElementById("postJashflowInterestButton");
+                const postButton = document.getElementById("postJashflowInterestTopbarButton");
+                const postButtonLabel = document.getElementById("postJashflowInterestTopbarLabel");
                 const selectedPeriodEndDate = periodEndInput?.value || localDateKey();
                 if (
                     selectedPeriodEndDate
@@ -22498,13 +22605,16 @@
                 const setupComplete = Boolean((accountInput?.value || settings.interestAccountCode || "").trim());
                 if (postButton) {
                     postButton.disabled = jashflowPostingInterest || !setupComplete || uninvoicedAmount < 0.01 || jashflowInterestPreviewLoading;
-                    postButton.textContent = jashflowPostingInterest
+                    const postButtonText = jashflowPostingInterest
                         ? "Posting interest..."
                         : jashflowInterestPreviewLoading
                         ? "Calculating interest..."
                         : uninvoicedAmount >= 0.01
                         ? `Post ${formatCurrency(uninvoicedAmount)} interest`
                         : "No interest to post";
+                    if (postButtonLabel) postButtonLabel.textContent = postButtonText;
+                    postButton.setAttribute("aria-label", postButtonText);
+                    postButton.setAttribute("title", postButtonText);
                 }
                 const reloadAccountsButton = document.getElementById("reloadJashflowInterestAccountsButton");
                 if (reloadAccountsButton) {
@@ -38919,7 +39029,7 @@
                 if (jashflowLoanForm) jashflowLoanForm.addEventListener("submit", createJashflowLoan);
                 const jashflowSettingsForm = document.getElementById("jashflowSettingsForm");
                 if (jashflowSettingsForm) jashflowSettingsForm.addEventListener("submit", saveJashflowSettings);
-                const postJashflowInterestButton = document.getElementById("postJashflowInterestButton");
+                const postJashflowInterestButton = document.getElementById("postJashflowInterestTopbarButton");
                 if (postJashflowInterestButton) postJashflowInterestButton.addEventListener("click", postJashflowInterest);
                 const jashflowInterestPeriodEndInput = document.getElementById("jashflowInterestPeriodEndInput");
                 if (jashflowInterestPeriodEndInput) {
