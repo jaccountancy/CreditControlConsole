@@ -25286,6 +25286,13 @@
                 ].map((part) => String(part || "").toLowerCase()).join(" ");
             }
 
+            function bankTransactionIsOpeningBalance(transaction) {
+                const type = String(transaction?.type || "").toLowerCase();
+                const text = bankStatementSuggestionText(transaction);
+                return type === "opening_balance"
+                    || /\b(opening balance|start balance|balance brought forward|opening_balance|start_balance)\b/i.test(text);
+            }
+
             function bankStatementBuildSuggestion(transaction, options) {
                 const account = bankStatementFindSuggestedAccount(options.codes || [], options.names || []);
                 const fallbackCode = String(options.codes?.[0] || "");
@@ -25793,7 +25800,9 @@
             }
 
             function bankStatementSa100Rows(transactions, accountId = "") {
-                return (transactions || []).map((transaction) => {
+                return (transactions || [])
+                    .filter((transaction) => !bankTransactionIsOpeningBalance(transaction))
+                    .map((transaction) => {
                     const category = bankStatementSa100Category(transaction);
                     const signedAmount = Number(bankTransactionAmount(transaction) || 0);
                     const amount = Math.abs(signedAmount);
@@ -26395,7 +26404,9 @@
             }
 
             function bankStatementAiAutocategorisationSuggestions(transactions) {
-                return (transactions || []).map((transaction) => {
+                return (transactions || [])
+                    .filter((transaction) => !bankTransactionIsOpeningBalance(transaction))
+                    .map((transaction) => {
                     const suggestion = bankStatementSuggestedXeroMapping(transaction);
                     return {
                         transactionId: transaction.id || "",
