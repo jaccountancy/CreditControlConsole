@@ -6764,6 +6764,9 @@ def _normalise_me_report_director_loan_account_overrides(value) -> dict:
                 result[direction].append(code[:80])
             if len(result[direction]) >= 200:
                 break
+    confirmed_at = str(value.get("confirmedAt") or value.get("setupConfirmedAt") or "").strip()
+    if confirmed_at:
+        result["confirmedAt"] = confirmed_at[:80]
     return result
 
 
@@ -7250,8 +7253,10 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
         "yearToDateProfit",
         "rolling12MonthTurnover",
         "rollingVatTurnoverMonths",
+        "profitAndLossMonthlyBreakdown",
         "trialBalanceAccounts",
         "balanceSheet",
+        "balanceSheetRows",
         "dividendTransactions",
         "directorTransferTransactions",
         "fixedAssetReconciliation",
@@ -7287,6 +7292,21 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
                 "properties": {
                     "month": {"type": "string"},
                     "turnover": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
+        "profitAndLossMonthlyBreakdown": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["month", "income", "expenses", "profit", "sourcePage"],
+                "properties": {
+                    "month": {"type": "string"},
+                    "income": {"type": "number"},
+                    "expenses": {"type": "number"},
+                    "profit": {"type": "number"},
                     "sourcePage": {"type": ["integer", "null"]},
                 },
             },
@@ -7341,16 +7361,33 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
                 "sourcePage": {"type": ["integer", "null"]},
             },
         },
+        "balanceSheetRows": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["section", "accountCode", "accountName", "amount", "sourcePage"],
+                "properties": {
+                    "section": {"type": "string"},
+                    "accountCode": {"type": "string"},
+                    "accountName": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "sourcePage": {"type": ["integer", "null"]},
+                },
+            },
+        },
         "dividendTransactions": {
             "type": "array",
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["date", "description", "amount", "sourcePage"],
+                "required": ["date", "description", "amount", "accountCode", "accountName", "sourcePage"],
                 "properties": {
                     "date": {"type": ["string", "null"]},
                     "description": {"type": "string"},
                     "amount": {"type": "number"},
+                    "accountCode": {"type": ["string", "null"]},
+                    "accountName": {"type": ["string", "null"]},
                     "sourcePage": {"type": ["integer", "null"]},
                 },
             },
@@ -7360,11 +7397,13 @@ ME_REPORT_PDF_EXTRACTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["date", "description", "amount", "sourcePage"],
+                "required": ["date", "description", "amount", "accountCode", "accountName", "sourcePage"],
                 "properties": {
                     "date": {"type": ["string", "null"]},
                     "description": {"type": "string"},
                     "amount": {"type": "number"},
+                    "accountCode": {"type": ["string", "null"]},
+                    "accountName": {"type": ["string", "null"]},
                     "sourcePage": {"type": ["integer", "null"]},
                 },
             },
@@ -7590,15 +7629,21 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         "For accountingProfit and yearToDateProfit use Profit (loss) before taxation from Profit and Loss - YTD if present. "
         "Extract rolling12MonthTurnover from the VAT Registration check or rolling 12-month turnover/taxable turnover line if shown; return 0 only when it is not present. "
         "Also extract the full rollingVatTurnoverMonths schedule when the report shows the 12 monthly taxable turnover figures. "
+        "Extract profitAndLossMonthlyBreakdown from the Profit and Loss page where it shows the past 12 months or monthly columns; "
+        "return one row per month with total income, total expenses and profit/loss for that month. "
         "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
         "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
         "For each Trial Balance account, include the transaction-level rows shown for that account in Review of Transactions or account detail pages; "
         "this is especially important for Motor Vehicle Expenses and Director Loan Account/current account codes. Return an empty transactions array when only the Trial Balance total is shown. "
         "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved "
-        "when shown in brackets. Extract dividend transaction dates, descriptions and amounts only where the transaction or account "
-        "explicitly says dividend or dividends. Do not treat director drawings, transfers, cash withdrawals, salary, wages, payroll, "
-        "or director loan movements as dividends unless the line explicitly uses dividend wording. Put those director payments, "
-        "drawings, salary/wage/payroll entries and director loan movements in directorTransferTransactions instead. "
+        "when shown in brackets. Extract balanceSheetRows for every Balance Sheet row shown in the uploaded report, preserving "
+        "the displayed section such as fixed assets, current assets, current liabilities, capital and reserves, or creditors. "
+        "For every dividendTransactions and directorTransferTransactions row, include the accountCode and accountName "
+        "shown in the Account Transactions or nominal account report. The posted account is decisive: if the row is posted to a Director Loan "
+        "Account/current account/DLA nominal, put it in directorTransferTransactions even when the description contains dividend wording. "
+        "Only put rows in dividendTransactions where the posted account itself is dividends or the transaction/account explicitly says dividend "
+        "and it is not posted to a DLA, salary, wage or payroll account. Put director drawings, transfers, cash withdrawals, salary, wages, payroll, "
+        "and director loan movements in directorTransferTransactions instead. "
         "Extract Fixed Asset Reconciliation differences by asset class, and report whether the Depreciation "
         "Schedule shows a nil depreciation column. Put clearly disallowable costs such as car fines, penalties and non-allowable "
         "tax adjustment accounts in disallowedExpenses. Do not make final tax judgements for ambiguous legal, bad debt or client "
@@ -7863,6 +7908,101 @@ def _me_report_account_is_balance_sheet(account: dict) -> bool:
     return any(term in account_type for term in ("asset", "liability", "equity", "bank", "current"))
 
 
+def _me_report_profit_loss_monthly_breakdown(
+    extracted: dict,
+    period_end: date,
+    monthly_sales: Decimal,
+    monthly_expenses: Decimal,
+    accounting_profit: Decimal,
+) -> list[dict]:
+    rows = []
+    for row in extracted.get("profitAndLossMonthlyBreakdown") or []:
+        if not isinstance(row, dict):
+            continue
+        month = str(row.get("month") or "").strip()
+        income = _money(row.get("income"))
+        expenses = abs(_money(row.get("expenses")))
+        profit = _money(row.get("profit"))
+        if not month and income == 0 and expenses == 0 and profit == 0:
+            continue
+        rows.append({
+            "month": month or period_end.strftime("%b %Y"),
+            "income": float(income),
+            "expenses": float(expenses),
+            "profit": float(profit),
+            "margin": float((profit / income * Decimal("100")).quantize(Decimal("0.01"))) if income else 0.0,
+            "source": _me_report_source_page("Profit and Loss", row.get("sourcePage")),
+        })
+    if rows:
+        return rows[:18]
+    if monthly_sales or monthly_expenses or accounting_profit:
+        return [{
+            "month": period_end.strftime("%b %Y"),
+            "income": float(monthly_sales),
+            "expenses": float(monthly_expenses),
+            "profit": float(accounting_profit),
+            "margin": float((accounting_profit / monthly_sales * Decimal("100")).quantize(Decimal("0.01"))) if monthly_sales else 0.0,
+            "source": "Profit and Loss",
+        }]
+    return []
+
+
+def _me_report_balance_sheet_rows(extracted: dict, trial_balance_accounts: list[dict], balance_sheet: dict) -> list[dict]:
+    rows = []
+    for row in extracted.get("balanceSheetRows") or []:
+        if not isinstance(row, dict):
+            continue
+        amount = _money(row.get("amount"))
+        account_name = str(row.get("accountName") or row.get("label") or "").strip()
+        account_code = str(row.get("accountCode") or "").strip()
+        section = str(row.get("section") or "Balance Sheet").strip()
+        if not account_name and not account_code and amount == 0:
+            continue
+        rows.append({
+            "section": section or "Balance Sheet",
+            "accountCode": account_code,
+            "accountName": account_name or account_code or "Balance Sheet row",
+            "amount": float(amount),
+            "source": _me_report_source_page("Balance Sheet", row.get("sourcePage")),
+        })
+    if rows:
+        return rows[:500]
+
+    if balance_sheet:
+        for label, value in (
+            ("Current year earnings", balance_sheet.get("currentYearEarnings")),
+            ("Retained earnings", balance_sheet.get("retainedEarnings")),
+            ("Dividends declared", -abs(_money(balance_sheet.get("dividendsDeclared")))),
+            ("Called up share capital", balance_sheet.get("calledUpShareCapital")),
+            ("Total equity", balance_sheet.get("totalEquity")),
+        ):
+            amount = _money(value)
+            if amount == 0 and label != "Total equity":
+                continue
+            rows.append({
+                "section": "Capital and reserves",
+                "accountCode": "",
+                "accountName": label,
+                "amount": float(amount),
+                "source": _me_report_source_page("Balance Sheet", balance_sheet.get("sourcePage")),
+            })
+
+    for account in trial_balance_accounts:
+        if not isinstance(account, dict) or not _me_report_account_is_balance_sheet(account):
+            continue
+        amount = _me_report_account_amount(account)
+        if amount == 0:
+            continue
+        rows.append({
+            "section": str(account.get("accountType") or "Balance Sheet"),
+            "accountCode": str(account.get("accountCode") or ""),
+            "accountName": str(account.get("accountName") or "Balance Sheet account"),
+            "amount": float(amount),
+            "source": _me_report_source_page("Trial Balance", account.get("sourcePage")),
+        })
+    return rows[:500]
+
+
 def _me_report_sum_accounts(accounts: list[dict], predicate) -> tuple[Decimal, list[dict]]:
     total = Decimal("0.00")
     matches = []
@@ -7991,7 +8131,88 @@ def _me_report_transfer_key(row: dict) -> str:
     )
 
 
-def _me_report_transfer_default_classification(row: dict) -> str:
+ME_REPORT_TRANSFER_ACCOUNT_FIELDS = (
+    "accountCode",
+    "accountName",
+    "nominalCode",
+    "nominalName",
+    "nominal",
+    "account",
+    "accountTitle",
+    "postedAccount",
+    "postedTo",
+    "xeroAccountCode",
+    "xeroAccountName",
+    "ledgerAccount",
+    "accountLabel",
+)
+
+
+def _me_report_normalise_account_code(value) -> str:
+    return " ".join(str(value or "").strip().upper().split())[:80]
+
+
+def _me_report_transfer_account_parts(row: dict) -> list[str]:
+    return [
+        str(row.get(key) or "").strip()
+        for key in ME_REPORT_TRANSFER_ACCOUNT_FIELDS
+        if str(row.get(key) or "").strip()
+    ]
+
+
+def _me_report_transfer_account_codes(row: dict) -> set[str]:
+    return {
+        code for code in (
+            _me_report_normalise_account_code(row.get(key))
+            for key in ("accountCode", "code", "nominalCode", "xeroAccountCode")
+        )
+        if code
+    }
+
+
+def _me_report_dla_account_codes(summary: dict | None) -> set[str]:
+    if not isinstance(summary, dict):
+        return set()
+    codes = set()
+    account_rows = []
+    for key in ("directorLoanAccounts", "directorLoanAccountCandidates"):
+        value = summary.get(key)
+        if isinstance(value, list):
+            account_rows.extend(value)
+    for account in account_rows:
+        if isinstance(account, dict):
+            code = _me_report_director_loan_account_code(account)
+            if code:
+                codes.add(code)
+    return codes
+
+
+def _me_report_transfer_posted_account_classification(row: dict, summary: dict | None = None) -> str:
+    account_text = " ".join(_me_report_transfer_account_parts(row)).lower()
+    compact = re.sub(r"[^a-z0-9]+", "", account_text)
+    if _me_report_transfer_account_codes(row) & _me_report_dla_account_codes(summary):
+        return "directorLoan"
+    if (
+        "dla" in compact
+        or "directorloan" in compact
+        or "directorsloan" in compact
+        or ("director" in account_text and "loan" in account_text)
+        or ("director" in account_text and "current account" in account_text)
+        or "due to director" in account_text
+        or "due from director" in account_text
+    ):
+        return "directorLoan"
+    if re.search(r"\b(wages?|salary|payroll|remuneration|bonus)\b", account_text):
+        return "wages"
+    if re.search(r"\bdividends?\b", account_text):
+        return "dividend"
+    return ""
+
+
+def _me_report_transfer_default_classification(row: dict, summary: dict | None = None) -> str:
+    posted_classification = _me_report_transfer_posted_account_classification(row, summary)
+    if posted_classification:
+        return posted_classification
     text = " ".join(
         str(row.get(key) or "")
         for key in ("description", "label", "source", "treatment")
@@ -8014,6 +8235,7 @@ def _me_report_classified_director_transfers(
     dividend_transactions: list[dict],
     director_transfer_transactions: list[dict],
     overrides: dict,
+    summary: dict | None = None,
     limit: int = 240,
 ) -> list[dict]:
     rows = []
@@ -8038,6 +8260,10 @@ def _me_report_classified_director_transfers(
                 "source": source,
                 "sourceType": source_type,
             }
+            for key in ME_REPORT_TRANSFER_ACCOUNT_FIELDS:
+                value = str(item.get(key) or "").strip()
+                if value:
+                    candidate[key] = value
             key = _me_report_transfer_key(candidate)
             if not key:
                 continue
@@ -8045,9 +8271,10 @@ def _me_report_classified_director_transfers(
             if dedupe_key in seen:
                 continue
             seen.add(dedupe_key)
-            default_classification = _normalise_me_report_transfer_classification(item.get("defaultClassification")) or _me_report_transfer_default_classification(candidate)
+            posted_classification = _me_report_transfer_posted_account_classification(candidate, summary)
+            default_classification = posted_classification or _normalise_me_report_transfer_classification(item.get("defaultClassification")) or _me_report_transfer_default_classification(candidate, summary)
             override_classification = overrides.get(key) or _normalise_me_report_transfer_classification(item.get("overrideClassification"))
-            classification = override_classification or _normalise_me_report_transfer_classification(item.get("classification")) or default_classification
+            classification = override_classification or posted_classification or _normalise_me_report_transfer_classification(item.get("classification")) or default_classification
             if classification not in ME_REPORT_TRANSFER_CLASSIFICATIONS:
                 classification = default_classification
             candidate.update({
@@ -8144,6 +8371,7 @@ def _me_report_apply_transfer_classification_overrides(summary: dict, client: di
         source_dividend_rows,
         source_director_rows + source_dla_rows + source_wage_rows,
         overrides,
+        result,
     )
     result["transferClassificationOverrides"] = overrides
     result["transferClassificationOverrideClientId"] = str(client.get("id") or "")
@@ -8538,10 +8766,15 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     transfer_classification_overrides = _normalise_me_report_transfer_classification_overrides(client.get("transfer_classification_overrides"))
     director_loan_account_overrides = _normalise_me_report_director_loan_account_overrides(client.get("director_loan_account_overrides"))
     director_loan_account_data = _me_report_director_loan_account_data(trial_balance_accounts, director_loan_account_overrides)
+    director_loan_context = {
+        "directorLoanAccounts": director_loan_account_data["accounts"],
+        "directorLoanAccountCandidates": director_loan_account_data["candidates"],
+    }
     director_transfer_rows = _me_report_classified_director_transfers(
         dividend_transactions,
         director_transfer_transactions,
         transfer_classification_overrides,
+        director_loan_context,
     )
     classified_dividend_transactions = [row for row in director_transfer_rows if row.get("classification") == "dividend"]
     director_loan_transactions = [row for row in director_transfer_rows if row.get("classification") == "directorLoan"]
@@ -8556,6 +8789,14 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     monthly_expenses = _money(extracted.get("monthlyExpenses"))
     ytd_sales = _money(extracted.get("yearToDateSales") or extracted.get("monthlySales"))
     ytd_profit = accounting_profit
+    profit_loss_monthly_breakdown = _me_report_profit_loss_monthly_breakdown(
+        extracted,
+        period_end,
+        monthly_sales,
+        monthly_expenses,
+        accounting_profit,
+    )
+    balance_sheet_rows = _me_report_balance_sheet_rows(extracted, trial_balance_accounts, balance_sheet)
 
     depreciation_addback, depreciation_accounts = _me_report_sum_accounts(
         trial_balance_accounts,
@@ -8944,6 +9185,8 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "yearToDateSales": float(ytd_sales),
         "yearToDateExpenses": float(max(Decimal("0.00"), _money(ytd_sales - ytd_profit))),
         "yearToDateProfit": float(ytd_profit),
+        "profitAndLossMonthlyBreakdown": profit_loss_monthly_breakdown,
+        "balanceSheetRows": balance_sheet_rows,
         "rolling12MonthTurnover": float(rolling_12_month_turnover),
         "rollingVatTurnoverMonths": rolling_vat_months,
         "vatThreshold": float(vat_threshold),
