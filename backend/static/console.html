@@ -6331,6 +6331,155 @@
                 color: var(--muted);
                 font-weight: 750;
             }
+            .practice-pack-review {
+                display: grid;
+                gap: 12px;
+                padding: 14px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.8);
+            }
+            .practice-pack-review-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            .practice-pack-review-head p {
+                margin: 2px 0 0;
+                color: var(--muted);
+                font-weight: 750;
+            }
+            .practice-pack-review-summary {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+                gap: 10px;
+            }
+            .practice-pack-review-summary article {
+                padding: 10px 12px;
+                border-radius: 12px;
+                border: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.84);
+            }
+            .practice-pack-review-summary span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .practice-pack-review-summary strong {
+                display: block;
+                margin-top: 4px;
+                font-size: 1.08rem;
+                font-weight: 950;
+            }
+            .practice-pack-review-controls {
+                display: grid;
+                grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(130px, 0.4fr)) auto auto auto;
+                gap: 8px;
+                align-items: end;
+            }
+            .practice-pack-review-controls label {
+                display: grid;
+                gap: 6px;
+                font-size: 0.78rem;
+                font-weight: 800;
+                color: var(--muted);
+            }
+            .practice-pack-review-controls input,
+            .practice-pack-review-controls select {
+                min-height: 36px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.95);
+                padding: 0 10px;
+                font: inherit;
+                color: var(--ink);
+                font-weight: 750;
+            }
+            .practice-pack-review-table-wrap {
+                overflow: auto;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: #fff;
+            }
+            .practice-pack-review-table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 980px;
+            }
+            .practice-pack-review-table th,
+            .practice-pack-review-table td {
+                padding: 8px;
+                border-bottom: 1px solid rgba(210, 222, 240, 0.7);
+                vertical-align: top;
+                text-align: left;
+            }
+            .practice-pack-review-table thead th {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                background: #f4f8ff;
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+            }
+            .practice-pack-review-table tr.is-overdue {
+                background: #fff4f1;
+            }
+            .practice-pack-review-table tr.is-selected {
+                box-shadow: inset 0 0 0 9999px rgba(29, 103, 242, 0.07);
+            }
+            .practice-pack-review-table input[type="text"],
+            .practice-pack-review-table input[type="date"],
+            .practice-pack-review-table select,
+            .practice-pack-review-table textarea {
+                width: 100%;
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                background: #fff;
+                padding: 7px 8px;
+                font: inherit;
+                color: var(--ink);
+                font-size: 0.86rem;
+            }
+            .practice-pack-review-table textarea {
+                min-height: 40px;
+                resize: vertical;
+            }
+            .practice-pack-review-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 3px 8px;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                border: 1px solid rgba(185, 56, 40, 0.25);
+                color: #b93828;
+                background: rgba(255, 116, 89, 0.1);
+                white-space: nowrap;
+            }
+            .practice-pack-review-empty {
+                padding: 14px;
+                border-radius: 12px;
+                border: 1px dashed rgba(152, 168, 192, 0.5);
+                background: rgba(245, 249, 255, 0.85);
+                color: var(--muted);
+                font-weight: 750;
+            }
+            @media (max-width: 1180px) {
+                .practice-pack-review-controls {
+                    grid-template-columns: 1fr 1fr;
+                }
+            }
             .jashflow-panel,
             .jashflow-workspace {
                 display: grid;
@@ -14287,6 +14436,7 @@
                                 <input id="practicePackTaskFile" type="file" accept=".csv,text/csv">
                             </form>
                             <p class="late-charge-summary" id="practicePackSummary">Awaiting BM Client File CSV and BM Task File CSV.</p>
+                            <section class="practice-pack-review" id="practicePackReviewWorkspace" hidden></section>
                             <div class="practice-pack-output-list" id="practicePackOutputList">
                                 <div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>
                             </div>
@@ -15582,6 +15732,7 @@
             let meReportProfitLossSearchTerm = "";
             let meReportProfitLossSortMode = "month-asc";
             let meReportProfitLossFilterMode = "all";
+            let meReportProfitLossMetricFocus = "all";
             let meReportBalanceSheetSearchTerm = "";
             let meReportBalanceSheetSortMode = "section-asc";
             let meReportBalanceSheetFilterMode = "all";
@@ -15592,6 +15743,14 @@
             let practicePackResult = null;
             let practicePackGenerating = false;
             let practicePackAssignments = loadPracticePackAssignments();
+            let practicePackClientCsvData = null;
+            let practicePackTaskCsvData = null;
+            let practicePackTaskDraftRows = [];
+            let practicePackTaskColumnMap = null;
+            let practicePackDraftSignature = "";
+            let practicePackReviewSearchTerm = "";
+            let practicePackReviewOwnerFilter = "all";
+            let practicePackReviewBulkOwner = "";
             let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
                 ? persistedUIState.lateChargeFilter
                 : "active";
@@ -19791,6 +19950,9 @@
                 setElementVisible(lateChargesScreen, activeView === "late-charges");
                 setElementVisible(badDebtScreen, activeView === "bad-debt");
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
+                if (activeView === "confirmation-statements" && typeof loadCompaniesHouseSettings === "function") {
+                    loadCompaniesHouseSettings();
+                }
                 setElementVisible(jashflowScreen, activeView === "jashflow");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
                 setElementVisible(ignitionScreen, activeView === "ignition");
@@ -24550,6 +24712,22 @@
                     seen.add(key);
                     warnings.push({ type, severity, title, message });
                 };
+                const uploadsWithDates = (account?.uploads || [])
+                    .filter((upload) => upload.statementStartDate && upload.statementEndDate)
+                    .slice()
+                    .sort((left, right) => String(left.statementStartDate).localeCompare(String(right.statementStartDate)));
+                const coverageStart = uploadsWithDates[0]?.statementStartDate || "";
+                const coverageEnd = uploadsWithDates[uploadsWithDates.length - 1]?.statementEndDate || "";
+                const coverageStartDate = bankDateFromISO(coverageStart);
+                const coverageEndDate = bankDateFromISO(coverageEnd);
+                const isInteriorCoverageGap = (startDateValue, endDateValue) => {
+                    const startDate = bankDateFromISO(startDateValue);
+                    const endDate = bankDateFromISO(endDateValue);
+                    if (!startDate || !endDate) return true;
+                    if (coverageStartDate && startDate <= coverageStartDate) return false;
+                    if (coverageEndDate && endDate >= coverageEndDate) return false;
+                    return true;
+                };
                 const transactions = bankAccountTransactionsAscending(account);
                 let previous = null;
                 let missingBalances = 0;
@@ -24561,7 +24739,7 @@
                     }
                     if (previous) {
                         const dayGap = bankDaysBetween(previous.date, transaction.date);
-                        if (dayGap !== null && dayGap > 31) {
+                        if (dayGap !== null && dayGap > 31 && isInteriorCoverageGap(previous.date, transaction.date)) {
                             addWarning(
                                 "transaction-date-gap",
                                 "medium",
@@ -24596,15 +24774,11 @@
                     );
                 }
 
-                const uploadsWithDates = (account?.uploads || [])
-                    .filter((upload) => upload.statementStartDate && upload.statementEndDate)
-                    .slice()
-                    .sort((left, right) => String(left.statementStartDate).localeCompare(String(right.statementStartDate)));
                 let previousUpload = null;
                 uploadsWithDates.forEach((upload) => {
                     if (previousUpload) {
                         const gap = bankDaysBetween(previousUpload.statementEndDate, upload.statementStartDate);
-                        if (gap !== null && gap > 1) {
+                        if (gap !== null && gap > 1 && isInteriorCoverageGap(previousUpload.statementEndDate, upload.statementStartDate)) {
                             addWarning(
                                 "statement-period-gap",
                                 "high",
@@ -24627,6 +24801,10 @@
 
                 (account?.flags || []).forEach((flag) => {
                     if (flag.type === "balance_mismatch") return;
+                    if (flag.type === "date_gap") {
+                        const match = String(flag.message || "").match(/between\s+(\d{4}-\d{2}-\d{2})\s+and\s+(\d{4}-\d{2}-\d{2})/i);
+                        if (match && !isInteriorCoverageGap(match[1], match[2])) return;
+                    }
                     addWarning(
                         flag.type || "saved-flag",
                         flag.severity || "medium",
@@ -25576,6 +25754,10 @@
                     `
                     : `
                         <div class="bank-account-toolbar">
+                            <span class="detail-meta">${uploads.length.toLocaleString("en-GB")} submission${uploads.length === 1 ? "" : "s"} saved for this account</span>
+                            <button class="primary-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction Running" : "Upload and Extract"}</button>
+                        </div>
+                        <div class="bank-account-toolbar">
                             <label class="search-wrap late-charge-search">
                                 <span class="search-icon">⌕</span>
                                 <input id="bankTransactionSearchInput" type="search" placeholder="Search transactions, type, amount, AI tag or code..." value="${escapeHTML(bankStatementTransactionSearchTerm)}">
@@ -25609,7 +25791,6 @@
                         </div>
                         <div class="bank-account-actions">
                             <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
-                            <button class="primary-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction Running" : "Upload and Extract"}</button>
                             ${(canRunXeroCategorisation || bankStatementAiAutocategorisationRunning) ? `<button class="ghost-button" id="runBankXeroCategorisationButton" type="button" ${canRunXeroCategorisation ? "" : "disabled"}>${bankStatementAiAutocategorisationRunning ? "Categorising..." : "Xero Categorisation"}</button>` : ""}
                             ${hasTransactions ? '<button class="ghost-button" id="runBankSa100CategorisationButton" type="button">SA100 Categorisation</button>' : ""}
                             ${hasSa100Result ? '<button class="ghost-button" id="exportBankSa100ReceiptButton" type="button">Export SA100 receipt</button>' : ""}
@@ -29650,20 +29831,26 @@
                 return `
                     <article class="me-report-insight-card">
                         <p class="eyebrow">Data quality</p>
-                        <h3>${visibleItems.length.toLocaleString("en-GB")} active review point${visibleItems.length === 1 ? "" : "s"}</h3>
+                        <h3>Jenius AI has ${visibleItems.length.toLocaleString("en-GB")} points for your attention, please see below:</h3>
                         ${dismissedCount ? `<p class="detail-meta">${dismissedCount.toLocaleString("en-GB")} dismissed for this client.</p>` : ""}
                         <div class="me-report-quality-table">
                             ${visibleItems.slice(0, 12).map((item) => `
+                                ${(() => {
+                                    const hasUnderlyingTransactions = meReportObjectRows(item.transactions).length > 0;
+                                    const isExpanded = hasUnderlyingTransactions && expandedMeReportQualityWarningKeys.has(item.key);
+                                    return `
                                 <div class="bank-flag-row me-report-quality-row">
                                     <div class="me-report-quality-row-head">
                                         <span><strong>${escapeHTML(item.title)}</strong><small>${escapeHTML(item.detail).replace(/&lt;br&gt;/g, "<br>")}</small></span>
                                         <div class="me-report-quality-row-actions">
-                                            <button class="ghost-button" type="button" data-me-report-toggle-warning="${escapeHTML(item.key)}">${expandedMeReportQualityWarningKeys.has(item.key) ? "Hide details" : "Show more"}</button>
+                                            ${hasUnderlyingTransactions ? `<button class="ghost-button" type="button" data-me-report-toggle-warning="${escapeHTML(item.key)}">${isExpanded ? "Hide details" : "Show more"}</button>` : ""}
                                             <button class="ghost-button" type="button" data-me-report-dismiss-warning="${escapeHTML(item.key)}">Dismiss</button>
                                         </div>
                                     </div>
-                                    ${expandedMeReportQualityWarningKeys.has(item.key) ? renderMeReportQualityWarningDetails(item) : ""}
+                                    ${isExpanded ? renderMeReportQualityWarningDetails(item) : ""}
                                 </div>
+                                    `;
+                                })()}
                             `).join("")}
                             ${!visibleItems.length ? '<div class="empty-state"><p class="eyebrow">Clear</p><h4>No active quality warnings</h4><p>Chart, duplicate transaction and extraction warnings are clear or have been dismissed for this client.</p></div>' : ""}
                         </div>
@@ -29970,10 +30157,24 @@
                 const expenseTotal = rows.reduce((sum, row) => sum + Number(row.expenses || 0), 0);
                 const profitTotal = rows.reduce((sum, row) => sum + Number(row.profit || 0), 0);
                 const margin = incomeTotal ? profitTotal / incomeTotal * 100 : 0;
+                const focus = ["all", "income", "expenses"].includes(meReportProfitLossMetricFocus)
+                    ? meReportProfitLossMetricFocus
+                    : "all";
+                const showIncomeRow = focus === "all" || focus === "income";
+                const showExpenseRow = focus === "all" || focus === "expenses";
+                const showSummaryRows = focus === "all";
                 return `
                     <div class="ignition-summary-grid">
-                        ${renderMeReportMetric("Visible income", formatCurrency(incomeTotal))}
-                        ${renderMeReportMetric("Visible expenses", formatCurrency(expenseTotal))}
+                        ${renderMeReportMetric("Visible revenue", formatCurrency(incomeTotal), {
+                            detail: focus === "income" ? "Showing revenue focus across all months" : "Click to focus revenue months",
+                            actionLabel: focus === "income" ? "Show all" : "Focus revenue",
+                            actionAttrs: "data-me-pl-focus=\"income\""
+                        })}
+                        ${renderMeReportMetric("Visible expenditure", formatCurrency(expenseTotal), {
+                            detail: focus === "expenses" ? "Showing expenditure focus across all months" : "Click to focus expenditure months",
+                            actionLabel: focus === "expenses" ? "Show all" : "Focus expenditure",
+                            actionAttrs: "data-me-pl-focus=\"expenses\""
+                        })}
                         ${renderMeReportMetric("Visible profit", formatCurrency(profitTotal))}
                         ${renderMeReportMetric("Profit margin", formatPercent(margin))}
                     </div>
@@ -29982,7 +30183,7 @@
                             <div>
                                 <p class="eyebrow">YTD Profit and Loss</p>
                                 <h3>${rows.length.toLocaleString("en-GB")} of ${allRows.length.toLocaleString("en-GB")} month${allRows.length === 1 ? "" : "s"} shown</h3>
-                                <p class="detail-meta">Monthly breakdown extracted from the JUK Overview Report Profit and Loss schedule, with current-month fallback where an older upload does not include the schedule.</p>
+                                <p class="detail-meta">Monthly breakdown extracted from the JUK Overview Report Profit and Loss schedule, with current-month fallback where an older upload does not include the schedule. All extracted months are shown as columns.</p>
                             </div>
                         </div>
                         <div class="late-charge-bulk-toolbar">
@@ -30023,26 +30224,32 @@
                                 </thead>
                                 <tbody>
                                     ${rows.length ? `
-                                        <tr>
-                                            <td><strong>Income</strong></td>
-                                            ${rows.map((row) => `<td>${formatCurrency(row.income || 0)}</td>`).join("")}
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Expenses</strong></td>
-                                            ${rows.map((row) => `<td>${formatCurrency(row.expenses || 0)}</td>`).join("")}
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Profit</strong></td>
-                                            ${rows.map((row) => `<td>${formatCurrency(row.profit || 0)}</td>`).join("")}
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Margin</strong></td>
-                                            ${rows.map((row) => `<td>${formatPercent(row.margin || 0)}</td>`).join("")}
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Source</strong></td>
-                                            ${rows.map((row) => `<td>${escapeHTML(row.source || "Uploaded report")}</td>`).join("")}
-                                        </tr>
+                                        ${showIncomeRow ? `
+                                            <tr>
+                                                <td><strong>Revenue</strong></td>
+                                                ${rows.map((row) => `<td>${formatCurrency(row.income || 0)}</td>`).join("")}
+                                            </tr>
+                                        ` : ""}
+                                        ${showExpenseRow ? `
+                                            <tr>
+                                                <td><strong>Expenditure</strong></td>
+                                                ${rows.map((row) => `<td>${formatCurrency(row.expenses || 0)}</td>`).join("")}
+                                            </tr>
+                                        ` : ""}
+                                        ${showSummaryRows ? `
+                                            <tr>
+                                                <td><strong>Profit</strong></td>
+                                                ${rows.map((row) => `<td>${formatCurrency(row.profit || 0)}</td>`).join("")}
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Margin</strong></td>
+                                                ${rows.map((row) => `<td>${formatPercent(row.margin || 0)}</td>`).join("")}
+                                            </tr>
+                                            <tr>
+                                                <td><strong>Source</strong></td>
+                                                ${rows.map((row) => `<td>${escapeHTML(row.source || "Uploaded report")}</td>`).join("")}
+                                            </tr>
+                                        ` : ""}
                                     ` : '<tr><td>No Profit and Loss monthly rows were extracted from this report.</td></tr>'}
                                 </tbody>
                             </table>
@@ -30675,6 +30882,7 @@
                             <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
                             ${periodLabel ? `<h3>${escapeHTML(periodLabel)}</h3>` : ""}
                         </div>
+                        <p class="detail-meta">CT estimate is calculated using current-year YTD earnings (not a single-month profit figure), then adjusted for tax add-backs, allowances and brought-forward losses.</p>
                         ${renderMeReportTaxBreakdownTable(summary)}
                     </article>
                     ${capitalAllowanceReviewCard}
@@ -31329,6 +31537,14 @@
                 document.querySelectorAll("[data-me-pl-sort]").forEach((select) => {
                     select.addEventListener("change", () => {
                         meReportProfitLossSortMode = select.value || "month-asc";
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-pl-focus]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const requested = button.dataset.mePlFocus || "all";
+                        if (requested === meReportProfitLossMetricFocus) meReportProfitLossMetricFocus = "all";
+                        else meReportProfitLossMetricFocus = requested;
                         renderMeReportScreen();
                     });
                 });
@@ -34586,6 +34802,308 @@
                 if (practicePackTaskComplete(status)) return false;
                 const time = Date.parse(dueDate);
                 return Number.isFinite(time) && time < Date.now();
+            }
+
+            function practicePackResolveColumnName(headers, candidates, fallback = "") {
+                const safeHeaders = Array.isArray(headers) ? headers : [];
+                const candidateKeys = candidates.map(normalisePracticePackHeader);
+                let match = safeHeaders.find((header) => candidateKeys.includes(normalisePracticePackHeader(header)));
+                if (!match) {
+                    match = safeHeaders.find((header) => {
+                        const key = normalisePracticePackHeader(header);
+                        return candidateKeys.some((candidate) => key.includes(candidate) || candidate.includes(key));
+                    });
+                }
+                return match || fallback;
+            }
+
+            function practicePackDraftOwnerOptions() {
+                const ownerSet = new Set();
+                practicePackTaskDraftRows.forEach((row) => {
+                    const owner = String(row.owner || "").trim();
+                    if (owner) ownerSet.add(owner);
+                });
+                practicePackClientAssignmentsFromData(practicePackClientCsvData || { rows: [] }).forEach((assignment) => {
+                    const manager = String(assignment.manager || "").trim();
+                    if (manager) ownerSet.add(manager);
+                });
+                if (!ownerSet.size) ownerSet.add("Unassigned");
+                return [...ownerSet].sort((left, right) => left.localeCompare(right));
+            }
+
+            function practicePackResetDraft() {
+                practicePackClientCsvData = null;
+                practicePackTaskCsvData = null;
+                practicePackTaskDraftRows = [];
+                practicePackTaskColumnMap = null;
+                practicePackDraftSignature = "";
+                practicePackReviewSearchTerm = "";
+                practicePackReviewOwnerFilter = "all";
+                practicePackReviewBulkOwner = "";
+            }
+
+            function practicePackBuildDraftRows(clientData, taskData) {
+                const headers = Array.isArray(taskData?.headers) ? taskData.headers : [];
+                const ownerHeader = practicePackResolveColumnName(headers, ["Assigned To", "Assignee", "Owner", "Staff", "Manager", "Bookkeeper", "Task Owner"], "Assigned To");
+                const clientHeader = practicePackResolveColumnName(headers, ["Client Name", "Client", "ClientName", "Customer", "Company Name", "Company", "Contact"], "Client Name");
+                const taskHeader = practicePackResolveColumnName(headers, ["Task", "Task Name", "Name", "Title", "Description", "Work Item"], "Task Name");
+                const statusHeader = practicePackResolveColumnName(headers, ["Status", "Task Status", "State"], "Status");
+                const dueHeader = practicePackResolveColumnName(headers, ["Due Date", "Deadline", "Date Due", "Target Date", "Task Due Date"], "Due Date");
+                const noteHeader = practicePackResolveColumnName(headers, ["Latest Progress Note", "Latest Note", "Most Recent Note", "Progress Note", "Progress Notes", "Internal Note", "Update Notes", "Notes", "Latest Progress", "Latest Update"], "Latest Progress Note");
+                practicePackTaskColumnMap = { ownerHeader, clientHeader, taskHeader, statusHeader, dueHeader, noteHeader };
+                const rows = Array.isArray(taskData?.rows) ? taskData.rows : [];
+                practicePackTaskDraftRows = rows.map((row, index) => ({
+                    id: `task-${index + 1}`,
+                    sourceRow: index + 2,
+                    clientName: practicePackColumnValue(row, [clientHeader]) || "No client",
+                    taskName: practicePackColumnValue(row, [taskHeader]) || `Task ${index + 1}`,
+                    owner: practicePackColumnValue(row, [ownerHeader]) || "Unassigned",
+                    status: practicePackColumnValue(row, [statusHeader]) || "No status",
+                    dueDate: practicePackColumnValue(row, [dueHeader]) || "",
+                    note: practicePackColumnValue(row, [noteHeader]) || "",
+                    selected: false,
+                    originalRow: { ...(row || {}) }
+                }));
+                if (!practicePackTaskDraftRows.length) {
+                    practicePackTaskDraftRows = [{
+                        id: "task-1",
+                        sourceRow: 0,
+                        clientName: "",
+                        taskName: "",
+                        owner: "Unassigned",
+                        status: "No status",
+                        dueDate: "",
+                        note: "",
+                        selected: false,
+                        originalRow: {}
+                    }];
+                }
+            }
+
+            async function refreshPracticePackDraftData() {
+                const files = practicePackSelectedFiles();
+                if (!files.client || !files.task) {
+                    practicePackResetDraft();
+                    updatePracticePackUploadState();
+                    return;
+                }
+                const signature = `${files.client.name}:${files.client.size}:${files.client.lastModified}|${files.task.name}:${files.task.size}:${files.task.lastModified}`;
+                if (signature === practicePackDraftSignature && practicePackTaskDraftRows.length) return;
+                const [clientText, taskText] = await Promise.all([files.client.text(), files.task.text()]);
+                const clientData = parsePracticePackCsv(clientText);
+                const taskData = parsePracticePackCsv(taskText);
+                if (!clientData.headers.length || !taskData.headers.length) {
+                    throw new Error("The uploaded CSV files must include a header row.");
+                }
+                practicePackClientCsvData = clientData;
+                practicePackTaskCsvData = taskData;
+                practicePackDraftSignature = signature;
+                practicePackBuildDraftRows(clientData, taskData);
+                practicePackReviewSearchTerm = "";
+                practicePackReviewOwnerFilter = "all";
+                practicePackReviewBulkOwner = "";
+                updatePracticePackUploadState();
+            }
+
+            function practicePackVisibleDraftRows() {
+                const query = practicePackReviewSearchTerm.trim().toLowerCase();
+                return practicePackTaskDraftRows.filter((row) => {
+                    if (practicePackReviewOwnerFilter !== "all" && String(row.owner || "Unassigned") !== practicePackReviewOwnerFilter) return false;
+                    if (!query) return true;
+                    return [row.clientName, row.taskName, row.owner, row.status, row.dueDate, row.note]
+                        .map((value) => String(value || "").toLowerCase())
+                        .some((value) => value.includes(query));
+                });
+            }
+
+            function practicePackRenderableTaskCount() {
+                return practicePackTaskDraftRows.filter((row) => String(row.taskName || "").trim()).length;
+            }
+
+            function renderPracticePackReviewWorkspace() {
+                const workspace = document.getElementById("practicePackReviewWorkspace");
+                if (!workspace) return;
+                const ready = Boolean(practicePackClientCsvData && practicePackTaskCsvData && practicePackTaskDraftRows.length);
+                workspace.hidden = !ready;
+                if (!ready) {
+                    workspace.innerHTML = "";
+                    return;
+                }
+                const ownerOptions = practicePackDraftOwnerOptions();
+                const visibleRows = practicePackVisibleDraftRows();
+                const selectedCount = practicePackTaskDraftRows.filter((row) => row.selected).length;
+                const overdueCount = practicePackTaskDraftRows.filter((row) => practicePackTaskOverdue(row.status, row.dueDate)).length;
+                const totalCount = practicePackRenderableTaskCount();
+                workspace.innerHTML = `
+                    <div class="practice-pack-review-head">
+                        <div>
+                            <p class="eyebrow">Pre-generate review</p>
+                            <h3>Review, reassign, edit and tidy tasks before generating the pack</h3>
+                            <p>${formatInteger(visibleRows.length)} visible row${visibleRows.length === 1 ? "" : "s"} · ${formatInteger(selectedCount)} selected</p>
+                        </div>
+                    </div>
+                    <div class="practice-pack-review-summary">
+                        <article><span>Total tasks</span><strong>${formatInteger(totalCount)}</strong></article>
+                        <article><span>Overdue</span><strong>${formatInteger(overdueCount)}</strong></article>
+                        <article><span>Owners</span><strong>${formatInteger(ownerOptions.length)}</strong></article>
+                        <article><span>Selected</span><strong>${formatInteger(selectedCount)}</strong></article>
+                    </div>
+                    <div class="practice-pack-review-controls">
+                        <label>Search
+                            <input id="practicePackReviewSearch" type="search" value="${escapeHTML(practicePackReviewSearchTerm)}" placeholder="Client, task, owner, status or note...">
+                        </label>
+                        <label>Owner filter
+                            <select id="practicePackReviewOwnerFilter">
+                                <option value="all"${practicePackReviewOwnerFilter === "all" ? " selected" : ""}>All owners</option>
+                                ${ownerOptions.map((owner) => `<option value="${escapeHTML(owner)}"${practicePackReviewOwnerFilter === owner ? " selected" : ""}>${escapeHTML(owner)}</option>`).join("")}
+                            </select>
+                        </label>
+                        <label>Move selected to
+                            <select id="practicePackReviewBulkOwner">
+                                <option value="">Select owner</option>
+                                ${ownerOptions.map((owner) => `<option value="${escapeHTML(owner)}"${practicePackReviewBulkOwner === owner ? " selected" : ""}>${escapeHTML(owner)}</option>`).join("")}
+                            </select>
+                        </label>
+                        <button class="ghost-button" type="button" data-practice-pack-review-action="apply-owner">Move selected</button>
+                        <button class="ghost-button" type="button" data-practice-pack-review-action="add-row">Add task</button>
+                        <button class="ghost-button" type="button" data-practice-pack-review-action="delete-selected">Delete selected</button>
+                    </div>
+                    <div class="practice-pack-review-table-wrap">
+                        <table class="practice-pack-review-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="practicePackReviewSelectAll"></th>
+                                    <th>Client</th>
+                                    <th>Task</th>
+                                    <th>Owner</th>
+                                    <th>Status</th>
+                                    <th>Deadline</th>
+                                    <th>Notes</th>
+                                    <th>Row</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${visibleRows.length ? visibleRows.map((row) => {
+                                    const overdue = practicePackTaskOverdue(row.status, row.dueDate);
+                                    return `
+                                        <tr class="${overdue ? "is-overdue" : ""} ${row.selected ? "is-selected" : ""}" data-practice-pack-row="${escapeHTML(row.id)}">
+                                            <td><input type="checkbox" data-practice-pack-field="selected" data-row-id="${escapeHTML(row.id)}" ${row.selected ? "checked" : ""}></td>
+                                            <td><input type="text" data-practice-pack-field="clientName" data-row-id="${escapeHTML(row.id)}" value="${escapeHTML(row.clientName || "")}"></td>
+                                            <td><input type="text" data-practice-pack-field="taskName" data-row-id="${escapeHTML(row.id)}" value="${escapeHTML(row.taskName || "")}"></td>
+                                            <td>
+                                                <select data-practice-pack-field="owner" data-row-id="${escapeHTML(row.id)}">
+                                                    ${ownerOptions.map((owner) => `<option value="${escapeHTML(owner)}"${row.owner === owner ? " selected" : ""}>${escapeHTML(owner)}</option>`).join("")}
+                                                </select>
+                                            </td>
+                                            <td><input type="text" data-practice-pack-field="status" data-row-id="${escapeHTML(row.id)}" value="${escapeHTML(row.status || "")}"></td>
+                                            <td>
+                                                <input type="text" data-practice-pack-field="dueDate" data-row-id="${escapeHTML(row.id)}" value="${escapeHTML(row.dueDate || "")}" placeholder="dd/mm/yyyy">
+                                                ${overdue ? '<span class="practice-pack-review-badge">Overdue</span>' : ""}
+                                            </td>
+                                            <td><textarea data-practice-pack-field="note" data-row-id="${escapeHTML(row.id)}" placeholder="Add review note...">${escapeHTML(row.note || "")}</textarea></td>
+                                            <td>${row.sourceRow ? formatInteger(row.sourceRow) : "New"}</td>
+                                            <td><button class="ghost-button" type="button" data-practice-pack-review-action="delete-row" data-row-id="${escapeHTML(row.id)}">Delete</button></td>
+                                        </tr>
+                                    `;
+                                }).join("") : '<tr><td colspan="9"><div class="practice-pack-review-empty">No rows match the current filters.</div></td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                const selectAll = document.getElementById("practicePackReviewSelectAll");
+                if (selectAll) {
+                    const allVisibleSelected = visibleRows.length > 0 && visibleRows.every((row) => row.selected);
+                    selectAll.checked = allVisibleSelected;
+                    selectAll.indeterminate = !allVisibleSelected && visibleRows.some((row) => row.selected);
+                }
+            }
+
+            function updatePracticePackDraftRow(rowId, field, value) {
+                const row = practicePackTaskDraftRows.find((item) => item.id === rowId);
+                if (!row) return;
+                if (field === "selected") row.selected = Boolean(value);
+                else row[field] = String(value ?? "").trim();
+            }
+
+            function practicePackApplyBulkOwner() {
+                if (!practicePackReviewBulkOwner) {
+                    showToast("Choose an owner to move selected tasks.", "info");
+                    return;
+                }
+                let moved = 0;
+                practicePackTaskDraftRows.forEach((row) => {
+                    if (!row.selected) return;
+                    row.owner = practicePackReviewBulkOwner;
+                    moved += 1;
+                });
+                if (!moved) {
+                    showToast("Select at least one task first.", "info");
+                    return;
+                }
+                showToast(`${formatInteger(moved)} task${moved === 1 ? "" : "s"} moved to ${practicePackReviewBulkOwner}.`, "success");
+            }
+
+            function practicePackDeleteSelectedRows() {
+                const selectedIds = new Set(practicePackTaskDraftRows.filter((row) => row.selected).map((row) => row.id));
+                if (!selectedIds.size) {
+                    showToast("Select tasks to delete.", "info");
+                    return;
+                }
+                practicePackTaskDraftRows = practicePackTaskDraftRows.filter((row) => !selectedIds.has(row.id));
+                showToast(`${formatInteger(selectedIds.size)} task${selectedIds.size === 1 ? "" : "s"} removed from this pack.`, "success");
+            }
+
+            function practicePackAddRow() {
+                const unique = `task-new-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                practicePackTaskDraftRows.unshift({
+                    id: unique,
+                    sourceRow: 0,
+                    clientName: "",
+                    taskName: "",
+                    owner: practicePackReviewBulkOwner || "Unassigned",
+                    status: "No status",
+                    dueDate: "",
+                    note: "",
+                    selected: false,
+                    originalRow: {}
+                });
+            }
+
+            function practicePackToggleSelectAll(checked) {
+                practicePackVisibleDraftRows().forEach((row) => {
+                    row.selected = Boolean(checked);
+                });
+            }
+
+            function practicePackBuildEditedTaskFile(originalTaskFile) {
+                if (!practicePackTaskCsvData?.headers?.length || !practicePackTaskColumnMap) {
+                    return originalTaskFile;
+                }
+                const map = practicePackTaskColumnMap;
+                const headers = [...practicePackTaskCsvData.headers];
+                [map.ownerHeader, map.clientHeader, map.taskHeader, map.statusHeader, map.dueHeader, map.noteHeader].forEach((header) => {
+                    if (header && !headers.includes(header)) headers.push(header);
+                });
+                const bodyRows = practicePackTaskDraftRows
+                    .filter((row) => String(row.taskName || "").trim())
+                    .map((row) => {
+                        const merged = { ...(row.originalRow || {}) };
+                        merged[map.ownerHeader] = row.owner || "Unassigned";
+                        merged[map.clientHeader] = row.clientName || "No client";
+                        merged[map.taskHeader] = row.taskName || "";
+                        merged[map.statusHeader] = row.status || "No status";
+                        merged[map.dueHeader] = row.dueDate || "";
+                        merged[map.noteHeader] = row.note || "";
+                        return headers.map((header) => merged[header] ?? "");
+                    });
+                const csvText = practicePackCsv([headers, ...bodyRows]);
+                const preferredName = String(originalTaskFile?.name || "bm-task-file.csv").replace(/\.csv$/i, "") + "-reviewed.csv";
+                try {
+                    return new File([csvText], preferredName, { type: "text/csv" });
+                } catch (error) {
+                    return new Blob([csvText], { type: "text/csv" });
+                }
             }
 
             function buildPracticePackFiles(clientData, taskData, month) {

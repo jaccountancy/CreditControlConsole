@@ -7947,6 +7947,40 @@ def _me_report_profit_loss_monthly_breakdown(
     return []
 
 
+def _me_report_parse_profit_loss_month_label(value: str) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    range_parts = re.split(r"\s*[–-]\s*", text)
+    candidate = range_parts[-1].strip() if range_parts else text
+    for pattern in ("%Y-%m-%d", "%d %b %Y", "%d %B %Y", "%b %Y", "%B %Y"):
+        try:
+            parsed = datetime.strptime(candidate, pattern)
+            return parsed.date()
+        except ValueError:
+            continue
+    return None
+
+
+def _me_report_profit_loss_ytd_totals(rows: list[dict], months_elapsed: int) -> tuple[Decimal, Decimal, Decimal]:
+    parsed_rows = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        month_date = _me_report_parse_profit_loss_month_label(str(row.get("month") or ""))
+        if not month_date:
+            continue
+        parsed_rows.append((month_date, row))
+    if not parsed_rows:
+        return Decimal("0.00"), Decimal("0.00"), Decimal("0.00")
+    parsed_rows.sort(key=lambda item: item[0])
+    window = parsed_rows[-months_elapsed:] if months_elapsed > 0 else parsed_rows
+    ytd_income = _money(sum(_money(item[1].get("income")) for item in window))
+    ytd_expenses = _money(sum(abs(_money(item[1].get("expenses"))) for item in window))
+    ytd_profit = _money(sum(_money(item[1].get("profit")) for item in window))
+    return ytd_income, ytd_expenses, ytd_profit
+
+
 def _me_report_balance_sheet_rows(extracted: dict, trial_balance_accounts: list[dict], balance_sheet: dict) -> list[dict]:
     rows = []
     for row in extracted.get("balanceSheetRows") or []:
@@ -8679,7 +8713,7 @@ def _me_report_apply_brought_forward_loss(summary: dict, client: dict) -> dict:
     if taxable_before_losses <= 0:
         taxable_before_losses = max(
             Decimal("0.00"),
-            _money(result.get("accountingProfit") or result.get("yearToDateProfit")) + _money(result.get("taxAdjustments")),
+            _money(result.get("yearToDateProfit") or result.get("accountingProfit")) + _money(result.get("taxAdjustments")),
         )
 
     trading_loss_relief_used = min(brought_forward_loss, taxable_before_losses)
@@ -8784,18 +8818,36 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     page_coverage = extracted.get("pageCoverage") if isinstance(extracted.get("pageCoverage"), dict) else {}
     period_end = _parse_optional_iso_date(extracted.get("periodEnd")) or utcnow().date()
 
-    accounting_profit = _money(extracted.get("yearToDateProfit") or extracted.get("accountingProfit"))
+    monthly_profit = _money(extracted.get("monthlyProfit") or extracted.get("accountingProfit"))
     monthly_sales = _money(extracted.get("monthlySales"))
     monthly_expenses = _money(extracted.get("monthlyExpenses"))
-    ytd_sales = _money(extracted.get("yearToDateSales") or extracted.get("monthlySales"))
-    ytd_profit = accounting_profit
+    has_explicit_ytd_sales = extracted.get("yearToDateSales") not in (None, "")
+    has_explicit_ytd_profit = extracted.get("yearToDateProfit") not in (None, "")
+    ytd_sales = _money(extracted.get("yearToDateSales")) if has_explicit_ytd_sales else _money(extracted.get("monthlySales"))
+    ytd_profit = _money(extracted.get("yearToDateProfit")) if has_explicit_ytd_profit else monthly_profit
+    months_elapsed = _me_report_months_elapsed(extracted, client)
     profit_loss_monthly_breakdown = _me_report_profit_loss_monthly_breakdown(
         extracted,
         period_end,
         monthly_sales,
         monthly_expenses,
-        accounting_profit,
+        monthly_profit,
     )
+    breakdown_ytd_income, breakdown_ytd_expenses, breakdown_ytd_profit = _me_report_profit_loss_ytd_totals(
+        profit_loss_monthly_breakdown,
+        months_elapsed,
+    )
+    if not has_explicit_ytd_sales and breakdown_ytd_income:
+        ytd_sales = breakdown_ytd_income
+    if not has_explicit_ytd_profit and breakdown_ytd_profit:
+        ytd_profit = breakdown_ytd_profit
+    accounting_profit = ytd_profit
+    if monthly_sales <= 0 and breakdown_ytd_income and months_elapsed > 0:
+        monthly_sales = _money(breakdown_ytd_income / Decimal(months_elapsed))
+    if monthly_expenses <= 0 and breakdown_ytd_expenses and months_elapsed > 0:
+        monthly_expenses = _money(breakdown_ytd_expenses / Decimal(months_elapsed))
+    if monthly_profit == 0 and breakdown_ytd_profit and months_elapsed > 0:
+        monthly_profit = _money(breakdown_ytd_profit / Decimal(months_elapsed))
     balance_sheet_rows = _me_report_balance_sheet_rows(extracted, trial_balance_accounts, balance_sheet)
 
     depreciation_addback, depreciation_accounts = _me_report_sum_accounts(
@@ -9125,7 +9177,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     )
     going_well_fallback = [
         f"Year-to-date profit is positive at £{ytd_profit:,.2f}." if ytd_profit > 0 else "Revenue has been extracted and is ready for trend review.",
-        f"Current monthly profit is £{accounting_profit:,.2f}." if accounting_profit > 0 else "Month-end figures are now structured for review.",
+        f"Current monthly profit is £{monthly_profit:,.2f}." if monthly_profit > 0 else "Month-end figures are now structured for review.",
     ]
     needs_attention_fallback = []
     if warnings:
@@ -9181,7 +9233,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "periodEnd": extracted.get("periodEnd") or "",
         "monthlySales": float(monthly_sales),
         "monthlyExpenses": float(monthly_expenses),
-        "monthlyProfit": float(accounting_profit),
+        "monthlyProfit": float(monthly_profit),
         "yearToDateSales": float(ytd_sales),
         "yearToDateExpenses": float(max(Decimal("0.00"), _money(ytd_sales - ytd_profit))),
         "yearToDateProfit": float(ytd_profit),
@@ -9257,7 +9309,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         "dataQualityIssueCount": len(chart_issues) + len(duplicate_risks),
         "commentary": (
             f"Uploaded PDF reviewed for {client.get('client_name') or 'client'}. "
-            f"Profit before tax YTD is £{accounting_profit:,.2f}; "
+            f"Profit before tax YTD is £{ytd_profit:,.2f}; "
             f"{'brought-forward trading loss relief used is £' + format(trading_loss_relief_used, ',.2f') + '; ' if brought_forward_trading_loss else ''}"
             f"estimated taxable profit is £{estimated_taxable_profit:,.2f}; "
             f"estimated CT is £{estimated_ct:,.2f}. Dividend availability at period end is £{dividend_capacity:,.2f}."
