@@ -1324,6 +1324,26 @@ CREATE TABLE IF NOT EXISTS ch_auth_codes (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS ch_auth_code_register (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_number TEXT NOT NULL DEFAULT '',
+    client_name TEXT NOT NULL DEFAULT '',
+    company_name TEXT NOT NULL DEFAULT '',
+    normalised_name TEXT NOT NULL DEFAULT '',
+    code_encrypted TEXT NOT NULL,
+    code_hint TEXT NOT NULL DEFAULT '',
+    source_filename TEXT NOT NULL DEFAULT '',
+    uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_auth_code_register_company_number_idx
+ON ch_auth_code_register (company_number);
+
+CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
+ON ch_auth_code_register (normalised_name);
+
 CREATE TABLE IF NOT EXISTS ch_drafts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES ch_companies(id) ON DELETE CASCADE,
