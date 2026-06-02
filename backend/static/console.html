@@ -1257,6 +1257,7 @@
             .credit-control-topbar-summary,
             .insights-topbar-summary,
             .practice-pack-topbar-summary,
+            .xero-lock-date-topbar-summary,
             .confirmation-statements-topbar-summary { order: 20; }
             .bank-continuity-topbar-pill { order: 24; }
             .ignition-topbar-tabs,
@@ -1288,6 +1289,7 @@
             .ledger-topbar.has-inline-status .credit-control-topbar-summary,
             .ledger-topbar.has-inline-status .insights-topbar-summary,
             .ledger-topbar.has-inline-status .practice-pack-topbar-summary,
+            .ledger-topbar.has-inline-status .xero-lock-date-topbar-summary,
             .ledger-topbar.has-inline-status .confirmation-statements-topbar-summary,
             .ledger-topbar.has-inline-status .bank-continuity-topbar-pill,
             .ledger-topbar.has-inline-status .ignition-topbar-tabs,
@@ -1306,6 +1308,7 @@
             .credit-control-topbar-summary,
             .insights-topbar-summary,
             .practice-pack-topbar-summary,
+            .xero-lock-date-topbar-summary,
             .ignition-topbar-tabs,
             .me-report-topbar-actions,
             .topbar-actions,
@@ -1757,6 +1760,7 @@
             .bank-account-topbar-summary,
             .credit-control-topbar-summary,
             .practice-pack-topbar-summary,
+            .xero-lock-date-topbar-summary,
             .confirmation-statements-topbar-summary {
                 flex: 1 1 720px;
                 min-width: min(760px, 100%);
@@ -1872,10 +1876,55 @@
             .jashflow-topbar-summary[hidden],
             .lpc-topbar-summary[hidden],
             .practice-pack-topbar-summary[hidden],
+            .xero-lock-date-topbar-summary[hidden],
             .confirmation-statements-topbar-summary[hidden],
             .me-report-topbar-actions[hidden],
             .bank-account-topbar-summary[hidden],
             .credit-control-topbar-summary[hidden] { display: none; }
+            .xero-lock-date-topbar-summary {
+                flex: 1 1 min(1200px, 100%);
+                min-width: min(900px, 100%);
+                max-width: none;
+                display: grid;
+                grid-template-columns: minmax(320px, 1.2fr) minmax(0, 1fr);
+                gap: 10px;
+                padding: 10px 12px;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(248, 251, 255, 0.92);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+            }
+            .xero-lock-date-topbar-summary article {
+                min-width: 0;
+                display: grid;
+                gap: 2px;
+            }
+            .xero-lock-date-topbar-summary article span {
+                color: var(--muted);
+                font-size: 0.56rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .xero-lock-date-topbar-summary article strong {
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 900;
+                line-height: 1.25;
+            }
+            .xero-lock-date-topbar-summary article small {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 780;
+                line-height: 1.28;
+            }
+            .xero-lock-date-topbar-summary .xero-lock-date-stats {
+                margin: 0;
+                display: flex;
+                flex-wrap: wrap;
+                align-content: flex-start;
+                gap: 8px;
+            }
             .me-report-topbar-actions .ghost-button,
             .me-report-topbar-actions .primary-button {
                 min-height: 42px;
@@ -15953,6 +16002,14 @@
                                 <span class="sync-label">Sync now</span>
                             </button>
                         </div>
+                        <div class="xero-lock-date-topbar-summary" id="xeroLockDateTopbarSummary" aria-label="Xero lock-date overview" hidden>
+                            <article class="is-wide">
+                                <span>Lock-date overview</span>
+                                <strong id="xeroLockDateSummary">Loading lock-date data…</strong>
+                                <small id="xeroLockDateCHHealth">Companies House API status not checked yet.</small>
+                            </article>
+                            <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
+                        </div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
                         <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" role="status" aria-live="polite" hidden>
                             <article><span>Clients</span><strong>0</strong></article>
@@ -17635,11 +17692,6 @@
                                     <p class="eyebrow">Cross-tenant lock controls</p>
                                     <h3>Xero lock-date overview</h3>
                                     <p class="detail-meta">Monitor all connected Xero organisations, map each tenant to a Companies House company, and flag accounts filed where period lock dates are still open.</p>
-                                    <div class="xero-lock-date-overview-strip">
-                                        <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
-                                        <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
-                                        <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
-                                    </div>
                                 </div>
                                 <div class="xero-lock-date-control-stack">
                                     <div class="detail-actions">
@@ -22603,6 +22655,7 @@
                     ".insights-topbar-summary",
                     ".bank-account-topbar-summary",
                     ".practice-pack-topbar-summary",
+                    ".xero-lock-date-topbar-summary",
                     ".confirmation-statements-topbar-summary",
                     ".bank-continuity-topbar-pill",
                     ".sidebar-support-bubble",
@@ -22624,6 +22677,7 @@
                     ".credit-control-topbar-summary:not([hidden]), " +
                     ".insights-topbar-summary:not([hidden]), " +
                     ".bank-account-topbar-summary:not([hidden]), " +
+                    ".xero-lock-date-topbar-summary:not([hidden]), " +
                     ".confirmation-statements-topbar-summary:not([hidden]), " +
                     ".practice-pack-topbar-summary:not([hidden]), " +
                     ".me-report-topbar-actions.has-report-summary:not([hidden]), " +
@@ -42086,6 +42140,8 @@
                 if (creditControlTopbarSummary) creditControlTopbarSummary.hidden = activeView !== "ledger";
                 const insightsTopbarSummary = document.getElementById("insightsTopbarSummary");
                 if (insightsTopbarSummary) insightsTopbarSummary.hidden = activeView !== "insights";
+                const xeroLockDateTopbarSummary = document.getElementById("xeroLockDateTopbarSummary");
+                if (xeroLockDateTopbarSummary) xeroLockDateTopbarSummary.hidden = activeView !== "xero-lock-date";
                 renderInsightsTopbarSummary();
                 renderLpcTopbarSummary();
                 renderBadDebtTopbarSummary();
