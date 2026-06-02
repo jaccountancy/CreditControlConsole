@@ -48726,15 +48726,60 @@
                     const submittedCount = Number(result.submittedCount || 0);
                     const skippedCount = Number(result.skippedCount || 0);
                     const failedCount = Number(result.failedCount || 0);
+                    const skippedRows = Array.isArray(result.skipped) ? result.skipped : [];
+                    const failedRows = Array.isArray(result.failed) ? result.failed : [];
+                    const issueRows = [
+                        ...skippedRows.map((row) => ({
+                            companyName: String(row?.companyName || ""),
+                            companyNumber: String(row?.companyNumber || ""),
+                            outcome: "Skipped",
+                            reason: String(row?.reason || "Skipped with no reason provided"),
+                        })),
+                        ...failedRows.map((row) => ({
+                            companyName: String(row?.companyName || ""),
+                            companyNumber: String(row?.companyNumber || ""),
+                            outcome: "Failed",
+                            reason: String(row?.reason || row?.error || "Submission failed"),
+                        })),
+                    ];
+                    const skippedReasonSummary = skippedRows
+                        .map((row) => String(row?.reason || "").trim())
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join(" | ");
                     const hasProblems = skippedCount > 0 || failedCount > 0;
                     chSetWorkflowStatus(
-                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed.`,
+                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
                         hasProblems ? "error" : "success"
                     );
                     companiesHouseState.tabLoaded.dashboard = false;
                     companiesHouseState.tabLoaded.companies = false;
                     await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
-                    showToast(`Companies House workflow submission complete: ${submittedCount} submitted, ${skippedCount} skipped, ${failedCount} failed.`, hasProblems ? "info" : "success");
+                    showToast(
+                        `Companies House workflow submission complete: ${submittedCount} submitted, ${skippedCount} skipped, ${failedCount} failed.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
+                        hasProblems ? "info" : "success"
+                    );
+                    if (issueRows.length) {
+                        await showOperationReviewDialog({
+                            eyebrow: "Confirmation statements",
+                            title: "Submission results",
+                            subtitle: "Some companies were skipped or failed. Review the exact reason for each company below.",
+                            confirmLabel: "Done",
+                            cancelLabel: "Close",
+                            summaryChips: [
+                                `${submittedCount.toLocaleString("en-GB")} submitted`,
+                                `${skippedCount.toLocaleString("en-GB")} skipped`,
+                                `${failedCount.toLocaleString("en-GB")} failed`,
+                            ],
+                            columns: [
+                                { key: "companyName", label: "Company" },
+                                { key: "companyNumber", label: "Number" },
+                                { key: "outcome", label: "Outcome" },
+                                { key: "reason", label: "Reason" },
+                            ],
+                            rows: issueRows,
+                        });
+                    }
                 } catch (error) {
                     console.error("Unable to submit selected companies", error);
                     if (error instanceof AuthRequiredError) {
