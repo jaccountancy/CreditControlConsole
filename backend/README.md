@@ -84,3 +84,45 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - Run **Sync from Companies House** to populate company status, officers, PSCs, filing history, and due dates.
 - Confirm live bulk submission, status reconciliation, and bulk invoice run are working with sandbox data.
 - Switch environment to production only after a successful end-to-end sandbox cycle.
+
+## Companies House Production Runbook
+
+### Cutover plan
+
+1. Freeze deployment window and announce filing cutover.
+2. Verify `COMPANIES_HOUSE_*` credentials are set in Railway and Settings tab shows expected hints.
+3. Run **Test CH connection** in settings and capture screenshot/evidence.
+4. Run sandbox smoke cycle:
+   - sync
+   - bulk submit test company
+   - reconcile status
+   - raise invoice
+   - confirm audit entries and attempts export
+5. Switch environment to `production`.
+6. Submit one pilot client with known-good authority and auth code.
+7. Reconcile submission status and verify payment evidence fields populated.
+8. Open full client cohort for filing.
+
+### Rollback plan
+
+1. Switch environment back to `sandbox`.
+2. Disable auto-sync in settings.
+3. Pause bulk submission jobs.
+4. Review dead-letter queue and submission attempts.
+5. Re-run only approved client filings after root-cause fix.
+
+### Credentials rotation
+
+1. Rotate API key and presenter authentication code via settings.
+2. Re-run **Test CH connection**.
+3. Record rotation timestamp in internal ops log.
+4. Validate one sandbox submission after rotation.
+
+### Acceptance criteria
+
+- Connection test passes in target environment.
+- No unresolved dead-letter items for pilot batch.
+- Submission attempts report shows expected statuses.
+- Payment evidence present for accepted filings where gateway returns payment metadata.
+- Duplicate submissions prevented by idempotency key.
+- Filing authority status set to `authorised` for all filed clients.

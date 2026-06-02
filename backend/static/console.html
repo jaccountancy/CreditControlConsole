@@ -14135,6 +14135,10 @@
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                             <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>Companies House</span></span>
                         </a>
+                        <a class="app-nav-button" href="#credit-control-company-secreterial" data-app-nav="company-secreterial">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 4h7l5 5v11H7z"></path><path d="M14 4v5h5"></path><path d="M10 12h6"></path><path d="M10 16h6"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Company Secreterial</strong><span>Records</span></span>
+                        </a>
                         <a class="app-nav-button" href="#credit-control-jashflow" data-app-nav="jashflow">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 17 9 12l4 4 7-9"></path><path d="M15 7h5v5"></path><path d="M4 21h16"></path></svg></span>
                             <span class="app-nav-copy"><strong>Jashflow</strong><span>Loans</span></span>
@@ -15334,6 +15338,31 @@
                                         </table>
                                     </div>
                                 </article>
+                                <article class="detail-panel ch-detail-card">
+                                    <div>
+                                        <p class="ch-section-title">Submission attempts</p>
+                                        <p class="ch-section-sub">All CS01 attempts, payment evidence and dead-letter failures.</p>
+                                    </div>
+                                    <div class="ch-settings-actions">
+                                        <button class="ghost-button" type="button" id="chSubmissionAttemptsRefreshButton">Refresh attempts</button>
+                                        <a class="ghost-button" id="chSubmissionAttemptsExportButton" href="/api/companies-house/submissions/attempts/export.csv" target="_blank" rel="noopener">Export CSV</a>
+                                    </div>
+                                    <div class="ch-companies-table-wrap">
+                                        <table class="ch-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Company</th>
+                                                    <th>Status</th>
+                                                    <th>Submitted</th>
+                                                    <th>Payment</th>
+                                                    <th>Fee</th>
+                                                    <th>Dead letter</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="chSubmissionAttemptsBody"></tbody>
+                                        </table>
+                                    </div>
+                                </article>
                             </section>
                             <section class="ch-tab-panel" data-ch-panel="settings" hidden>
                             <section class="ch-settings-card" id="companiesHouseSettingsCard">
@@ -15468,6 +15497,23 @@
                                 </div>
                             </article>
                             </div>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="companySecreterialScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Company compliance workspace</p>
+                                    <h3>Company Secreterial</h3>
+                                    <p class="detail-meta">Manage statutory records, filing tasks, and company secretarial actions from one page.</p>
+                                </div>
+                            </div>
+                            <article class="empty-state-panel">
+                                <p class="eyebrow">New workspace</p>
+                                <h4>Company Secreterial page is ready</h4>
+                                <p>Use this area for secretarial registers, officer updates, and document deadlines.</p>
+                            </article>
                         </section>
                     </section>
 
@@ -16865,6 +16911,7 @@
                 "late-charges": "Late Payment Charges",
                 "bad-debt": "Bad Debt",
                 "confirmation-statements": "Confirmation Statements",
+                "company-secreterial": "Company Secreterial",
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 ignition: "Ignition",
@@ -16880,6 +16927,7 @@
                 "late-charges": "Review overdue invoices that may qualify for late payment charges before posting them.",
                 "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
+                "company-secreterial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 ignition: "Sync and analyse Ignition clients, proposals, fees, payments, collections, and renewal data.",
@@ -19776,6 +19824,7 @@
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "bad-debt") return "bad-debt";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
+                if (activeView === "company-secreterial") return "company-secreterial";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank-statements";
                 if (activeView === "ignition" || activeView === "ignition-clients") return "ignition";
@@ -19915,6 +19964,7 @@
                 if (activeView === "late-charges") return "lpc";
                 if (activeView === "bad-debt") return "danger";
                 if (activeView === "confirmation-statements") return "credit";
+                if (activeView === "company-secreterial") return "credit";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank";
                 if (isIgnitionView()) return "ignition";
@@ -20029,6 +20079,7 @@
                 setElementVisible(document.getElementById("lateChargesScreen"), activeView === "late-charges");
                 setElementVisible(document.getElementById("badDebtScreen"), activeView === "bad-debt");
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
+                setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secreterial");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
@@ -20038,7 +20089,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "confirmation-statements", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "confirmation-statements", "company-secreterial", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -20092,6 +20143,7 @@
                 if (section === "lpcs") return openLateChargesScreen();
                 if (section === "bad-debt") return openBadDebtScreen();
                 if (section === "confirmation-statements") return openConfirmationStatementsScreen();
+                if (section === "company-secreterial") return openCompanySecreterialScreen();
                 if (section === "jashflow") return openJashflowScreen();
                 if (section === "bank-statements") return openBankStatementsScreen();
                 if (section === "ignition") return openIgnitionScreen();
@@ -20268,6 +20320,7 @@
                 lpcs: "credit-control-lpcs",
                 "bad-debt": "credit-control-bad-debt",
                 "confirmation-statements": "credit-control-confirmation-statements",
+                "company-secreterial": "credit-control-company-secreterial",
                 jashflow: "credit-control-jashflow",
                 "bank-statements": "credit-control-bank-statements",
                 ignition: "credit-control-ignition",
@@ -21672,6 +21725,7 @@
                 if (activeView === "confirmation-statements" && typeof loadCompaniesHouseSettings === "function") {
                     loadCompaniesHouseSettings();
                 }
+                setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secreterial");
                 setElementVisible(jashflowScreen, activeView === "jashflow");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
                 setElementVisible(ignitionScreen, activeView === "ignition");
@@ -23231,6 +23285,15 @@
                 renderAll();
                 activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                 loadCompaniesHouseSettings();
+                scrollConsoleToTop();
+            }
+
+            function openCompanySecreterialScreen() {
+                activeView = "company-secreterial";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
                 scrollConsoleToTop();
             }
 
@@ -36168,6 +36231,7 @@
                     "late-charges": "Late Payment Charges",
                     "bad-debt": "Bad Debt",
                     "confirmation-statements": "Confirmation Statements",
+                    "company-secreterial": "Company Secreterial",
                     jashflow: "Jashflow",
                     "bank-statements": "Bank Statements",
                     ignition: "Ignition",
@@ -36742,6 +36806,7 @@
                 else if (activeView === "late-charges") activeNavSection = "lpcs";
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
                 else if (activeView === "confirmation-statements") activeNavSection = "confirmation-statements";
+                else if (activeView === "company-secreterial") activeNavSection = "company-secreterial";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
                 else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "settings") activeNavSection = "settings";
@@ -43078,11 +43143,41 @@
             async function loadCompaniesHouseImports(force = false) {
                 if (companiesHouseState.tabLoaded.audit && !force) return;
                 try {
-                    const payload = await requestJSON("/api/companies-house/imports");
-                    const rows = payload?.imports || [];
+                    const [importsPayload, attemptsPayload, deadLettersPayload] = await Promise.all([
+                        requestJSON("/api/companies-house/imports"),
+                        requestJSON("/api/companies-house/submissions/attempts?limit=200"),
+                        requestJSON("/api/companies-house/dead-letters?limit=200"),
+                    ]);
+                    const rows = importsPayload?.imports || [];
                     const body = document.getElementById("chImportsHistoryBody");
                     if (body) {
                         body.innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHTML(row.filename || "—")}</td><td>${escapeHTML(row.importType || "—")}</td><td>${Number(row.createCount || 0).toLocaleString("en-GB")}</td><td>${Number(row.updateCount || 0).toLocaleString("en-GB")}</td><td>${Number(row.skipCount || 0).toLocaleString("en-GB")}</td><td>${row.errorCount ? `<span class=\"ch-pill is-bad\">${row.errorCount}</span>` : "0"}</td><td><span class="ch-pill ${row.status === "completed" ? "is-good" : "is-info"}">${escapeHTML(row.status || "—")}</span></td><td>${escapeHTML(chFormatDateTime(row.createdAt))}</td></tr>`).join("") : `<tr><td colspan="8" class="ch-empty-state">No imports yet.</td></tr>`;
+                    }
+                    const deadLetterMap = new Map((deadLettersPayload?.deadLetters || []).map((row) => [String(row.submissionId || ""), row]));
+                    const attempts = attemptsPayload?.attempts || [];
+                    const attemptsBody = document.getElementById("chSubmissionAttemptsBody");
+                    if (attemptsBody) {
+                        attemptsBody.innerHTML = attempts.length
+                            ? attempts.map((row) => {
+                                const isDead = !!row.deadLetter || deadLetterMap.has(String(row.id || ""));
+                                const deadLetter = deadLetterMap.get(String(row.id || ""));
+                                const deadReason = row.deadLetterReason || deadLetter?.reason || "";
+                                const paymentText = row.paymentConfirmed === true
+                                    ? "Confirmed"
+                                    : row.paymentConfirmed === false
+                                    ? "Not confirmed"
+                                    : "Pending";
+                                const paymentClass = row.paymentConfirmed === true ? "is-good" : row.paymentConfirmed === false ? "is-bad" : "is-info";
+                                return `<tr>
+                                    <td>${escapeHTML(row.companyName || "—")}<br><small>${escapeHTML(row.companyNumber || "—")}</small></td>
+                                    <td><span class="ch-pill ${row.status === "accepted" ? "is-good" : row.status === "rejected" ? "is-bad" : "is-info"}">${escapeHTML(row.status || "—")}</span></td>
+                                    <td>${escapeHTML(chFormatDateTime(row.submittedAt))}</td>
+                                    <td><span class="ch-pill ${paymentClass}">${escapeHTML(paymentText)}</span></td>
+                                    <td>£${Number(row.feeAmount || 0).toFixed(2)}<br><small>${escapeHTML(row.paymentReference || "—")}</small></td>
+                                    <td>${isDead ? `<span class="ch-pill is-bad">Yes</span><br><small>${escapeHTML(deadReason || "Dead-lettered")}</small>` : `<span class="ch-pill is-good">No</span>`}</td>
+                                </tr>`;
+                            }).join("")
+                            : `<tr><td colspan="6" class="ch-empty-state">No submission attempts yet.</td></tr>`;
                     }
                     companiesHouseState.tabLoaded.audit = true;
                 } catch (error) {
@@ -43175,6 +43270,7 @@
                 document.getElementById("chImportPreviewButton")?.addEventListener("click", previewCompaniesHouseImport);
                 document.getElementById("chImportCommitButton")?.addEventListener("click", commitCompaniesHouseImport);
                 document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
+                document.getElementById("chSubmissionAttemptsRefreshButton")?.addEventListener("click", () => loadCompaniesHouseImports(true));
                 document.getElementById("chImportPrevPageButton")?.addEventListener("click", () => {
                     companiesHouseState.importPreviewPage = Math.max(1, Number(companiesHouseState.importPreviewPage || 1) - 1);
                     chRenderImportPreview(companiesHouseState.importPreview);

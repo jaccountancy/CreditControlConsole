@@ -1251,6 +1251,10 @@ CREATE TABLE IF NOT EXISTS ch_companies (
     last_filed_date DATE,
     filing_history JSONB NOT NULL DEFAULT '[]'::jsonb,
     internal_status TEXT NOT NULL DEFAULT 'active',
+    filing_authority_status TEXT NOT NULL DEFAULT 'pending',
+    filing_authority_reference TEXT NOT NULL DEFAULT '',
+    filing_authority_received_at TIMESTAMPTZ,
+    filing_authority_expires_at TIMESTAMPTZ,
     notes TEXT NOT NULL DEFAULT '',
     last_synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1260,6 +1264,13 @@ CREATE TABLE IF NOT EXISTS ch_companies (
 CREATE INDEX IF NOT EXISTS ch_companies_client_idx ON ch_companies (client_id);
 CREATE INDEX IF NOT EXISTS ch_companies_due_idx ON ch_companies (next_due_date);
 CREATE INDEX IF NOT EXISTS ch_companies_status_idx ON ch_companies (internal_status);
+CREATE INDEX IF NOT EXISTS ch_companies_filing_authority_idx ON ch_companies (filing_authority_status, filing_authority_expires_at);
+
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_reference TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_received_at TIMESTAMPTZ;
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_expires_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS ch_companies_filing_authority_idx ON ch_companies (filing_authority_status, filing_authority_expires_at);
 
 CREATE TABLE IF NOT EXISTS ch_auth_codes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1295,10 +1306,17 @@ CREATE TABLE IF NOT EXISTS ch_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES ch_companies(id) ON DELETE CASCADE,
     draft_id UUID REFERENCES ch_drafts(id) ON DELETE SET NULL,
+    idempotency_key TEXT NOT NULL DEFAULT '',
+    attempt_type TEXT NOT NULL DEFAULT 'submit',
     submission_reference TEXT NOT NULL DEFAULT '',
     transaction_id TEXT NOT NULL DEFAULT '',
     fee_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
     payment_reference TEXT NOT NULL DEFAULT '',
+    payment_confirmed BOOLEAN,
+    payment_evidence JSONB NOT NULL DEFAULT '{}'::jsonb,
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    dead_letter BOOLEAN NOT NULL DEFAULT FALSE,
+    dead_letter_reason TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'submitted',
     rejection_reason TEXT NOT NULL DEFAULT '',
     response_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -1312,6 +1330,33 @@ CREATE TABLE IF NOT EXISTS ch_submissions (
 
 CREATE INDEX IF NOT EXISTS ch_submissions_company_idx ON ch_submissions (company_id, submitted_at DESC);
 CREATE INDEX IF NOT EXISTS ch_submissions_status_idx ON ch_submissions (status, submitted_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS ch_submissions_idempotency_idx
+ON ch_submissions (idempotency_key)
+WHERE idempotency_key <> '';
+
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS idempotency_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS attempt_type TEXT NOT NULL DEFAULT 'submit';
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS payment_confirmed BOOLEAN;
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS payment_evidence JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS dead_letter BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS dead_letter_reason TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS ch_submissions_idempotency_idx
+ON ch_submissions (idempotency_key)
+WHERE idempotency_key <> '';
+
+CREATE TABLE IF NOT EXISTS ch_dead_letters (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    submission_id UUID REFERENCES ch_submissions(id) ON DELETE SET NULL,
+    company_id UUID REFERENCES ch_companies(id) ON DELETE SET NULL,
+    workflow TEXT NOT NULL DEFAULT 'confirmation_statement_bulk',
+    stage TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_dead_letters_created_idx ON ch_dead_letters (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ch_imports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

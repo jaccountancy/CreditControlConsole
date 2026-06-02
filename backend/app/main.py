@@ -32,14 +32,18 @@ from .companies_house import (
     bulk_submit_confirmation_statements,
     commit_clients_import,
     dashboard_summary as companies_house_dashboard_summary,
+    export_submission_attempts_csv,
     get_companies_house_settings,
     get_company_detail,
+    list_dead_letters,
     list_companies,
     list_imports as list_companies_house_imports,
     list_submission_attempts,
     parse_clients_import,
+    replay_dead_letter_submissions,
     run_companies_house_submission_reconciliation,
     save_companies_house_settings,
+    submission_reconciliation_report,
     start_companies_house_auto_sync_worker,
     sync_companies_house_companies,
     test_companies_house_connection,
@@ -1081,6 +1085,43 @@ def api_companies_house_submission_attempts_list(
         "status": "ok",
         "attempts": list_submission_attempts(limit=limit, company_id=company_id_value),
     }
+
+
+@app.get("/api/companies-house/submissions/report")
+def api_companies_house_submission_report(
+    limit: int = Query(500, ge=1, le=5000),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **submission_reconciliation_report(limit=limit)}
+
+
+@app.get("/api/companies-house/submissions/attempts/export.csv")
+def api_companies_house_submission_attempts_export(
+    limit: int = Query(5000, ge=1, le=20000),
+    user: dict = Depends(require_panel_user),
+):
+    content = export_submission_attempts_csv(limit=limit)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="companies-house-submission-attempts.csv"'},
+    )
+
+
+@app.get("/api/companies-house/dead-letters")
+def api_companies_house_dead_letters(
+    limit: int = Query(200, ge=1, le=1000),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "deadLetters": list_dead_letters(limit=limit)}
+
+
+@app.post("/api/companies-house/dead-letters/replay")
+async def api_companies_house_dead_letters_replay(
+    request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    return {"status": "ok", "result": replay_dead_letter_submissions(user, payload)}
 
 
 @app.post("/api/companies-house/submissions/bulk")

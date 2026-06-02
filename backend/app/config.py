@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     companies_house_credit_account: str | None = None
     companies_house_sandbox_api_base: str = "https://api-sandbox.company-information.service.gov.uk"
     companies_house_production_api_base: str = "https://api.company-information.service.gov.uk"
+    ch_alert_webhook_url: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",
