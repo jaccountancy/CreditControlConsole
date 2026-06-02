@@ -3651,7 +3651,26 @@
                 border-radius: 999px;
                 font-weight: 850;
             }
-            .status-filter-button span {
+            .ledger-toolbar-icon {
+                width: 16px;
+                height: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                color: #7f90ac;
+                flex: 0 0 16px;
+            }
+            .ledger-toolbar-icon svg {
+                width: 16px;
+                height: 16px;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                fill: none;
+            }
+            .status-filter-button .ledger-toolbar-label,
+            .ledger-section-button .ledger-toolbar-label {
                 color: var(--muted);
                 font-size: 0.72rem;
                 font-weight: 850;
@@ -3777,6 +3796,53 @@
                 outline: none;
             }
             .ledger-section-button:active { transform: scale(0.97); }
+            @media (hover: hover) and (pointer: fine) {
+                .status-filter-button,
+                .ledger-section-button {
+                    width: 40px;
+                    min-width: 40px;
+                    padding-left: 11px;
+                    padding-right: 11px;
+                    justify-content: flex-start;
+                    overflow: hidden;
+                    transition: width 0.2s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+                }
+                .status-filter-button .ledger-toolbar-label,
+                .status-filter-button strong,
+                .ledger-section-button .ledger-toolbar-label {
+                    max-width: 0;
+                    opacity: 0;
+                    transform: translateX(-6px);
+                    white-space: nowrap;
+                    overflow: hidden;
+                    transition: max-width 0.2s ease, opacity 0.16s ease, transform 0.2s ease;
+                }
+                .status-filter-button:hover,
+                .status-filter-button:focus-visible,
+                .status-filter-button[aria-expanded="true"] {
+                    width: 156px;
+                }
+                .ledger-section-button:hover,
+                .ledger-section-button:focus-visible,
+                .ledger-section-button[aria-expanded="true"],
+                .ledger-section-button.is-active {
+                    width: 124px;
+                }
+                .status-filter-button:hover .ledger-toolbar-label,
+                .status-filter-button:hover strong,
+                .status-filter-button:focus-visible .ledger-toolbar-label,
+                .status-filter-button:focus-visible strong,
+                .status-filter-button[aria-expanded="true"] .ledger-toolbar-label,
+                .status-filter-button[aria-expanded="true"] strong,
+                .ledger-section-button:hover .ledger-toolbar-label,
+                .ledger-section-button:focus-visible .ledger-toolbar-label,
+                .ledger-section-button[aria-expanded="true"] .ledger-toolbar-label,
+                .ledger-section-button.is-active .ledger-toolbar-label {
+                    max-width: 112px;
+                    opacity: 1;
+                    transform: translateX(0);
+                }
+            }
             .table-icon-button {
                 width: 38px;
                 height: 38px;
@@ -5984,6 +6050,47 @@
             .late-charge-filter-button {
                 min-height: 42px;
                 padding: 0 16px;
+            }
+            .icon-expand-button {
+                display: inline-flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 8px;
+                white-space: nowrap;
+            }
+            .icon-expand-label {
+                font-weight: 850;
+                white-space: nowrap;
+            }
+            @media (hover: hover) and (pointer: fine) {
+                .icon-expand-button {
+                    max-width: 42px;
+                    min-width: 42px;
+                    padding-left: 11px;
+                    padding-right: 11px;
+                    overflow: hidden;
+                    transition: max-width 0.22s ease, min-width 0.22s ease, padding 0.2s ease;
+                }
+                .icon-expand-button .icon-expand-label {
+                    max-width: 0;
+                    opacity: 0;
+                    transform: translateX(-6px);
+                    overflow: hidden;
+                    transition: max-width 0.2s ease, opacity 0.16s ease, transform 0.2s ease;
+                }
+                .icon-expand-button:hover,
+                .icon-expand-button:focus-visible,
+                .icon-expand-button[aria-pressed="true"] {
+                    max-width: 228px;
+                    min-width: 142px;
+                }
+                .icon-expand-button:hover .icon-expand-label,
+                .icon-expand-button:focus-visible .icon-expand-label,
+                .icon-expand-button[aria-pressed="true"] .icon-expand-label {
+                    max-width: 180px;
+                    opacity: 1;
+                    transform: translateX(0);
+                }
             }
             .confirmation-statements-workspace {
                 display: grid;
@@ -14157,7 +14264,15 @@
                     <section class="ledger-card">
                         <div class="ledger-table-toolbar" aria-label="Ledger table controls">
                             <div class="toolbar-menu-wrap status-filter-wrap ledger-filter-wrap">
-                                <button class="ghost-button status-filter-button" id="statusFilterButton" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="statusFilterMenu"><span>Filter</span><strong id="statusFilterStateLabel">All</strong></button>
+                                <button class="ghost-button status-filter-button" id="statusFilterButton" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="statusFilterMenu" aria-label="Filter status">
+                                    <span class="ledger-toolbar-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24">
+                                            <path d="M3 5h18l-7 8v6l-4 2v-8z"></path>
+                                        </svg>
+                                    </span>
+                                    <span class="ledger-toolbar-label">Filter</span>
+                                    <strong id="statusFilterStateLabel">All</strong>
+                                </button>
                                 <div class="toolbar-menu status-filter-menu" id="statusFilterMenu" hidden>
                                     <button type="button" data-filter-shortcut="all"><span>All</span><strong id="countAll">0</strong><small id="valueAll">£0</small></button>
                                     <button type="button" data-filter-shortcut="overdue"><span>Overdue</span><strong id="countOverdue">0</strong><small id="valueOverdue">£0</small></button>
@@ -14182,10 +14297,45 @@
                             </div>
                             <div class="toolbar-menu-wrap ledger-options-wrap">
                                 <div class="ledger-section-shortcuts" role="group" aria-label="Ledger table options">
-                                    <button class="ledger-section-button" type="button" data-ledger-options-section="sort" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Sort</button>
-                                    <button class="ledger-section-button" type="button" data-ledger-options-section="filter" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Filter</button>
-                                    <button class="ledger-section-button" type="button" data-ledger-options-section="columns" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Columns</button>
-                                    <button class="ledger-section-button" type="button" data-ledger-options-section="actions" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu">Actions</button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="sort" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" aria-label="Sort options">
+                                        <span class="ledger-toolbar-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24">
+                                                <path d="M8 4v16"></path>
+                                                <path d="M5 7l3-3 3 3"></path>
+                                                <path d="M16 20V4"></path>
+                                                <path d="M13 17l3 3 3-3"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="ledger-toolbar-label">Sort</span>
+                                    </button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="filter" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" aria-label="Filter options">
+                                        <span class="ledger-toolbar-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24">
+                                                <path d="M3 5h18l-7 8v6l-4 2v-8z"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="ledger-toolbar-label">Filter</span>
+                                    </button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="columns" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" aria-label="Column options">
+                                        <span class="ledger-toolbar-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24">
+                                                <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                                                <path d="M9 5v14"></path>
+                                                <path d="M15 5v14"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="ledger-toolbar-label">Columns</span>
+                                    </button>
+                                    <button class="ledger-section-button" type="button" data-ledger-options-section="actions" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" aria-label="Actions menu">
+                                        <span class="ledger-toolbar-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24">
+                                                <circle cx="6" cy="12" r="1.7"></circle>
+                                                <circle cx="12" cy="12" r="1.7"></circle>
+                                                <circle cx="18" cy="12" r="1.7"></circle>
+                                            </svg>
+                                        </span>
+                                        <span class="ledger-toolbar-label">Actions</span>
+                                    </button>
                                 </div>
                                 <button class="table-icon-button" id="ledgerOptionsButton" type="button" aria-label="Table options" aria-haspopup="true" aria-expanded="false" aria-controls="ledgerOptionsMenu" title="Table options" hidden>
                                     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -19119,7 +19269,47 @@
                 return selectedBankAccount();
             }
 
+            function firstNameFromValue(value) {
+                const text = String(value || "").trim();
+                if (!text) return "";
+                const emailMatch = text.match(/^([^@\s]+)@/);
+                if (emailMatch) {
+                    const candidate = emailMatch[1].replace(/[._-]+/g, " ").trim();
+                    return candidate ? candidate.split(/\s+/)[0] : "";
+                }
+                return text.split(/\s+/)[0];
+            }
+
+            function insightsWelcomeName() {
+                const data = window.HYMN_PANEL_DATA || {};
+                const candidates = [
+                    data?.user?.firstName,
+                    data?.user?.givenName,
+                    data?.user?.displayName,
+                    data?.user?.name,
+                    data?.session?.user?.firstName,
+                    data?.session?.user?.givenName,
+                    data?.session?.user?.displayName,
+                    data?.session?.user?.name,
+                    data?.session?.user?.email,
+                    data?.userEmail,
+                    window.HYMN_PANEL_USER?.firstName,
+                    window.HYMN_PANEL_USER?.name,
+                    window.HYMN_PANEL_USER?.email
+                ];
+                for (const candidate of candidates) {
+                    const first = firstNameFromValue(candidate);
+                    if (first) return first;
+                }
+                return "Jay";
+            }
+
+            function insightsTopbarTitle() {
+                return `Welcome to Jenius Tools, ${insightsWelcomeName()}`;
+            }
+
             function activeTopbarTitle(topbarClient = null) {
+                if (activeView === "insights") return insightsTopbarTitle();
                 if (activeView === "client") {
                     const client = topbarClient || findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                     return client?.name || "Client";
