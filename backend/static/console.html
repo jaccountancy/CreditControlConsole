@@ -12017,6 +12017,7 @@
             .developer-log-panel[hidden] { display: none; }
             #bankAccountPanel,
             #bankStatementUploadPanel,
+            #bankExportRangePanel,
             #meReportDlaSetupPanel,
             #meReportBulkMatchPanel,
             #meReportLossPanel {
@@ -12052,6 +12053,42 @@
             }
             .bank-statement-upload-card {
                 width: min(620px, 100%);
+            }
+            .bank-export-range-card {
+                width: min(700px, 100%);
+            }
+            .bank-export-range-form {
+                min-height: 0;
+                margin: 0;
+                gap: 0;
+                overflow: auto;
+            }
+            .bank-export-range-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+            }
+            .bank-export-range-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .bank-export-range-summary {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: var(--surface-soft);
+                font-weight: 700;
+                color: var(--ink);
+            }
+            .bank-export-range-summary strong {
+                color: var(--blue);
+            }
+            @media (max-width: 720px) {
+                .bank-export-range-grid {
+                    grid-template-columns: 1fr;
+                }
             }
             .bank-transaction-review-card {
                 width: min(1080px, 100%);
@@ -16084,6 +16121,54 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="bankExportRangePanel" aria-modal="true" role="dialog" aria-labelledby="bankExportRangePanelTitle" hidden>
+                    <div class="developer-log-card bank-export-range-card">
+                        <form class="stack-form bank-export-range-form" id="bankExportRangeForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="bankExportRangePanelTitle">Export Xero CSV</h3>
+                                    <p id="bankExportRangePanelSummary">Confirm the date range before exporting.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeBankExportRangePanelButton" type="button">Cancel</button>
+                                </div>
+                            </div>
+                            <div class="bank-export-range-body">
+                                <label class="bank-account-field" for="bankExportRangePresetSelect">
+                                    <span class="bank-field-label"><span>Date range</span><small>Quick options</small></span>
+                                    <select id="bankExportRangePresetSelect">
+                                        <option value="last-month">Last month</option>
+                                        <option value="last-quarter">Last quarter</option>
+                                        <option value="this-month">This month</option>
+                                        <option value="year-to-date">Year to date</option>
+                                        <option value="last-90-days">Last 90 days</option>
+                                        <option value="all">All available</option>
+                                        <option value="custom">Custom range</option>
+                                    </select>
+                                </label>
+                                <div class="bank-export-range-grid">
+                                    <label class="bank-account-field" for="bankExportRangeStartInput">
+                                        <span class="bank-field-label"><span>From</span><small>Inclusive</small></span>
+                                        <input id="bankExportRangeStartInput" type="date">
+                                    </label>
+                                    <label class="bank-account-field" for="bankExportRangeEndInput">
+                                        <span class="bank-field-label"><span>To</span><small>Inclusive</small></span>
+                                        <input id="bankExportRangeEndInput" type="date">
+                                    </label>
+                                </div>
+                                <p class="bank-export-range-summary" id="bankExportRangeCountSummary">Choose a date range to preview transactions.</p>
+                            </div>
+                            <div class="bank-account-form-footer">
+                                <p class="detail-meta">Only transactions in this range are exported to the Xero CSV.</p>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="cancelBankExportRangePanelButton" type="button">Cancel</button>
+                                    <button class="primary-button" id="confirmBankExportRangeButton" type="submit">Export Xero CSV</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="bankTransactionReviewPanel" aria-modal="true" role="dialog" aria-labelledby="bankTransactionReviewTitle" hidden>
                     <div class="developer-log-card bank-transaction-review-card">
                         <div class="developer-log-head">
@@ -16826,6 +16911,10 @@
             let bankStatementAccountOpen = false;
             let bankStatementAccountTab = "transactions";
             let bankStatementTransactionSearchTerm = "";
+            let bankExportRangePanelOpen = false;
+            let bankExportRangePreset = "last-month";
+            let bankExportRangeStartDate = "";
+            let bankExportRangeEndDate = "";
             let bankStatementAiAutocategorisationEnabled = false;
             let bankStatementAiAutocategorisationRunning = false;
             let bankStatementAiAutocategorisationAccountId = "";
@@ -27887,6 +27976,7 @@
                     bankStatementAccountOpen = false;
                     bankAccountFormOpen = false;
                     bankStatementUploadPanelOpen = false;
+                    bankExportRangePanelOpen = false;
                     bankSa100EntryPanelState = { ...bankSa100EntryPanelState, open: false };
                     bankStatementAccountTab = "transactions";
                     bankStatementTransactionSearchTerm = "";
@@ -27963,6 +28053,7 @@
                     });
                 });
                 renderBankStatementUploadPanel();
+                renderBankExportRangePanel();
                 renderBankAccountPanel();
                 renderBankTransactionReviewPanel();
                 renderBankSa100EntryPanel();
@@ -28315,12 +28406,143 @@
                 downloadBankCsv(bankExportFilename(account, "transactions"), rows);
             }
 
-            function exportBankTransactionsForXero() {
+            function bankExportRangeBoundsForPreset(preset, account) {
+                const today = new Date();
+                const endOfToday = localDateKey(today);
+                const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                if (preset === "this-month") {
+                    return { start: localDateKey(monthStart), end: endOfToday };
+                }
+                if (preset === "last-month") {
+                    const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                    const end = new Date(today.getFullYear(), today.getMonth(), 0);
+                    return { start: localDateKey(start), end: localDateKey(end) };
+                }
+                if (preset === "last-quarter") {
+                    const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+                    const currentQuarterStart = new Date(today.getFullYear(), quarterStartMonth, 1);
+                    const start = new Date(currentQuarterStart.getFullYear(), currentQuarterStart.getMonth() - 3, 1);
+                    const end = new Date(currentQuarterStart.getFullYear(), currentQuarterStart.getMonth(), 0);
+                    return { start: localDateKey(start), end: localDateKey(end) };
+                }
+                if (preset === "year-to-date") {
+                    return { start: `${today.getFullYear()}-01-01`, end: endOfToday };
+                }
+                if (preset === "last-90-days") {
+                    const start = new Date(today);
+                    start.setDate(start.getDate() - 89);
+                    return { start: localDateKey(start), end: endOfToday };
+                }
+                if (preset === "all") {
+                    const range = bankAccountDateRange(account);
+                    return { start: range.start || "", end: range.end || "" };
+                }
+                return { start: bankExportRangeStartDate || "", end: bankExportRangeEndDate || "" };
+            }
+
+            function bankTransactionDateValue(transaction) {
+                const iso = String(transaction?.date || "").trim();
+                if (!iso) return null;
+                const fromIso = bankDateFromISO(iso);
+                if (fromIso) return new Date(fromIso.getUTCFullYear(), fromIso.getUTCMonth(), fromIso.getUTCDate());
+                const parsed = new Date(iso);
+                if (Number.isNaN(parsed.getTime())) return null;
+                return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+            }
+
+            function bankTransactionsInDateRange(account, startDate = "", endDate = "") {
+                const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
+                const end = endDate ? new Date(`${endDate}T23:59:59`) : null;
+                if (start && end && start > end) return [];
+                return bankAccountTransactionsAscending(account).filter((row) => {
+                    const date = bankTransactionDateValue(row);
+                    if (!date) return false;
+                    if (start && date < start) return false;
+                    if (end && date > end) return false;
+                    return true;
+                });
+            }
+
+            function openBankExportRangePanel() {
                 const account = selectedBankAccount();
-                if (!account) return;
+                if (!account) {
+                    showToast("Select a bank account before exporting Xero CSV", "error");
+                    return;
+                }
+                bankExportRangePanelOpen = true;
+                bankExportRangePreset = "last-month";
+                const bounds = bankExportRangeBoundsForPreset(bankExportRangePreset, account);
+                bankExportRangeStartDate = bounds.start;
+                bankExportRangeEndDate = bounds.end;
+                renderBankExportRangePanel();
+                setTimeout(() => document.getElementById("bankExportRangePresetSelect")?.focus(), 0);
+            }
+
+            function closeBankExportRangePanel() {
+                bankExportRangePanelOpen = false;
+                renderBankExportRangePanel();
+            }
+
+            function bankExportRangeSummaryText(account, transactions, startDate, endDate) {
+                const accountLabel = bankAccountDisplayName(account);
+                if (startDate && endDate && startDate > endDate) {
+                    return "Choose a valid range: 'From' date must be on or before the 'To' date.";
+                }
+                if (!transactions.length) {
+                    return `No transactions found for ${accountLabel} in this date range.`;
+                }
+                if (!startDate && !endDate) {
+                    return `${transactions.length.toLocaleString("en-GB")} transactions are ready to export for ${accountLabel}.`;
+                }
+                return `${transactions.length.toLocaleString("en-GB")} transactions found from ${formatDate(startDate || "")} to ${formatDate(endDate || "")}.`;
+            }
+
+            function renderBankExportRangePanel() {
+                const panel = document.getElementById("bankExportRangePanel");
+                if (!panel) return;
+                const account = selectedBankAccount();
+                const shouldShow = activeView === "bank-statements" && bankStatementAccountOpen && bankExportRangePanelOpen && Boolean(account);
+                panel.hidden = !shouldShow;
+                if (!shouldShow) {
+                    if (!account || !bankStatementAccountOpen || activeView !== "bank-statements") bankExportRangePanelOpen = false;
+                    return;
+                }
+
+                const title = document.getElementById("bankExportRangePanelTitle");
+                if (title) title.textContent = `Export Xero CSV - ${bankAccountDisplayName(account)}`;
+                const summary = document.getElementById("bankExportRangePanelSummary");
+                if (summary) summary.textContent = bankAccountDetailLine(account) || "Confirm the transaction date range before exporting.";
+
+                const presetSelect = document.getElementById("bankExportRangePresetSelect");
+                if (presetSelect) presetSelect.value = bankExportRangePreset || "last-month";
+                const startInput = document.getElementById("bankExportRangeStartInput");
+                const endInput = document.getElementById("bankExportRangeEndInput");
+                const isCustom = bankExportRangePreset === "custom";
+                if (startInput) {
+                    startInput.value = bankExportRangeStartDate || "";
+                    startInput.disabled = !isCustom;
+                }
+                if (endInput) {
+                    endInput.value = bankExportRangeEndDate || "";
+                    endInput.disabled = !isCustom;
+                }
+
+                const transactions = bankTransactionsInDateRange(account, bankExportRangeStartDate, bankExportRangeEndDate);
+                const summaryNode = document.getElementById("bankExportRangeCountSummary");
+                if (summaryNode) {
+                    const text = bankExportRangeSummaryText(account, transactions, bankExportRangeStartDate, bankExportRangeEndDate);
+                    summaryNode.innerHTML = transactions.length
+                        ? `<strong>${transactions.length.toLocaleString("en-GB")}</strong> ${escapeHTML(text.replace(/^\d[\d,]*\s+/, ""))}`
+                        : escapeHTML(text);
+                }
+                const confirmButton = document.getElementById("confirmBankExportRangeButton");
+                if (confirmButton) confirmButton.disabled = transactions.length === 0;
+            }
+
+            function bankExportXeroCsvRows(transactions) {
                 const rows = [
                     ["Date", "Amount", "Payee", "Description", "Reference", "Transaction Type"],
-                    ...bankAccountTransactionsAscending(account).map((row) => [
+                    ...(transactions || []).map((row) => [
                         formatXeroBankDate(row.date),
                         bankTransactionAmount(row).toFixed(2),
                         bankTransactionPayee(row),
@@ -28329,7 +28551,26 @@
                         row.type || ""
                     ])
                 ];
+                return rows;
+            }
+
+            function confirmBankExportRange(event) {
+                event?.preventDefault?.();
+                const account = selectedBankAccount();
+                if (!account) return;
+                const transactions = bankTransactionsInDateRange(account, bankExportRangeStartDate, bankExportRangeEndDate);
+                if (!transactions.length) {
+                    showToast("No transactions in the selected range to export", "error");
+                    return;
+                }
+                const rows = bankExportXeroCsvRows(transactions);
                 downloadBankCsv(bankExportFilename(account, "xero-bank-statement"), rows);
+                closeBankExportRangePanel();
+                showToast(`Exported ${transactions.length.toLocaleString("en-GB")} transactions to Xero CSV`, "success");
+            }
+
+            function exportBankTransactionsForXero() {
+                openBankExportRangePanel();
             }
 
             function normaliseIgnitionPayload(payload) {
@@ -40974,6 +41215,7 @@
                     bankStatementWorkspaceOpen = false;
                     bankAccountFormOpen = false;
                     bankStatementUploadPanelOpen = false;
+                    bankExportRangePanelOpen = false;
                     bankSa100EntryPanelState = { ...bankSa100EntryPanelState, open: false };
                     bankStatementAccountTab = "transactions";
                     bankStatementTransactionSearchTerm = "";
@@ -41003,6 +41245,40 @@
                 const bankStatementUploadPanel = document.getElementById("bankStatementUploadPanel");
                 if (bankStatementUploadPanel) bankStatementUploadPanel.addEventListener("click", (event) => {
                     if (event.target.id === "bankStatementUploadPanel") closeBankStatementUploadPanel();
+                });
+                const bankExportRangeForm = document.getElementById("bankExportRangeForm");
+                if (bankExportRangeForm) bankExportRangeForm.addEventListener("submit", confirmBankExportRange);
+                const closeBankExportRangePanelButton = document.getElementById("closeBankExportRangePanelButton");
+                if (closeBankExportRangePanelButton) closeBankExportRangePanelButton.addEventListener("click", closeBankExportRangePanel);
+                const cancelBankExportRangePanelButton = document.getElementById("cancelBankExportRangePanelButton");
+                if (cancelBankExportRangePanelButton) cancelBankExportRangePanelButton.addEventListener("click", closeBankExportRangePanel);
+                const bankExportRangePanel = document.getElementById("bankExportRangePanel");
+                if (bankExportRangePanel) bankExportRangePanel.addEventListener("click", (event) => {
+                    if (event.target.id === "bankExportRangePanel") closeBankExportRangePanel();
+                });
+                const bankExportRangePresetSelect = document.getElementById("bankExportRangePresetSelect");
+                if (bankExportRangePresetSelect) bankExportRangePresetSelect.addEventListener("change", (event) => {
+                    bankExportRangePreset = event.target.value || "last-month";
+                    const account = selectedBankAccount();
+                    if (!account) return;
+                    if (bankExportRangePreset !== "custom") {
+                        const bounds = bankExportRangeBoundsForPreset(bankExportRangePreset, account);
+                        bankExportRangeStartDate = bounds.start;
+                        bankExportRangeEndDate = bounds.end;
+                    }
+                    renderBankExportRangePanel();
+                });
+                const bankExportRangeStartInput = document.getElementById("bankExportRangeStartInput");
+                if (bankExportRangeStartInput) bankExportRangeStartInput.addEventListener("change", (event) => {
+                    bankExportRangePreset = "custom";
+                    bankExportRangeStartDate = String(event.target.value || "");
+                    renderBankExportRangePanel();
+                });
+                const bankExportRangeEndInput = document.getElementById("bankExportRangeEndInput");
+                if (bankExportRangeEndInput) bankExportRangeEndInput.addEventListener("change", (event) => {
+                    bankExportRangePreset = "custom";
+                    bankExportRangeEndDate = String(event.target.value || "");
+                    renderBankExportRangePanel();
                 });
                 const bankSa100EntryForm = document.getElementById("bankSa100EntryForm");
                 if (bankSa100EntryForm) bankSa100EntryForm.addEventListener("submit", saveBankSa100Entry);
