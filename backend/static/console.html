@@ -4099,13 +4099,13 @@
                 48% { transform: translateX(40%); }
                 100% { transform: translateX(245%); }
             }
-            .invoice-table { width: 100%; border-collapse: collapse; min-width: 940px; table-layout: fixed; }
+            .invoice-table { width: 100%; border-collapse: collapse; min-width: 1080px; table-layout: fixed; }
             .invoice-table th:nth-child(1), .invoice-table td:nth-child(1) { width: 44px; }
-            .invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 25%; }
-            .invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 35%; }
-            .invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 18%; }
-            .invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 17%; }
-            .invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 54px; }
+            .invoice-table th:nth-child(2), .invoice-table td:nth-child(2) { width: 29%; }
+            .invoice-table th:nth-child(3), .invoice-table td:nth-child(3) { width: 25%; }
+            .invoice-table th:nth-child(4), .invoice-table td:nth-child(4) { width: 15%; }
+            .invoice-table th:nth-child(5), .invoice-table td:nth-child(5) { width: 25%; }
+            .invoice-table th:nth-child(6), .invoice-table td:nth-child(6) { width: 64px; }
             .invoice-table th, .invoice-table td {
                 padding: 11px 16px;
                 border-bottom: 1px solid var(--line);
@@ -4511,6 +4511,45 @@
             .note-snippet {
                 line-height: 1.35;
                 white-space: normal;
+            }
+            .client-note-cell {
+                min-width: 0;
+            }
+            .ledger-client-note {
+                display: grid;
+                gap: 2px;
+                min-width: 0;
+            }
+            .ledger-client-note strong,
+            .ledger-client-note small {
+                display: block;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .ledger-client-note strong {
+                font-size: 0.82rem;
+                font-weight: 850;
+                line-height: 1.25;
+            }
+            .ledger-client-note small,
+            .ledger-client-note-empty {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 800;
+            }
+            .ledger-client-note-empty {
+                display: inline-flex;
+                align-items: center;
+                min-height: 22px;
+            }
+            body.is-dense .ledger-client-note strong {
+                font-size: 0.76rem;
+                line-height: 1.1;
+            }
+            body.is-dense .ledger-client-note small {
+                display: none;
             }
             .table-skeleton {
                 height: 16px;
@@ -12643,7 +12682,7 @@
                                         <span class="toolbar-menu-section-title">Columns</span>
                                         <div class="column-toggle-list">
                                             <label><input type="checkbox" data-column-toggle="description" checked> Description</label>
-                                            <label><input type="checkbox" data-column-toggle="notes" checked> Credits</label>
+                                            <label><input type="checkbox" data-column-toggle="clientNotes" checked> Notes</label>
                                         </div>
                                     </div>
                                     <div class="toolbar-menu-section ledger-options-actions" data-ledger-options-panel="actions">
@@ -12664,7 +12703,7 @@
                                         <th class="is-sticky">Client</th>
                                         <th class="is-sticky" data-column="description">Oldest Item</th>
                                         <th class="is-sticky">Amount Due</th>
-                                        <th class="is-sticky" data-column="notes">Credits</th>
+                                        <th class="is-sticky" data-column="clientNotes">Notes</th>
                                         <th class="is-sticky">Open</th>
                                     </tr>
                                 </thead>
@@ -14587,7 +14626,7 @@
             const customerTransactionLoading = new Set();
             let visibleColumns = {
                 description: persistedUIState.visibleColumns?.description !== false,
-                notes: persistedUIState.visibleColumns?.notes !== false
+                clientNotes: persistedUIState.visibleColumns?.clientNotes !== false
             };
 
             const sortLabels = { priority: "Priority", due: "Due date", amount: "Amount due", client: "Client" };
@@ -17946,6 +17985,7 @@
                     if (columnToggle) {
                         event.stopPropagation();
                         visibleColumns[columnToggle.dataset.columnToggle] = columnToggle.checked;
+                        persistState();
                         applyColumnVisibility();
                         return;
                     }
@@ -18053,6 +18093,9 @@
                 });
                 document.querySelectorAll("[data-filter-mode]").forEach((button) => {
                     button.classList.toggle("is-active", button.dataset.filterMode === clientFilter);
+                });
+                document.querySelectorAll("[data-column-toggle]").forEach((checkbox) => {
+                    checkbox.checked = visibleColumns[checkbox.dataset.columnToggle] !== false;
                 });
             }
 
@@ -18207,6 +18250,41 @@
                 openClientWorkspace(invoice, "", section);
             }
 
+            function latestClientLedgerNote(group) {
+                const candidates = [];
+                const pushNote = (note, source, fallbackStamp = "") => {
+                    const body = String(note?.body || note?.title || "").trim();
+                    if (!body) return;
+                    const stamp = note?.stamp || note?.createdAt || note?.updatedAt || fallbackStamp || "";
+                    candidates.push({
+                        body,
+                        source,
+                        stamp,
+                        sortValue: Date.parse(stamp || "") || 0
+                    });
+                };
+                (group?.client?.clientNotes || []).forEach((note) => pushNote(note, "Client note"));
+                (group?.invoices || []).forEach((invoice) => {
+                    (invoice?.notes || []).forEach((note) => pushNote(note, invoice?.invoiceNumber ? `Invoice ${invoice.invoiceNumber}` : "Invoice note"));
+                    if (!(invoice?.notes || []).length && invoice?.notesSummary) {
+                        pushNote({ body: invoice.notesSummary }, invoice?.invoiceNumber ? `Invoice ${invoice.invoiceNumber}` : "Invoice note");
+                    }
+                });
+                return candidates.sort((left, right) => right.sortValue - left.sortValue)[0] || null;
+            }
+
+            function ledgerClientNoteMarkup(note) {
+                if (!note) return '<span class="ledger-client-note-empty">No notes yet</span>';
+                const meta = [note.source, note.stamp ? formatDateTime(note.stamp) : ""].filter(Boolean).join(" · ");
+                const title = [note.body, meta].filter(Boolean).join(" - ");
+                return `
+                    <div class="ledger-client-note" title="${escapeHTML(title)}">
+                        <strong>${escapeHTML(note.body)}</strong>
+                        ${meta ? `<small>${escapeHTML(meta)}</small>` : ""}
+                    </div>
+                `;
+            }
+
             function renderInvoiceTable() {
                 const tbody = document.getElementById("invoiceTableBody");
                 const groups = filteredClientGroups();
@@ -18245,10 +18323,9 @@
                         const selectedCount = group.invoices.filter((item) => selectedInvoiceIds.has(item.id)).length;
                         const isGroupSelected = Boolean(group.invoices.length) && selectedCount === group.invoices.length;
                         const isGroupPartial = selectedCount > 0 && selectedCount < group.invoices.length;
-                        const creditState = clientCreditState(group.client);
-                        const creditClass = creditState.status === "ready" ? "has-credit" : creditState.status === "loading" ? "is-loading" : "";
                         const clientName = group.client?.name || invoice?.customerName || "Unnamed client";
                         const openInvoiceLabel = `${group.openCount.toLocaleString("en-GB")} open invoice${group.openCount === 1 ? "" : "s"}`;
+                        const latestNote = latestClientLedgerNote(group);
                         const row = document.createElement("tr");
                         row.className = `client-group-row ${group.id === selectedClientId ? "is-selected" : ""} row-${category}`.trim();
                         row.innerHTML = `
@@ -18263,7 +18340,7 @@
                             </td>
                             <td data-column="description"><div class="description-cell"><div><div class="description-title">${escapeHTML(invoiceLineSummary(oldestInvoice))}</div><div class="invoice-subline">${escapeHTML(oldestInvoice?.invoiceNumber || "Invoice")} · due ${formatDate(oldestInvoice?.dueDate)}</div></div></div></td>
                             <td class="amount-cell is-client-total" tabindex="0"><strong class="amount-value">${formatCurrency(group.amountDue)}</strong></td>
-                            <td data-column="notes"><span class="client-credit-flag ${creditClass}">${escapeHTML(creditState.label)}</span><div class="note-snippet">${escapeHTML(invoice?.notesSummary || "Open client screen for account notes.")}</div></td>
+                            <td class="client-note-cell" data-column="clientNotes">${ledgerClientNoteMarkup(latestNote)}</td>
                             <td class="actions-cell"><button class="table-open-button" type="button" data-open-client>Open</button></td>
                         `;
                         const checkbox = row.querySelector(".client-select");
@@ -18280,16 +18357,6 @@
                         row.querySelector("[data-open-client]")?.addEventListener("click", (event) => {
                             event.stopPropagation();
                             openClientGroup(group);
-                        });
-                        row.addEventListener("mouseenter", () => {
-                            if (group.client && !cachedCustomerTransactions(group.client) && !customerTransactionLoading.has(String(group.client.id))) {
-                                const flag = row.querySelector(".client-credit-flag");
-                                if (flag) {
-                                    flag.textContent = "Checking Xero credits";
-                                    flag.classList.add("is-loading");
-                                }
-                                ensureCustomerTransactions(group.client, false, { silent: true });
-                            }
                         });
                         row.addEventListener("click", () => openClientGroup(group));
                         tbody.appendChild(row);
@@ -32858,6 +32925,7 @@
                 document.querySelectorAll("[data-column-toggle]").forEach((checkbox) => {
                     checkbox.addEventListener("change", () => {
                         visibleColumns[checkbox.dataset.columnToggle] = checkbox.checked;
+                        persistState();
                         applyColumnVisibility();
                     });
                 });
