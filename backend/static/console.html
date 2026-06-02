@@ -30250,7 +30250,9 @@
                 const thresholdExceeded = rolling > threshold;
                 const warningVisible = meReportVatWarningVisible(client, summary);
                 const percentage = Math.min(140, Math.max(2, Math.round(Math.abs(rolling) / Math.max(1, threshold) * 100)));
-                const vatButtonLabel = vatRegistered ? "VAT Registered" : "Not VAT Registered";
+                const vatStatusLabel = vatRegistered ? "VAT Registered" : "Not VAT Registered";
+                const vatActionLabel = vatRegistered ? "Mark as deregistered for VAT" : "Mark as VAT registered";
+                const vatActionValue = vatRegistered ? "false" : "true";
                 const vatStatus = vatRegistered
                     ? `VAT registered${vatConfirmedAt ? ` - confirmed ${formatDate(vatConfirmedAt)}` : ""}`
                     : thresholdExceeded ? "registration review required" : "below threshold";
@@ -30262,13 +30264,16 @@
                         <div class="me-report-vat-gauge" aria-label="VAT threshold gauge">
                             <div class="me-report-vat-gauge-track"><span style="width: ${percentage}%"></span></div>
                         </div>
-                        <button class="${vatRegistered ? "primary-button" : "ghost-button"}" type="button" data-me-report-toggle-vat="${vatRegistered ? "false" : "true"}">${escapeHTML(vatButtonLabel)}</button>
                     </article>
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Rolling 12m turnover", formatCurrency(rolling))}
                         ${renderMeReportMetric("VAT threshold", formatCurrency(threshold))}
                         ${renderMeReportMetric("Threshold status", thresholdExceeded ? "Exceeded" : "Below")}
-                        ${renderMeReportMetric("VAT status", vatButtonLabel, { detail: vatConfirmedAt ? `Updated ${formatDate(vatConfirmedAt)}` : "Remembered for future uploads when changed" })}
+                        ${renderMeReportMetric("VAT status", vatStatusLabel, {
+                            detail: vatConfirmedAt ? `Updated ${formatDate(vatConfirmedAt)}` : "Remembered for future uploads when changed",
+                            actionLabel: vatActionLabel,
+                            actionAttrs: `data-me-report-toggle-vat="${vatActionValue}"`
+                        })}
                     </div>
                     ${renderMeReportVatRollingSchedule(summary)}
                 `;
@@ -30621,6 +30626,39 @@
 
             function renderMeReportTaxTab(client = {}, summary = {}, broughtForwardTradingLoss = 0) {
                 const periodLabel = meReportPeriodRangeLabel(summary);
+                const taxOverrideClientId = summary.taxAdjustmentOverrideClientId || client.id || "";
+                const excludedCapitalAllowanceRows = meReportFixedAssetAllowanceRows(
+                    summary,
+                    summary.taxAdjustmentOverrides || meReportClientTaxOverrides(client)
+                ).filter((row) => !row.included);
+                const capitalAllowanceReviewCard = excludedCapitalAllowanceRows.length
+                    ? `<article class="me-report-insight-card me-report-alert-card me-report-table-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Capital allowances review</p>
+                                <h3>${excludedCapitalAllowanceRows.length.toLocaleString("en-GB")} fixed asset ${excludedCapitalAllowanceRows.length === 1 ? "item is" : "items are"} currently excluded from CT</h3>
+                                <p class="detail-meta">Include items here without leaving the CT tab. Your choice is remembered for this client and reused on future uploads.</p>
+                            </div>
+                        </div>
+                        <table>
+                            <thead><tr><th>Asset class</th><th>Difference</th><th>Current treatment</th><th>Action</th></tr></thead>
+                            <tbody>
+                                ${excludedCapitalAllowanceRows.map((row) => `
+                                    <tr>
+                                        <td><strong>${escapeHTML(row.label || "Fixed asset")}</strong><br><small>${escapeHTML(row.source || "Fixed Asset Reconciliation")}</small></td>
+                                        <td>${formatCurrency(Math.abs(Number(row.originalAmount || 0)))}</td>
+                                        <td>${escapeHTML(row.treatment || "Excluded from automatic capital allowances")}</td>
+                                        <td>${taxOverrideClientId ? `<button class="ghost-button" type="button" data-me-tax-line-action="include" data-me-tax-client="${escapeHTML(taxOverrideClientId)}" data-me-tax-step="capitalAllowances" data-me-tax-code="${escapeHTML(row.code)}">Include in CT</button>` : "--"}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </article>`
+                    : `<article class="me-report-insight-card">
+                        <p class="eyebrow">Capital allowances review</p>
+                        <h3>No fixed asset exclusions are currently blocking CT capital allowances</h3>
+                        <p class="detail-meta">Any include/exclude decision is remembered for the next report upload for this client.</p>
+                    </article>`;
                 return `
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
@@ -30638,6 +30676,7 @@
                         </div>
                         ${renderMeReportTaxBreakdownTable(summary)}
                     </article>
+                    ${capitalAllowanceReviewCard}
                     ${renderMeReportCalculationTable("CT estimate", Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary), summary)}
                 `;
             }
@@ -38130,6 +38169,136 @@
                         localMessage: "Open invoices moved to Legal",
                         syncedMessage: "Legal status synced",
                     });
+                });
+            }
+
+            const companiesHouseSettings = { loaded: false, loading: false, saving: false };
+
+            function setCompaniesHouseSettingsStatus(message, tone) {
+                const node = document.getElementById("companiesHouseSettingsStatus");
+                if (!node) return;
+                node.textContent = message || "";
+                node.classList.remove("is-success", "is-error", "is-muted");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function applyCompaniesHouseSettings(settings) {
+                const data = settings || {};
+                const env = data.environment === "production" ? "production" : "sandbox";
+                const envSelect = document.getElementById("chSettingsEnvironment");
+                if (envSelect) envSelect.value = env;
+                const envPill = document.getElementById("companiesHouseEnvPill");
+                if (envPill) {
+                    envPill.textContent = env === "production" ? "Production" : "Sandbox";
+                    envPill.classList.toggle("is-production", env === "production");
+                }
+                const setValue = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (node) node.value = value == null ? "" : String(value);
+                };
+                setValue("chSettingsNotifyEmail", data.notifyEmail);
+                setValue("chSettingsPresenterId", data.presenterId);
+                setValue("chSettingsCreditAccount", data.creditAccountNumber);
+                setValue("chSettingsXeroAccountCode", data.xeroInvoiceAccountCode);
+                setValue("chSettingsXeroItemCode", data.xeroInvoiceItemCode);
+                setValue("chSettingsXeroDescription", data.xeroInvoiceDescription);
+                setValue("chSettingsXeroUnitAmount", Number(data.xeroInvoiceUnitAmount || 0));
+                setValue("chSettingsXeroTaxType", data.xeroInvoiceTaxType || "NONE");
+                const autoSync = document.getElementById("chSettingsAutoSync");
+                if (autoSync) autoSync.checked = data.autoSyncEnabled !== false;
+                const apiKeyHint = document.getElementById("chSettingsApiKeyHint");
+                if (apiKeyHint) {
+                    apiKeyHint.textContent = data.apiKeyConfigured
+                        ? `Stored value: ${data.apiKeyHint || "configured"}. Leave blank to keep.`
+                        : "Not configured.";
+                }
+                const presenterAuthHint = document.getElementById("chSettingsPresenterAuthHint");
+                if (presenterAuthHint) {
+                    presenterAuthHint.textContent = data.presenterAuthConfigured
+                        ? `Stored value: ${data.presenterAuthHint || "configured"}. Leave blank to keep.`
+                        : "Not configured.";
+                }
+                const apiKeyInput = document.getElementById("chSettingsApiKey");
+                if (apiKeyInput) apiKeyInput.value = "";
+                const presenterAuthInput = document.getElementById("chSettingsPresenterAuth");
+                if (presenterAuthInput) presenterAuthInput.value = "";
+            }
+
+            async function loadCompaniesHouseSettings(force = false) {
+                if (companiesHouseSettings.loading) return;
+                if (companiesHouseSettings.loaded && !force) return;
+                companiesHouseSettings.loading = true;
+                setCompaniesHouseSettingsStatus("Loading settings…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/settings");
+                    applyCompaniesHouseSettings(payload?.settings);
+                    companiesHouseSettings.loaded = true;
+                    const updatedAt = payload?.settings?.updatedAt;
+                    setCompaniesHouseSettingsStatus(
+                        updatedAt ? `Last updated ${new Date(updatedAt).toLocaleString()}` : "Ready.",
+                        "muted"
+                    );
+                } catch (error) {
+                    console.error("Unable to load Companies House settings", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        setCompaniesHouseSettingsStatus(error?.message || "Unable to load settings.", "error");
+                    }
+                } finally {
+                    companiesHouseSettings.loading = false;
+                }
+            }
+
+            async function saveCompaniesHouseSettingsHandler() {
+                if (companiesHouseSettings.saving) return;
+                const value = (id) => (document.getElementById(id)?.value || "").trim();
+                const apiKey = document.getElementById("chSettingsApiKey")?.value || "";
+                const presenterAuth = document.getElementById("chSettingsPresenterAuth")?.value || "";
+                const body = {
+                    environment: document.getElementById("chSettingsEnvironment")?.value || "sandbox",
+                    notifyEmail: value("chSettingsNotifyEmail"),
+                    presenterId: value("chSettingsPresenterId"),
+                    creditAccountNumber: value("chSettingsCreditAccount"),
+                    xeroInvoiceAccountCode: value("chSettingsXeroAccountCode"),
+                    xeroInvoiceItemCode: value("chSettingsXeroItemCode"),
+                    xeroInvoiceDescription: value("chSettingsXeroDescription"),
+                    xeroInvoiceUnitAmount: Number(value("chSettingsXeroUnitAmount") || 0),
+                    xeroInvoiceTaxType: value("chSettingsXeroTaxType") || "NONE",
+                    autoSyncEnabled: !!document.getElementById("chSettingsAutoSync")?.checked,
+                };
+                if (apiKey.trim()) body.apiKey = apiKey.trim();
+                if (presenterAuth.trim()) body.presenterAuth = presenterAuth.trim();
+                companiesHouseSettings.saving = true;
+                const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
+                if (saveButton) saveButton.disabled = true;
+                setCompaniesHouseSettingsStatus("Saving…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/settings", {
+                        method: "POST",
+                        body: JSON.stringify(body),
+                    });
+                    applyCompaniesHouseSettings(payload?.settings);
+                    setCompaniesHouseSettingsStatus("Settings saved.", "success");
+                } catch (error) {
+                    console.error("Unable to save Companies House settings", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        setCompaniesHouseSettingsStatus(error?.message || "Unable to save settings.", "error");
+                    }
+                } finally {
+                    companiesHouseSettings.saving = false;
+                    if (saveButton) saveButton.disabled = false;
+                }
+            }
+
+            function wireCompaniesHouseSettings() {
+                document.getElementById("saveCompaniesHouseSettingsButton")?.addEventListener("click", saveCompaniesHouseSettingsHandler);
+                document.getElementById("reloadCompaniesHouseSettingsButton")?.addEventListener("click", () => loadCompaniesHouseSettings(true));
+                document.getElementById("companiesHouseSettingsForm")?.addEventListener("submit", (event) => {
+                    event.preventDefault();
+                    saveCompaniesHouseSettingsHandler();
                 });
             }
 
