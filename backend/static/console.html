@@ -35849,6 +35849,249 @@
                 });
             }
 
+            function riskAssessmentLastForMatchKey(matchKey) {
+                if (!matchKey) return null;
+                return riskAssessments
+                    .filter((record) => record.matchKey === matchKey)
+                    .sort((left, right) => (new Date(right.generatedAt || 0).getTime() || 0) - (new Date(left.generatedAt || 0).getTime() || 0))[0] || null;
+            }
+
+            function riskAssessmentRiskPill(level) {
+                const value = String(level || "Moderate");
+                const tone = value === "Low" ? "is-good" : value === "Moderate" ? "is-info" : value === "High" ? "is-warn" : "is-bad";
+                return `<span class="ch-pill ${tone}">${escapeHTML(value)}</span>`;
+            }
+
+            function renderRiskAssessmentClientPicker() {
+                const target = document.getElementById("riskAssessmentsClientPicker");
+                if (!target) return;
+                if (!riskAssessmentDraftClients.length) {
+                    target.hidden = true;
+                    target.innerHTML = "";
+                    return;
+                }
+                target.hidden = false;
+                target.innerHTML = `
+                    <table class="ch-table">
+                        <thead>
+                            <tr>
+                                <th>Select</th>
+                                <th>Client</th>
+                                <th>Last assessment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${riskAssessmentDraftClients.map((client) => `
+                                <tr>
+                                    <td><input type="checkbox" data-risk-assessment-client-key="${escapeHTML(client.matchKey)}" ${riskAssessmentSelectedClientKeys.has(client.matchKey) ? "checked" : ""}></td>
+                                    <td>${escapeHTML(client.clientName)}</td>
+                                    <td>${escapeHTML(client.lastAssessmentAt ? formatDate(client.lastAssessmentAt) : "No prior assessment")}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                `;
+                target.querySelectorAll("[data-risk-assessment-client-key]").forEach((checkbox) => {
+                    checkbox.addEventListener("change", (event) => {
+                        const key = String(event.target.dataset.riskAssessmentClientKey || "");
+                        if (!key) return;
+                        if (event.target.checked) riskAssessmentSelectedClientKeys.add(key);
+                        else riskAssessmentSelectedClientKeys.delete(key);
+                        renderRiskAssessmentsScreen();
+                    });
+                });
+            }
+
+            function renderRiskAssessmentsScreen() {
+                const tableBody = document.getElementById("riskAssessmentsTableBody");
+                const createButton = document.getElementById("riskAssessmentsCreateButton");
+                const zipButton = document.getElementById("riskAssessmentsDownloadZipButton");
+                const builder = document.getElementById("riskAssessmentsBuilder");
+                const status = document.getElementById("riskAssessmentsCsvStatus");
+                const generateButton = document.getElementById("riskAssessmentsGenerateButton");
+                const selectedCount = riskAssessmentSelectedClientKeys.size;
+
+                if (builder) builder.hidden = !riskAssessmentBuilderOpen;
+                if (createButton) createButton.disabled = riskAssessmentGenerating;
+                if (zipButton) zipButton.disabled = !riskAssessments.length || riskAssessmentGenerating;
+                if (generateButton) {
+                    generateButton.disabled = riskAssessmentGenerating || !selectedCount;
+                    generateButton.textContent = riskAssessmentGenerating
+                        ? "Generating..."
+                        : selectedCount ? `Generate selected (${selectedCount})` : "Generate selected";
+                }
+                if (status && riskAssessmentBuilderOpen) {
+                    if (!riskAssessmentDraftClients.length) {
+                        status.textContent = "Upload a BM Client CSV to load clients for selection.";
+                    } else {
+                        status.textContent = `${riskAssessmentDraftClients.length.toLocaleString("en-GB")} clients loaded from ${riskAssessmentLastCsvFileName || "CSV"}. Select clients to generate detailed risk assessments.`;
+                    }
+                }
+
+                renderRiskAssessmentClientPicker();
+
+                if (!tableBody) return;
+                if (!riskAssessments.length) {
+                    tableBody.innerHTML = `<tr><td colspan="6" class="ch-empty-state">No risk assessments have been created yet.</td></tr>`;
+                    return;
+                }
+                tableBody.innerHTML = riskAssessments
+                    .slice()
+                    .sort((left, right) => (new Date(right.generatedAt || 0).getTime() || 0) - (new Date(left.generatedAt || 0).getTime() || 0))
+                    .map((record) => {
+                        const commentarySnippet = `${String(record.commentary || "").trim().slice(0, 220)}${String(record.commentary || "").trim().length > 220 ? "..." : ""}`;
+                        return `
+                            <tr>
+                                <td>${escapeHTML(formatDate(record.generatedAt))}</td>
+                                <td>${escapeHTML(record.clientName || "Client")}</td>
+                                <td>${riskAssessmentRiskPill(record.riskLevel)}</td>
+                                <td>${Number(record.riskScore || 0).toLocaleString("en-GB")}/100</td>
+                                <td>${escapeHTML(record.evaluation || "")}</td>
+                                <td>${escapeHTML(commentarySnippet || "")}</td>
+                            </tr>
+                        `;
+                    }).join("");
+            }
+
+            function openRiskAssessmentBuilder() {
+                riskAssessmentBuilderOpen = true;
+                renderRiskAssessmentsScreen();
+                scrollConsoleToTop();
+            }
+
+            function closeRiskAssessmentBuilder() {
+                riskAssessmentBuilderOpen = false;
+                riskAssessmentGenerating = false;
+                riskAssessmentDraftClients = [];
+                riskAssessmentSelectedClientKeys.clear();
+                riskAssessmentLastCsvFileName = "";
+                const input = document.getElementById("riskAssessmentsBmCsvInput");
+                if (input) input.value = "";
+                renderRiskAssessmentsScreen();
+            }
+
+            async function loadRiskAssessmentBmCsv(file) {
+                if (!file) return;
+                const looksLikeCsv = /\.csv$/i.test(file.name || "") || /csv/i.test(file.type || "");
+                if (!looksLikeCsv) {
+                    showToast("Choose a BM Client CSV file.", "error");
+                    return;
+                }
+                try {
+                    const parsed = parsePracticePackCsv(await file.text());
+                    const assignments = practicePackClientAssignmentsFromData(parsed);
+                    if (!assignments.length) {
+                        showToast("No client rows were found in this BM CSV.", "error");
+                        return;
+                    }
+                    const clients = assignments.map((item) => {
+                        const matchKey = normalisePracticePackClientMatchName(item.clientName);
+                        const latest = riskAssessmentLastForMatchKey(matchKey);
+                        return {
+                            clientName: item.clientName,
+                            matchKey,
+                            lastAssessmentAt: latest?.generatedAt || ""
+                        };
+                    });
+                    riskAssessmentDraftClients = clients;
+                    riskAssessmentSelectedClientKeys = new Set(clients.map((client) => client.matchKey));
+                    riskAssessmentLastCsvFileName = file.name || "BM Client CSV";
+                    showToast(`${clients.length.toLocaleString("en-GB")} clients loaded for risk assessment.`, "success");
+                } catch (error) {
+                    console.error("Unable to parse BM CSV for risk assessments", error);
+                    showToast("Unable to read the BM Client CSV file.", "error");
+                }
+                renderRiskAssessmentsScreen();
+            }
+
+            async function generateRiskAssessmentsForSelection() {
+                if (riskAssessmentGenerating) return;
+                const selected = riskAssessmentDraftClients.filter((client) => riskAssessmentSelectedClientKeys.has(client.matchKey));
+                if (!selected.length) {
+                    showToast("Select at least one client.", "error");
+                    return;
+                }
+                riskAssessmentGenerating = true;
+                renderRiskAssessmentsScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.riskAssessmentsGenerate, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            clients: selected.map((client) => ({
+                                clientName: client.clientName,
+                                lastAssessmentAt: client.lastAssessmentAt || ""
+                            }))
+                        })
+                    });
+                    const created = Array.isArray(payload?.assessments)
+                        ? payload.assessments.map((record) => normaliseRiskAssessmentRecord(record)).filter(Boolean)
+                        : [];
+                    if (!created.length) {
+                        showToast("No assessments were returned for the selected clients.", "error");
+                        return;
+                    }
+                    riskAssessments = [
+                        ...created,
+                        ...riskAssessments
+                    ].slice(0, 2000);
+                    persistRiskAssessments();
+                    showTopbarNotice(
+                        "Risk assessments complete",
+                        `${created.length.toLocaleString("en-GB")} risk assessment${created.length === 1 ? "" : "s"} generated.`,
+                        "success"
+                    );
+                    showToast(`${created.length.toLocaleString("en-GB")} risk assessment${created.length === 1 ? "" : "s"} created`, "success");
+                    closeRiskAssessmentBuilder();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        showToast(error.message || "Unable to generate risk assessments.", "error");
+                    }
+                } finally {
+                    riskAssessmentGenerating = false;
+                    renderRiskAssessmentsScreen();
+                }
+            }
+
+            async function downloadRiskAssessmentsZip() {
+                if (!riskAssessments.length) {
+                    showToast("Create risk assessments before downloading a ZIP.", "info");
+                    return;
+                }
+                try {
+                    const response = await fetch(endpointURL(api.endpoints.riskAssessmentsExportZip), {
+                        method: "POST",
+                        credentials: "include",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...api.headers,
+                            ...panelAuthHeaders()
+                        },
+                        body: JSON.stringify({ assessments: riskAssessments })
+                    });
+                    if (response.status === 401 || response.status === 403) {
+                        throw new AuthRequiredError("Your session has expired. Sign in again before exporting risk assessments.");
+                    }
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(text || `Unable to export ZIP (${response.status})`);
+                    }
+                    const blob = await response.blob();
+                    const disposition = response.headers.get("Content-Disposition") || "";
+                    const match = disposition.match(/filename=\"([^\"]+)\"/i);
+                    const filename = match?.[1] || `risk-assessments-${new Date().toISOString().slice(0, 10)}.zip`;
+                    downloadPracticePackBlob(blob, filename);
+                    showToast("Risk assessment ZIP downloaded", "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        showToast(error.message || "Unable to download risk assessment ZIP.", "error");
+                    }
+                }
+            }
+
             function selectAllEligibleBadDebtInvoices() {
                 const stats = badDebtReviewStats();
                 selectedBadDebtInvoiceIds = new Set(stats.visibleEligible.map((invoice) => invoice.id));
@@ -39343,6 +39586,36 @@
                 }
             }
 
+            function wireRiskAssessmentControls() {
+                const createButton = document.getElementById("riskAssessmentsCreateButton");
+                if (createButton && createButton.dataset.riskWired !== "true") {
+                    createButton.dataset.riskWired = "true";
+                    createButton.addEventListener("click", openRiskAssessmentBuilder);
+                }
+                const cancelButton = document.getElementById("riskAssessmentsCancelButton");
+                if (cancelButton && cancelButton.dataset.riskWired !== "true") {
+                    cancelButton.dataset.riskWired = "true";
+                    cancelButton.addEventListener("click", closeRiskAssessmentBuilder);
+                }
+                const generateButton = document.getElementById("riskAssessmentsGenerateButton");
+                if (generateButton && generateButton.dataset.riskWired !== "true") {
+                    generateButton.dataset.riskWired = "true";
+                    generateButton.addEventListener("click", generateRiskAssessmentsForSelection);
+                }
+                const zipButton = document.getElementById("riskAssessmentsDownloadZipButton");
+                if (zipButton && zipButton.dataset.riskWired !== "true") {
+                    zipButton.dataset.riskWired = "true";
+                    zipButton.addEventListener("click", downloadRiskAssessmentsZip);
+                }
+                const csvInput = document.getElementById("riskAssessmentsBmCsvInput");
+                if (csvInput && csvInput.dataset.riskWired !== "true") {
+                    csvInput.dataset.riskWired = "true";
+                    csvInput.addEventListener("change", async (event) => {
+                        await loadRiskAssessmentBmCsv(event.target.files?.[0]);
+                    });
+                }
+            }
+
             function renderAll() {
                 syncActiveViewShell();
                 renderChrome();
@@ -39363,6 +39636,7 @@
                 renderInsightsScreen();
                 renderLateChargesScreen();
                 renderBadDebtScreen();
+                renderRiskAssessmentsScreen();
                 renderConfirmationStatementsScreen();
                 renderJashflowScreen();
                 renderBankStatementsScreen();
@@ -41742,6 +42016,7 @@
                 const menuMeReportButton = document.getElementById("menuMeReportButton");
                 if (menuMeReportButton) menuMeReportButton.addEventListener("click", openMeReportScreen);
                 wirePracticePackControls();
+                wireRiskAssessmentControls();
                 const cancelJashflowLoanFormButton = document.getElementById("cancelJashflowLoanFormButton");
                 if (cancelJashflowLoanFormButton) cancelJashflowLoanFormButton.addEventListener("click", closeJashflowLoanForm);
                 const deleteJashflowLoanButton = document.getElementById("deleteJashflowLoanButton");
