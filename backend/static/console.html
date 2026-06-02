@@ -9448,6 +9448,13 @@
                 font-size: 0.68rem;
                 font-weight: 950;
             }
+            .bank-xero-tag.is-sa100 {
+                background: rgba(238, 232, 255, 0.92);
+                color: #6c45cb;
+            }
+            .bank-xero-suggestion.is-sa100-only .bank-xero-ai-mark {
+                background: linear-gradient(135deg, #8d62ff, #1d67f2);
+            }
             .bank-xero-reason {
                 color: #6d7d96 !important;
                 line-height: 1.3;
@@ -9516,11 +9523,107 @@
             .bank-tax-summary-row strong {
                 white-space: nowrap;
             }
+            .bank-tax-summary-row.is-travel {
+                display: grid;
+                align-content: start;
+                gap: 8px;
+            }
+            .bank-tax-summary-row-top {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+                align-items: center;
+            }
+            .bank-tax-summary-row-actions {
+                display: inline-flex;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .bank-tax-summary-mini-button {
+                min-height: 26px;
+                padding: 3px 9px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.25);
+                background: #fff;
+                color: var(--blue);
+                font: inherit;
+                font-size: 0.72rem;
+                font-weight: 900;
+                cursor: pointer;
+            }
+            .bank-tax-summary-mini-button:hover,
+            .bank-tax-summary-mini-button:focus-visible {
+                background: var(--blue-soft);
+                outline: none;
+            }
+            .bank-tax-summary-row-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                color: #5b6f8e;
+                font-size: 0.72rem;
+                font-weight: 850;
+            }
             .bank-tax-summary-note {
                 color: var(--muted);
                 font-size: 0.78rem;
                 font-weight: 800;
                 line-height: 1.4;
+            }
+            .bank-sa100-entry-card {
+                width: min(660px, 100%);
+            }
+            .bank-sa100-entry-form {
+                min-height: 0;
+                margin: 0;
+                gap: 0;
+                overflow: auto;
+            }
+            .bank-sa100-entry-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+            }
+            .bank-sa100-entry-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .bank-sa100-entry-grid .bank-account-field {
+                margin: 0;
+            }
+            .bank-sa100-entry-help {
+                margin: 0;
+                padding: 10px 12px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 12px;
+                background: rgba(233, 241, 255, 0.68);
+                color: #50678b;
+                font-size: 0.78rem;
+                font-weight: 800;
+                line-height: 1.42;
+            }
+            .bank-sa100-entry-preview {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid rgba(39, 176, 95, 0.22);
+                border-radius: 14px;
+                background: rgba(232, 248, 238, 0.6);
+                color: #24583a;
+                font-size: 0.8rem;
+                font-weight: 850;
+                line-height: 1.42;
+            }
+            .bank-sa100-entry-error {
+                color: #b73939;
+                font-size: 0.78rem;
+                font-weight: 850;
+                min-height: 1em;
+            }
+            @media (max-width: 760px) {
+                .bank-sa100-entry-grid {
+                    grid-template-columns: 1fr;
+                }
             }
             @keyframes bank-ai-autocat-scan {
                 0% { transform: translateX(-110%); }
@@ -14785,6 +14888,7 @@
                                     </table>
                                 </div>
                             </article>
+                            </div>
                         </section>
                     </section>
 
@@ -15713,6 +15817,81 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="bankSa100EntryPanel" aria-modal="true" role="dialog" aria-labelledby="bankSa100EntryTitle" hidden>
+                    <div class="developer-log-card bank-sa100-entry-card">
+                        <form class="stack-form bank-sa100-entry-form" id="bankSa100EntryForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="bankSa100EntryTitle">Add SA100 adjustment</h3>
+                                    <p id="bankSa100EntrySummary">Save mileage or invoice adjustments for SA103F calculations.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeBankSa100EntryPanelButton" type="button">Cancel</button>
+                                </div>
+                            </div>
+                            <div class="bank-sa100-entry-body">
+                                <p class="bank-sa100-entry-help" id="bankSa100EntryHelp"></p>
+                                <div class="bank-sa100-entry-error" id="bankSa100EntryError"></div>
+                                <section id="bankSa100MileageFields">
+                                    <div class="bank-sa100-entry-grid">
+                                        <label class="bank-account-field" for="bankSa100MileageDateInput">
+                                            <span class="bank-field-label"><span>Date</span><small>Required</small></span>
+                                            <input id="bankSa100MileageDateInput" type="date" required>
+                                        </label>
+                                        <label class="bank-account-field" for="bankSa100MileageMilesInput">
+                                            <span class="bank-field-label"><span>Miles</span><small>Required</small></span>
+                                            <input id="bankSa100MileageMilesInput" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="25.4" required>
+                                        </label>
+                                    </div>
+                                    <label class="bank-account-field" for="bankSa100MileagePassengersInput">
+                                        <span class="bank-field-label"><span>Passenger supplement</span><small>Optional</small></span>
+                                        <select id="bankSa100MileagePassengersInput">
+                                            <option value="no">No passenger</option>
+                                            <option value="yes">Passenger in vehicle (+5p per mile)</option>
+                                        </select>
+                                    </label>
+                                    <label class="bank-account-field" for="bankSa100MileageNoteInput">
+                                        <span class="bank-field-label"><span>Journey note</span><small>Optional</small></span>
+                                        <input id="bankSa100MileageNoteInput" type="text" maxlength="180" placeholder="Client visits and supply collection">
+                                    </label>
+                                    <p class="bank-sa100-entry-preview" id="bankSa100MileagePreview"></p>
+                                </section>
+                                <section id="bankSa100ManualInvoiceFields" hidden>
+                                    <div class="bank-sa100-entry-grid">
+                                        <label class="bank-account-field" for="bankSa100ManualInvoiceDateInput">
+                                            <span class="bank-field-label"><span>Date</span><small>Required</small></span>
+                                            <input id="bankSa100ManualInvoiceDateInput" type="date" required>
+                                        </label>
+                                        <label class="bank-account-field" for="bankSa100ManualInvoiceAmountInput">
+                                            <span class="bank-field-label"><span>Amount</span><small>GBP</small></span>
+                                            <input id="bankSa100ManualInvoiceAmountInput" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="120.00" required>
+                                        </label>
+                                    </div>
+                                    <label class="bank-account-field" for="bankSa100ManualInvoiceSupplierInput">
+                                        <span class="bank-field-label"><span>Supplier</span><small>Required</small></span>
+                                        <input id="bankSa100ManualInvoiceSupplierInput" type="text" maxlength="120" placeholder="Supplier name" required>
+                                    </label>
+                                    <label class="bank-account-field" for="bankSa100ManualInvoiceDescriptionInput">
+                                        <span class="bank-field-label"><span>Description</span><small>Optional</small></span>
+                                        <input id="bankSa100ManualInvoiceDescriptionInput" type="text" maxlength="200" placeholder="Receipt or invoice note">
+                                    </label>
+                                    <label class="bank-account-field" for="bankSa100ManualInvoiceCategoryInput">
+                                        <span class="bank-field-label"><span>SA103F box</span><small>Required</small></span>
+                                        <select id="bankSa100ManualInvoiceCategoryInput"></select>
+                                    </label>
+                                </section>
+                            </div>
+                            <div class="bank-account-form-footer">
+                                <p class="detail-meta">These entries are included in SA100 totals and receipt exports for this account.</p>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="cancelBankSa100EntryPanelButton" type="button">Cancel</button>
+                                    <button class="primary-button" id="saveBankSa100EntryButton" type="submit">Save entry</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="meReportLossPanel" aria-modal="true" role="dialog" aria-labelledby="meReportLossTitle" hidden>
                     <div class="developer-log-card me-report-loss-card">
                         <form class="stack-form bank-account-dialog-form" id="meReportLossForm" novalidate>
@@ -15934,6 +16113,8 @@
             const PRACTICE_PACK_ASSIGNMENTS_KEY = `${STORAGE_KEY}:practice-pack-assignments`;
             const PRACTICE_PACK_HISTORY_KEY = `${STORAGE_KEY}:practice-pack-history`;
             const BANK_SA100_DISALLOWANCES_KEY = `${STORAGE_KEY}:bank-sa100-disallowances`;
+            const BANK_SA100_MILEAGE_ENTRIES_KEY = `${STORAGE_KEY}:bank-sa100-mileage-entries`;
+            const BANK_SA100_MANUAL_INVOICES_KEY = `${STORAGE_KEY}:bank-sa100-manual-invoices`;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
@@ -16366,9 +16547,13 @@
             let bankStatementAiAutocategorisedTransactionIds = new Set();
             let bankStatementSa100CategorisedAccountId = "";
             let bankStatementSa100Result = null;
+            let bankStatementSa100TaxYearFilter = "all";
             let bankStatementSa100DisallowanceMode = false;
             let bankStatementSa100DisallowanceSelectedIds = new Set();
             let bankStatementSa100Disallowances = loadBankSa100Disallowances();
+            let bankStatementSa100MileageEntries = loadBankSa100MileageEntries();
+            let bankStatementSa100ManualInvoices = loadBankSa100ManualInvoices();
+            let bankSa100EntryPanelState = { open: false, mode: "mileage" };
             let bankStatementUploadingAccountId = "";
             let bankStatementUploadingFilename = "";
             let bankStatementUploadStartedAt = 0;
@@ -24322,6 +24507,176 @@
                 renderBankStatementUploadPanel();
             }
 
+            function bankSa100EntryCategoryOptionsMarkup(selectedKey = "other-expenses") {
+                return sa100CategoryDefinitions
+                    .filter((category) => category.type !== "review")
+                    .map((category) => `
+                        <option value="${escapeHTML(category.key)}" ${selectedKey === category.key ? "selected" : ""}>
+                            ${escapeHTML(`${category.box} · ${category.label}`)}
+                        </option>
+                    `).join("");
+            }
+
+            function bankSa100MileageDraftPreview(accountId) {
+                const date = document.getElementById("bankSa100MileageDateInput")?.value || localDateKey();
+                const miles = Math.max(0, Number(document.getElementById("bankSa100MileageMilesInput")?.value || 0));
+                const hasPassenger = (document.getElementById("bankSa100MileagePassengersInput")?.value || "no") === "yes";
+                const baseEntries = bankSa100AccountMileageEntries(accountId);
+                const draftId = `draft-${Date.now()}`;
+                const rows = bankSa100MileageRowsFromEntries(
+                    [...baseEntries, {
+                        id: draftId,
+                        date,
+                        miles,
+                        hasPassenger,
+                        note: "",
+                        createdAt: new Date().toISOString()
+                    }].sort((left, right) => `${left.date || ""}|${left.createdAt || ""}|${left.id || ""}`.localeCompare(`${right.date || ""}|${right.createdAt || ""}|${right.id || ""}`))
+                );
+                return rows.find((row) => row.id === draftId) || null;
+            }
+
+            function openBankSa100EntryPanel(mode = "mileage") {
+                const account = selectedBankAccount();
+                if (!account || bankStatementSa100CategorisedAccountId !== account.id || !bankStatementSa100Result) {
+                    showToast("Run SA100 categorisation before adding adjustments", "error");
+                    return;
+                }
+                bankSa100EntryPanelState = { open: true, mode: mode === "manual-invoice" ? "manual-invoice" : "mileage" };
+                renderBankSa100EntryPanel();
+                setTimeout(() => {
+                    const focusId = bankSa100EntryPanelState.mode === "mileage" ? "bankSa100MileageMilesInput" : "bankSa100ManualInvoiceSupplierInput";
+                    document.getElementById(focusId)?.focus();
+                }, 0);
+            }
+
+            function closeBankSa100EntryPanel() {
+                bankSa100EntryPanelState = { ...bankSa100EntryPanelState, open: false };
+                renderBankSa100EntryPanel();
+            }
+
+            function renderBankSa100EntryPanel() {
+                const panel = document.getElementById("bankSa100EntryPanel");
+                if (!panel) return;
+                const account = selectedBankAccount();
+                const hasSa100Context = activeView === "bank-statements"
+                    && bankStatementAccountOpen
+                    && bankStatementAccountTab === "sa100"
+                    && Boolean(account)
+                    && bankStatementSa100CategorisedAccountId === account?.id
+                    && Boolean(bankStatementSa100Result);
+                const shouldShow = hasSa100Context && bankSa100EntryPanelState.open;
+                panel.hidden = !shouldShow;
+                if (!shouldShow) return;
+
+                const mode = bankSa100EntryPanelState.mode === "manual-invoice" ? "manual-invoice" : "mileage";
+                const title = document.getElementById("bankSa100EntryTitle");
+                if (title) title.textContent = mode === "mileage" ? "Add mileage adjustment" : "Add invoice not on bank statement";
+                const summary = document.getElementById("bankSa100EntrySummary");
+                if (summary) summary.textContent = mode === "mileage"
+                    ? "Mileage is applied to SA103F 20 with the correct UK rates by tax year."
+                    : "Manual invoices are included in SA100 totals and the exported receipt.";
+                const help = document.getElementById("bankSa100EntryHelp");
+                if (help) help.textContent = mode === "mileage"
+                    ? "Mileage rates: before 6 April 2026 uses 45p up to 10,000 miles then 25p above. From 6 April 2026 uses 55p up to 10,000 miles then 25p above. Passenger supplement adds 5p per mile."
+                    : "Use this for business invoices and receipts that are not present on uploaded bank statement lines.";
+                const error = document.getElementById("bankSa100EntryError");
+                if (error) error.textContent = "";
+                const mileageSection = document.getElementById("bankSa100MileageFields");
+                const manualSection = document.getElementById("bankSa100ManualInvoiceFields");
+                if (mileageSection) mileageSection.hidden = mode !== "mileage";
+                if (manualSection) manualSection.hidden = mode !== "manual-invoice";
+
+                const mileageDateInput = document.getElementById("bankSa100MileageDateInput");
+                if (mileageDateInput && !mileageDateInput.value) mileageDateInput.value = localDateKey();
+                const mileagePreview = document.getElementById("bankSa100MileagePreview");
+                const updatePreview = () => {
+                    if (!mileagePreview || !account) return;
+                    const draft = bankSa100MileageDraftPreview(account.id);
+                    if (!draft || draft.miles <= 0) {
+                        mileagePreview.textContent = "Enter miles to preview the deduction.";
+                        return;
+                    }
+                    mileagePreview.textContent = `${draft.taxYearLabel} · ${draft.miles.toLocaleString("en-GB", { maximumFractionDigits: 1 })} miles = ${formatCurrency(draft.totalAmount)} (${Math.round(draft.firstRate * 100)}p for ${draft.firstBandMiles.toLocaleString("en-GB", { maximumFractionDigits: 1 })} miles, 25p for ${draft.higherBandMiles.toLocaleString("en-GB", { maximumFractionDigits: 1 })} miles${draft.hasPassenger ? `, + passenger ${formatCurrency(draft.passengerAmount)}` : ""}).`;
+                };
+                ["bankSa100MileageDateInput", "bankSa100MileageMilesInput", "bankSa100MileagePassengersInput"].forEach((id) => {
+                    const element = document.getElementById(id);
+                    if (!element) return;
+                    element.oninput = updatePreview;
+                    element.onchange = updatePreview;
+                });
+                updatePreview();
+
+                const manualDateInput = document.getElementById("bankSa100ManualInvoiceDateInput");
+                if (manualDateInput && !manualDateInput.value) manualDateInput.value = localDateKey();
+                const manualCategorySelect = document.getElementById("bankSa100ManualInvoiceCategoryInput");
+                if (manualCategorySelect) {
+                    const selected = manualCategorySelect.value || "other-expenses";
+                    manualCategorySelect.innerHTML = bankSa100EntryCategoryOptionsMarkup(selected);
+                    manualCategorySelect.value = selected;
+                }
+            }
+
+            function saveBankSa100Entry(event) {
+                event.preventDefault();
+                const account = selectedBankAccount();
+                if (!account || bankStatementSa100CategorisedAccountId !== account.id || !bankStatementSa100Result) {
+                    return showToast("Run SA100 categorisation before saving adjustments", "error");
+                }
+                const mode = bankSa100EntryPanelState.mode === "manual-invoice" ? "manual-invoice" : "mileage";
+                const error = document.getElementById("bankSa100EntryError");
+                if (error) error.textContent = "";
+                if (mode === "mileage") {
+                    const date = document.getElementById("bankSa100MileageDateInput")?.value || localDateKey();
+                    const miles = Number(document.getElementById("bankSa100MileageMilesInput")?.value || 0);
+                    const hasPassenger = (document.getElementById("bankSa100MileagePassengersInput")?.value || "no") === "yes";
+                    const note = String(document.getElementById("bankSa100MileageNoteInput")?.value || "").trim();
+                    if (!date || !Number.isFinite(miles) || miles <= 0) {
+                        if (error) error.textContent = "Enter a valid mileage date and miles greater than zero.";
+                        return;
+                    }
+                    const entries = bankSa100AccountMileageEntries(account.id).slice();
+                    entries.push({
+                        id: `mileage-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                        date,
+                        miles: bankStatementRoundMoney(miles) || 0,
+                        hasPassenger,
+                        note,
+                        createdAt: new Date().toISOString()
+                    });
+                    bankSa100SetAccountMileageEntries(account.id, entries);
+                    recalculateBankSa100Result(account, true);
+                    closeBankSa100EntryPanel();
+                    showToast("Mileage entry added to SA100 workspace", "success");
+                    renderBankStatementsScreen();
+                    return;
+                }
+                const date = document.getElementById("bankSa100ManualInvoiceDateInput")?.value || localDateKey();
+                const supplier = String(document.getElementById("bankSa100ManualInvoiceSupplierInput")?.value || "").trim();
+                const description = String(document.getElementById("bankSa100ManualInvoiceDescriptionInput")?.value || "").trim();
+                const amount = Number(document.getElementById("bankSa100ManualInvoiceAmountInput")?.value || 0);
+                const categoryKey = String(document.getElementById("bankSa100ManualInvoiceCategoryInput")?.value || "other-expenses");
+                if (!date || !supplier || !Number.isFinite(amount) || amount <= 0) {
+                    if (error) error.textContent = "Enter a valid date, supplier, and amount greater than zero.";
+                    return;
+                }
+                const entries = bankSa100AccountManualInvoices(account.id).slice();
+                entries.push({
+                    id: `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    date,
+                    supplier,
+                    description,
+                    amount: bankStatementRoundMoney(amount) || 0,
+                    categoryKey,
+                    createdAt: new Date().toISOString()
+                });
+                bankSa100SetAccountManualInvoices(account.id, entries);
+                recalculateBankSa100Result(account, true);
+                closeBankSa100EntryPanel();
+                showToast("Manual invoice added to SA100 workspace", "success");
+                renderBankStatementsScreen();
+            }
+
             function closeBankTransactionReviewPanel() {
                 bankStatementReviewTransactionId = "";
                 renderBankTransactionReviewPanel();
@@ -25188,6 +25543,217 @@
                 }
             }
 
+            function loadBankSa100MileageEntries() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(BANK_SA100_MILEAGE_ENTRIES_KEY) || "{}");
+                    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+                } catch (error) {
+                    localStorage.removeItem(BANK_SA100_MILEAGE_ENTRIES_KEY);
+                    return {};
+                }
+            }
+
+            function saveBankSa100MileageEntries() {
+                try {
+                    localStorage.setItem(BANK_SA100_MILEAGE_ENTRIES_KEY, JSON.stringify(bankStatementSa100MileageEntries || {}));
+                } catch (error) {
+                    console.warn("Unable to persist SA100 mileage entries", error);
+                }
+            }
+
+            function loadBankSa100ManualInvoices() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(BANK_SA100_MANUAL_INVOICES_KEY) || "{}");
+                    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+                } catch (error) {
+                    localStorage.removeItem(BANK_SA100_MANUAL_INVOICES_KEY);
+                    return {};
+                }
+            }
+
+            function saveBankSa100ManualInvoices() {
+                try {
+                    localStorage.setItem(BANK_SA100_MANUAL_INVOICES_KEY, JSON.stringify(bankStatementSa100ManualInvoices || {}));
+                } catch (error) {
+                    console.warn("Unable to persist SA100 manual invoices", error);
+                }
+            }
+
+            function bankSa100AccountMileageEntries(accountId) {
+                const key = String(accountId || "");
+                if (!key) return [];
+                const entries = bankStatementSa100MileageEntries[key];
+                return Array.isArray(entries) ? entries : [];
+            }
+
+            function bankSa100AccountManualInvoices(accountId) {
+                const key = String(accountId || "");
+                if (!key) return [];
+                const entries = bankStatementSa100ManualInvoices[key];
+                return Array.isArray(entries) ? entries : [];
+            }
+
+            function bankSa100SetAccountMileageEntries(accountId, entries) {
+                const key = String(accountId || "");
+                if (!key) return;
+                bankStatementSa100MileageEntries = {
+                    ...bankStatementSa100MileageEntries,
+                    [key]: Array.isArray(entries) ? entries : []
+                };
+                saveBankSa100MileageEntries();
+            }
+
+            function bankSa100SetAccountManualInvoices(accountId, entries) {
+                const key = String(accountId || "");
+                if (!key) return;
+                bankStatementSa100ManualInvoices = {
+                    ...bankStatementSa100ManualInvoices,
+                    [key]: Array.isArray(entries) ? entries : []
+                };
+                saveBankSa100ManualInvoices();
+            }
+
+            function bankSa100CategoryByKey(key) {
+                return sa100CategoryDefinitions.find((category) => category.key === key)
+                    || sa100CategoryDefinitions.find((category) => category.key === "other-expenses")
+                    || sa100CategoryDefinitions[0];
+            }
+
+            function bankSa100TaxYearKey(dateValue) {
+                const parsed = bankDateFromISO(dateValue) || bankDateFromISO(localDateKey());
+                if (!parsed) return "";
+                const year = parsed.getUTCFullYear();
+                const month = parsed.getUTCMonth() + 1;
+                const day = parsed.getUTCDate();
+                const startYear = month < 4 || (month === 4 && day < 6) ? year - 1 : year;
+                return `${startYear}-${startYear + 1}`;
+            }
+
+            function bankSa100TaxYearLabel(key) {
+                const match = String(key || "").match(/^(\d{4})-(\d{4})$/);
+                if (!match) return "All tax years";
+                return `${match[1]}/${String(match[2]).slice(-2)}`;
+            }
+
+            function bankSa100TaxYearMatches(dateValue, taxYearKey) {
+                if (!taxYearKey || taxYearKey === "all") return true;
+                return bankSa100TaxYearKey(dateValue) === taxYearKey;
+            }
+
+            function bankSa100SortedMileageEntries(accountId) {
+                return bankSa100AccountMileageEntries(accountId).slice().sort((left, right) => {
+                    const leftKey = `${left.date || ""}|${left.createdAt || ""}|${left.id || ""}`;
+                    const rightKey = `${right.date || ""}|${right.createdAt || ""}|${right.id || ""}`;
+                    return leftKey.localeCompare(rightKey);
+                });
+            }
+
+            function bankSa100MileageRowsFromEntries(entries = []) {
+                const thresholdMiles = 10000;
+                const rateChangeTimestamp = Date.UTC(2026, 3, 6);
+                const milesByTaxYear = {};
+                return (entries || []).map((entry) => {
+                    const miles = Math.max(0, Number(entry?.miles || 0));
+                    const dateValue = entry?.date || localDateKey();
+                    const taxYearKey = bankSa100TaxYearKey(dateValue);
+                    const priorMiles = Number(milesByTaxYear[taxYearKey] || 0);
+                    const dateUtc = bankDateFromISO(dateValue)?.getTime() || Date.UTC(2026, 3, 6);
+                    const firstRate = dateUtc >= rateChangeTimestamp ? 0.55 : 0.45;
+                    const thresholdRemaining = Math.max(0, thresholdMiles - priorMiles);
+                    const firstBandMiles = Math.min(miles, thresholdRemaining);
+                    const higherBandMiles = Math.max(0, miles - firstBandMiles);
+                    const baseAmount = (firstBandMiles * firstRate) + (higherBandMiles * 0.25);
+                    const passengerAmount = entry?.hasPassenger ? miles * 0.05 : 0;
+                    const totalAmount = bankStatementRoundMoney(baseAmount + passengerAmount) || 0;
+                    milesByTaxYear[taxYearKey] = priorMiles + miles;
+                    return {
+                        id: String(entry?.id || `mileage-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+                        date: dateValue,
+                        miles,
+                        hasPassenger: Boolean(entry?.hasPassenger),
+                        note: String(entry?.note || ""),
+                        taxYearKey,
+                        taxYearLabel: bankSa100TaxYearLabel(taxYearKey),
+                        priorMiles,
+                        firstRate,
+                        firstBandMiles,
+                        higherBandMiles,
+                        passengerAmount: bankStatementRoundMoney(passengerAmount) || 0,
+                        totalAmount,
+                        createdAt: entry?.createdAt || ""
+                    };
+                });
+            }
+
+            function bankSa100MileageRows(accountId = "") {
+                return bankSa100MileageRowsFromEntries(bankSa100SortedMileageEntries(accountId));
+            }
+
+            function bankSa100ManualInvoiceRows(accountId = "") {
+                return bankSa100AccountManualInvoices(accountId).map((entry) => {
+                    const amount = Math.abs(Number(entry?.amount || 0));
+                    const category = bankSa100CategoryByKey(entry?.categoryKey || "other-expenses");
+                    const dateValue = entry?.date || localDateKey();
+                    return {
+                        id: String(entry?.id || `manual-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+                        date: dateValue,
+                        supplier: String(entry?.supplier || ""),
+                        description: String(entry?.description || ""),
+                        amount: bankStatementRoundMoney(amount) || 0,
+                        category,
+                        taxYearKey: bankSa100TaxYearKey(dateValue),
+                        createdAt: entry?.createdAt || ""
+                    };
+                }).filter((entry) => entry.amount > 0);
+            }
+
+            function bankSa100SupplementRows(accountId = "") {
+                const travelCategory = bankSa100CategoryByKey("travel");
+                const mileageEntries = bankSa100MileageRows(accountId);
+                const manualInvoices = bankSa100ManualInvoiceRows(accountId);
+                const mileageRows = mileageEntries.map((entry) => ({
+                    sourceType: "mileage",
+                    sourceId: entry.id,
+                    transaction: {
+                        id: `mileage:${entry.id}`,
+                        date: entry.date,
+                        description: `Mileage claim ${entry.miles.toLocaleString("en-GB", { maximumFractionDigits: 1 })} miles${entry.note ? ` · ${entry.note}` : ""}`
+                    },
+                    category: travelCategory,
+                    amount: entry.totalAmount,
+                    signedAmount: -entry.totalAmount,
+                    disallowedAmount: 0,
+                    taxAmount: entry.totalAmount,
+                    disallowance: null,
+                    payee: "Mileage claim",
+                    reference: entry.taxYearLabel,
+                    mileageEntry: entry
+                }));
+                const manualRows = manualInvoices.map((entry) => ({
+                    sourceType: "manual-invoice",
+                    sourceId: entry.id,
+                    transaction: {
+                        id: `manual:${entry.id}`,
+                        date: entry.date,
+                        description: entry.description || `Manual invoice · ${entry.supplier || "Supplier"}`
+                    },
+                    category: entry.category,
+                    amount: entry.amount,
+                    signedAmount: entry.category.type === "income" ? entry.amount : -entry.amount,
+                    disallowedAmount: 0,
+                    taxAmount: entry.amount,
+                    disallowance: null,
+                    payee: entry.supplier || "Manual invoice",
+                    reference: "Not on bank statement",
+                    manualInvoice: entry
+                }));
+                return {
+                    mileageEntries,
+                    manualInvoices,
+                    rows: [...mileageRows, ...manualRows]
+                };
+            }
+
             function bankSa100AccountDisallowances(accountId) {
                 const key = String(accountId || "");
                 if (!key) return {};
@@ -25207,13 +25773,19 @@
             }
 
             function bankSa100TransactionCanBeDisallowed(row) {
-                return row?.category?.type === "expense" && row.signedAmount < 0 && row.amount > 0;
+                return row?.sourceType !== "mileage"
+                    && row?.sourceType !== "manual-invoice"
+                    && row?.category?.type === "expense"
+                    && row.amount > 0;
             }
 
             function recalculateBankSa100Result(account, preserveTimestamp = false) {
                 if (!account) return;
+                const summary = bankStatementSa100Summary(bankAccountTransactionsAscending(account), account.id, {
+                    taxYearKey: bankStatementSa100TaxYearFilter
+                });
                 bankStatementSa100Result = {
-                    ...bankStatementSa100Summary(bankAccountTransactionsAscending(account), account.id),
+                    ...summary,
                     generatedAt: preserveTimestamp && bankStatementSa100Result?.generatedAt
                         ? bankStatementSa100Result.generatedAt
                         : new Date().toISOString()
@@ -25225,7 +25797,7 @@
                     const category = bankStatementSa100Category(transaction);
                     const signedAmount = Number(bankTransactionAmount(transaction) || 0);
                     const amount = Math.abs(signedAmount);
-                    const disallowedAmount = category.type === "expense" && signedAmount < 0
+                    const disallowedAmount = category.type === "expense" && amount > 0
                         ? bankSa100DisallowedAmount(accountId, transaction.id, amount)
                         : 0;
                     const taxAmount = category.type === "expense"
@@ -25245,8 +25817,56 @@
                 });
             }
 
-            function bankStatementSa100Summary(transactions, accountId = "") {
-                const rows = bankStatementSa100Rows(transactions, accountId);
+            function bankSa100TaxYearChoices(accountId = "", transactions = []) {
+                const keys = new Set();
+                (transactions || []).forEach((transaction) => {
+                    const key = bankSa100TaxYearKey(transaction?.date);
+                    if (key) keys.add(key);
+                });
+                bankSa100MileageRows(accountId).forEach((entry) => {
+                    if (entry.taxYearKey) keys.add(entry.taxYearKey);
+                });
+                bankSa100ManualInvoiceRows(accountId).forEach((entry) => {
+                    if (entry.taxYearKey) keys.add(entry.taxYearKey);
+                });
+                return [...keys].sort((left, right) => right.localeCompare(left));
+            }
+
+            function bankSa100EstimateTax(result = {}) {
+                const taxableProfit = Math.max(0, Number(result?.netProfit || 0));
+                const personalAllowance = 12570;
+                const basicBand = 37700;
+                const higherBand = 74970;
+                const taxableAfterAllowance = Math.max(0, taxableProfit - personalAllowance);
+                const basicTaxable = Math.min(taxableAfterAllowance, basicBand);
+                const higherTaxable = Math.min(Math.max(0, taxableAfterAllowance - basicBand), higherBand);
+                const additionalTaxable = Math.max(0, taxableAfterAllowance - basicBand - higherBand);
+                const incomeTax = bankStatementRoundMoney((basicTaxable * 0.2) + (higherTaxable * 0.4) + (additionalTaxable * 0.45)) || 0;
+
+                const niLower = 12570;
+                const niUpper = 50270;
+                const niMainBand = Math.max(0, Math.min(taxableProfit, niUpper) - niLower);
+                const niUpperBand = Math.max(0, taxableProfit - niUpper);
+                const class4Ni = bankStatementRoundMoney((niMainBand * 0.06) + (niUpperBand * 0.02)) || 0;
+                return {
+                    taxableProfit,
+                    incomeTax,
+                    class4Ni,
+                    combined: bankStatementRoundMoney(incomeTax + class4Ni) || 0
+                };
+            }
+
+            function bankStatementSa100Summary(transactions, accountId = "", options = {}) {
+                const allBankRows = bankStatementSa100Rows(transactions, accountId);
+                const supplements = bankSa100SupplementRows(accountId);
+                const allRows = [...allBankRows, ...supplements.rows];
+                const taxYearChoices = bankSa100TaxYearChoices(accountId, transactions);
+                const selectedTaxYear = options?.taxYearKey && options.taxYearKey !== "all"
+                    ? (taxYearChoices.includes(options.taxYearKey) ? options.taxYearKey : "all")
+                    : "all";
+                const rows = selectedTaxYear === "all"
+                    ? allRows
+                    : allRows.filter((row) => bankSa100TaxYearMatches(row.transaction?.date, selectedTaxYear));
                 const byKey = new Map(sa100CategoryDefinitions.map((category) => [category.key, {
                     key: category.key,
                     label: category.label,
@@ -25270,7 +25890,24 @@
                 const reviewTotal = totals.filter((row) => row.type === "review").reduce((sum, row) => sum + row.total, 0);
                 const disallowedTotal = totals.filter((row) => row.type === "expense").reduce((sum, row) => sum + row.disallowedTotal, 0);
                 const disallowedCount = rows.filter((row) => row.disallowedAmount > 0).length;
+                const mileageEntries = selectedTaxYear === "all"
+                    ? supplements.mileageEntries
+                    : supplements.mileageEntries.filter((entry) => entry.taxYearKey === selectedTaxYear);
+                const manualInvoices = selectedTaxYear === "all"
+                    ? supplements.manualInvoices
+                    : supplements.manualInvoices.filter((entry) => entry.taxYearKey === selectedTaxYear);
+                const estimates = bankSa100EstimateTax({ netProfit: incomeTotal - expenseTotal });
                 return {
+                    selectedTaxYear,
+                    taxYearChoices,
+                    bankRows: selectedTaxYear === "all"
+                        ? allBankRows
+                        : allBankRows.filter((row) => bankSa100TaxYearMatches(row.transaction?.date, selectedTaxYear)),
+                    supplementRows: selectedTaxYear === "all"
+                        ? supplements.rows
+                        : supplements.rows.filter((row) => bankSa100TaxYearMatches(row.transaction?.date, selectedTaxYear)),
+                    mileageEntries,
+                    manualInvoices,
                     rows,
                     totals,
                     incomeTotal,
@@ -25278,22 +25915,31 @@
                     disallowedTotal,
                     disallowedCount,
                     reviewTotal,
-                    netProfit: incomeTotal - expenseTotal
+                    netProfit: incomeTotal - expenseTotal,
+                    estimates
                 };
             }
 
             function bankStatementSa100SummaryMarkup(account) {
                 if (!account || bankStatementSa100CategorisedAccountId !== account.id || !bankStatementSa100Result) return "";
                 const result = bankStatementSa100Result;
-                const visibleTotals = result.totals.filter((row) => row.count > 0);
+                const visibleTotals = result.totals.filter((row) => row.count > 0 || row.key === "travel");
+                const taxYearOptions = [
+                    `<option value="all" ${result.selectedTaxYear === "all" ? "selected" : ""}>All tax years</option>`,
+                    ...(result.taxYearChoices || []).map((taxYear) => `<option value="${escapeHTML(taxYear)}" ${result.selectedTaxYear === taxYear ? "selected" : ""}>${escapeHTML(bankSa100TaxYearLabel(taxYear))}</option>`)
+                ].join("");
                 return `
                     <section class="bank-tax-summary-panel" aria-label="SA100 categorisation summary">
                         <div class="bank-tax-summary-head">
                             <div>
                                 <strong>SA100 self-employment categorisation</strong>
-                                <span>${result.rows.length.toLocaleString("en-GB")} transaction${result.rows.length === 1 ? "" : "s"} grouped to SA103F 2026 boxes${result.disallowedCount ? ` · ${result.disallowedCount.toLocaleString("en-GB")} disallowed adjustment${result.disallowedCount === 1 ? "" : "s"}` : ""}.</span>
+                                <span>${result.rows.length.toLocaleString("en-GB")} item${result.rows.length === 1 ? "" : "s"} grouped to SA103F boxes${result.disallowedCount ? ` · ${result.disallowedCount.toLocaleString("en-GB")} disallowed adjustment${result.disallowedCount === 1 ? "" : "s"}` : ""}.</span>
                             </div>
                             <div class="bank-tax-summary-actions">
+                                <label class="bank-account-field">
+                                    <span class="bank-field-label"><span>Tax year</span><small>Filter</small></span>
+                                    <select id="bankSa100TaxYearSelect">${taxYearOptions}</select>
+                                </label>
                                 <button class="ghost-button" id="toggleBankSa100DisallowanceModeButton" type="button">${bankStatementSa100DisallowanceMode ? "Cancel selection" : "Select disallowed"}</button>
                                 <button class="ghost-button" id="applyBankSa100DisallowanceButton" type="button" ${bankStatementSa100DisallowanceMode && bankStatementSa100DisallowanceSelectedIds.size ? "" : "disabled"}>Disallow selected</button>
                                 <button class="ghost-button" id="exportBankSa100ReceiptInlineButton" type="button">Export receipt</button>
@@ -25305,14 +25951,36 @@
                             <div class="bank-tax-summary-row"><span>Disallowed expenses</span><strong>${formatCurrency(result.disallowedTotal)}</strong></div>
                             <div class="bank-tax-summary-row"><span>Needs review</span><strong>${formatCurrency(result.reviewTotal)}</strong></div>
                             <div class="bank-tax-summary-row"><span>Indicative net profit</span><strong>${formatCurrency(result.netProfit)}</strong></div>
+                            <div class="bank-tax-summary-row"><span>Income Tax estimate</span><strong>${formatCurrency(result.estimates?.incomeTax || 0)}</strong></div>
+                            <div class="bank-tax-summary-row"><span>Class 4 NI estimate</span><strong>${formatCurrency(result.estimates?.class4Ni || 0)}</strong></div>
+                            <div class="bank-tax-summary-row"><span>Combined estimate</span><strong>${formatCurrency(result.estimates?.combined || 0)}</strong></div>
+                            <div class="bank-tax-summary-row"><span>Mileage adjustments</span><strong>${formatCurrency(result.mileageEntries.reduce((sum, row) => sum + row.totalAmount, 0))}</strong></div>
+                            <div class="bank-tax-summary-row"><span>Manual invoices added</span><strong>${formatCurrency(result.manualInvoices.reduce((sum, row) => sum + row.amount, 0))}</strong></div>
                             ${visibleTotals.map((row) => `
-                                <div class="bank-tax-summary-row">
-                                    <span>${escapeHTML(row.box)} · ${escapeHTML(row.label)} (${row.count.toLocaleString("en-GB")})</span>
-                                    <strong>${formatCurrency(row.total)}</strong>
-                                </div>
+                                ${row.key === "travel" ? `
+                                    <div class="bank-tax-summary-row is-travel">
+                                        <div class="bank-tax-summary-row-top">
+                                            <span>${escapeHTML(row.box)} · ${escapeHTML(row.label)} (${row.count.toLocaleString("en-GB")})</span>
+                                            <strong>${formatCurrency(row.total)}</strong>
+                                        </div>
+                                        <div class="bank-tax-summary-row-actions">
+                                            <button class="bank-tax-summary-mini-button" id="openBankSa100MileageEntryButton" type="button">Add mileage</button>
+                                            <button class="bank-tax-summary-mini-button" id="openBankSa100ManualInvoiceEntryButton" type="button">Add invoice not on bank</button>
+                                        </div>
+                                        <div class="bank-tax-summary-row-meta">
+                                            <span>Mileage entries: ${(result.mileageEntries || []).length.toLocaleString("en-GB")}</span>
+                                            <span>Manual invoices: ${(result.manualInvoices || []).length.toLocaleString("en-GB")}</span>
+                                        </div>
+                                    </div>
+                                ` : `
+                                    <div class="bank-tax-summary-row">
+                                        <span>${escapeHTML(row.box)} · ${escapeHTML(row.label)} (${row.count.toLocaleString("en-GB")})</span>
+                                        <strong>${formatCurrency(row.total)}</strong>
+                                    </div>
+                                `}
                             `).join("")}
                         </div>
-                        <p class="bank-tax-summary-note">Use this as a working receipt for SA103F copying. Select disallowed expenses to remove private, non-business, or part-business amounts from the tax figures before copying them into the return.</p>
+                        <p class="bank-tax-summary-note">This SA100 workspace is a drafting aid for the self-employment section only. Income Tax and NI are provisional estimates and full SA100 figures may change when the whole return is prepared. Use disallow, mileage, and manual invoice adjustments before exporting the working receipt.</p>
                     </section>
                 `;
             }
@@ -25323,10 +25991,14 @@
                 const transactions = bankAccountTransactionsAscending(account);
                 if (!transactions.length) return showToast("No bank transactions are available to categorise", "info");
                 bankStatementSa100CategorisedAccountId = account.id || "";
+                if (!["all", ...bankSa100TaxYearChoices(account.id, transactions)].includes(bankStatementSa100TaxYearFilter)) {
+                    bankStatementSa100TaxYearFilter = "all";
+                }
                 bankStatementSa100DisallowanceMode = false;
                 bankStatementSa100DisallowanceSelectedIds = new Set();
                 recalculateBankSa100Result(account);
-                showToast(`SA100 categorised ${transactions.length.toLocaleString("en-GB")} bank transaction${transactions.length === 1 ? "" : "s"}`, "success");
+                bankStatementAccountTab = "sa100";
+                showToast(`SA100 workspace prepared for ${transactions.length.toLocaleString("en-GB")} bank transaction${transactions.length === 1 ? "" : "s"}`, "success");
                 renderBankStatementsScreen();
             }
 
@@ -25419,9 +26091,37 @@
                 return bankTransactionAppliedAiCategory(transaction);
             }
 
-            function bankStatementXeroSuggestionMarkup(transaction, upload) {
+            function bankStatementXeroSuggestionMarkup(transaction, upload, sa100Row = null) {
                 const appliedCategory = bankTransactionAppliedAiCategory(transaction);
-                if (!appliedCategory) return "";
+                const sa100Meta = sa100Row?.category
+                    ? `
+                        <small class="bank-xero-suggestion-meta">
+                            <span class="bank-xero-tag is-sa100">SA100 ${escapeHTML(sa100Row.category.box || "")}</span>
+                            <span class="bank-xero-confidence">${escapeHTML(sa100Row.category.label || "SA100 category")}</span>
+                        </small>
+                    `
+                    : "";
+                if (!appliedCategory && !sa100Row) return "";
+                if (!appliedCategory && sa100Row) {
+                    const disallowanceHint = sa100Row.disallowedAmount > 0
+                        ? `Disallowed ${formatCurrency(sa100Row.disallowedAmount)}; tax ${formatCurrency(sa100Row.taxAmount)}`
+                        : "Included in SA100 workspace";
+                    return `
+                        <span class="bank-xero-suggestion is-sa100-only" title="${escapeHTML(`SA100 ${sa100Row.category?.box || ""} ${sa100Row.category?.label || ""}`)}">
+                            <span class="bank-xero-ai-mark" aria-hidden="true">SA100</span>
+                            <span class="bank-xero-suggestion-copy">
+                                <strong class="bank-xero-suggestion-code">
+                                    <span>${escapeHTML(sa100Row.category?.box || "--")}</span>
+                                    <em class="bank-xero-suggestion-name">${escapeHTML(sa100Row.category?.label || "SA100 category")}</em>
+                                </strong>
+                                <small class="bank-xero-suggestion-meta">
+                                    <span class="bank-xero-tag is-sa100">Tax workspace</span>
+                                    <span class="bank-xero-confidence">${escapeHTML(disallowanceHint)}</span>
+                                </small>
+                            </span>
+                        </span>
+                    `;
+                }
                 const suggestion = appliedCategory;
                 const title = [
                     `Applied: ${suggestion.code} ${suggestion.name}`,
@@ -25444,6 +26144,7 @@
                                 <span class="bank-xero-confidence">${Number(suggestion.confidence || 0)}% · ${escapeHTML(suggestion.source)}</span>
                                 <span class="bank-xero-applied-badge">Applied</span>
                             </small>
+                            ${sa100Meta}
                             <small class="bank-xero-reason">${escapeHTML(suggestion.reason)}</small>
                         </span>
                     </span>
@@ -25689,6 +26390,8 @@
                 bankStatementAiAutocategorisedTransactionIds = new Set();
                 bankStatementSa100CategorisedAccountId = "";
                 bankStatementSa100Result = null;
+                bankStatementSa100TaxYearFilter = "all";
+                bankSa100EntryPanelState = { ...bankSa100EntryPanelState, open: false };
             }
 
             function bankStatementAiAutocategorisationSuggestions(transactions) {
@@ -25876,10 +26579,37 @@
                     y += height;
                 }
 
+                function drawMileageRow(entry) {
+                    const calcText = `${Math.round(entry.firstRate * 100)}p x ${entry.firstBandMiles.toLocaleString("en-GB", { maximumFractionDigits: 1 })} miles, 25p x ${entry.higherBandMiles.toLocaleString("en-GB", { maximumFractionDigits: 1 })}${entry.hasPassenger ? `, passenger +${formatPdfMoney(entry.passengerAmount)}` : ""}`;
+                    const lines = pdfWrapText(calcText, 300, 6.9, "F1").slice(0, 2);
+                    const height = 30 + (lines.length * 7.2);
+                    ensureSpace(height);
+                    doc.line(left, y + height, right, y + height, "#edf1f7", 0.55);
+                    doc.text(formatDate(entry.date), left + 4, y + 14, 7, "F1", "#536782");
+                    doc.text(`${entry.miles.toLocaleString("en-GB", { maximumFractionDigits: 1 })} miles · ${entry.taxYearLabel}`, left + 66, y + 14, 7.2, "F2", "#1e2f4d");
+                    lines.forEach((line, index) => doc.text(line, left + 66, y + 22 + (index * 7.2), 6.9, "F1", "#536782"));
+                    doc.textRight(formatPdfMoney(entry.totalAmount), right - 4, y + 14, 7.2, "F2", "#1e2f4d");
+                    y += height;
+                }
+
+                function drawManualInvoiceRow(entry) {
+                    const description = [entry.supplier, entry.description].filter(Boolean).join(" - ");
+                    const lines = pdfWrapText(description || "Manual invoice", 312, 7, "F1").slice(0, 2);
+                    const height = 26 + (lines.length * 7.8);
+                    ensureSpace(height);
+                    doc.line(left, y + height, right, y + height, "#edf1f7", 0.55);
+                    doc.text(formatDate(entry.date), left + 4, y + 14, 7, "F1", "#536782");
+                    lines.forEach((line, index) => doc.text(line, left + 66, y + 14 + (index * 7.8), 7, index === 0 ? "F2" : "F1", "#1e2f4d"));
+                    doc.text(entry.category?.box || "SA103F", 372, y + 14, 7, "F2", "#536782");
+                    doc.textRight(formatPdfMoney(entry.amount), right - 4, y + 14, 7.2, "F2", "#1e2f4d");
+                    y += height;
+                }
+
                 drawHeader(false);
                 doc.text(client?.customerName || "Bank statement client", left, 126, 14, "F2", "#1e2f4d");
                 doc.text(bankAccountDetailLine(account), left, 144, 8.5, "F1", "#536782");
                 doc.text(`Generated ${formatDate(result.generatedAt || localDateKey())}`, left, 160, 8, "F1", "#8593ad");
+                doc.text(`Tax year view: ${result.selectedTaxYear === "all" ? "All tax years" : bankSa100TaxYearLabel(result.selectedTaxYear)}`, left, 172, 8, "F1", "#8593ad");
                 drawSummaryRow("Business income", formatPdfMoney(result.incomeTotal), left, 184, 96);
                 drawSummaryRow("Allowable expenses", formatPdfMoney(result.expenseTotal), left + 104, 184, 110);
                 drawSummaryRow("Disallowed", formatPdfMoney(result.disallowedTotal), left + 222, 184, 96);
@@ -25898,19 +26628,34 @@
                 result.totals.filter((row) => row.count > 0).forEach(drawBoxRow);
 
                 y += 16;
-                doc.text("Transaction receipt", left, y, 10.5, "F2", "#1e2f4d");
+                doc.text("Self-employment estimate guide", left, y, 10.5, "F2", "#1e2f4d");
                 y += 16;
-                result.rows.slice(0, 350).forEach(drawTransactionRow);
-                if (result.rows.length > 350) {
-                    ensureSpace(24);
-                    doc.text(`${(result.rows.length - 350).toLocaleString("en-GB")} additional transactions omitted from this receipt.`, left, y + 14, 8, "F1", "#8593ad");
-                    y += 24;
+                doc.text(`Income Tax estimate: ${formatPdfMoney(result.estimates?.incomeTax || 0)} · Class 4 NI estimate: ${formatPdfMoney(result.estimates?.class4Ni || 0)} · Combined: ${formatPdfMoney(result.estimates?.combined || 0)}`, left, y, 8, "F2", "#1e2f4d");
+                y += 12;
+                doc.text("This estimate supports SA100 drafting only. Final tax and NI may change when the full return is prepared.", left, y, 7.4, "F1", "#8593ad");
+                y += 18;
+
+                if ((result.mileageEntries || []).length) {
+                    doc.text("Mileage adjustments", left, y, 10, "F2", "#1e2f4d");
+                    y += 14;
+                    result.mileageEntries.forEach(drawMileageRow);
+                    y += 10;
                 }
+                if ((result.manualInvoices || []).length) {
+                    doc.text("Invoices not on bank statement", left, y, 10, "F2", "#1e2f4d");
+                    y += 14;
+                    result.manualInvoices.forEach(drawManualInvoiceRow);
+                    y += 10;
+                }
+
+                doc.text("Full transaction breakdown", left, y, 10.5, "F2", "#1e2f4d");
+                y += 16;
+                result.rows.forEach(drawTransactionRow);
 
                 doc.pages.forEach((_, index) => {
                     doc.withPage(index, () => {
                         doc.line(left, 812, right, 812, "#d8e1f1", 0.65);
-                        doc.text("Working receipt only. Review private, transfer, tax, and capital items before copying figures into a Self Assessment return.", left, 827, 7, "F1", "#8593ad");
+                        doc.text("Working receipt only for SA100 self-employment drafting. Verify adjustments and final tax calculations before submission.", left, 827, 7, "F1", "#8593ad");
                         doc.textRight(`Page ${index + 1} of ${doc.pages.length}`, right, 827, 7, "F1", "#8593ad");
                     });
                 });
@@ -26461,10 +27206,10 @@
                     return;
                 }
 
-                if (!["transactions", "history"].includes(bankStatementAccountTab)) bankStatementAccountTab = "transactions";
+                if (!["transactions", "sa100", "history"].includes(bankStatementAccountTab)) bankStatementAccountTab = "transactions";
                 const uploadById = bankUploadMap(account);
                 const transactions = bankAccountTransactionsAscending(account);
-                const filteredTransactions = transactions
+                const searchedTransactions = transactions
                     .filter((transaction) => bankTransactionMatchesSearch(transaction, uploadById.get(String(transaction.uploadId || "")), bankStatementTransactionSearchTerm))
                     .slice()
                     .reverse();
@@ -26478,11 +27223,15 @@
                 const hasTransactions = transactions.length > 0;
                 const hasSa100Result = bankStatementSa100CategorisedAccountId === account.id && Boolean(bankStatementSa100Result);
                 const canRunXeroCategorisation = hasTransactions && !bankStatementAiAutocategorisationRunning;
-                const sa100SelectionActive = bankStatementSa100DisallowanceMode
+                const sa100SelectionActive = bankStatementAccountTab === "sa100"
+                    && bankStatementSa100DisallowanceMode
                     && hasSa100Result
                     && Boolean(bankStatementSa100Result);
-                const sa100RowsByTransactionId = new Map((bankStatementSa100Result?.rows || []).map((row) => [String(row.transaction?.id || ""), row]));
-                const transactionRows = filteredTransactions.map((transaction) => {
+                const sa100RowsByTransactionId = new Map((bankStatementSa100Result?.bankRows || []).map((row) => [String(row.transaction?.id || ""), row]));
+                const visibleTransactions = bankStatementAccountTab === "sa100" && hasSa100Result
+                    ? searchedTransactions.filter((transaction) => sa100RowsByTransactionId.has(String(transaction.id || "")))
+                    : searchedTransactions;
+                const transactionRows = visibleTransactions.map((transaction) => {
                     const transactionIndex = transactions.indexOf(transaction);
                     const issue = bankTransactionIssue(transactions, transactionIndex);
                     const amount = bankTransactionAmount(transaction);
@@ -26542,7 +27291,7 @@
                             <td>${amount > 0 ? formatCurrency(amount) : ""}</td>
                             <td>${amount < 0 ? formatCurrency(Math.abs(amount)) : ""}</td>
                             <td>${balance === null ? "No balance" : formatCurrency(balance)}</td>
-                            <td>${bankStatementXeroSuggestionMarkup(transaction, upload)}</td>
+                            <td>${bankStatementXeroSuggestionMarkup(transaction, upload, sa100Row)}</td>
                         </tr>
                     `;
                 }).join("");
@@ -26577,66 +27326,70 @@
                         </tr>
                     `;
                 }).join("");
+                const historyTabMarkup = `
+                    <div class="jashflow-table-wrap">
+                        <table class="bank-upload-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Submission</th>
+                                    <th>Status</th>
+                                    <th>Statement period</th>
+                                    <th>Rows</th>
+                                    <th>Balances</th>
+                                    <th>Result</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>${uploadRows || '<tr><td colspan="7">No statement submissions have been uploaded for this bank account.</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                `;
+                const transactionTableMarkup = `
+                    <div class="bank-account-toolbar">
+                        <span class="detail-meta">${uploads.length.toLocaleString("en-GB")} submission${uploads.length === 1 ? "" : "s"} saved for this account</span>
+                        <button class="primary-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction Running" : "Upload and Extract"}</button>
+                    </div>
+                    <div class="bank-account-toolbar">
+                        <label class="search-wrap late-charge-search">
+                            <span class="search-icon">⌕</span>
+                            <input id="bankTransactionSearchInput" type="search" placeholder="Search transactions, type, amount, AI tag or code..." value="${escapeHTML(bankStatementTransactionSearchTerm)}">
+                        </label>
+                        <span class="detail-meta">Showing ${visibleTransactions.length.toLocaleString("en-GB")} of ${transactions.length.toLocaleString("en-GB")} transactions</span>
+                    </div>
+                    <div class="jashflow-table-wrap">
+                        <table class="bank-transaction-table${sa100SelectionActive ? " is-tax-selecting" : ""}">
+                            <thead>
+                                <tr>
+                                    ${sa100SelectionActive ? "<th>Tax</th>" : ""}
+                                    <th>Date</th>
+                                    <th>Payee</th>
+                                    <th>Description</th>
+                                    <th>Money in</th>
+                                    <th>Money out</th>
+                                    <th>Balance</th>
+                                    <th>AI Xero code</th>
+                                </tr>
+                            </thead>
+                            <tbody>${transactionRows || `<tr><td colspan="${sa100SelectionActive ? "8" : "7"}">No transactions match the current search.</td></tr>`}</tbody>
+                        </table>
+                    </div>
+                `;
                 const activeTabMarkup = bankStatementAccountTab === "history"
-                    ? `
-                        <div class="jashflow-table-wrap">
-                            <table class="bank-upload-history-table">
-                                <thead>
-                                    <tr>
-                                        <th>Submission</th>
-                                        <th>Status</th>
-                                        <th>Statement period</th>
-                                        <th>Rows</th>
-                                        <th>Balances</th>
-                                        <th>Result</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>${uploadRows || '<tr><td colspan="7">No statement submissions have been uploaded for this bank account.</td></tr>'}</tbody>
-                            </table>
-                        </div>
-                    `
-                    : `
-                        <div class="bank-account-toolbar">
-                            <span class="detail-meta">${uploads.length.toLocaleString("en-GB")} submission${uploads.length === 1 ? "" : "s"} saved for this account</span>
-                            <button class="primary-button" id="openBankStatementUploadButton" type="button" ${accountProcessing ? "disabled" : ""}>${accountProcessing ? "Extraction Running" : "Upload and Extract"}</button>
-                        </div>
-                        <div class="bank-account-toolbar">
-                            <label class="search-wrap late-charge-search">
-                                <span class="search-icon">⌕</span>
-                                <input id="bankTransactionSearchInput" type="search" placeholder="Search transactions, type, amount, AI tag or code..." value="${escapeHTML(bankStatementTransactionSearchTerm)}">
-                            </label>
-                            <span class="detail-meta">Showing ${filteredTransactions.length.toLocaleString("en-GB")} of ${transactions.length.toLocaleString("en-GB")} transactions</span>
-                        </div>
-                        <div class="jashflow-table-wrap">
-                            <table class="bank-transaction-table${sa100SelectionActive ? " is-tax-selecting" : ""}">
-                                <thead>
-                                    <tr>
-                                        ${sa100SelectionActive ? "<th>Tax</th>" : ""}
-                                        <th>Date</th>
-                                        <th>Payee</th>
-                                        <th>Description</th>
-                                        <th>Money in</th>
-                                        <th>Money out</th>
-                                        <th>Balance</th>
-                                        <th>AI Xero code</th>
-                                    </tr>
-                                </thead>
-                                <tbody>${transactionRows || `<tr><td colspan="${sa100SelectionActive ? "8" : "7"}">No transactions match the current search.</td></tr>`}</tbody>
-                            </table>
-                        </div>
-                    `;
+                    ? historyTabMarkup
+                    : bankStatementAccountTab === "sa100"
+                        ? `${hasSa100Result ? bankStatementSa100SummaryMarkup(account) : '<div class="empty-state"><p class="eyebrow">SA100 workspace</p><h4>Run SA100 categorisation for this account</h4><p>This opens a dedicated workspace with tax-year filtering, adjustments, and self-employment estimate cards.</p><button class="primary-button" id="runBankSa100CategorisationInlineButton" type="button">Run SA100 categorisation</button></div>'}${hasSa100Result ? transactionTableMarkup : ""}`
+                        : transactionTableMarkup;
                 detail.innerHTML = `
                     <div class="bank-account-page">
                     <div class="bank-account-action-bar">
                         <div>
                             <span>Selected account</span>
-                            <strong>${bankStatementAccountTab === "history" ? "Submission history" : "Transactions"}</strong>
+                            <strong>${bankStatementAccountTab === "history" ? "Submission history" : bankStatementAccountTab === "sa100" ? "SA100 workspace" : "Transactions"}</strong>
                         </div>
                         <div class="bank-account-actions">
                             <button class="ghost-button" id="backBankAccountsButton" type="button">Back to accounts</button>
                             ${(canRunXeroCategorisation || bankStatementAiAutocategorisationRunning) ? `<button class="ghost-button" id="runBankXeroCategorisationButton" type="button" ${canRunXeroCategorisation ? "" : "disabled"}>${bankStatementAiAutocategorisationRunning ? "Categorising..." : "Xero Categorisation"}</button>` : ""}
-                            ${hasTransactions ? '<button class="ghost-button" id="runBankSa100CategorisationButton" type="button">SA100 Categorisation</button>' : ""}
+                            ${hasTransactions ? '<button class="ghost-button" id="runBankSa100CategorisationButton" type="button">Open SA100 workspace</button>' : ""}
                             ${hasSa100Result ? '<button class="ghost-button" id="exportBankSa100ReceiptButton" type="button">Export SA100 receipt</button>' : ""}
                             <button class="ghost-button" id="editBankAccountButton" type="button">Edit account</button>
                             ${hasTransactions ? '<button class="ghost-button" id="exportBankTransactionsButton" type="button">Export transactions</button>' : ""}
@@ -26645,9 +27398,9 @@
                     </div>
                     <nav class="bank-account-tabs" aria-label="Bank account sections">
                         <button type="button" class="${bankStatementAccountTab === "transactions" ? "is-active" : ""}" data-bank-account-tab="transactions">Transactions</button>
+                        <button type="button" class="${bankStatementAccountTab === "sa100" ? "is-active" : ""}" data-bank-account-tab="sa100">SA100 workspace</button>
                         <button type="button" class="${bankStatementAccountTab === "history" ? "is-active" : ""}" data-bank-account-tab="history">Submission history</button>
                     </nav>
-                    ${bankStatementAccountTab === "transactions" ? bankStatementSa100SummaryMarkup(account) : ""}
                     ${activeTabMarkup}
                     </div>
                 `;
@@ -26655,6 +27408,7 @@
                     bankStatementAccountOpen = false;
                     bankAccountFormOpen = false;
                     bankStatementUploadPanelOpen = false;
+                    bankSa100EntryPanelState = { ...bankSa100EntryPanelState, open: false };
                     bankStatementAccountTab = "transactions";
                     bankStatementTransactionSearchTerm = "";
                     renderBankStatementsScreen();
@@ -26662,10 +27416,20 @@
                 document.getElementById("openBankStatementUploadButton")?.addEventListener("click", openBankStatementUploadPanel);
                 document.getElementById("runBankXeroCategorisationButton")?.addEventListener("click", applyBankStatementAiAutocategorisation);
                 document.getElementById("runBankSa100CategorisationButton")?.addEventListener("click", applyBankStatementSa100Categorisation);
+                document.getElementById("runBankSa100CategorisationInlineButton")?.addEventListener("click", applyBankStatementSa100Categorisation);
                 document.getElementById("exportBankSa100ReceiptButton")?.addEventListener("click", exportBankSa100Receipt);
                 document.getElementById("exportBankSa100ReceiptInlineButton")?.addEventListener("click", exportBankSa100Receipt);
                 document.getElementById("toggleBankSa100DisallowanceModeButton")?.addEventListener("click", toggleBankStatementSa100DisallowanceMode);
                 document.getElementById("applyBankSa100DisallowanceButton")?.addEventListener("click", applyBankStatementSa100Disallowance);
+                document.getElementById("openBankSa100MileageEntryButton")?.addEventListener("click", () => openBankSa100EntryPanel("mileage"));
+                document.getElementById("openBankSa100ManualInvoiceEntryButton")?.addEventListener("click", () => openBankSa100EntryPanel("manual-invoice"));
+                document.getElementById("bankSa100TaxYearSelect")?.addEventListener("change", (event) => {
+                    bankStatementSa100TaxYearFilter = event.target.value || "all";
+                    if (bankStatementSa100CategorisedAccountId === account.id && bankStatementSa100Result) {
+                        recalculateBankSa100Result(account, true);
+                    }
+                    renderBankStatementsScreen();
+                });
                 document.getElementById("editBankAccountButton")?.addEventListener("click", () => openBankAccountForm(account));
                 document.getElementById("exportBankTransactionsButton")?.addEventListener("click", exportBankTransactions);
                 document.getElementById("exportBankTransactionsXeroButton")?.addEventListener("click", exportBankTransactionsForXero);
@@ -26722,6 +27486,7 @@
                 renderBankStatementUploadPanel();
                 renderBankAccountPanel();
                 renderBankTransactionReviewPanel();
+                renderBankSa100EntryPanel();
             }
 
             async function addBankStatementClient(event) {
@@ -37171,6 +37936,7 @@
                 renderBankStatementsScreen();
                 renderBankAccountPanel();
                 renderBankStatementUploadPanel();
+                renderBankSa100EntryPanel();
                 renderIgnitionScreen();
                 renderMeReportScreen();
                 renderPracticePackScreen();
@@ -39574,6 +40340,7 @@
                     bankStatementWorkspaceOpen = false;
                     bankAccountFormOpen = false;
                     bankStatementUploadPanelOpen = false;
+                    bankSa100EntryPanelState = { ...bankSa100EntryPanelState, open: false };
                     bankStatementAccountTab = "transactions";
                     bankStatementTransactionSearchTerm = "";
                     renderBankStatementsScreen();
@@ -39602,6 +40369,16 @@
                 const bankStatementUploadPanel = document.getElementById("bankStatementUploadPanel");
                 if (bankStatementUploadPanel) bankStatementUploadPanel.addEventListener("click", (event) => {
                     if (event.target.id === "bankStatementUploadPanel") closeBankStatementUploadPanel();
+                });
+                const bankSa100EntryForm = document.getElementById("bankSa100EntryForm");
+                if (bankSa100EntryForm) bankSa100EntryForm.addEventListener("submit", saveBankSa100Entry);
+                const closeBankSa100EntryPanelButton = document.getElementById("closeBankSa100EntryPanelButton");
+                if (closeBankSa100EntryPanelButton) closeBankSa100EntryPanelButton.addEventListener("click", closeBankSa100EntryPanel);
+                const cancelBankSa100EntryPanelButton = document.getElementById("cancelBankSa100EntryPanelButton");
+                if (cancelBankSa100EntryPanelButton) cancelBankSa100EntryPanelButton.addEventListener("click", closeBankSa100EntryPanel);
+                const bankSa100EntryPanel = document.getElementById("bankSa100EntryPanel");
+                if (bankSa100EntryPanel) bankSa100EntryPanel.addEventListener("click", (event) => {
+                    if (event.target.id === "bankSa100EntryPanel") closeBankSa100EntryPanel();
                 });
                 document.querySelectorAll("[data-ignition-tab]").forEach((button) => {
                     button.addEventListener("click", () => activateIgnitionTab(button.dataset.ignitionTab || "overview"));
