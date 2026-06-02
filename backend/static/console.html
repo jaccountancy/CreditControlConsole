@@ -1113,14 +1113,17 @@
                 color: var(--red);
             }
             .topbar-contact-details-panel {
-                flex: 1 0 100%;
                 display: grid;
                 gap: 12px;
-                padding: 12px;
+                align-self: start;
+                padding: 14px;
                 border: 1px solid var(--line);
                 border-radius: 16px;
                 background: #ffffff;
                 box-shadow: 0 12px 24px rgba(41, 79, 148, 0.08);
+            }
+            .topbar-contact-details-panel.detail-panel {
+                margin: 0;
             }
             .topbar-contact-details-panel[hidden] {
                 display: none !important;
@@ -1234,6 +1237,21 @@
                 border: 1px dashed rgba(61, 85, 130, 0.18);
                 border-radius: 12px;
                 background: var(--surface-soft);
+            }
+            .client-contact-sidebar-card {
+                align-self: start;
+                position: sticky;
+                top: 88px;
+            }
+            .client-contact-sidebar-card .topbar-contact-details-grid,
+            .client-contact-sidebar-card .topbar-contact-note-form {
+                grid-template-columns: 1fr;
+            }
+            .client-contact-sidebar-card .topbar-contact-note-form button {
+                width: 100%;
+            }
+            .client-contact-sidebar-card .topbar-contact-notes-list {
+                max-height: 300px;
             }
             .bank-continuity-topbar-pill {
                 flex: 0 1 360px;
@@ -10545,6 +10563,12 @@
                 background: var(--purple-soft);
                 color: var(--purple);
             }
+            .client-transactions-layout {
+                display: grid;
+                grid-template-columns: minmax(248px, 300px) minmax(0, 1fr);
+                gap: 14px;
+                align-items: start;
+            }
             .client-kpi-strip {
                 grid-template-columns: repeat(4, minmax(0, 1fr));
                 margin: 0;
@@ -11888,6 +11912,7 @@
                 .bank-statement-workspace,
                 .ignition-workspace,
                 .me-report-dla-layout,
+                .client-transactions-layout,
                 .ignition-summary-grid,
                 .ignition-dataset-grid,
                 .ignition-report-row,
@@ -11896,6 +11921,7 @@
                 .client-sidebar,
                 .selected-invoice-panel,
                 .client-action-center,
+                .client-contact-sidebar-card,
                 .client-section-nav,
                 .client-action-bar {
                     position: static;
@@ -12413,43 +12439,16 @@
                         </div>
                         <div class="topbar-client-context" id="topbarClientContext" hidden>
                             <div class="topbar-client-pill" id="topbarClientPill">
-                                <button class="topbar-contact-strip" id="topbarClientButton" type="button" aria-expanded="false" aria-controls="topbarContactDetailsPanel">
+                                <div class="topbar-contact-strip" id="topbarClientButton">
                                     <span class="topbar-client-avatar" id="topbarClientAvatar">--</span>
                                     <span class="topbar-contact-copy">
                                         <strong id="topbarContactName">No client selected</strong>
                                         <small id="topbarContactMeta">Client account</small>
                                     </span>
-                                </button>
+                                </div>
                                 <span class="topbar-client-status" id="topbarClientStatus">Up To Date</span>
                                 <div class="topbar-client-metrics" id="topbarClientMetrics" aria-label="Client account summary"></div>
                             </div>
-                            <section class="topbar-contact-details-panel" id="topbarContactDetailsPanel" aria-label="Contact details and notes" hidden>
-                                <div class="topbar-contact-details-grid" aria-label="Contact details">
-                                    <article>
-                                        <span>Contact</span>
-                                        <strong id="topbarContactPanelName">--</strong>
-                                    </article>
-                                    <article>
-                                        <span>Email</span>
-                                        <a id="topbarContactPanelEmail">--</a>
-                                    </article>
-                                    <article>
-                                        <span>Telephone</span>
-                                        <a id="topbarContactPanelPhone">--</a>
-                                    </article>
-                                </div>
-                                <form class="topbar-contact-note-form" id="topbarContactNoteForm">
-                                    <textarea id="topbarContactNoteInput" rows="3" placeholder="Add a contact note"></textarea>
-                                    <button class="primary-button" type="submit">Add note</button>
-                                </form>
-                                <div class="topbar-contact-notes">
-                                    <div class="topbar-contact-notes-head">
-                                        <p class="eyebrow">Recent notes</p>
-                                        <span id="topbarContactNotesCount">0 notes</span>
-                                    </div>
-                                    <div class="topbar-contact-notes-list" id="topbarContactNotesList"></div>
-                                </div>
-                            </section>
                             <div class="xero-connect-wrap client-action-menu-wrap topbar-client-action-wrap" id="clientActionMenuWrap">
                                 <button class="ghost-button" id="clientActionMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Actions</button>
                                 <div class="xero-action-menu" id="clientActionMenu">
@@ -13514,6 +13513,34 @@
                                 </section>
 
                                 <section class="client-section-pane" data-client-pane="invoices">
+                                    <div class="client-transactions-layout">
+                                    <section class="topbar-contact-details-panel detail-panel client-contact-sidebar-card" id="topbarContactDetailsPanel" aria-label="Contact details and notes" hidden>
+                                        <div class="topbar-contact-details-grid" aria-label="Contact details">
+                                            <article>
+                                                <span>Contact</span>
+                                                <strong id="topbarContactPanelName">--</strong>
+                                            </article>
+                                            <article>
+                                                <span>Email</span>
+                                                <a id="topbarContactPanelEmail">--</a>
+                                            </article>
+                                            <article>
+                                                <span>Telephone</span>
+                                                <a id="topbarContactPanelPhone">--</a>
+                                            </article>
+                                        </div>
+                                        <form class="topbar-contact-note-form" id="topbarContactNoteForm">
+                                            <textarea id="topbarContactNoteInput" rows="3" placeholder="Add a contact note"></textarea>
+                                            <button class="primary-button" type="submit">Add note</button>
+                                        </form>
+                                        <div class="topbar-contact-notes">
+                                            <div class="topbar-contact-notes-head">
+                                                <p class="eyebrow">Recent notes</p>
+                                                <span id="topbarContactNotesCount">0 notes</span>
+                                            </div>
+                                            <div class="topbar-contact-notes-list" id="topbarContactNotesList"></div>
+                                        </div>
+                                    </section>
                                     <section class="detail-panel invoice-workspace-panel">
                                         <div class="panel-heading">
                                             <div>
@@ -13532,6 +13559,7 @@
                                         </div>
                                         <div class="client-statement-list" id="clientInvoiceList"></div>
                                     </section>
+                                    </div>
                                 </section>
 
                                 <section class="client-section-pane" data-client-pane="payments">
@@ -16189,6 +16217,26 @@
                 return (cleaned.length ? cleaned : descriptions).slice(0, 3).join(" · ");
             }
 
+            function cleanInvoiceServiceDescription(value) {
+                const text = String(value || "")
+                    .replace(/\bINV[-\s]?\d+\b/gi, "")
+                    .replace(/\binvoice\s*(number|no\.?|#)?\s*\d+\b/gi, "")
+                    .replace(/\b(subsction|subsciption|subcription)\b/gi, "subscription")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (!text) return "";
+                const letters = text.replace(/[^a-z]/gi, "");
+                const mostlyUpper = letters.length > 3 && letters === letters.toUpperCase();
+                return mostlyUpper ? titleCaseInvoiceDescription(text) : text.replace(/\bplan\b/gi, "Plan");
+            }
+
+            function invoiceServiceDescription(invoice) {
+                const descriptions = invoiceLineDescriptions(invoice)
+                    .map(cleanInvoiceServiceDescription)
+                    .filter((description) => description && !/^authorised$/i.test(description));
+                return descriptions.slice(0, 2).join(" · ");
+            }
+
             function invoiceAmountBreakdown(invoice) {
                 const amountDue = Math.max(0, Number(invoice?.amountDue || 0));
                 const amountPaid = Math.max(0, Number(invoice?.amountPaid || 0));
@@ -17632,13 +17680,6 @@
                         handleClientQuickAction(clientActionButton.dataset.clientAction);
                         return;
                     }
-                    const topbarClientButton = event.target.closest?.("#topbarClientButton");
-                    if (topbarClientButton) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        toggleTopbarContactDetails();
-                        return;
-                    }
                     const assignManagerButton = event.target.closest?.("#assignClientManagerButton, #actionCenterAssignClientManagerButton");
                     if (assignManagerButton) {
                         event.preventDefault();
@@ -18476,14 +18517,14 @@
                 const avatar = document.getElementById("topbarClientAvatar");
                 const contactName = document.getElementById("topbarContactName");
                 const contactMeta = document.getElementById("topbarContactMeta");
-                const button = document.getElementById("topbarClientButton");
+                const strip = document.getElementById("topbarClientButton");
                 if (avatar) avatar.textContent = clientInitials(topbarClient);
                 if (contactName) contactName.textContent = topbarClient.primaryPerson || name;
                 if (contactMeta) contactMeta.textContent = meta;
-                if (button) {
-                    button.title = `${topbarContactDetailsOpen ? "Hide" : "Show"} contact details for ${name}${meta ? ` · ${meta}` : ""}`;
-                    button.setAttribute("aria-label", `${topbarContactDetailsOpen ? "Hide" : "Show"} contact details for ${name}`);
-                    button.setAttribute("aria-expanded", topbarContactDetailsOpen ? "true" : "false");
+                if (strip) {
+                    strip.title = [name, meta].filter(Boolean).join(" · ");
+                    strip.removeAttribute("aria-label");
+                    strip.removeAttribute("aria-expanded");
                 }
                 renderTopbarContactDetailsPanel(topbarClient);
             }
@@ -18549,11 +18590,9 @@
 
             function renderTopbarContactDetailsPanel(client = currentClientForTopbar()) {
                 const panel = document.getElementById("topbarContactDetailsPanel");
-                const button = document.getElementById("topbarClientButton");
                 if (!panel) return;
-                const visible = Boolean(topbarContactDetailsOpen && activeView === "client" && client);
+                const visible = Boolean(activeView === "client" && client);
                 panel.hidden = !visible;
-                if (button) button.setAttribute("aria-expanded", visible ? "true" : "false");
                 if (!client) return;
                 const contactName = client.primaryPerson || client.name || "Contact";
                 const nameTarget = document.getElementById("topbarContactPanelName");
@@ -19538,6 +19577,7 @@
                     const date = invoice.invoiceDate || invoice.date || invoice.dueDate || "";
                     const dueText = invoice.dueDate ? `Due ${formatDate(invoice.dueDate)}` : "No due date";
                     const description = invoiceLineSummary(invoice);
+                    const serviceDescription = invoiceServiceDescription(invoice);
                     rows.push({
                         kind: "invoice",
                         invoiceId,
@@ -19547,6 +19587,7 @@
                         type: "Invoice raised",
                         title: invoice.invoiceNumber || "Invoice",
                         detail: [invoice.status || invoiceStatusLabel(invoice), dueText, description].filter(Boolean).join(" · "),
+                        serviceDescription,
                         debit: Number(invoice.amountDue || 0),
                         credit: 0,
                         currencyCode: invoice.currencyCode || "GBP",
@@ -19592,7 +19633,11 @@
                 const amountText = formatXeroCurrency(amount, entry.currencyCode || "GBP");
                 if (entry.kind === "invoice") {
                     const dueText = entry.source?.dueDate ? `due ${formatDate(entry.source.dueDate)}` : "with no due date";
-                    return `${entry.title} is an open invoice for ${amountText}, ${dueText}; match it against available credits or keep it in the chase queue.`;
+                    const service = entry.serviceDescription || invoiceServiceDescription(entry.source);
+                    if (service) {
+                        return `${entry.title} relates to ${service}; ${amountText} is outstanding and ${dueText}. Match it against available credits or keep it in the chase queue.`;
+                    }
+                    return `${entry.title} has ${amountText} outstanding and is ${dueText}. Match it against available credits or keep it in the chase queue.`;
                 }
                 if (entry.kind === "credit") {
                     return `${entry.title} is an unapplied credit note worth ${amountText}; it can reduce this client's open balance once allocated.`;
@@ -26024,7 +26069,7 @@
                 const submissions = meReportClientSubmissions(client);
                 const submission = submissions.find((item) => item.id === selectedMeReportSubmissionId) || submissions.find(meReportSubmissionProcessed) || submissions[0];
                 if (!submission) return null;
-                const summary = submission?.calculation || client.summary || {};
+                const summary = meReportAdjustedSummary(client, submission?.calculation || client.summary || {});
                 const title = meReportSubmissionTopbarTitle(client, submission);
                 return { client, submission, summary, title };
             }
@@ -26048,7 +26093,11 @@
                 const subtabLabel = meReportSubmissionTabs.find(([key]) => key === activeMeReportSubmissionTab)?.[1] || "Insights";
                 const completedAt = context.submission?.completedAt || context.submission?.createdAt;
                 const processedCopy = completedAt ? `Processed ${formatDate(completedAt)}` : "Overview report";
-                return `${context.submission?.filename || "JUK Overview Report"} · ${processedCopy} · ${subtabLabel}`;
+                const reportLabel = meReportSubmissionShortBookkeepingLabel(context.submission)
+                    || meReportSubmissionTableLabel(context.submission)
+                    || context.submission?.filename
+                    || "JUK Overview Report";
+                return `${reportLabel} · ${processedCopy} · ${subtabLabel}`;
             }
 
             function meReportSummaryMetricItems(summary = {}) {
@@ -26341,12 +26390,10 @@
                         ["reports", "Reports"]
                     ];
                     actionList.innerHTML = `
-                        <button class="primary-button" id="uploadMeReportOverviewButton" type="button" ${meReportUploadProcessing ? "disabled" : ""}>Upload overview report</button>
                         <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
                         <button class="ghost-button" id="setMeReportTradingLossButton" type="button">Set B/F loss</button>
                         ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                     `;
-                    document.getElementById("uploadMeReportOverviewButton")?.addEventListener("click", () => openMeReportSubmissionUpload(client.id));
                     document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
                     document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
                     actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
@@ -26471,7 +26518,7 @@
                 activeMeReportTab = "submission-history";
                 selectedMeReportSubmissionId = "";
                 renderMeReportScreen();
-                const fileInput = document.getElementById("meReportSubmissionFile");
+                const fileInput = document.getElementById("meReportBulkSubmissionFiles");
                 if (fileInput) fileInput.click();
             }
 
@@ -27932,6 +27979,20 @@
                 return monthLabel === "Undated reports" ? monthLabel : `${monthLabel} Bookkeeping`;
             }
 
+            function meReportSubmissionShortBookkeepingLabel(submission) {
+                const date = meReportSubmissionDate(submission);
+                if (!date) return "";
+                const month = new Intl.DateTimeFormat("en-GB", { month: "long" }).format(date);
+                return `${month} Bookkeeping`;
+            }
+
+            function meReportSubmissionTableLabel(submission) {
+                return meReportSubmissionShortBookkeepingLabel(submission)
+                    || meReportSubmissionBookkeepingLabel(submission)
+                    || String(submission?.filename || "JUK Overview Report").replace(/\.[^.]+$/, "").trim()
+                    || "JUK Overview Report";
+            }
+
             function meReportPeriodRangeLabel(summary = {}) {
                 const start = summary.periodStart || summary.period?.start || summary.reportingPeriodStart || "";
                 const end = summary.periodEnd || summary.period?.end || summary.reportingPeriodEnd || "";
@@ -28061,12 +28122,16 @@
             }
 
             function renderMeReportSubmissionHeader(client, submission, summary = {}) {
+                const reportLabel = meReportSubmissionShortBookkeepingLabel(submission)
+                    || meReportSubmissionTableLabel(submission)
+                    || submission?.filename
+                    || "Overview report";
                 return `
                     <div class="jashflow-detail-head me-report-report-toolbar me-report-report-summary-card">
                         <div>
                             <p class="eyebrow">JUK Overview Report insights</p>
                             <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionBookkeepingLabel(submission))}</h3>
-                            <p class="detail-meta">${escapeHTML(submission?.filename || "Overview report")} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
+                            <p class="detail-meta">${escapeHTML(reportLabel)} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
                         </div>
                         <div class="detail-actions">
                             <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
@@ -28760,18 +28825,9 @@
                         <div>
                             <p class="eyebrow">JUK Overview Reports</p>
                             <h3>${escapeHTML(client.clientName)}</h3>
-                            <p class="detail-meta">Every uploaded overview report is grouped by month and year. Open a fully processed report to review Profit and Loss insights, priorities, data quality checks and forecasts.</p>
+                            <p class="detail-meta">Every uploaded overview report is grouped by month and year. Use the top Upload overview button to add reports, then open a processed report to review Profit and Loss insights, priorities, data quality checks and forecasts.</p>
                         </div>
                     </div>
-                    <form class="bank-upload-form me-report-upload-form" id="meReportSubmissionForm">
-                        <label>
-                            Latest PDF
-                            <input id="meReportSubmissionFile" name="file" type="file" accept="application/pdf,.pdf" required>
-                        </label>
-                        <button class="ghost-button" id="previewSelectedMeReportFileButton" type="button" disabled>Preview selected</button>
-                        <button class="primary-button" type="submit" ${meReportUploadProcessing ? "disabled" : ""}>${meReportUploadProcessing ? "Processing..." : "Upload overview report"}</button>
-                    </form>
-                    <div class="me-report-submission-preview" id="meReportSubmissionPreview" hidden></div>
                     <div class="me-report-report-table" role="table" aria-label="JUK Overview Report uploads">
                         ${grouped.map((group) => `
                             <section class="me-report-month-group">
@@ -28791,9 +28847,11 @@
                                 </div>
                                 ${group.rows.map((submission) => {
                                     const processed = meReportSubmissionProcessed(submission);
+                                    const displayLabel = meReportSubmissionTableLabel(submission);
+                                    const sourceFilename = String(submission.filename || "").trim();
                                     return `
                                         <div class="me-report-report-row" role="row">
-                                            <span class="me-report-file-cell"><strong>${escapeHTML(submission.filename || "JUK overview report")}</strong><small>${escapeHTML(submission.summary || submission.errorMessage || "Jenius AI overview upload")}</small></span>
+                                            <span class="me-report-file-cell" title="${escapeHTML(sourceFilename || displayLabel)}"><strong>${escapeHTML(displayLabel)}</strong><small>${escapeHTML(submission.summary || submission.errorMessage || (sourceFilename ? `Source: ${sourceFilename}` : "Jenius AI overview upload"))}</small></span>
                                             <span>${escapeHTML(formatDate(submission.createdAt))}</span>
                                             <span><mark class="bank-status-pill is-${escapeHTML(String(submission.status || "saved").toLowerCase())}">${escapeHTML(submission.status || "saved")}</mark></span>
                                             <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
