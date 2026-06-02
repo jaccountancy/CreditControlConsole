@@ -203,7 +203,11 @@ def test_companies_house_connection() -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Companies House rejected the API credentials. Check environment and API key.",
         )
-    if response.status_code == status.HTTP_404_NOT_FOUND:
+    if response.status_code in {
+        status.HTTP_404_NOT_FOUND,
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    }:
         return {
             "connected": True,
             "environment": environment,
