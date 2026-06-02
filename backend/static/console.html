@@ -787,6 +787,11 @@
                 display: grid;
                 gap: 4px;
             }
+            .app-nav-group-toggle {
+                grid-template-columns: 26px minmax(0, 1fr) 16px;
+                align-items: center;
+                column-gap: 8px;
+            }
             .app-nav-submenu {
                 display: grid;
                 gap: 4px;
@@ -802,7 +807,7 @@
             }
             .app-nav-group.is-open .app-nav-submenu,
             .app-nav-group:focus-within .app-nav-submenu {
-                max-height: 128px;
+                max-height: 196px;
                 opacity: 1;
                 padding: 2px 0 4px 18px;
                 transform: translateY(0) scaleY(1);
@@ -846,7 +851,8 @@
             }
             .app-nav-group-toggle::after {
                 content: "";
-                justify-self: end;
+                grid-column: 3;
+                justify-self: center;
                 width: 7px;
                 height: 7px;
                 border-right: 2px solid currentColor;
@@ -870,6 +876,12 @@
             }
             .app-nav-submenu .app-nav-copy > span {
                 font-size: 0.64rem;
+            }
+            .app-nav-group-toggle .app-nav-copy > span {
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
             }
             .app-nav-button,
             .app-sidebar-link,
@@ -23149,11 +23161,12 @@
             }
 
             function syncCreditControlGroupState(activeSection = activeNavForView()) {
+                const activeGroup = Object.entries(sidebarNavGroups).find(([, sections]) => sections.has(activeSection))?.[0] || "";
                 Object.entries(sidebarNavGroups).forEach(([group, sections]) => {
                     const targetGroup = document.querySelector(`.app-nav-group[data-app-nav-group="${group}"]`);
                     if (!targetGroup) return;
                     const keepOpen = targetGroup.dataset.userOpen === "true";
-                    const shouldOpen = sections.has(activeSection) || keepOpen;
+                    const shouldOpen = activeGroup ? group === activeGroup : keepOpen;
                     setCreditControlGroupOpen(group, shouldOpen, false);
                 });
             }
@@ -23166,7 +23179,10 @@
                     || "credit-control";
                 const targetGroup = document.querySelector(`.app-nav-group[data-app-nav-group="${toggle}"]`);
                 if (!targetGroup) return;
-                setCreditControlGroupOpen(toggle, !targetGroup.classList.contains("is-open"));
+                const willOpen = !targetGroup.classList.contains("is-open");
+                Object.keys(sidebarNavGroups).forEach((group) => {
+                    setCreditControlGroupOpen(group, group === toggle ? willOpen : false, true);
+                });
             }
 
             function handleAppNavigation(section, event = null) {
