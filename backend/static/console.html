@@ -14927,10 +14927,26 @@
                 padding-bottom: 14px;
                 border-bottom: 1px solid var(--line);
             }
+            #xeroLockDateScreen .xero-lock-date-hero {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 14px 18px;
+            }
+            #xeroLockDateScreen .xero-lock-date-hero-main {
+                min-width: 0;
+                display: grid;
+                gap: 10px;
+            }
+            #xeroLockDateScreen .xero-lock-date-hero-main .detail-meta {
+                margin: 0;
+            }
             #xeroLockDateScreen .detail-actions {
                 gap: 8px;
                 flex-wrap: wrap;
                 justify-content: flex-end;
+            }
+            #xeroLockDateScreen .xero-lock-date-hero .detail-actions {
+                align-self: start;
             }
             #xeroLockDateScreen .late-charge-summary {
                 margin: 0;
@@ -14949,6 +14965,9 @@
                 background: linear-gradient(145deg, rgba(233, 241, 255, 0.9), rgba(255, 255, 255, 0.95));
                 display: grid;
                 gap: 8px;
+            }
+            #xeroLockDateScreen .xero-lock-date-hero .xero-lock-date-top-pill {
+                width: 100%;
             }
             .xero-lock-date-stats {
                 display: flex;
@@ -15039,6 +15058,9 @@
             @media (max-width: 960px) {
                 #xeroLockDateScreen .detail-hero {
                     flex-direction: column;
+                }
+                #xeroLockDateScreen .xero-lock-date-hero {
+                    grid-template-columns: minmax(0, 1fr);
                 }
                 #xeroLockDateScreen .detail-actions {
                     width: 100%;
@@ -16034,7 +16056,10 @@
                                         <p class="eyebrow">Xero lock controls</p>
                                         <h3>Tenant to Companies House mapping</h3>
                                     </div>
-                                    <button class="ghost-button" id="settingsRefreshLockDateMappingsButton" type="button">Refresh</button>
+                                    <div class="detail-actions">
+                                        <button class="primary-button" id="settingsConnectClientXerosButton" type="button">Connect Client Xeros</button>
+                                        <button class="ghost-button" id="settingsRefreshLockDateMappingsButton" type="button">Refresh</button>
+                                    </div>
                                 </div>
                                 <p class="settings-help" id="settingsLockDateMappingsSummary">Load tenants to configure mapping.</p>
                                 <p class="settings-help" id="settingsLockDateMappingsHealth">Companies House API status not checked yet.</p>
@@ -17191,11 +17216,16 @@
 
                     <section class="late-charges-screen detail-card" id="xeroLockDateScreen" hidden>
                         <section class="detail-panel">
-                            <div class="detail-hero">
-                                <div>
+                            <div class="detail-hero xero-lock-date-hero">
+                                <div class="xero-lock-date-hero-main">
                                     <p class="eyebrow">Cross-tenant lock controls</p>
                                     <h3>Xero lock-date overview</h3>
                                     <p class="detail-meta">Monitor all connected Xero organisations, map each tenant to a Companies House company, and flag accounts filed where period lock dates are still open.</p>
+                                    <article class="xero-lock-date-top-pill">
+                                        <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
+                                        <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
+                                        <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
+                                    </article>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
@@ -17203,11 +17233,6 @@
                                     <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
                                 </div>
                             </div>
-                            <article class="xero-lock-date-top-pill">
-                                <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
-                                <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
-                                <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
-                            </article>
                             <div class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Xero lock dates">
                                     <thead>
@@ -41349,6 +41374,22 @@
                     sidebarConnectButton.disabled = isSyncing || syncBlockedByRateLimit;
                     sidebarConnectButton.title = syncBlockedByRateLimit ? rateLimitCopy : "";
                 }
+                const settingsConnectClientXerosButton = document.getElementById("settingsConnectClientXerosButton");
+                if (settingsConnectClientXerosButton) {
+                    settingsConnectClientXerosButton.textContent = syncBlockedByRateLimit
+                        ? "Xero Paused"
+                        : isSyncing
+                            ? "Syncing from Xero..."
+                            : connected
+                                ? "Resync Client Xeros"
+                                : "Connect Client Xeros";
+                    settingsConnectClientXerosButton.disabled = isSyncing || syncBlockedByRateLimit;
+                    settingsConnectClientXerosButton.title = syncBlockedByRateLimit
+                        ? rateLimitCopy
+                        : connected
+                            ? "Refresh connected client data from Xero"
+                            : "Open the Xero connection flow for client data";
+                }
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget) {
                     ignitionTopbarWidget.hidden = !shouldShowIgnitionTopbarWidget();
@@ -46198,6 +46239,18 @@
                         loadXeroLockDateCHHealth(true);
                     });
                 }
+                const populateXeroLockDateMappingsButton = document.getElementById("populateXeroLockDateMappingsButton");
+                if (populateXeroLockDateMappingsButton && populateXeroLockDateMappingsButton.dataset.lockDateWired !== "true") {
+                    populateXeroLockDateMappingsButton.dataset.lockDateWired = "true";
+                    populateXeroLockDateMappingsButton.addEventListener("click", () => {
+                        populateMissingXeroLockDateMappings(populateXeroLockDateMappingsButton);
+                    });
+                }
+                const identifyXeroLockMismatchesButton = document.getElementById("identifyXeroLockMismatchesButton");
+                if (identifyXeroLockMismatchesButton && identifyXeroLockMismatchesButton.dataset.lockDateWired !== "true") {
+                    identifyXeroLockMismatchesButton.dataset.lockDateWired = "true";
+                    identifyXeroLockMismatchesButton.addEventListener("click", () => identifyXeroLockMismatches(true));
+                }
                 const settingsRefreshLockDateMappingsButton = document.getElementById("settingsRefreshLockDateMappingsButton");
                 if (settingsRefreshLockDateMappingsButton && settingsRefreshLockDateMappingsButton.dataset.lockDateWired !== "true") {
                     settingsRefreshLockDateMappingsButton.dataset.lockDateWired = "true";
@@ -46205,6 +46258,11 @@
                         loadXeroLockDateOverview(true);
                         loadXeroLockDateCHHealth(true);
                     });
+                }
+                const settingsConnectClientXerosButton = document.getElementById("settingsConnectClientXerosButton");
+                if (settingsConnectClientXerosButton && settingsConnectClientXerosButton.dataset.lockDateWired !== "true") {
+                    settingsConnectClientXerosButton.dataset.lockDateWired = "true";
+                    settingsConnectClientXerosButton.addEventListener("click", handleSidebarConnectButton);
                 }
                 const menuBankStatementsButton = document.getElementById("menuBankStatementsButton");
                 if (menuBankStatementsButton) menuBankStatementsButton.addEventListener("click", openBankStatementsScreen);
