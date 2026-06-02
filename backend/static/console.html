@@ -1205,7 +1205,8 @@
             .bank-account-topbar-summary,
             .credit-control-topbar-summary,
             .insights-topbar-summary,
-            .practice-pack-topbar-summary { order: 20; }
+            .practice-pack-topbar-summary,
+            .confirmation-statements-topbar-summary { order: 20; }
             .bank-continuity-topbar-pill { order: 24; }
             .ignition-topbar-tabs,
             .me-report-topbar-actions,
@@ -1236,6 +1237,7 @@
             .ledger-topbar.has-inline-status .credit-control-topbar-summary,
             .ledger-topbar.has-inline-status .insights-topbar-summary,
             .ledger-topbar.has-inline-status .practice-pack-topbar-summary,
+            .ledger-topbar.has-inline-status .confirmation-statements-topbar-summary,
             .ledger-topbar.has-inline-status .bank-continuity-topbar-pill,
             .ledger-topbar.has-inline-status .ignition-topbar-tabs,
             .ledger-topbar.has-inline-status .me-report-topbar-actions,
@@ -1692,7 +1694,8 @@
             .lpc-topbar-summary,
             .bank-account-topbar-summary,
             .credit-control-topbar-summary,
-            .practice-pack-topbar-summary {
+            .practice-pack-topbar-summary,
+            .confirmation-statements-topbar-summary {
                 flex: 1 1 720px;
                 min-width: min(760px, 100%);
                 display: grid;
@@ -1737,6 +1740,12 @@
                 min-width: min(880px, 100%);
                 max-width: 980px;
                 grid-template-columns: repeat(6, minmax(86px, 1fr));
+            }
+            .confirmation-statements-topbar-summary {
+                flex: 1 1 1080px;
+                min-width: min(980px, 100%);
+                max-width: none;
+                grid-template-columns: repeat(7, minmax(98px, 1fr)) auto;
             }
             .me-report-topbar-actions {
                 flex: 1 1 520px;
@@ -1801,6 +1810,7 @@
             .jashflow-topbar-summary[hidden],
             .lpc-topbar-summary[hidden],
             .practice-pack-topbar-summary[hidden],
+            .confirmation-statements-topbar-summary[hidden],
             .me-report-topbar-actions[hidden],
             .bank-account-topbar-summary[hidden],
             .credit-control-topbar-summary[hidden] { display: none; }
@@ -1918,6 +1928,127 @@
                 cursor: pointer;
                 font: inherit;
                 text-align: left;
+            }
+            .confirmation-statements-topbar-summary article {
+                position: relative;
+                min-width: 0;
+                padding: 9px 10px;
+                background: rgba(248, 251, 255, 0.92);
+                transition: background 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .confirmation-statements-topbar-summary article::before {
+                content: "";
+                position: absolute;
+                left: 0;
+                top: 9px;
+                bottom: 9px;
+                width: 3px;
+                border-radius: 999px;
+                background: var(--topbar-accent);
+                opacity: 0;
+                transform: scaleY(0.48);
+                transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            .confirmation-statements-topbar-summary article:hover {
+                background: rgba(255, 255, 255, 0.98);
+                transform: translateY(-1px);
+            }
+            .confirmation-statements-topbar-summary article:hover::before,
+            .ledger-topbar.has-inline-status .confirmation-statements-topbar-summary article:first-child::before {
+                opacity: 1;
+                transform: scaleY(1);
+            }
+            .confirmation-statements-topbar-summary span,
+            .confirmation-statements-topbar-summary strong,
+            .confirmation-statements-topbar-summary small {
+                display: block;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .confirmation-statements-topbar-summary span {
+                color: var(--muted);
+                font-size: 0.56rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .confirmation-statements-topbar-summary strong {
+                margin-top: 3px;
+                color: var(--ink);
+                font-size: 0.82rem;
+                font-weight: 950;
+            }
+            .confirmation-statements-topbar-summary small {
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 0.6rem;
+                font-weight: 800;
+            }
+            .confirmation-statements-topbar-summary article.is-warn strong { color: var(--orange); }
+            .confirmation-statements-topbar-summary article.is-bad strong { color: var(--red); }
+            .confirmation-statements-topbar-summary article.is-good strong { color: var(--green); }
+            .ch-topbar-sync-button {
+                align-self: stretch;
+                justify-self: stretch;
+                min-width: 44px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0;
+                padding: 0 12px;
+                border: 0;
+                border-left: 1px solid rgba(61, 85, 130, 0.11);
+                background: rgba(248, 251, 255, 0.92);
+                color: var(--blue);
+                cursor: pointer;
+                font: inherit;
+                font-weight: 900;
+                overflow: hidden;
+                transition: background 0.2s ease, color 0.2s ease;
+            }
+            .ch-topbar-sync-button:hover,
+            .ch-topbar-sync-button:focus-visible {
+                background: rgba(233, 241, 255, 0.92);
+                color: #154db5;
+                outline: none;
+            }
+            .ch-topbar-sync-button:disabled {
+                cursor: not-allowed;
+                opacity: 0.7;
+            }
+            .ch-topbar-sync-button .sync-icon {
+                width: 17px;
+                height: 17px;
+                flex: 0 0 17px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2.2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .ch-topbar-sync-button .sync-label {
+                max-width: 0;
+                opacity: 0;
+                transform: translateX(-4px);
+                white-space: nowrap;
+                font-size: 0.72rem;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                transition: max-width 0.22s ease, opacity 0.18s ease, transform 0.22s ease;
+            }
+            .ch-topbar-sync-button:hover .sync-label,
+            .ch-topbar-sync-button:focus-visible .sync-label,
+            .ch-topbar-sync-button.is-syncing .sync-label {
+                max-width: 120px;
+                opacity: 1;
+                transform: translateX(0);
+            }
+            .ch-topbar-sync-button.is-syncing .sync-icon {
+                animation: ch-topbar-sync-spin 0.9s linear infinite;
+            }
+            @keyframes ch-topbar-sync-spin {
+                to { transform: rotate(360deg); }
             }
             .lpc-topbar-summary button {
                 border: 0;
@@ -2161,7 +2292,8 @@
             .ledger-topbar.has-inline-status .credit-control-topbar-summary,
             .ledger-topbar.has-inline-status .insights-topbar-summary,
             .ledger-topbar.has-inline-status .bank-account-topbar-summary,
-            .ledger-topbar.has-inline-status .practice-pack-topbar-summary {
+            .ledger-topbar.has-inline-status .practice-pack-topbar-summary,
+            .ledger-topbar.has-inline-status .confirmation-statements-topbar-summary {
                 flex: 1 1 480px;
                 min-width: min(480px, 100%);
             }
@@ -2208,11 +2340,31 @@
             .ledger-topbar.is-topbar-dense .credit-control-topbar-summary,
             .ledger-topbar.is-topbar-dense .insights-topbar-summary,
             .ledger-topbar.is-topbar-dense .bank-account-topbar-summary,
-            .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary {
+            .ledger-topbar.is-topbar-dense .practice-pack-topbar-summary,
+            .ledger-topbar.is-topbar-dense .confirmation-statements-topbar-summary {
                 flex-basis: 330px;
                 min-width: min(330px, 100%);
                 grid-template-columns: repeat(5, minmax(74px, 1fr));
                 border-radius: 10px;
+            }
+            .ledger-topbar.is-topbar-dense .confirmation-statements-topbar-summary {
+                flex-basis: 720px;
+                min-width: min(650px, 100%);
+                grid-template-columns: repeat(4, minmax(90px, 1fr)) repeat(3, minmax(100px, 1fr)) auto;
+            }
+            .ledger-topbar.is-topbar-dense .confirmation-statements-topbar-summary article {
+                padding: 7px 8px;
+            }
+            .ledger-topbar.is-topbar-dense .confirmation-statements-topbar-summary span {
+                font-size: 0.52rem;
+                letter-spacing: 0.06em;
+            }
+            .ledger-topbar.is-topbar-dense .confirmation-statements-topbar-summary strong {
+                margin-top: 2px;
+                font-size: 0.74rem;
+            }
+            .ledger-topbar.is-topbar-dense .confirmation-statements-topbar-summary small {
+                font-size: 0.55rem;
             }
             .ledger-topbar.is-topbar-dense .bank-account-topbar-summary.is-bank-overview {
                 flex: 0 1 clamp(300px, 25vw, 430px);
@@ -2291,6 +2443,7 @@
             .ledger-topbar.is-topbar-stacked .insights-topbar-summary,
             .ledger-topbar.is-topbar-stacked .bank-account-topbar-summary,
             .ledger-topbar.is-topbar-stacked .practice-pack-topbar-summary,
+            .ledger-topbar.is-topbar-stacked .confirmation-statements-topbar-summary,
             .ledger-topbar.is-topbar-stacked .ignition-topbar-tabs,
             .ledger-topbar.is-topbar-stacked .me-report-topbar-actions,
             .ledger-topbar.is-topbar-stacked .topbar-client-context,
@@ -2308,6 +2461,7 @@
             .ledger-topbar.is-topbar-stacked .insights-topbar-summary,
             .ledger-topbar.is-topbar-stacked .bank-account-topbar-summary,
             .ledger-topbar.is-topbar-stacked .practice-pack-topbar-summary,
+            .ledger-topbar.is-topbar-stacked .confirmation-statements-topbar-summary,
             .ledger-topbar.is-topbar-stacked .ignition-topbar-tabs,
             .ledger-topbar.is-topbar-stacked .me-report-topbar-actions,
             .ledger-topbar.is-topbar-stacked .topbar-client-context,
@@ -5816,6 +5970,10 @@
                 flex-wrap: wrap;
                 gap: 8px;
                 margin-top: 14px;
+            }
+            .client-account-status-button {
+                width: 100%;
+                margin-top: 10px;
             }
             .client-profile-action {
                 min-height: 34px;
@@ -11833,6 +11991,29 @@
                 gap: 8px;
                 flex-wrap: wrap;
             }
+            .client-split-bulk-action {
+                display: inline-flex;
+                align-items: stretch;
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                overflow: hidden;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .client-split-bulk-action .ghost-button {
+                margin: 0;
+                border: 0;
+                border-radius: 0;
+                min-height: 40px;
+                padding: 0 14px;
+                background: transparent;
+            }
+            .client-split-bulk-action .ghost-button + .ghost-button {
+                border-left: 1px solid var(--line);
+            }
+            .client-split-bulk-action .ghost-button:disabled {
+                opacity: 0.58;
+                cursor: not-allowed;
+            }
             .client-transaction-toggle {
                 min-height: 42px;
                 display: inline-flex;
@@ -13898,6 +14079,8 @@
             .ch-import-summary article strong { font-size: 22px; color: var(--ink); }
             .ch-import-summary article.is-error strong { color: var(--red); }
             .ch-import-summary article.is-warn strong { color: var(--orange); }
+            .ch-import-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+            .ch-import-pager-status { color: var(--muted); font-size: 12px; font-weight: 700; }
             .ch-import-row.is-error td { background: rgba(255, 83, 83, 0.06); }
             .ch-import-row.is-update td { background: rgba(29, 103, 242, 0.05); }
             .ch-import-row.is-create td { background: rgba(39, 176, 95, 0.05); }
@@ -14144,6 +14327,47 @@
                         </div>
                         <div class="lpc-topbar-summary" id="lpcTopbarSummary" aria-label="Late payment charges summary" hidden></div>
                         <div class="lpc-topbar-summary bad-debt-topbar-summary" id="badDebtTopbarSummary" aria-label="Bad debt ageing summary" hidden></div>
+                        <div class="confirmation-statements-topbar-summary" id="confirmationStatementsTopbarSummary" aria-label="Confirmation statements overview" hidden>
+                            <article>
+                                <span>Total Companies</span>
+                                <strong id="chTopbarTotalCompanies">0</strong>
+                                <small>Managed list</small>
+                            </article>
+                            <article class="is-warn">
+                                <span>Due ≤30 Days</span>
+                                <strong id="chTopbarDueSoon">0</strong>
+                                <small>Upcoming deadlines</small>
+                            </article>
+                            <article class="is-bad">
+                                <span>Overdue</span>
+                                <strong id="chTopbarOverdue">0</strong>
+                                <small>Past deadline</small>
+                            </article>
+                            <article class="is-warn">
+                                <span>Missing Auth</span>
+                                <strong id="chTopbarMissingAuth">0</strong>
+                                <small>Needs auth code</small>
+                            </article>
+                            <article class="is-good">
+                                <span>Ready To File</span>
+                                <strong id="chTopbarReadyToFile">0</strong>
+                                <small>Can submit now</small>
+                            </article>
+                            <article>
+                                <span>Blocked / Paused</span>
+                                <strong id="chTopbarBlocked">0</strong>
+                                <small>Needs review</small>
+                            </article>
+                            <article>
+                                <span>Last CH Sync</span>
+                                <strong id="chTopbarLastSync">Never</strong>
+                                <small id="chTopbarLastSyncMeta">No sync yet</small>
+                            </article>
+                            <button class="ch-topbar-sync-button" id="chTopbarSyncButton" type="button" aria-label="Sync Companies House data" title="Sync Companies House data">
+                                <svg class="sync-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg>
+                                <span class="sync-label">Sync now</span>
+                            </button>
+                        </div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
                         <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" role="status" aria-live="polite" hidden>
                             <article><span>Clients</span><strong>0</strong></article>
@@ -14858,7 +15082,7 @@
                                 <div>
                                     <p class="eyebrow">Companies House automation</p>
                                     <h3>Confirmation statement submissions</h3>
-                                    <p class="detail-meta">Add synced Xero customers to the demo filing queue. Companies House API calls are placeholders until credentials and filing permissions are configured.</p>
+                                    <p class="detail-meta">Manage company records, refresh live Companies House data, queue filings, and raise linked Xero invoices from one workflow.</p>
                                 </div>
                                 <span class="companies-house-mark is-logo" aria-hidden="true"><img src="/static/companies-house-logo.png" alt=""></span>
                             </div>
@@ -14870,7 +15094,7 @@
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="settings" role="tab" aria-selected="false">Settings</button>
                             </nav>
                             <section class="ch-tab-panel" data-ch-panel="dashboard">
-                                <div class="ch-tile-grid" id="chDashboardTileGrid"></div>
+                                <div class="ch-tile-grid" id="chDashboardTileGrid" hidden></div>
                                 <article class="detail-panel ch-detail-card">
                                     <div>
                                         <p class="ch-section-title">Recent submissions</p>
@@ -14929,6 +15153,7 @@
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterMissingAuth"> Missing auth</label>
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterDueSoon"> Due ≤30 days</label>
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterOverdue"> Overdue</label>
+                                    <button class="ghost-button" type="button" id="chCompaniesSyncButton">Sync from Companies House</button>
                                     <button class="ghost-button" type="button" id="chCompaniesReloadButton">Refresh</button>
                                 </div>
                                 <article class="ch-workflow-card" id="chWorkflowCard" hidden>
@@ -15045,7 +15270,7 @@
                                 <article class="ch-import-card">
                                     <div>
                                         <p class="ch-section-title">Bulk client import</p>
-                                        <p class="ch-section-sub">Upload your BM Client export as CSV. We validate company numbers, match existing records, and store any included authentication codes encrypted.</p>
+                                        <p class="ch-section-sub">Upload your BM Client export as CSV. We automatically exclude non-private-limited rows, flag unsure rows for manual review, and save included authentication codes (including backfills on existing records) encrypted.</p>
                                     </div>
                                     <div class="ch-import-dropzone">
                                         Drag and drop or choose a CSV file
@@ -15077,6 +15302,11 @@
                                             </thead>
                                             <tbody id="chImportPreviewBody"></tbody>
                                         </table>
+                                    </div>
+                                    <div class="ch-import-pager" id="chImportPager" hidden>
+                                        <span class="ch-import-pager-status" id="chImportPagerStatus"></span>
+                                        <button class="ghost-button" type="button" id="chImportPrevPageButton">Previous</button>
+                                        <button class="ghost-button" type="button" id="chImportNextPageButton">Next</button>
                                     </div>
                                 </article>
                             </section>
@@ -15642,6 +15872,7 @@
                                     <div class="client-profile-actions client-quick-links">
                                         <a class="client-profile-action" id="selectedContactXeroLink" target="_blank" rel="noopener" hidden>Open in Xero</a>
                                     </div>
+                                    <button class="ghost-button client-account-status-button" id="clientUpdateAccountStatusButton" type="button">Update account status</button>
                                     <div class="client-sidebar-disclosure-list">
                                         <details class="client-disclosure">
                                             <summary>Contact details</summary>
@@ -15736,7 +15967,10 @@
                                                 </label>
                                                 <button class="ghost-button" id="clientBackToClientsButton" type="button">Back to clients</button>
                                                 <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
-                                                <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
+                                                <div class="client-split-bulk-action" role="group" aria-label="Selected invoice actions">
+                                                    <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
+                                                    <button class="ghost-button" id="clientBulkRaiseLpcsButton" type="button">Raise LPCs</button>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="client-statement-list" id="clientInvoiceList"></div>
@@ -16620,7 +16854,7 @@
             let activeClientSection = "invoices";
             let activeSettingsSection = "data-import";
             const confirmationStatementStorageKey = "jenius:confirmation-statements:demo-queue";
-            let confirmationStatementQueue = loadConfirmationStatementsDemoQueue();
+            let confirmationStatementQueue = [];
             let confirmationStatementSearchTerm = "";
             let confirmationStatementStatusFilter = "all";
             const topbarViewTitles = {
@@ -16644,7 +16878,7 @@
                 insights: "Home dashboard for performance signals, risk trends, cash movement, and operational priorities.",
                 "late-charges": "Review overdue invoices that may qualify for late payment charges before posting them.",
                 "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
-                "confirmation-statements": "Prepare demo Companies House confirmation statement queues from synced Xero contacts.",
+                "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 ignition: "Sync and analyse Ignition clients, proposals, fees, payments, collections, and renewal data.",
@@ -19648,6 +19882,7 @@
                     ".insights-topbar-summary",
                     ".bank-account-topbar-summary",
                     ".practice-pack-topbar-summary",
+                    ".confirmation-statements-topbar-summary",
                     ".bank-continuity-topbar-pill",
                     ".sidebar-support-bubble",
                     ".ignition-topbar-tabs",
@@ -19668,6 +19903,7 @@
                     ".credit-control-topbar-summary:not([hidden]), " +
                     ".insights-topbar-summary:not([hidden]), " +
                     ".bank-account-topbar-summary:not([hidden]), " +
+                    ".confirmation-statements-topbar-summary:not([hidden]), " +
                     ".practice-pack-topbar-summary:not([hidden]), " +
                     ".me-report-topbar-actions.has-report-summary:not([hidden]), " +
                     ".ignition-topbar-tabs:not([hidden])"
@@ -20334,6 +20570,20 @@
                         event.preventDefault();
                         event.stopPropagation();
                         writeOffSelectedClientInvoices();
+                        return;
+                    }
+                    const clientBulkRaiseLpcsButton = event.target.closest?.("#clientBulkRaiseLpcsButton");
+                    if (clientBulkRaiseLpcsButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        raiseLpcsForSelectedClientInvoices();
+                        return;
+                    }
+                    const clientUpdateAccountStatusButton = event.target.closest?.("#clientUpdateAccountStatusButton");
+                    if (clientUpdateAccountStatusButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        promptClientAccountStatusUpdate();
                         return;
                     }
                     const sidebarConnect = event.target.closest?.("#sidebarConnectButton");
@@ -22439,16 +22689,22 @@
             function updateClientInvoiceBulkNoteButton() {
                 const button = document.getElementById("clientBulkInvoiceNoteButton");
                 const writeOffButton = document.getElementById("clientBulkWriteOffButton");
+                const lpcButton = document.getElementById("clientBulkRaiseLpcsButton");
                 const count = selectedClientInvoiceIds.size;
+                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                 if (button) {
                     button.disabled = count === 0;
                     button.textContent = count ? `Add note to ${count} selected` : "Add note to selected";
                 }
                 if (writeOffButton) {
-                    const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                     const candidates = clientInvoices(client).filter((invoice) => selectedClientInvoiceIds.has(invoice.id) && isWriteOffCandidate(invoice));
                     writeOffButton.disabled = candidates.length === 0;
                     writeOffButton.textContent = candidates.length ? `Write off ${candidates.length} selected` : "Write off selected";
+                }
+                if (lpcButton) {
+                    const candidates = clientInvoices(client).filter((invoice) => selectedClientInvoiceIds.has(invoice.id) && isLatePaymentChargeEligible(invoice));
+                    lpcButton.disabled = candidates.length === 0;
+                    lpcButton.textContent = candidates.length ? `Raise LPCs (${candidates.length})` : "Raise LPCs";
                 }
             }
 
@@ -22544,6 +22800,18 @@
                     if (button) button.textContent = originalText;
                     updateClientInvoiceBulkNoteButton();
                 }
+            }
+
+            async function raiseLpcsForSelectedClientInvoices() {
+                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                const candidates = clientInvoices(client).filter((invoice) => selectedClientInvoiceIds.has(invoice.id) && isLatePaymentChargeEligible(invoice));
+                if (!candidates.length) {
+                    showToast("No selected invoices are eligible for LPCs.", "info");
+                    return;
+                }
+                selectedLateChargeInvoiceIds = new Set(candidates.map((invoice) => invoice.id));
+                await raiseLatePaymentCharges();
+                updateClientInvoiceBulkNoteButton();
             }
 
             function latePaymentChargeRaised(invoice) {
@@ -22947,20 +23215,11 @@
             }
 
             function loadConfirmationStatementsDemoQueue() {
-                try {
-                    const parsed = JSON.parse(localStorage.getItem(confirmationStatementStorageKey) || "[]");
-                    return Array.isArray(parsed) ? parsed.filter((item) => item && typeof item === "object") : [];
-                } catch {
-                    return [];
-                }
+                return [];
             }
 
             function saveConfirmationStatementsDemoQueue() {
-                try {
-                    localStorage.setItem(confirmationStatementStorageKey, JSON.stringify(confirmationStatementQueue.slice(0, 500)));
-                } catch (error) {
-                    console.warn("Unable to save confirmation statement demo queue", error);
-                }
+                return;
             }
 
             function openConfirmationStatementsScreen() {
@@ -35923,7 +36182,7 @@
                     return loan?.customerName || loan?.borrowerName || "Loan book";
                 }
                 if (activeView === "ignition-clients") return "Client register";
-                if (activeView === "confirmation-statements") return `${confirmationStatementQueue.length.toLocaleString("en-GB")} demo client${confirmationStatementQueue.length === 1 ? "" : "s"}`;
+                if (activeView === "confirmation-statements") return `${(companiesHouseState.companies || []).length.toLocaleString("en-GB")} companies in workflow`;
                 if (activeView === "settings") return syncScopeLabels[syncSettings.invoiceScope] || "System settings";
                 return "Opened from sidebar";
             }
@@ -36550,6 +36809,7 @@
                 renderInsightsTopbarSummary();
                 renderLpcTopbarSummary();
                 renderBadDebtTopbarSummary();
+                renderConfirmationStatementsTopbarSummary();
                 renderBankAccountTopbarSummary();
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
                 if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
@@ -39080,6 +39340,8 @@
                 });
                 document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
                 document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
+                document.getElementById("clientBulkRaiseLpcsButton")?.addEventListener("click", raiseLpcsForSelectedClientInvoices);
+                document.getElementById("clientUpdateAccountStatusButton")?.addEventListener("click", promptClientAccountStatusUpdate);
                 document.getElementById("clientBackToClientsButton")?.addEventListener("click", returnToLedgerView);
                 document.getElementById("clientShowAllocatedToggle")?.addEventListener("change", (event) => {
                     showAllocatedClientTransactions = Boolean(event.target.checked);
@@ -41596,6 +41858,49 @@
                 });
             }
 
+            const CLIENT_ACCOUNT_STATUS_OPTIONS = [
+                { key: "outstanding", label: "Outstanding", value: "Outstanding" },
+                { key: "query", label: "Query", value: "Query" },
+                { key: "notice", label: "7 Day Notice", value: "7 Day Notice" },
+                { key: "payment-plan", label: "Payment Plan", value: "Payment Plan" },
+                { key: "legal", label: "Legal", value: "Legal" },
+                { key: "bad-debt", label: "Bad debt", value: "Bad debt" },
+            ];
+
+            async function promptClientAccountStatusUpdate() {
+                const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
+                if (!client) {
+                    showToast("Select a client first.", "error");
+                    return;
+                }
+                const openInvoices = clientInvoices(client).filter((invoice) => invoiceCategory(invoice) !== "paid");
+                if (!openInvoices.length) {
+                    showToast("This client has no open invoices to update.", "info");
+                    return;
+                }
+                const promptLines = CLIENT_ACCOUNT_STATUS_OPTIONS.map((option, index) => `${index + 1}. ${option.label}`).join("\n");
+                const choice = window.prompt(
+                    `Update account status for ${client.name || "this client"}.\n\nChoose one option by number or name:\n${promptLines}`,
+                    "2"
+                );
+                if (choice === null) return;
+                const normalisedChoice = String(choice || "").trim().toLowerCase();
+                const selectedOption = CLIENT_ACCOUNT_STATUS_OPTIONS.find((option, index) =>
+                    normalisedChoice === String(index + 1)
+                    || normalisedChoice === option.key
+                    || normalisedChoice === option.label.toLowerCase()
+                );
+                if (!selectedOption) {
+                    showToast("Status update cancelled: choose a valid option.", "error");
+                    return;
+                }
+                const note = `Account status updated to ${selectedOption.label} from client workspace (${new Date().toLocaleString("en-GB")}).`;
+                await applyClientStatus(client, selectedOption.value, note, {
+                    localMessage: `Account moved to ${selectedOption.label} locally`,
+                    syncedMessage: `Account moved to ${selectedOption.label} and synced`,
+                });
+            }
+
             async function applyClientStatus(client, statusValue, note = "", options = {}) {
                 if (!client) return false;
                 const invoiceIds = (client.invoices || [])
@@ -41978,14 +42283,19 @@
                 activeTab: "dashboard",
                 tabLoaded: { dashboard: false, companies: false, import: false, audit: false, settings: false },
                 companies: [],
+                dashboardTiles: {},
+                lastSyncedAt: "",
                 selectedCompanyId: null,
                 selectedCompanyIds: new Set(),
                 companyDetail: null,
                 companyFilters: { search: "", internalStatus: "all", missingAuth: false, dueSoon: false, overdue: false },
                 importPreview: null,
+                importPreviewPage: 1,
+                importPreviewPageSize: 500,
                 importBusy: false,
                 workflowBusy: false,
                 workflowOpen: false,
+                topbarSyncing: false,
             };
 
             const CH_INTERNAL_STATUS_LABELS = {
@@ -42054,18 +42364,124 @@
             }
 
             function chSetTileGrid(tiles, lastSyncedAt) {
+                const normalisedTiles = {
+                    totalCompanies: Number(tiles?.totalCompanies || 0),
+                    dueSoon: Number(tiles?.dueSoon || 0),
+                    overdue: Number(tiles?.overdue || 0),
+                    missingAuth: Number(tiles?.missingAuth || 0),
+                    readyToFile: Number(tiles?.readyToFile || 0),
+                    blocked: Number(tiles?.blocked || 0),
+                };
+                companiesHouseState.dashboardTiles = normalisedTiles;
+                companiesHouseState.lastSyncedAt = lastSyncedAt || "";
                 const grid = document.getElementById("chDashboardTileGrid");
-                if (!grid) return;
-                const items = [
-                    { key: "totalCompanies", label: "Total companies", value: tiles.totalCompanies, tone: "" },
-                    { key: "dueSoon", label: "Due ≤30 days", value: tiles.dueSoon, tone: "is-warn" },
-                    { key: "overdue", label: "Overdue", value: tiles.overdue, tone: "is-bad" },
-                    { key: "missingAuth", label: "Missing auth code", value: tiles.missingAuth, tone: "is-warn" },
-                    { key: "readyToFile", label: "Ready to file", value: tiles.readyToFile, tone: "is-good" },
-                    { key: "blocked", label: "Blocked / paused", value: tiles.blocked, tone: "" },
-                ];
-                grid.innerHTML = items.map((tile) => `<article class="ch-tile ${tile.tone}" data-tile="${tile.key}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("")
-                    + `<article class="ch-tile" data-tile="lastSyncedAt"><span>Last Companies House sync</span><strong>${lastSyncedAt ? escapeHTML(chFormatDateTime(lastSyncedAt)) : "Never"}</strong><small>${lastSyncedAt ? "Across managed companies" : "Run a sync from a company once phase 3 is in"}</small></article>`;
+                if (grid) {
+                    grid.hidden = true;
+                    grid.innerHTML = "";
+                }
+                renderConfirmationStatementsTopbarSummary();
+            }
+
+            function chTopbarTileSnapshot() {
+                const tiles = companiesHouseState.dashboardTiles || {};
+                const hasDashboardTiles = Object.values(tiles).some((value) => Number(value || 0) > 0);
+                if (hasDashboardTiles || companiesHouseState.lastSyncedAt) {
+                    return {
+                        ...tiles,
+                        totalCompanies: Number(tiles.totalCompanies || 0),
+                        dueSoon: Number(tiles.dueSoon || 0),
+                        overdue: Number(tiles.overdue || 0),
+                        missingAuth: Number(tiles.missingAuth || 0),
+                        readyToFile: Number(tiles.readyToFile || 0),
+                        blocked: Number(tiles.blocked || 0),
+                        lastSyncedAt: companiesHouseState.lastSyncedAt || "",
+                    };
+                }
+                const companies = companiesHouseState.companies || [];
+                return {
+                    totalCompanies: companies.length,
+                    dueSoon: companies.filter((company) => {
+                        const days = chDaysUntil(company.nextDueDate);
+                        return days !== null && days >= 0 && days <= 30;
+                    }).length,
+                    overdue: companies.filter((company) => {
+                        const days = chDaysUntil(company.nextDueDate);
+                        return days !== null && days < 0;
+                    }).length,
+                    missingAuth: companies.filter((company) => !company.authCodeOnFile).length,
+                    readyToFile: companies.filter((company) => company.internalStatus === "ready_to_file" || company.eligibleForSubmission).length,
+                    blocked: companies.filter((company) => ["paused", "do_not_file", "inactive", "missing_information"].includes(String(company.internalStatus || ""))).length,
+                    lastSyncedAt: "",
+                };
+            }
+
+            function renderConfirmationStatementsTopbarSummary() {
+                const summary = document.getElementById("confirmationStatementsTopbarSummary");
+                if (!summary) return;
+                summary.hidden = activeView !== "confirmation-statements";
+                if (summary.hidden) return;
+                const snapshot = chTopbarTileSnapshot();
+                const setText = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (node) node.textContent = value;
+                };
+                setText("chTopbarTotalCompanies", Number(snapshot.totalCompanies || 0).toLocaleString("en-GB"));
+                setText("chTopbarDueSoon", Number(snapshot.dueSoon || 0).toLocaleString("en-GB"));
+                setText("chTopbarOverdue", Number(snapshot.overdue || 0).toLocaleString("en-GB"));
+                setText("chTopbarMissingAuth", Number(snapshot.missingAuth || 0).toLocaleString("en-GB"));
+                setText("chTopbarReadyToFile", Number(snapshot.readyToFile || 0).toLocaleString("en-GB"));
+                setText("chTopbarBlocked", Number(snapshot.blocked || 0).toLocaleString("en-GB"));
+                setText("chTopbarLastSync", snapshot.lastSyncedAt ? chFormatDateTime(snapshot.lastSyncedAt) : "Never");
+                setText("chTopbarLastSyncMeta", snapshot.lastSyncedAt ? "Across managed companies" : "No sync run recorded");
+                const syncButton = document.getElementById("chTopbarSyncButton");
+                if (syncButton) {
+                    syncButton.disabled = companiesHouseState.topbarSyncing;
+                    syncButton.classList.toggle("is-syncing", companiesHouseState.topbarSyncing);
+                    syncButton.title = companiesHouseState.topbarSyncing ? "Sync in progress" : "Sync Companies House data";
+                    syncButton.setAttribute("aria-label", syncButton.title);
+                }
+            }
+
+            async function syncCompaniesHouseTopbarData() {
+                if (companiesHouseState.topbarSyncing) return;
+                companiesHouseState.topbarSyncing = true;
+                renderConfirmationStatementsTopbarSummary();
+                try {
+                    const selectedCompanyIds = companiesHouseState.selectedCompanyIds?.size
+                        ? Array.from(companiesHouseState.selectedCompanyIds)
+                        : [];
+                    const syncPayload = selectedCompanyIds.length
+                        ? { companyIds: selectedCompanyIds, limit: selectedCompanyIds.length }
+                        : { limit: 300 };
+                    const syncResponse = await requestJSON("/api/companies-house/sync", {
+                        method: "POST",
+                        body: JSON.stringify(syncPayload),
+                    });
+                    const result = syncResponse?.result || {};
+                    await Promise.all([
+                        loadCompaniesHouseDashboard(true),
+                        loadCompaniesHouseCompanies(true),
+                    ]);
+                    if (companiesHouseState.selectedCompanyId) {
+                        await openCompaniesHouseCompanyDetail(companiesHouseState.selectedCompanyId);
+                    }
+                    const failed = Number(result.failedCount || 0);
+                    const synced = Number(result.syncedCount || 0);
+                    showToast(
+                        `Companies House sync finished: ${synced.toLocaleString("en-GB")} updated${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}.`,
+                        failed ? "info" : "success"
+                    );
+                } catch (error) {
+                    console.error("Unable to sync Companies House data", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        showToast(error?.message || "Unable to sync Companies House data.", "error");
+                    }
+                } finally {
+                    companiesHouseState.topbarSyncing = false;
+                    renderConfirmationStatementsTopbarSummary();
+                }
             }
 
             function chRenderSubmissionsTable(bodyId, rows, options = {}) {
@@ -42223,10 +42639,12 @@
                     );
                     companiesHouseState.tabLoaded.companies = true;
                     renderCompaniesHouseCompaniesTable();
+                    renderConfirmationStatementsTopbarSummary();
                 } catch (error) {
                     console.error("Unable to load companies", error);
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error?.message || "Unable to load companies.", "error");
+                    renderConfirmationStatementsTopbarSummary();
                 }
             }
 
@@ -42442,8 +42860,10 @@
                     { label: "Selected rows", value: selectedRows.length, tone: "" },
                     { label: "Will create", value: selectedCreate, tone: "" },
                     { label: "Will update", value: selectedUpdate, tone: "" },
+                    { label: "Needs review", value: preview.reviewRequiredCount || 0, tone: (preview.reviewRequiredCount || 0) ? "is-warn" : "" },
                     { label: "Errors", value: preview.errorCount, tone: preview.errorCount ? "is-error" : "" },
                     { label: "Excluded non-Ltd", value: preview.excludedNonLtdCount || 0, tone: "" },
+                    { label: "Auth backfills", value: preview.authCodeBackfillCount || 0, tone: "" },
                     { label: "Auth codes in file", value: preview.authCodesInFile, tone: "" },
                 ].map((tile) => `<article class="${tile.tone}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
             }
@@ -42451,10 +42871,25 @@
             function chRenderImportPreview(preview) {
                 const wrap = document.getElementById("chImportPreviewWrap");
                 const body = document.getElementById("chImportPreviewBody");
+                const pager = document.getElementById("chImportPager");
+                const pagerStatus = document.getElementById("chImportPagerStatus");
+                const prevButton = document.getElementById("chImportPrevPageButton");
+                const nextButton = document.getElementById("chImportNextPageButton");
                 if (!wrap || !body) return;
-                if (!preview || !preview.rows || !preview.rows.length) { wrap.hidden = true; return; }
+                if (!preview || !preview.rows || !preview.rows.length) {
+                    wrap.hidden = true;
+                    if (pager) pager.hidden = true;
+                    return;
+                }
                 wrap.hidden = false;
-                body.innerHTML = preview.rows.slice(0, 500).map((row) => {
+                const pageSize = Math.max(50, Number(companiesHouseState.importPreviewPageSize || 500));
+                const totalRows = preview.rows.length;
+                const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+                const currentPage = Math.max(1, Math.min(totalPages, Number(companiesHouseState.importPreviewPage || 1)));
+                companiesHouseState.importPreviewPage = currentPage;
+                const start = (currentPage - 1) * pageSize;
+                const end = Math.min(start + pageSize, totalRows);
+                body.innerHTML = preview.rows.slice(start, end).map((row) => {
                     const action = row.action || (row.errors?.length ? "error" : "skip");
                     const errorText = (row.errors || []).join(" · ");
                     const warnings = (row.warnings || []).join(" · ");
@@ -42476,6 +42911,10 @@
                         <td>${escapeHTML(errorText || warnings || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td>
                     </tr>`;
                 }).join("");
+                if (pager) pager.hidden = totalRows <= pageSize;
+                if (pagerStatus) pagerStatus.textContent = `Rows ${(start + 1).toLocaleString("en-GB")}-${end.toLocaleString("en-GB")} of ${totalRows.toLocaleString("en-GB")} · page ${currentPage} of ${totalPages}`;
+                if (prevButton) prevButton.disabled = currentPage <= 1;
+                if (nextButton) nextButton.disabled = currentPage >= totalPages;
                 const commit = document.getElementById("chImportCommitButton");
                 const selectedRows = preview.rows.filter((row) => row.included !== false && !(row.errors || []).length && (row.action === "create" || row.action === "update"));
                 if (commit) commit.hidden = selectedRows.length === 0;
@@ -42514,6 +42953,7 @@
                     }
                     const payload = await response.json();
                     companiesHouseState.importPreview = payload?.preview || null;
+                    companiesHouseState.importPreviewPage = 1;
                     chRenderImportSummary(companiesHouseState.importPreview);
                     chRenderImportPreview(companiesHouseState.importPreview);
                     const commit = document.getElementById("chImportCommitButton");
@@ -42523,7 +42963,7 @@
                     if (commit) commit.hidden = !companiesHouseState.importPreview || !importableRows.length;
                     if (reset) reset.hidden = false;
                     chSetImportStatus(
-                        `Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected for import, ${(companiesHouseState.importPreview?.excludedNonLtdCount || 0).toLocaleString("en-GB")} non-Ltd excluded, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`,
+                        `Preview ready. ${importableRows.length.toLocaleString("en-GB")} selected, ${(companiesHouseState.importPreview?.excludedNonLtdCount || 0).toLocaleString("en-GB")} non-Ltd auto-excluded, ${(companiesHouseState.importPreview?.reviewRequiredCount || 0).toLocaleString("en-GB")} need review, ${(companiesHouseState.importPreview?.authCodeBackfillCount || 0).toLocaleString("en-GB")} auth-code backfills, ${(companiesHouseState.importPreview?.errorCount || 0).toLocaleString("en-GB")} errors.`,
                         "muted"
                     );
                 } catch (error) {
@@ -42563,10 +43003,13 @@
                     companiesHouseState.tabLoaded.companies = false;
                     companiesHouseState.tabLoaded.audit = false;
                     companiesHouseState.importPreview = null;
+                    companiesHouseState.importPreviewPage = 1;
                     const summary = document.getElementById("chImportSummary");
                     const wrap = document.getElementById("chImportPreviewWrap");
+                    const pager = document.getElementById("chImportPager");
                     if (summary) summary.hidden = true;
                     if (wrap) wrap.hidden = true;
+                    if (pager) pager.hidden = true;
                     if (commitButton) commitButton.hidden = true;
                     loadCompaniesHouseImports(true);
                     showToast("Companies House import completed.", "success");
@@ -42612,7 +43055,9 @@
                 document.querySelectorAll(".ch-subnav-tab").forEach((node) => {
                     node.addEventListener("click", () => activateCompaniesHouseTab(node.dataset.chTab || "dashboard"));
                 });
+                document.getElementById("chTopbarSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
                 document.getElementById("chCompaniesReloadButton")?.addEventListener("click", () => loadCompaniesHouseCompanies(true));
+                document.getElementById("chCompaniesSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
                 const searchInput = document.getElementById("chCompaniesSearch");
                 let searchTimer;
                 searchInput?.addEventListener("input", () => {
@@ -42690,6 +43135,14 @@
                 document.getElementById("chImportPreviewButton")?.addEventListener("click", previewCompaniesHouseImport);
                 document.getElementById("chImportCommitButton")?.addEventListener("click", commitCompaniesHouseImport);
                 document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
+                document.getElementById("chImportPrevPageButton")?.addEventListener("click", () => {
+                    companiesHouseState.importPreviewPage = Math.max(1, Number(companiesHouseState.importPreviewPage || 1) - 1);
+                    chRenderImportPreview(companiesHouseState.importPreview);
+                });
+                document.getElementById("chImportNextPageButton")?.addEventListener("click", () => {
+                    companiesHouseState.importPreviewPage = Math.max(1, Number(companiesHouseState.importPreviewPage || 1) + 1);
+                    chRenderImportPreview(companiesHouseState.importPreview);
+                });
                 document.getElementById("chImportPreviewBody")?.addEventListener("change", (event) => {
                     const checkbox = event.target.closest?.("[data-ch-import-include]");
                     if (!checkbox || !companiesHouseState.importPreview?.rows) return;

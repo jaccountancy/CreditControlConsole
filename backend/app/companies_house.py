@@ -1,10 +1,16 @@
+import base64
 import csv
 import hashlib
 import io
 import json
+import logging
 import re
+import smtplib
+import threading
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from email.message import EmailMessage
+from email.utils import formataddr
 from uuid import uuid4
 
 import httpx
@@ -13,8 +19,8 @@ from fastapi import HTTPException, status
 from .config import get_settings
 from .database import get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret
-from .services import get_xero_connection_for_user
-from .xero import create_sales_invoice
+from .services import get_xero_connection_for_user, gmail_connection_for_user, refresh_gmail_connection
+from .xero import create_sales_invoice, fetch_invoice_pdf
 
 CH_API_KEY_LABEL = "ch:api_key"
 CH_PRESENTER_AUTH_LABEL = "ch:presenter_auth"
@@ -50,6 +56,16 @@ CLIENT_IMPORT_HEADER_ALIASES = {
 }
 
 COMPANY_NUMBER_RE = re.compile(r"^[A-Z0-9]{1,2}\d{6,}$|^\d{8}$|^[A-Z]{2}\d{6}$")
+MAX_COMPANIES_HOUSE_SYNC_BATCH = 500
+AUTO_SYNC_INTERVAL_SECONDS = 30 * 60
+AUTO_SYNC_MIN_GAP = timedelta(hours=24)
+CH_WORKFLOW_DEFAULT_BCC_EMAIL = "fmfhdkgaptpyubgms@accountancymanager.co.uk"
+GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+
+logger = logging.getLogger(__name__)
+_CH_SYNC_LOCK = threading.Lock()
+_CH_AUTO_SYNC_THREAD: threading.Thread | None = None
+_CH_AUTO_SYNC_STOP = threading.Event()
 
 
 def _mask(value: str) -> str:
@@ -283,6 +299,415 @@ def decrypt_presenter_auth() -> str:
     return decrypt_secret(row["presenter_auth_encrypted"], CH_PRESENTER_AUTH_LABEL)
 
 
+def _companies_house_api_base(environment: str) -> str:
+    settings = get_settings()
+    return (
+        settings.companies_house_production_api_base
+        if environment == "production"
+        else settings.companies_house_sandbox_api_base
+    ).rstrip("/")
+
+
+def _companies_house_http_client(api_key: str) -> httpx.Client:
+    return httpx.Client(
+        timeout=25.0,
+        auth=(api_key, ""),
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "CreditControlConsole/companies-house",
+        },
+    )
+
+
+def _companies_house_get_json(client: httpx.Client, url: str) -> dict:
+    response = client.get(url)
+    if response.status_code == status.HTTP_404_NOT_FOUND:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found in Companies House.")
+    if response.is_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Companies House request failed ({response.status_code}) for {url}.",
+        )
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Companies House returned invalid JSON for {url}.",
+        ) from exc
+
+
+def _format_registered_office(address: dict | None) -> str:
+    if not isinstance(address, dict):
+        return ""
+    parts = [
+        address.get("care_of"),
+        address.get("premises"),
+        address.get("address_line_1"),
+        address.get("address_line_2"),
+        address.get("locality"),
+        address.get("region"),
+        address.get("postal_code"),
+        address.get("country"),
+    ]
+    text_parts = [str(part).strip() for part in parts if str(part or "").strip()]
+    return ", ".join(text_parts)
+
+
+def _normalise_ch_officers(payload: dict | None) -> list[dict]:
+    items = (payload or {}).get("items") or []
+    output: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        output.append(
+            {
+                "name": str(item.get("name") or "").strip(),
+                "role": str(item.get("officer_role") or "").strip(),
+                "appointedOn": str(item.get("appointed_on") or "").strip(),
+                "resignedOn": str(item.get("resigned_on") or "").strip(),
+            }
+        )
+    return output[:50]
+
+
+def _normalise_ch_pscs(payload: dict | None) -> list[dict]:
+    items = (payload or {}).get("items") or []
+    output: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        output.append(
+            {
+                "name": str(item.get("name") or "").strip(),
+                "kind": str(item.get("kind") or "").strip(),
+                "notifiedOn": str(item.get("notified_on") or "").strip(),
+                "ceasedOn": str(item.get("ceased_on") or "").strip(),
+            }
+        )
+    return output[:50]
+
+
+def _normalise_ch_filing_history(payload: dict | None) -> list[dict]:
+    items = (payload or {}).get("items") or []
+    output: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        output.append(
+            {
+                "date": str(item.get("date") or "").strip(),
+                "type": str(item.get("type") or "").strip(),
+                "description": str(item.get("description") or "").strip(),
+                "category": str(item.get("category") or "").strip(),
+            }
+        )
+    return output[:50]
+
+
+def _first_filing_date(filing_history: list[dict]) -> date | None:
+    for item in filing_history:
+        filed_on = _parse_date_from_text(item.get("date"))
+        if filed_on:
+            return filed_on
+    return None
+
+
+def _fetch_ch_company_snapshot(company_number: str) -> dict:
+    company_number = normalise_company_number(company_number)
+    if not _is_valid_company_number(company_number):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid company number.")
+    settings_row = _ensure_settings_row()
+    environment = str(settings_row.get("environment") or "sandbox").strip().lower()
+    api_key = decrypt_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure a Companies House API key before syncing.",
+        )
+    base_url = _companies_house_api_base(environment)
+    with _companies_house_http_client(api_key) as client:
+        company_payload = _companies_house_get_json(client, f"{base_url}/company/{company_number}")
+        try:
+            officers_payload = _companies_house_get_json(client, f"{base_url}/company/{company_number}/officers")
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                officers_payload = {}
+            else:
+                raise
+        try:
+            psc_payload = _companies_house_get_json(
+                client, f"{base_url}/company/{company_number}/persons-with-significant-control"
+            )
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                psc_payload = {}
+            else:
+                raise
+        try:
+            filing_payload = _companies_house_get_json(
+                client, f"{base_url}/company/{company_number}/filing-history?items_per_page=25"
+            )
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_404_NOT_FOUND:
+                filing_payload = {}
+            else:
+                raise
+    confirmation = company_payload.get("confirmation_statement") or {}
+    filing_history = _normalise_ch_filing_history(filing_payload)
+    return {
+        "companyNumber": company_number,
+        "companyName": str(company_payload.get("company_name") or "").strip(),
+        "companyStatus": str(company_payload.get("company_status") or "").strip(),
+        "incorporationDate": _parse_date_from_text(company_payload.get("date_of_creation")),
+        "registeredOffice": _format_registered_office(company_payload.get("registered_office_address")),
+        "sicCodes": company_payload.get("sic_codes") or [],
+        "officers": _normalise_ch_officers(officers_payload),
+        "pscs": _normalise_ch_pscs(psc_payload),
+        "nextMadeUpToDate": _parse_date_from_text(confirmation.get("next_made_up_to")),
+        "nextDueDate": _parse_date_from_text(confirmation.get("next_due")),
+        "lastFiledDate": _parse_date_from_text(confirmation.get("last_made_up_to")) or _first_filing_date(filing_history),
+        "filingHistory": filing_history,
+    }
+
+
+def _apply_company_snapshot(cursor, company_id: str, snapshot: dict) -> None:
+    cursor.execute(
+        """
+        UPDATE ch_companies
+        SET company_name = COALESCE(NULLIF(%s, ''), company_name),
+            registered_office = %s,
+            company_status = %s,
+            incorporation_date = %s,
+            sic_codes = %s::jsonb,
+            officers = %s::jsonb,
+            pscs = %s::jsonb,
+            next_made_up_to_date = %s,
+            next_due_date = %s,
+            last_filed_date = %s,
+            filing_history = %s::jsonb,
+            last_synced_at = NOW(),
+            updated_at = NOW()
+        WHERE id = %s
+        """,
+        (
+            snapshot.get("companyName") or "",
+            snapshot.get("registeredOffice") or "",
+            snapshot.get("companyStatus") or "",
+            snapshot.get("incorporationDate"),
+            json.dumps(snapshot.get("sicCodes") or []),
+            json.dumps(snapshot.get("officers") or []),
+            json.dumps(snapshot.get("pscs") or []),
+            snapshot.get("nextMadeUpToDate"),
+            snapshot.get("nextDueDate"),
+            snapshot.get("lastFiledDate"),
+            json.dumps(snapshot.get("filingHistory") or []),
+            company_id,
+        ),
+    )
+
+
+def sync_companies_house_companies(user: dict | None, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    limit = max(1, min(int(payload.get("limit") or MAX_COMPANIES_HOUSE_SYNC_BATCH), MAX_COMPANIES_HOUSE_SYNC_BATCH))
+    user_id = user.get("id") if isinstance(user, dict) else None
+    mode = str(payload.get("mode") or "manual").strip().lower()
+
+    with _CH_SYNC_LOCK:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                if company_ids:
+                    cursor.execute(
+                        """
+                        SELECT id, company_number, company_name
+                        FROM ch_companies
+                        WHERE id = ANY(%s)
+                        ORDER BY company_name ASC
+                        LIMIT %s
+                        """,
+                        (company_ids, limit),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, company_number, company_name
+                        FROM ch_companies
+                        ORDER BY
+                            CASE WHEN next_due_date IS NULL THEN 1 ELSE 0 END,
+                            next_due_date ASC,
+                            company_name ASC
+                        LIMIT %s
+                        """,
+                        (limit,),
+                    )
+                companies = cursor.fetchall() or []
+            connection.commit()
+
+        if not companies:
+            return {
+                "mode": mode,
+                "targetCount": 0,
+                "syncedCount": 0,
+                "failedCount": 0,
+                "skippedCount": 0,
+                "synced": [],
+                "failed": [],
+            }
+
+        synced: list[dict] = []
+        failed: list[dict] = []
+        for row in companies:
+            company_id = str(row.get("id") or "")
+            company_number = normalise_company_number(row.get("company_number"))
+            if not company_id or not company_number:
+                failed.append(
+                    {
+                        "companyId": company_id,
+                        "companyNumber": company_number,
+                        "companyName": row.get("company_name") or "",
+                        "reason": "Missing company id or company number.",
+                    }
+                )
+                continue
+            try:
+                snapshot = _fetch_ch_company_snapshot(company_number)
+                with get_connection() as connection:
+                    with connection.cursor() as cursor:
+                        _apply_company_snapshot(cursor, company_id, snapshot)
+                        cursor.execute(
+                            """
+                            INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                            VALUES ('ch_company', %s, 'company_synced_from_companies_house', %s::jsonb, %s)
+                            """,
+                            (
+                                company_id,
+                                json.dumps(
+                                    {
+                                        "companyNumber": company_number,
+                                        "mode": mode,
+                                        "nextDueDate": snapshot.get("nextDueDate").isoformat()
+                                        if isinstance(snapshot.get("nextDueDate"), date)
+                                        else None,
+                                    }
+                                ),
+                                user_id,
+                            ),
+                        )
+                    connection.commit()
+                synced.append(
+                    {
+                        "companyId": company_id,
+                        "companyNumber": company_number,
+                        "companyName": snapshot.get("companyName") or row.get("company_name") or "",
+                    }
+                )
+            except HTTPException as exc:
+                failed.append(
+                    {
+                        "companyId": company_id,
+                        "companyNumber": company_number,
+                        "companyName": row.get("company_name") or "",
+                        "reason": str(exc.detail),
+                    }
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.exception("Unexpected Companies House sync failure for %s", company_number)
+                failed.append(
+                    {
+                        "companyId": company_id,
+                        "companyNumber": company_number,
+                        "companyName": row.get("company_name") or "",
+                        "reason": str(exc) or exc.__class__.__name__,
+                    }
+                )
+
+        if mode == "auto":
+            record_audit_event(
+                entity_type="ch_sync",
+                entity_id="auto",
+                event_type="auto_sync_completed",
+                user_id=user_id,
+                payload={
+                    "targetCount": len(companies),
+                    "syncedCount": len(synced),
+                    "failedCount": len(failed),
+                },
+            )
+
+        return {
+            "mode": mode,
+            "targetCount": len(companies),
+            "syncedCount": len(synced),
+            "failedCount": len(failed),
+            "skippedCount": 0,
+            "synced": synced,
+            "failed": failed,
+        }
+
+
+def _latest_auto_sync_completed_at() -> datetime | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT created_at
+                FROM audit_events
+                WHERE entity_type = 'ch_sync'
+                  AND event_type = 'auto_sync_completed'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            )
+            row = cursor.fetchone() or {}
+        connection.commit()
+    return row.get("created_at")
+
+
+def _auto_sync_due() -> bool:
+    settings_row = _ensure_settings_row()
+    if not bool(settings_row.get("auto_sync_enabled")):
+        return False
+    if not decrypt_api_key():
+        return False
+    last_completed = _latest_auto_sync_completed_at()
+    if not isinstance(last_completed, datetime):
+        return True
+    now = utcnow()
+    return now - last_completed >= AUTO_SYNC_MIN_GAP
+
+
+def run_companies_house_auto_sync_if_due() -> dict | None:
+    if not _auto_sync_due():
+        return None
+    return sync_companies_house_companies(
+        user=None,
+        payload={"mode": "auto", "limit": MAX_COMPANIES_HOUSE_SYNC_BATCH},
+    )
+
+
+def _companies_house_auto_sync_worker() -> None:
+    while not _CH_AUTO_SYNC_STOP.is_set():
+        try:
+            run_companies_house_auto_sync_if_due()
+        except Exception:
+            logger.exception("Companies House auto-sync worker failed")
+        _CH_AUTO_SYNC_STOP.wait(AUTO_SYNC_INTERVAL_SECONDS)
+
+
+def start_companies_house_auto_sync_worker() -> None:
+    global _CH_AUTO_SYNC_THREAD
+    if _CH_AUTO_SYNC_THREAD and _CH_AUTO_SYNC_THREAD.is_alive():
+        return
+    _CH_AUTO_SYNC_STOP.clear()
+    _CH_AUTO_SYNC_THREAD = threading.Thread(
+        target=_companies_house_auto_sync_worker,
+        name="companies-house-auto-sync",
+        daemon=True,
+    )
+    _CH_AUTO_SYNC_THREAD.start()
+
+
 # ---------------------------------------------------------------------------
 # Phase 2: company records, bulk client import, dashboard
 # ---------------------------------------------------------------------------
@@ -467,20 +892,20 @@ def _parse_date_from_text(value: object) -> date | None:
         return None
 
 
-def _looks_private_limited(row_payload: dict) -> bool:
+def _company_import_classification(row_payload: dict) -> str:
     company_type = str(row_payload.get("company_type") or "").strip().lower()
     company_name = str(row_payload.get("company_name") or row_payload.get("client_name") or "").strip().lower()
     combined = f"{company_type} {company_name}".strip()
     exclude_terms = ("sole trader", "self employed", "self-employed", "individual", "partnership", "llp")
     if any(term in combined for term in exclude_terms):
-        return False
+        return "exclude"
     if "private limited" in combined:
-        return True
+        return "include"
     if re.search(r"\bltd\b", company_name) or "limited" in company_name:
-        return True
+        return "include"
     if "limited company" in company_type or "ltd company" in company_type:
-        return True
-    return False
+        return "include"
+    return "review"
 
 
 def _coerce_text(value: object, limit: int = 500) -> str:
@@ -506,7 +931,13 @@ def _existing_companies_by_number(numbers: list[str]) -> dict[str, dict]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT * FROM ch_companies WHERE company_number = ANY(%s)",
+                """
+                SELECT c.*,
+                       (a.id IS NOT NULL) AS auth_code_on_file
+                FROM ch_companies c
+                LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+                WHERE c.company_number = ANY(%s)
+                """,
                 (numbers,),
             )
             rows = cursor.fetchall() or []
@@ -595,6 +1026,8 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
     auth_codes_in_file = 0
     selected_count = 0
     excluded_non_ltd_count = 0
+    review_required_count = 0
+    auth_code_backfill_count = 0
 
     for row in parsed_rows:
         data = row["data"]
@@ -603,15 +1036,21 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             row["errors"].append("Duplicate company number within this file.")
         if data.get("auth_code"):
             auth_codes_in_file += 1
-        row["included"] = _looks_private_limited(data)
+        company_classification = _company_import_classification(data)
+        row["classification"] = company_classification
+        row["included"] = company_classification == "include"
         if row["errors"]:
             error_count += 1
             row["action"] = "error"
             continue
-        if not row["included"]:
+        if company_classification == "exclude":
             excluded_non_ltd_count += 1
             row["action"] = "skip"
+            row["warnings"].append("Auto-excluded: this row is not a private limited company.")
             continue
+        if company_classification == "review":
+            review_required_count += 1
+            row["warnings"].append("Review required: unable to confidently classify this row as a private limited company.")
         if company_number in existing:
             update_count += 1
             row["action"] = "update"
@@ -619,14 +1058,20 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
                 "id": str(existing[company_number]["id"]),
                 "companyName": existing[company_number].get("company_name") or "",
             }
+            has_auth_in_file = bool((data.get("auth_code") or "").strip())
+            has_auth_on_record = bool(existing[company_number].get("auth_code_on_file"))
+            if has_auth_in_file and not has_auth_on_record:
+                auth_code_backfill_count += 1
+                row["warnings"].append("Authentication code will be saved onto the existing company record.")
         else:
             create_count += 1
             row["action"] = "create"
-        selected_count += 1
+        if row["included"]:
+            selected_count += 1
 
     if not parsed_rows:
         skip_count = 0
-    visible_rows = [row for row in parsed_rows if row.get("included") or row.get("errors")]
+    visible_rows = [row for row in parsed_rows if row.get("included") or row.get("errors") or row.get("classification") == "review"]
 
     return {
         "filename": filename,
@@ -639,6 +1084,8 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
         "authCodesInFile": auth_codes_in_file,
         "selectedCount": selected_count,
         "excludedNonLtdCount": excluded_non_ltd_count,
+        "reviewRequiredCount": review_required_count,
+        "authCodeBackfillCount": auth_code_backfill_count,
         "rows": visible_rows,
         "headers": headers,
         "headerProfile": {
@@ -1048,6 +1495,18 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one company.")
     if len(company_ids) > 500:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 500 companies per bulk submission.")
+    settings_row = _ensure_settings_row()
+    preflight_errors: list[str] = []
+    if not decrypt_api_key():
+        preflight_errors.append("Configure a Companies House API key in settings.")
+    if not str(settings_row.get("presenter_id") or "").strip():
+        preflight_errors.append("Set Presenter ID in Companies House settings.")
+    if not decrypt_presenter_auth():
+        preflight_errors.append("Set Presenter authentication code in Companies House settings.")
+    if not str(settings_row.get("credit_account_number") or "").strip():
+        preflight_errors.append("Set Companies House credit account number in settings.")
+    if preflight_errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=" ".join(preflight_errors))
 
     user_id = user.get("id") if isinstance(user, dict) else None
     companies = _resolve_submission_candidates(company_ids)
@@ -1089,6 +1548,49 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 "companyName": row.get("company_name") or "",
                 "reason": f"Due date is outside workflow window ({due_in_days} days).",
             })
+            continue
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, status, submitted_at, xero_invoice_id
+                    FROM ch_submissions
+                    WHERE company_id = %s
+                    ORDER BY submitted_at DESC NULLS LAST, created_at DESC
+                    LIMIT 1
+                    """,
+                    (company_id,),
+                )
+                latest_submission = cursor.fetchone() or {}
+            connection.commit()
+        latest_status = str(latest_submission.get("status") or "").strip().lower()
+        latest_submitted_at = latest_submission.get("submitted_at")
+        latest_invoice_id = str(latest_submission.get("xero_invoice_id") or "").strip()
+        if latest_status in {"queued", "submitted"}:
+            skipped.append(
+                {
+                    "companyId": company_id,
+                    "companyNumber": company_number,
+                    "companyName": row.get("company_name") or "",
+                    "reason": f"Latest submission is already {latest_status}.",
+                }
+            )
+            continue
+        if (
+            latest_status in {"accepted"}
+            and not latest_invoice_id
+            and isinstance(latest_submitted_at, datetime)
+            and (today - latest_submitted_at.date()).days < 330
+        ):
+            skipped.append(
+                {
+                    "companyId": company_id,
+                    "companyNumber": company_number,
+                    "companyName": row.get("company_name") or "",
+                    "reason": "Latest accepted submission is still pending invoicing.",
+                }
+            )
             continue
 
         submission_reference = f"CS-{company_number or company_id[:8].upper()}-{now.strftime('%Y%m%d%H%M%S')}"
@@ -1232,6 +1734,129 @@ def _resolve_company_contact_for_invoice(cursor, company: dict) -> dict:
     return candidates[0] if candidates else {}
 
 
+def _workflow_bcc_email() -> str:
+    settings = get_settings()
+    return str(settings.me_report_bcc_email or CH_WORKFLOW_DEFAULT_BCC_EMAIL).strip() or CH_WORKFLOW_DEFAULT_BCC_EMAIL
+
+
+def _workflow_invoice_pdf_filename(company_number: str, invoice_number: str, company_name: str) -> str:
+    if invoice_number:
+        safe_invoice_number = re.sub(r"[^A-Za-z0-9_-]+", "-", invoice_number).strip("-")
+        if safe_invoice_number:
+            return f"{safe_invoice_number}.pdf"
+    if company_number:
+        safe_company_number = re.sub(r"[^A-Za-z0-9_-]+", "-", company_number).strip("-")
+        if safe_company_number:
+            return f"confirmation-statement-invoice-{safe_company_number}.pdf"
+    safe_company_name = re.sub(r"[^A-Za-z0-9_-]+", "-", company_name or "client").strip("-").lower() or "client"
+    return f"confirmation-statement-invoice-{safe_company_name}.pdf"
+
+
+def _workflow_email_subject(company_name: str, company_number: str, invoice_number: str) -> str:
+    base = f"Confirmation statement submitted for {company_name or 'your company'}"
+    if company_number:
+        base = f"{base} ({company_number})"
+    if invoice_number:
+        return f"{base} · Invoice {invoice_number}"
+    return base
+
+
+def _workflow_email_body(company_name: str, company_number: str, invoice_number: str) -> str:
+    company_label = company_name or "your company"
+    number_suffix = f" ({company_number})" if company_number else ""
+    invoice_suffix = f" {invoice_number}" if invoice_number else ""
+    return (
+        f"Hello,\n\n"
+        f"We have prepared and submitted your confirmation statement for {company_label}{number_suffix}.\n"
+        f"Please find attached invoice{invoice_suffix} for the Companies House filing disbursement.\n\n"
+        f"Kind regards,\n"
+        f"Jaccountancy"
+    )
+
+
+def _send_workflow_email_smtp(recipient: str, subject: str, body: str, pdf_bytes: bytes, pdf_filename: str, bcc_email: str) -> None:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending workflow emails.",
+        )
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+    message["To"] = recipient
+    message.set_content(body)
+    message.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename)
+    recipients = [recipient]
+    if bcc_email:
+        recipients.append(bcc_email)
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message, to_addrs=recipients)
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+
+
+async def _send_workflow_email_gmail(
+    user: dict,
+    recipient: str,
+    subject: str,
+    body: str,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+    bcc_email: str,
+) -> None:
+    connection_row = gmail_connection_for_user(user)
+    if not connection_row:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Gmail is not connected for this user.")
+    connection_row = await refresh_gmail_connection(connection_row)
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr(("Jaccountancy", connection_row.get("gmail_email") or user.get("email") or ""))
+    message["To"] = recipient
+    if bcc_email:
+        message["Bcc"] = bcc_email
+    message.set_content(body)
+    message.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_filename)
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            GMAIL_SEND_URL,
+            headers={"Authorization": f'Bearer {connection_row["access_token"]}', "Content-Type": "application/json"},
+            json={"raw": raw},
+        )
+    if response.is_error:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gmail send failed: {response.text[:500]}")
+
+
+async def _send_confirmation_statement_invoice_email(
+    user: dict,
+    recipient: str,
+    company_name: str,
+    company_number: str,
+    invoice_number: str,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+) -> dict:
+    recipient_email = str(recipient or "").strip()
+    if not recipient_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No recipient email available for this client.")
+    bcc_email = _workflow_bcc_email()
+    subject = _workflow_email_subject(company_name, company_number, invoice_number)
+    body = _workflow_email_body(company_name, company_number, invoice_number)
+    if gmail_connection_for_user(user):
+        await _send_workflow_email_gmail(user, recipient_email, subject, body, pdf_bytes, pdf_filename, bcc_email)
+        return {"provider": "gmail", "recipient": recipient_email, "bccEmail": bcc_email}
+    _send_workflow_email_smtp(recipient_email, subject, body, pdf_bytes, pdf_filename, bcc_email)
+    return {"provider": "smtp", "recipient": recipient_email, "bccEmail": bcc_email}
+
+
 async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
@@ -1246,8 +1871,15 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
     description = str(settings_row.get("xero_invoice_description") or "Companies House confirmation statement filing").strip()
     tax_type = str(settings_row.get("xero_invoice_tax_type") or "NONE").strip() or "NONE"
     configured_unit_amount = Decimal(str(settings_row.get("xero_invoice_unit_amount") or 0)).quantize(Decimal("0.01"))
+    preflight_errors: list[str] = []
+    if not account_code:
+        preflight_errors.append("Set a Xero sales account code in Companies House settings before raising invoices.")
     if configured_unit_amount <= Decimal("0.00"):
-        configured_unit_amount = Decimal("13.00")
+        preflight_errors.append("Set a non-zero default unit amount in Companies House settings before raising invoices.")
+    if not description:
+        preflight_errors.append("Set a line description in Companies House settings before raising invoices.")
+    if preflight_errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=" ".join(preflight_errors))
 
     connection_row = get_xero_connection_for_user(user["id"])
     user_id = user.get("id") if isinstance(user, dict) else None
@@ -1398,6 +2030,54 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
                 )
             connection.commit()
 
+        email_result: dict | None = None
+        email_error = ""
+        recipient_email = str(company_row.get("contact_email") or contact_row.get("email") or "").strip()
+        try:
+            invoice_pdf_bytes = await fetch_invoice_pdf(connection_row, str(xero_invoice_id))
+            invoice_pdf_filename = _workflow_invoice_pdf_filename(company_number, str(xero_invoice_number), company_name)
+            email_result = await _send_confirmation_statement_invoice_email(
+                user=user,
+                recipient=recipient_email,
+                company_name=company_name,
+                company_number=company_number,
+                invoice_number=str(xero_invoice_number),
+                pdf_bytes=invoice_pdf_bytes,
+                pdf_filename=invoice_pdf_filename,
+            )
+        except HTTPException as exc:
+            email_error = str(exc.detail) if isinstance(exc.detail, str) else str((exc.detail or {}).get("message") or "Unable to send client email.")
+        except Exception as exc:  # noqa: BLE001 - defensive guard for workflow completion.
+            logger.exception("Unable to send confirmation statement workflow email for company %s", company_id)
+            email_error = str(exc) or "Unable to send client email."
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_submission', %s, %s, %s::jsonb, %s)
+                    """,
+                    (
+                        submission_id,
+                        "client_invoice_email_sent" if not email_error else "client_invoice_email_failed",
+                        json.dumps(
+                            {
+                                "companyId": company_id,
+                                "companyNumber": company_number,
+                                "xeroInvoiceId": xero_invoice_id,
+                                "xeroInvoiceNumber": xero_invoice_number,
+                                "recipient": (email_result or {}).get("recipient") or recipient_email,
+                                "bccEmail": (email_result or {}).get("bccEmail") or _workflow_bcc_email(),
+                                "provider": (email_result or {}).get("provider") or "",
+                                "error": email_error,
+                            }
+                        ),
+                        user_id,
+                    ),
+                )
+            connection.commit()
+
         created.append({
             "companyId": company_id,
             "companyName": company_name,
@@ -1406,6 +2086,11 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
             "xeroInvoiceId": xero_invoice_id,
             "xeroInvoiceNumber": xero_invoice_number,
             "amount": float(line_amount),
+            "emailSent": not bool(email_error),
+            "emailRecipient": (email_result or {}).get("recipient") or recipient_email,
+            "emailBcc": (email_result or {}).get("bccEmail") or _workflow_bcc_email(),
+            "emailProvider": (email_result or {}).get("provider") or "",
+            "emailError": email_error,
         })
 
     found_company_ids = {str(row.get("company_id")) for row in targets if row.get("company_id")}

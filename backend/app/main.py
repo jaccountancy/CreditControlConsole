@@ -38,6 +38,8 @@ from .companies_house import (
     list_imports as list_companies_house_imports,
     parse_clients_import,
     save_companies_house_settings,
+    start_companies_house_auto_sync_worker,
+    sync_companies_house_companies,
     update_company,
 )
 from .config import get_settings
@@ -184,6 +186,7 @@ logger = logging.getLogger(__name__)
 def startup() -> None:
     ensure_schema()
     install_sync_signal_handlers()
+    start_companies_house_auto_sync_worker()
 
 
 def template_context(request: Request, **extra):
@@ -1073,6 +1076,14 @@ async def api_companies_house_invoice_bulk(
 ):
     payload = await request.json()
     return {"status": "ok", "result": await bulk_raise_submission_invoices(user, payload)}
+
+
+@app.post("/api/companies-house/sync")
+async def api_companies_house_sync(
+    request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    return {"status": "ok", "result": sync_companies_house_companies(user, payload)}
 
 
 @app.post("/api/panel/factory-reset")

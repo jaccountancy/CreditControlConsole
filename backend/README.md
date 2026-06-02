@@ -61,6 +61,7 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - `/api/ignition/connect` authenticated Ignition OAuth start endpoint
 - `/api/ignition/callback` Ignition OAuth callback
 - `/auth/ignition/callback` legacy Ignition OAuth callback alias
+- `POST /api/companies-house/sync` refreshes Companies House company snapshots (profile, officers, PSCs, filing history) into PostgreSQL
 - `/customers` customer list
 - `/customers/{customer_id}` customer detail
 - `/invoices/{invoice_id}` invoice detail
@@ -68,3 +69,17 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - `GET /api/device/start` device login bootstrap for the macOS app
 - `GET /api/device/poll` device login polling for the macOS app
 - `GET /api/dashboard` headline metrics API for the macOS app
+
+## Companies House Go-Live Checklist
+
+- Configure Companies House settings in the Confirmation Statements settings tab:
+  - environment (`sandbox` first, then `production`)
+  - API key
+  - Presenter ID
+  - Presenter authentication code
+  - credit account number
+  - Xero invoice defaults (account code, unit amount, description, tax type)
+- Import client list and auth codes via the Import tab.
+- Run **Sync from Companies House** to populate company status, officers, PSCs, filing history, and due dates.
+- Confirm bulk submission queue and bulk invoice run are working with sandbox data.
+- Switch environment to production only after a successful end-to-end sandbox cycle.

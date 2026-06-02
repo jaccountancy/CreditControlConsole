@@ -612,6 +612,33 @@ async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idem
         return response.json()
 
 
+async def fetch_invoice_pdf(connection_row: dict, invoice_id: str) -> bytes:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.get(
+                f"{INVOICES_URL}/{invoice_id}",
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/pdf",
+                },
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "invoice PDF download")
+        if response.is_error:
+            _raise_xero_http_error(response, "invoice PDF download")
+        if not response.content:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": "Xero invoice PDF download returned no content.",
+                    "status_code": response.status_code,
+                },
+            )
+        return response.content
+
+
 async def attach_file_to_invoice(
     connection_row: dict,
     invoice_id: str,
