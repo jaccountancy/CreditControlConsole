@@ -1002,7 +1002,7 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
         "workingDataReady": sync_run_has_working_data(sync_run),
         "xeroRateLimit": serialize_xero_rate_limit(rate_limit),
     }
-    if sync_run["status"] == "completed" or payload["workingDataReady"]:
+    if sync_run["status"] == "completed":
         try:
             payload["panel"] = panel_payload(user)
         except Exception as exc:

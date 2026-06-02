@@ -21072,31 +21072,37 @@
             }
 
             async function requestJSON(template, options = {}, params = {}) {
-                const activityContext = requestActivityContext(template, options, params);
+                const {
+                    suppressFailurePanel = false,
+                    ...fetchOptions
+                } = options || {};
+                const activityContext = requestActivityContext(template, fetchOptions, params);
                 const startedAt = performance.now();
                 const resolvedEndpoint = endpointURL(template, params);
-                const method = String(options.method || "GET").toUpperCase();
+                const method = String(fetchOptions.method || "GET").toUpperCase();
                 logAPIActivity("api.started", activityContext);
                 let response;
                 try {
                     response = await fetch(resolvedEndpoint, {
                         credentials: "include",
-                        ...options,
-                        headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(options.headers || {}) }
+                        ...fetchOptions,
+                        headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(fetchOptions.headers || {}) }
                     });
                 } catch (error) {
                     logAPIActivity("api.failed", activityContext, {
                         durationMs: Math.round(performance.now() - startedAt),
                         error: error?.message || String(error || "Network request failed")
                     });
-                    openFailureDetailsPanel({
-                        title: "Network request failed",
-                        summary: `Unable to reach API for ${activityContext?.label || "request"}.`,
-                        endpoint: resolvedEndpoint,
-                        method,
-                        message: error?.message || "Network request failed",
-                        details: { error: error?.message || String(error || "Network request failed") },
-                    });
+                    if (!suppressFailurePanel) {
+                        openFailureDetailsPanel({
+                            title: "Network request failed",
+                            summary: `Unable to reach API for ${activityContext?.label || "request"}.`,
+                            endpoint: resolvedEndpoint,
+                            method,
+                            message: error?.message || "Network request failed",
+                            details: { error: error?.message || String(error || "Network request failed") },
+                        });
+                    }
                     throw error;
                 }
                 const contentType = response.headers.get("content-type") || "";
@@ -21115,15 +21121,17 @@
                         error: message,
                         response: sanitiseActivityValue(payload)
                     });
-                    openFailureDetailsPanel({
-                        title: "Authentication required",
-                        summary: `Session/authentication failed for ${activityContext?.label || "request"}.`,
-                        endpoint: resolvedEndpoint,
-                        method,
-                        statusCode: response.status,
-                        message,
-                        details: payload,
-                    });
+                    if (!suppressFailurePanel) {
+                        openFailureDetailsPanel({
+                            title: "Authentication required",
+                            summary: `Session/authentication failed for ${activityContext?.label || "request"}.`,
+                            endpoint: resolvedEndpoint,
+                            method,
+                            statusCode: response.status,
+                            message,
+                            details: payload,
+                        });
+                    }
                     throw new AuthRequiredError(message);
                 }
                 if (!response.ok) {
@@ -21144,15 +21152,17 @@
                         error: message,
                         response: sanitiseActivityValue(payload)
                     });
-                    openFailureDetailsPanel({
-                        title: "API request failed",
-                        summary: `Backend returned an error for ${activityContext?.label || "request"}.`,
-                        endpoint: resolvedEndpoint,
-                        method,
-                        statusCode: response.status,
-                        message,
-                        details: detail || payload,
-                    });
+                    if (!suppressFailurePanel) {
+                        openFailureDetailsPanel({
+                            title: "API request failed",
+                            summary: `Backend returned an error for ${activityContext?.label || "request"}.`,
+                            endpoint: resolvedEndpoint,
+                            method,
+                            statusCode: response.status,
+                            message,
+                            details: detail || payload,
+                        });
+                    }
                     throw new APIRequestError(message, { statusCode: response.status, details: detail || payload });
                 }
                 logAPIActivity("api.completed", activityContext, {
