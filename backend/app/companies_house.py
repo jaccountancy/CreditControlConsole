@@ -189,7 +189,9 @@ def test_companies_house_connection() -> dict:
         )
 
     base_url = _companies_house_api_base(environment)
-    endpoint = f"{base_url}/search/companies?q=limited&items_per_page=1"
+    # Use a deterministic endpoint to validate credentials/environment.
+    # A 404 on this dummy company number confirms auth succeeded.
+    endpoint = f"{base_url}/company/00000000"
     started = utcnow()
 
     with _companies_house_http_client(api_key) as client:
@@ -201,6 +203,17 @@ def test_companies_house_connection() -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Companies House rejected the API credentials. Check environment and API key.",
         )
+    if response.status_code == status.HTTP_404_NOT_FOUND:
+        return {
+            "connected": True,
+            "environment": environment,
+            "apiBaseUrl": base_url,
+            "endpoint": endpoint,
+            "statusCode": response.status_code,
+            "durationMs": duration_ms,
+            "sampleResultCount": 0,
+            "message": "Companies House API connection is working.",
+        }
     if response.is_error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

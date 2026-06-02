@@ -146,6 +146,19 @@ class CompaniesHouseTests(unittest.TestCase):
                 ch.test_companies_house_connection()
         self.assertEqual(ctx.exception.status_code, 400)
 
+    def test_connection_test_treats_404_probe_as_success(self):
+        with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox"}), \
+             patch.object(ch, "decrypt_api_key", return_value="good-key"), \
+             patch.object(
+                 ch,
+                 "_companies_house_http_client",
+                 return_value=_DummyClient(_DummyResponse(404, {})),
+             ):
+            payload = ch.test_companies_house_connection()
+        self.assertTrue(payload.get("connected"))
+        self.assertEqual(payload.get("statusCode"), 404)
+        self.assertTrue(str(payload.get("endpoint") or "").endswith("/company/00000000"))
+
     def test_post_gateway_retries_then_raises(self):
         calls = {"count": 0}
 
