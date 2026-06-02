@@ -14837,6 +14837,14 @@
                                         <option value="all">All outstanding</option>
                                     </select>
                                 </label>
+                                <label class="late-charge-bulk-control">
+                                    Sort by
+                                    <select id="badDebtSortSelect">
+                                        <option value="invoice-date">Invoice date</option>
+                                        <option value="client-name">Client name</option>
+                                    </select>
+                                </label>
+                                <button class="ghost-button late-charge-filter-button" id="badDebtSortDirectionButton" type="button" aria-pressed="false">Newest first</button>
                                 <button class="ghost-button late-charge-filter-button" id="badDebtPaymentPlanFilterButton" type="button" aria-pressed="false">In payment plan</button>
                             </div>
                             <p class="late-charge-summary" id="badDebtSummary">No write-off candidates loaded.</p>
@@ -17038,6 +17046,12 @@
             let badDebtFilter = ["active", "eligible", "not-payment-plan", "written-off", "blocked", "all"].includes(persistedUIState.badDebtFilter)
                 ? persistedUIState.badDebtFilter
                 : "active";
+            let badDebtSortMode = ["invoice-date", "client-name"].includes(persistedUIState.badDebtSortMode)
+                ? persistedUIState.badDebtSortMode
+                : "invoice-date";
+            let badDebtSortDirection = ["asc", "desc"].includes(persistedUIState.badDebtSortDirection)
+                ? persistedUIState.badDebtSortDirection
+                : "desc";
             let isOperationRunning = false;
             let operationStartedAt = 0;
             let operationProgressTimer = null;
@@ -17083,6 +17097,10 @@
                 "written-off": "Already written off",
                 blocked: "Blocked",
                 all: "All outstanding"
+            };
+            const badDebtSortLabels = {
+                "invoice-date": "Invoice date",
+                "client-name": "Client name"
             };
             const clientSections = new Set(["overview", "invoices", "payments", "notes", "payment-plans", "letters", "legal", "settings"]);
             const clientSectionNavGroups = {
@@ -18037,6 +18055,8 @@
                         meReportViewStateByClient,
                         lateChargeFilter,
                         badDebtFilter,
+                        badDebtSortMode,
+                        badDebtSortDirection,
                         activeInsightsSection,
                         sortMode,
                         denseMode,
@@ -19876,6 +19896,8 @@
                 lateChargeSearchTerm = "";
                 badDebtFilter = "active";
                 badDebtSearchTerm = "";
+                badDebtSortMode = "invoice-date";
+                badDebtSortDirection = "desc";
                 sortMode = "amount";
                 searchTerm = "";
                 currentPage = 1;
@@ -22880,9 +22902,19 @@
             }
 
             function compareBadDebtInvoices(a, b) {
-                return badDebtInvoiceSortValue(a) - badDebtInvoiceSortValue(b)
-                    || dateSortValue(a?.dueDate) - dateSortValue(b?.dueDate)
-                    || String(a?.customerName || "").localeCompare(String(b?.customerName || ""))
+                const direction = badDebtSortDirection === "asc" ? 1 : -1;
+                const invoiceDateCompare = badDebtInvoiceSortValue(a) - badDebtInvoiceSortValue(b);
+                const dueDateCompare = dateSortValue(a?.dueDate) - dateSortValue(b?.dueDate);
+                const clientCompare = String(a?.customerName || "").localeCompare(String(b?.customerName || ""), "en-GB", { sensitivity: "base" });
+                if (badDebtSortMode === "client-name") {
+                    return (clientCompare * direction)
+                        || (invoiceDateCompare * direction)
+                        || (dueDateCompare * direction)
+                        || String(a?.invoiceNumber || "").localeCompare(String(b?.invoiceNumber || ""));
+                }
+                return (invoiceDateCompare * direction)
+                    || (dueDateCompare * direction)
+                    || clientCompare
                     || String(a?.invoiceNumber || "").localeCompare(String(b?.invoiceNumber || ""));
             }
 
@@ -35249,8 +35281,10 @@
                 selectedBadDebtInvoiceIds = new Set([...selectedBadDebtInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
                 const selectedCount = selectedBadDebtInvoiceIds.size;
                 const filterLabel = badDebtFilterLabels[badDebtFilter] || badDebtFilterLabels.active;
+                const sortLabel = badDebtSortLabels[badDebtSortMode] || badDebtSortLabels["invoice-date"];
+                const sortDirectionLabel = badDebtSortDirection === "asc" ? "ascending" : "descending";
                 summary.textContent = stats.candidateCount
-                    ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). ${stats.visibleEligibleCount.toLocaleString("en-GB")} visible write-off${stats.visibleEligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)}.`
+                    ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). Sorted by ${sortLabel.toLowerCase()} (${sortDirectionLabel}). ${stats.visibleEligibleCount.toLocaleString("en-GB")} visible write-off${stats.visibleEligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)}.`
                     : "No outstanding invoices are available for bad debt review.";
                 raiseButton.disabled = selectedCount === 0 || !isXeroConnected() || isOperationRunning;
                 raiseButton.textContent = selectedCount ? `Write off ${selectedCount} invoice${selectedCount === 1 ? "" : "s"}` : "Write off selected";
@@ -35258,6 +35292,20 @@
                 if (searchInput && searchInput.value !== badDebtSearchTerm) searchInput.value = badDebtSearchTerm;
                 const filterSelect = document.getElementById("badDebtFilterSelect");
                 if (filterSelect && filterSelect.value !== badDebtFilter) filterSelect.value = badDebtFilter;
+                const sortSelect = document.getElementById("badDebtSortSelect");
+                if (sortSelect && sortSelect.value !== badDebtSortMode) sortSelect.value = badDebtSortMode;
+                const sortDirectionButton = document.getElementById("badDebtSortDirectionButton");
+                if (sortDirectionButton) {
+                    const isAscending = badDebtSortDirection === "asc";
+                    sortDirectionButton.classList.toggle("is-active", isAscending);
+                    sortDirectionButton.setAttribute("aria-pressed", isAscending ? "true" : "false");
+                    sortDirectionButton.textContent = badDebtSortMode === "client-name"
+                        ? (isAscending ? "A to Z" : "Z to A")
+                        : (isAscending ? "Oldest first" : "Newest first");
+                    sortDirectionButton.title = badDebtSortMode === "client-name"
+                        ? "Toggle client name order"
+                        : "Toggle invoice date order";
+                }
                 const paymentPlanFilterButton = document.getElementById("badDebtPaymentPlanFilterButton");
                 if (paymentPlanFilterButton) {
                     const active = badDebtFilter === "not-payment-plan";
@@ -41433,6 +41481,18 @@
                 if (badDebtFilterSelect) badDebtFilterSelect.addEventListener("change", (event) => {
                     badDebtFilter = badDebtFilterLabels[event.target.value] ? event.target.value : "active";
                     selectedBadDebtInvoiceIds.clear();
+                    persistState();
+                    renderBadDebtScreen();
+                });
+                const badDebtSortSelect = document.getElementById("badDebtSortSelect");
+                if (badDebtSortSelect) badDebtSortSelect.addEventListener("change", (event) => {
+                    badDebtSortMode = badDebtSortLabels[event.target.value] ? event.target.value : "invoice-date";
+                    persistState();
+                    renderBadDebtScreen();
+                });
+                const badDebtSortDirectionButton = document.getElementById("badDebtSortDirectionButton");
+                if (badDebtSortDirectionButton) badDebtSortDirectionButton.addEventListener("click", () => {
+                    badDebtSortDirection = badDebtSortDirection === "asc" ? "desc" : "asc";
                     persistState();
                     renderBadDebtScreen();
                 });
