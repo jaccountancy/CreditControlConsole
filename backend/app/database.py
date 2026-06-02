@@ -1291,7 +1291,7 @@ CREATE TABLE IF NOT EXISTS ch_companies (
     last_filed_date DATE,
     filing_history JSONB NOT NULL DEFAULT '[]'::jsonb,
     internal_status TEXT NOT NULL DEFAULT 'active',
-    filing_authority_status TEXT NOT NULL DEFAULT 'pending',
+    filing_authority_status TEXT NOT NULL DEFAULT 'authorised',
     filing_authority_reference TEXT NOT NULL DEFAULT '',
     filing_authority_received_at TIMESTAMPTZ,
     filing_authority_expires_at TIMESTAMPTZ,
@@ -1305,7 +1305,8 @@ CREATE INDEX IF NOT EXISTS ch_companies_client_idx ON ch_companies (client_id);
 CREATE INDEX IF NOT EXISTS ch_companies_due_idx ON ch_companies (next_due_date);
 CREATE INDEX IF NOT EXISTS ch_companies_status_idx ON ch_companies (internal_status);
 
-ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_status TEXT NOT NULL DEFAULT 'authorised';
+ALTER TABLE ch_companies ALTER COLUMN filing_authority_status SET DEFAULT 'authorised';
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_reference TEXT NOT NULL DEFAULT '';
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_received_at TIMESTAMPTZ;
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_expires_at TIMESTAMPTZ;

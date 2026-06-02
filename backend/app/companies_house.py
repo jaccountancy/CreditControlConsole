@@ -2184,8 +2184,8 @@ def sync_xero_lock_date_company_records(user: dict, payload: dict | None = None)
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO ch_companies (company_number, company_name, updated_at)
-                        VALUES (%s, %s, NOW())
+                        INSERT INTO ch_companies (company_number, company_name, filing_authority_status, updated_at)
+                        VALUES (%s, %s, 'authorised', NOW())
                         ON CONFLICT (company_number) DO UPDATE
                         SET company_name = COALESCE(NULLIF(EXCLUDED.company_name, ''), ch_companies.company_name),
                             updated_at = NOW()
@@ -2723,11 +2723,12 @@ def _upsert_company(cursor, data: dict, user_id: str | None) -> tuple[str, str]:
             contact_email,
             contact_phone,
             assigned_staff_name,
+            filing_authority_status,
             notes,
             next_made_up_to_date,
             next_due_date
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULLIF(%s, '')::date, NULLIF(%s, '')::date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'authorised', %s, NULLIF(%s, '')::date, NULLIF(%s, '')::date)
         ON CONFLICT (company_number) DO UPDATE
         SET company_name = COALESCE(NULLIF(EXCLUDED.company_name, ''), ch_companies.company_name),
             client_id = COALESCE(NULLIF(EXCLUDED.client_id, ''), ch_companies.client_id),
