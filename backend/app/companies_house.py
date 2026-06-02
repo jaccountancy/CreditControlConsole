@@ -506,12 +506,28 @@ def _normalise_ch_filing_history(payload: dict | None) -> list[dict]:
     for item in items:
         if not isinstance(item, dict):
             continue
+        description_values = item.get("description_values") if isinstance(item.get("description_values"), dict) else {}
         output.append(
             {
                 "date": str(item.get("date") or "").strip(),
                 "type": str(item.get("type") or "").strip(),
                 "description": str(item.get("description") or "").strip(),
                 "category": str(item.get("category") or "").strip(),
+                "made_up_to": str(
+                    item.get("made_up_to")
+                    or item.get("made_up_to_date")
+                    or description_values.get("made_up_date")
+                    or description_values.get("made_up_to")
+                    or ""
+                ).strip(),
+                "period_end": str(
+                    item.get("period_end")
+                    or item.get("period_end_on")
+                    or item.get("period_end_date")
+                    or description_values.get("period_end_on")
+                    or description_values.get("period_end_date")
+                    or ""
+                ).strip(),
             }
         )
     return output[:50]

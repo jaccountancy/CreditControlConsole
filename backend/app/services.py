@@ -981,10 +981,11 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
             [lock_date for lock_date in (period_lock_date, end_of_year_lock_date) if lock_date],
             default=None,
         )
-        comparison_target = accounts_year_end_date or accounts_filed_date
+        comparison_target = accounts_year_end_date
         mapping_missing = not mapped_company_number
+        insufficient_accounts_data = bool(mapped_company_number and not accounts_year_end_date)
         accounts_filed_not_locked = bool(
-            accounts_filed_date
+            accounts_year_end_date
             and comparison_target
             and (xero_effective_lock_date is None or xero_effective_lock_date < comparison_target)
         )
@@ -1005,11 +1006,17 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
                     "clientName": str((ch_row or {}).get("client_name") or ""),
                     "accountsFiledDate": accounts_filed_date.isoformat() if accounts_filed_date else "",
                     "yearEndDate": accounts_year_end_date.isoformat() if accounts_year_end_date else "",
+                    "lastSubmittedDate": (
+                        accounts_year_end_date.isoformat()
+                        if accounts_year_end_date
+                        else accounts_filed_date.isoformat() if accounts_filed_date else ""
+                    ),
                     "nextDueDate": ch_next_due_date.isoformat() if ch_next_due_date else "",
                 },
                 "flags": {
                     "accountsFiledNotLocked": accounts_filed_not_locked,
                     "mappingMissing": mapping_missing,
+                    "insufficientAccountsData": insufficient_accounts_data,
                 },
                 "dataSource": data_source,
                 "lastSyncedAt": _iso(snapshot_row.get("last_synced_at")) or "",

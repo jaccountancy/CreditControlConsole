@@ -17675,9 +17675,8 @@
                                             <th>Tenant</th>
                                             <th>Current Xero Lock Date</th>
                                             <th>Last Accounts Submitted</th>
-                                            <th>CH Company Record</th>
                                             <th class="xero-lock-company-number-column">CH number mapping</th>
-                                            <th>Flag</th>
+                                            <th>Lock Status</th>
                                         </tr>
                                     </thead>
                                     <tbody id="xeroLockDateTableBody"></tbody>
@@ -27344,15 +27343,22 @@
                         const companiesHouse = row?.companiesHouse || {};
                         const isFlagged = Boolean(row?.flags?.accountsFiledNotLocked);
                         const mappingMissing = Boolean(row?.flags?.mappingMissing);
+                        const accountsDataMissing = Boolean(row?.flags?.insufficientAccountsData);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
-                        const chLabel = [
-                            companiesHouse?.companyName,
-                            companiesHouse?.clientName,
+                        const lastSubmittedDate = companiesHouse?.yearEndDate || companiesHouse?.accountsFiledDate || "";
+                        const lastSubmittedHelper = companiesHouse?.yearEndDate
+                            ? "Latest accounts period end filed at Companies House"
+                            : companiesHouse?.accountsFiledDate
+                                ? "Latest accounts filing date at Companies House"
+                                : "No filed accounts date returned by Companies House yet";
+                        const mappingLabel = String(mapping?.companyNumber || "").trim() || "No CH number mapped";
+                        const mappingDetail = [
                             mapping?.companyName,
                             mapping?.clientName,
+                            companiesHouse?.companyName,
+                            companiesHouse?.clientName,
                             row?.tenantName,
-                        ].filter(Boolean).join(" · ");
-                        const chCompanyRecord = chLabel || "No mapped company details";
+                        ].find((value) => String(value || "").trim());
                         const isSelected = selectedXeroLockDateTenantIds.has(tenantId);
                         return `
                             <tr>
@@ -27368,12 +27374,8 @@
                                     <small>Current lock date in Xero</small>
                                 </td>
                                 <td class="xero-lock-date-cell">
-                                    <strong>${escapeHTML(companiesHouse?.yearEndDate ? formatDate(companiesHouse.yearEndDate) : "—")}</strong>
-                                    <small>Latest accounts period end filed at Companies House</small>
-                                </td>
-                                <td class="xero-lock-submitted-cell">
-                                    <strong>${escapeHTML(chCompanyRecord)}</strong>
-                                    <small>${escapeHTML(mapping?.companyNumber ? "Company mapping saved" : "No company mapping saved")}</small>
+                                    <strong>${escapeHTML(lastSubmittedDate ? formatDate(lastSubmittedDate) : "—")}</strong>
+                                    <small>${escapeHTML(lastSubmittedHelper)}</small>
                                 </td>
                                 <td class="xero-lock-mapping-cell xero-lock-company-number-column">
                                     <div class="xero-lock-mapping-controls">
@@ -27387,19 +27389,22 @@
                                         <button class="ghost-button" type="button" data-xero-lock-map-save="${escapeHTML(tenantId)}">Save</button>
                                         <button class="ghost-button danger-button" type="button" data-xero-lock-map-delete="${escapeHTML(tenantId)}">Delete</button>
                                     </div>
+                                    <small>${escapeHTML(mappingLabel)}${mappingDetail ? ` · ${escapeHTML(mappingDetail)}` : ""}</small>
                                 </td>
                                 <td class="xero-lock-date-flag-cell">
-                                    ${isFlagged
-                                        ? '<span class="ch-pill is-bad">Accounts filed but period not locked</span>'
-                                        : mappingMissing
-                                            ? '<span class="ch-pill is-warn">Mapping needed to evaluate filing lock status</span>'
-                                            : '<span class="ch-pill is-good">No lock issue detected</span>'}
+                                    ${mappingMissing
+                                        ? '<span class="ch-pill is-warn">Mapping needed</span>'
+                                        : accountsDataMissing
+                                            ? '<span class="ch-pill is-info">Waiting for Companies House accounts history</span>'
+                                            : isFlagged
+                                                ? '<span class="ch-pill is-bad">Last filed accounts period is not locked in Xero</span>'
+                                                : '<span class="ch-pill is-good">Lock date covers latest filed accounts period</span>'}
                                     ${row?.xeroError ? `<small>${escapeHTML(row.xeroError)}</small>` : ""}
                                 </td>
                             </tr>
                         `;
                     }).join("")
-                    : `<tr><td colspan="${xeroLockDateColumnSettings.showCompanyNumber ? 7 : 6}"><div class="ch-empty-state">${
+                    : `<tr><td colspan="${xeroLockDateColumnSettings.showCompanyNumber ? 6 : 5}"><div class="ch-empty-state">${
                         rows.length ? "No tenants match this search." : "Connect Xero tenants to view lock dates."
                     }</div></td></tr>`;
                 body.querySelectorAll("[data-xero-lock-map-save]").forEach((button) => {
