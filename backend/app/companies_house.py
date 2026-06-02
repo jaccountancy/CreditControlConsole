@@ -1817,7 +1817,7 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
 
     settings_row = _ensure_settings_row()
     environment = str(settings_row.get("environment") or "sandbox").strip().lower()
-    api_key = decrypt_api_key()
+    api_key = _validated_companies_house_api_key(decrypt_api_key())
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1989,6 +1989,7 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
                         error_detail = (response.text or "").strip()
                     if len(error_detail) > 180:
                         error_detail = f"{error_detail[:177]}..."
+                    include_query = True
                     if (
                         response.status_code == status.HTTP_400_BAD_REQUEST
                         and "invalid authorization header" in error_detail.lower()
@@ -1997,15 +1998,18 @@ def populate_xero_lock_date_company_numbers(user: dict, payload: dict | None = N
                             "Companies House rejected the API key format. "
                             "In Settings, save only the raw API key (no Basic/Bearer prefix, no spaces)."
                         )
+                        include_query = False
                     else:
                         reason = f"Companies House search failed ({response.status_code})."
                     if error_detail:
                         reason = f"{reason} {error_detail}"
+                    if include_query:
+                        reason = f"{reason} Query: \"{query_text}\"."
                     failed.append(
                         {
                             "tenantId": tenant_id,
                             "tenantName": tenant_name,
-                            "reason": f"{reason} Query: \"{query_text}\".",
+                            "reason": reason,
                         }
                     )
                     continue
