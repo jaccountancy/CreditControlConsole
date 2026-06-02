@@ -10681,6 +10681,105 @@
                 padding: 14px 16px;
                 background: #d8e8ff;
             }
+            .operation-review-panel {
+                position: fixed;
+                inset: 0;
+                z-index: 132;
+                display: grid;
+                place-items: start center;
+                padding: 82px 24px 24px;
+                background: rgba(244, 247, 251, 0.72);
+                backdrop-filter: blur(8px);
+            }
+            .operation-review-panel[hidden] {
+                display: none;
+            }
+            .operation-review-card {
+                width: min(940px, 100%);
+                max-height: min(85vh, 880px);
+                overflow: hidden;
+                border: 1px solid var(--line);
+                border-radius: 20px;
+                background: #fff;
+                box-shadow: 0 22px 70px rgba(30, 47, 77, 0.18);
+                display: grid;
+                grid-template-rows: auto auto minmax(0, 1fr) auto;
+            }
+            .operation-review-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 16px;
+                padding: 18px 20px 14px;
+                border-bottom: 1px solid var(--line);
+            }
+            .operation-review-head h3,
+            .operation-review-head p {
+                margin: 0;
+            }
+            .operation-review-subtitle {
+                margin-top: 6px !important;
+                color: var(--muted);
+                font-weight: 750;
+                line-height: 1.45;
+            }
+            .operation-review-summary {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+                padding: 12px 20px;
+                border-bottom: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.72);
+            }
+            .operation-review-chip {
+                border: 1px solid var(--line);
+                border-radius: 999px;
+                padding: 7px 10px;
+                color: var(--ink);
+                font-weight: 800;
+                background: #fff;
+                font-size: 0.82rem;
+            }
+            .operation-review-body {
+                overflow: auto;
+                padding: 16px 20px;
+                display: grid;
+                gap: 14px;
+            }
+            .operation-review-table {
+                width: 100%;
+                border-collapse: collapse;
+                min-width: 720px;
+            }
+            .operation-review-table th,
+            .operation-review-table td {
+                border-bottom: 1px solid var(--line);
+                padding: 9px 8px;
+                text-align: left;
+                vertical-align: top;
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 760;
+            }
+            .operation-review-table th {
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .operation-review-table td:last-child,
+            .operation-review-table th:last-child {
+                text-align: right;
+            }
+            .operation-review-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                padding: 14px 20px 18px;
+                border-top: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.6);
+            }
             .client-invoices-panel { margin: 18px 0; }
             .account-file-panel {
                 display: grid;
@@ -14958,6 +15057,25 @@
                     </div>
                 </section>
 
+                <section class="operation-review-panel" id="operationReviewPanel" aria-modal="true" role="dialog" aria-labelledby="operationReviewTitle" hidden>
+                    <div class="operation-review-card">
+                        <div class="operation-review-head">
+                            <div>
+                                <p class="eyebrow" id="operationReviewEyebrow">Review action</p>
+                                <h3 id="operationReviewTitle">Confirm operation</h3>
+                                <p class="operation-review-subtitle" id="operationReviewSubtitle">Review the rows below before posting.</p>
+                            </div>
+                            <button class="ghost-button" id="closeOperationReviewButton" type="button">Close</button>
+                        </div>
+                        <div class="operation-review-summary" id="operationReviewSummary"></div>
+                        <div class="operation-review-body" id="operationReviewBody"></div>
+                        <div class="operation-review-actions">
+                            <button class="ghost-button" id="cancelOperationReviewButton" type="button">Cancel</button>
+                            <button class="primary-button" id="confirmOperationReviewButton" type="button">Confirm</button>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="sync-progress-overlay" id="syncProgressOverlay" aria-live="polite" aria-atomic="true" hidden>
                     <div class="sync-progress-card" role="status">
                         <div class="sync-progress-head">
@@ -15705,6 +15823,7 @@
             let postingSettingsSaving = false;
             let postingSettingsError = "";
             let activeAllocationSource = null;
+            let operationReviewResolver = null;
             const jashflowLoanStatusFilterLabels = {
                 active: "Active loans",
                 interest: "Interest to post",
@@ -15724,6 +15843,9 @@
             let jashflowLoading = false;
             let jashflowInsightsLoaded = false;
             let jashflowPostingInterest = false;
+            let jashflowInterestPreview = null;
+            let jashflowInterestPreviewLoading = false;
+            let jashflowInterestPreviewPeriodEnd = "";
             let jashflowLoanDeleting = false;
             let selectedJashflowLoanId = "";
             let jashflowFormOpen = false;
@@ -16106,6 +16228,7 @@
                         jashflowPayments: config.endpoints?.jashflowPayments || "/api/jashflow/loans/:loanId/payments",
                         jashflowCharges: config.endpoints?.jashflowCharges || "/api/jashflow/loans/:loanId/charges",
                         jashflowSettings: config.endpoints?.jashflowSettings || "/api/jashflow/settings",
+                        jashflowInterestPreview: config.endpoints?.jashflowInterestPreview || "/api/jashflow/interest-preview",
                         jashflowInterestPosts: config.endpoints?.jashflowInterestPosts || "/api/jashflow/interest-posts",
                         bankStatements: config.endpoints?.bankStatements || "/api/bank-statements",
                         bankStatementClients: config.endpoints?.bankStatementClients || "/api/bank-statements/clients",
@@ -20700,6 +20823,55 @@
                 activeAllocationSource = null;
             }
 
+            function closeOperationReviewPanel(confirmed = false) {
+                const panel = document.getElementById("operationReviewPanel");
+                if (panel) panel.hidden = true;
+                const resolver = operationReviewResolver;
+                operationReviewResolver = null;
+                if (resolver) resolver(Boolean(confirmed));
+            }
+
+            function formatOperationReviewCell(value, kind = "text") {
+                if (kind === "currency") return formatCurrency(value || 0);
+                if (kind === "date") return formatDate(value);
+                if (kind === "number") return Number(value || 0).toLocaleString("en-GB");
+                return String(value ?? "");
+            }
+
+            async function showOperationReviewDialog(config = {}) {
+                const panel = document.getElementById("operationReviewPanel");
+                const eyebrow = document.getElementById("operationReviewEyebrow");
+                const title = document.getElementById("operationReviewTitle");
+                const subtitle = document.getElementById("operationReviewSubtitle");
+                const summary = document.getElementById("operationReviewSummary");
+                const body = document.getElementById("operationReviewBody");
+                const confirmButton = document.getElementById("confirmOperationReviewButton");
+                const cancelButton = document.getElementById("cancelOperationReviewButton");
+                if (!panel || !eyebrow || !title || !subtitle || !summary || !body || !confirmButton || !cancelButton) return false;
+                if (operationReviewResolver) closeOperationReviewPanel(false);
+                eyebrow.textContent = config.eyebrow || "Review action";
+                title.textContent = config.title || "Confirm operation";
+                subtitle.textContent = config.subtitle || "Review the selected rows before confirming.";
+                confirmButton.textContent = config.confirmLabel || "Confirm";
+                cancelButton.textContent = config.cancelLabel || "Cancel";
+                summary.innerHTML = (config.summaryChips || [])
+                    .map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`)
+                    .join("");
+                const columns = Array.isArray(config.columns) ? config.columns : [];
+                const rows = Array.isArray(config.rows) ? config.rows : [];
+                if (!columns.length || !rows.length) {
+                    body.innerHTML = `<div class="empty-state"><p class="eyebrow">No rows</p><h4>No line items to review</h4><p>The selected action did not include any review rows.</p></div>`;
+                } else {
+                    const header = columns.map((column) => `<th>${escapeHTML(column.label || column.key || "")}</th>`).join("");
+                    const rowMarkup = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHTML(formatOperationReviewCell(row[column.key], column.kind || "text"))}</td>`).join("")}</tr>`).join("");
+                    body.innerHTML = `<table class="operation-review-table"><thead><tr>${header}</tr></thead><tbody>${rowMarkup}</tbody></table>`;
+                }
+                panel.hidden = false;
+                return await new Promise((resolve) => {
+                    operationReviewResolver = resolve;
+                });
+            }
+
             function openAllocationPanel(source) {
                 const client = findCustomerById(selectedClientId) || findCustomerByInvoiceId(selectedInvoiceId);
                 if (!client) return showToast("Select a client first", "error");
@@ -21790,11 +21962,66 @@
                         loanId: String(loan.id || ""),
                         customerId: String(loan.customerId || ""),
                         customerName: loan.customerName || "Unnamed client",
+                        loanStartDate: loan.startDate || "",
+                        daysAccrued: Number(loan.daysAccrued || 0),
                         uninvoicedInterest: Number(loan.uninvoicedInterest || 0),
                         accruedInterest: Number(loan.accruedInterest || 0),
                         invoicedInterest: Number(loan.invoicedInterest || 0),
+                        balance: Number(loan.balance || 0),
                     }))
                     .sort((left, right) => right.uninvoicedInterest - left.uninvoicedInterest);
+            }
+
+            function currentJashflowPeriodEndDate() {
+                return document.getElementById("jashflowInterestPeriodEndInput")?.value || localDateKey();
+            }
+
+            function currentJashflowInterestPostingRows() {
+                const periodEndDate = currentJashflowPeriodEndDate();
+                if (
+                    jashflowInterestPreview
+                    && String(jashflowInterestPreview.periodEndDate || "") === periodEndDate
+                    && Array.isArray(jashflowInterestPreview.loanRows)
+                ) {
+                    return jashflowInterestPreview.loanRows
+                        .map((row) => ({
+                            loanId: String(row.loanId || ""),
+                            customerId: String(row.customerId || ""),
+                            customerName: row.customerName || "Unnamed client",
+                            loanStartDate: row.loanStartDate || "",
+                            daysAccrued: Number(row.daysAccrued || 0),
+                            uninvoicedInterest: Number(row.interestAmount || 0),
+                            accruedInterest: Number(row.accruedInterest || 0),
+                            invoicedInterest: Number(row.previouslyPosted || 0),
+                            balance: Number(row.balance || 0),
+                        }))
+                        .sort((left, right) => right.uninvoicedInterest - left.uninvoicedInterest);
+                }
+                return jashflowInterestPostingRows();
+            }
+
+            async function refreshJashflowInterestPreview(force = false) {
+                const periodEndDate = currentJashflowPeriodEndDate();
+                if (!periodEndDate) return;
+                if (!force && jashflowInterestPreviewPeriodEnd === periodEndDate && jashflowInterestPreview) return;
+                if (jashflowInterestPreviewLoading && jashflowInterestPreviewPeriodEnd === periodEndDate) return;
+                jashflowInterestPreviewLoading = true;
+                jashflowInterestPreviewPeriodEnd = periodEndDate;
+                if (activeView === "jashflow") renderJashflowScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.jashflowInterestPreview, {
+                        method: "POST",
+                        body: JSON.stringify({ periodEndDate })
+                    });
+                    jashflowInterestPreview = payload.preview || {};
+                } catch (error) {
+                    if (!(error instanceof AuthRequiredError)) {
+                        showToast(error.message || "Unable to refresh interest preview", "error");
+                    }
+                } finally {
+                    jashflowInterestPreviewLoading = false;
+                    if (activeView === "jashflow") renderJashflowScreen();
+                }
             }
 
             async function ensureXeroAccountsForJashflow(force = false) {
@@ -22166,6 +22393,8 @@
                 try {
                     const payload = await requestJSON(api.endpoints.jashflow);
                     jashflowData = normaliseJashflowPayload(payload);
+                    jashflowInterestPreview = null;
+                    jashflowInterestPreviewPeriodEnd = "";
                     jashflowInsightsLoaded = true;
                     if (!selectedJashflowLoanId || !jashflowData.loans.some((loan) => loan.id === selectedJashflowLoanId)) {
                         selectedJashflowLoanId = jashflowData.loans[0]?.id || "";
@@ -22255,14 +22484,24 @@
                 const periodEndInput = document.getElementById("jashflowInterestPeriodEndInput");
                 if (periodEndInput && !periodEndInput.value) periodEndInput.value = localDateKey();
                 const postButton = document.getElementById("postJashflowInterestButton");
-                const postingRows = jashflowInterestPostingRows();
+                const selectedPeriodEndDate = periodEndInput?.value || localDateKey();
+                if (
+                    selectedPeriodEndDate
+                    && (!jashflowInterestPreview || String(jashflowInterestPreview.periodEndDate || "") !== selectedPeriodEndDate)
+                    && !jashflowInterestPreviewLoading
+                ) {
+                    refreshJashflowInterestPreview();
+                }
+                const postingRows = currentJashflowInterestPostingRows();
                 const postingClientCount = new Set(postingRows.map((row) => row.customerId || row.customerName)).size;
                 const uninvoicedAmount = postingRows.reduce((sum, row) => sum + Number(row.uninvoicedInterest || 0), 0);
                 const setupComplete = Boolean((accountInput?.value || settings.interestAccountCode || "").trim());
                 if (postButton) {
-                    postButton.disabled = jashflowPostingInterest || !setupComplete || uninvoicedAmount < 0.01;
+                    postButton.disabled = jashflowPostingInterest || !setupComplete || uninvoicedAmount < 0.01 || jashflowInterestPreviewLoading;
                     postButton.textContent = jashflowPostingInterest
                         ? "Posting interest..."
+                        : jashflowInterestPreviewLoading
+                        ? "Calculating interest..."
                         : uninvoicedAmount >= 0.01
                         ? `Post ${formatCurrency(uninvoicedAmount)} interest`
                         : "No interest to post";
@@ -22284,10 +22523,12 @@
                     } else if (!currentAccountCode) {
                         postingStatus.classList.add("is-warning");
                         postingStatus.textContent = "Choose a revenue nominal code, click Save setup, then post interest invoices.";
+                    } else if (jashflowInterestPreviewLoading) {
+                        postingStatus.textContent = `Recalculating interest to ${formatDate(selectedPeriodEndDate)}...`;
                     } else if (uninvoicedAmount < 0.01) {
                         postingStatus.textContent = "No uninvoiced interest is currently available to post.";
                     } else {
-                        postingStatus.textContent = `Ready to post ${formatCurrency(uninvoicedAmount)} across ${postingRows.length.toLocaleString("en-GB")} loan${postingRows.length === 1 ? "" : "s"} for ${postingClientCount.toLocaleString("en-GB")} client${postingClientCount === 1 ? "" : "s"}.`;
+                        postingStatus.textContent = `Ready to post ${formatCurrency(uninvoicedAmount)} to ${formatDate(selectedPeriodEndDate)} across ${postingRows.length.toLocaleString("en-GB")} loan${postingRows.length === 1 ? "" : "s"} for ${postingClientCount.toLocaleString("en-GB")} client${postingClientCount === 1 ? "" : "s"}.`;
                     }
                 }
                 const postingReport = document.getElementById("jashflowInterestPostingReport");
@@ -22841,7 +23082,11 @@
                     showToast("Choose and save the Xero interest account code before posting interest", "error");
                     return;
                 }
-                const postingRows = jashflowInterestPostingRows();
+                if (jashflowInterestPreviewLoading) {
+                    showToast("Wait for interest recalculation to finish before posting", "info");
+                    return;
+                }
+                const postingRows = currentJashflowInterestPostingRows();
                 const amount = postingRows.reduce((sum, row) => sum + Number(row.uninvoicedInterest || 0), 0);
                 if (amount < 0.01) {
                     showToast("There is no uninvoiced Jashflow interest to post", "info");
@@ -22849,7 +23094,27 @@
                 }
                 const periodEndDate = document.getElementById("jashflowInterestPeriodEndInput")?.value || localDateKey();
                 const clientCount = new Set(postingRows.map((row) => row.customerId || row.customerName)).size;
-                if (!window.confirm(`Post ${formatCurrency(amount)} of Jashflow interest to Xero for ${clientCount.toLocaleString("en-GB")} clients across ${postingRows.length.toLocaleString("en-GB")} loans (period end ${periodEndDate})?`)) return;
+                const confirmed = await showOperationReviewDialog({
+                    eyebrow: "Jashflow interest posting",
+                    title: `Post ${formatCurrency(amount)} interest to Xero`,
+                    subtitle: `Period end ${formatDate(periodEndDate)} · ${clientCount.toLocaleString("en-GB")} clients · ${postingRows.length.toLocaleString("en-GB")} loans.`,
+                    confirmLabel: "Post interest invoices",
+                    summaryChips: [
+                        `Period end ${formatDate(periodEndDate)}`,
+                        `${clientCount.toLocaleString("en-GB")} clients`,
+                        `${postingRows.length.toLocaleString("en-GB")} loans`,
+                        `${formatCurrency(amount)} total`
+                    ],
+                    columns: [
+                        { key: "customerName", label: "Client" },
+                        { key: "loanStartDate", label: "Loan start", kind: "date" },
+                        { key: "daysAccrued", label: "Days accrued", kind: "number" },
+                        { key: "invoicedInterest", label: "Previously posted", kind: "currency" },
+                        { key: "uninvoicedInterest", label: "Interest to post", kind: "currency" }
+                    ],
+                    rows: postingRows
+                });
+                if (!confirmed) return;
                 jashflowPostingInterest = true;
                 renderJashflowScreen();
                 try {
@@ -33078,8 +33343,36 @@
                 if (!isXeroConnected() && !rateLimit) return showToast("Connect Xero before writing off invoices", "error");
                 const invoices = invoiceIds.map((invoiceId) => findInvoiceById(invoiceId)).filter(Boolean);
                 const total = invoices.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+                const reviewRows = invoices
+                    .map((invoice) => ({
+                        customerName: invoice.customerName || "Client",
+                        invoiceNumber: invoice.invoiceNumber || "Invoice",
+                        dueDate: invoice.dueDate || "",
+                        overdueDays: Number(invoice.overdueDays || 0),
+                        amountDue: Number(invoice.amountDue || 0),
+                    }))
+                    .sort((left, right) => right.amountDue - left.amountDue);
                 if (rateLimit) {
-                    if (!window.confirm(`Queue ${invoiceIds.length} bad debt write-off${invoiceIds.length === 1 ? "" : "s"} totalling ${formatCurrency(total)} for Xero? They will stay in Settings > Xero outbox until the daily limit resets.`)) return;
+                    const confirmedQueue = await showOperationReviewDialog({
+                        eyebrow: "Bad debt queue",
+                        title: `Queue ${invoiceIds.length.toLocaleString("en-GB")} write-off${invoiceIds.length === 1 ? "" : "s"}`,
+                        subtitle: "Xero is rate-limited. These will be queued in Settings > Xero outbox.",
+                        confirmLabel: "Queue write-offs",
+                        summaryChips: [
+                            `${invoiceIds.length.toLocaleString("en-GB")} invoices`,
+                            `${formatCurrency(total)} total`,
+                            "Queued until Xero limit resets"
+                        ],
+                        columns: [
+                            { key: "customerName", label: "Client" },
+                            { key: "invoiceNumber", label: "Invoice" },
+                            { key: "dueDate", label: "Due date", kind: "date" },
+                            { key: "overdueDays", label: "Overdue days", kind: "number" },
+                            { key: "amountDue", label: "Write-off amount", kind: "currency" }
+                        ],
+                        rows: reviewRows
+                    });
+                    if (!confirmedQueue) return;
                     try {
                         await queuePendingXeroAction("bad_debt_write_offs", invoiceIds);
                         selectedBadDebtInvoiceIds.clear();
@@ -33092,7 +33385,26 @@
                     }
                     return;
                 }
-                if (!window.confirm(`Write off ${invoiceIds.length} invoice${invoiceIds.length === 1 ? "" : "s"} in Xero totalling ${formatCurrency(total)}? This raises credit notes to the configured bad debt account and allocates them one by one.`)) return;
+                const confirmed = await showOperationReviewDialog({
+                    eyebrow: "Bad debt write-off",
+                    title: `Write off ${invoiceIds.length.toLocaleString("en-GB")} invoice${invoiceIds.length === 1 ? "" : "s"} in Xero`,
+                    subtitle: "Credit notes will be raised to the configured bad debt account and allocated one by one.",
+                    confirmLabel: "Raise credit notes",
+                    summaryChips: [
+                        `${invoiceIds.length.toLocaleString("en-GB")} invoices`,
+                        `${formatCurrency(total)} total`,
+                        "Posting directly to Xero"
+                    ],
+                    columns: [
+                        { key: "customerName", label: "Client" },
+                        { key: "invoiceNumber", label: "Invoice" },
+                        { key: "dueDate", label: "Due date", kind: "date" },
+                        { key: "overdueDays", label: "Overdue days", kind: "number" },
+                        { key: "amountDue", label: "Write-off amount", kind: "currency" }
+                    ],
+                    rows: reviewRows
+                });
+                if (!confirmed) return;
                 const completedPayload = await runInvoiceOperation(
                     api.endpoints.writeOffRun,
                     { invoiceIds },
@@ -33122,8 +33434,42 @@
                     };
                 });
                 const chargeTotal = chargeSelections.reduce((sum, item) => sum + latePaymentChargeGrossAmount(item.baseAmount), 0);
+                const reviewRows = invoiceIds
+                    .map((invoiceId) => {
+                        const invoice = findInvoiceById(invoiceId) || {};
+                        const selection = chargeSelections.find((item) => item.invoiceId === invoiceId) || { baseAmount: 0 };
+                        return {
+                            customerName: invoice.customerName || "Client",
+                            invoiceNumber: invoice.invoiceNumber || "Invoice",
+                            dueDate: invoice.dueDate || "",
+                            overdueDays: Number(invoice.overdueDays || 0),
+                            baseCharge: Number(selection.baseAmount || 0),
+                            grossCharge: Number(latePaymentChargeGrossAmount(selection.baseAmount || 0) || 0),
+                        };
+                    })
+                    .sort((left, right) => right.grossCharge - left.grossCharge);
                 if (rateLimit) {
-                    if (!window.confirm(`Queue ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} totalling ${formatCurrency(chargeTotal)} for Xero? They will stay in Settings > Xero outbox until the daily limit resets.`)) return;
+                    const confirmedQueue = await showOperationReviewDialog({
+                        eyebrow: "Late payment charges queue",
+                        title: `Queue ${invoiceIds.length.toLocaleString("en-GB")} late payment charge${invoiceIds.length === 1 ? "" : "s"}`,
+                        subtitle: "Xero is rate-limited. These will be queued in Settings > Xero outbox.",
+                        confirmLabel: "Queue charges",
+                        summaryChips: [
+                            `${invoiceIds.length.toLocaleString("en-GB")} invoices`,
+                            `${formatCurrency(chargeTotal)} gross total`,
+                            "Queued until Xero limit resets"
+                        ],
+                        columns: [
+                            { key: "customerName", label: "Client" },
+                            { key: "invoiceNumber", label: "Invoice" },
+                            { key: "dueDate", label: "Due date", kind: "date" },
+                            { key: "overdueDays", label: "Overdue days", kind: "number" },
+                            { key: "baseCharge", label: "Base charge", kind: "currency" },
+                            { key: "grossCharge", label: "Charge inc VAT", kind: "currency" }
+                        ],
+                        rows: reviewRows
+                    });
+                    if (!confirmedQueue) return;
                     try {
                         await queuePendingXeroAction("late_payment_charges", invoiceIds, { chargeSelections });
                         invoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
@@ -33137,7 +33483,27 @@
                     }
                     return;
                 }
-                if (!window.confirm(`Raise ${invoiceIds.length} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"} in Xero totalling ${formatCurrency(chargeTotal)} including VAT?`)) return;
+                const confirmed = await showOperationReviewDialog({
+                    eyebrow: "Late payment charges",
+                    title: `Raise ${invoiceIds.length.toLocaleString("en-GB")} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"}`,
+                    subtitle: "Charges will be posted to Xero with the selected base amounts and VAT.",
+                    confirmLabel: "Raise charges",
+                    summaryChips: [
+                        `${invoiceIds.length.toLocaleString("en-GB")} invoices`,
+                        `${formatCurrency(chargeTotal)} gross total`,
+                        "Posting directly to Xero"
+                    ],
+                    columns: [
+                        { key: "customerName", label: "Client" },
+                        { key: "invoiceNumber", label: "Invoice" },
+                        { key: "dueDate", label: "Due date", kind: "date" },
+                        { key: "overdueDays", label: "Overdue days", kind: "number" },
+                        { key: "baseCharge", label: "Base charge", kind: "currency" },
+                        { key: "grossCharge", label: "Charge inc VAT", kind: "currency" }
+                    ],
+                    rows: reviewRows
+                });
+                if (!confirmed) return;
 
                 const completedPayload = await runInvoiceOperation(
                     api.endpoints.latePaymentChargeRun,
@@ -38555,6 +38921,15 @@
                 if (jashflowSettingsForm) jashflowSettingsForm.addEventListener("submit", saveJashflowSettings);
                 const postJashflowInterestButton = document.getElementById("postJashflowInterestButton");
                 if (postJashflowInterestButton) postJashflowInterestButton.addEventListener("click", postJashflowInterest);
+                const jashflowInterestPeriodEndInput = document.getElementById("jashflowInterestPeriodEndInput");
+                if (jashflowInterestPeriodEndInput) {
+                    jashflowInterestPeriodEndInput.addEventListener("change", () => {
+                        jashflowInterestPreview = null;
+                        jashflowInterestPreviewPeriodEnd = "";
+                        refreshJashflowInterestPreview(true);
+                        renderJashflowScreen();
+                    });
+                }
                 const refreshBankStatementsButton = document.getElementById("refreshBankStatementsButton");
                 if (refreshBankStatementsButton) refreshBankStatementsButton.addEventListener("click", () => loadBankStatements(true));
                 const toggleBankStatementClientFormButton = document.getElementById("toggleBankStatementClientFormButton");
@@ -38880,6 +39255,12 @@
                 document.getElementById("allocationPanel")?.addEventListener("click", (event) => {
                     if (event.target.id === "allocationPanel") closeAllocationPanel();
                 });
+                document.getElementById("operationReviewPanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "operationReviewPanel") closeOperationReviewPanel(false);
+                });
+                document.getElementById("closeOperationReviewButton")?.addEventListener("click", () => closeOperationReviewPanel(false));
+                document.getElementById("cancelOperationReviewButton")?.addEventListener("click", () => closeOperationReviewPanel(false));
+                document.getElementById("confirmOperationReviewButton")?.addEventListener("click", () => closeOperationReviewPanel(true));
                 document.getElementById("closeAllocationPanelButton")?.addEventListener("click", closeAllocationPanel);
                 document.getElementById("cancelAllocationPanelButton")?.addEventListener("click", closeAllocationPanel);
                 document.getElementById("allocationDialogForm")?.addEventListener("submit", async (event) => {

@@ -73,6 +73,7 @@ from .services import (
     create_jashflow_loan,
     delete_jashflow_loan,
     jashflow_payload,
+    jashflow_interest_preview,
     post_jashflow_interest_invoice,
     save_jashflow_settings,
     update_jashflow_loan,
@@ -1113,6 +1114,12 @@ async def api_save_jashflow_settings(request: Request, user: dict = Depends(requ
 async def api_post_jashflow_interest(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **await post_jashflow_interest_invoice(user, payload)}
+
+
+@app.post("/api/jashflow/interest-preview")
+async def api_jashflow_interest_preview(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "preview": jashflow_interest_preview(user, payload)}
 
 
 @app.get("/api/ignition")

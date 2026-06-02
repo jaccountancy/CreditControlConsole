@@ -5929,35 +5929,140 @@ def _build_jashflow_interest_workbook(lines: list[dict], period_end: date, total
     return buffer.getvalue()
 
 
-async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None) -> dict:
-    payload = payload or {}
+def _jashflow_interest_lines_for_period(user: dict, period_end: date) -> tuple[str, str, list[dict]]:
     tenant_id = _jashflow_tenant_id(user)
-    period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
-    current_payload = jashflow_payload(user)
-    settings = current_payload.get("settings") or {}
-    account_code = settings.get("interestAccountCode") or ""
-    if not account_code:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the Jashflow interest received account code before posting interest.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT loans.*, customers.name AS customer_name, customers.xero_contact_id
+                FROM jashflow_loans AS loans
+                JOIN customers ON customers.id = loans.customer_id
+                WHERE loans.tenant_id = %s
+                  AND loans.status = 'active'
+                ORDER BY loans.created_at DESC
+                """,
+                (tenant_id,),
+            )
+            loan_rows = cursor.fetchall()
+            loan_ids = [row["id"] for row in loan_rows]
+            transactions_by_loan = defaultdict(list)
+            posted_interest_by_loan = defaultdict(lambda: Decimal("0.00"))
+            if loan_ids:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM jashflow_transactions
+                    WHERE loan_id = ANY(%s)
+                    ORDER BY transaction_date ASC, created_at ASC
+                    """,
+                    (loan_ids,),
+                )
+                for row in cursor.fetchall():
+                    transactions_by_loan[str(row["loan_id"])].append(row)
+                cursor.execute(
+                    """
+                    SELECT lines.loan_id, COALESCE(SUM(lines.interest_amount), 0) AS posted_interest
+                    FROM jashflow_interest_post_lines AS lines
+                    JOIN jashflow_interest_post_batches AS batches ON batches.id = lines.batch_id
+                    WHERE lines.loan_id = ANY(%s)
+                      AND batches.status = 'completed'
+                      AND lines.period_end_date <= %s
+                    GROUP BY lines.loan_id
+                    """,
+                    (loan_ids, period_end),
+                )
+                for row in cursor.fetchall():
+                    posted_interest_by_loan[str(row["loan_id"])] = _money(row.get("posted_interest"))
+            cursor.execute(
+                """
+                SELECT *
+                FROM jashflow_settings
+                WHERE tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+            settings_row = cursor.fetchone() or {}
+        connection.commit()
 
+    account_code = str(settings_row.get("interest_account_code") or "").strip()
     lines = []
-    for loan in current_payload.get("loans") or []:
-        if loan.get("status") != "active":
-            continue
-        interest_amount = _money(loan.get("uninvoicedInterest"))
+    for loan in loan_rows:
+        loan_id = str(loan["id"])
+        transactions = transactions_by_loan.get(loan_id, [])
+        summary = _jashflow_interest_summary(loan, transactions, as_of=period_end)
+        previously_posted = posted_interest_by_loan.get(loan_id, Decimal("0.00"))
+        interest_amount = max(Decimal("0.00"), _money(summary["accruedInterest"] - previously_posted))
         if interest_amount < Decimal("0.01"):
             continue
         lines.append(
             {
-                "loanId": loan["id"],
-                "customerId": loan["customerId"],
-                "customerName": loan["customerName"],
-                "xeroContactId": loan.get("xeroContactId") or "",
-                "accruedInterest": _money(loan.get("accruedInterest")),
-                "previouslyPosted": _money(loan.get("invoicedInterest")),
-                "interestAmount": interest_amount,
-                "balance": _money(loan.get("balance")),
+                "loanId": loan_id,
+                "customerId": str(loan.get("customer_id") or ""),
+                "customerName": loan.get("customer_name") or "Unnamed client",
+                "xeroContactId": loan.get("xero_contact_id") or "",
+                "loanStartDate": _iso(loan.get("start_date")) or "",
+                "accruedInterest": _money(summary["accruedInterest"]),
+                "previouslyPosted": _money(previously_posted),
+                "interestAmount": _money(interest_amount),
+                "balance": _money(summary["balance"]),
+                "daysAccrued": int(summary.get("daysAccrued") or 0),
             }
         )
+    lines.sort(key=lambda item: (item["interestAmount"], item["customerName"]), reverse=True)
+    return tenant_id, account_code, lines
+
+
+def jashflow_interest_preview(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
+    _, account_code, lines = _jashflow_interest_lines_for_period(user, period_end)
+    total = _money(sum((line["interestAmount"] for line in lines), Decimal("0.00")))
+    clients = {}
+    for line in lines:
+        key = line["customerId"] or line["customerName"]
+        current = clients.get(key) or {"customerId": line["customerId"], "customerName": line["customerName"], "loanCount": 0, "interestAmount": Decimal("0.00")}
+        current["loanCount"] += 1
+        current["interestAmount"] = _money(current["interestAmount"] + line["interestAmount"])
+        clients[key] = current
+    return {
+        "periodEndDate": period_end.isoformat(),
+        "interestAccountCode": account_code,
+        "lineCount": len(lines),
+        "clientCount": len(clients),
+        "totalInterestAmount": float(total),
+        "clients": [
+            {
+                "customerId": row["customerId"],
+                "customerName": row["customerName"],
+                "loanCount": int(row["loanCount"]),
+                "interestAmount": float(_money(row["interestAmount"])),
+            }
+            for row in sorted(clients.values(), key=lambda item: (item["interestAmount"], item["customerName"]), reverse=True)
+        ],
+        "loanRows": [
+            {
+                "loanId": line["loanId"],
+                "customerId": line["customerId"],
+                "customerName": line["customerName"],
+                "loanStartDate": line["loanStartDate"],
+                "accruedInterest": float(line["accruedInterest"]),
+                "previouslyPosted": float(line["previouslyPosted"]),
+                "interestAmount": float(line["interestAmount"]),
+                "balance": float(line["balance"]),
+                "daysAccrued": line["daysAccrued"],
+            }
+            for line in lines
+        ],
+    }
+
+
+async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
+    tenant_id, account_code, lines = _jashflow_interest_lines_for_period(user, period_end)
+    if not account_code:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the Jashflow interest received account code before posting interest.")
     if not lines:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="There is no uninvoiced Jashflow interest to post.")
 
