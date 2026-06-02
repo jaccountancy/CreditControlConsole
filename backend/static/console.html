@@ -15082,7 +15082,7 @@
                                 <div>
                                     <p class="eyebrow">Companies House automation</p>
                                     <h3>Confirmation statement submissions</h3>
-                                    <p class="detail-meta">Manage company records, refresh live Companies House data, queue filings, and raise linked Xero invoices from one workflow.</p>
+                                    <p class="detail-meta">Manage company records, refresh live Companies House data, submit filings, and raise linked Xero invoices from one workflow.</p>
                                 </div>
                                 <span class="companies-house-mark is-logo" aria-hidden="true"><img src="/static/companies-house-logo.png" alt=""></span>
                             </div>
@@ -15178,7 +15178,7 @@
                                         <article>
                                             <span>Step 3</span>
                                             <strong id="chWorkflowReadyToInvoiceCount">0 ready</strong>
-                                            <small>Submitted and not yet invoiced</small>
+                                            <small>Accepted and not yet invoiced</small>
                                         </article>
                                     </div>
                                     <div class="ch-settings-actions">
@@ -15405,6 +15405,7 @@
                                 </form>
                                 <div class="ch-settings-actions">
                                     <button class="primary-button" type="button" id="saveCompaniesHouseSettingsButton">Save settings</button>
+                                    <button class="ghost-button" type="button" id="testCompaniesHouseConnectionButton">Test CH connection</button>
                                     <button class="ghost-button" type="button" id="reloadCompaniesHouseSettingsButton">Reload</button>
                                     <span class="ch-settings-status is-muted" id="companiesHouseSettingsStatus">Loading settings…</span>
                                 </div>
@@ -23228,6 +23229,8 @@
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
+                loadCompaniesHouseSettings();
                 scrollConsoleToTop();
             }
 
@@ -23347,6 +23350,12 @@
             function renderConfirmationStatementsScreen() {
                 const screen = document.getElementById("confirmationStatementsScreen");
                 if (!screen) return;
+                const legacyDemo = document.getElementById("confirmationStatementLegacyDemo");
+                if (legacyDemo?.hidden !== false) {
+                    renderConfirmationStatementsTopbarSummary();
+                    chUpdateWorkflowControls();
+                    return;
+                }
                 const select = document.getElementById("confirmationStatementCustomerSelect");
                 const summaryGrid = document.getElementById("confirmationStatementSummaryGrid");
                 const tableBody = document.getElementById("confirmationStatementTableBody");
@@ -41765,29 +41774,8 @@
                     persistState();
                     renderBadDebtScreen();
                 });
-                const confirmationStatementSearch = document.getElementById("confirmationStatementSearch");
-                if (confirmationStatementSearch) confirmationStatementSearch.addEventListener("input", (event) => {
-                    confirmationStatementSearchTerm = event.target.value || "";
-                    renderConfirmationStatementsScreen();
-                });
-                const confirmationStatementStatusFilterSelect = document.getElementById("confirmationStatementStatusFilter");
-                if (confirmationStatementStatusFilterSelect) confirmationStatementStatusFilterSelect.addEventListener("change", (event) => {
-                    confirmationStatementStatusFilter = event.target.value || "all";
-                    renderConfirmationStatementsScreen();
-                });
-                const addConfirmationStatementClientsButton = document.getElementById("addConfirmationStatementClientsButton");
-                if (addConfirmationStatementClientsButton) addConfirmationStatementClientsButton.addEventListener("click", addSelectedConfirmationStatementClients);
-                const refreshConfirmationStatementsButton = document.getElementById("refreshConfirmationStatementsButton");
-                if (refreshConfirmationStatementsButton) refreshConfirmationStatementsButton.addEventListener("click", () => {
-                    showToast("Confirmation statement demo queue refreshed", "success");
-                    renderConfirmationStatementsScreen();
-                });
-                const confirmationStatementsScreen = document.getElementById("confirmationStatementsScreen");
-                if (confirmationStatementsScreen) confirmationStatementsScreen.addEventListener("click", (event) => {
-                    const button = event.target.closest?.("[data-confirmation-action]");
-                    if (!button) return;
-                    handleConfirmationStatementAction(button.dataset.confirmationAction || "", button.dataset.confirmationId || "");
-                });
+                // Legacy confirmation-statement demo controls are intentionally disabled.
+                // The active Companies House workflow is API-backed and server-persisted.
                 const selectAllBadDebtButton = document.getElementById("selectAllBadDebtButton");
                 if (selectAllBadDebtButton) selectAllBadDebtButton.addEventListener("click", selectAllEligibleBadDebtInvoices);
                 const raiseBadDebtButton = document.getElementById("raiseBadDebtButton");
@@ -42149,7 +42137,7 @@
                 });
             }
 
-            const companiesHouseSettings = { loaded: false, loading: false, saving: false };
+            const companiesHouseSettings = { loaded: false, loading: false, saving: false, testing: false };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
                 const node = document.getElementById("companiesHouseSettingsStatus");
@@ -42228,7 +42216,7 @@
             }
 
             async function saveCompaniesHouseSettingsHandler() {
-                if (companiesHouseSettings.saving) return;
+                if (companiesHouseSettings.saving || companiesHouseSettings.testing) return;
                 const value = (id) => (document.getElementById(id)?.value || "").trim();
                 const apiKey = document.getElementById("chSettingsApiKey")?.value || "";
                 const presenterAuth = document.getElementById("chSettingsPresenterAuth")?.value || "";
@@ -42270,8 +42258,51 @@
                 }
             }
 
+            async function testCompaniesHouseConnectionHandler() {
+                if (companiesHouseSettings.saving || companiesHouseSettings.testing) return;
+                companiesHouseSettings.testing = true;
+                const testButton = document.getElementById("testCompaniesHouseConnectionButton");
+                const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
+                const reloadButton = document.getElementById("reloadCompaniesHouseSettingsButton");
+                if (testButton) testButton.disabled = true;
+                if (saveButton) saveButton.disabled = true;
+                if (reloadButton) reloadButton.disabled = true;
+                setCompaniesHouseSettingsStatus("Testing Companies House connection…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/settings/test-connection", {
+                        method: "POST",
+                        body: JSON.stringify({}),
+                    });
+                    const result = payload?.result || {};
+                    const envLabel = result.environment === "production" ? "production" : "sandbox";
+                    const latency = Number(result.durationMs || 0);
+                    const sampleCount = Number(result.sampleResultCount || 0);
+                    setCompaniesHouseSettingsStatus(
+                        `Connection OK (${envLabel}) · ${latency}ms · sample results ${sampleCount}.`,
+                        "success"
+                    );
+                    showToast("Companies House connection test passed.", "success");
+                } catch (error) {
+                    console.error("Unable to test Companies House connection", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    setCompaniesHouseSettingsStatus(
+                        error?.message || "Companies House connection test failed.",
+                        "error"
+                    );
+                    showToast(error?.message || "Companies House connection test failed.", "error");
+                } finally {
+                    companiesHouseSettings.testing = false;
+                    if (testButton) testButton.disabled = false;
+                    if (saveButton) saveButton.disabled = false;
+                    if (reloadButton) reloadButton.disabled = false;
+                }
+            }
+
             function wireCompaniesHouseSettings() {
                 document.getElementById("saveCompaniesHouseSettingsButton")?.addEventListener("click", saveCompaniesHouseSettingsHandler);
+                document.getElementById("testCompaniesHouseConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
                 document.getElementById("reloadCompaniesHouseSettingsButton")?.addEventListener("click", () => loadCompaniesHouseSettings(true));
                 document.getElementById("companiesHouseSettingsForm")?.addEventListener("submit", (event) => {
                     event.preventDefault();
@@ -42457,7 +42488,12 @@
                         method: "POST",
                         body: JSON.stringify(syncPayload),
                     });
+                    const reconcileResponse = await requestJSON("/api/companies-house/submissions/reconcile", {
+                        method: "POST",
+                        body: JSON.stringify({ limit: 200 }),
+                    });
                     const result = syncResponse?.result || {};
+                    const reconcile = reconcileResponse?.result || {};
                     await Promise.all([
                         loadCompaniesHouseDashboard(true),
                         loadCompaniesHouseCompanies(true),
@@ -42467,8 +42503,10 @@
                     }
                     const failed = Number(result.failedCount || 0);
                     const synced = Number(result.syncedCount || 0);
+                    const accepted = Number(reconcile.acceptedCount || 0);
+                    const rejected = Number(reconcile.rejectedCount || 0);
                     showToast(
-                        `Companies House sync finished: ${synced.toLocaleString("en-GB")} updated${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}.`,
+                        `Companies House sync finished: ${synced.toLocaleString("en-GB")} updated${failed ? `, ${failed.toLocaleString("en-GB")} failed` : ""}${accepted || rejected ? `. Status updates: ${accepted} accepted, ${rejected} rejected` : ""}.`,
                         failed ? "info" : "success"
                     );
                 } catch (error) {
@@ -42673,7 +42711,7 @@
                     chSetWorkflowStatus("Select at least one eligible company (due ≤60 days with auth code) before submitting.", "error");
                     return;
                 }
-                if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to workflow queue?`)) return;
+                if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to Companies House?`)) return;
                 companiesHouseState.workflowBusy = true;
                 chUpdateWorkflowControls();
                 chSetWorkflowStatus("Submitting selected companies…", "muted");
@@ -42685,14 +42723,16 @@
                     const result = payload?.result || {};
                     const submittedCount = Number(result.submittedCount || 0);
                     const skippedCount = Number(result.skippedCount || 0);
+                    const failedCount = Number(result.failedCount || 0);
+                    const hasProblems = skippedCount > 0 || failedCount > 0;
                     chSetWorkflowStatus(
-                        `Submitted ${submittedCount.toLocaleString("en-GB")} and skipped ${skippedCount.toLocaleString("en-GB")}.`,
-                        skippedCount ? "error" : "success"
+                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed.`,
+                        hasProblems ? "error" : "success"
                     );
                     companiesHouseState.tabLoaded.dashboard = false;
                     companiesHouseState.tabLoaded.companies = false;
                     await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
-                    showToast(`Companies House workflow submission complete: ${submittedCount} submitted, ${skippedCount} skipped.`, skippedCount ? "info" : "success");
+                    showToast(`Companies House workflow submission complete: ${submittedCount} submitted, ${skippedCount} skipped, ${failedCount} failed.`, hasProblems ? "info" : "success");
                 } catch (error) {
                     console.error("Unable to submit selected companies", error);
                     if (error instanceof AuthRequiredError) {
@@ -42710,7 +42750,7 @@
                 if (companiesHouseState.workflowBusy) return;
                 const selected = chSelectedCompanies().filter((company) => company.eligibleForInvoicing);
                 if (!selected.length) {
-                    chSetWorkflowStatus("Select at least one company with a submitted filing and no linked Xero invoice.", "error");
+                    chSetWorkflowStatus("Select at least one company with an accepted filing and no linked Xero invoice.", "error");
                     return;
                 }
                 if (!window.confirm(`Raise Xero invoices for ${selected.length} selected submission${selected.length === 1 ? "" : "s"}?`)) return;
@@ -43213,6 +43253,7 @@
                     loadMeReport();
                 }
                 if (activeView === "confirmation-statements") {
+                    activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                     loadCompaniesHouseSettings();
                 }
                 const activePanelSyncRun = activeSyncRunFromPanel(panelPayload);

@@ -62,6 +62,7 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - `/api/ignition/callback` Ignition OAuth callback
 - `/auth/ignition/callback` legacy Ignition OAuth callback alias
 - `POST /api/companies-house/sync` refreshes Companies House company snapshots (profile, officers, PSCs, filing history) into PostgreSQL
+- `POST /api/companies-house/submissions/reconcile` polls live CS01 submission statuses and updates accepted/rejected outcomes
 - `/customers` customer list
 - `/customers/{customer_id}` customer detail
 - `/invoices/{invoice_id}` invoice detail
@@ -81,5 +82,5 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
   - Xero invoice defaults (account code, unit amount, description, tax type)
 - Import client list and auth codes via the Import tab.
 - Run **Sync from Companies House** to populate company status, officers, PSCs, filing history, and due dates.
-- Confirm bulk submission queue and bulk invoice run are working with sandbox data.
+- Confirm live bulk submission, status reconciliation, and bulk invoice run are working with sandbox data.
 - Switch environment to production only after a successful end-to-end sandbox cycle.

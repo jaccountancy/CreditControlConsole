@@ -5,6 +5,8 @@ import io
 import json
 import logging
 import re
+import secrets
+import string
 import smtplib
 import threading
 from datetime import date, datetime, timedelta, timezone
@@ -12,6 +14,7 @@ from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
 from email.utils import formataddr
 from uuid import uuid4
+from xml.etree import ElementTree as ET
 
 import httpx
 from fastapi import HTTPException, status
@@ -61,6 +64,10 @@ AUTO_SYNC_INTERVAL_SECONDS = 30 * 60
 AUTO_SYNC_MIN_GAP = timedelta(hours=24)
 CH_WORKFLOW_DEFAULT_BCC_EMAIL = "fmfhdkgaptpyubgms@accountancymanager.co.uk"
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+COMPANIES_HOUSE_XML_GATEWAY_URL = "https://xmlgw.companieshouse.gov.uk/v1-0/xmlgw/Gateway"
+GOVTALK_NS = "http://www.govtalk.gov.uk/CM/envelope"
+CH_HEADER_NS = "http://xmlgw.companieshouse.gov.uk/Header"
+CH_FORMS_NS = "http://xmlgw.companieshouse.gov.uk"
 
 logger = logging.getLogger(__name__)
 _CH_SYNC_LOCK = threading.Lock()
@@ -150,6 +157,62 @@ def _serialise(row: dict) -> dict:
 
 def get_companies_house_settings() -> dict:
     return _serialise(_ensure_settings_row())
+
+
+def test_companies_house_connection() -> dict:
+    settings_row = _ensure_settings_row()
+    environment = str(settings_row.get("environment") or "sandbox").strip().lower()
+    if environment not in VALID_ENVIRONMENTS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Environment must be 'sandbox' or 'production'.",
+        )
+    api_key = decrypt_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure a Companies House API key before running a connection test.",
+        )
+
+    base_url = _companies_house_api_base(environment)
+    endpoint = f"{base_url}/search/companies?q=limited&items_per_page=1"
+    started = utcnow()
+
+    with _companies_house_http_client(api_key) as client:
+        response = client.get(endpoint)
+
+    duration_ms = int((utcnow() - started).total_seconds() * 1000)
+    if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Companies House rejected the API credentials. Check environment and API key.",
+        )
+    if response.is_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Companies House connection test failed ({response.status_code}).",
+        )
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Companies House returned invalid JSON during the connection test.",
+        ) from exc
+
+    items = payload.get("items")
+    sample_count = len(items) if isinstance(items, list) else 0
+    return {
+        "connected": True,
+        "environment": environment,
+        "apiBaseUrl": base_url,
+        "endpoint": endpoint,
+        "statusCode": response.status_code,
+        "durationMs": duration_ms,
+        "sampleResultCount": sample_count,
+        "message": "Companies House API connection is working.",
+    }
 
 
 def record_audit_event(
@@ -690,6 +753,7 @@ def _companies_house_auto_sync_worker() -> None:
     while not _CH_AUTO_SYNC_STOP.is_set():
         try:
             run_companies_house_auto_sync_if_due()
+            run_companies_house_submission_reconciliation({"limit": 200})
         except Exception:
             logger.exception("Companies House auto-sync worker failed")
         _CH_AUTO_SYNC_STOP.wait(AUTO_SYNC_INTERVAL_SECONDS)
@@ -706,6 +770,445 @@ def start_companies_house_auto_sync_worker() -> None:
         daemon=True,
     )
     _CH_AUTO_SYNC_THREAD.start()
+
+
+def _xml_text(value: object, fallback: str = "") -> str:
+    text = str(value if value is not None else fallback).strip()
+    return text or fallback
+
+
+def _ch_is_sandbox(environment: str) -> bool:
+    return str(environment or "").strip().lower() != "production"
+
+
+def _ch_gateway_test_flag(environment: str) -> str:
+    return "1" if _ch_is_sandbox(environment) else "0"
+
+
+def _ch_txn_id() -> str:
+    return secrets.token_hex(16).upper()
+
+
+def _ch_submission_number() -> str:
+    alphabet = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def _ch_split_company_number(company_number: str) -> tuple[str, str]:
+    value = normalise_company_number(company_number)
+    if not value:
+        return "", ""
+    if value.isdigit():
+        return "EW", value
+    if len(value) != 8:
+        return "", ""
+    prefix = value[:2]
+    if prefix in {"SC", "NI", "OC", "SO", "NC"} and value[2:].isdigit():
+        return prefix, value[2:]
+    if value.startswith("R") and value[1:].isdigit():
+        return "R", value[1:]
+    return "", ""
+
+
+def _ch_find_first(node: ET.Element, *local_names: str) -> ET.Element | None:
+    wanted = set(local_names)
+    for child in node.iter():
+        tag = child.tag
+        local = tag.rsplit("}", 1)[-1] if "}" in tag else tag
+        if local in wanted:
+            return child
+    return None
+
+
+def _ch_find_all(node: ET.Element, local_name: str) -> list[ET.Element]:
+    output: list[ET.Element] = []
+    for child in node.iter():
+        tag = child.tag
+        local = tag.rsplit("}", 1)[-1] if "}" in tag else tag
+        if local == local_name:
+            output.append(child)
+    return output
+
+
+def _ch_gateway_errors(root: ET.Element) -> list[str]:
+    errors: list[str] = []
+    for node in _ch_find_all(root, "Error"):
+        text = _xml_text(_ch_find_first(node, "Text").text if _ch_find_first(node, "Text") is not None else "")
+        number = _xml_text(_ch_find_first(node, "Number").text if _ch_find_first(node, "Number") is not None else "")
+        raised_by = _xml_text(_ch_find_first(node, "RaisedBy").text if _ch_find_first(node, "RaisedBy") is not None else "")
+        parts = [part for part in [raised_by, number, text] if part]
+        if parts:
+            errors.append(" - ".join(parts))
+    return errors
+
+
+def _build_ch_submission_xml(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    company_number: str,
+    company_name: str,
+    company_auth_code: str,
+    review_date: date,
+    registered_email: str,
+    package_reference: str,
+    transaction_id: str,
+    submission_number: str,
+) -> bytes:
+    gov = ET.Element(
+        "GovTalkMessage",
+        {
+            "xmlns": GOVTALK_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{GOVTALK_NS} http://xmlgw.companieshouse.gov.uk/v2-1/schema/Egov_ch-v2-0.xsd",
+        },
+    )
+    ET.SubElement(gov, "EnvelopeVersion").text = "1.0"
+    header = ET.SubElement(gov, "Header")
+    message_details = ET.SubElement(header, "MessageDetails")
+    ET.SubElement(message_details, "Class").text = "ConfirmationStatement"
+    ET.SubElement(message_details, "Qualifier").text = "request"
+    ET.SubElement(message_details, "TransactionID").text = transaction_id
+    ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
+    sender_details = ET.SubElement(header, "SenderDetails")
+    id_auth = ET.SubElement(sender_details, "IDAuthentication")
+    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    auth = ET.SubElement(id_auth, "Authentication")
+    ET.SubElement(auth, "Method").text = "clear"
+    ET.SubElement(auth, "Value").text = presenter_auth
+    govtalk_details = ET.SubElement(gov, "GovTalkDetails")
+    ET.SubElement(govtalk_details, "Keys")
+
+    body = ET.SubElement(gov, "Body")
+    form_submission = ET.SubElement(
+        body,
+        f"{{{CH_HEADER_NS}}}FormSubmission",
+        {
+            "xmlns": CH_HEADER_NS,
+            "xmlns:bs": CH_FORMS_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{CH_HEADER_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd",
+        },
+    )
+    form_header = ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}FormHeader")
+    company_type, company_number_digits = _ch_split_company_number(company_number)
+    if not company_number_digits:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported company number format for XML gateway: {company_number}.",
+        )
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyNumber").text = company_number_digits
+    if company_type != "EW":
+        ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyType").text = company_type
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = _xml_text(package_reference, presenter_id)
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = "ConfirmationStatement"
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}SubmissionNumber").text = submission_number
+    ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}DateSigned").text = review_date.isoformat()
+    form = ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}Form")
+    cs = ET.SubElement(
+        form,
+        f"{{{CH_FORMS_NS}}}ConfirmationStatement",
+        {
+            "xmlns": CH_FORMS_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{CH_FORMS_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/ConfirmationStatement-v1-3.xsd",
+        },
+    )
+    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}ReviewDate").text = review_date.isoformat()
+    if registered_email:
+        ET.SubElement(cs, f"{{{CH_FORMS_NS}}}RegisteredEmailAddress").text = registered_email
+    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}AcceptLawfulPurposeStatement").text = "true"
+    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}StateConfirmation").text = "true"
+    return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
+
+
+def _build_ch_status_xml(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    transaction_id: str,
+    submission_number: str | None = None,
+    company_number: str | None = None,
+) -> bytes:
+    gov = ET.Element(
+        "GovTalkMessage",
+        {
+            "xmlns": GOVTALK_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{GOVTALK_NS} http://xmlgw.companieshouse.gov.uk/v2-1/schema/Egov_ch-v2-0.xsd",
+        },
+    )
+    ET.SubElement(gov, "EnvelopeVersion").text = "1.0"
+    header = ET.SubElement(gov, "Header")
+    message_details = ET.SubElement(header, "MessageDetails")
+    ET.SubElement(message_details, "Class").text = "GetSubmissionStatus"
+    ET.SubElement(message_details, "Qualifier").text = "request"
+    ET.SubElement(message_details, "TransactionID").text = transaction_id
+    ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
+    sender_details = ET.SubElement(header, "SenderDetails")
+    id_auth = ET.SubElement(sender_details, "IDAuthentication")
+    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    auth = ET.SubElement(id_auth, "Authentication")
+    ET.SubElement(auth, "Method").text = "clear"
+    ET.SubElement(auth, "Value").text = presenter_auth
+    govtalk_details = ET.SubElement(gov, "GovTalkDetails")
+    ET.SubElement(govtalk_details, "Keys")
+    body = ET.SubElement(gov, "Body")
+    request = ET.SubElement(
+        body,
+        f"{{{CH_FORMS_NS}}}GetSubmissionStatus",
+        {
+            "xmlns": CH_FORMS_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{CH_FORMS_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/GetSubmissionStatus-v2-9.xsd",
+        },
+    )
+    if submission_number:
+        ET.SubElement(request, f"{{{CH_FORMS_NS}}}SubmissionNumber").text = submission_number
+    elif company_number:
+        _, number_digits = _ch_split_company_number(company_number)
+        if number_digits:
+            ET.SubElement(request, f"{{{CH_FORMS_NS}}}CompanyNumber").text = number_digits
+    ET.SubElement(request, f"{{{CH_FORMS_NS}}}PresenterID").text = presenter_id
+    return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
+
+
+def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
+    response = httpx.post(
+        COMPANIES_HOUSE_XML_GATEWAY_URL,
+        content=xml_payload,
+        headers={"Content-Type": "text/xml; charset=utf-8"},
+        timeout=40.0,
+    )
+    if response.is_error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Companies House gateway returned HTTP {response.status_code}.",
+        )
+    response_text = response.text or ""
+    try:
+        root = ET.fromstring(response_text.encode("utf-8"))
+    except ET.ParseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Companies House gateway returned invalid XML.",
+        ) from exc
+    return response_text, root
+
+
+def _parse_ch_submission_response(*, response_text: str, response_root: ET.Element, requested_submission_number: str) -> dict:
+    errors = _ch_gateway_errors(response_root)
+    statuses: list[dict] = []
+    for status_node in _ch_find_all(response_root, "Status"):
+        sub_no_node = _ch_find_first(status_node, "SubmissionNumber")
+        code_node = _ch_find_first(status_node, "StatusCode")
+        company_number_node = _ch_find_first(status_node, "CompanyNumber")
+        reason_parts: list[str] = []
+        for reject in _ch_find_all(status_node, "Reject"):
+            description = _ch_find_first(reject, "Description")
+            code = _ch_find_first(reject, "RejectCode")
+            part = " ".join(
+                part for part in [f"[{_xml_text(code.text)}]" if code is not None and _xml_text(code.text) else "", _xml_text(description.text)] if part
+            ).strip()
+            if part:
+                reason_parts.append(part)
+        statuses.append(
+            {
+                "submissionNumber": _xml_text(sub_no_node.text) if sub_no_node is not None else "",
+                "statusCode": _xml_text(code_node.text).upper() if code_node is not None else "",
+                "companyNumber": _xml_text(company_number_node.text) if company_number_node is not None else "",
+                "rejectionReason": " | ".join(reason_parts),
+            }
+        )
+    status_row = next((item for item in statuses if item["submissionNumber"] == requested_submission_number), None)
+    if status_row is None and statuses:
+        status_row = statuses[0]
+    status_code = _xml_text((status_row or {}).get("statusCode"), "PENDING").upper()
+    rejection_reason = _xml_text((status_row or {}).get("rejectionReason"))
+    if errors:
+        status_code = "REJECT"
+        rejection_reason = " | ".join(errors)
+    internal_status = _reconcile_submission_status_code(status_code)
+    return {
+        "statusCode": status_code,
+        "status": internal_status,
+        "rejectionReason": rejection_reason,
+        "errors": errors,
+        "statuses": statuses,
+        "rawResponse": response_text[:30000],
+    }
+
+
+def _parse_ch_status_response(*, response_text: str, response_root: ET.Element) -> dict:
+    errors = _ch_gateway_errors(response_root)
+    statuses: list[dict] = []
+    for status_node in _ch_find_all(response_root, "Status"):
+        submission_number = _xml_text(_ch_find_first(status_node, "SubmissionNumber").text if _ch_find_first(status_node, "SubmissionNumber") is not None else "")
+        status_code = _xml_text(_ch_find_first(status_node, "StatusCode").text if _ch_find_first(status_node, "StatusCode") is not None else "").upper()
+        company_number = _xml_text(_ch_find_first(status_node, "CompanyNumber").text if _ch_find_first(status_node, "CompanyNumber") is not None else "")
+        rejection_parts: list[str] = []
+        for reject_node in _ch_find_all(status_node, "Reject"):
+            code = _xml_text(_ch_find_first(reject_node, "RejectCode").text if _ch_find_first(reject_node, "RejectCode") is not None else "")
+            desc = _xml_text(_ch_find_first(reject_node, "Description").text if _ch_find_first(reject_node, "Description") is not None else "")
+            message = " ".join(part for part in [f"[{code}]" if code else "", desc] if part).strip()
+            if message:
+                rejection_parts.append(message)
+        statuses.append(
+            {
+                "submissionNumber": submission_number,
+                "statusCode": status_code,
+                "companyNumber": company_number,
+                "rejectionReason": " | ".join(rejection_parts),
+            }
+        )
+    return {"errors": errors, "statuses": statuses, "rawResponse": response_text[:30000]}
+
+
+def _load_company_auth_code(company_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT code_encrypted FROM ch_auth_codes WHERE company_id = %s", (company_id,))
+            row = cursor.fetchone() or {}
+        connection.commit()
+    encrypted = _xml_text(row.get("code_encrypted"))
+    if not encrypted:
+        return ""
+    try:
+        return decrypt_secret(encrypted, f"{CH_COMPANY_AUTH_LABEL}:{company_id}")
+    except Exception:
+        logger.exception("Failed to decrypt CH auth code for company %s", company_id)
+        return ""
+
+
+def _reconcile_submission_status_code(status_code: str) -> str:
+    code = _xml_text(status_code).upper()
+    if code in {"ACCEPT", "ACCEPTED"} or code.startswith("ACCEPT"):
+        return "accepted"
+    if code in {"REJECT", "REJECTED", "INTERNAL_FAILURE", "FAILED"} or code.startswith("REJECT") or "FAIL" in code:
+        return "rejected"
+    return "submitted"
+
+
+def run_companies_house_submission_reconciliation(payload: dict | None = None) -> dict:
+    payload = payload or {}
+    requested_submission_numbers = [str(value or "").strip() for value in (payload.get("submissionNumbers") or []) if str(value or "").strip()]
+    limit = max(1, min(int(payload.get("limit") or 200), 500))
+    settings_row = _ensure_settings_row()
+    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_auth = decrypt_presenter_auth()
+    environment = _xml_text(settings_row.get("environment"), "sandbox")
+    if not presenter_id or not presenter_auth:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure Presenter ID and Presenter authentication code before polling submission status.",
+        )
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if requested_submission_numbers:
+                cursor.execute(
+                    """
+                    SELECT id, company_id, submission_reference, status, response_payload, rejection_reason
+                    FROM ch_submissions
+                    WHERE submission_reference = ANY(%s)
+                    """,
+                    (requested_submission_numbers,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, company_id, submission_reference, status, response_payload, rejection_reason
+                    FROM ch_submissions
+                    WHERE status IN ('submitted')
+                    ORDER BY submitted_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+            rows = cursor.fetchall() or []
+        connection.commit()
+
+    if not rows:
+        return {"checkedCount": 0, "updatedCount": 0, "acceptedCount": 0, "rejectedCount": 0, "pendingCount": 0, "errors": []}
+
+    updated = 0
+    accepted = 0
+    rejected = 0
+    pending = 0
+    errors: list[str] = []
+
+    for row in rows:
+        submission_reference = _xml_text(row.get("submission_reference"))
+        if not submission_reference:
+            continue
+        try:
+            request_xml = _build_ch_status_xml(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                transaction_id=_ch_txn_id(),
+                submission_number=submission_reference,
+            )
+            response_text, root = _post_ch_gateway(request_xml)
+            parsed = _parse_ch_status_response(response_text=response_text, response_root=root)
+            status_row = next((item for item in parsed.get("statuses", []) if item.get("submissionNumber") == submission_reference), None)
+            if status_row is None and parsed.get("statuses"):
+                status_row = parsed["statuses"][0]
+            if status_row is None:
+                pending += 1
+                continue
+            status_code = _xml_text(status_row.get("statusCode"), "PENDING")
+            internal_status = _reconcile_submission_status_code(status_code)
+            rejection_reason = _xml_text(status_row.get("rejectionReason"))
+            now = utcnow()
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE ch_submissions
+                        SET status = %s,
+                            rejection_reason = %s,
+                            response_payload = COALESCE(response_payload, '{}'::jsonb) || %s::jsonb,
+                            completed_at = CASE WHEN %s IN ('accepted', 'rejected') THEN COALESCE(completed_at, %s) ELSE completed_at END,
+                            updated_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            internal_status,
+                            rejection_reason,
+                            json.dumps({"statusPoll": {"statusCode": status_code, "rawResponse": parsed.get("rawResponse", "")}}),
+                            internal_status,
+                            now,
+                            now,
+                            row["id"],
+                        ),
+                    )
+                connection.commit()
+            updated += 1
+            if internal_status == "accepted":
+                accepted += 1
+            elif internal_status == "rejected":
+                rejected += 1
+            else:
+                pending += 1
+        except HTTPException as exc:
+            errors.append(str(exc.detail))
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Submission status reconcile failed for %s", submission_reference)
+            errors.append(str(exc) or exc.__class__.__name__)
+
+    return {
+        "checkedCount": len(rows),
+        "updatedCount": updated,
+        "acceptedCount": accepted,
+        "rejectedCount": rejected,
+        "pendingCount": pending,
+        "errors": errors[:20],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -906,6 +1409,10 @@ def _company_import_classification(row_payload: dict) -> str:
     if "limited company" in company_type or "ltd company" in company_type:
         return "include"
     return "review"
+
+
+def _looks_private_limited(row_payload: dict) -> bool:
+    return _company_import_classification(row_payload) == "include"
 
 
 def _coerce_text(value: object, limit: int = 500) -> str:
@@ -1348,10 +1855,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         and has_auth
         and (due_in_days is None or due_in_days <= 60)
     )
-    eligible_for_invoicing = bool(
-        latest_submission_status in {"submitted", "accepted"}
-        and not latest_submission_invoice_id
-    )
+    eligible_for_invoicing = bool(latest_submission_status == "accepted" and not latest_submission_invoice_id)
     return {
         "id": str(row.get("id")) if row.get("id") else None,
         "companyNumber": row.get("company_number") or "",
@@ -1496,14 +2000,21 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
     if len(company_ids) > 500:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 500 companies per bulk submission.")
     settings_row = _ensure_settings_row()
+    environment = _xml_text(settings_row.get("environment"), "sandbox")
+    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_auth = decrypt_presenter_auth()
+    credit_account_number = _xml_text(settings_row.get("credit_account_number"))
+    configured_fee_amount = Decimal(str(settings_row.get("xero_invoice_unit_amount") or 0)).quantize(Decimal("0.01"))
+    if configured_fee_amount <= Decimal("0.00"):
+        configured_fee_amount = Decimal("13.00")
     preflight_errors: list[str] = []
     if not decrypt_api_key():
         preflight_errors.append("Configure a Companies House API key in settings.")
-    if not str(settings_row.get("presenter_id") or "").strip():
+    if not presenter_id:
         preflight_errors.append("Set Presenter ID in Companies House settings.")
-    if not decrypt_presenter_auth():
+    if not presenter_auth:
         preflight_errors.append("Set Presenter authentication code in Companies House settings.")
-    if not str(settings_row.get("credit_account_number") or "").strip():
+    if not credit_account_number:
         preflight_errors.append("Set Companies House credit account number in settings.")
     if preflight_errors:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=" ".join(preflight_errors))
@@ -1515,38 +2026,68 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
 
     submitted: list[dict] = []
     skipped: list[dict] = []
+    failed: list[dict] = []
     now = utcnow()
     today = date.today()
+
+    def _record_submission_skip(*, company_id: str, company_number: str, reason: str) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_company', %s, 'bulk_submission_skipped', %s::jsonb, %s)
+                    """,
+                    (
+                        company_id,
+                        json.dumps(
+                            {
+                                "companyNumber": company_number,
+                                "workflow": "confirmation_statement_bulk",
+                                "reason": reason,
+                            }
+                        ),
+                        user_id,
+                    ),
+                )
+            connection.commit()
 
     for row in companies:
         company_id = str(row.get("id") or "")
         company_number = row.get("company_number") or ""
+        company_name = row.get("company_name") or row.get("client_name") or ""
         internal_status = row.get("internal_status") or "active"
         next_due = row.get("next_due_date")
         has_auth = bool(row.get("auth_code_on_file"))
         due_in_days = (next_due - today).days if isinstance(next_due, date) else None
         if internal_status in {"paused", "do_not_file", "inactive"}:
+            reason = f"Internal status is '{internal_status}'."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append({
                 "companyId": company_id,
                 "companyNumber": company_number,
-                "companyName": row.get("company_name") or "",
-                "reason": f"Internal status is '{internal_status}'.",
+                "companyName": company_name,
+                "reason": reason,
             })
             continue
         if not has_auth:
+            reason = "Missing Companies House authentication code."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append({
                 "companyId": company_id,
                 "companyNumber": company_number,
-                "companyName": row.get("company_name") or "",
-                "reason": "Missing Companies House authentication code.",
+                "companyName": company_name,
+                "reason": reason,
             })
             continue
         if due_in_days is not None and due_in_days > 60:
+            reason = f"Due date is outside workflow window ({due_in_days} days)."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append({
                 "companyId": company_id,
                 "companyNumber": company_number,
-                "companyName": row.get("company_name") or "",
-                "reason": f"Due date is outside workflow window ({due_in_days} days).",
+                "companyName": company_name,
+                "reason": reason,
             })
             continue
 
@@ -1568,12 +2109,14 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         latest_submitted_at = latest_submission.get("submitted_at")
         latest_invoice_id = str(latest_submission.get("xero_invoice_id") or "").strip()
         if latest_status in {"queued", "submitted"}:
+            reason = f"Latest submission is already {latest_status}."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append(
                 {
                     "companyId": company_id,
                     "companyNumber": company_number,
-                    "companyName": row.get("company_name") or "",
-                    "reason": f"Latest submission is already {latest_status}.",
+                    "companyName": company_name,
+                    "reason": reason,
                 }
             )
             continue
@@ -1583,25 +2126,144 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             and isinstance(latest_submitted_at, datetime)
             and (today - latest_submitted_at.date()).days < 330
         ):
+            reason = "Latest accepted submission is still pending invoicing."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append(
                 {
                     "companyId": company_id,
                     "companyNumber": company_number,
-                    "companyName": row.get("company_name") or "",
-                    "reason": "Latest accepted submission is still pending invoicing.",
+                    "companyName": company_name,
+                    "reason": reason,
                 }
             )
             continue
 
-        submission_reference = f"CS-{company_number or company_id[:8].upper()}-{now.strftime('%Y%m%d%H%M%S')}"
-        transaction_id = f"txn-{uuid4().hex[:20]}"
-        fee_amount = Decimal("0.00")
-        status_value = "submitted"
+        company_auth_code = _load_company_auth_code(company_id)
+        if not company_auth_code:
+            reason = "Authentication code could not be decrypted for this company."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
+            skipped.append(
+                {
+                    "companyId": company_id,
+                    "companyNumber": company_number,
+                    "companyName": company_name,
+                    "reason": reason,
+                }
+            )
+            continue
+
+        submission_reference = _ch_submission_number()
+        transaction_id = _ch_txn_id()
+        review_date = next_due if isinstance(next_due, date) and next_due <= today else today
+        try:
+            request_xml = _build_ch_submission_xml(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                company_number=company_number,
+                company_name=_xml_text(row.get("company_name"), row.get("client_name") or "UNKNOWN COMPANY"),
+                company_auth_code=company_auth_code,
+                review_date=review_date,
+                registered_email=_xml_text(row.get("contact_email")),
+                package_reference=presenter_id,
+                transaction_id=transaction_id,
+                submission_number=submission_reference,
+            )
+            response_text, response_root = _post_ch_gateway(request_xml)
+            parsed_submission = _parse_ch_submission_response(
+                response_text=response_text,
+                response_root=response_root,
+                requested_submission_number=submission_reference,
+            )
+        except HTTPException as exc:
+            rejection_reason = str(exc.detail)
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO ch_submissions (
+                            company_id,
+                            submission_reference,
+                            transaction_id,
+                            fee_amount,
+                            payment_reference,
+                            status,
+                            rejection_reason,
+                            response_payload,
+                            submitted_by_user_id,
+                            submitted_at,
+                            created_at,
+                            updated_at,
+                            completed_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, 'rejected', %s, %s::jsonb, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            company_id,
+                            submission_reference,
+                            transaction_id,
+                            configured_fee_amount,
+                            credit_account_number,
+                            rejection_reason,
+                            json.dumps(
+                                {
+                                    "queuedAt": now.isoformat(),
+                                    "source": "bulk_workflow",
+                                    "mode": "live_gateway",
+                                    "companyNumber": company_number,
+                                    "failureStage": "gateway_submission",
+                                }
+                            ),
+                            user_id,
+                            now,
+                            now,
+                            now,
+                            now,
+                        ),
+                    )
+                    submission_id = str(cursor.fetchone()["id"])
+                    cursor.execute(
+                        """
+                        INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                        VALUES ('ch_submission', %s, 'bulk_submission_failed_live', %s::jsonb, %s)
+                        """,
+                        (
+                            submission_id,
+                            json.dumps(
+                                {
+                                    "companyId": company_id,
+                                    "companyNumber": company_number,
+                                    "workflow": "confirmation_statement_bulk",
+                                    "reason": rejection_reason,
+                                }
+                            ),
+                            user_id,
+                        ),
+                    )
+                connection.commit()
+            failed.append(
+                {
+                    "companyId": company_id,
+                    "companyNumber": company_number,
+                    "companyName": company_name,
+                    "reason": rejection_reason,
+                }
+            )
+            continue
+
+        status_value = _xml_text(parsed_submission.get("status"), "submitted")
+        rejection_reason = _xml_text(parsed_submission.get("rejectionReason"))
+        fee_amount = configured_fee_amount
         response_payload = {
             "queuedAt": now.isoformat(),
             "source": "bulk_workflow",
-            "mode": "workflow",
+            "mode": "live_gateway",
             "companyNumber": company_number,
+            "gatewayStatusCode": parsed_submission.get("statusCode"),
+            "gatewayStatuses": parsed_submission.get("statuses") or [],
+            "gatewayErrors": parsed_submission.get("errors") or [],
+            "rawResponse": parsed_submission.get("rawResponse") or "",
         }
 
         with get_connection() as connection:
@@ -1613,14 +2275,17 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                         submission_reference,
                         transaction_id,
                         fee_amount,
+                        payment_reference,
                         status,
+                        rejection_reason,
                         response_payload,
                         submitted_by_user_id,
                         submitted_at,
                         created_at,
-                        updated_at
+                        updated_at,
+                        completed_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
                     (
@@ -1628,26 +2293,32 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                         submission_reference,
                         transaction_id,
                         fee_amount,
+                        credit_account_number,
                         status_value,
+                        rejection_reason,
                         json.dumps(response_payload),
                         user_id,
                         now,
                         now,
                         now,
+                        now if status_value in {"accepted", "rejected"} else None,
                     ),
                 )
                 submission_id = str(cursor.fetchone()["id"])
                 cursor.execute(
                     """
                     INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
-                    VALUES ('ch_submission', %s, 'bulk_submission_queued', %s::jsonb, %s)
+                    VALUES ('ch_submission', %s, %s, %s::jsonb, %s)
                     """,
                     (
                         submission_id,
+                        "bulk_submission_sent_live" if status_value != "rejected" else "bulk_submission_rejected_live",
                         json.dumps({
                             "companyId": company_id,
                             "companyNumber": company_number,
                             "workflow": "confirmation_statement_bulk",
+                            "statusCode": parsed_submission.get("statusCode"),
+                            "errors": parsed_submission.get("errors") or [],
                         }),
                         user_id,
                     ),
@@ -1663,6 +2334,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             "submittedAt": now.isoformat(),
             "submissionReference": submission_reference,
             "transactionId": transaction_id,
+            "rejectionReason": rejection_reason,
         })
 
     for missing_id in missing_ids:
@@ -1673,11 +2345,29 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             "reason": "Company not found.",
         })
 
+    pending_submission_numbers = [
+        item.get("submissionReference")
+        for item in submitted
+        if item.get("status") == "submitted" and item.get("submissionReference")
+    ]
+    reconciliation = {}
+    if pending_submission_numbers:
+        try:
+            reconciliation = run_companies_house_submission_reconciliation(
+                {"submissionNumbers": pending_submission_numbers, "limit": len(pending_submission_numbers)}
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("Post-submit reconciliation failed")
+            reconciliation = {"error": str(exc) or exc.__class__.__name__}
+
     return {
         "submittedCount": len(submitted),
         "skippedCount": len(skipped),
+        "failedCount": len(failed),
         "submitted": submitted,
         "skipped": skipped,
+        "failed": failed,
+        "reconciliation": reconciliation,
     }
 
 
@@ -1932,7 +2622,7 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
         if not submission_id:
             skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": "No submission found."})
             continue
-        if status_value not in {"submitted", "accepted"}:
+        if status_value != "accepted":
             skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": f"Latest submission status is '{status_value}'."})
             continue
         if existing_invoice_id:
@@ -2355,6 +3045,63 @@ def list_imports(limit: int = 25) -> list[dict]:
             "status": row.get("status") or "",
             "createdAt": row["created_at"].isoformat() if row.get("created_at") else None,
             "completedAt": row["completed_at"].isoformat() if row.get("completed_at") else None,
+        }
+        for row in rows
+    ]
+
+def list_submission_attempts(limit: int = 200, company_id: str | None = None) -> list[dict]:
+    limit_value = max(1, min(int(limit or 200), 1000))
+    company_id_value = str(company_id or "").strip()
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if company_id_value:
+                cursor.execute(
+                    """
+                    SELECT s.*,
+                           c.company_number,
+                           c.company_name
+                    FROM ch_submissions s
+                    JOIN ch_companies c ON c.id = s.company_id
+                    WHERE s.company_id = %s
+                    ORDER BY s.submitted_at DESC NULLS LAST, s.created_at DESC
+                    LIMIT %s
+                    """,
+                    (company_id_value, limit_value),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT s.*,
+                           c.company_number,
+                           c.company_name
+                    FROM ch_submissions s
+                    JOIN ch_companies c ON c.id = s.company_id
+                    ORDER BY s.submitted_at DESC NULLS LAST, s.created_at DESC
+                    LIMIT %s
+                    """,
+                    (limit_value,),
+                )
+            rows = cursor.fetchall() or []
+        connection.commit()
+
+    return [
+        {
+            "id": str(row.get("id")) if row.get("id") else "",
+            "companyId": str(row.get("company_id")) if row.get("company_id") else "",
+            "companyNumber": row.get("company_number") or "",
+            "companyName": row.get("company_name") or "",
+            "status": row.get("status") or "",
+            "submissionReference": row.get("submission_reference") or "",
+            "transactionId": row.get("transaction_id") or "",
+            "paymentReference": row.get("payment_reference") or "",
+            "feeAmount": float(row.get("fee_amount") or 0),
+            "rejectionReason": row.get("rejection_reason") or "",
+            "xeroInvoiceId": row.get("xero_invoice_id") or "",
+            "submittedAt": row.get("submitted_at").isoformat() if row.get("submitted_at") else None,
+            "completedAt": row.get("completed_at").isoformat() if row.get("completed_at") else None,
+            "createdAt": row.get("created_at").isoformat() if row.get("created_at") else None,
+            "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else None,
         }
         for row in rows
     ]

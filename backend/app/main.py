@@ -36,10 +36,13 @@ from .companies_house import (
     get_company_detail,
     list_companies,
     list_imports as list_companies_house_imports,
+    list_submission_attempts,
     parse_clients_import,
+    run_companies_house_submission_reconciliation,
     save_companies_house_settings,
     start_companies_house_auto_sync_worker,
     sync_companies_house_companies,
+    test_companies_house_connection,
     update_company,
 )
 from .config import get_settings
@@ -1001,6 +1004,11 @@ async def api_companies_house_settings_save(request: Request, user: dict = Depen
     return {"status": "ok", "settings": updated}
 
 
+@app.post("/api/companies-house/settings/test-connection")
+def api_companies_house_settings_test_connection(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "result": test_companies_house_connection()}
+
+
 @app.get("/api/companies-house/dashboard")
 def api_companies_house_dashboard(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **companies_house_dashboard_summary()}
@@ -1062,6 +1070,19 @@ def api_companies_house_imports_list(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "imports": list_companies_house_imports()}
 
 
+@app.get("/api/companies-house/submissions/attempts")
+def api_companies_house_submission_attempts_list(
+    limit: int = Query(200, ge=1, le=1000),
+    company_id: str = Query("", alias="companyId"),
+    user: dict = Depends(require_panel_user),
+):
+    company_id_value = company_id.strip() or None
+    return {
+        "status": "ok",
+        "attempts": list_submission_attempts(limit=limit, company_id=company_id_value),
+    }
+
+
 @app.post("/api/companies-house/submissions/bulk")
 async def api_companies_house_submit_bulk(
     request: Request, user: dict = Depends(require_panel_user)
@@ -1084,6 +1105,14 @@ async def api_companies_house_sync(
 ):
     payload = await request.json()
     return {"status": "ok", "result": sync_companies_house_companies(user, payload)}
+
+
+@app.post("/api/companies-house/submissions/reconcile")
+async def api_companies_house_reconcile_submissions(
+    request: Request, user: dict = Depends(require_panel_user)
+):
+    payload = await request.json()
+    return {"status": "ok", "result": run_companies_house_submission_reconciliation(payload)}
 
 
 @app.post("/api/panel/factory-reset")
