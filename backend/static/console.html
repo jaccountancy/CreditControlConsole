@@ -17608,8 +17608,7 @@
                                 <div class="xero-lock-date-control-stack">
                                     <div class="detail-actions">
                                         <button class="primary-button" id="connectXeroLockDateButton" type="button">Connect Client Xeros</button>
-                                        <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
-                                        <button class="ghost-button" id="identifyXeroLockMismatchesButton" type="button">Identify Lock Mismatches</button>
+                                        <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Numbers</button>
                                         <button class="ghost-button" id="refreshXeroLockDateButton" type="button">Refresh</button>
                                     </div>
                                     <div class="xero-lock-date-search">
@@ -17621,6 +17620,7 @@
                                     </div>
                                 </div>
                             </div>
+                            <p class="detail-meta" id="xeroLockDateMismatchWarning" hidden></p>
                             <div class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Xero lock dates">
                                     <thead>
@@ -26953,7 +26953,7 @@
                     ];
                     if (detailRows.length && !silent) {
                         await showOperationReviewDialog({
-                            eyebrow: "Populate Company Numbers",
+                            eyebrow: "Populate Numbers",
                             title: "Populate results",
                             subtitle: "Rows below explain why each tenant could not be auto-populated.",
                             confirmLabel: "Done",
@@ -27104,6 +27104,7 @@
                 const health = document.getElementById("xeroLockDateCHHealth");
                 const stats = document.getElementById("xeroLockDateStats");
                 const searchMeta = document.getElementById("xeroLockDateSearchMeta");
+                const mismatchWarning = document.getElementById("xeroLockDateMismatchWarning");
                 const body = document.getElementById("xeroLockDateTableBody");
                 if (!summary || !body || !health) return;
                 if (xeroLockDateLoading) {
@@ -27133,6 +27134,17 @@
                                 <strong>${escapeHTML(card.value)}</strong>
                             </span>
                         `).join("");
+                    }
+                }
+                const warningRows = xeroLockDateOverview.rows || [];
+                const warningCount = warningRows.filter((row) => row?.flags?.accountsFiledNotLocked).length;
+                if (mismatchWarning) {
+                    if (warningCount > 0) {
+                        mismatchWarning.hidden = false;
+                        mismatchWarning.textContent = `Warning: ${warningCount.toLocaleString("en-GB")} lock mismatch${warningCount === 1 ? "" : "es"} found in the table below.`;
+                    } else {
+                        mismatchWarning.hidden = true;
+                        mismatchWarning.textContent = "";
                     }
                 }
                 const checkedAtLabel = xeroLockDateCHHealth.checkedAt
@@ -46826,11 +46838,6 @@
                     populateXeroLockDateMappingsButton.addEventListener("click", () => {
                         populateMissingXeroLockDateMappings(populateXeroLockDateMappingsButton);
                     });
-                }
-                const identifyXeroLockMismatchesButton = document.getElementById("identifyXeroLockMismatchesButton");
-                if (identifyXeroLockMismatchesButton && identifyXeroLockMismatchesButton.dataset.lockDateWired !== "true") {
-                    identifyXeroLockMismatchesButton.dataset.lockDateWired = "true";
-                    identifyXeroLockMismatchesButton.addEventListener("click", () => identifyXeroLockMismatches(true));
                 }
                 const settingsRefreshLockDateMappingsButton = document.getElementById("settingsRefreshLockDateMappingsButton");
                 if (settingsRefreshLockDateMappingsButton && settingsRefreshLockDateMappingsButton.dataset.lockDateWired !== "true") {
