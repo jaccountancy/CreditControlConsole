@@ -781,6 +781,34 @@ def _latest_accounts_filed_date(ch_row: dict | None) -> date | None:
     return latest
 
 
+def _companies_house_year_end_date(ch_row: dict | None) -> date | None:
+    if not ch_row:
+        return None
+    candidates: list[date] = []
+    next_made_up_to_date = _parse_date_value(ch_row.get("next_made_up_to_date"))
+    if next_made_up_to_date:
+        candidates.append(next_made_up_to_date)
+    filing_history = ch_row.get("filing_history") or []
+    if not isinstance(filing_history, list):
+        filing_history = []
+    for item in filing_history:
+        if not isinstance(item, dict):
+            continue
+        filing_type = str(item.get("type") or "").strip().upper()
+        description = str(item.get("description") or "").strip().lower()
+        category = str(item.get("category") or "").strip().lower()
+        is_accounts_filing = filing_type.startswith("AA") or "accounts" in description or category == "accounts"
+        if not is_accounts_filing:
+            continue
+        for key in ("made_up_to", "made_up_to_date", "period_end_on", "period_end_date", "period_end"):
+            parsed = _parse_date_value(item.get(key))
+            if parsed:
+                candidates.append(parsed)
+    if not candidates:
+        return None
+    return max(candidates)
+
+
 def _serialise_tenant_mapping(mapping_row: dict | None, tenant_id: str) -> dict:
     mapping_row = mapping_row or {}
     return {
@@ -874,7 +902,7 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
             if company_numbers:
                 cursor.execute(
                     """
-                    SELECT company_number, company_name, client_name, last_filed_date, filing_history
+                    SELECT company_number, company_name, client_name, last_filed_date, next_made_up_to_date, filing_history
                     FROM ch_companies
                     WHERE UPPER(company_number) = ANY(%s)
                     """,
@@ -950,9 +978,17 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
             cached_tenants += 1
 
         accounts_filed_date = _latest_accounts_filed_date(ch_row)
+        accounts_year_end_date = _companies_house_year_end_date(ch_row)
+        xero_effective_lock_date = max(
+            [lock_date for lock_date in (period_lock_date, end_of_year_lock_date) if lock_date],
+            default=None,
+        )
+        comparison_target = accounts_year_end_date or accounts_filed_date
         mapping_missing = not mapped_company_number
         accounts_filed_not_locked = bool(
-            accounts_filed_date and (period_lock_date is None or period_lock_date < accounts_filed_date)
+            accounts_filed_date
+            and comparison_target
+            and (xero_effective_lock_date is None or xero_effective_lock_date < comparison_target)
         )
         rows.append(
             {
@@ -970,6 +1006,7 @@ async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = Fals
                     "companyName": str((ch_row or {}).get("company_name") or ""),
                     "clientName": str((ch_row or {}).get("client_name") or ""),
                     "accountsFiledDate": accounts_filed_date.isoformat() if accounts_filed_date else "",
+                    "yearEndDate": accounts_year_end_date.isoformat() if accounts_year_end_date else "",
                 },
                 "flags": {
                     "accountsFiledNotLocked": accounts_filed_not_locked,
@@ -1009,6 +1046,13 @@ def _xero_lock_date_mismatch_rows(overview_rows: list[dict]) -> list[dict]:
         mapping = row.get("mapping") or {}
         companies_house = row.get("companiesHouse") or {}
         lock_date = row.get("periodLockDate") or row.get("endOfYearLockDate") or ""
+        year_end_date = str(companies_house.get("yearEndDate") or "")
+        filed_date = str(companies_house.get("accountsFiledDate") or "")
+        reason = (
+            "Accounts are filed at Companies House but Xero lock dates are missing or older than the Companies House year-end date."
+            if year_end_date
+            else "Accounts are filed at Companies House but Xero lock dates are missing or older than the filed date."
+        )
         rows.append(
             {
                 "tenantId": str(row.get("tenantId") or ""),
@@ -1017,8 +1061,9 @@ def _xero_lock_date_mismatch_rows(overview_rows: list[dict]) -> list[dict]:
                 "companyName": str(companies_house.get("companyName") or mapping.get("companyName") or ""),
                 "clientName": str(companies_house.get("clientName") or mapping.get("clientName") or ""),
                 "xeroLockDate": str(lock_date or ""),
-                "accountsFiledDate": str(companies_house.get("accountsFiledDate") or ""),
-                "reason": "Accounts are filed at Companies House but Xero period lock date is missing or older than the filed date.",
+                "accountsFiledDate": filed_date,
+                "yearEndDate": year_end_date,
+                "reason": reason,
             }
         )
     return rows

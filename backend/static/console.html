@@ -11995,6 +11995,20 @@
                 border-bottom: 1px solid var(--line);
                 background: rgba(248, 251, 255, 0.72);
             }
+            .operation-review-tools {
+                padding: 12px 20px 0;
+            }
+            .operation-review-tools input[type="search"] {
+                width: 100%;
+                max-width: 420px;
+                font: inherit;
+                font-weight: 760;
+                color: var(--ink);
+                background: var(--surface-soft);
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 9px 11px;
+            }
             .operation-review-chip {
                 border: 1px solid var(--line);
                 border-radius: 999px;
@@ -14867,6 +14881,23 @@
             .ch-import-card { display: flex; flex-direction: column; gap: 14px; padding: 18px 22px; background: var(--surface-strong); border-radius: 14px; border: 1px solid var(--line); box-shadow: var(--shadow); }
             .ch-import-dropzone { border: 2px dashed var(--line); border-radius: 12px; padding: 24px; text-align: center; color: var(--muted); background: var(--surface-soft); }
             .ch-import-dropzone input[type="file"] { display: block; margin: 8px auto 0; }
+            .ch-import-tools {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+            }
+            .ch-import-tools input[type="search"] {
+                min-width: 240px;
+                flex: 1 1 320px;
+                font: inherit;
+                color: var(--ink);
+                background: var(--surface-soft);
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 8px 10px;
+                font-weight: 760;
+            }
             .ch-import-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
             .ch-import-summary article { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; background: var(--surface-soft); border-radius: 10px; border: 1px solid var(--line); }
             .ch-import-summary article span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
@@ -16593,6 +16624,9 @@
                                         <button class="ghost-button" type="button" id="chImportDeselectAllButton" hidden>Deselect all</button>
                                         <button class="ghost-button" type="button" id="chImportResetButton" hidden>Start over</button>
                                         <span class="ch-settings-status is-muted" id="chImportStatus"></span>
+                                    </div>
+                                    <div class="ch-import-tools" id="chImportTools" hidden>
+                                        <input id="chImportPreviewSearch" type="search" placeholder="Search preview rows by company, number, manager, deadline or notes..." aria-label="Search import preview rows">
                                     </div>
                                     <div class="ch-import-summary" id="chImportSummary" hidden></div>
                                     <div class="ch-companies-table-wrap" id="chImportPreviewWrap" hidden>
@@ -24655,8 +24689,31 @@
                     body.innerHTML = `<div class="empty-state"><p class="eyebrow">No rows</p><h4>No line items to review</h4><p>The selected action did not include any review rows.</p></div>`;
                 } else {
                     const header = columns.map((column) => `<th>${escapeHTML(column.label || column.key || "")}</th>`).join("");
-                    const rowMarkup = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHTML(formatOperationReviewCell(row[column.key], column.kind || "text"))}</td>`).join("")}</tr>`).join("");
-                    body.innerHTML = `<table class="operation-review-table"><thead><tr>${header}</tr></thead><tbody>${rowMarkup}</tbody></table>`;
+                    const searchInputId = `operationReviewSearchInput-${Math.random().toString(36).slice(2, 10)}`;
+                    body.innerHTML = `
+                        <div class="operation-review-tools">
+                            <input id="${searchInputId}" type="search" placeholder="Search selected rows..." aria-label="Search selected rows">
+                        </div>
+                        <div class="operation-review-table-wrap"></div>
+                    `;
+                    const searchInput = document.getElementById(searchInputId);
+                    const tableWrap = body.querySelector(".operation-review-table-wrap");
+                    const normaliseText = (value) => String(value ?? "").toLowerCase();
+                    const renderReviewRows = () => {
+                        if (!tableWrap) return;
+                        const searchTerm = normaliseText(searchInput?.value || "").trim();
+                        const filteredRows = !searchTerm
+                            ? rows
+                            : rows.filter((row) => columns.some((column) => normaliseText(formatOperationReviewCell(row[column.key], column.kind || "text")).includes(searchTerm)));
+                        if (!filteredRows.length) {
+                            tableWrap.innerHTML = `<div class="empty-state"><p class="eyebrow">No matches</p><h4>No selected rows match your search</h4><p>Adjust the search term to see the full review list.</p></div>`;
+                            return;
+                        }
+                        const rowMarkup = filteredRows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHTML(formatOperationReviewCell(row[column.key], column.kind || "text"))}</td>`).join("")}</tr>`).join("");
+                        tableWrap.innerHTML = `<table class="operation-review-table"><thead><tr>${header}</tr></thead><tbody>${rowMarkup}</tbody></table>`;
+                    };
+                    searchInput?.addEventListener("input", renderReviewRows);
+                    renderReviewRows();
                 }
                 if (typeof config.onRender === "function") {
                     config.onRender({ panel, eyebrow, title, subtitle, summary, body, confirmButton, cancelButton });
@@ -41376,19 +41433,9 @@
                 }
                 const settingsConnectClientXerosButton = document.getElementById("settingsConnectClientXerosButton");
                 if (settingsConnectClientXerosButton) {
-                    settingsConnectClientXerosButton.textContent = syncBlockedByRateLimit
-                        ? "Xero Paused"
-                        : isSyncing
-                            ? "Syncing from Xero..."
-                            : connected
-                                ? "Resync Client Xeros"
-                                : "Connect Client Xeros";
-                    settingsConnectClientXerosButton.disabled = isSyncing || syncBlockedByRateLimit;
-                    settingsConnectClientXerosButton.title = syncBlockedByRateLimit
-                        ? rateLimitCopy
-                        : connected
-                            ? "Refresh connected client data from Xero"
-                            : "Open the Xero connection flow for client data";
+                    settingsConnectClientXerosButton.textContent = "Connect Client Xeros";
+                    settingsConnectClientXerosButton.disabled = false;
+                    settingsConnectClientXerosButton.title = "Open the Xero connection flow to add or refresh tenant access.";
                 }
                 const ignitionTopbarWidget = document.getElementById("ignitionTopbarWidget");
                 if (ignitionTopbarWidget) {
@@ -46262,7 +46309,16 @@
                 const settingsConnectClientXerosButton = document.getElementById("settingsConnectClientXerosButton");
                 if (settingsConnectClientXerosButton && settingsConnectClientXerosButton.dataset.lockDateWired !== "true") {
                     settingsConnectClientXerosButton.dataset.lockDateWired = "true";
-                    settingsConnectClientXerosButton.addEventListener("click", handleSidebarConnectButton);
+                    settingsConnectClientXerosButton.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        const url = loginURL();
+                        if (!url) {
+                            window.alert("Unable to start the Xero login flow.");
+                            return;
+                        }
+                        showToast("Opening Xero connection", "info");
+                        window.location.assign(url);
+                    });
                 }
                 const menuBankStatementsButton = document.getElementById("menuBankStatementsButton");
                 if (menuBankStatementsButton) menuBankStatementsButton.addEventListener("click", openBankStatementsScreen);
@@ -47085,6 +47141,7 @@
                 importPreview: null,
                 importPreviewPage: 1,
                 importPreviewPageSize: 500,
+                importPreviewSearchTerm: "",
                 importBusy: false,
                 deadLetters: [],
                 selectedDeadLetterIds: new Set(),
@@ -47712,23 +47769,52 @@
                 const prevButton = document.getElementById("chImportPrevPageButton");
                 const nextButton = document.getElementById("chImportNextPageButton");
                 const deselectAllButton = document.getElementById("chImportDeselectAllButton");
+                const tools = document.getElementById("chImportTools");
                 if (!wrap || !body) return;
                 if (!preview || !preview.rows || !preview.rows.length) {
                     wrap.hidden = true;
                     if (pager) pager.hidden = true;
                     if (deselectAllButton) deselectAllButton.hidden = true;
+                    if (tools) tools.hidden = true;
                     return;
                 }
                 wrap.hidden = false;
                 if (deselectAllButton) deselectAllButton.hidden = false;
+                if (tools) tools.hidden = false;
                 const pageSize = Math.max(50, Number(companiesHouseState.importPreviewPageSize || 500));
-                const totalRows = preview.rows.length;
+                const normaliseText = (value) => String(value || "").toLowerCase();
+                const searchTerm = normaliseText(companiesHouseState.importPreviewSearchTerm || "").trim();
+                const filteredRows = !searchTerm
+                    ? preview.rows
+                    : preview.rows.filter((row) => {
+                        const data = row?.data || {};
+                        const terms = [
+                            data.company_number,
+                            data.company_name,
+                            data.client_name,
+                            data.client_id,
+                            data.manager_reference,
+                            data.assigned_staff,
+                            data.period_end_iso || data.period_end,
+                            data.due_date_iso || data.due_date,
+                            data.notes,
+                            row?.lineNumber,
+                            row?.action,
+                            ...(Array.isArray(row?.errors) ? row.errors : []),
+                            ...(Array.isArray(row?.warnings) ? row.warnings : []),
+                        ];
+                        return terms.some((term) => normaliseText(term).includes(searchTerm));
+                    });
+                const totalRows = filteredRows.length;
                 const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
                 const currentPage = Math.max(1, Math.min(totalPages, Number(companiesHouseState.importPreviewPage || 1)));
                 companiesHouseState.importPreviewPage = currentPage;
                 const start = (currentPage - 1) * pageSize;
                 const end = Math.min(start + pageSize, totalRows);
-                body.innerHTML = preview.rows.slice(start, end).map((row) => {
+                if (!filteredRows.length) {
+                    body.innerHTML = `<tr><td colspan="10" class="ch-empty-state">No preview rows match your search.</td></tr>`;
+                } else {
+                    body.innerHTML = filteredRows.slice(start, end).map((row) => {
                     const action = row.action || (row.errors?.length ? "error" : "skip");
                     const errorText = (row.errors || []).join(" · ");
                     const warnings = (row.warnings || []).join(" · ");
@@ -47752,9 +47838,14 @@
                         <td>${row.data?.auth_code ? "✓ in file" : "—"}</td>
                         <td>${escapeHTML(errorText || warnings || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td>
                     </tr>`;
-                }).join("");
-                if (pager) pager.hidden = totalRows <= pageSize;
-                if (pagerStatus) pagerStatus.textContent = `Rows ${(start + 1).toLocaleString("en-GB")}-${end.toLocaleString("en-GB")} of ${totalRows.toLocaleString("en-GB")} · page ${currentPage} of ${totalPages}`;
+                    }).join("");
+                }
+                if (pager) pager.hidden = totalRows <= pageSize || totalRows === 0;
+                if (pagerStatus) {
+                    pagerStatus.textContent = totalRows
+                        ? `Rows ${(start + 1).toLocaleString("en-GB")}-${end.toLocaleString("en-GB")} of ${totalRows.toLocaleString("en-GB")} · page ${currentPage} of ${totalPages}`
+                        : "No rows match the current search.";
+                }
                 if (prevButton) prevButton.disabled = currentPage <= 1;
                 if (nextButton) nextButton.disabled = currentPage >= totalPages;
                 const commit = document.getElementById("chImportCommitButton");
@@ -47798,6 +47889,9 @@
                     const payload = await response.json();
                     companiesHouseState.importPreview = payload?.preview || null;
                     companiesHouseState.importPreviewPage = 1;
+                    companiesHouseState.importPreviewSearchTerm = "";
+                    const previewSearchInput = document.getElementById("chImportPreviewSearch");
+                    if (previewSearchInput) previewSearchInput.value = "";
                     chRenderImportSummary(companiesHouseState.importPreview);
                     chRenderImportPreview(companiesHouseState.importPreview);
                     const commit = document.getElementById("chImportCommitButton");
@@ -47888,10 +47982,14 @@
 
             function resetCompaniesHouseImport() {
                 companiesHouseState.importPreview = null;
+                companiesHouseState.importPreviewSearchTerm = "";
                 const fileInput = document.getElementById("chImportFile");
                 if (fileInput) fileInput.value = "";
+                const previewSearchInput = document.getElementById("chImportPreviewSearch");
+                if (previewSearchInput) previewSearchInput.value = "";
                 const summary = document.getElementById("chImportSummary"); if (summary) summary.hidden = true;
                 const wrap = document.getElementById("chImportPreviewWrap"); if (wrap) wrap.hidden = true;
+                const tools = document.getElementById("chImportTools"); if (tools) tools.hidden = true;
                 const commit = document.getElementById("chImportCommitButton"); if (commit) commit.hidden = true;
                 const deselect = document.getElementById("chImportDeselectAllButton"); if (deselect) deselect.hidden = true;
                 const reset = document.getElementById("chImportResetButton"); if (reset) reset.hidden = true;
@@ -48156,6 +48254,11 @@
                         return { ...row, included: !!checkbox.checked };
                     });
                     chRenderImportSummary(companiesHouseState.importPreview);
+                    chRenderImportPreview(companiesHouseState.importPreview);
+                });
+                document.getElementById("chImportPreviewSearch")?.addEventListener("input", (event) => {
+                    companiesHouseState.importPreviewSearchTerm = String(event?.target?.value || "");
+                    companiesHouseState.importPreviewPage = 1;
                     chRenderImportPreview(companiesHouseState.importPreview);
                 });
             }
