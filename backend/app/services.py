@@ -15744,11 +15744,11 @@ PRACTICE_PACK_SERVICE_GROUP_SCHEMA = {
                     "canonicalService": {
                         "type": "string",
                         "enum": [
+                            "Monthly Bookkeeping",
+                            "VAT Returns",
+                            "Year End Accounts",
                             "Self Assessment",
-                            "Year End and Corporation Tax",
                             "Confirmation Statements",
-                            "Payroll",
-                            "Bookkeeping",
                             "Other",
                         ],
                     },
@@ -15783,11 +15783,11 @@ PRACTICE_PACK_OWNER_COMMENTARY_SCHEMA = {
 }
 
 PRACTICE_PACK_SERVICE_ORDER = [
-    "Self Assessment",
-    "Year End and Corporation Tax",
+    "Monthly Bookkeeping",
+    "VAT Returns",
     "Confirmation Statements",
-    "Payroll",
-    "Bookkeeping",
+    "Year End Accounts",
+    "Self Assessment",
     "Other",
 ]
 PRACTICE_PACK_SERVICE_ORDER_INDEX = {name: index for index, name in enumerate(PRACTICE_PACK_SERVICE_ORDER)}
@@ -15867,6 +15867,32 @@ def _practice_pack_column_value(row: dict, candidates: list[str]) -> str:
     return str((row or {}).get(match) or "").strip() if match else ""
 
 
+def _practice_pack_latest_column_value(row: dict, candidates: list[str]) -> str:
+    row = row or {}
+    if not row:
+        return ""
+    candidate_keys = {_practice_pack_normalise_header(candidate) for candidate in candidates}
+    matched = []
+    for key in row.keys():
+        normalised_key = _practice_pack_normalise_header(key)
+        if normalised_key in candidate_keys or any(
+            normalised_key and (normalised_key in candidate or candidate in normalised_key) for candidate in candidate_keys
+        ):
+            value = str(row.get(key) or "").strip()
+            if value:
+                matched.append((key, value))
+    if not matched:
+        return ""
+    latest_ranked = sorted(
+        matched,
+        key=lambda item: (
+            0 if re.search(r"latest|recent|current|last", str(item[0]), re.IGNORECASE) else 1,
+            len(item[0]),
+        ),
+    )
+    return latest_ranked[0][1]
+
+
 def _practice_pack_money_value(row: dict, candidates: list[str]) -> Decimal:
     value = _practice_pack_column_value(row, candidates)
     if not value:
@@ -15882,6 +15908,16 @@ def _practice_pack_file_name_part(value: str | None) -> str:
 def _practice_pack_allowed_service_name(value: str | None) -> str:
     text = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
     aliases = {
+        "monthly bookkeeping": "Monthly Bookkeeping",
+        "bookkeeping": "Monthly Bookkeeping",
+        "book keeping": "Monthly Bookkeeping",
+        "monthly bookkeeping and vat": "VAT Returns",
+        "vat": "VAT Returns",
+        "vat return": "VAT Returns",
+        "vat returns": "VAT Returns",
+        "vat submission": "VAT Returns",
+        "vat filing": "VAT Returns",
+        "mtd vat": "VAT Returns",
         "self assessment": "Self Assessment",
         "sa": "Self Assessment",
         "sa100": "Self Assessment",
@@ -15889,29 +15925,24 @@ def _practice_pack_allowed_service_name(value: str | None) -> str:
         "personal tax": "Self Assessment",
         "personal tax return": "Self Assessment",
         "tax return": "Self Assessment",
-        "year end and corporation tax": "Year End and Corporation Tax",
-        "year end corporation tax": "Year End and Corporation Tax",
-        "year end and corp tax": "Year End and Corporation Tax",
-        "year end corp tax": "Year End and Corporation Tax",
-        "year end": "Year End and Corporation Tax",
-        "accounts": "Year End and Corporation Tax",
-        "annual accounts": "Year End and Corporation Tax",
-        "statutory accounts": "Year End and Corporation Tax",
-        "company accounts": "Year End and Corporation Tax",
-        "final accounts": "Year End and Corporation Tax",
-        "corporation tax": "Year End and Corporation Tax",
-        "corp tax": "Year End and Corporation Tax",
-        "ct600": "Year End and Corporation Tax",
-        "company tax": "Year End and Corporation Tax",
+        "year end and corporation tax": "Year End Accounts",
+        "year end corporation tax": "Year End Accounts",
+        "year end and corp tax": "Year End Accounts",
+        "year end corp tax": "Year End Accounts",
+        "year end": "Year End Accounts",
+        "accounts": "Year End Accounts",
+        "annual accounts": "Year End Accounts",
+        "statutory accounts": "Year End Accounts",
+        "company accounts": "Year End Accounts",
+        "final accounts": "Year End Accounts",
+        "corporation tax": "Year End Accounts",
+        "corp tax": "Year End Accounts",
+        "ct600": "Year End Accounts",
+        "company tax": "Year End Accounts",
         "confirmation statement": "Confirmation Statements",
         "confirmation statements": "Confirmation Statements",
         "companies house": "Confirmation Statements",
         "cs01": "Confirmation Statements",
-        "payroll": "Payroll",
-        "paye": "Payroll",
-        "workplace pension": "Payroll",
-        "bookkeeping": "Bookkeeping",
-        "book keeping": "Bookkeeping",
         "other": "Other",
     }
     if text in aliases:
@@ -15926,29 +15957,31 @@ def _practice_pack_local_service_name(value: str | None) -> str:
     original = str(value or "").strip()
     lowered = original.lower()
     known_services = [
+        (("monthly", "bookkeeping"), "Monthly Bookkeeping"),
+        (("bookkeeping",), "Monthly Bookkeeping"),
+        (("book", "keeping"), "Monthly Bookkeeping"),
+        (("vat",), "VAT Returns"),
+        (("mtd", "vat"), "VAT Returns"),
+        (("vat", "submission"), "VAT Returns"),
+        (("vat", "return"), "VAT Returns"),
         (("self", "assessment"), "Self Assessment"),
         (("sa100",), "Self Assessment"),
         (("satr",), "Self Assessment"),
         (("personal", "tax"), "Self Assessment"),
-        (("corporation", "tax"), "Year End and Corporation Tax"),
-        (("corp", "tax"), "Year End and Corporation Tax"),
-        (("company", "tax"), "Year End and Corporation Tax"),
-        (("ct600",), "Year End and Corporation Tax"),
+        (("corporation", "tax"), "Year End Accounts"),
+        (("corp", "tax"), "Year End Accounts"),
+        (("company", "tax"), "Year End Accounts"),
+        (("ct600",), "Year End Accounts"),
         (("tax", "return"), "Self Assessment"),
-        (("bookkeeping",), "Bookkeeping"),
-        (("book", "keeping"), "Bookkeeping"),
-        (("payroll",), "Payroll"),
-        (("paye",), "Payroll"),
-        (("workplace", "pension"), "Payroll"),
         (("confirmation", "statement"), "Confirmation Statements"),
         (("companies", "house"), "Confirmation Statements"),
         (("cs01",), "Confirmation Statements"),
-        (("annual", "accounts"), "Year End and Corporation Tax"),
-        (("statutory", "accounts"), "Year End and Corporation Tax"),
-        (("company", "accounts"), "Year End and Corporation Tax"),
-        (("final", "accounts"), "Year End and Corporation Tax"),
-        (("management", "accounts"), "Year End and Corporation Tax"),
-        (("year", "end"), "Year End and Corporation Tax"),
+        (("annual", "accounts"), "Year End Accounts"),
+        (("statutory", "accounts"), "Year End Accounts"),
+        (("company", "accounts"), "Year End Accounts"),
+        (("final", "accounts"), "Year End Accounts"),
+        (("management", "accounts"), "Year End Accounts"),
+        (("year", "end"), "Year End Accounts"),
     ]
     for tokens, service in known_services:
         if all(token in lowered for token in tokens):
@@ -15964,9 +15997,22 @@ def _practice_pack_due_date(value: str | None) -> date | None:
     text = str(value or "").strip()
     if not text:
         return None
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%d %B %Y", "%m/%d/%Y"):
+    cleaned = re.sub(r"\s+", " ", text)
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d/%m/%y",
+        "%d-%m-%y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%m/%d/%Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+    ):
         try:
-            return datetime.strptime(text[:24], fmt).date()
+            return datetime.strptime(cleaned[:26], fmt).date()
         except ValueError:
             continue
     try:
@@ -16029,24 +16075,37 @@ def _practice_pack_owner_commentary_fallback(summary: dict) -> dict:
     previous_month = summary.get("previousMonth") or "the previous generated pack"
     change = summary.get("clientCountChange")
     change_percent = summary.get("clientCountChangePercent")
+    previous_task_count = summary.get("previousTaskCount")
+    task_change = summary.get("taskCountChange")
+    task_change_percent = summary.get("taskCountChangePercent")
     busiest = summary.get("busiestService") or "Other"
     other_count = int(summary.get("otherTaskCount") or 0)
     overdue_count = int(summary.get("overdueCount") or 0)
+    open_count = int(summary.get("openCount") or 0)
+    overdue_percent = _practice_pack_percentage(overdue_count, task_count)
+    open_percent = _practice_pack_percentage(open_count, task_count)
     movement = ""
     if previous_count not in (None, ""):
         direction = "increase" if int(change or 0) > 0 else "decrease" if int(change or 0) < 0 else "no movement"
         movement = f" {previous_month} was {int(previous_count):,} clients, so this is {direction} of {abs(int(change or 0)):,} ({abs(float(change_percent or 0)):.1f}%)."
     else:
         movement = " No previous generated pack is available for comparison yet."
+    task_movement = ""
+    if previous_task_count not in (None, ""):
+        direction = "increased" if int(task_change or 0) > 0 else "decreased" if int(task_change or 0) < 0 else "held steady"
+        task_movement = f" Task volume {direction} by {abs(int(task_change or 0)):,} ({abs(float(task_change_percent or 0)):.1f}%) versus {previous_month or 'the previous generated pack'}."
+    else:
+        task_movement = " Task trend cannot be compared yet because there is no previous generated pack."
     bullets = [
-        f"{client_count:,} client{'s' if client_count != 1 else ''} and {task_count:,} task{'s' if task_count != 1 else ''} are included for {owner}.{movement}",
+        f"{client_count:,} client{'s' if client_count != 1 else ''} and {task_count:,} task{'s' if task_count != 1 else ''} are included for {owner}.{movement}{task_movement}",
         f"{limited_percent:.1f}% of these clients are limited companies, based on the BM client names and entity data.",
-        f"The largest section is {busiest}; {overdue_count:,} task{'s are' if overdue_count != 1 else ' is'} currently overdue.",
+        f"{open_count:,} task{'s are' if open_count != 1 else ' is'} still open ({open_percent:.1f}% of workload) and {overdue_count:,} {'are' if overdue_count != 1 else 'is'} overdue ({overdue_percent:.1f}%).",
+        f"The busiest section is {busiest}; overdue and uncategorised work in this section should be reviewed first.",
     ]
     if other_count:
         bullets.append(f"{other_count:,} task{'s' if other_count != 1 else ''} sit in Other and may need a manual category check.")
     return {
-        "summary": f"{owner}'s practice pack is weighted toward {busiest} work and covers {client_count:,} active client{'s' if client_count != 1 else ''} this month.",
+        "summary": f"{owner}'s practice pack covers {client_count:,} active client{'s' if client_count != 1 else ''} and {task_count:,} open workflows, led by {busiest}.",
         "bullets": bullets[:4],
     }
 
@@ -16076,9 +16135,12 @@ def _practice_pack_owner_summaries(staff_tasks: dict[str, list[dict]], history_r
         limited_count = sum(1 for client in clients.values() if client.get("isLimitedCompany"))
         previous = _practice_pack_previous_owner_summary(history_records, owner, month_label)
         previous_count = int(previous.get("clientCount") or 0) if previous else None
+        previous_task_count = int(previous.get("taskCount") or 0) if previous else None
         previous_month = str(previous.get("month") or "") if previous else ""
         change = client_count - previous_count if previous_count is not None else None
         change_percent = round((change / previous_count) * 100, 1) if previous_count else None
+        task_change = len(tasks) - previous_task_count if previous_task_count is not None else None
+        task_change_percent = round((task_change / previous_task_count) * 100, 1) if previous_task_count else None
         busiest_service = max(
             service_counts.items(),
             key=lambda item: (item[1], -PRACTICE_PACK_SERVICE_ORDER_INDEX.get(item[0], 99)),
@@ -16097,9 +16159,12 @@ def _practice_pack_owner_summaries(staff_tasks: dict[str, list[dict]], history_r
             "busiestService": busiest_service,
             "otherTaskCount": int(service_counts.get("Other") or 0),
             "previousClientCount": previous_count,
+            "previousTaskCount": previous_task_count,
             "previousMonth": previous_month,
             "clientCountChange": change,
             "clientCountChangePercent": change_percent,
+            "taskCountChange": task_change,
+            "taskCountChangePercent": task_change_percent,
         }
         summary["commentary"] = _practice_pack_owner_commentary_fallback(summary)
         summaries.append(summary)
@@ -16128,9 +16193,12 @@ async def _practice_pack_owner_commentaries(owner_summaries: list[dict]) -> dict
             "busiestService": summary["busiestService"],
             "otherTaskCount": summary["otherTaskCount"],
             "previousClientCount": summary["previousClientCount"],
+            "previousTaskCount": summary["previousTaskCount"],
             "previousMonth": summary["previousMonth"],
             "clientCountChange": summary["clientCountChange"],
             "clientCountChangePercent": summary["clientCountChangePercent"],
+            "taskCountChange": summary["taskCountChange"],
+            "taskCountChangePercent": summary["taskCountChangePercent"],
         })
     request_body = {
         "input": [
@@ -16142,8 +16210,9 @@ async def _practice_pack_owner_commentaries(owner_summaries: list[dict]) -> dict
                         "text": (
                             "You write concise first-page commentary for staff practice-pack PDFs. "
                             "Return JSON only. Use only the supplied figures. Do not invent last-month values when previousClientCount is null. "
-                            "Mention client count, meaningful month-on-month movement where available, limited-company percentage, the busiest service section, overdue work, and Other-category review points when relevant. "
-                            "Use a professional UK accountancy operations tone. Keep each summary to one sentence and each bullet under 28 words."
+                            "Mention client count, task count, meaningful month-on-month movement in clients and tasks where available, limited-company percentage, the busiest service section, overdue/open work, and Other-category review points when relevant. "
+                            "Add practical discussion points for workload risk and task backlogs. Use a professional UK accountancy operations tone. "
+                            "Keep each summary to one sentence and each bullet under 30 words."
                         ),
                     }
                 ],
@@ -16205,12 +16274,12 @@ async def _practice_pack_service_mapping(raw_names: list[str]) -> tuple[dict[str
                                 "type": "input_text",
                                 "text": (
                                     "You group accountancy practice task names into exactly these Practice Pack sections: "
-                                    "Self Assessment; Year End and Corporation Tax; Confirmation Statements; Payroll; Bookkeeping; Other. "
+                                    "Monthly Bookkeeping; VAT Returns; Confirmation Statements; Year End Accounts; Self Assessment; Other. "
                                     "Return JSON only and return exactly one mapping for every rawName supplied. "
                                     "Self Assessment includes SA, personal tax, and individual tax returns, including different tax years. "
-                                    "Year End and Corporation Tax includes year-end accounts, annual accounts, statutory accounts, CT600, and corporation tax tasks. "
+                                    "Year End Accounts includes year-end accounts, annual accounts, statutory accounts, CT600, and corporation tax tasks. "
                                     "Confirmation Statements includes confirmation statement and Companies House annual confirmation tasks. "
-                                    "Payroll includes PAYE and payroll tasks. Bookkeeping includes bookkeeping and book keeping tasks. "
+                                    "Monthly Bookkeeping includes monthly bookkeeping tasks. VAT Returns includes VAT submission and filing tasks. "
                                     "Any task that cannot confidently fit those sections must be Other. "
                                     "Do not create new categories. Keep year-specific tasks distinct in the task name; only group the section. "
                                     "For example, Self Assessment 2024 and Self Assessment 2025 both map to Self Assessment."
@@ -16269,7 +16338,7 @@ def _practice_pack_pdf_charts(summary: dict):
     from reportlab.graphics.shapes import Drawing, Rect, String
     from reportlab.lib import colors
 
-    drawing = Drawing(744, 186)
+    drawing = Drawing(540, 186)
     palette = [
         colors.HexColor("#1D67F2"),
         colors.HexColor("#27B05F"),
@@ -16304,7 +16373,7 @@ def _practice_pack_pdf_charts(summary: dict):
         drawing.add(Rect(140, y, 8, 8, fillColor=palette[index % len(palette)], strokeColor=None))
         drawing.add(String(153, y + 1, f"{service}: {count:,}", fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
 
-    drawing.add(String(360, 170, "Task status", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
+    drawing.add(String(250, 170, "Task status", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
     status_rows = [
         ("Open", int(summary.get("openCount") or 0), colors.HexColor("#1D67F2")),
         ("Completed", int(summary.get("completedCount") or 0), colors.HexColor("#27B05F")),
@@ -16313,24 +16382,24 @@ def _practice_pack_pdf_charts(summary: dict):
     max_status = max([value for _, value, _ in status_rows] + [1])
     for index, (label, value, colour) in enumerate(status_rows):
         y = 135 - (index * 30)
-        width = 220 * (value / max_status) if max_status else 0
-        drawing.add(String(360, y + 4, label, fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#5F6F89")))
-        drawing.add(Rect(430, y, 220, 13, fillColor=colors.HexColor("#EDF2F8"), strokeColor=None))
+        width = 170 * (value / max_status) if max_status else 0
+        drawing.add(String(250, y + 4, label, fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#5F6F89")))
+        drawing.add(Rect(310, y, 170, 13, fillColor=colors.HexColor("#EDF2F8"), strokeColor=None))
         if width:
-            drawing.add(Rect(430, y, width, 13, fillColor=colour, strokeColor=None))
-        drawing.add(String(660, y + 3, f"{value:,}", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
+            drawing.add(Rect(310, y, min(width, 170), 13, fillColor=colour, strokeColor=None))
+        drawing.add(String(487, y + 3, f"{value:,}", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
 
-    drawing.add(String(360, 38, "Client mix", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
+    drawing.add(String(250, 38, "Client mix", fontName="Helvetica-Bold", fontSize=9, fillColor=colors.HexColor("#1E2F4D")))
     client_count = int(summary.get("clientCount") or 0)
     limited_count = int(summary.get("limitedCompanyCount") or 0)
     non_limited_count = max(client_count - limited_count, 0)
-    limited_width = 220 * (limited_count / client_count) if client_count else 0
-    drawing.add(Rect(430, 14, 220, 14, fillColor=colors.HexColor("#EDF2F8"), strokeColor=None))
+    limited_width = 170 * (limited_count / client_count) if client_count else 0
+    drawing.add(Rect(310, 14, 170, 14, fillColor=colors.HexColor("#EDF2F8"), strokeColor=None))
     if limited_width:
-        drawing.add(Rect(430, 14, limited_width, 14, fillColor=colors.HexColor("#8D62FF"), strokeColor=None))
-    drawing.add(String(360, 17, "Limited", fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#5F6F89")))
-    drawing.add(String(660, 17, f"{limited_count:,} / {client_count:,}", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
-    drawing.add(String(430, 3, f"{non_limited_count:,} other client{'s' if non_limited_count != 1 else ''}", fontName="Helvetica", fontSize=6.5, fillColor=colors.HexColor("#5F6F89")))
+        drawing.add(Rect(310, 14, min(limited_width, 170), 14, fillColor=colors.HexColor("#8D62FF"), strokeColor=None))
+    drawing.add(String(250, 17, "Limited", fontName="Helvetica", fontSize=7, fillColor=colors.HexColor("#5F6F89")))
+    drawing.add(String(487, 17, f"{limited_count:,} / {client_count:,}", fontName="Helvetica-Bold", fontSize=7, fillColor=colors.HexColor("#1E2F4D")))
+    drawing.add(String(310, 3, f"{non_limited_count:,} other client{'s' if non_limited_count != 1 else ''}", fontName="Helvetica", fontSize=6.5, fillColor=colors.HexColor("#5F6F89")))
     return drawing
 
 
@@ -16343,12 +16412,14 @@ def _practice_pack_pdf_bytes(
     widths: list[int],
     commentary: dict | None = None,
     charts: dict | None = None,
+    cover_title: str | None = None,
+    cover_subtitle: str | None = None,
 ) -> bytes:
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except ImportError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="ReportLab is required to build Practice Pack PDFs.") from exc
 
@@ -16357,17 +16428,35 @@ def _practice_pack_pdf_bytes(
     body_style = ParagraphStyle("PracticePackBody", parent=styles["BodyText"], fontName="Helvetica", fontSize=8, leading=10)
     title_style = ParagraphStyle("PracticePackTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=17, leading=20, textColor=colors.HexColor("#1E2F4D"))
     subtitle_style = ParagraphStyle("PracticePackSubtitle", parent=styles["BodyText"], fontName="Helvetica", fontSize=9, leading=12, textColor=colors.HexColor("#5F6F89"))
+    cover_title_style = ParagraphStyle("PracticePackCoverTitle", parent=title_style, fontSize=24, leading=30, alignment=1)
+    cover_subtitle_style = ParagraphStyle("PracticePackCoverSubtitle", parent=subtitle_style, fontSize=12, leading=16, alignment=1)
     section_style = ParagraphStyle("PracticePackSection", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#1E2F4D"), spaceBefore=8, spaceAfter=4)
     small_style = ParagraphStyle("PracticePackSmall", parent=body_style, fontSize=7, leading=9, textColor=colors.HexColor("#5F6F89"))
     commentary_heading_style = ParagraphStyle("PracticePackCommentaryHeading", parent=body_style, fontName="Helvetica-Bold", fontSize=10, leading=12, textColor=colors.HexColor("#1E2F4D"))
     commentary_style = ParagraphStyle("PracticePackCommentary", parent=body_style, fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#1E2F4D"))
 
-    document = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=26, bottomMargin=24)
-    story = [
+    left_margin = 24
+    right_margin = 24
+    top_margin = 26
+    bottom_margin = 24
+    document = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=left_margin, rightMargin=right_margin, topMargin=top_margin, bottomMargin=bottom_margin)
+    available_width = A4[0] - left_margin - right_margin
+    story = []
+    if cover_title:
+        story.extend([
+            Spacer(1, 170),
+            Paragraph(xml_escape(cover_title), cover_title_style),
+            Spacer(1, 14),
+            Paragraph(xml_escape(cover_subtitle or subtitle), cover_subtitle_style),
+            Spacer(1, 12),
+            Paragraph(xml_escape(title), subtitle_style),
+            PageBreak(),
+        ])
+    story.extend([
         Paragraph(xml_escape(title), title_style),
         Paragraph(xml_escape(subtitle), subtitle_style),
         Spacer(1, 10),
-    ]
+    ])
 
     if metrics:
         metric_rows = []
@@ -16379,7 +16468,8 @@ def _practice_pack_pdf_bytes(
             while len(row) < 3:
                 row.append("")
             metric_rows.append(row)
-        metric_table = Table(metric_rows, colWidths=[248, 248, 248])
+        metric_col_width = available_width / 3
+        metric_table = Table(metric_rows, colWidths=[metric_col_width, metric_col_width, metric_col_width])
         metric_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F1F5FB")),
             ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#D6E0EE")),
@@ -16399,7 +16489,7 @@ def _practice_pack_pdf_bytes(
             commentary_rows.append([_practice_pack_pdf_cell(summary, commentary_style)])
         for bullet in [str(value).strip() for value in commentary.get("bullets") or [] if str(value).strip()][:4]:
             commentary_rows.append([_practice_pack_pdf_cell(f"- {bullet}", commentary_style)])
-        commentary_table = Table(commentary_rows, colWidths=[744])
+        commentary_table = Table(commentary_rows, colWidths=[available_width])
         commentary_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EEF5FF")),
             ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#BFD4F7")),
@@ -16493,6 +16583,7 @@ def _practice_pack_sections(tasks: list[dict], include_owner: bool) -> list[dict
                     task.get("taskName") or "",
                     task.get("status") or "No status",
                     task.get("dueDate") or "",
+                    task.get("progressNote") or "",
                     task.get("matchedClient") or "Unmatched",
                 ])
             else:
@@ -16501,6 +16592,7 @@ def _practice_pack_sections(tasks: list[dict], include_owner: bool) -> list[dict
                     task.get("taskName") or "",
                     task.get("status") or "No status",
                     task.get("dueDate") or "",
+                    task.get("progressNote") or "",
                 ])
         sections.append({"heading": f"{service_name} ({len(service_tasks):,} task{'s' if len(service_tasks) != 1 else ''})", "rows": rows})
     return sections or [{"heading": "No tasks", "rows": []}]
@@ -16521,6 +16613,7 @@ async def practice_pack_payload(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or both CSV files do not contain a header row.")
 
     month_label = re.sub(r"\s+", " ", str(month or "")).strip() or date.today().strftime("%B")
+    month_with_year = month_label if re.search(r"\b20\d{2}\b", month_label) else f"{month_label} {date.today().year}"
     history_records = _practice_pack_history_records(history_payload)
     client_name_columns = ["Client Name", "Client", "Name", "ClientName", "Company Name", "Company", "Contact"]
     task_client_columns = ["Client Name", "Client", "ClientName", "Customer", "Company Name", "Company", "Contact"]
@@ -16528,7 +16621,30 @@ async def practice_pack_payload(
     client_manager_columns = ["Client Manager", "Manager", "Account Manager", "Client Owner", "Owner", "Assigned Manager", "Partner", "Staff"]
     client_entity_columns = ["Entity Type", "Client Type", "Business Type", "Legal Type", "Company Type", "Organisation Type", "Organization Type", "Type"]
     status_columns = ["Status", "Task Status", "State"]
-    due_columns = ["Due Date", "Deadline", "Date Due", "Target Date"]
+    due_columns = [
+        "Due Date",
+        "Deadline",
+        "Deadline Date",
+        "Task Deadline",
+        "Task Due Date",
+        "Date Due",
+        "Target Date",
+        "Due",
+        "Due On",
+        "Planned Due Date",
+    ]
+    progress_note_columns = [
+        "Latest Progress Note",
+        "Latest Note",
+        "Most Recent Note",
+        "Progress Note",
+        "Progress Notes",
+        "Internal Note",
+        "Update Notes",
+        "Notes",
+        "Latest Progress",
+        "Latest Update",
+    ]
     task_columns = ["Task", "Task Name", "Name", "Title", "Description", "Work Item"]
     service_columns = ["Service", "Service Name", "ServiceName", "Service Type", "Task Type", "Work Type", "Job", "Job Name", "Category", "Workflow"]
     client_mrr_columns = [
@@ -16588,7 +16704,8 @@ async def practice_pack_payload(
         explicit_owner = _practice_pack_column_value(row, owner_columns)
         owner = explicit_owner or (matched_client.get("manager") if matched_client else "") or "Unassigned"
         status_text = _practice_pack_column_value(row, status_columns)
-        due_date = _practice_pack_column_value(row, due_columns)
+        due_date = _practice_pack_latest_column_value(row, due_columns) or _practice_pack_column_value(row, due_columns)
+        progress_note = _practice_pack_latest_column_value(row, progress_note_columns)
         task_name = _practice_pack_column_value(row, task_columns) or f"Task {index + 1}"
         source_service = _practice_pack_column_value(row, service_columns)
         raw_service = (
@@ -16605,6 +16722,7 @@ async def practice_pack_payload(
             "rawServiceName": raw_service,
             "status": status_text or "No status",
             "dueDate": due_date or "",
+            "progressNote": progress_note,
             "matchedClient": matched_client.get("name") if matched_client else "",
             "matchedClientKey": matched_client.get("key") if matched_client else "",
             "monthlyRevenue": _money(matched_client.get("monthlyRevenue")) if matched_client else Decimal("0.00"),
@@ -16675,7 +16793,7 @@ async def practice_pack_payload(
     if grouping_meta.get("engine") == "openai_partial":
         grouping_label = "Jenius AI + local fallback"
     metrics = [
-        ("Month", month_label),
+        ("Month", month_with_year),
         ("Clients", f"{len(client_data['rows']):,}"),
         ("Tasks", f"{len(task_data['rows']):,}"),
         ("Service groups", f"{len(service_stats):,}"),
@@ -16685,12 +16803,14 @@ async def practice_pack_payload(
     ]
 
     management_pdf = _practice_pack_pdf_bytes(
-        f"Management Practice Pack - {month_label}",
-        "All BM tasks grouped into the practice-pack sections, with uncategorised tasks shown under Other at the end.",
+        f"Management Practice Pack - {month_with_year}",
+        "All tasks grouped into core services (Monthly Bookkeeping, VAT Returns, Confirmation Statements, Year End Accounts, Self Assessment), with remaining tasks in Other.",
         metrics,
         _practice_pack_sections(all_tasks, include_owner=True),
-        ["Owner", "Client", "Task", "Status", "Due date", "Match"],
-        [105, 140, 250, 90, 75, 84],
+        ["Owner", "Client", "Task", "Status", "Deadline", "Latest progress note", "Match"],
+        [58, 86, 138, 52, 56, 110, 45],
+        cover_title=f"Management Practice Pack for {month_with_year}",
+        cover_subtitle="Jaccountancy practice pack",
     )
 
     used_names: set[str] = set()
@@ -16704,32 +16824,42 @@ async def practice_pack_payload(
     for owner, tasks in sorted(staff_tasks.items(), key=lambda item: str(item[0]).casefold()):
         owner_summary = owner_summary_by_name.get(owner) or {}
         previous_count = owner_summary.get("previousClientCount")
+        previous_task_count = owner_summary.get("previousTaskCount")
         previous_month = owner_summary.get("previousMonth") or "Prior pack"
         change = owner_summary.get("clientCountChange")
         change_percent = owner_summary.get("clientCountChangePercent")
+        task_change = owner_summary.get("taskCountChange")
+        task_change_percent = owner_summary.get("taskCountChangePercent")
         movement = "No prior pack"
+        task_movement = "No prior pack"
         if previous_count is not None:
             sign = "+" if int(change or 0) > 0 else ""
             movement = f"{previous_month}: {sign}{int(change or 0):,} ({sign}{float(change_percent or 0):.1f}%)"
+        if previous_task_count is not None:
+            sign = "+" if int(task_change or 0) > 0 else ""
+            task_movement = f"{previous_month}: {sign}{int(task_change or 0):,} ({sign}{float(task_change_percent or 0):.1f}%)"
         owner_metrics = [
             ("Manager", owner),
-            ("Month", month_label),
+            ("Month", month_with_year),
             ("Clients", f"{int(owner_summary.get('clientCount') or 0):,}"),
+            ("Client movement", movement),
             ("Tasks", f"{int(owner_summary.get('taskCount') or len(tasks)):,}"),
+            ("Task movement", task_movement),
             ("Open tasks", f"{int(owner_summary.get('openCount') or 0):,}"),
             ("Overdue tasks", f"{int(owner_summary.get('overdueCount') or 0):,}"),
             ("Limited companies", f"{float(owner_summary.get('limitedCompanyPercent') or 0):.1f}%"),
-            ("Client movement", movement),
         ]
         staff_pdf = _practice_pack_pdf_bytes(
-            f"Practice Pack - {owner} - {month_label}",
-            "Tasks assigned to this owner, grouped into the practice-pack sections with Other shown last.",
+            f"Practice Pack - {owner} - {month_with_year}",
+            "Tasks assigned to this owner, grouped into core services with all remaining tasks in Other.",
             owner_metrics,
             _practice_pack_sections(tasks, include_owner=False),
-            ["Client", "Task", "Status", "Due date"],
-            [170, 370, 110, 90],
+            ["Client", "Task", "Status", "Deadline", "Latest progress note"],
+            [92, 160, 62, 66, 148],
             commentary=owner_summary.get("commentary"),
             charts=owner_summary,
+            cover_title=f"{owner}'s Practice Pack for {month_with_year}",
+            cover_subtitle="Jaccountancy practice pack",
         )
         files.append({
             "name": _practice_pack_unique_filename(f"{_practice_pack_file_name_part(month_label)}-{_practice_pack_file_name_part(owner)}-practice-pack.pdf", used_names),
@@ -16765,6 +16895,7 @@ async def practice_pack_payload(
             "taskName": task["taskName"],
             "status": task["status"],
             "dueDate": task["dueDate"],
+            "progressNote": task.get("progressNote") or "",
             "matchedClient": task["matchedClient"],
             "sourceRow": task["sourceRow"],
         }
