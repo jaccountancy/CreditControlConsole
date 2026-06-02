@@ -15005,6 +15005,37 @@
                 flex-wrap: wrap;
                 gap: 10px;
             }
+            .xero-lock-date-search {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+            }
+            .xero-lock-date-search label {
+                min-width: 240px;
+                flex: 1 1 360px;
+                display: grid;
+                gap: 6px;
+            }
+            .xero-lock-date-search span {
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .xero-lock-date-search input[type="search"] {
+                width: 100%;
+                min-height: 40px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 0 12px;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 760;
+                color: var(--ink);
+                background: #fff;
+            }
             .xero-lock-date-stat {
                 padding: 6px 10px;
                 border-radius: 999px;
@@ -16094,6 +16125,13 @@
                                 </div>
                                 <p class="settings-help" id="settingsLockDateMappingsSummary">Load tenants to configure mapping.</p>
                                 <p class="settings-help" id="settingsLockDateMappingsHealth">Companies House API status not checked yet.</p>
+                                <p class="settings-help" id="settingsLockDateMappingsSearchMeta" hidden></p>
+                                <div class="xero-lock-date-search">
+                                    <label for="settingsLockDateMappingsSearchInput">
+                                        <span>Search tenants and mapping</span>
+                                        <input id="settingsLockDateMappingsSearchInput" type="search" placeholder="Tenant, tenant ID, CH number, company name, or status">
+                                    </label>
+                                </div>
                                 <div class="ch-companies-table-wrap">
                                     <table class="ch-table" aria-label="Xero lock-date mapping settings">
                                         <thead>
@@ -17258,8 +17296,15 @@
                                     <article class="xero-lock-date-top-pill">
                                         <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
                                         <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
+                                        <p class="late-charge-summary" id="xeroLockDateSearchMeta" hidden></p>
                                         <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
                                     </article>
+                                    <div class="xero-lock-date-search">
+                                        <label for="xeroLockDateSearchInput">
+                                            <span>Search tenants and mapping</span>
+                                            <input id="xeroLockDateSearchInput" type="search" placeholder="Tenant, tenant ID, CH number, company name, or status">
+                                        </label>
+                                    </div>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="populateXeroLockDateMappingsButton" type="button">Populate Company Numbers</button>
@@ -18932,6 +18977,8 @@
             let xeroAccountsLoaded = false;
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
+            let xeroLockDateSearchTerm = "";
+            let settingsLockDateSearchTerm = "";
             let xeroLockDateCHHealth = { loading: false, ok: null, checkedAt: "", message: "Companies House API status not checked yet." };
             const xeroLockDateCHHealthCacheMs = 10 * 60 * 1000;
             let xeroLockMismatchLoading = false;
@@ -26556,6 +26603,40 @@
                         `Populate complete: ${populated} mapped, ${skipped} skipped${failed ? `, ${failed} failed` : ""}.`,
                         failed ? "info" : "success"
                     );
+                    const failedRows = Array.isArray(payload?.failed) ? payload.failed : [];
+                    const skippedRows = Array.isArray(payload?.skipped) ? payload.skipped : [];
+                    const detailRows = [
+                        ...failedRows.map((row) => ({
+                            tenantName: String(row?.tenantName || ""),
+                            outcome: "Failed",
+                            reason: String(row?.reason || "Unknown failure"),
+                        })),
+                        ...skippedRows.map((row) => ({
+                            tenantName: String(row?.tenantName || ""),
+                            outcome: "Skipped",
+                            reason: String(row?.reason || "No reason supplied"),
+                        })),
+                    ];
+                    if (detailRows.length) {
+                        await showOperationReviewDialog({
+                            eyebrow: "Populate Company Numbers",
+                            title: "Populate results",
+                            subtitle: "Rows below explain why each tenant could not be auto-populated.",
+                            confirmLabel: "Done",
+                            cancelLabel: "Close",
+                            summaryChips: [
+                                `${populated.toLocaleString("en-GB")} mapped`,
+                                `${skipped.toLocaleString("en-GB")} skipped`,
+                                `${failed.toLocaleString("en-GB")} failed`,
+                            ],
+                            columns: [
+                                { key: "tenantName", label: "Tenant" },
+                                { key: "outcome", label: "Outcome" },
+                                { key: "reason", label: "Reason" },
+                            ],
+                            rows: detailRows,
+                        });
+                    }
                 } catch (error) {
                     showToast(error.message || "Unable to populate company numbers", "error");
                 } finally {
@@ -26688,6 +26769,7 @@
                 const summary = document.getElementById("xeroLockDateSummary");
                 const health = document.getElementById("xeroLockDateCHHealth");
                 const stats = document.getElementById("xeroLockDateStats");
+                const searchMeta = document.getElementById("xeroLockDateSearchMeta");
                 const body = document.getElementById("xeroLockDateTableBody");
                 if (!summary || !body || !health) return;
                 if (xeroLockDateLoading) {
@@ -26724,8 +26806,42 @@
                     : "Not checked yet";
                 health.textContent = `${xeroLockDateCHHealth.message || "Companies House API status not checked yet."} Last checked: ${checkedAtLabel}.`;
                 const rows = xeroLockDateOverview.rows || [];
-                body.innerHTML = rows.length
-                    ? rows.map((row) => {
+                const query = String(xeroLockDateSearchTerm || "").trim().toLowerCase();
+                const filteredRows = !query
+                    ? rows
+                    : rows.filter((row) => {
+                        const mapping = row?.mapping || {};
+                        const companiesHouse = row?.companiesHouse || {};
+                        const statusLabel = row?.flags?.accountsFiledNotLocked
+                            ? "accounts filed but period not locked flagged mismatch"
+                            : row?.flags?.mappingMissing
+                                ? "mapping needed unmapped"
+                                : "no lock issue detected mapped";
+                        const haystack = [
+                            row?.tenantName || "",
+                            row?.tenantId || "",
+                            row?.periodLockDate || "",
+                            row?.endOfYearLockDate || "",
+                            mapping?.companyNumber || "",
+                            companiesHouse?.companyName || "",
+                            companiesHouse?.clientName || "",
+                            companiesHouse?.accountsFiledDate || "",
+                            statusLabel,
+                            row?.xeroError || ""
+                        ].join(" ").toLowerCase();
+                        return haystack.includes(query);
+                    });
+                if (searchMeta) {
+                    if (query) {
+                        searchMeta.hidden = false;
+                        searchMeta.textContent = `Showing ${filteredRows.length.toLocaleString("en-GB")} of ${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} for "${xeroLockDateSearchTerm.trim()}".`;
+                    } else {
+                        searchMeta.hidden = true;
+                        searchMeta.textContent = "";
+                    }
+                }
+                body.innerHTML = filteredRows.length
+                    ? filteredRows.map((row) => {
                         const tenantId = String(row?.tenantId || "");
                         const mapping = row?.mapping || {};
                         const companiesHouse = row?.companiesHouse || {};
@@ -26777,7 +26893,9 @@
                             </tr>
                         `;
                     }).join("")
-                    : '<tr><td colspan="6"><div class="ch-empty-state">Connect Xero tenants to view lock dates.</div></td></tr>';
+                    : `<tr><td colspan="6"><div class="ch-empty-state">${
+                        rows.length ? "No tenants match this search." : "Connect Xero tenants to view lock dates."
+                    }</div></td></tr>`;
                 body.querySelectorAll("[data-xero-lock-map-save]").forEach((button) => {
                     if (button.dataset.xeroLockMapWired === "true") return;
                     button.dataset.xeroLockMapWired = "true";
@@ -26792,6 +26910,7 @@
             function renderSettingsLockDateMapping() {
                 const summary = document.getElementById("settingsLockDateMappingsSummary");
                 const health = document.getElementById("settingsLockDateMappingsHealth");
+                const searchMeta = document.getElementById("settingsLockDateMappingsSearchMeta");
                 const body = document.getElementById("settingsLockDateMappingsTableBody");
                 if (!summary || !health || !body) return;
                 if (xeroLockDateLoading) {
@@ -26810,8 +26929,42 @@
                 health.textContent = `${xeroLockDateCHHealth.message || "Companies House API status not checked yet."} Last checked: ${checkedAtLabel}.`;
 
                 const rows = xeroLockDateOverview.rows || [];
-                body.innerHTML = rows.length
-                    ? rows.map((row) => {
+                const query = String(settingsLockDateSearchTerm || "").trim().toLowerCase();
+                const filteredRows = !query
+                    ? rows
+                    : rows.filter((row) => {
+                        const mapping = row?.mapping || {};
+                        const companiesHouse = row?.companiesHouse || {};
+                        const statusLabel = row?.flags?.accountsFiledNotLocked
+                            ? "accounts filed but period not locked flagged mismatch"
+                            : row?.flags?.mappingMissing
+                                ? "mapping needed unmapped"
+                                : "no lock issue detected mapped";
+                        const haystack = [
+                            row?.tenantName || "",
+                            row?.tenantId || "",
+                            row?.periodLockDate || "",
+                            row?.endOfYearLockDate || "",
+                            mapping?.companyNumber || "",
+                            companiesHouse?.companyName || "",
+                            companiesHouse?.clientName || "",
+                            companiesHouse?.accountsFiledDate || "",
+                            statusLabel,
+                            row?.xeroError || ""
+                        ].join(" ").toLowerCase();
+                        return haystack.includes(query);
+                    });
+                if (searchMeta) {
+                    if (query) {
+                        searchMeta.hidden = false;
+                        searchMeta.textContent = `Showing ${filteredRows.length.toLocaleString("en-GB")} of ${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} for "${settingsLockDateSearchTerm.trim()}".`;
+                    } else {
+                        searchMeta.hidden = true;
+                        searchMeta.textContent = "";
+                    }
+                }
+                body.innerHTML = filteredRows.length
+                    ? filteredRows.map((row) => {
                         const tenantId = String(row?.tenantId || "");
                         const mapping = row?.mapping || {};
                         const companiesHouse = row?.companiesHouse || {};
@@ -26854,7 +27007,9 @@
                             </tr>
                         `;
                     }).join("")
-                    : '<tr><td colspan="6"><div class="ch-empty-state">Connect Xero tenants to configure saved mappings.</div></td></tr>';
+                    : `<tr><td colspan="6"><div class="ch-empty-state">${
+                        rows.length ? "No tenants match this search." : "Connect Xero tenants to configure saved mappings."
+                    }</div></td></tr>`;
                 body.querySelectorAll("[data-settings-lock-map-save]").forEach((button) => {
                     if (button.dataset.settingsLockMapWired === "true") return;
                     button.dataset.settingsLockMapWired = "true";
@@ -46598,6 +46753,22 @@
                 if (selectAllBadDebtButton) selectAllBadDebtButton.addEventListener("click", selectAllEligibleBadDebtInvoices);
                 const raiseBadDebtButton = document.getElementById("raiseBadDebtButton");
                 if (raiseBadDebtButton) raiseBadDebtButton.addEventListener("click", raiseBadDebtWriteOffs);
+                const xeroLockDateSearchInput = document.getElementById("xeroLockDateSearchInput");
+                if (xeroLockDateSearchInput) {
+                    xeroLockDateSearchInput.value = xeroLockDateSearchTerm;
+                    xeroLockDateSearchInput.addEventListener("input", (event) => {
+                        xeroLockDateSearchTerm = event.target.value || "";
+                        if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    });
+                }
+                const settingsLockDateMappingsSearchInput = document.getElementById("settingsLockDateMappingsSearchInput");
+                if (settingsLockDateMappingsSearchInput) {
+                    settingsLockDateMappingsSearchInput.value = settingsLockDateSearchTerm;
+                    settingsLockDateMappingsSearchInput.addEventListener("input", (event) => {
+                        settingsLockDateSearchTerm = event.target.value || "";
+                        if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
+                    });
+                }
                 const refreshInsightsButton = document.getElementById("refreshInsightsButton");
                 if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => loadInsights(true));
                 const letterTemplateSettingsSelect = document.getElementById("letterTemplateSettingsSelect");
