@@ -7474,6 +7474,66 @@
                     grid-template-columns: 1fr 1fr;
                 }
             }
+            .practice-pack-walkthrough-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 80;
+                display: grid;
+                place-items: center;
+                padding: clamp(16px, 3vw, 28px);
+                background: rgba(18, 30, 56, 0.5);
+                backdrop-filter: blur(2px);
+            }
+            .practice-pack-walkthrough-modal[hidden] {
+                display: none;
+            }
+            .practice-pack-walkthrough-panel {
+                width: min(1400px, 96vw);
+                max-height: min(92vh, 1100px);
+                overflow: auto;
+                padding: 14px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                border-radius: 18px;
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: 0 30px 60px rgba(23, 44, 78, 0.24);
+            }
+            .practice-pack-walkthrough-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+            .practice-pack-walkthrough-head h3 {
+                margin: 0;
+                font-size: 1rem;
+                font-weight: 900;
+            }
+            .practice-pack-review-owner-groups {
+                display: grid;
+                gap: 8px;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            }
+            .practice-pack-review-owner-groups article {
+                padding: 10px 12px;
+                border-radius: 12px;
+                border: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.84);
+            }
+            .practice-pack-review-owner-groups span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 900;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+            }
+            .practice-pack-review-owner-groups strong {
+                display: block;
+                margin-top: 4px;
+                font-size: 1rem;
+                font-weight: 900;
+            }
             .jashflow-panel,
             .jashflow-workspace {
                 display: grid;
@@ -16726,12 +16786,21 @@
                                 <input id="practicePackTaskFile" type="file" accept=".csv,text/csv">
                             </form>
                             <p class="late-charge-summary" id="practicePackSummary">Awaiting BM Client File CSV and BM Task File CSV.</p>
-                            <section class="practice-pack-review" id="practicePackReviewWorkspace" hidden></section>
+                            <p class="late-charge-summary">Generate opens a review walkthrough so you can check and amend AI task grouping before the final ZIP is produced.</p>
                             <div class="practice-pack-output-list" id="practicePackOutputList">
                                 <div class="empty-state"><p class="eyebrow">No pack generated</p><h4>Upload the BM files to create the ZIP</h4><p>The ZIP will contain the management PDF and one individual staff PDF per assigned owner.</p></div>
                             </div>
                         </section>
                     </section>
+                    <div class="practice-pack-walkthrough-modal" id="practicePackWalkthroughModal" hidden>
+                        <section class="practice-pack-walkthrough-panel" role="dialog" aria-modal="true" aria-labelledby="practicePackWalkthroughTitle">
+                            <div class="practice-pack-walkthrough-head">
+                                <h3 id="practicePackWalkthroughTitle">Practice pack review walkthrough</h3>
+                                <button class="ghost-button" id="practicePackWalkthroughCloseButton" type="button">Close</button>
+                            </div>
+                            <section class="practice-pack-review" id="practicePackReviewWorkspace" hidden></section>
+                        </section>
+                    </div>
 
                     <section class="insights-screen detail-card" id="insightsScreen" hidden>
                         <div class="detail-hero insights-hero">
@@ -32374,6 +32443,56 @@
                 ].join("");
             }
 
+            function meReportMatchNormalisedText(value = "") {
+                return String(value || "")
+                    .toLowerCase()
+                    .replace(/\b(limited|ltd|llp|plc|inc|company|co|the|uk)\b/g, " ")
+                    .replace(/[^a-z0-9]+/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+            }
+
+            function meReportMatchScore(contactName = "", candidate = "") {
+                const left = meReportMatchNormalisedText(contactName);
+                const right = meReportMatchNormalisedText(candidate);
+                if (!left || !right) return 0;
+                if (left === right) return 100;
+                if (left.includes(right) || right.includes(left)) return 88;
+                const leftTokens = new Set(left.split(" ").filter(Boolean));
+                const rightTokens = new Set(right.split(" ").filter(Boolean));
+                const overlap = [...rightTokens].filter((token) => leftTokens.has(token)).length;
+                const total = Math.max(leftTokens.size, rightTokens.size, 1);
+                const tokenScore = Math.round((overlap / total) * 100);
+                return tokenScore >= 40 ? tokenScore : 0;
+            }
+
+            function meReportSuggestedContactForReviewItem(item = {}, contacts = meReportContactOptions()) {
+                const candidates = [
+                    item.clientName,
+                    item.detectedClientName,
+                    ...(Array.isArray(item.candidateNames) ? item.candidateNames : []),
+                    item.filename ? String(item.filename).replace(/\.pdf$/i, "").replace(/[-_]+/g, " ") : "",
+                ].map((value) => String(value || "").trim()).filter(Boolean);
+                let best = null;
+                let bestScore = 0;
+                contacts.forEach((contact) => {
+                    const name = String(contact?.name || "");
+                    if (!name) return;
+                    candidates.forEach((candidate) => {
+                        const score = meReportMatchScore(name, candidate);
+                        if (score <= bestScore) return;
+                        bestScore = score;
+                        best = contact;
+                    });
+                });
+                if (!best || bestScore < 50) return null;
+                return {
+                    contactId: best.xeroContactId || "",
+                    contactName: best.name || "",
+                    score: bestScore,
+                };
+            }
+
             function selectedMeReportFormContact() {
                 const contactId = document.getElementById("meReportXeroContactSelect")?.value || "";
                 return meReportContactOptions().find((contact) => contact.xeroContactId === contactId) || null;
@@ -37015,13 +37134,17 @@
                 const summary = document.getElementById("meReportBulkMatchSummary");
                 if (summary) {
                     summary.textContent = pending.length
-                        ? `Choose the Xero contact for ${pending.length.toLocaleString("en-GB")} PDF${pending.length === 1 ? "" : "s"} that could not be matched from page one.`
+                        ? `Review ${pending.length.toLocaleString("en-GB")} OpenAI client match${pending.length === 1 ? "" : "es"} before background processing starts.`
                         : "No ME Report PDFs are waiting for a manual match.";
                 }
                 const saveButton = document.getElementById("saveMeReportBulkMatchButton");
                 if (saveButton) {
-                    saveButton.disabled = state.submitting || !pending.length || !contacts.length;
-                    saveButton.textContent = state.submitting ? "Processing..." : "Process matches";
+                    const readyCount = pending.filter((entry) => entry.status === "confirmed" && entry.contactId).length;
+                    const blocked = pending.some((entry) => entry.status !== "delete" && (!entry.contactId || entry.status !== "confirmed"));
+                    saveButton.disabled = state.submitting || !pending.length || !contacts.length || blocked || !readyCount;
+                    saveButton.textContent = state.submitting
+                        ? "Starting background processing..."
+                        : `Confirm ${readyCount.toLocaleString("en-GB")} and process in background`;
                 }
                 if (!contacts.length) {
                     list.innerHTML = `<div class="empty-state"><p class="eyebrow">No Xero contacts</p><h4>Sync Xero contacts before matching PDFs</h4><p>The manual match list needs the ME Report Xero contact dropdown data.</p></div>`;
@@ -37033,6 +37156,16 @@
                 }
                 list.innerHTML = pending.map((entry, index) => {
                     const item = entry.item || {};
+                    const status = String(entry.status || "needs-review");
+                    const rowClass = status === "confirmed"
+                        ? "is-confirmed"
+                        : status === "delete"
+                            ? "is-delete"
+                            : status === "failed"
+                                ? "is-failed"
+                                : status === "rematch"
+                                    ? "is-rematch"
+                                    : "is-needs-review";
                     const candidates = [
                         item.detectedClientName ? `Detected: ${item.detectedClientName}` : "",
                         ...(Array.isArray(item.candidateNames) ? item.candidateNames : [])
@@ -37040,28 +37173,91 @@
                             .slice(0, 4)
                             .map((candidate) => `Candidate: ${candidate}`)
                     ].filter(Boolean).join(" · ");
+                    const selectedContact = contacts.find((contact) => contact.xeroContactId === entry.contactId) || null;
+                    const statusLabel = status === "confirmed"
+                        ? "Confirmed"
+                        : status === "delete"
+                            ? "Marked to skip"
+                            : status === "rematch"
+                                ? "Needs re-match"
+                                : "Needs review";
+                    const statusClass = status === "confirmed"
+                        ? "is-success"
+                        : status === "delete"
+                            ? "is-danger"
+                            : "is-warning";
                     return `
-                        <div class="me-report-bulk-match-row" data-me-report-bulk-match-row="${index}">
+                        <div class="me-report-bulk-match-row ${rowClass}" data-me-report-bulk-match-row="${index}">
                             <div>
                                 <strong>${escapeHTML(item.filename || entry.file?.name || "ME Report PDF")}</strong>
                                 <small>${escapeHTML(candidates || item.message || "No client name could be matched automatically from page one.")}</small>
                             </div>
-                            <label>
-                                Xero contact
-                                <select data-me-report-bulk-match-select="${index}" ${state.submitting ? "disabled" : ""}>
-                                    ${meReportContactOptionHTML(entry.contactId || "")}
-                                </select>
-                            </label>
+                            <div class="me-report-bulk-match-right">
+                                <div class="me-report-bulk-match-meta">
+                                    <span class="me-report-bulk-match-status ${statusClass}">${escapeHTML(statusLabel)}</span>
+                                    <strong>${escapeHTML(selectedContact?.name || entry.suggestedContactName || "No confirmed contact")}</strong>
+                                    ${selectedContact?.email ? `<small>${escapeHTML(selectedContact.email)}</small>` : ""}
+                                </div>
+                                ${(status === "rematch" || status === "needs-review") ? `
+                                    <label>
+                                        Xero contact
+                                        <select data-me-report-bulk-match-select="${index}" ${state.submitting ? "disabled" : ""}>
+                                            ${meReportContactOptionHTML(entry.contactId || "")}
+                                        </select>
+                                    </label>
+                                ` : ""}
+                                <div class="me-report-bulk-match-actions">
+                                    <button class="me-report-bulk-confirm" type="button" title="Confirm match" data-me-report-bulk-match-action="confirm" data-me-report-bulk-match-index="${index}" ${state.submitting ? "disabled" : ""}>✓</button>
+                                    <button class="me-report-bulk-reject" type="button" title="Change match" data-me-report-bulk-match-action="reject" data-me-report-bulk-match-index="${index}" ${state.submitting ? "disabled" : ""}>✕</button>
+                                    <button class="me-report-bulk-action-delete" type="button" data-me-report-bulk-match-action="delete" data-me-report-bulk-match-index="${index}" ${state.submitting ? "disabled" : ""}>Skip</button>
+                                    ${status === "delete" ? `<button class="me-report-bulk-action-rematch" type="button" data-me-report-bulk-match-action="undo" data-me-report-bulk-match-index="${index}" ${state.submitting ? "disabled" : ""}>Undo skip</button>` : ""}
+                                </div>
+                            </div>
                         </div>
                     `;
                 }).join("");
+                list.querySelectorAll("[data-me-report-bulk-match-select]").forEach((select) => {
+                    select.addEventListener("change", () => {
+                        const index = Number(select.dataset.meReportBulkMatchSelect || -1);
+                        const next = meReportBulkManualMatchState?.pending?.[index];
+                        if (!next) return;
+                        next.contactId = String(select.value || "");
+                        if (next.contactId) next.status = "confirmed";
+                        renderMeReportBulkMatchPanel();
+                    });
+                });
+                list.querySelectorAll("[data-me-report-bulk-match-action]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const index = Number(button.dataset.meReportBulkMatchIndex || -1);
+                        const action = String(button.dataset.meReportBulkMatchAction || "");
+                        const next = meReportBulkManualMatchState?.pending?.[index];
+                        if (!next) return;
+                        if (action === "confirm") {
+                            if (!next.contactId) {
+                                next.status = "rematch";
+                                showToast("Choose a Xero contact before confirming this match.", "info");
+                            } else {
+                                next.status = "confirmed";
+                            }
+                        } else if (action === "reject") {
+                            next.status = "rematch";
+                        } else if (action === "delete") {
+                            next.status = "delete";
+                        } else if (action === "undo") {
+                            next.status = next.contactId ? "confirmed" : "rematch";
+                        }
+                        renderMeReportBulkMatchPanel();
+                    });
+                });
             }
 
             function openMeReportBulkMatchPanel(reviewItems = [], sourceFiles = []) {
                 const pending = reviewItems.map((item) => ({
                     item,
                     file: meReportBulkReviewFileForItem(item, sourceFiles),
-                    contactId: ""
+                    contactId: "",
+                    suggestedContactName: "",
+                    status: "needs-review",
                 })).filter((entry) => entry.file);
                 if (!pending.length) {
                     showToast("Choose the unmatched ME Report PDF again to manually match it.", "error");
@@ -37070,11 +37266,22 @@
                 if (pending.length !== reviewItems.length) {
                     showToast("Some unmatched PDFs could not be kept by the browser. Re-upload those files to match them manually.", "error");
                 }
+                const contacts = meReportContactOptions();
+                pending.forEach((entry) => {
+                    const suggestion = meReportSuggestedContactForReviewItem(entry.item, contacts);
+                    if (!suggestion?.contactId) return;
+                    entry.contactId = suggestion.contactId;
+                    entry.suggestedContactName = suggestion.contactName;
+                    entry.status = "confirmed";
+                });
                 meReportBulkManualMatchState = { pending, submitting: false };
                 const panel = document.getElementById("meReportBulkMatchPanel");
                 if (panel) panel.hidden = false;
                 renderMeReportBulkMatchPanel();
-                setTimeout(() => document.querySelector("[data-me-report-bulk-match-select]")?.focus(), 0);
+                setTimeout(() => {
+                    const needsReviewSelect = document.querySelector("[data-me-report-bulk-match-select]");
+                    if (needsReviewSelect) needsReviewSelect.focus();
+                }, 0);
             }
 
             function completeBulkMeReportUpload(response, sourceFiles = [], { allowManualMatch = true } = {}) {
@@ -37107,46 +37314,6 @@
                 return { processed, needsReview: needsReviewItems.length, failed: failedItems.length };
             }
 
-            async function submitMeReportBulkManualMatches(event) {
-                event.preventDefault();
-                const state = meReportBulkManualMatchState;
-                if (!state?.pending?.length || state.submitting) return;
-                const selectedEntries = state.pending.map((entry, index) => ({
-                    ...entry,
-                    contactId: document.querySelector(`[data-me-report-bulk-match-select="${index}"]`)?.value || ""
-                }));
-                const missing = selectedEntries.filter((entry) => !entry.contactId);
-                if (missing.length) return showToast("Choose a Xero contact for every unmatched ME Report PDF.", "error");
-                const formData = new FormData();
-                const manualMatches = {};
-                selectedEntries.forEach((entry, index) => {
-                    formData.append("files", entry.file, entry.file.name || entry.item?.filename || "overview-report.pdf");
-                    manualMatches[String(index)] = entry.contactId;
-                });
-                formData.append("manualMatches", JSON.stringify(manualMatches));
-                state.pending = selectedEntries;
-                state.submitting = true;
-                meReportBulkUploading = true;
-                setAiLoading(true, `Jenius AI is processing ${selectedEntries.length} manually matched ME Report PDF${selectedEntries.length === 1 ? "" : "s"}.`);
-                renderMeReportBulkMatchPanel();
-                renderMeReportScreen();
-                try {
-                    const response = await requestFormData(api.endpoints.meReportBulkSubmissions, formData);
-                    completeBulkMeReportUpload(response, selectedEntries.map((entry) => entry.file));
-                } catch (error) {
-                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to process manually matched ME Report PDFs", "error");
-                } finally {
-                    if (meReportBulkManualMatchState) {
-                        meReportBulkManualMatchState.submitting = false;
-                        renderMeReportBulkMatchPanel();
-                    }
-                    meReportBulkUploading = false;
-                    setAiLoading(false);
-                    renderMeReportScreen();
-                }
-            }
-
             async function uploadBulkMeReportSubmissions(files) {
                 const selectedFiles = Array.from(files || []).filter((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""));
                 if (!selectedFiles.length) return showToast("Choose at least one PDF to bulk upload", "error");
@@ -37168,6 +37335,50 @@
                     if (input) input.value = "";
                     renderMeReportScreen();
                 }
+            }
+
+            async function submitMeReportBulkManualMatches(event) {
+                event.preventDefault();
+                const state = meReportBulkManualMatchState;
+                if (!state?.pending?.length || state.submitting) return;
+                const selectedEntries = state.pending
+                    .filter((entry) => entry.status !== "delete")
+                    .map((entry) => ({
+                        ...entry,
+                        contactId: String(entry.contactId || "")
+                    }));
+                if (!selectedEntries.length) {
+                    showToast("At least one matched PDF must be confirmed before processing.", "error");
+                    return;
+                }
+                const missing = selectedEntries.filter((entry) => !entry.contactId);
+                if (missing.length) return showToast("Confirm every OpenAI match (or skip it) before processing.", "error");
+                const formData = new FormData();
+                const manualMatches = {};
+                selectedEntries.forEach((entry, index) => {
+                    formData.append("files", entry.file, entry.file.name || entry.item?.filename || "overview-report.pdf");
+                    manualMatches[String(index)] = entry.contactId;
+                });
+                formData.append("manualMatches", JSON.stringify(manualMatches));
+                state.submitting = true;
+                meReportBulkUploading = true;
+                closeMeReportBulkMatchPanel();
+                setAiLoading(true, `OpenAI client matches confirmed. Processing ${selectedEntries.length} overview PDF${selectedEntries.length === 1 ? "" : "s"} in the background.`);
+                renderMeReportScreen();
+                showToast("Matches confirmed. Processing started in the background.", "success");
+                requestFormData(api.endpoints.meReportBulkSubmissions, formData)
+                    .then((response) => {
+                        completeBulkMeReportUpload(response, selectedEntries.map((entry) => entry.file), { allowManualMatch: false });
+                    })
+                    .catch((error) => {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to process confirmed ME Report PDFs", "error");
+                    })
+                    .finally(() => {
+                        meReportBulkUploading = false;
+                        setAiLoading(false);
+                        renderMeReportScreen();
+                    });
             }
 
             function updateMeReportProgress() {
@@ -40539,6 +40750,29 @@
                 return practicePackTaskDraftRows.filter((row) => String(row.taskName || "").trim()).length;
             }
 
+            function setPracticePackWalkthroughOpen(open) {
+                const modal = document.getElementById("practicePackWalkthroughModal");
+                if (!modal) return;
+                modal.hidden = !open;
+                document.body.classList.toggle("is-practice-pack-walkthrough-open", Boolean(open));
+            }
+
+            function practicePackOwnerGroupingPreview(limit = 6) {
+                const ownerStats = new Map();
+                practicePackTaskDraftRows
+                    .filter((row) => String(row.taskName || "").trim())
+                    .forEach((row) => {
+                        const owner = String(row.owner || "Unassigned").trim() || "Unassigned";
+                        const existing = ownerStats.get(owner) || { owner, count: 0, overdue: 0 };
+                        existing.count += 1;
+                        if (practicePackTaskOverdue(row.status, row.dueDate)) existing.overdue += 1;
+                        ownerStats.set(owner, existing);
+                    });
+                return [...ownerStats.values()]
+                    .sort((left, right) => right.count - left.count || left.owner.localeCompare(right.owner))
+                    .slice(0, Math.max(1, limit));
+            }
+
             function renderPracticePackReviewWorkspace() {
                 const workspace = document.getElementById("practicePackReviewWorkspace");
                 if (!workspace) return;
@@ -40546,6 +40780,7 @@
                 workspace.hidden = !ready;
                 if (!ready) {
                     workspace.innerHTML = "";
+                    setPracticePackWalkthroughOpen(false);
                     return;
                 }
                 const ownerOptions = practicePackDraftOwnerOptions();
@@ -40553,12 +40788,13 @@
                 const selectedCount = practicePackTaskDraftRows.filter((row) => row.selected).length;
                 const overdueCount = practicePackTaskDraftRows.filter((row) => practicePackTaskOverdue(row.status, row.dueDate)).length;
                 const totalCount = practicePackRenderableTaskCount();
+                const ownerGrouping = practicePackOwnerGroupingPreview(8);
                 workspace.innerHTML = `
                     <div class="practice-pack-review-head">
                         <div>
                             <p class="eyebrow">Generation walkthrough</p>
-                            <h3>Review AI task grouping for each owner before finalising the practice packs</h3>
-                            <p>${formatInteger(visibleRows.length)} visible row${visibleRows.length === 1 ? "" : "s"} · ${formatInteger(selectedCount)} selected</p>
+                            <h3>Review AI task grouping before committing and generating the final ZIP</h3>
+                            <p>${formatInteger(visibleRows.length)} visible row${visibleRows.length === 1 ? "" : "s"} · ${formatInteger(selectedCount)} selected · ${formatInteger(ownerGrouping.length)} owner group${ownerGrouping.length === 1 ? "" : "s"}</p>
                         </div>
                         <div class="developer-log-actions">
                             <button class="ghost-button" type="button" id="practicePackCancelWalkthroughButton">Cancel walkthrough</button>
@@ -40570,6 +40806,15 @@
                         <article><span>Overdue</span><strong>${formatInteger(overdueCount)}</strong></article>
                         <article><span>Owners</span><strong>${formatInteger(ownerOptions.length)}</strong></article>
                         <article><span>Selected</span><strong>${formatInteger(selectedCount)}</strong></article>
+                    </div>
+                    <div class="practice-pack-review-owner-groups">
+                        ${ownerGrouping.map((group) => `
+                            <article>
+                                <span>AI owner group</span>
+                                <strong>${escapeHTML(group.owner)}</strong>
+                                <p>${formatInteger(group.count)} task${group.count === 1 ? "" : "s"} · ${formatInteger(group.overdue)} overdue</p>
+                            </article>
+                        `).join("")}
                     </div>
                     <div class="practice-pack-review-controls">
                         <label>Search
@@ -40680,12 +40925,14 @@
                 });
                 document.getElementById("practicePackCancelWalkthroughButton")?.addEventListener("click", () => {
                     practicePackWalkthroughActive = false;
+                    setPracticePackWalkthroughOpen(false);
                     showToast("Practice pack walkthrough cancelled. Review edits were kept in this session.", "info");
                     renderPracticePackScreen();
                 });
                 document.getElementById("practicePackFinaliseButton")?.addEventListener("click", () => {
                     document.getElementById("practicePackForm")?.requestSubmit();
                 });
+                if (practicePackWalkthroughActive) setPracticePackWalkthroughOpen(true);
             }
 
             function updatePracticePackDraftRow(rowId, field, value) {
@@ -41168,12 +41415,19 @@
                 }
             }
 
-            function handlePracticePackFileChange(kind) {
+            async function handlePracticePackFileChange(kind) {
                 const input = practicePackInputForKind(kind);
                 const file = input?.files?.[0] || null;
                 if (file && !practicePackLooksLikeCsv(file)) {
                     input.value = "";
                     showToast("Choose a BM CSV file.", "error");
+                }
+                practicePackWalkthroughActive = false;
+                setPracticePackWalkthroughOpen(false);
+                try {
+                    await refreshPracticePackDraftData();
+                } catch (error) {
+                    showToast(error.message || "Unable to prepare review walkthrough.", "error");
                 }
                 updatePracticePackUploadState();
                 renderPracticePackScreen();
@@ -41218,7 +41472,22 @@
                     updatePracticePackUploadState();
                     return;
                 }
+                try {
+                    await refreshPracticePackDraftData();
+                } catch (error) {
+                    showToast(error.message || "Unable to prepare review walkthrough.", "error");
+                    return;
+                }
+                if (!practicePackWalkthroughActive) {
+                    practicePackWalkthroughActive = true;
+                    renderPracticePackReviewWorkspace();
+                    setPracticePackWalkthroughOpen(true);
+                    showToast("Review AI task grouping, make any changes, then continue to generate.", "info");
+                    return;
+                }
                 const month = currentPracticePackMonth();
+                practicePackWalkthroughActive = false;
+                setPracticePackWalkthroughOpen(false);
                 practicePackGenerating = true;
                 if (generateButton) {
                     generateButton.disabled = true;
@@ -41231,7 +41500,13 @@
                 try {
                     const formData = new FormData();
                     formData.append("clientFile", clientFile);
-                    formData.append("taskFile", taskFile);
+                    const reviewedTaskFile = practicePackBuildEditedTaskFile(taskFile);
+                    if (reviewedTaskFile instanceof File) {
+                        formData.append("taskFile", reviewedTaskFile);
+                    } else {
+                        const fallbackName = `${practicePackFileNamePart(month)}-reviewed-tasks.csv`;
+                        formData.append("taskFile", reviewedTaskFile, fallbackName);
+                    }
                     formData.append("month", month);
                     const historyPayload = practicePackServerRuns.length
                         ? serverPracticePackHistoryPayload()
@@ -41292,6 +41567,8 @@
                 practicePackResult = null;
                 practicePackAssignments = { month: "", generatedAt: "", clientCount: 0, source: "Practice Pack", assignments: [] };
                 persistPracticePackAssignments();
+                practicePackWalkthroughActive = false;
+                setPracticePackWalkthroughOpen(false);
                 ["practicePackClientFile", "practicePackTaskFile"].forEach((id) => {
                     const input = document.getElementById(id);
                     if (input) input.value = "";
