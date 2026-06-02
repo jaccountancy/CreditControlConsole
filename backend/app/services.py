@@ -5929,7 +5929,11 @@ def _build_jashflow_interest_workbook(lines: list[dict], period_end: date, total
     return buffer.getvalue()
 
 
-def _jashflow_interest_lines_for_period(user: dict, period_end: date) -> tuple[str, str, list[dict]]:
+def _jashflow_interest_lines_for_period(
+    user: dict,
+    period_end: date,
+    period_start: date | None = None,
+) -> tuple[str, str, list[dict], dict]:
     tenant_id = _jashflow_tenant_id(user)
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -5947,7 +5951,22 @@ def _jashflow_interest_lines_for_period(user: dict, period_end: date) -> tuple[s
             loan_rows = cursor.fetchall()
             loan_ids = [row["id"] for row in loan_rows]
             transactions_by_loan = defaultdict(list)
-            posted_interest_by_loan = defaultdict(lambda: Decimal("0.00"))
+            posted_interest_to_end_by_loan = defaultdict(lambda: Decimal("0.00"))
+            posted_interest_to_start_by_loan = defaultdict(lambda: Decimal("0.00"))
+            last_posted_up_to_by_loan = {}
+            cursor.execute(
+                """
+                SELECT MAX(period_end_date) AS last_posted_up_to
+                FROM jashflow_interest_post_batches
+                WHERE tenant_id = %s
+                  AND status = 'completed'
+                  AND period_end_date <= %s
+                """,
+                (tenant_id, period_end),
+            )
+            latest_posted_row = cursor.fetchone() or {}
+            latest_posted_up_to = latest_posted_row.get("last_posted_up_to")
+            effective_period_start = period_start or latest_posted_up_to
             if loan_ids:
                 cursor.execute(
                     """
@@ -5962,18 +5981,29 @@ def _jashflow_interest_lines_for_period(user: dict, period_end: date) -> tuple[s
                     transactions_by_loan[str(row["loan_id"])].append(row)
                 cursor.execute(
                     """
-                    SELECT lines.loan_id, COALESCE(SUM(lines.interest_amount), 0) AS posted_interest
+                    SELECT
+                        lines.loan_id,
+                        COALESCE(SUM(CASE WHEN lines.period_end_date <= %s THEN lines.interest_amount ELSE 0 END), 0) AS posted_interest_to_end,
+                        COALESCE(SUM(CASE WHEN lines.period_end_date <= %s THEN lines.interest_amount ELSE 0 END), 0) AS posted_interest_to_start,
+                        MAX(CASE WHEN lines.period_end_date <= %s THEN lines.period_end_date END) AS last_posted_up_to
                     FROM jashflow_interest_post_lines AS lines
                     JOIN jashflow_interest_post_batches AS batches ON batches.id = lines.batch_id
                     WHERE lines.loan_id = ANY(%s)
                       AND batches.status = 'completed'
-                      AND lines.period_end_date <= %s
                     GROUP BY lines.loan_id
                     """,
-                    (loan_ids, period_end),
+                    (
+                        period_end,
+                        effective_period_start or date.min,
+                        period_end,
+                        loan_ids,
+                    ),
                 )
                 for row in cursor.fetchall():
-                    posted_interest_by_loan[str(row["loan_id"])] = _money(row.get("posted_interest"))
+                    loan_key = str(row["loan_id"])
+                    posted_interest_to_end_by_loan[loan_key] = _money(row.get("posted_interest_to_end"))
+                    posted_interest_to_start_by_loan[loan_key] = _money(row.get("posted_interest_to_start"))
+                    last_posted_up_to_by_loan[loan_key] = row.get("last_posted_up_to")
             cursor.execute(
                 """
                 SELECT *
@@ -5987,37 +6017,73 @@ def _jashflow_interest_lines_for_period(user: dict, period_end: date) -> tuple[s
 
     account_code = str(settings_row.get("interest_account_code") or "").strip()
     lines = []
+    effective_period_start = period_start or latest_posted_up_to
     for loan in loan_rows:
         loan_id = str(loan["id"])
         transactions = transactions_by_loan.get(loan_id, [])
-        summary = _jashflow_interest_summary(loan, transactions, as_of=period_end)
-        previously_posted = posted_interest_by_loan.get(loan_id, Decimal("0.00"))
-        interest_amount = max(Decimal("0.00"), _money(summary["accruedInterest"] - previously_posted))
+        summary_to_end = _jashflow_interest_summary(loan, transactions, as_of=period_end)
+        summary_to_start = _jashflow_interest_summary(loan, transactions, as_of=effective_period_start) if effective_period_start else None
+        accrued_to_end = _money(summary_to_end["accruedInterest"])
+        accrued_to_start = _money(summary_to_start["accruedInterest"]) if summary_to_start else Decimal("0.00")
+        posted_to_end = posted_interest_to_end_by_loan.get(loan_id, Decimal("0.00"))
+        posted_to_start = posted_interest_to_start_by_loan.get(loan_id, Decimal("0.00"))
+        unposted_to_end = max(Decimal("0.00"), _money(accrued_to_end - posted_to_end))
+        unposted_to_start = max(Decimal("0.00"), _money(accrued_to_start - posted_to_start))
+        period_interest_amount = max(Decimal("0.00"), _money(unposted_to_end - unposted_to_start))
+        catch_up_interest_amount = unposted_to_start
+        interest_amount = _money(period_interest_amount + catch_up_interest_amount)
         if interest_amount < Decimal("0.01"):
             continue
+        loan_start_date = loan.get("start_date")
+        if isinstance(loan_start_date, datetime):
+            loan_start_date = loan_start_date.date()
+        elif loan_start_date and not isinstance(loan_start_date, date):
+            loan_start_date = _parse_iso_date(loan_start_date, "Loan start date")
+        catch_up_start = loan_start_date if catch_up_interest_amount >= Decimal("0.01") else None
+        catch_up_end = effective_period_start if catch_up_interest_amount >= Decimal("0.01") else None
+        last_posted_up_to = last_posted_up_to_by_loan.get(loan_id)
         lines.append(
             {
                 "loanId": loan_id,
                 "customerId": str(loan.get("customer_id") or ""),
                 "customerName": loan.get("customer_name") or "Unnamed client",
                 "xeroContactId": loan.get("xero_contact_id") or "",
-                "loanStartDate": _iso(loan.get("start_date")) or "",
-                "accruedInterest": _money(summary["accruedInterest"]),
-                "previouslyPosted": _money(previously_posted),
+                "loanStartDate": _iso(loan_start_date) or "",
+                "periodStartDate": _iso(effective_period_start) or "",
+                "periodEndDate": _iso(period_end) or "",
+                "accruedInterest": _money(accrued_to_end),
+                "accruedInterestToStart": _money(accrued_to_start),
+                "previouslyPosted": _money(posted_to_end),
+                "previouslyPostedToStart": _money(posted_to_start),
+                "periodInterestAmount": _money(period_interest_amount),
+                "catchUpInterestAmount": _money(catch_up_interest_amount),
+                "catchUpRequired": bool(catch_up_interest_amount >= Decimal("0.01")),
+                "catchUpStartDate": _iso(catch_up_start) or "",
+                "catchUpEndDate": _iso(catch_up_end) or "",
+                "lastPostedUpTo": _iso(last_posted_up_to) or "",
                 "interestAmount": _money(interest_amount),
-                "balance": _money(summary["balance"]),
-                "daysAccrued": int(summary.get("daysAccrued") or 0),
+                "balance": _money(summary_to_end["balance"]),
+                "daysAccrued": int(summary_to_end.get("daysAccrued") or 0),
             }
         )
     lines.sort(key=lambda item: (item["interestAmount"], item["customerName"]), reverse=True)
-    return tenant_id, account_code, lines
+    metadata = {
+        "periodStartDate": _iso(effective_period_start) or "",
+        "periodEndDate": _iso(period_end) or "",
+        "lastPostedUpTo": _iso(latest_posted_up_to) or "",
+    }
+    return tenant_id, account_code, lines, metadata
 
 
 def jashflow_interest_preview(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
-    _, account_code, lines = _jashflow_interest_lines_for_period(user, period_end)
+    period_start = _parse_iso_date(payload.get("periodStartDate"), "Period start date") if payload.get("periodStartDate") else None
+    _, account_code, lines, metadata = _jashflow_interest_lines_for_period(user, period_end, period_start=period_start)
     total = _money(sum((line["interestAmount"] for line in lines), Decimal("0.00")))
+    catch_up_loan_count = sum(1 for line in lines if line.get("catchUpRequired"))
+    catch_up_interest_total = _money(sum((line["catchUpInterestAmount"] for line in lines), Decimal("0.00")))
+    period_interest_total = _money(sum((line["periodInterestAmount"] for line in lines), Decimal("0.00")))
     clients = {}
     for line in lines:
         key = line["customerId"] or line["customerName"]
@@ -6026,11 +6092,16 @@ def jashflow_interest_preview(user: dict, payload: dict | None = None) -> dict:
         current["interestAmount"] = _money(current["interestAmount"] + line["interestAmount"])
         clients[key] = current
     return {
-        "periodEndDate": period_end.isoformat(),
+        "periodStartDate": metadata["periodStartDate"],
+        "periodEndDate": metadata["periodEndDate"],
+        "lastPostedUpTo": metadata["lastPostedUpTo"],
         "interestAccountCode": account_code,
         "lineCount": len(lines),
         "clientCount": len(clients),
         "totalInterestAmount": float(total),
+        "periodInterestTotal": float(period_interest_total),
+        "catchUpInterestTotal": float(catch_up_interest_total),
+        "catchUpLoanCount": int(catch_up_loan_count),
         "clients": [
             {
                 "customerId": row["customerId"],
@@ -6046,8 +6117,18 @@ def jashflow_interest_preview(user: dict, payload: dict | None = None) -> dict:
                 "customerId": line["customerId"],
                 "customerName": line["customerName"],
                 "loanStartDate": line["loanStartDate"],
+                "periodStartDate": line["periodStartDate"],
+                "periodEndDate": line["periodEndDate"],
                 "accruedInterest": float(line["accruedInterest"]),
+                "accruedInterestToStart": float(line["accruedInterestToStart"]),
                 "previouslyPosted": float(line["previouslyPosted"]),
+                "previouslyPostedToStart": float(line["previouslyPostedToStart"]),
+                "periodInterestAmount": float(line["periodInterestAmount"]),
+                "catchUpInterestAmount": float(line["catchUpInterestAmount"]),
+                "catchUpRequired": bool(line["catchUpRequired"]),
+                "catchUpStartDate": line["catchUpStartDate"],
+                "catchUpEndDate": line["catchUpEndDate"],
+                "lastPostedUpTo": line["lastPostedUpTo"],
                 "interestAmount": float(line["interestAmount"]),
                 "balance": float(line["balance"]),
                 "daysAccrued": line["daysAccrued"],
@@ -6060,7 +6141,8 @@ def jashflow_interest_preview(user: dict, payload: dict | None = None) -> dict:
 async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     period_end = _parse_iso_date(payload.get("periodEndDate") or utcnow().date(), "Period end date")
-    tenant_id, account_code, lines = _jashflow_interest_lines_for_period(user, period_end)
+    period_start = _parse_iso_date(payload.get("periodStartDate"), "Period start date") if payload.get("periodStartDate") else None
+    tenant_id, account_code, lines, metadata = _jashflow_interest_lines_for_period(user, period_end, period_start=period_start)
     if not account_code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Save the Jashflow interest received account code before posting interest.")
     if not lines:
@@ -6081,7 +6163,17 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
             "Status": "AUTHORISED",
             "LineItems": [
                 {
-                    "Description": f"Jashflow interest earned to {_invoice_date_description(period_end)} for {line['customerName']}.",
+                    "Description": (
+                        f"Jashflow interest for {_invoice_date_description(period_start)} to {_invoice_date_description(period_end)} "
+                        f"for {line['customerName']}."
+                        if period_start
+                        else f"Jashflow interest earned to {_invoice_date_description(period_end)} for {line['customerName']}."
+                    ) + (
+                        f" Catch-up included for {_invoice_date_description(_parse_iso_date(line['catchUpStartDate'], 'Catch-up start date'))}"
+                        f" to {_invoice_date_description(_parse_iso_date(line['catchUpEndDate'], 'Catch-up end date'))}."
+                        if line.get("catchUpRequired") and line.get("catchUpStartDate") and line.get("catchUpEndDate")
+                        else ""
+                    ),
                     "Quantity": 1,
                     "UnitAmount": float(line["interestAmount"]),
                     "AccountCode": account_code,
@@ -6090,7 +6182,12 @@ async def post_jashflow_interest_invoice(user: dict, payload: dict | None = None
             ],
         }
         idempotency_seed = json.dumps(
-            {"periodEnd": period_end.isoformat(), "loanId": line["loanId"], "interestAmount": str(line["interestAmount"])},
+            {
+                "periodStart": metadata.get("periodStartDate") or "",
+                "periodEnd": period_end.isoformat(),
+                "loanId": line["loanId"],
+                "interestAmount": str(line["interestAmount"]),
+            },
             sort_keys=True,
         )
         idempotency_key = f"jashflow-interest-{hashlib.sha256(idempotency_seed.encode()).hexdigest()[:32]}"

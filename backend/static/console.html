@@ -379,7 +379,7 @@
                 animation: sidebar-support-pulse 2.8s ease-in-out infinite;
             }
             .app-sidebar-brand.is-support-active.is-history-open {
-                min-height: 250px;
+                min-height: 332px;
             }
             .app-sidebar-brand.is-support-active.is-support-warning {
                 border-color: rgba(255, 159, 47, 0.34);
@@ -583,65 +583,87 @@
                 gap: 8px;
                 min-width: 0;
             }
-            .sidebar-support-foot-actions {
-                min-width: 0;
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-            }
-            .sidebar-support-history-toggle {
-                border: 1px solid rgba(29, 103, 242, 0.24);
-                border-radius: 999px;
-                background: rgba(29, 103, 242, 0.09);
-                color: var(--blue);
-                padding: 2px 8px;
-                font-size: 0.54rem;
-                font-weight: 950;
-                letter-spacing: 0.08em;
-                text-transform: uppercase;
-                white-space: nowrap;
-                cursor: pointer;
-            }
-            .sidebar-support-history-toggle:hover,
-            .sidebar-support-history-toggle:focus-visible {
-                border-color: rgba(29, 103, 242, 0.34);
-                background: rgba(29, 103, 242, 0.15);
-                outline: none;
-            }
-            .app-sidebar-brand.is-support-warning .sidebar-support-history-toggle {
-                border-color: rgba(255, 159, 47, 0.28);
-                background: rgba(255, 159, 47, 0.12);
-                color: #bd6c10;
-            }
-            .app-sidebar-brand.is-support-error .sidebar-support-history-toggle {
-                border-color: rgba(255, 83, 83, 0.28);
-                background: rgba(255, 83, 83, 0.12);
-                color: #b43a3a;
-            }
-            .sidebar-support-cta {
+            .sidebar-support-notice {
                 color: #3f5f90;
-                font-size: 0.58rem;
+                font-size: 0.56rem;
                 font-weight: 900;
                 letter-spacing: 0.06em;
                 text-transform: uppercase;
-                white-space: nowrap;
+                white-space: normal;
+                line-height: 1.22;
+                text-align: right;
             }
             .sidebar-support-history {
                 display: grid;
-                gap: 6px;
+                gap: 7px;
                 padding-top: 3px;
                 border-top: 1px solid rgba(61, 85, 130, 0.14);
+                max-height: 0;
+                opacity: 0;
+                overflow: hidden;
+                transform: translateY(-8px);
+                transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
             }
-            .sidebar-support-history[hidden] {
-                display: none;
+            .app-sidebar-brand.is-history-open .sidebar-support-history {
+                max-height: 216px;
+                opacity: 1;
+                overflow-y: auto;
+                transform: translateY(0);
+                padding-right: 2px;
+            }
+            .sidebar-support-history::-webkit-scrollbar { width: 6px; }
+            .sidebar-support-history::-webkit-scrollbar-thumb {
+                background: rgba(61, 85, 130, 0.25);
+                border-radius: 999px;
+            }
+            .sidebar-support-history-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .sidebar-support-history-head strong {
+                color: var(--ink);
+                font-size: 0.62rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .sidebar-support-clear-all,
+            .sidebar-support-clear-item {
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                border-radius: 999px;
+                background: rgba(248, 251, 255, 0.88);
+                color: #3f5f90;
+                font-size: 0.52rem;
+                font-weight: 900;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+            .sidebar-support-clear-all {
+                padding: 2px 8px;
+            }
+            .sidebar-support-clear-item {
+                justify-self: end;
+                padding: 2px 7px;
+            }
+            .sidebar-support-clear-all:hover,
+            .sidebar-support-clear-all:focus-visible,
+            .sidebar-support-clear-item:hover,
+            .sidebar-support-clear-item:focus-visible {
+                background: rgba(233, 241, 255, 0.96);
+                border-color: rgba(29, 103, 242, 0.32);
+                color: var(--blue);
+                outline: none;
             }
             .sidebar-support-history-item {
                 border: 1px solid rgba(61, 85, 130, 0.12);
                 border-radius: 10px;
                 background: rgba(248, 251, 255, 0.86);
-                padding: 7px 8px;
+                padding: 7px 8px 8px;
                 display: grid;
-                gap: 2px;
+                gap: 4px;
             }
             .sidebar-support-history-item strong,
             .sidebar-support-history-item small,
@@ -3804,6 +3826,7 @@
                     padding-left: 11px;
                     padding-right: 11px;
                     justify-content: flex-start;
+                    gap: 0;
                     overflow: hidden;
                     transition: width 0.2s ease, border-color 0.18s ease, color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
                 }
@@ -3812,10 +3835,11 @@
                 .ledger-section-button .ledger-toolbar-label {
                     max-width: 0;
                     opacity: 0;
+                    visibility: hidden;
                     transform: translateX(-6px);
                     white-space: nowrap;
                     overflow: hidden;
-                    transition: max-width 0.2s ease, opacity 0.16s ease, transform 0.2s ease;
+                    transition: max-width 0.2s ease, opacity 0.16s ease, transform 0.2s ease, visibility 0.2s ease;
                 }
                 .status-filter-button:hover,
                 .status-filter-button:focus-visible,
@@ -3840,7 +3864,17 @@
                 .ledger-section-button.is-active .ledger-toolbar-label {
                     max-width: 112px;
                     opacity: 1;
+                    visibility: visible;
                     transform: translateX(0);
+                }
+                .status-filter-button:hover,
+                .status-filter-button:focus-visible,
+                .status-filter-button[aria-expanded="true"],
+                .ledger-section-button:hover,
+                .ledger-section-button:focus-visible,
+                .ledger-section-button[aria-expanded="true"],
+                .ledger-section-button.is-active {
+                    gap: 7px;
                 }
             }
             .table-icon-button {
@@ -11135,6 +11169,23 @@
             .operation-review-table th:last-child {
                 text-align: right;
             }
+            .operation-review-table .operation-review-row-remove {
+                border: 1px solid rgba(61, 85, 130, 0.18);
+                border-radius: 999px;
+                background: #fff;
+                color: var(--muted);
+                font-size: 0.7rem;
+                font-weight: 800;
+                padding: 4px 10px;
+                cursor: pointer;
+            }
+            .operation-review-table .operation-review-row-remove:hover,
+            .operation-review-table .operation-review-row-remove:focus-visible {
+                border-color: rgba(255, 83, 83, 0.42);
+                background: rgba(255, 231, 231, 0.92);
+                color: #b43a3a;
+                outline: none;
+            }
             .operation-review-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -13799,7 +13850,7 @@
             <body>
                 <div class="console-app">
                 <aside class="app-sidebar" aria-label="Main navigation">
-                    <button class="app-sidebar-brand" type="button" data-app-nav="home" aria-label="Open Home Insights">
+                    <button class="app-sidebar-brand" id="sidebarSupportBubbleToggle" type="button" data-app-nav="home" aria-label="Open notifications">
                         <img class="app-sidebar-logo" src="/static/jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy">
                         <span class="sidebar-support-bubble" id="sidebarSupportBubble" role="status" aria-live="polite" aria-atomic="true" hidden>
                             <span class="sidebar-support-head">
@@ -13816,10 +13867,7 @@
                             <span class="sidebar-support-progress" aria-hidden="true"><span id="sidebarSupportProgressFill"></span></span>
                             <span class="sidebar-support-foot">
                                 <small class="sidebar-support-meta" id="sidebarSupportMeta">Starting</small>
-                                <span class="sidebar-support-foot-actions">
-                                    <button class="sidebar-support-history-toggle" id="sidebarSupportHistoryToggle" type="button" aria-expanded="false" aria-controls="sidebarSupportHistory">Recent</button>
-                                    <small class="sidebar-support-cta" id="sidebarSupportCta">Open Home Insights</small>
-                                </span>
+                                <small class="sidebar-support-notice">Press this card to view recent notifications</small>
                             </span>
                             <div class="sidebar-support-history" id="sidebarSupportHistory" hidden></div>
                         </span>
@@ -13830,13 +13878,9 @@
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h14v-9.5"></path><path d="M10 20v-5h4v5"></path></svg></span>
                             <span class="app-nav-copy"><strong>Home</strong><span>Insights</span></span>
                         </a>
-                        <a class="app-nav-button" href="#credit-control-ledger" data-app-nav="ledger">
-                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="6" width="18" height="13" rx="3"></rect><path d="M3 10h18"></path><path d="M7 15h5"></path></svg></span>
-                            <span class="app-nav-copy"><strong>Credit Control</strong><span>Accounts</span></span>
-                        </a>
                         <a class="app-nav-button" href="#credit-control-clients" data-app-nav="clients">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="3" y="6" width="18" height="13" rx="3"></rect><path d="M3 10h18"></path><path d="M7 15h5"></path></svg></span>
-                            <span class="app-nav-copy"><strong>Clients</strong><span>Original ledger</span></span>
+                            <span class="app-nav-copy"><strong>Debtors</strong><span>Original ledger</span></span>
                         </a>
                         <a class="app-nav-button" href="#credit-control-lpcs" data-app-nav="lpcs">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path><path d="M7 4 4 7"></path><path d="m17 4 3 3"></path></svg></span>
@@ -16684,6 +16728,7 @@
             let postingSettingsError = "";
             let activeAllocationSource = null;
             let operationReviewResolver = null;
+            let operationReviewResultProvider = null;
             const jashflowLoanStatusFilterLabels = {
                 active: "Active loans",
                 interest: "Interest to post",
@@ -19837,9 +19882,19 @@
                         if (navToggleButton.dataset.appNavToggle === "credit-control") toggleCreditControlGroup(event);
                         return;
                     }
-                    const supportHistoryToggle = event.target.closest?.("#sidebarSupportHistoryToggle");
-                    if (supportHistoryToggle) {
+                    const supportBubbleToggle = event.target.closest?.("#sidebarSupportBubbleToggle");
+                    if (supportBubbleToggle && activeSidebarSupportBubbleState()) {
                         toggleSidebarSupportHistory(event);
+                        return;
+                    }
+                    const supportHistoryClearAll = event.target.closest?.("#sidebarSupportClearAll");
+                    if (supportHistoryClearAll) {
+                        clearSidebarSupportHistory(event);
+                        return;
+                    }
+                    const supportHistoryClear = event.target.closest?.("[data-sidebar-support-clear-index]");
+                    if (supportHistoryClear) {
+                        clearSidebarSupportHistoryItem(supportHistoryClear.dataset.sidebarSupportClearIndex, event);
                         return;
                     }
                     if (event.target.closest?.("#sidebarSupportHistory")) {
@@ -21771,8 +21826,13 @@
                 const panel = document.getElementById("operationReviewPanel");
                 if (panel) panel.hidden = true;
                 const resolver = operationReviewResolver;
+                const resultProvider = operationReviewResultProvider;
                 operationReviewResolver = null;
-                if (resolver) resolver(Boolean(confirmed));
+                operationReviewResultProvider = null;
+                if (resolver) {
+                    if (confirmed && typeof resultProvider === "function") resolver(resultProvider());
+                    else resolver(Boolean(confirmed));
+                }
             }
 
             function formatOperationReviewCell(value, kind = "text") {
@@ -21793,6 +21853,7 @@
                 const cancelButton = document.getElementById("cancelOperationReviewButton");
                 if (!panel || !eyebrow || !title || !subtitle || !summary || !body || !confirmButton || !cancelButton) return false;
                 if (operationReviewResolver) closeOperationReviewPanel(false);
+                operationReviewResultProvider = null;
                 eyebrow.textContent = config.eyebrow || "Review action";
                 title.textContent = config.title || "Confirm operation";
                 subtitle.textContent = config.subtitle || "Review the selected rows before confirming.";
@@ -21809,6 +21870,12 @@
                     const header = columns.map((column) => `<th>${escapeHTML(column.label || column.key || "")}</th>`).join("");
                     const rowMarkup = rows.map((row) => `<tr>${columns.map((column) => `<td>${escapeHTML(formatOperationReviewCell(row[column.key], column.kind || "text"))}</td>`).join("")}</tr>`).join("");
                     body.innerHTML = `<table class="operation-review-table"><thead><tr>${header}</tr></thead><tbody>${rowMarkup}</tbody></table>`;
+                }
+                if (typeof config.onRender === "function") {
+                    config.onRender({ panel, eyebrow, title, subtitle, summary, body, confirmButton, cancelButton });
+                }
+                if (typeof config.resultProvider === "function") {
+                    operationReviewResultProvider = config.resultProvider;
                 }
                 panel.hidden = false;
                 return await new Promise((resolve) => {
@@ -34960,58 +35027,117 @@
                 renderAll();
             }
 
+            async function showLateChargeRunReviewDialog({
+                eyebrow = "Late payment charges",
+                title = "Review late payment charges",
+                subtitle = "",
+                confirmLabel = "Raise charges",
+                modeLabel = "",
+                rows = [],
+            } = {}) {
+                const workingRows = (rows || []).map((row) => ({ ...row }));
+                const excludedInvoiceIds = new Set();
+                const renderReview = ({ summary, body, confirmButton }) => {
+                    const visibleRows = workingRows.filter((row) => !excludedInvoiceIds.has(row.invoiceId));
+                    const grossTotal = visibleRows.reduce((sum, row) => sum + Number(row.grossCharge || 0), 0);
+                    summary.innerHTML = [
+                        `${visibleRows.length.toLocaleString("en-GB")} invoices`,
+                        `${formatCurrency(grossTotal)} gross total`,
+                        modeLabel || "Posting directly to Xero",
+                    ].map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`).join("");
+                    if (!visibleRows.length) {
+                        body.innerHTML = `<div class="empty-state"><p class="eyebrow">No rows left</p><h4>All rows have been removed from this run</h4><p>Add at least one row back by reopening this review window.</p></div>`;
+                    } else {
+                        body.innerHTML = `
+                            <table class="operation-review-table">
+                                <thead>
+                                    <tr>
+                                        <th>Client</th>
+                                        <th>Invoice</th>
+                                        <th>Due date</th>
+                                        <th>Overdue days</th>
+                                        <th>Base charge</th>
+                                        <th>Charge inc VAT</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${visibleRows.map((row) => `
+                                        <tr>
+                                            <td>${escapeHTML(String(row.customerName || ""))}</td>
+                                            <td>${escapeHTML(String(row.invoiceNumber || ""))}</td>
+                                            <td>${escapeHTML(formatDate(row.dueDate || ""))}</td>
+                                            <td>${escapeHTML(Number(row.overdueDays || 0).toLocaleString("en-GB"))}</td>
+                                            <td>${escapeHTML(formatCurrency(row.baseCharge || 0))}</td>
+                                            <td>${escapeHTML(formatCurrency(row.grossCharge || 0))}</td>
+                                            <td><button class="operation-review-row-remove" type="button" data-lpc-exclude-invoice-id="${escapeHTML(String(row.invoiceId || ""))}">Exclude</button></td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        `;
+                    }
+                    if (confirmButton) confirmButton.disabled = visibleRows.length === 0;
+                };
+                const reviewResult = await showOperationReviewDialog({
+                    eyebrow,
+                    title,
+                    subtitle,
+                    confirmLabel,
+                    summaryChips: [],
+                    columns: [],
+                    rows: [{}],
+                    onRender: ({ summary, body, confirmButton }) => {
+                        renderReview({ summary, body, confirmButton });
+                        body.addEventListener("click", (event) => {
+                            const excludeButton = event.target.closest?.("[data-lpc-exclude-invoice-id]");
+                            if (!excludeButton) return;
+                            const invoiceId = String(excludeButton.dataset.lpcExcludeInvoiceId || "").trim();
+                            if (!invoiceId) return;
+                            excludedInvoiceIds.add(invoiceId);
+                            renderReview({ summary, body, confirmButton });
+                        });
+                    },
+                    resultProvider: () => workingRows.filter((row) => !excludedInvoiceIds.has(row.invoiceId))
+                });
+                return Array.isArray(reviewResult) ? reviewResult : null;
+            }
+
             async function raiseLatePaymentCharges() {
                 const invoiceIds = [...selectedLateChargeInvoiceIds];
                 if (!invoiceIds.length) return showToast("Select at least one invoice", "error");
                 const rateLimit = activeXeroRateLimit();
                 if (!isXeroConnected() && !rateLimit) return showToast("Connect Xero before raising late payment charges", "error");
-                const chargeSelections = invoiceIds.map((invoiceId) => {
-                    const invoice = findInvoiceById(invoiceId);
-                    return {
-                        invoiceId,
-                        baseAmount: selectedLatePaymentChargeBaseAmount(invoice)
-                    };
-                });
-                const chargeTotal = chargeSelections.reduce((sum, item) => sum + latePaymentChargeGrossAmount(item.baseAmount), 0);
                 const reviewRows = invoiceIds
                     .map((invoiceId) => {
                         const invoice = findInvoiceById(invoiceId) || {};
-                        const selection = chargeSelections.find((item) => item.invoiceId === invoiceId) || { baseAmount: 0 };
+                        const baseAmount = selectedLatePaymentChargeBaseAmount(invoice);
                         return {
+                            invoiceId,
                             customerName: invoice.customerName || "Client",
                             invoiceNumber: invoice.invoiceNumber || "Invoice",
                             dueDate: invoice.dueDate || "",
                             overdueDays: Number(invoice.overdueDays || 0),
-                            baseCharge: Number(selection.baseAmount || 0),
-                            grossCharge: Number(latePaymentChargeGrossAmount(selection.baseAmount || 0) || 0),
+                            baseCharge: Number(baseAmount || 0),
+                            grossCharge: Number(latePaymentChargeGrossAmount(baseAmount || 0) || 0),
                         };
                     })
                     .sort((left, right) => right.grossCharge - left.grossCharge);
                 if (rateLimit) {
-                    const confirmedQueue = await showOperationReviewDialog({
+                    const queueRows = await showLateChargeRunReviewDialog({
                         eyebrow: "Late payment charges queue",
                         title: `Queue ${invoiceIds.length.toLocaleString("en-GB")} late payment charge${invoiceIds.length === 1 ? "" : "s"}`,
                         subtitle: "Xero is rate-limited. These will be queued in Settings > Xero outbox.",
                         confirmLabel: "Queue charges",
-                        summaryChips: [
-                            `${invoiceIds.length.toLocaleString("en-GB")} invoices`,
-                            `${formatCurrency(chargeTotal)} gross total`,
-                            "Queued until Xero limit resets"
-                        ],
-                        columns: [
-                            { key: "customerName", label: "Client" },
-                            { key: "invoiceNumber", label: "Invoice" },
-                            { key: "dueDate", label: "Due date", kind: "date" },
-                            { key: "overdueDays", label: "Overdue days", kind: "number" },
-                            { key: "baseCharge", label: "Base charge", kind: "currency" },
-                            { key: "grossCharge", label: "Charge inc VAT", kind: "currency" }
-                        ],
+                        modeLabel: "Queued until Xero limit resets",
                         rows: reviewRows
                     });
-                    if (!confirmedQueue) return;
+                    if (!queueRows?.length) return;
+                    const queuedInvoiceIds = queueRows.map((row) => row.invoiceId);
+                    const chargeSelections = queueRows.map((row) => ({ invoiceId: row.invoiceId, baseAmount: Number(row.baseCharge || 0) }));
                     try {
-                        await queuePendingXeroAction("late_payment_charges", invoiceIds, { chargeSelections });
-                        invoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
+                        await queuePendingXeroAction("late_payment_charges", queuedInvoiceIds, { chargeSelections });
+                        queuedInvoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
                         selectedLateChargeInvoiceIds.clear();
                         renderAll();
                         showTopbarNotice("Late payment charges queued", "Saved to the Xero outbox. Push them from Settings after the API limit resets.", "success");
@@ -35022,31 +35148,24 @@
                     }
                     return;
                 }
-                const confirmed = await showOperationReviewDialog({
+                const confirmedRows = await showLateChargeRunReviewDialog({
                     eyebrow: "Late payment charges",
                     title: `Raise ${invoiceIds.length.toLocaleString("en-GB")} late payment charge invoice${invoiceIds.length === 1 ? "" : "s"}`,
                     subtitle: "Charges will be posted to Xero with the selected base amounts and VAT.",
                     confirmLabel: "Raise charges",
-                    summaryChips: [
-                        `${invoiceIds.length.toLocaleString("en-GB")} invoices`,
-                        `${formatCurrency(chargeTotal)} gross total`,
-                        "Posting directly to Xero"
-                    ],
-                    columns: [
-                        { key: "customerName", label: "Client" },
-                        { key: "invoiceNumber", label: "Invoice" },
-                        { key: "dueDate", label: "Due date", kind: "date" },
-                        { key: "overdueDays", label: "Overdue days", kind: "number" },
-                        { key: "baseCharge", label: "Base charge", kind: "currency" },
-                        { key: "grossCharge", label: "Charge inc VAT", kind: "currency" }
-                    ],
+                    modeLabel: "Posting directly to Xero",
                     rows: reviewRows
                 });
-                if (!confirmed) return;
+                if (!confirmedRows?.length) return;
+                const confirmedInvoiceIds = confirmedRows.map((row) => row.invoiceId);
+                const chargeSelections = confirmedRows.map((row) => ({
+                    invoiceId: row.invoiceId,
+                    baseAmount: Number(row.baseCharge || 0)
+                }));
 
                 const completedPayload = await runInvoiceOperation(
                     api.endpoints.latePaymentChargeRun,
-                    { invoiceIds, chargeSelections },
+                    { invoiceIds: confirmedInvoiceIds, chargeSelections },
                     (payload) => {
                         const run = payload?.operationRun || {};
                         return run.summary || "Late payment charges complete";
@@ -35056,7 +35175,7 @@
                     renderLateChargesScreen();
                     return;
                 }
-                invoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
+                confirmedInvoiceIds.forEach((invoiceId) => latePaymentChargeBaseAmounts.delete(invoiceId));
                 selectedLateChargeInvoiceIds.clear();
                 renderAll();
             }
@@ -35775,6 +35894,24 @@
                 renderSidebarSupportBubble();
             }
 
+            function clearSidebarSupportHistory(event = null) {
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                sidebarSupportHistory = [];
+                sidebarSupportHistoryOpen = false;
+                renderSidebarSupportBubble();
+            }
+
+            function clearSidebarSupportHistoryItem(index, event = null) {
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                const targetIndex = Number(index);
+                if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= sidebarSupportHistory.length) return;
+                sidebarSupportHistory = sidebarSupportHistory.filter((_, itemIndex) => itemIndex !== targetIndex);
+                if (!sidebarSupportHistory.length) sidebarSupportHistoryOpen = false;
+                renderSidebarSupportBubble();
+            }
+
             function renderSidebarSupportBubble() {
                 const brand = document.querySelector(".app-sidebar-brand");
                 const bubble = document.getElementById("sidebarSupportBubble");
@@ -35786,9 +35923,9 @@
                 brand.classList.toggle("is-support-warning", state?.tone === "warning");
                 brand.classList.toggle("is-support-error", state?.tone === "error");
                 brand.classList.toggle("is-support-live", state?.tone === "live");
-                brand.classList.toggle("is-history-open", Boolean(state && sidebarSupportHistoryOpen));
+                brand.classList.toggle("is-history-open", Boolean(state && sidebarSupportHistoryOpen && sidebarSupportHistory.length));
                 bubble.hidden = !state;
-                brand.setAttribute("aria-label", state ? `${state.title}. ${state.detail}` : "Open Home Insights");
+                brand.setAttribute("aria-label", state ? `${state.title}. ${state.detail}` : "Open notifications");
                 brand.title = state ? `${state.title} - ${state.detail}` : "";
                 if (!state) {
                     sidebarSupportHistoryOpen = false;
@@ -35799,8 +35936,6 @@
                 const detail = document.getElementById("sidebarSupportDetail");
                 const meta = document.getElementById("sidebarSupportMeta");
                 const stateLabel = document.getElementById("sidebarSupportStateLabel");
-                const cta = document.getElementById("sidebarSupportCta");
-                const historyToggle = document.getElementById("sidebarSupportHistoryToggle");
                 const history = document.getElementById("sidebarSupportHistory");
                 const progressFill = document.getElementById("sidebarSupportProgressFill");
                 if (kicker) kicker.textContent = state.kicker || "Working";
@@ -35816,27 +35951,22 @@
                                 ? "Complete"
                                 : "Active";
                 }
-                if (cta) {
-                    cta.textContent = state.tone === "error"
-                        ? "Open and fix"
-                        : state.tone === "warning"
-                            ? "Open and review"
-                            : "Open Home Insights";
-                }
-                if (historyToggle) {
-                    historyToggle.textContent = `Recent (${Math.min(3, sidebarSupportHistory.length)})`;
-                    historyToggle.setAttribute("aria-expanded", String(sidebarSupportHistoryOpen));
-                }
                 if (history) {
-                    const rows = sidebarSupportHistory.slice(0, 3);
-                    history.hidden = !sidebarSupportHistoryOpen || rows.length === 0;
-                    history.innerHTML = rows.map((item) => `
+                    const rows = sidebarSupportHistory;
+                    history.hidden = rows.length === 0;
+                    history.innerHTML = rows.length
+                        ? `<div class="sidebar-support-history-head">
+                            <strong>${rows.length.toLocaleString("en-GB")} recent notification${rows.length === 1 ? "" : "s"}</strong>
+                            <button class="sidebar-support-clear-all" id="sidebarSupportClearAll" type="button">Clear all</button>
+                        </div>${rows.map((item, index) => `
                         <article class="sidebar-support-history-item">
                             <span>${escapeHTML(item.kicker || "Update")} · ${escapeHTML(formatActivityTime(item.at))}</span>
                             <strong>${escapeHTML(item.title || "Jenius update")}</strong>
                             <small>${escapeHTML(item.meta || item.detail || "Working")}</small>
+                            <button class="sidebar-support-clear-item" type="button" data-sidebar-support-clear-index="${index}">Clear</button>
                         </article>
-                    `).join("");
+                    `).join("")}`
+                        : "";
                 }
                 if (progressFill) progressFill.style.width = `${supportBubblePercent(state.progress, 42)}%`;
             }
@@ -41834,6 +41964,7 @@
                     wireForms,
                     wireBulkActions,
                     wireCompaniesHouseSettings,
+                    wireCompaniesHouseUI,
                 ].forEach((wire) => {
                     try {
                         wire();
