@@ -16680,6 +16680,7 @@
             let practicePackTaskDraftRows = [];
             let practicePackTaskColumnMap = null;
             let practicePackDraftSignature = "";
+            let practicePackWalkthroughActive = false;
             let practicePackReviewSearchTerm = "";
             let practicePackReviewOwnerFilter = "all";
             let practicePackReviewBulkOwner = "";
@@ -37171,9 +37172,13 @@
                 workspace.innerHTML = `
                     <div class="practice-pack-review-head">
                         <div>
-                            <p class="eyebrow">Pre-generate review</p>
-                            <h3>Review, reassign, edit and tidy tasks before generating the pack</h3>
+                            <p class="eyebrow">Generation walkthrough</p>
+                            <h3>Review AI task grouping for each owner before finalising the practice packs</h3>
                             <p>${formatInteger(visibleRows.length)} visible row${visibleRows.length === 1 ? "" : "s"} · ${formatInteger(selectedCount)} selected</p>
+                        </div>
+                        <div class="developer-log-actions">
+                            <button class="ghost-button" type="button" id="practicePackCancelWalkthroughButton">Cancel walkthrough</button>
+                            <button class="primary-button" type="button" id="practicePackFinaliseButton">Continue and generate PDF ZIP</button>
                         </div>
                     </div>
                     <div class="practice-pack-review-summary">
@@ -37251,6 +37256,52 @@
                     selectAll.checked = allVisibleSelected;
                     selectAll.indeterminate = !allVisibleSelected && visibleRows.some((row) => row.selected);
                 }
+                document.getElementById("practicePackReviewSearch")?.addEventListener("input", (event) => {
+                    practicePackReviewSearchTerm = String(event.target.value || "");
+                    renderPracticePackReviewWorkspace();
+                });
+                document.getElementById("practicePackReviewOwnerFilter")?.addEventListener("change", (event) => {
+                    practicePackReviewOwnerFilter = String(event.target.value || "all");
+                    renderPracticePackReviewWorkspace();
+                });
+                document.getElementById("practicePackReviewBulkOwner")?.addEventListener("change", (event) => {
+                    practicePackReviewBulkOwner = String(event.target.value || "");
+                });
+                document.getElementById("practicePackReviewSelectAll")?.addEventListener("change", (event) => {
+                    practicePackToggleSelectAll(Boolean(event.target.checked));
+                    renderPracticePackReviewWorkspace();
+                });
+                workspace.querySelectorAll("[data-practice-pack-field]").forEach((field) => {
+                    field.addEventListener("change", (event) => {
+                        const rowId = event.target.dataset.rowId || "";
+                        const name = event.target.dataset.practicePackField || "";
+                        const value = event.target.type === "checkbox" ? Boolean(event.target.checked) : event.target.value;
+                        updatePracticePackDraftRow(rowId, name, value);
+                        if (name === "owner") practicePackReviewBulkOwner = String(value || "");
+                        renderPracticePackReviewWorkspace();
+                    });
+                });
+                workspace.querySelectorAll("[data-practice-pack-review-action]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const action = button.dataset.practicePackReviewAction || "";
+                        if (action === "apply-owner") practicePackApplyBulkOwner();
+                        if (action === "add-row") practicePackAddRow();
+                        if (action === "delete-selected") practicePackDeleteSelectedRows();
+                        if (action === "delete-row") {
+                            const rowId = button.dataset.rowId || "";
+                            practicePackTaskDraftRows = practicePackTaskDraftRows.filter((row) => row.id !== rowId);
+                        }
+                        renderPracticePackReviewWorkspace();
+                    });
+                });
+                document.getElementById("practicePackCancelWalkthroughButton")?.addEventListener("click", () => {
+                    practicePackWalkthroughActive = false;
+                    showToast("Practice pack walkthrough cancelled. Review edits were kept in this session.", "info");
+                    renderPracticePackScreen();
+                });
+                document.getElementById("practicePackFinaliseButton")?.addEventListener("click", () => {
+                    document.getElementById("practicePackForm")?.requestSubmit();
+                });
             }
 
             function updatePracticePackDraftRow(rowId, field, value) {
@@ -41145,6 +41196,419 @@
                     event.preventDefault();
                     saveCompaniesHouseSettingsHandler();
                 });
+            }
+
+            const companiesHouseState = {
+                activeTab: "dashboard",
+                tabLoaded: { dashboard: false, companies: false, import: false, audit: false, settings: false },
+                companies: [],
+                selectedCompanyId: null,
+                companyDetail: null,
+                companyFilters: { search: "", internalStatus: "all", missingAuth: false, dueSoon: false, overdue: false },
+                importPreview: null,
+                importBusy: false,
+            };
+
+            const CH_INTERNAL_STATUS_LABELS = {
+                active: "Active",
+                ready_to_file: "Ready to file",
+                missing_information: "Missing information",
+                paused: "Paused",
+                do_not_file: "Do not file",
+                inactive: "Inactive",
+            };
+
+            function chFormatDate(value) {
+                if (!value) return "—";
+                try { return new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); } catch { return value; }
+            }
+
+            function chFormatDateTime(value) {
+                if (!value) return "—";
+                try { return new Date(value).toLocaleString("en-GB"); } catch { return value; }
+            }
+
+            function chDaysUntil(value) {
+                if (!value) return null;
+                const target = new Date(value);
+                if (Number.isNaN(target.getTime())) return null;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                target.setHours(0, 0, 0, 0);
+                return Math.round((target - today) / 86400000);
+            }
+
+            function chDueClass(value) {
+                const days = chDaysUntil(value);
+                if (days === null) return "";
+                if (days < 0) return "is-bad";
+                if (days <= 14) return "is-warn";
+                if (days <= 30) return "is-info";
+                return "is-good";
+            }
+
+            function chStatusPillClass(internalStatus) {
+                if (internalStatus === "ready_to_file") return "is-good";
+                if (internalStatus === "missing_information") return "is-warn";
+                if (internalStatus === "do_not_file" || internalStatus === "inactive") return "is-bad";
+                if (internalStatus === "paused") return "is-warn";
+                return "is-info";
+            }
+
+            function activateCompaniesHouseTab(tab) {
+                if (!tab) return;
+                companiesHouseState.activeTab = tab;
+                document.querySelectorAll(".ch-subnav-tab").forEach((node) => {
+                    const isActive = node.dataset.chTab === tab;
+                    node.classList.toggle("is-active", isActive);
+                    node.setAttribute("aria-selected", isActive ? "true" : "false");
+                });
+                document.querySelectorAll(".ch-tab-panel").forEach((panel) => {
+                    panel.hidden = panel.dataset.chPanel !== tab;
+                });
+                if (tab === "dashboard") loadCompaniesHouseDashboard();
+                else if (tab === "companies") loadCompaniesHouseCompanies();
+                else if (tab === "import") loadCompaniesHouseImports();
+                else if (tab === "audit") loadCompaniesHouseImports();
+                else if (tab === "settings") loadCompaniesHouseSettings();
+            }
+
+            function chSetTileGrid(tiles, lastSyncedAt) {
+                const grid = document.getElementById("chDashboardTileGrid");
+                if (!grid) return;
+                const items = [
+                    { key: "totalCompanies", label: "Total companies", value: tiles.totalCompanies, tone: "" },
+                    { key: "dueSoon", label: "Due ≤30 days", value: tiles.dueSoon, tone: "is-warn" },
+                    { key: "overdue", label: "Overdue", value: tiles.overdue, tone: "is-bad" },
+                    { key: "missingAuth", label: "Missing auth code", value: tiles.missingAuth, tone: "is-warn" },
+                    { key: "readyToFile", label: "Ready to file", value: tiles.readyToFile, tone: "is-good" },
+                    { key: "blocked", label: "Blocked / paused", value: tiles.blocked, tone: "" },
+                ];
+                grid.innerHTML = items.map((tile) => `<article class="ch-tile ${tile.tone}" data-tile="${tile.key}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("")
+                    + `<article class="ch-tile" data-tile="lastSyncedAt"><span>Last Companies House sync</span><strong>${lastSyncedAt ? escapeHTML(chFormatDateTime(lastSyncedAt)) : "Never"}</strong><small>${lastSyncedAt ? "Across managed companies" : "Run a sync from a company once phase 3 is in"}</small></article>`;
+            }
+
+            function chRenderSubmissionsTable(bodyId, rows, options = {}) {
+                const body = document.getElementById(bodyId);
+                if (!body) return;
+                if (!rows || !rows.length) {
+                    body.innerHTML = `<tr><td colspan="${options.colspan || 4}" class="ch-empty-state">${escapeHTML(options.emptyMessage || "No submissions yet.")}</td></tr>`;
+                    return;
+                }
+                body.innerHTML = rows.map((row) => `<tr data-company-number="${escapeHTML(row.companyNumber || "")}"><td>${escapeHTML(row.companyName || "—")}</td><td>${escapeHTML(row.companyNumber || "—")}</td><td>${options.showReason ? `<span class="ch-pill is-bad">${escapeHTML(row.rejectionReason || "Rejected")}</span>` : `<span class="ch-pill ${row.status === "accepted" ? "is-good" : row.status === "rejected" ? "is-bad" : "is-info"}">${escapeHTML(row.status || "submitted")}</span>`}</td><td>${escapeHTML(chFormatDateTime(row.submittedAt))}</td></tr>`).join("");
+            }
+
+            async function loadCompaniesHouseDashboard(force = false) {
+                if (companiesHouseState.tabLoaded.dashboard && !force) return;
+                try {
+                    const payload = await requestJSON("/api/companies-house/dashboard");
+                    chSetTileGrid(payload?.tiles || {}, payload?.tiles?.lastSyncedAt);
+                    chRenderSubmissionsTable("chRecentSubmissionsBody", payload?.recentSubmissions || [], { emptyMessage: "No submissions yet.", colspan: 4 });
+                    chRenderSubmissionsTable("chRejectedSubmissionsBody", payload?.rejectedSubmissions || [], { emptyMessage: "No rejected filings.", colspan: 4, showReason: true });
+                    companiesHouseState.tabLoaded.dashboard = true;
+                } catch (error) {
+                    console.error("Unable to load Companies House dashboard", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error?.message || "Unable to load dashboard.", "error");
+                }
+            }
+
+            function chCompanyDueCell(company) {
+                const className = chDueClass(company.nextDueDate);
+                const text = company.nextDueDate ? chFormatDate(company.nextDueDate) : "—";
+                return `<span class="ch-pill ${className}">${escapeHTML(text)}</span>`;
+            }
+
+            function chCompanyStatusCell(company) {
+                const label = CH_INTERNAL_STATUS_LABELS[company.internalStatus] || company.internalStatus || "Active";
+                return `<span class="ch-pill ${chStatusPillClass(company.internalStatus)}">${escapeHTML(label)}</span>`;
+            }
+
+            function chCompanyAuthCell(company) {
+                if (company.authCodeOnFile) return `<span class="ch-pill is-good">✓ ${escapeHTML(company.authCodeHint || "Stored")}</span>`;
+                return `<span class="ch-pill is-warn">Missing</span>`;
+            }
+
+            function renderCompaniesHouseCompaniesTable() {
+                const body = document.getElementById("chCompaniesTableBody");
+                if (!body) return;
+                const companies = companiesHouseState.companies || [];
+                if (!companies.length) {
+                    body.innerHTML = `<tr><td colspan="7" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
+                    return;
+                }
+                body.innerHTML = companies.map((company) => `<tr data-company-id="${escapeHTML(company.id || "")}" class="${company.id === companiesHouseState.selectedCompanyId ? "is-selected" : ""}"><td><strong>${escapeHTML(company.companyName || "—")}</strong></td><td>${escapeHTML(company.companyNumber || "—")}</td><td>${escapeHTML(company.clientName || "—")}<br><small style="color: var(--muted)">${escapeHTML(company.clientId || "")}</small></td><td>${chCompanyStatusCell(company)}</td><td>${chCompanyDueCell(company)}</td><td>${chCompanyAuthCell(company)}</td><td>${escapeHTML(company.assignedStaffName || "—")}</td></tr>`).join("");
+            }
+
+            async function loadCompaniesHouseCompanies(force = false) {
+                if (companiesHouseState.tabLoaded.companies && !force) { renderCompaniesHouseCompaniesTable(); return; }
+                const filters = companiesHouseState.companyFilters;
+                const params = new URLSearchParams();
+                if (filters.search) params.set("search", filters.search);
+                if (filters.internalStatus && filters.internalStatus !== "all") params.set("internalStatus", filters.internalStatus);
+                if (filters.missingAuth) params.set("missingAuth", "true");
+                if (filters.dueSoon) params.set("dueSoon", "true");
+                if (filters.overdue) params.set("overdue", "true");
+                const query = params.toString();
+                try {
+                    const payload = await requestJSON(`/api/companies-house/companies${query ? `?${query}` : ""}`);
+                    companiesHouseState.companies = payload?.companies || [];
+                    companiesHouseState.tabLoaded.companies = true;
+                    renderCompaniesHouseCompaniesTable();
+                } catch (error) {
+                    console.error("Unable to load companies", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error?.message || "Unable to load companies.", "error");
+                }
+            }
+
+            async function openCompaniesHouseCompanyDetail(companyId) {
+                companiesHouseState.selectedCompanyId = companyId;
+                renderCompaniesHouseCompaniesTable();
+                const card = document.getElementById("chCompanyDetailCard");
+                if (!card) return;
+                card.hidden = false;
+                try {
+                    const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`);
+                    companiesHouseState.companyDetail = payload?.company || null;
+                    renderCompaniesHouseCompanyDetail();
+                } catch (error) {
+                    console.error("Unable to load company detail", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error?.message || "Unable to load company.", "error");
+                }
+            }
+
+            function renderCompaniesHouseCompanyDetail() {
+                const company = companiesHouseState.companyDetail;
+                if (!company) return;
+                document.getElementById("chCompanyDetailEyebrow").textContent = `Company ${company.companyNumber || ""}`;
+                document.getElementById("chCompanyDetailTitle").textContent = company.companyName || company.clientName || company.companyNumber || "Company";
+                document.getElementById("chCompanyDetailSub").textContent = company.companyStatus
+                    ? `${company.companyStatus} · Last synced ${company.lastSyncedAt ? chFormatDateTime(company.lastSyncedAt) : "never"}`
+                    : `Last synced ${company.lastSyncedAt ? chFormatDateTime(company.lastSyncedAt) : "never"}`;
+                const grid = document.getElementById("chCompanyDetailGrid");
+                const officers = Array.isArray(company.officers) ? company.officers : [];
+                const pscs = Array.isArray(company.pscs) ? company.pscs : [];
+                grid.innerHTML = [
+                    { label: "Next due", value: company.nextDueDate ? chFormatDate(company.nextDueDate) : "—" },
+                    { label: "Made up to", value: company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—" },
+                    { label: "Last filed", value: company.lastFiledDate ? chFormatDate(company.lastFiledDate) : "—" },
+                    { label: "Incorporated", value: company.incorporationDate ? chFormatDate(company.incorporationDate) : "—" },
+                    { label: "Registered office", value: company.registeredOffice || "—" },
+                    { label: "Auth code", value: company.authCodeOnFile ? `On file (${company.authCodeHint || "stored"})` : "Not on file" },
+                    { label: "Officers", value: officers.length ? `${officers.length} on record` : "—" },
+                    { label: "PSCs", value: pscs.length ? `${pscs.length} on record` : "—" },
+                ].map((item) => `<div><span>${escapeHTML(item.label)}</span><strong>${escapeHTML(String(item.value))}</strong></div>`).join("");
+                const statusSelect = document.getElementById("chCompanyDetailStatus");
+                if (statusSelect && statusSelect.tagName === "SELECT") statusSelect.value = company.internalStatus || "active";
+                document.getElementById("chCompanyDetailStaff").value = company.assignedStaffName || "";
+                document.getElementById("chCompanyDetailClientName").value = company.clientName || "";
+                document.getElementById("chCompanyDetailClientId").value = company.clientId || "";
+                document.getElementById("chCompanyDetailEmail").value = company.contactEmail || "";
+                document.getElementById("chCompanyDetailPhone").value = company.contactPhone || "";
+                document.getElementById("chCompanyDetailNotes").value = company.notes || "";
+                const submissions = Array.isArray(company.submissions) ? company.submissions : [];
+                const submissionsBody = document.getElementById("chCompanyDetailSubmissions");
+                if (submissionsBody) {
+                    submissionsBody.innerHTML = submissions.length ? submissions.map((submission) => `<tr><td>${escapeHTML(submission.submissionReference || submission.transactionId || "—")}</td><td><span class="ch-pill ${submission.status === "accepted" ? "is-good" : submission.status === "rejected" ? "is-bad" : "is-info"}">${escapeHTML(submission.status || "submitted")}</span></td><td>${escapeHTML(chFormatDateTime(submission.submittedAt))}</td><td>£${Number(submission.feeAmount || 0).toFixed(2)}</td><td>${escapeHTML(submission.xeroInvoiceId || "—")}</td></tr>`).join("") : `<tr><td colspan="5" class="ch-empty-state">No filings yet.</td></tr>`;
+                }
+            }
+
+            async function saveCompaniesHouseCompanyDetail() {
+                const companyId = companiesHouseState.selectedCompanyId;
+                if (!companyId) return;
+                const body = {
+                    internalStatus: document.getElementById("chCompanyDetailStatus")?.value || "active",
+                    assignedStaffName: document.getElementById("chCompanyDetailStaff")?.value || "",
+                    clientName: document.getElementById("chCompanyDetailClientName")?.value || "",
+                    clientId: document.getElementById("chCompanyDetailClientId")?.value || "",
+                    contactEmail: document.getElementById("chCompanyDetailEmail")?.value || "",
+                    contactPhone: document.getElementById("chCompanyDetailPhone")?.value || "",
+                    notes: document.getElementById("chCompanyDetailNotes")?.value || "",
+                };
+                try {
+                    const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, { method: "PATCH", body: JSON.stringify(body) });
+                    companiesHouseState.companyDetail = payload?.company || companiesHouseState.companyDetail;
+                    renderCompaniesHouseCompanyDetail();
+                    showToast("Company saved.", "success");
+                    loadCompaniesHouseCompanies(true);
+                } catch (error) {
+                    console.error("Unable to save company", error);
+                    showToast(error?.message || "Unable to save company.", "error");
+                }
+            }
+
+            function chRenderImportSummary(preview) {
+                const summary = document.getElementById("chImportSummary");
+                if (!summary) return;
+                if (!preview) { summary.hidden = true; return; }
+                summary.hidden = false;
+                summary.innerHTML = [
+                    { label: "Total rows", value: preview.totalRows, tone: "" },
+                    { label: "Will create", value: preview.createCount, tone: "" },
+                    { label: "Will update", value: preview.updateCount, tone: "" },
+                    { label: "Errors", value: preview.errorCount, tone: preview.errorCount ? "is-error" : "" },
+                    { label: "Auth codes in file", value: preview.authCodesInFile, tone: "" },
+                ].map((tile) => `<article class="${tile.tone}"><span>${escapeHTML(tile.label)}</span><strong>${Number(tile.value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
+            }
+
+            function chRenderImportPreview(preview) {
+                const wrap = document.getElementById("chImportPreviewWrap");
+                const body = document.getElementById("chImportPreviewBody");
+                if (!wrap || !body) return;
+                if (!preview || !preview.rows || !preview.rows.length) { wrap.hidden = true; return; }
+                wrap.hidden = false;
+                body.innerHTML = preview.rows.slice(0, 500).map((row) => {
+                    const action = row.action || (row.errors?.length ? "error" : "skip");
+                    const errorText = (row.errors || []).join(" · ");
+                    return `<tr class="ch-import-row ${action === "create" ? "is-create" : action === "update" ? "is-update" : action === "error" ? "is-error" : ""}"><td>${row.lineNumber || ""}</td><td><span class="ch-pill ${action === "create" ? "is-good" : action === "update" ? "is-info" : action === "error" ? "is-bad" : ""}">${escapeHTML(action)}</span></td><td>${escapeHTML(row.data?.company_number || "—")}</td><td>${escapeHTML(row.data?.company_name || "—")}</td><td>${escapeHTML(row.data?.client_name || row.data?.client_id || "—")}</td><td>${row.data?.auth_code ? "✓ in file" : "—"}</td><td>${escapeHTML(errorText || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td></tr>`;
+                }).join("");
+            }
+
+            function chSetImportStatus(text, tone) {
+                const node = document.getElementById("chImportStatus");
+                if (!node) return;
+                node.textContent = text || "";
+                node.classList.remove("is-muted", "is-success", "is-error");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            async function previewCompaniesHouseImport() {
+                if (companiesHouseState.importBusy) return;
+                const fileInput = document.getElementById("chImportFile");
+                const file = fileInput?.files?.[0];
+                if (!file) { chSetImportStatus("Choose a CSV first.", "error"); return; }
+                companiesHouseState.importBusy = true;
+                chSetImportStatus("Uploading and parsing…", "muted");
+                try {
+                    const form = new FormData();
+                    form.append("file", file);
+                    const url = endpointURL("/api/companies-house/import/clients/preview");
+                    const response = await fetch(url, { method: "POST", credentials: "include", headers: { ...api.headers, ...panelAuthHeaders() }, body: form });
+                    if (!response.ok) {
+                        const errorPayload = await response.json().catch(() => ({}));
+                        const detail = errorPayload?.detail;
+                        throw new Error(typeof detail === "string" ? detail : detail?.message || `Preview failed (${response.status})`);
+                    }
+                    const payload = await response.json();
+                    companiesHouseState.importPreview = payload?.preview || null;
+                    chRenderImportSummary(companiesHouseState.importPreview);
+                    chRenderImportPreview(companiesHouseState.importPreview);
+                    const commit = document.getElementById("chImportCommitButton");
+                    const reset = document.getElementById("chImportResetButton");
+                    if (commit) commit.hidden = !companiesHouseState.importPreview || !(companiesHouseState.importPreview.createCount + companiesHouseState.importPreview.updateCount);
+                    if (reset) reset.hidden = false;
+                    chSetImportStatus(`Preview ready. ${companiesHouseState.importPreview?.createCount || 0} to create, ${companiesHouseState.importPreview?.updateCount || 0} to update, ${companiesHouseState.importPreview?.errorCount || 0} errors.`, "muted");
+                } catch (error) {
+                    console.error("Unable to preview client import", error);
+                    chSetImportStatus(error?.message || "Unable to preview.", "error");
+                } finally {
+                    companiesHouseState.importBusy = false;
+                }
+            }
+
+            async function commitCompaniesHouseImport() {
+                if (companiesHouseState.importBusy) return;
+                const preview = companiesHouseState.importPreview;
+                if (!preview) { chSetImportStatus("Run a preview first.", "error"); return; }
+                if (!window.confirm(`Commit ${preview.createCount + preview.updateCount} rows (${preview.errorCount} errors will be skipped)?`)) return;
+                companiesHouseState.importBusy = true;
+                chSetImportStatus("Committing import…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/import/clients/commit", { method: "POST", body: JSON.stringify({ preview }) });
+                    const result = payload?.result || {};
+                    chSetImportStatus(`Imported. Created ${result.createCount || 0}, updated ${result.updateCount || 0}, skipped ${result.skipCount || 0}, auth codes saved ${result.authCodesSaved || 0}.`, "success");
+                    companiesHouseState.tabLoaded.dashboard = false;
+                    companiesHouseState.tabLoaded.companies = false;
+                    companiesHouseState.tabLoaded.audit = false;
+                    loadCompaniesHouseImports(true);
+                    showToast("Companies House import completed.", "success");
+                } catch (error) {
+                    console.error("Unable to commit client import", error);
+                    chSetImportStatus(error?.message || "Unable to commit.", "error");
+                } finally {
+                    companiesHouseState.importBusy = false;
+                }
+            }
+
+            function resetCompaniesHouseImport() {
+                companiesHouseState.importPreview = null;
+                const fileInput = document.getElementById("chImportFile");
+                if (fileInput) fileInput.value = "";
+                const summary = document.getElementById("chImportSummary"); if (summary) summary.hidden = true;
+                const wrap = document.getElementById("chImportPreviewWrap"); if (wrap) wrap.hidden = true;
+                const commit = document.getElementById("chImportCommitButton"); if (commit) commit.hidden = true;
+                const reset = document.getElementById("chImportResetButton"); if (reset) reset.hidden = true;
+                chSetImportStatus("", "muted");
+            }
+
+            async function loadCompaniesHouseImports(force = false) {
+                if (companiesHouseState.tabLoaded.audit && !force) return;
+                try {
+                    const payload = await requestJSON("/api/companies-house/imports");
+                    const rows = payload?.imports || [];
+                    const body = document.getElementById("chImportsHistoryBody");
+                    if (body) {
+                        body.innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHTML(row.filename || "—")}</td><td>${escapeHTML(row.importType || "—")}</td><td>${Number(row.createCount || 0).toLocaleString("en-GB")}</td><td>${Number(row.updateCount || 0).toLocaleString("en-GB")}</td><td>${Number(row.skipCount || 0).toLocaleString("en-GB")}</td><td>${row.errorCount ? `<span class=\"ch-pill is-bad\">${row.errorCount}</span>` : "0"}</td><td><span class="ch-pill ${row.status === "completed" ? "is-good" : "is-info"}">${escapeHTML(row.status || "—")}</span></td><td>${escapeHTML(chFormatDateTime(row.createdAt))}</td></tr>`).join("") : `<tr><td colspan="8" class="ch-empty-state">No imports yet.</td></tr>`;
+                    }
+                    companiesHouseState.tabLoaded.audit = true;
+                } catch (error) {
+                    console.error("Unable to load imports", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                }
+            }
+
+            function wireCompaniesHouseUI() {
+                document.querySelectorAll(".ch-subnav-tab").forEach((node) => {
+                    node.addEventListener("click", () => activateCompaniesHouseTab(node.dataset.chTab || "dashboard"));
+                });
+                document.getElementById("chCompaniesReloadButton")?.addEventListener("click", () => loadCompaniesHouseCompanies(true));
+                const searchInput = document.getElementById("chCompaniesSearch");
+                let searchTimer;
+                searchInput?.addEventListener("input", () => {
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(() => {
+                        companiesHouseState.companyFilters.search = searchInput.value || "";
+                        loadCompaniesHouseCompanies(true);
+                    }, 250);
+                });
+                document.getElementById("chCompaniesStatusFilter")?.addEventListener("change", (event) => {
+                    companiesHouseState.companyFilters.internalStatus = event.target.value;
+                    loadCompaniesHouseCompanies(true);
+                });
+                document.getElementById("chCompaniesFilterMissingAuth")?.addEventListener("change", (event) => {
+                    companiesHouseState.companyFilters.missingAuth = !!event.target.checked;
+                    loadCompaniesHouseCompanies(true);
+                });
+                document.getElementById("chCompaniesFilterDueSoon")?.addEventListener("change", (event) => {
+                    companiesHouseState.companyFilters.dueSoon = !!event.target.checked;
+                    loadCompaniesHouseCompanies(true);
+                });
+                document.getElementById("chCompaniesFilterOverdue")?.addEventListener("change", (event) => {
+                    companiesHouseState.companyFilters.overdue = !!event.target.checked;
+                    loadCompaniesHouseCompanies(true);
+                });
+                document.getElementById("chCompaniesTableBody")?.addEventListener("click", (event) => {
+                    const row = event.target.closest("tr[data-company-id]");
+                    if (!row) return;
+                    openCompaniesHouseCompanyDetail(row.dataset.companyId);
+                });
+                document.getElementById("chCompanyDetailClose")?.addEventListener("click", () => {
+                    const card = document.getElementById("chCompanyDetailCard"); if (card) card.hidden = true;
+                    companiesHouseState.selectedCompanyId = null;
+                    renderCompaniesHouseCompaniesTable();
+                });
+                document.getElementById("chCompanyDetailSave")?.addEventListener("click", saveCompaniesHouseCompanyDetail);
+                const importFile = document.getElementById("chImportFile");
+                importFile?.addEventListener("change", () => {
+                    const previewBtn = document.getElementById("chImportPreviewButton");
+                    if (previewBtn) previewBtn.disabled = !importFile.files?.length;
+                    chSetImportStatus(importFile.files?.[0] ? `Selected ${importFile.files[0].name}` : "", "muted");
+                });
+                document.getElementById("chImportPreviewButton")?.addEventListener("click", previewCompaniesHouseImport);
+                document.getElementById("chImportCommitButton")?.addEventListener("click", commitCompaniesHouseImport);
+                document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
             }
 
             async function init() {
