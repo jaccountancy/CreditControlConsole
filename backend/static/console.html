@@ -5657,6 +5657,16 @@
             .late-charge-select {
                 min-width: 142px;
             }
+            .late-charge-filter-button {
+                min-height: 42px;
+                padding: 0 16px;
+            }
+            .late-charge-filter-button.is-active {
+                color: var(--blue);
+                border-color: rgba(29, 103, 242, 0.28);
+                background: var(--blue-soft);
+                box-shadow: inset 0 0 0 1px rgba(29, 103, 242, 0.08);
+            }
             .late-charge-row {
                 display: grid;
                 grid-template-columns: 28px minmax(0, 1fr) auto auto auto;
@@ -8171,6 +8181,48 @@
             .bank-transaction-table td:nth-child(7) {
                 width: 275px;
             }
+            .bank-transaction-table.is-tax-selecting {
+                min-width: 1380px;
+            }
+            .bank-transaction-table.is-tax-selecting th:nth-child(1),
+            .bank-transaction-table.is-tax-selecting td:nth-child(1) {
+                width: 52px;
+                text-align: center;
+            }
+            .bank-transaction-table.is-tax-selecting th:nth-child(2),
+            .bank-transaction-table.is-tax-selecting td:nth-child(2) {
+                width: 96px;
+                text-align: left;
+            }
+            .bank-transaction-table.is-tax-selecting th:nth-child(3),
+            .bank-transaction-table.is-tax-selecting td:nth-child(3) {
+                width: 160px;
+                text-align: left;
+            }
+            .bank-transaction-table.is-tax-selecting th:nth-child(4),
+            .bank-transaction-table.is-tax-selecting td:nth-child(4) {
+                width: auto;
+                white-space: normal;
+                text-align: left;
+                font-weight: inherit;
+            }
+            .bank-transaction-table.is-tax-selecting td:nth-child(5),
+            .bank-transaction-table.is-tax-selecting td:nth-child(6),
+            .bank-transaction-table.is-tax-selecting td:nth-child(7) {
+                width: 105px;
+                white-space: nowrap;
+                text-align: right;
+                font-weight: 850;
+            }
+            .bank-transaction-table.is-tax-selecting th:nth-child(8),
+            .bank-transaction-table.is-tax-selecting td:nth-child(8) {
+                width: 275px;
+            }
+            .bank-tax-disallowance-check {
+                width: 16px;
+                height: 16px;
+                accent-color: var(--red);
+            }
             .bank-transaction-table strong,
             .bank-upload-history-table strong {
                 display: block;
@@ -8193,6 +8245,9 @@
             }
             .bank-transaction-table tbody tr.bank-transaction-row-is-categorised {
                 background: rgba(232, 248, 238, 0.22);
+            }
+            .bank-transaction-table tbody tr.bank-transaction-row-is-disallowed {
+                background: rgba(255, 243, 223, 0.42);
             }
             .bank-transaction-table tbody tr.bank-transaction-row-ai-applied {
                 animation: bank-ai-row-apply 1.35s ease both;
@@ -8226,6 +8281,10 @@
             .bank-transaction-ai-note {
                 color: #6d7d96 !important;
                 line-height: 1.32;
+            }
+            .bank-tax-disallowance-note {
+                color: #a35a00 !important;
+                font-weight: 900 !important;
             }
             .bank-transaction-issue-wrap {
                 position: relative;
@@ -8461,6 +8520,12 @@
                 font-size: 0.82rem;
                 font-weight: 800;
             }
+            .bank-tax-summary-actions {
+                display: inline-flex;
+                justify-content: flex-end;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
             .bank-tax-summary-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -8653,6 +8718,19 @@
                 letter-spacing: 0.02em;
                 text-transform: uppercase;
             }
+            .bank-account-provider-logo.has-provider-image img {
+                width: 23px;
+                height: 23px;
+                display: block;
+                object-fit: contain;
+                border-radius: 5px;
+            }
+            .bank-account-provider-logo.has-provider-image .bank-account-provider-initials {
+                display: none;
+            }
+            .bank-account-provider-logo.has-provider-image.is-logo-failed .bank-account-provider-initials {
+                display: block;
+            }
             .bank-account-provider-logo.is-empty {
                 background: #f4f6f9;
                 color: var(--muted);
@@ -8670,6 +8748,10 @@
                 height: 28px;
                 border-radius: 9px;
                 font-size: 0.62rem;
+            }
+            .bank-account-provider-badge .bank-account-provider-logo.has-provider-image img {
+                width: 20px;
+                height: 20px;
             }
             .bank-account-provider-copy {
                 display: grid !important;
@@ -12919,11 +13001,13 @@
                                     <select id="badDebtFilterSelect">
                                         <option value="active">Active outstanding</option>
                                         <option value="eligible">Ready to write off</option>
+                                        <option value="not-payment-plan">Not in payment plan</option>
                                         <option value="written-off">Already written off</option>
                                         <option value="blocked">Blocked</option>
                                         <option value="all">All outstanding</option>
                                     </select>
                                 </label>
+                                <button class="ghost-button late-charge-filter-button" id="badDebtPaymentPlanFilterButton" type="button" aria-pressed="false">In payment plan</button>
                             </div>
                             <p class="late-charge-summary" id="badDebtSummary">No write-off candidates loaded.</p>
                             <div class="late-charge-list" id="badDebtList"></div>
@@ -14011,6 +14095,7 @@
             const USER_ACTIVITY_KEY = `${STORAGE_KEY}:user-activity-log`;
             const PRACTICE_PACK_ASSIGNMENTS_KEY = `${STORAGE_KEY}:practice-pack-assignments`;
             const PRACTICE_PACK_HISTORY_KEY = `${STORAGE_KEY}:practice-pack-history`;
+            const BANK_SA100_DISALLOWANCES_KEY = `${STORAGE_KEY}:bank-sa100-disallowances`;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
@@ -14306,6 +14391,52 @@
                 { key: "aib-ni", name: "AIB (NI)", initials: "AI", bg: "#edf8f2", fg: "#006747", aliases: ["aib", "allied irish bank"] },
                 { key: "other-uk-bank", name: "Other UK bank", initials: "UK", bg: "#f4f6f9", fg: "#536782", aliases: ["other"] }
             ];
+            const ukBankProviderLogoDomains = {
+                barclays: "barclays.co.uk",
+                "hsbc-uk": "hsbc.co.uk",
+                "lloyds-bank": "lloydsbank.com",
+                natwest: "natwest.com",
+                "royal-bank-of-scotland": "rbs.co.uk",
+                "ulster-bank": "ulsterbank.co.uk",
+                "bank-of-scotland": "bankofscotland.co.uk",
+                halifax: "halifax.co.uk",
+                "santander-uk": "santander.co.uk",
+                nationwide: "nationwide.co.uk",
+                tsb: "tsb.co.uk",
+                "virgin-money": "virginmoney.com",
+                "metro-bank": "metrobankonline.co.uk",
+                "co-operative-bank": "co-operativebank.co.uk",
+                "starling-bank": "starlingbank.com",
+                monzo: "monzo.com",
+                revolut: "revolut.com",
+                "chase-uk": "chase.co.uk",
+                "first-direct": "firstdirect.com",
+                "marks-and-spencer-bank": "marksandspencer.com",
+                "tesco-bank": "tescobank.com",
+                "sainsburys-bank": "sainsburysbank.co.uk",
+                "yorkshire-building-society": "ybs.co.uk",
+                "coventry-building-society": "coventrybuildingsociety.co.uk",
+                "skipton-building-society": "skipton.co.uk",
+                "leeds-building-society": "leedsbuildingsociety.co.uk",
+                "principality-building-society": "principality.co.uk",
+                "cumberland-building-society": "cumberland.co.uk",
+                "handelsbanken-uk": "handelsbanken.co.uk",
+                "triodos-bank-uk": "triodos.co.uk",
+                "shawbrook-bank": "shawbrook.co.uk",
+                "aldermore-bank": "aldermore.co.uk",
+                "atom-bank": "atombank.co.uk",
+                "zopa-bank": "zopa.com",
+                wise: "wise.com",
+                tide: "tide.co",
+                cashplus: "cashplus.com",
+                "allica-bank": "allica.bank",
+                "arbuthnot-latham": "arbuthnotlatham.co.uk",
+                coutts: "coutts.com",
+                "c-hoare-and-co": "hoaresbank.co.uk",
+                "bank-of-ireland-uk": "bankofirelanduk.com",
+                "danske-bank-uk": "danskebank.co.uk",
+                "aib-ni": "aibni.co.uk"
+            };
             const sa100CategoryDefinitions = [
                 { key: "turnover", label: "Turnover", box: "SA103F 15", type: "income", match: /\b(stripe|sumup|paypal|worldpay|izettle|square|gocardless|ignitionpay|payer|direct credit from|payment from|receipt|sales|customer|paid in)\b/i },
                 { key: "other-income", label: "Other business income", box: "SA103F 16", type: "income", match: /\b(interest|gross interest|grant|subsidy|refund|rebate|cashback)\b/i },
@@ -14384,6 +14515,9 @@
             let bankStatementAiAutocategorisedTransactionIds = new Set();
             let bankStatementSa100CategorisedAccountId = "";
             let bankStatementSa100Result = null;
+            let bankStatementSa100DisallowanceMode = false;
+            let bankStatementSa100DisallowanceSelectedIds = new Set();
+            let bankStatementSa100Disallowances = loadBankSa100Disallowances();
             let bankStatementUploadingAccountId = "";
             let bankStatementUploadingFilename = "";
             let bankStatementUploadStartedAt = 0;
@@ -14441,7 +14575,7 @@
             let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
                 ? persistedUIState.lateChargeFilter
                 : "active";
-            let badDebtFilter = ["active", "eligible", "written-off", "blocked", "all"].includes(persistedUIState.badDebtFilter)
+            let badDebtFilter = ["active", "eligible", "not-payment-plan", "written-off", "blocked", "all"].includes(persistedUIState.badDebtFilter)
                 ? persistedUIState.badDebtFilter
                 : "active";
             let isOperationRunning = false;
@@ -14485,6 +14619,7 @@
             const badDebtFilterLabels = {
                 active: "Active outstanding",
                 eligible: "Ready to write off",
+                "not-payment-plan": "Not in payment plan",
                 "written-off": "Already written off",
                 blocked: "Blocked",
                 all: "All outstanding"
@@ -19952,9 +20087,11 @@
             function badDebtMatchesFilter(invoice) {
                 const writtenOff = invoiceWriteOffRaised(invoice);
                 const eligible = isWriteOffCandidate(invoice) && !badDebtBlockReason(invoice);
+                const inPaymentPlan = invoiceCategory(invoice) === "payment-plan";
                 if (badDebtFilter === "all") return true;
                 if (badDebtFilter === "written-off") return writtenOff;
                 if (badDebtFilter === "eligible") return eligible;
+                if (badDebtFilter === "not-payment-plan") return !writtenOff && !inPaymentPlan;
                 if (badDebtFilter === "blocked") return !writtenOff && !eligible;
                 return !writtenOff;
             }
@@ -21510,12 +21647,29 @@
                 ].join("");
             }
 
+            function bankProviderLogoUrl(config) {
+                const domain = ukBankProviderLogoDomains[config?.key || ""];
+                if (!domain) return "";
+                return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+            }
+
             function bankProviderLogoMarkup(value, options = {}) {
                 const config = bankProviderConfig(value);
                 const label = config?.name || String(value || "No bank provider saved").trim();
                 const initials = config?.initials || (label.match(/\b[A-Za-z]/g) || ["B"]).slice(0, 2).join("").toUpperCase();
+                const logoUrl = config ? bankProviderLogoUrl(config) : "";
                 const style = config ? ` style="--bank-logo-bg:${escapeHTML(config.bg)};--bank-logo-fg:${escapeHTML(config.fg)}"` : "";
-                return `<span class="bank-account-provider-logo ${config ? "" : "is-empty"}" title="${escapeHTML(label)}"${style}>${escapeHTML(initials || "B")}</span>`;
+                const className = [
+                    "bank-account-provider-logo",
+                    config ? "" : "is-empty",
+                    logoUrl ? "has-provider-image" : ""
+                ].filter(Boolean).join(" ");
+                return `
+                    <span class="${className}" title="${escapeHTML(label)}"${style}>
+                        ${logoUrl ? `<img src="${escapeHTML(logoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.bank-account-provider-logo').classList.add('is-logo-failed'); this.remove();">` : ""}
+                        <span class="bank-account-provider-initials">${escapeHTML(initials || "B")}</span>
+                    </span>
+                `;
             }
 
             function bankProviderBadgeMarkup(account) {
@@ -22546,45 +22700,113 @@
                 return { ...other, confidence: 48, reason: "No specific SA103F expense box matched; review before copying into the return." };
             }
 
-            function bankStatementSa100Rows(transactions) {
+            function loadBankSa100Disallowances() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(BANK_SA100_DISALLOWANCES_KEY) || "{}");
+                    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+                } catch (error) {
+                    localStorage.removeItem(BANK_SA100_DISALLOWANCES_KEY);
+                    return {};
+                }
+            }
+
+            function saveBankSa100Disallowances() {
+                try {
+                    localStorage.setItem(BANK_SA100_DISALLOWANCES_KEY, JSON.stringify(bankStatementSa100Disallowances || {}));
+                } catch (error) {
+                    console.warn("Unable to persist SA100 disallowances", error);
+                }
+            }
+
+            function bankSa100AccountDisallowances(accountId) {
+                const key = String(accountId || "");
+                if (!key) return {};
+                const entries = bankStatementSa100Disallowances[key];
+                return entries && typeof entries === "object" && !Array.isArray(entries) ? entries : {};
+            }
+
+            function bankSa100DisallowanceFor(accountId, transactionId) {
+                return bankSa100AccountDisallowances(accountId)[String(transactionId || "")] || null;
+            }
+
+            function bankSa100DisallowedAmount(accountId, transactionId, grossAmount) {
+                const entry = bankSa100DisallowanceFor(accountId, transactionId);
+                const amount = Number(entry?.amount || 0);
+                if (!Number.isFinite(amount) || amount <= 0) return 0;
+                return Math.min(Math.abs(Number(grossAmount || 0)), bankStatementRoundMoney(amount) || 0);
+            }
+
+            function bankSa100TransactionCanBeDisallowed(row) {
+                return row?.category?.type === "expense" && row.signedAmount < 0 && row.amount > 0;
+            }
+
+            function recalculateBankSa100Result(account, preserveTimestamp = false) {
+                if (!account) return;
+                bankStatementSa100Result = {
+                    ...bankStatementSa100Summary(bankAccountTransactionsAscending(account), account.id),
+                    generatedAt: preserveTimestamp && bankStatementSa100Result?.generatedAt
+                        ? bankStatementSa100Result.generatedAt
+                        : new Date().toISOString()
+                };
+            }
+
+            function bankStatementSa100Rows(transactions, accountId = "") {
                 return (transactions || []).map((transaction) => {
                     const category = bankStatementSa100Category(transaction);
-                    const amount = bankTransactionAmount(transaction);
+                    const signedAmount = Number(bankTransactionAmount(transaction) || 0);
+                    const amount = Math.abs(signedAmount);
+                    const disallowedAmount = category.type === "expense" && signedAmount < 0
+                        ? bankSa100DisallowedAmount(accountId, transaction.id, amount)
+                        : 0;
+                    const taxAmount = category.type === "expense"
+                        ? Math.max(0, bankStatementRoundMoney(amount - disallowedAmount) || 0)
+                        : amount;
                     return {
                         transaction,
                         category,
-                        amount: Math.abs(Number(amount || 0)),
-                        signedAmount: Number(amount || 0),
+                        amount,
+                        signedAmount,
+                        disallowedAmount,
+                        taxAmount,
+                        disallowance: bankSa100DisallowanceFor(accountId, transaction.id),
                         payee: bankTransactionPayee(transaction),
                         reference: bankTransactionReference(transaction)
                     };
                 });
             }
 
-            function bankStatementSa100Summary(transactions) {
-                const rows = bankStatementSa100Rows(transactions);
+            function bankStatementSa100Summary(transactions, accountId = "") {
+                const rows = bankStatementSa100Rows(transactions, accountId);
                 const byKey = new Map(sa100CategoryDefinitions.map((category) => [category.key, {
                     key: category.key,
                     label: category.label,
                     box: category.box,
                     type: category.type,
                     total: 0,
+                    grossTotal: 0,
+                    disallowedTotal: 0,
                     count: 0
                 }]));
                 rows.forEach((row) => {
                     const summary = byKey.get(row.category.key) || byKey.get("review");
-                    summary.total += row.amount;
+                    summary.grossTotal += row.amount;
+                    summary.disallowedTotal += row.disallowedAmount;
+                    summary.total += row.category.type === "expense" ? row.taxAmount : row.amount;
                     summary.count += 1;
                 });
                 const totals = [...byKey.values()].filter((row) => row.count > 0 || ["turnover", "other-income"].includes(row.key));
                 const incomeTotal = totals.filter((row) => row.type === "income").reduce((sum, row) => sum + row.total, 0);
                 const expenseTotal = totals.filter((row) => row.type === "expense").reduce((sum, row) => sum + row.total, 0);
                 const reviewTotal = totals.filter((row) => row.type === "review").reduce((sum, row) => sum + row.total, 0);
+                const disallowedTotal = totals.filter((row) => row.type === "expense").reduce((sum, row) => sum + row.disallowedTotal, 0);
+                const disallowedCount = rows.filter((row) => row.disallowedAmount > 0).length;
                 return {
                     rows,
                     totals,
                     incomeTotal,
                     expenseTotal,
+                    disallowedTotal,
+                    disallowedCount,
                     reviewTotal,
                     netProfit: incomeTotal - expenseTotal
                 };
@@ -22599,13 +22821,18 @@
                         <div class="bank-tax-summary-head">
                             <div>
                                 <strong>SA100 self-employment categorisation</strong>
-                                <span>${result.rows.length.toLocaleString("en-GB")} transaction${result.rows.length === 1 ? "" : "s"} grouped to SA103F 2026 boxes.</span>
+                                <span>${result.rows.length.toLocaleString("en-GB")} transaction${result.rows.length === 1 ? "" : "s"} grouped to SA103F 2026 boxes${result.disallowedCount ? ` · ${result.disallowedCount.toLocaleString("en-GB")} disallowed adjustment${result.disallowedCount === 1 ? "" : "s"}` : ""}.</span>
                             </div>
-                            <button class="ghost-button" id="exportBankSa100ReceiptInlineButton" type="button">Export receipt</button>
+                            <div class="bank-tax-summary-actions">
+                                <button class="ghost-button" id="toggleBankSa100DisallowanceModeButton" type="button">${bankStatementSa100DisallowanceMode ? "Cancel selection" : "Select disallowed"}</button>
+                                <button class="ghost-button" id="applyBankSa100DisallowanceButton" type="button" ${bankStatementSa100DisallowanceMode && bankStatementSa100DisallowanceSelectedIds.size ? "" : "disabled"}>Disallow selected</button>
+                                <button class="ghost-button" id="exportBankSa100ReceiptInlineButton" type="button">Export receipt</button>
+                            </div>
                         </div>
                         <div class="bank-tax-summary-grid">
                             <div class="bank-tax-summary-row"><span>Business income</span><strong>${formatCurrency(result.incomeTotal)}</strong></div>
                             <div class="bank-tax-summary-row"><span>Allowable expenses</span><strong>${formatCurrency(result.expenseTotal)}</strong></div>
+                            <div class="bank-tax-summary-row"><span>Disallowed expenses</span><strong>${formatCurrency(result.disallowedTotal)}</strong></div>
                             <div class="bank-tax-summary-row"><span>Needs review</span><strong>${formatCurrency(result.reviewTotal)}</strong></div>
                             <div class="bank-tax-summary-row"><span>Indicative net profit</span><strong>${formatCurrency(result.netProfit)}</strong></div>
                             ${visibleTotals.map((row) => `
@@ -22615,7 +22842,7 @@
                                 </div>
                             `).join("")}
                         </div>
-                        <p class="bank-tax-summary-note">Use this as a working receipt for SA103F copying. Review private, tax, transfer and capital items before entering figures on the tax return.</p>
+                        <p class="bank-tax-summary-note">Use this as a working receipt for SA103F copying. Select disallowed expenses to remove private, non-business, or part-business amounts from the tax figures before copying them into the return.</p>
                     </section>
                 `;
             }
@@ -22626,11 +22853,81 @@
                 const transactions = bankAccountTransactionsAscending(account);
                 if (!transactions.length) return showToast("No bank transactions are available to categorise", "info");
                 bankStatementSa100CategorisedAccountId = account.id || "";
-                bankStatementSa100Result = {
-                    ...bankStatementSa100Summary(transactions),
-                    generatedAt: new Date().toISOString()
-                };
+                bankStatementSa100DisallowanceMode = false;
+                bankStatementSa100DisallowanceSelectedIds = new Set();
+                recalculateBankSa100Result(account);
                 showToast(`SA100 categorised ${transactions.length.toLocaleString("en-GB")} bank transaction${transactions.length === 1 ? "" : "s"}`, "success");
+                renderBankStatementsScreen();
+            }
+
+            function toggleBankStatementSa100DisallowanceMode() {
+                const account = selectedBankAccount();
+                if (!account || bankStatementSa100CategorisedAccountId !== account.id || !bankStatementSa100Result) {
+                    return showToast("Run SA100 categorisation before selecting disallowed expenses", "error");
+                }
+                bankStatementSa100DisallowanceMode = !bankStatementSa100DisallowanceMode;
+                bankStatementSa100DisallowanceSelectedIds = new Set();
+                renderBankStatementsScreen();
+            }
+
+            function parseBankSa100DisallowanceInput(input, rowAmount) {
+                const raw = String(input || "").trim().toLowerCase();
+                if (!raw || raw === "full" || raw === "all" || raw === "100%") return bankStatementRoundMoney(rowAmount) || 0;
+                if (["0", "0%", "clear", "remove"].includes(raw)) return 0;
+                if (raw.endsWith("%")) {
+                    const percent = Number(raw.replace(/[^0-9.-]+/g, ""));
+                    if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
+                    return bankStatementRoundMoney((rowAmount * percent) / 100) || 0;
+                }
+                const amount = Number(raw.replace(/[^0-9.-]+/g, ""));
+                if (!Number.isFinite(amount) || amount < 0) return null;
+                return Math.min(rowAmount, bankStatementRoundMoney(amount) || 0);
+            }
+
+            function applyBankStatementSa100Disallowance() {
+                const account = selectedBankAccount();
+                if (!account || bankStatementSa100CategorisedAccountId !== account.id || !bankStatementSa100Result) {
+                    return showToast("Run SA100 categorisation before marking disallowed expenses", "error");
+                }
+                const selectedIds = [...bankStatementSa100DisallowanceSelectedIds].filter(Boolean);
+                if (!selectedIds.length) return showToast("Select at least one expense transaction to disallow", "info");
+                const rowsById = new Map((bankStatementSa100Result.rows || []).map((row) => [String(row.transaction?.id || ""), row]));
+                const selectedRows = selectedIds
+                    .map((id) => rowsById.get(id))
+                    .filter((row) => bankSa100TransactionCanBeDisallowed(row));
+                if (!selectedRows.length) return showToast("Only expense rows can be disallowed for SA100", "info");
+                const input = window.prompt("Disallow selected SA100 expense rows by how much? Use full, 50%, £25.00, or 0 to clear.", "full");
+                if (input === null) return;
+                const accountId = String(account.id || "");
+                const entries = { ...bankSa100AccountDisallowances(accountId) };
+                let updatedCount = 0;
+                for (const row of selectedRows) {
+                    const transactionId = String(row.transaction?.id || "");
+                    const disallowedAmount = parseBankSa100DisallowanceInput(input, row.amount);
+                    if (disallowedAmount === null) {
+                        showToast("Use full, a percentage, a GBP amount, or 0 to clear the disallowance", "error");
+                        return;
+                    }
+                    if (disallowedAmount <= 0) {
+                        delete entries[transactionId];
+                    } else {
+                        entries[transactionId] = {
+                            amount: disallowedAmount,
+                            note: disallowedAmount >= row.amount ? "Fully disallowed" : "Part disallowed",
+                            updatedAt: new Date().toISOString()
+                        };
+                    }
+                    updatedCount += 1;
+                }
+                bankStatementSa100Disallowances = {
+                    ...bankStatementSa100Disallowances,
+                    [accountId]: entries
+                };
+                saveBankSa100Disallowances();
+                bankStatementSa100DisallowanceSelectedIds = new Set();
+                bankStatementSa100DisallowanceMode = false;
+                recalculateBankSa100Result(account, true);
+                showToast(`Updated SA100 disallowance for ${updatedCount.toLocaleString("en-GB")} transaction${updatedCount === 1 ? "" : "s"}`, "success");
                 renderBankStatementsScreen();
             }
 
@@ -23079,13 +23376,17 @@
                 function drawTransactionRow(row) {
                     const description = [row.payee, row.transaction?.description].filter(Boolean).join(" - ") || "Bank transaction";
                     const lines = pdfWrapText(description, 268, 7.2, "F1").slice(0, 2);
-                    const height = Math.max(24, 14 + lines.length * 8.5);
+                    const disallowanceLines = row.disallowedAmount > 0
+                        ? pdfWrapText(`Disallowed ${formatPdfMoney(row.disallowedAmount)}; allowable ${formatPdfMoney(row.taxAmount)}`, 170, 6.7, "F1").slice(0, 2)
+                        : [];
+                    const height = Math.max(24, 14 + Math.max(lines.length, 1 + disallowanceLines.length) * 8.5);
                     ensureSpace(height);
                     doc.line(left, y + height, right, y + height, "#edf1f7", 0.55);
                     doc.text(formatDate(row.transaction?.date), left + 4, y + 15, 7, "F1", "#536782");
                     lines.forEach((line, index) => doc.text(line, left + 66, y + 15 + (index * 8.5), 7.2, index === 0 ? "F2" : "F1", "#1e2f4d"));
                     doc.text(row.category.box, 372, y + 15, 7, "F2", "#536782");
-                    doc.textRight(formatPdfMoney(row.amount), right - 4, y + 15, 7.2, "F2", "#1e2f4d");
+                    disallowanceLines.forEach((line, index) => doc.text(line, 372, y + 24 + (index * 8), 6.7, "F1", "#a35a00"));
+                    doc.textRight(formatPdfMoney(row.category.type === "expense" ? row.taxAmount : row.amount), right - 4, y + 15, 7.2, "F2", "#1e2f4d");
                     y += height;
                 }
 
@@ -23093,10 +23394,11 @@
                 doc.text(client?.customerName || "Bank statement client", left, 126, 14, "F2", "#1e2f4d");
                 doc.text(bankAccountDetailLine(account), left, 144, 8.5, "F1", "#536782");
                 doc.text(`Generated ${formatDate(result.generatedAt || localDateKey())}`, left, 160, 8, "F1", "#8593ad");
-                drawSummaryRow("Business income", formatPdfMoney(result.incomeTotal), left, 184, 120);
-                drawSummaryRow("Allowable expenses", formatPdfMoney(result.expenseTotal), left + 132, 184, 132);
-                drawSummaryRow("Needs review", formatPdfMoney(result.reviewTotal), left + 276, 184, 112);
-                drawSummaryRow("Indicative net profit", formatPdfMoney(result.netProfit), left + 400, 184, 119);
+                drawSummaryRow("Business income", formatPdfMoney(result.incomeTotal), left, 184, 96);
+                drawSummaryRow("Allowable expenses", formatPdfMoney(result.expenseTotal), left + 104, 184, 110);
+                drawSummaryRow("Disallowed", formatPdfMoney(result.disallowedTotal), left + 222, 184, 96);
+                drawSummaryRow("Needs review", formatPdfMoney(result.reviewTotal), left + 326, 184, 88);
+                drawSummaryRow("Net profit", formatPdfMoney(result.netProfit), left + 422, 184, 97);
 
                 y = 252;
                 doc.text("SA103F 2026 box summary", left, y, 10.5, "F2", "#1e2f4d");
@@ -23669,6 +23971,10 @@
                 const activeUpload = activeBankUploadForAccount(account);
                 const localUploadActive = bankStatementUploading && bankStatementUploadingAccountId === account.id;
                 const accountProcessing = localUploadActive || Boolean(activeUpload);
+                const sa100SelectionActive = bankStatementSa100DisallowanceMode
+                    && bankStatementSa100CategorisedAccountId === account.id
+                    && Boolean(bankStatementSa100Result);
+                const sa100RowsByTransactionId = new Map((bankStatementSa100Result?.rows || []).map((row) => [String(row.transaction?.id || ""), row]));
                 const transactionRows = filteredTransactions.map((transaction) => {
                     const transactionIndex = transactions.indexOf(transaction);
                     const issue = bankTransactionIssue(transactions, transactionIndex);
@@ -23679,6 +23985,12 @@
                     const reference = bankTransactionReference(transaction);
                     const aiNote = bankTransactionAiNote(transaction, issue);
                     const appliedCategory = bankTransactionAppliedAiCategory(transaction);
+                    const sa100Row = sa100RowsByTransactionId.get(String(transaction.id || "")) || null;
+                    const canDisallowForSa100 = sa100SelectionActive && bankSa100TransactionCanBeDisallowed(sa100Row);
+                    const selectedForDisallowance = bankStatementSa100DisallowanceSelectedIds.has(String(transaction.id || ""));
+                    const disallowanceNote = sa100Row?.disallowedAmount > 0
+                        ? `SA100 disallowed ${formatCurrency(sa100Row.disallowedAmount)}; tax figure ${formatCurrency(sa100Row.taxAmount)}`
+                        : "";
                     const severityClass = issue?.severity === "high"
                         ? "bank-transaction-row-has-issue"
                         : issue?.severity === "warning"
@@ -23688,6 +24000,7 @@
                                 : "";
                     const categoryClass = appliedCategory ? "bank-transaction-row-is-categorised" : "";
                     const appliedClass = bankStatementAiAutocategorisedTransactionIds.has(String(transaction.id || "")) ? "bank-transaction-row-ai-applied" : "";
+                    const disallowedClass = sa100Row?.disallowedAmount > 0 ? "bank-transaction-row-is-disallowed" : "";
                     const suggestedAmount = bankStatementNumber(issue?.suggestedAmount);
                     const canOverrideAmount = issue && issue.severity !== "overridden" && suggestedAmount !== null;
                     const issueMarkup = issue ? `
@@ -23702,7 +24015,12 @@
                         </span>
                     ` : "";
                     return `
-                        <tr class="${[severityClass, categoryClass, appliedClass].filter(Boolean).join(" ")}">
+                        <tr class="${[severityClass, categoryClass, appliedClass, disallowedClass].filter(Boolean).join(" ")}">
+                            ${sa100SelectionActive ? `
+                                <td>
+                                    <input class="bank-tax-disallowance-check" type="checkbox" data-bank-sa100-disallowance-select="${escapeHTML(transaction.id || "")}" ${selectedForDisallowance ? "checked" : ""} ${canDisallowForSa100 ? "" : "disabled"} aria-label="Select ${escapeHTML(payee || transaction.description || "transaction")} for SA100 disallowance">
+                                </td>
+                            ` : ""}
                             <td><strong>${formatDate(transaction.date)}</strong></td>
                             <td class="bank-transaction-payee-cell"><strong>${escapeHTML(payee || "--")}</strong>${reference ? `<small>${escapeHTML(reference)}</small>` : ""}</td>
                             <td class="bank-transaction-description-cell">
@@ -23712,6 +24030,7 @@
                                 </span>
                                 <small>${escapeHTML(transaction.type || "No type extracted")}</small>
                                 ${aiNote ? `<small class="bank-transaction-ai-note">${escapeHTML(aiNote)}</small>` : ""}
+                                ${disallowanceNote ? `<small class="bank-tax-disallowance-note">${escapeHTML(disallowanceNote)}</small>` : ""}
                             </td>
                             <td>${amount > 0 ? formatCurrency(amount) : ""}</td>
                             <td>${amount < 0 ? formatCurrency(Math.abs(amount)) : ""}</td>
@@ -23779,9 +24098,10 @@
                             <span class="detail-meta">Showing ${filteredTransactions.length.toLocaleString("en-GB")} of ${transactions.length.toLocaleString("en-GB")} transactions</span>
                         </div>
                         <div class="jashflow-table-wrap">
-                            <table class="bank-transaction-table">
+                            <table class="bank-transaction-table${sa100SelectionActive ? " is-tax-selecting" : ""}">
                                 <thead>
                                     <tr>
+                                        ${sa100SelectionActive ? "<th>Tax</th>" : ""}
                                         <th>Date</th>
                                         <th>Payee</th>
                                         <th>Description</th>
@@ -23791,7 +24111,7 @@
                                         <th>AI Xero code</th>
                                     </tr>
                                 </thead>
-                                <tbody>${transactionRows || '<tr><td colspan="7">No transactions match the current search.</td></tr>'}</tbody>
+                                <tbody>${transactionRows || `<tr><td colspan="${sa100SelectionActive ? "8" : "7"}">No transactions match the current search.</td></tr>`}</tbody>
                             </table>
                         </div>
                     `;
@@ -23834,6 +24154,8 @@
                 document.getElementById("runBankSa100CategorisationButton")?.addEventListener("click", applyBankStatementSa100Categorisation);
                 document.getElementById("exportBankSa100ReceiptButton")?.addEventListener("click", exportBankSa100Receipt);
                 document.getElementById("exportBankSa100ReceiptInlineButton")?.addEventListener("click", exportBankSa100Receipt);
+                document.getElementById("toggleBankSa100DisallowanceModeButton")?.addEventListener("click", toggleBankStatementSa100DisallowanceMode);
+                document.getElementById("applyBankSa100DisallowanceButton")?.addEventListener("click", applyBankStatementSa100Disallowance);
                 document.getElementById("editBankAccountButton")?.addEventListener("click", () => openBankAccountForm(account));
                 document.getElementById("exportBankTransactionsButton")?.addEventListener("click", exportBankTransactions);
                 document.getElementById("exportBankTransactionsXeroButton")?.addEventListener("click", exportBankTransactionsForXero);
@@ -23848,6 +24170,15 @@
                             input.setSelectionRange(length, length);
                         }
                     }, 0);
+                });
+                detail.querySelectorAll("[data-bank-sa100-disallowance-select]").forEach((input) => {
+                    input.addEventListener("click", (event) => event.stopPropagation());
+                    input.addEventListener("change", (event) => {
+                        const transactionId = event.target.dataset.bankSa100DisallowanceSelect || "";
+                        if (event.target.checked) bankStatementSa100DisallowanceSelectedIds.add(transactionId);
+                        else bankStatementSa100DisallowanceSelectedIds.delete(transactionId);
+                        renderBankStatementsScreen();
+                    });
                 });
                 detail.querySelectorAll("[data-bank-account-tab]").forEach((button) => {
                     button.addEventListener("click", () => {
@@ -29659,6 +29990,15 @@
                 if (searchInput && searchInput.value !== badDebtSearchTerm) searchInput.value = badDebtSearchTerm;
                 const filterSelect = document.getElementById("badDebtFilterSelect");
                 if (filterSelect && filterSelect.value !== badDebtFilter) filterSelect.value = badDebtFilter;
+                const paymentPlanFilterButton = document.getElementById("badDebtPaymentPlanFilterButton");
+                if (paymentPlanFilterButton) {
+                    const active = badDebtFilter === "not-payment-plan";
+                    paymentPlanFilterButton.classList.toggle("is-active", active);
+                    paymentPlanFilterButton.setAttribute("aria-pressed", active ? "true" : "false");
+                    paymentPlanFilterButton.title = active
+                        ? "Showing invoices not in payment plan"
+                        : "Hide invoices already in payment plan";
+                }
                 const selectAllButton = document.getElementById("selectAllBadDebtButton");
                 if (selectAllButton) {
                     selectAllButton.disabled = stats.visibleEligibleCount === 0 || isOperationRunning;
@@ -34995,6 +35335,13 @@
                 const badDebtFilterSelect = document.getElementById("badDebtFilterSelect");
                 if (badDebtFilterSelect) badDebtFilterSelect.addEventListener("change", (event) => {
                     badDebtFilter = badDebtFilterLabels[event.target.value] ? event.target.value : "active";
+                    selectedBadDebtInvoiceIds.clear();
+                    persistState();
+                    renderBadDebtScreen();
+                });
+                const badDebtPaymentPlanFilterButton = document.getElementById("badDebtPaymentPlanFilterButton");
+                if (badDebtPaymentPlanFilterButton) badDebtPaymentPlanFilterButton.addEventListener("click", () => {
+                    badDebtFilter = badDebtFilter === "not-payment-plan" ? "active" : "not-payment-plan";
                     selectedBadDebtInvoiceIds.clear();
                     persistState();
                     renderBadDebtScreen();
