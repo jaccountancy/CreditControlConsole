@@ -13847,6 +13847,18 @@
             .ch-companies-toolbar input[type="search"], .ch-companies-toolbar select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-soft); color: var(--ink); }
             .ch-companies-toolbar input[type="search"] { flex: 1 1 240px; min-width: 200px; }
             .ch-companies-toolbar label.ch-checkbox-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); }
+            .ch-workflow-launch-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .ch-workflow-launch-pill {
+                border-radius: 999px;
+                padding: 10px 16px;
+                font-weight: 800;
+            }
             .ch-workflow-card { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; border-radius: 14px; background: linear-gradient(145deg, rgba(29,103,242,0.10), rgba(29,103,242,0.02)); border: 1px solid rgba(29,103,242,0.26); box-shadow: var(--shadow); }
             .ch-workflow-head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
             .ch-workflow-head .ch-section-title { font-size: 16px; }
@@ -14891,6 +14903,10 @@
                                 </article>
                             </section>
                             <section class="ch-tab-panel" data-ch-panel="companies" hidden>
+                                <div class="ch-workflow-launch-row">
+                                    <button class="ghost-button ch-workflow-launch-pill" type="button" id="chWorkflowStartButton">Start Bulk workflow</button>
+                                    <button class="ghost-button" type="button" id="chWorkflowHideButton" hidden>Hide bulk workflow</button>
+                                </div>
                                 <div class="ch-companies-toolbar">
                                     <input id="chCompaniesSearch" type="search" placeholder="Search company name, number or client...">
                                     <select id="chCompaniesStatusFilter" aria-label="Filter by status">
@@ -14907,7 +14923,7 @@
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterOverdue"> Overdue</label>
                                     <button class="ghost-button" type="button" id="chCompaniesReloadButton">Refresh</button>
                                 </div>
-                                <article class="ch-workflow-card" id="chWorkflowCard">
+                                <article class="ch-workflow-card" id="chWorkflowCard" hidden>
                                     <div class="ch-workflow-head">
                                         <div>
                                             <p class="ch-section-title">Bulk workflow</p>
@@ -41910,6 +41926,7 @@
                 importPreview: null,
                 importBusy: false,
                 workflowBusy: false,
+                workflowOpen: false,
             };
 
             const CH_INTERNAL_STATUS_LABELS = {
@@ -41961,6 +41978,7 @@
             function activateCompaniesHouseTab(tab) {
                 if (!tab) return;
                 companiesHouseState.activeTab = tab;
+                if (tab !== "companies") companiesHouseState.workflowOpen = false;
                 document.querySelectorAll(".ch-subnav-tab").forEach((node) => {
                     const isActive = node.dataset.chTab === tab;
                     node.classList.toggle("is-active", isActive);
@@ -42040,6 +42058,16 @@
                 node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
             }
 
+            function chRenderWorkflowVisibility() {
+                const card = document.getElementById("chWorkflowCard");
+                const startButton = document.getElementById("chWorkflowStartButton");
+                const hideButton = document.getElementById("chWorkflowHideButton");
+                const open = !!companiesHouseState.workflowOpen;
+                if (card) card.hidden = !open;
+                if (startButton) startButton.hidden = open;
+                if (hideButton) hideButton.hidden = !open;
+            }
+
             function chSelectedCompanyIds() {
                 return Array.from(companiesHouseState.selectedCompanyIds || []).filter(Boolean);
             }
@@ -42050,6 +42078,8 @@
             }
 
             function chUpdateWorkflowControls() {
+                chRenderWorkflowVisibility();
+                if (!companiesHouseState.workflowOpen) return;
                 const selectedCompanies = chSelectedCompanies();
                 const selectedCount = selectedCompanies.length;
                 const selectedEligibleForSubmission = selectedCompanies.filter((company) => company.eligibleForSubmission).length;
@@ -42152,6 +42182,12 @@
                     `${eligible.length.toLocaleString("en-GB")} eligible companies selected for bulk submission.`,
                     "success"
                 );
+            }
+
+            function startCompaniesHouseWorkflow() {
+                companiesHouseState.workflowOpen = true;
+                chRenderWorkflowVisibility();
+                selectEligibleCompaniesForWorkflow();
             }
 
             async function submitSelectedCompaniesWorkflow() {
@@ -42576,6 +42612,11 @@
                 document.getElementById("chWorkflowSelectEligibleButton")?.addEventListener("click", selectEligibleCompaniesForWorkflow);
                 document.getElementById("chWorkflowSubmitSelectedButton")?.addEventListener("click", submitSelectedCompaniesWorkflow);
                 document.getElementById("chWorkflowInvoiceSelectedButton")?.addEventListener("click", raiseSelectedWorkflowInvoices);
+                document.getElementById("chWorkflowStartButton")?.addEventListener("click", startCompaniesHouseWorkflow);
+                document.getElementById("chWorkflowHideButton")?.addEventListener("click", () => {
+                    companiesHouseState.workflowOpen = false;
+                    chRenderWorkflowVisibility();
+                });
                 document.getElementById("chCompanyDetailClose")?.addEventListener("click", () => {
                     const card = document.getElementById("chCompanyDetailCard"); if (card) card.hidden = true;
                     companiesHouseState.selectedCompanyId = null;
