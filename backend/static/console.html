@@ -16911,6 +16911,7 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="primary-button" id="riskAssessmentsCreateButton" type="button">Create risk assessments</button>
+                                    <button class="ghost-button" id="riskAssessmentsDeleteSelectedButton" type="button">Delete selected</button>
                                     <button class="ghost-button" id="riskAssessmentsDownloadZipButton" type="button">Download PDF ZIP</button>
                                 </div>
                             </div>
@@ -16944,6 +16945,7 @@
                                 <table class="ch-table" aria-label="Risk assessments history">
                                     <thead>
                                         <tr>
+                                            <th><input type="checkbox" id="riskAssessmentsSelectAllHistory" aria-label="Select all risk assessments"></th>
                                             <th>Generated</th>
                                             <th>Client</th>
                                             <th>Risk</th>
@@ -16989,6 +16991,7 @@
                             </section>
                             <nav class="ch-subnav" id="confirmationStatementSubnav" role="tablist" aria-label="Confirmation statements sections">
                                 <button class="ch-subnav-tab is-active" type="button" data-ch-tab="dashboard" role="tab" aria-selected="true">Dashboard</button>
+                                <button class="ch-subnav-tab" type="button" data-ch-tab="rejected" role="tab" aria-selected="false">Rejected</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="companies" role="tab" aria-selected="false">Companies</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="import" role="tab" aria-selected="false">Import</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="audit" role="tab" aria-selected="false">Audit</button>
@@ -17015,6 +17018,8 @@
                                         </table>
                                     </div>
                                 </article>
+                            </section>
+                            <section class="ch-tab-panel" data-ch-panel="rejected" hidden>
                                 <article class="detail-panel ch-detail-card">
                                     <div>
                                         <p class="ch-section-title">Rejected filings</p>
@@ -17150,16 +17155,8 @@
                                             </select>
                                         </label>
                                         <label>
-                                            Authority reference
+                                            Authentication code
                                             <input id="chCompanyDetailFilingAuthorityReference" name="filingAuthorityReference" type="text">
-                                        </label>
-                                        <label>
-                                            Authority received at
-                                            <input id="chCompanyDetailFilingAuthorityReceivedAt" name="filingAuthorityReceivedAt" type="datetime-local">
-                                        </label>
-                                        <label>
-                                            Authority expires at
-                                            <input id="chCompanyDetailFilingAuthorityExpiresAt" name="filingAuthorityExpiresAt" type="datetime-local">
                                         </label>
                                         <label>
                                             Contact email
@@ -19513,6 +19510,7 @@
             let riskAssessmentGenerating = false;
             let riskAssessmentDraftClients = [];
             let riskAssessmentSelectedClientKeys = new Set();
+            let riskAssessmentSelectedRecordIds = new Set();
             let riskAssessmentLastCsvFileName = "";
             let riskAssessmentClientSearchQuery = "";
             let riskAssessmentClientFilter = "all";
@@ -40806,12 +40804,19 @@
             function renderRiskAssessmentsScreen() {
                 const tableBody = document.getElementById("riskAssessmentsTableBody");
                 const createButton = document.getElementById("riskAssessmentsCreateButton");
+                const deleteButton = document.getElementById("riskAssessmentsDeleteSelectedButton");
+                const selectAllHistory = document.getElementById("riskAssessmentsSelectAllHistory");
                 const zipButton = document.getElementById("riskAssessmentsDownloadZipButton");
                 const builder = document.getElementById("riskAssessmentsBuilder");
                 const status = document.getElementById("riskAssessmentsCsvStatus");
                 const generateButton = document.getElementById("riskAssessmentsGenerateButton");
                 const selectedCount = riskAssessmentSelectedClientKeys.size;
                 const filteredCount = filteredRiskAssessmentDraftClients().length;
+                const historyIds = new Set((riskAssessments || []).map((record) => String(record?.id || "")).filter(Boolean));
+                riskAssessmentSelectedRecordIds = new Set(
+                    Array.from(riskAssessmentSelectedRecordIds || []).filter((id) => historyIds.has(String(id || "")))
+                );
+                const selectedHistoryCount = riskAssessmentSelectedRecordIds.size;
 
                 if (builder) builder.hidden = !riskAssessmentBuilderOpen;
                 if (createButton) {
@@ -40821,6 +40826,12 @@
                         : riskAssessmentBuilderOpen
                             ? (selectedCount ? `Create selected (${selectedCount})` : "Select clients to create")
                             : "Create risk assessments";
+                }
+                if (deleteButton) {
+                    deleteButton.disabled = riskAssessmentGenerating || selectedHistoryCount === 0;
+                    deleteButton.textContent = selectedHistoryCount
+                        ? `Delete selected (${selectedHistoryCount.toLocaleString("en-GB")})`
+                        : "Delete selected";
                 }
                 if (zipButton) zipButton.disabled = !riskAssessments.length || riskAssessmentGenerating;
                 if (generateButton) {
@@ -40841,16 +40852,22 @@
 
                 if (!tableBody) return;
                 if (!riskAssessments.length) {
-                    tableBody.innerHTML = `<tr><td colspan="6" class="ch-empty-state">No risk assessments have been created yet.</td></tr>`;
+                    tableBody.innerHTML = `<tr><td colspan="7" class="ch-empty-state">No risk assessments have been created yet.</td></tr>`;
+                    if (selectAllHistory) {
+                        selectAllHistory.checked = false;
+                        selectAllHistory.indeterminate = false;
+                    }
                     return;
                 }
-                tableBody.innerHTML = riskAssessments
+                const sortedAssessments = riskAssessments
                     .slice()
-                    .sort((left, right) => (new Date(right.generatedAt || 0).getTime() || 0) - (new Date(left.generatedAt || 0).getTime() || 0))
+                    .sort((left, right) => (new Date(right.generatedAt || 0).getTime() || 0) - (new Date(left.generatedAt || 0).getTime() || 0));
+                tableBody.innerHTML = sortedAssessments
                     .map((record) => {
                         const commentarySnippet = `${String(record.commentary || "").trim().slice(0, 220)}${String(record.commentary || "").trim().length > 220 ? "..." : ""}`;
                         return `
                             <tr>
+                                <td><input type="checkbox" data-risk-assessment-record-id="${escapeHTML(String(record.id || ""))}" ${riskAssessmentSelectedRecordIds.has(String(record.id || "")) ? "checked" : ""} aria-label="Select ${escapeHTML(record.clientName || "risk assessment")}"></td>
                                 <td>${escapeHTML(formatDate(record.generatedAt))}</td>
                                 <td>${escapeHTML(record.clientName || "Client")}</td>
                                 <td>${riskAssessmentRiskPill(record.riskLevel)}</td>
@@ -40860,6 +40877,21 @@
                             </tr>
                         `;
                     }).join("");
+                const visibleIds = sortedAssessments.map((record) => String(record?.id || "")).filter(Boolean);
+                const selectedVisibleCount = visibleIds.filter((id) => riskAssessmentSelectedRecordIds.has(id)).length;
+                if (selectAllHistory) {
+                    selectAllHistory.checked = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+                    selectAllHistory.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+                }
+                tableBody.querySelectorAll("[data-risk-assessment-record-id]").forEach((checkbox) => {
+                    checkbox.addEventListener("change", (event) => {
+                        const id = String(event.target?.dataset?.riskAssessmentRecordId || "");
+                        if (!id) return;
+                        if (event.target.checked) riskAssessmentSelectedRecordIds.add(id);
+                        else riskAssessmentSelectedRecordIds.delete(id);
+                        renderRiskAssessmentsScreen();
+                    });
+                });
             }
 
             function openRiskAssessmentBuilder() {
@@ -41081,6 +41113,35 @@
                         showToast(error.message || "Unable to download risk assessment ZIP.", "error");
                     }
                 }
+            }
+
+            function toggleAllRiskAssessmentHistory(checked) {
+                const rows = riskAssessments
+                    .slice()
+                    .sort((left, right) => (new Date(right.generatedAt || 0).getTime() || 0) - (new Date(left.generatedAt || 0).getTime() || 0));
+                rows.forEach((record) => {
+                    const id = String(record?.id || "");
+                    if (!id) return;
+                    if (checked) riskAssessmentSelectedRecordIds.add(id);
+                    else riskAssessmentSelectedRecordIds.delete(id);
+                });
+                renderRiskAssessmentsScreen();
+            }
+
+            function deleteSelectedRiskAssessments() {
+                const selectedIds = new Set(Array.from(riskAssessmentSelectedRecordIds || []).filter(Boolean));
+                if (!selectedIds.size) {
+                    showToast("Select at least one risk assessment to delete.", "info");
+                    return;
+                }
+                if (!window.confirm(`Delete ${selectedIds.size.toLocaleString("en-GB")} selected risk assessment${selectedIds.size === 1 ? "" : "s"}? This cannot be undone.`)) return;
+                const beforeCount = riskAssessments.length;
+                riskAssessments = riskAssessments.filter((record) => !selectedIds.has(String(record?.id || "")));
+                riskAssessmentSelectedRecordIds.clear();
+                persistRiskAssessments();
+                const deletedCount = beforeCount - riskAssessments.length;
+                showToast(`${deletedCount.toLocaleString("en-GB")} risk assessment${deletedCount === 1 ? "" : "s"} deleted.`, "success");
+                renderRiskAssessmentsScreen();
             }
 
             function selectAllEligibleBadDebtInvoices() {
@@ -48345,7 +48406,7 @@
                 document.querySelectorAll(".ch-tab-panel").forEach((panel) => {
                     panel.hidden = panel.dataset.chPanel !== tab;
                 });
-                if (tab === "dashboard") loadCompaniesHouseDashboard();
+                if (tab === "dashboard" || tab === "rejected") loadCompaniesHouseDashboard();
                 else if (tab === "companies") loadCompaniesHouseCompanies();
                 else if (tab === "import") loadCompaniesHouseImports();
                 else if (tab === "audit") loadCompaniesHouseImports();
@@ -48563,14 +48624,11 @@
                 const reasons = [];
                 const internalStatus = String(company?.internalStatus || "active");
                 const authorityStatus = String(company?.filingAuthorityStatus || "pending").toLowerCase();
-                const authorityExpiresAt = company?.filingAuthorityExpiresAt ? new Date(company.filingAuthorityExpiresAt) : null;
-                const now = new Date();
                 if (!company?.nextDueDate) reasons.push("Missing next due date");
                 if (!company?.nextMadeUpToDate) reasons.push("Missing made-up-to date");
-                if (!company?.authCodeOnFile) reasons.push("Missing auth code");
+                if (!company?.authCodeOnFile) reasons.push("Missing auth code (re-import BM CSV with Auth Code column or add it in company detail)");
                 if (["paused", "do_not_file", "inactive"].includes(internalStatus)) reasons.push(`Blocked by internal status (${internalStatus.replace(/_/g, " ")})`);
-                if (authorityStatus !== "authorised") reasons.push("Filing authority not authorised");
-                if (authorityExpiresAt instanceof Date && !Number.isNaN(authorityExpiresAt.getTime()) && authorityExpiresAt < now) reasons.push("Filing authority expired");
+                if (authorityStatus !== "authorised") reasons.push("Filing authority is not authorised (set to Authorised in full review)");
                 return reasons;
             }
 
@@ -48785,8 +48843,6 @@
                     issues: chSubmissionIneligibilityReasons(company),
                     filingAuthorityStatus: String(company.filingAuthorityStatus || "pending"),
                     filingAuthorityReference: String(company.filingAuthorityReference || ""),
-                    filingAuthorityReceivedAt: isoToLocalDatetimeInput(company.filingAuthorityReceivedAt),
-                    filingAuthorityExpiresAt: isoToLocalDatetimeInput(company.filingAuthorityExpiresAt),
                 }));
                 const rowById = new Map(rows.map((row) => [row.companyId, row]));
                 const reviewResult = await showOperationReviewDialog({
@@ -48813,9 +48869,7 @@
                                             <th>Company</th>
                                             <th>Issues found</th>
                                             <th>Filing authority</th>
-                                            <th>Reference</th>
-                                            <th>Received at</th>
-                                            <th>Expires at</th>
+                                            <th>Authentication code</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -48831,9 +48885,7 @@
                                                         ${options}
                                                     </select>
                                                 </td>
-                                                <td><input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Authority reference"></td>
-                                                <td><input type="datetime-local" data-ch-review-field="filingAuthorityReceivedAt" value="${escapeHTML(row.filingAuthorityReceivedAt)}"></td>
-                                                <td><input type="datetime-local" data-ch-review-field="filingAuthorityExpiresAt" value="${escapeHTML(row.filingAuthorityExpiresAt)}"></td>
+                                                <td><input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Authentication code"></td>
                                             </tr>
                                         `).join("")}
                                     </tbody>
@@ -48856,15 +48908,9 @@
                             if (!original) return;
                             const nextStatus = String(tr.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
                             const nextReference = String(tr.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
-                            const nextReceived = localDatetimeInputToISOString(String(tr.querySelector('[data-ch-review-field="filingAuthorityReceivedAt"]')?.value || ""));
-                            const nextExpires = localDatetimeInputToISOString(String(tr.querySelector('[data-ch-review-field="filingAuthorityExpiresAt"]')?.value || ""));
-                            const originalReceived = localDatetimeInputToISOString(original.filingAuthorityReceivedAt);
-                            const originalExpires = localDatetimeInputToISOString(original.filingAuthorityExpiresAt);
                             const changed = (
                                 nextStatus !== original.filingAuthorityStatus
                                 || nextReference !== original.filingAuthorityReference
-                                || nextReceived !== originalReceived
-                                || nextExpires !== originalExpires
                             );
                             if (!changed) return;
                             updates.push({
@@ -48872,8 +48918,6 @@
                                 body: {
                                     filingAuthorityStatus: nextStatus,
                                     filingAuthorityReference: nextReference,
-                                    filingAuthorityReceivedAt: nextReceived,
-                                    filingAuthorityExpiresAt: nextExpires,
                                 },
                             });
                         });
@@ -48938,6 +48982,12 @@
                         { key: "details", label: "Check details" },
                     ],
                     rows: initialPreflight.rows,
+                    onRender: ({ body }) => {
+                        const note = document.createElement("div");
+                        note.className = "operation-review-muted";
+                        note.textContent = "Tip: 'Missing auth code' means the code was not captured on import. Re-import BM CSV with an Auth Code column, or add it in Company detail. Use Full review to set filing authority and authentication code.";
+                        body.prepend(note);
+                    },
                 });
                 if (!preflightConfirmed) return;
 
@@ -49142,8 +49192,6 @@
                 document.getElementById("chCompanyDetailClientId").value = company.clientId || "";
                 document.getElementById("chCompanyDetailFilingAuthorityStatus").value = company.filingAuthorityStatus || "pending";
                 document.getElementById("chCompanyDetailFilingAuthorityReference").value = company.filingAuthorityReference || "";
-                document.getElementById("chCompanyDetailFilingAuthorityReceivedAt").value = isoToLocalDatetimeInput(company.filingAuthorityReceivedAt);
-                document.getElementById("chCompanyDetailFilingAuthorityExpiresAt").value = isoToLocalDatetimeInput(company.filingAuthorityExpiresAt);
                 document.getElementById("chCompanyDetailEmail").value = company.contactEmail || "";
                 document.getElementById("chCompanyDetailPhone").value = company.contactPhone || "";
                 document.getElementById("chCompanyDetailNotes").value = company.notes || "";
@@ -49173,8 +49221,6 @@
                     clientId: document.getElementById("chCompanyDetailClientId")?.value || "",
                     filingAuthorityStatus: document.getElementById("chCompanyDetailFilingAuthorityStatus")?.value || "pending",
                     filingAuthorityReference: document.getElementById("chCompanyDetailFilingAuthorityReference")?.value || "",
-                    filingAuthorityReceivedAt: localDatetimeInputToISOString(document.getElementById("chCompanyDetailFilingAuthorityReceivedAt")?.value),
-                    filingAuthorityExpiresAt: localDatetimeInputToISOString(document.getElementById("chCompanyDetailFilingAuthorityExpiresAt")?.value),
                     contactEmail: document.getElementById("chCompanyDetailEmail")?.value || "",
                     contactPhone: document.getElementById("chCompanyDetailPhone")?.value || "",
                     notes: document.getElementById("chCompanyDetailNotes")?.value || "",
