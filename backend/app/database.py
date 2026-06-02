@@ -1434,6 +1434,8 @@ CREATE TABLE IF NOT EXISTS hmrc_64_8_requests (
     hmrc_submission_reference TEXT NOT NULL DEFAULT '',
     submitted_at TIMESTAMPTZ,
     expected_code_by DATE,
+    reminder_count INTEGER NOT NULL DEFAULT 0,
+    last_reminder_at TIMESTAMPTZ,
     authority_code TEXT NOT NULL DEFAULT '',
     authority_code_received_at TIMESTAMPTZ,
     authority_activated_at TIMESTAMPTZ,
@@ -1462,6 +1464,8 @@ ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS submission_channel TEXT 
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS hmrc_submission_reference TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMPTZ;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS expected_code_by DATE;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS reminder_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMPTZ;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS authority_code TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS authority_code_received_at TIMESTAMPTZ;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS authority_activated_at TIMESTAMPTZ;

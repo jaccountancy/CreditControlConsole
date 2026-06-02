@@ -182,7 +182,10 @@ from .ignition import (
 from .hmrc_648 import (
     capture_hmrc_64_8_code,
     create_hmrc_64_8_request,
+    hmrc_64_8_export_csv,
+    hmrc_64_8_history,
     hmrc_64_8_payload,
+    send_hmrc_64_8_reminder,
     submit_hmrc_64_8_request,
     update_hmrc_64_8_request,
 )
@@ -1254,6 +1257,23 @@ def api_hmrc_64_8(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **hmrc_64_8_payload(user)}
 
 
+@app.get("/api/hmrc-64-8/export.csv")
+def api_hmrc_64_8_export(user: dict = Depends(require_panel_user)):
+    return Response(
+        content=hmrc_64_8_export_csv(user),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="hmrc-64-8-requests.csv"'},
+    )
+
+
+@app.get("/api/hmrc-64-8/history")
+def api_hmrc_64_8_history(
+    limit: int = Query(500, ge=1, le=2000),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **hmrc_64_8_history(user, limit=limit)}
+
+
 @app.post("/api/hmrc-64-8/requests")
 async def api_hmrc_64_8_create(request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
@@ -1276,6 +1296,12 @@ async def api_hmrc_64_8_submit(request_id: str, request: Request, user: dict = D
 async def api_hmrc_64_8_capture_code(request_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "request": capture_hmrc_64_8_code(user, request_id, payload), **hmrc_64_8_payload(user)}
+
+
+@app.post("/api/hmrc-64-8/requests/{request_id}/reminder")
+async def api_hmrc_64_8_reminder(request_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "request": send_hmrc_64_8_reminder(user, request_id, payload), **hmrc_64_8_payload(user)}
 
 
 @app.post("/api/panel/factory-reset")

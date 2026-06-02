@@ -1,4 +1,6 @@
 import json
+import csv
+import io
 from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException, status
@@ -111,6 +113,8 @@ def _serialise_request(row: dict) -> dict:
         "hmrcSubmissionReference": row.get("hmrc_submission_reference") or "",
         "submittedAt": row.get("submitted_at").isoformat() if row.get("submitted_at") else "",
         "expectedCodeBy": row.get("expected_code_by").isoformat() if row.get("expected_code_by") else "",
+        "reminderCount": int(row.get("reminder_count") or 0),
+        "lastReminderAt": row.get("last_reminder_at").isoformat() if row.get("last_reminder_at") else "",
         "authorityCode": row.get("authority_code") or "",
         "authorityCodeReceivedAt": row.get("authority_code_received_at").isoformat() if row.get("authority_code_received_at") else "",
         "authorityActivatedAt": row.get("authority_activated_at").isoformat() if row.get("authority_activated_at") else "",
@@ -177,6 +181,120 @@ def hmrc_64_8_payload(user: dict) -> dict:
     return {"requests": requests, "summary": summary}
 
 
+def hmrc_64_8_export_csv(user: dict) -> str:
+    payload = hmrc_64_8_payload(user)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "request_id",
+            "client_id",
+            "client_name",
+            "services",
+            "status",
+            "submission_channel",
+            "hmrc_submission_reference",
+            "submitted_at",
+            "expected_code_by",
+            "reminder_count",
+            "last_reminder_at",
+            "authority_code_received_at",
+            "authority_activated_at",
+            "created_at",
+            "updated_at",
+        ]
+    )
+    for row in payload.get("requests") or []:
+        writer.writerow(
+            [
+                row.get("id") or "",
+                row.get("clientId") or "",
+                row.get("clientName") or "",
+                ",".join(row.get("services") or []),
+                row.get("status") or "",
+                row.get("submissionChannel") or "",
+                row.get("hmrcSubmissionReference") or "",
+                row.get("submittedAt") or "",
+                row.get("expectedCodeBy") or "",
+                row.get("reminderCount") or 0,
+                row.get("lastReminderAt") or "",
+                row.get("authorityCodeReceivedAt") or "",
+                row.get("authorityActivatedAt") or "",
+                row.get("createdAt") or "",
+                row.get("updatedAt") or "",
+            ]
+        )
+    return output.getvalue()
+
+
+def hmrc_64_8_history(user: dict, limit: int = 500) -> dict:
+    limit_value = max(1, min(int(limit or 500), 2000))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    audit_events.id,
+                    audit_events.entity_id,
+                    audit_events.event_type,
+                    audit_events.payload,
+                    audit_events.created_at,
+                    hmrc_64_8_requests.client_name,
+                    hmrc_64_8_requests.client_id,
+                    hmrc_64_8_requests.status
+                FROM audit_events
+                JOIN hmrc_64_8_requests
+                  ON hmrc_64_8_requests.id::text = audit_events.entity_id
+                WHERE audit_events.entity_type = 'hmrc_64_8_request'
+                  AND hmrc_64_8_requests.created_by_user_id = %s
+                ORDER BY audit_events.created_at DESC
+                LIMIT %s
+                """,
+                (user["id"], limit_value),
+            )
+            audit_rows = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT
+                    client_id,
+                    client_name,
+                    COUNT(*) AS requests_sent,
+                    MAX(submitted_at) AS latest_submitted_at
+                FROM hmrc_64_8_requests
+                WHERE created_by_user_id = %s
+                  AND submitted_at IS NOT NULL
+                GROUP BY client_id, client_name
+                ORDER BY MAX(submitted_at) DESC
+                """,
+                (user["id"],),
+            )
+            sent_rows = cursor.fetchall() or []
+        connection.commit()
+    history = [
+        {
+            "id": str(row.get("id") or ""),
+            "requestId": str(row.get("entity_id") or ""),
+            "eventType": row.get("event_type") or "",
+            "payload": row.get("payload") if isinstance(row.get("payload"), dict) else {},
+            "createdAt": row.get("created_at").isoformat() if row.get("created_at") else "",
+            "clientId": row.get("client_id") or "",
+            "clientName": row.get("client_name") or "",
+            "requestStatus": row.get("status") or "",
+        }
+        for row in audit_rows
+    ]
+    sent_clients = [
+        {
+            "clientId": row.get("client_id") or "",
+            "clientName": row.get("client_name") or "",
+            "requestsSent": int(row.get("requests_sent") or 0),
+            "latestSubmittedAt": row.get("latest_submitted_at").isoformat() if row.get("latest_submitted_at") else "",
+        }
+        for row in sent_rows
+    ]
+    return {"history": history, "sentClients": sent_clients}
+
+
 def create_hmrc_64_8_request(user: dict, payload: dict) -> dict:
     client_name = _text(payload.get("clientName"), 250)
     if not client_name:
@@ -210,12 +328,14 @@ def create_hmrc_64_8_request(user: dict, payload: dict) -> dict:
                     submission_channel,
                     hmrc_submission_reference,
                     expected_code_by,
+                    reminder_count,
+                    last_reminder_at,
                     notes,
                     evidence_links,
                     created_at,
                     updated_at
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s
                 )
                 RETURNING *
                 """,
@@ -238,6 +358,8 @@ def create_hmrc_64_8_request(user: dict, payload: dict) -> dict:
                     _normalise_channel(payload.get("submissionChannel"), default="online"),
                     _text(payload.get("hmrcSubmissionReference"), 120),
                     _parse_date_or_none(payload.get("expectedCodeBy")),
+                    int(payload.get("reminderCount") or 0),
+                    _parse_datetime_or_none(payload.get("lastReminderAt")),
                     _text(payload.get("notes"), 5000),
                     json.dumps(payload.get("evidenceLinks") if isinstance(payload.get("evidenceLinks"), list) else []),
                     now,
@@ -317,6 +439,8 @@ def update_hmrc_64_8_request(user: dict, request_id: str, payload: dict) -> dict
                     hmrc_submission_reference = %s,
                     submitted_at = %s,
                     expected_code_by = %s,
+                    reminder_count = %s,
+                    last_reminder_at = %s,
                     authority_code = %s,
                     authority_code_received_at = %s,
                     authority_activated_at = %s,
@@ -358,6 +482,10 @@ def update_hmrc_64_8_request(user: dict, request_id: str, payload: dict) -> dict
                     else existing.get("hmrc_submission_reference"),
                     _parse_datetime_or_none(payload.get("submittedAt")) if "submittedAt" in payload else existing.get("submitted_at"),
                     _parse_date_or_none(payload.get("expectedCodeBy")) if "expectedCodeBy" in payload else existing.get("expected_code_by"),
+                    int(payload.get("reminderCount") or 0) if "reminderCount" in payload else int(existing.get("reminder_count") or 0),
+                    _parse_datetime_or_none(payload.get("lastReminderAt"))
+                    if "lastReminderAt" in payload
+                    else existing.get("last_reminder_at"),
                     authority_code,
                     authority_code_received_at,
                     authority_activated_at,
@@ -413,3 +541,39 @@ def capture_hmrc_64_8_code(user: dict, request_id: str, payload: dict) -> dict:
             "notes": payload.get("notes") or "",
         },
     )
+
+
+def send_hmrc_64_8_reminder(user: dict, request_id: str, payload: dict) -> dict:
+    existing = _get_user_request(user["id"], request_id)
+    now = utcnow()
+    next_count = int(existing.get("reminder_count") or 0) + 1
+    notes = _text(payload.get("notes"), 5000) or _text(existing.get("notes"), 5000)
+    reminder_method = _text(payload.get("method"), 40).lower() or "phone"
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE hmrc_64_8_requests
+                SET reminder_count = %s,
+                    last_reminder_at = %s,
+                    notes = %s,
+                    updated_at = %s
+                WHERE id = %s
+                  AND created_by_user_id = %s
+                RETURNING *
+                """,
+                (next_count, now, notes, now, request_id, user["id"]),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="HMRC 64-8 request not found.")
+    result = _serialise_request(row)
+    _record_audit_event(
+        "hmrc_64_8_request",
+        result["id"],
+        "hmrc_64_8.reminder_logged",
+        {"method": reminder_method, "reminderCount": next_count},
+        user["id"],
+    )
+    return result

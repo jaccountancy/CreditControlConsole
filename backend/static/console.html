@@ -3851,6 +3851,17 @@
                 border-radius: 999px;
                 font-weight: 850;
             }
+            .status-filter-button::before,
+            .status-filter-button::after,
+            .ledger-section-button::before,
+            .ledger-section-button::after,
+            .status-filter-button .ledger-toolbar-icon::before,
+            .status-filter-button .ledger-toolbar-icon::after,
+            .ledger-section-button .ledger-toolbar-icon::before,
+            .ledger-section-button .ledger-toolbar-icon::after {
+                content: none !important;
+                display: none !important;
+            }
             .ledger-toolbar-icon {
                 width: 16px;
                 height: 16px;
@@ -6939,7 +6950,7 @@
             }
             .late-charge-row {
                 display: grid;
-                grid-template-columns: 28px minmax(0, 1fr) auto auto auto;
+                grid-template-columns: 28px minmax(0, 1fr) auto auto auto auto;
                 gap: 14px;
                 align-items: center;
                 padding: 14px 16px;
@@ -6952,6 +6963,10 @@
             }
             .late-charge-row.is-ineligible {
                 opacity: 0.62;
+            }
+            .late-charge-row.is-dismissed {
+                border-color: rgba(61, 85, 130, 0.22);
+                background: rgba(248, 251, 255, 0.72);
             }
             .late-charge-main strong,
             .late-charge-main span {
@@ -6967,10 +6982,51 @@
                 font-weight: 900;
                 white-space: nowrap;
             }
+            .late-charge-dismiss {
+                min-height: 32px;
+                padding: 0 10px;
+                border-radius: 999px;
+                font-size: 0.7rem;
+                white-space: nowrap;
+            }
             .late-charge-summary {
                 margin: 0 0 18px;
                 color: var(--muted);
                 font-weight: 750;
+            }
+            .bad-debt-ai-list {
+                display: grid;
+                gap: 12px;
+            }
+            .bad-debt-ai-card {
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                background: rgba(255, 255, 255, 0.86);
+                padding: 14px 16px;
+                display: grid;
+                gap: 8px;
+            }
+            .bad-debt-ai-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .bad-debt-ai-head strong {
+                font-size: 0.96rem;
+            }
+            .bad-debt-ai-meta {
+                color: var(--muted);
+                font-size: 0.82rem;
+                font-weight: 750;
+            }
+            .bad-debt-ai-reasons {
+                margin: 0;
+                padding-left: 18px;
+                color: #52637e;
+                font-size: 0.82rem;
+                font-weight: 750;
+                line-height: 1.35;
             }
             .practice-pack-panel {
                 display: grid;
@@ -14204,7 +14260,8 @@
                 }
                 .late-charge-controls,
                 .late-charge-amount,
-                .late-charge-status {
+                .late-charge-status,
+                .late-charge-dismiss {
                     grid-column: 2;
                 }
                 .late-charge-controls {
@@ -15011,6 +15068,31 @@
 
             #hmrc648QueueBody tr.is-selected td {
                 background: var(--blue-soft);
+            }
+
+            .hmrc648-queue-tools {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin: 0 0 10px;
+            }
+
+            .hmrc648-queue-tools label {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 12px;
+                color: var(--muted);
+            }
+
+            .hmrc648-queue-tools select {
+                border: 1px solid var(--line);
+                border-radius: 8px;
+                padding: 8px;
+                background: #fff;
+                color: var(--ink);
+                font: inherit;
             }
 
             .hmrc648-form-grid {
@@ -16065,12 +16147,13 @@
                     <section class="late-charges-screen detail-card" id="badDebtScreen" hidden>
                         <div class="detail-hero">
                             <div class="detail-actions">
+                                <button class="ghost-button" id="badDebtShowAllInvoicesButton" type="button">See all outstanding invoices</button>
                                 <button class="ghost-button" id="selectAllBadDebtButton" type="button">Select all eligible</button>
                                 <button class="primary-button" id="raiseBadDebtButton" type="button">Write off selected</button>
                             </div>
                         </div>
                         <section class="detail-panel">
-                            <div class="late-charge-bulk-toolbar">
+                            <div class="late-charge-bulk-toolbar" id="badDebtToolbar">
                                 <label class="search-wrap late-charge-search">
                                     <span class="search-icon">⌕</span>
                                     <input id="badDebtSearch" type="search" placeholder="Search client or invoice...">
@@ -16834,6 +16917,33 @@
                                 </article>
                                 <article class="hmrc648-card hmrc648-card-wide">
                                     <h4>Submission queue</h4>
+                                    <div class="hmrc648-queue-tools">
+                                        <label>
+                                            Filter
+                                            <select id="hmrc648StatusFilter">
+                                                <option value="all">All</option>
+                                                <option value="draft">Draft</option>
+                                                <option value="prepared">Prepared</option>
+                                                <option value="awaiting_code">Awaiting code</option>
+                                                <option value="code_received">Code received</option>
+                                                <option value="authorised">Authorised</option>
+                                                <option value="rejected">Rejected</option>
+                                                <option value="cancelled">Cancelled</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            <input id="hmrc648OverdueOnly" type="checkbox">
+                                            Overdue code only
+                                        </label>
+                                        <label>
+                                            <input id="hmrc648SentOnly" type="checkbox">
+                                            Sent only
+                                        </label>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" id="hmrc648ExportButton" type="button">Export CSV</button>
+                                            <button class="ghost-button" id="hmrc648ReloadHistoryButton" type="button">Reload history</button>
+                                        </div>
+                                    </div>
                                     <div class="ch-companies-table-wrap">
                                         <table class="ch-table" aria-label="HMRC 64-8 request queue">
                                             <thead>
@@ -16894,10 +17004,41 @@
                                         <div class="detail-actions is-wide">
                                             <button class="ghost-button" id="hmrc648SubmitActionButton" type="button">Mark submitted</button>
                                             <button class="ghost-button" id="hmrc648CaptureCodeButton" type="button">Capture code</button>
+                                            <button class="ghost-button" id="hmrc648ReminderButton" type="button">Log reminder</button>
                                             <button class="primary-button" type="submit">Save changes</button>
                                         </div>
                                     </form>
                                     <p class="settings-help" id="hmrc648DetailStatusMessage">Select a request from the queue.</p>
+                                </article>
+                                <article class="hmrc648-card hmrc648-card-wide">
+                                    <h4>History and audit</h4>
+                                    <p class="detail-meta" id="hmrc648HistoryMeta">Loading history…</p>
+                                    <div class="ch-companies-table-wrap">
+                                        <table class="ch-table" aria-label="HMRC 64-8 history">
+                                            <thead>
+                                                <tr>
+                                                    <th>When</th>
+                                                    <th>Client</th>
+                                                    <th>Event</th>
+                                                    <th>Request</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="hmrc648HistoryBody"></tbody>
+                                        </table>
+                                    </div>
+                                    <h4>Clients sent to HMRC</h4>
+                                    <div class="ch-companies-table-wrap">
+                                        <table class="ch-table" aria-label="HMRC sent clients">
+                                            <thead>
+                                                <tr>
+                                                    <th>Client</th>
+                                                    <th>Requests sent</th>
+                                                    <th>Latest sent</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="hmrc648SentClientsBody"></tbody>
+                                        </table>
+                                    </div>
                                 </article>
                             </section>
                         </section>
@@ -18448,10 +18589,16 @@
             let companySecretarialRiskFilter = "all";
             const hmrc648State = {
                 requests: [],
-                summary: { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 }
+                summary: { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 },
+                history: [],
+                sentClients: []
             };
             let hmrc648Loading = false;
+            let hmrc648HistoryLoading = false;
             let hmrc648SelectedRequestId = "";
+            let hmrc648StatusFilter = "all";
+            let hmrc648OverdueOnly = false;
+            let hmrc648SentOnly = false;
             const topbarViewTitles = {
                 ledger: "Credit Control",
                 client: "Client",
@@ -18896,9 +19043,14 @@
             let practicePackReviewSearchTerm = "";
             let practicePackReviewOwnerFilter = "all";
             let practicePackReviewBulkOwner = "";
-            let lateChargeFilter = ["active", "eligible", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
+            let lateChargeFilter = ["active", "eligible", "dismissed", "charged", "blocked", "all"].includes(persistedUIState.lateChargeFilter)
                 ? persistedUIState.lateChargeFilter
                 : "active";
+            let dismissedLateChargeInvoiceIds = new Set(
+                Array.isArray(persistedUIState.dismissedLateChargeInvoiceIds)
+                    ? persistedUIState.dismissedLateChargeInvoiceIds.map((value) => String(value || "").trim()).filter(Boolean)
+                    : []
+            );
             let badDebtFilter = ["active", "eligible", "not-payment-plan", "written-off", "blocked", "all"].includes(persistedUIState.badDebtFilter)
                 ? persistedUIState.badDebtFilter
                 : "active";
@@ -18908,6 +19060,7 @@
             let badDebtSortDirection = ["asc", "desc"].includes(persistedUIState.badDebtSortDirection)
                 ? persistedUIState.badDebtSortDirection
                 : "desc";
+            let badDebtShowAllOutstanding = false;
             let isOperationRunning = false;
             let operationStartedAt = 0;
             let operationProgressTimer = null;
@@ -18942,6 +19095,7 @@
             const lateChargeFilterLabels = {
                 active: "Active uncharged",
                 eligible: "Ready to raise",
+                dismissed: "Dismissed",
                 charged: "Already charged",
                 blocked: "Blocked",
                 all: "All overdue"
@@ -19224,10 +19378,13 @@
                         companySecretarialSubmit: config.endpoints?.companySecretarialSubmit || "/api/company-secretarial/filings/:filingId/submit",
                         companySecretarialComplete: config.endpoints?.companySecretarialComplete || "/api/company-secretarial/filings/:filingId/complete",
                         hmrc648: config.endpoints?.hmrc648 || "/api/hmrc-64-8",
+                        hmrc648History: config.endpoints?.hmrc648History || "/api/hmrc-64-8/history",
+                        hmrc648Export: config.endpoints?.hmrc648Export || "/api/hmrc-64-8/export.csv",
                         hmrc648Requests: config.endpoints?.hmrc648Requests || "/api/hmrc-64-8/requests",
                         hmrc648Request: config.endpoints?.hmrc648Request || "/api/hmrc-64-8/requests/:requestId",
                         hmrc648Submit: config.endpoints?.hmrc648Submit || "/api/hmrc-64-8/requests/:requestId/submit",
                         hmrc648CaptureCode: config.endpoints?.hmrc648CaptureCode || "/api/hmrc-64-8/requests/:requestId/capture-code",
+                        hmrc648Reminder: config.endpoints?.hmrc648Reminder || "/api/hmrc-64-8/requests/:requestId/reminder",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
                         factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -20001,6 +20158,7 @@
                         meReportClientStatusFilter,
                         meReportViewStateByClient,
                         lateChargeFilter,
+                        dismissedLateChargeInvoiceIds: [...dismissedLateChargeInvoiceIds].slice(0, 5000),
                         badDebtFilter,
                         badDebtSortMode,
                         badDebtSortDirection,
@@ -24690,6 +24848,11 @@
                 return !latePaymentChargeBlockReason(invoice);
             }
 
+            function isLatePaymentChargeDismissed(invoice) {
+                const invoiceId = String(invoice?.id || "").trim();
+                return Boolean(invoiceId && dismissedLateChargeInvoiceIds.has(invoiceId));
+            }
+
             function latePaymentChargeSearchText(invoice) {
                 return [
                     invoice.customerName,
@@ -24710,11 +24873,13 @@
             function latePaymentChargeMatchesFilter(invoice) {
                 const raised = latePaymentChargeRaised(invoice);
                 const eligible = isLatePaymentChargeEligible(invoice);
+                const dismissed = isLatePaymentChargeDismissed(invoice);
                 if (lateChargeFilter === "all") return true;
                 if (lateChargeFilter === "charged") return raised;
-                if (lateChargeFilter === "eligible") return eligible;
-                if (lateChargeFilter === "blocked") return !raised && !eligible;
-                return !raised;
+                if (lateChargeFilter === "eligible") return eligible && !dismissed;
+                if (lateChargeFilter === "dismissed") return dismissed;
+                if (lateChargeFilter === "blocked") return !raised && !eligible && !dismissed;
+                return !raised && !dismissed;
             }
 
             function latePaymentChargeCandidates() {
@@ -24726,17 +24891,20 @@
             function latePaymentChargeReviewStats() {
                 const candidates = latePaymentChargeCandidates();
                 const visible = candidates.filter((invoice) => latePaymentChargeMatchesFilter(invoice) && latePaymentChargeMatchesSearch(invoice));
-                const eligible = candidates.filter(isLatePaymentChargeEligible);
-                const visibleEligible = visible.filter(isLatePaymentChargeEligible);
+                const dismissed = candidates.filter((invoice) => isLatePaymentChargeDismissed(invoice));
+                const eligible = candidates.filter((invoice) => isLatePaymentChargeEligible(invoice) && !isLatePaymentChargeDismissed(invoice));
+                const visibleEligible = visible.filter((invoice) => isLatePaymentChargeEligible(invoice) && !isLatePaymentChargeDismissed(invoice));
                 return {
                     candidates,
                     visible,
                     eligible,
                     visibleEligible,
+                    dismissed,
                     candidateCount: candidates.length,
                     visibleCount: visible.length,
                     eligibleCount: eligible.length,
                     visibleEligibleCount: visibleEligible.length,
+                    dismissedCount: dismissed.length,
                     eligibleAmount: eligible.reduce((sum, invoice) => sum + latePaymentChargeAmount(invoice), 0),
                     visibleEligibleAmount: visibleEligible.reduce((sum, invoice) => sum + latePaymentChargeAmount(invoice), 0),
                 };
@@ -25011,6 +25179,7 @@
 
             function openBadDebtScreen() {
                 activeView = "bad-debt";
+                badDebtShowAllOutstanding = false;
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
@@ -25061,6 +25230,7 @@
                 closeToolbarMenus();
                 renderAll();
                 loadHmrc648Requests();
+                loadHmrc648History();
                 scrollConsoleToTop();
             }
 
@@ -25455,6 +25625,14 @@
                 return "is-info";
             }
 
+            function hmrc648HistoryEventLabel(eventType) {
+                const value = String(eventType || "").toLowerCase();
+                if (value === "hmrc_64_8.created") return "Request created";
+                if (value === "hmrc_64_8.updated") return "Request updated";
+                if (value === "hmrc_64_8.reminder_logged") return "Reminder logged";
+                return value || "Audit event";
+            }
+
             function hmrc648ClientOptions() {
                 const customers = Array.isArray(state.customers) ? state.customers : [];
                 return customers
@@ -25470,6 +25648,21 @@
 
             function hmrc648CurrentRequest() {
                 return (hmrc648State.requests || []).find((row) => String(row.id || "") === String(hmrc648SelectedRequestId || "")) || null;
+            }
+
+            function hmrc648FilteredRequests() {
+                const now = new Date();
+                return (hmrc648State.requests || []).filter((row) => {
+                    const statusValue = String(row?.status || "draft").toLowerCase();
+                    if (hmrc648StatusFilter !== "all" && statusValue !== hmrc648StatusFilter) return false;
+                    if (hmrc648SentOnly && !row?.submittedAt) return false;
+                    if (hmrc648OverdueOnly) {
+                        const due = row?.expectedCodeBy ? new Date(row.expectedCodeBy) : null;
+                        if (!due || Number.isNaN(due.getTime()) || due >= now) return false;
+                        if (["authorised", "cancelled", "rejected"].includes(statusValue)) return false;
+                    }
+                    return true;
+                });
             }
 
             function hmrc648SetCreateStatus(message, tone = "muted") {
@@ -25549,7 +25742,10 @@
                 const meta = document.getElementById("hmrc648StatusMeta");
                 const queueBody = document.getElementById("hmrc648QueueBody");
                 const kpiGrid = document.getElementById("hmrc648KpiGrid");
-                if (!meta || !queueBody || !kpiGrid) return;
+                const historyMeta = document.getElementById("hmrc648HistoryMeta");
+                const historyBody = document.getElementById("hmrc648HistoryBody");
+                const sentClientsBody = document.getElementById("hmrc648SentClientsBody");
+                if (!meta || !queueBody || !kpiGrid || !historyMeta || !historyBody || !sentClientsBody) return;
                 hmrc648FillCreateClientOptions();
                 const summary = hmrc648State.summary || { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 };
                 kpiGrid.innerHTML = [
@@ -25559,15 +25755,24 @@
                     ["Authorised", summary.authorised || 0],
                     ["Code overdue", summary.overdueCode || 0],
                 ].map(([label, value]) => `<article><span>${escapeHTML(label)}</span><strong>${Number(value || 0).toLocaleString("en-GB")}</strong></article>`).join("");
+                const statusFilter = document.getElementById("hmrc648StatusFilter");
+                const overdueToggle = document.getElementById("hmrc648OverdueOnly");
+                const sentToggle = document.getElementById("hmrc648SentOnly");
+                if (statusFilter) statusFilter.value = hmrc648StatusFilter;
+                if (overdueToggle) overdueToggle.checked = hmrc648OverdueOnly;
+                if (sentToggle) sentToggle.checked = hmrc648SentOnly;
+                const filteredRequests = hmrc648FilteredRequests();
                 if (hmrc648Loading) {
                     meta.textContent = "Loading HMRC 64-8 requests…";
                 } else if (!hmrc648State.requests.length) {
                     meta.textContent = "No HMRC 64-8 requests yet. Create the first submission request for SA, PAYE, or CT.";
+                } else if (!filteredRequests.length) {
+                    meta.textContent = "No requests match the current filters.";
                 } else {
-                    meta.textContent = `${hmrc648State.requests.length.toLocaleString("en-GB")} request(s) loaded. Capture authority codes as soon as letters are received from clients.`;
+                    meta.textContent = `${filteredRequests.length.toLocaleString("en-GB")} of ${hmrc648State.requests.length.toLocaleString("en-GB")} request(s) shown. Capture authority codes as soon as letters are received from clients.`;
                 }
-                queueBody.innerHTML = hmrc648State.requests.length
-                    ? hmrc648State.requests.map((row) => {
+                queueBody.innerHTML = filteredRequests.length
+                    ? filteredRequests.map((row) => {
                         const rowId = String(row.id || "");
                         const services = (row.services || []).length ? row.services.join(", ") : "None";
                         const isSelected = rowId === String(hmrc648SelectedRequestId || "");
@@ -25582,10 +25787,34 @@
                             </td>
                         </tr>`;
                     }).join("")
-                    : `<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No requests</p><h4>Create your first HMRC 64-8 request</h4><p>Use the create form to initiate authority letters for SA, PAYE, and CT.</p></div></td></tr>`;
+                    : `<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No matching requests</p><h4>Adjust queue filters</h4><p>Try clearing filters or create a new HMRC 64-8 request.</p></div></td></tr>`;
                 const activeRequest = hmrc648CurrentRequest();
-                if (activeRequest) hmrc648PopulateDetail(activeRequest);
-                else hmrc648ResetDetailForm();
+                if (activeRequest) {
+                    hmrc648PopulateDetail(activeRequest);
+                } else if (hmrc648State.requests.length) {
+                    hmrc648SelectedRequestId = String(hmrc648State.requests[0].id || "");
+                    hmrc648PopulateDetail(hmrc648CurrentRequest());
+                } else {
+                    hmrc648ResetDetailForm();
+                }
+                historyMeta.textContent = hmrc648HistoryLoading
+                    ? "Loading history…"
+                    : `${(hmrc648State.history || []).length.toLocaleString("en-GB")} audit entries · ${(hmrc648State.sentClients || []).length.toLocaleString("en-GB")} clients sent to HMRC.`;
+                historyBody.innerHTML = (hmrc648State.history || []).length
+                    ? (hmrc648State.history || []).map((entry) => `<tr>
+                        <td>${escapeHTML(entry.createdAt ? chFormatDateTime(entry.createdAt) : "—")}</td>
+                        <td>${escapeHTML(entry.clientName || "—")}</td>
+                        <td>${escapeHTML(hmrc648HistoryEventLabel(entry.eventType))}</td>
+                        <td>${escapeHTML(entry.requestId || "—")}</td>
+                    </tr>`).join("")
+                    : `<tr><td colspan="4" class="ch-empty-state">No HMRC 64-8 audit history yet.</td></tr>`;
+                sentClientsBody.innerHTML = (hmrc648State.sentClients || []).length
+                    ? (hmrc648State.sentClients || []).map((row) => `<tr>
+                        <td>${escapeHTML(row.clientName || row.clientId || "—")}</td>
+                        <td>${Number(row.requestsSent || 0).toLocaleString("en-GB")}</td>
+                        <td>${escapeHTML(row.latestSubmittedAt ? chFormatDateTime(row.latestSubmittedAt) : "—")}</td>
+                    </tr>`).join("")
+                    : `<tr><td colspan="3" class="ch-empty-state">No submitted HMRC 64-8 records yet.</td></tr>`;
             }
 
             async function loadHmrc648Requests(force = false) {
@@ -25605,6 +25834,24 @@
                     else if (activeView === "hmrc-64-8s") showToast(error?.message || "Unable to load HMRC 64-8 requests", "error");
                 } finally {
                     hmrc648Loading = false;
+                    if (activeView === "hmrc-64-8s") renderHmrc648Screen();
+                }
+            }
+
+            async function loadHmrc648History(force = false) {
+                if (hmrc648HistoryLoading && !force) return;
+                hmrc648HistoryLoading = true;
+                if (activeView === "hmrc-64-8s") renderHmrc648Screen();
+                try {
+                    const payload = await requestJSON(`${api.endpoints.hmrc648History}?limit=500`);
+                    hmrc648State.history = Array.isArray(payload?.history) ? payload.history : [];
+                    hmrc648State.sentClients = Array.isArray(payload?.sentClients) ? payload.sentClients : [];
+                } catch (error) {
+                    console.error("Unable to load HMRC 64-8 history", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else if (activeView === "hmrc-64-8s") showToast(error?.message || "Unable to load HMRC 64-8 history", "error");
+                } finally {
+                    hmrc648HistoryLoading = false;
                     if (activeView === "hmrc-64-8s") renderHmrc648Screen();
                 }
             }
@@ -25638,6 +25885,7 @@
                     document.getElementById("hmrc648CreateIncludeSa").checked = true;
                     hmrc648SetCreateStatus("Request created.", "success");
                     showToast("HMRC 64-8 request created", "success");
+                    loadHmrc648History(true);
                     renderHmrc648Screen();
                 } catch (error) {
                     console.error("Unable to create HMRC 64-8 request", error);
@@ -25670,6 +25918,7 @@
                     hmrc648State.summary = payload?.summary || hmrc648State.summary;
                     hmrc648SetDetailStatus("Saved.", "success");
                     showToast("HMRC 64-8 request saved", "success");
+                    loadHmrc648History(true);
                     renderHmrc648Screen();
                 } catch (error) {
                     console.error("Unable to save HMRC 64-8 request", error);
@@ -25698,6 +25947,7 @@
                     hmrc648State.summary = payload?.summary || hmrc648State.summary;
                     hmrc648SetDetailStatus("Submission status updated.", "success");
                     showToast("Request marked as submitted to HMRC", "success");
+                    loadHmrc648History(true);
                     renderHmrc648Screen();
                 } catch (error) {
                     console.error("Unable to mark HMRC 64-8 as submitted", error);
@@ -25730,6 +25980,7 @@
                     hmrc648State.summary = payload?.summary || hmrc648State.summary;
                     hmrc648SetDetailStatus(activateNow ? "Code captured and request marked authorised." : "Code captured.", "success");
                     showToast(activateNow ? "Authority code captured and marked authorised" : "Authority code captured", "success");
+                    loadHmrc648History(true);
                     renderHmrc648Screen();
                 } catch (error) {
                     console.error("Unable to capture HMRC 64-8 code", error);
@@ -25739,13 +25990,92 @@
                 }
             }
 
+            async function logHmrc648Reminder() {
+                const requestId = String(document.getElementById("hmrc648DetailId")?.value || "");
+                if (!requestId) {
+                    hmrc648SetDetailStatus("Select a request first.", "error");
+                    return;
+                }
+                const method = String(window.prompt("Reminder method (phone/email/sms/post)", "phone") || "").trim().toLowerCase();
+                if (!method) return;
+                hmrc648SetDetailStatus("Logging reminder…", "muted");
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.hmrc648Reminder,
+                        { method: "POST", body: JSON.stringify({ method, notes: document.getElementById("hmrc648DetailNotes")?.value || "" }) },
+                        { requestId }
+                    );
+                    hmrc648State.requests = Array.isArray(payload?.requests) ? payload.requests : hmrc648State.requests;
+                    hmrc648State.summary = payload?.summary || hmrc648State.summary;
+                    hmrc648SetDetailStatus("Reminder logged.", "success");
+                    showToast("Reminder logged for HMRC 64-8 follow-up", "success");
+                    await loadHmrc648History(true);
+                    renderHmrc648Screen();
+                } catch (error) {
+                    console.error("Unable to log HMRC 64-8 reminder", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    hmrc648SetDetailStatus(error?.message || "Unable to log reminder.", "error");
+                    showToast(error?.message || "Unable to log reminder", "error");
+                }
+            }
+
+            async function exportHmrc648Csv() {
+                try {
+                    const response = await fetch(endpointURL(api.endpoints.hmrc648Export), {
+                        method: "GET",
+                        credentials: "include",
+                        headers: {
+                            ...api.headers,
+                            ...panelAuthHeaders(),
+                        },
+                    });
+                    if (!response.ok) {
+                        const message = await response.text().catch(() => "");
+                        throw new Error(message || `Unable to export CSV (${response.status})`);
+                    }
+                    const blob = await response.blob();
+                    const disposition = response.headers.get("Content-Disposition") || "";
+                    const filenameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                    const filename = filenameMatch?.[1] || "hmrc-64-8-requests.csv";
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    showToast("HMRC 64-8 CSV exported", "success");
+                } catch (error) {
+                    console.error("Unable to export HMRC 64-8 CSV", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    showToast(error?.message || "Unable to export HMRC 64-8 CSV", "error");
+                }
+            }
+
             function wireHmrc648UI() {
-                document.getElementById("hmrc648RefreshButton")?.addEventListener("click", () => loadHmrc648Requests(true));
+                document.getElementById("hmrc648RefreshButton")?.addEventListener("click", () => {
+                    loadHmrc648Requests(true);
+                    loadHmrc648History(true);
+                });
+                document.getElementById("hmrc648ExportButton")?.addEventListener("click", exportHmrc648Csv);
+                document.getElementById("hmrc648ReloadHistoryButton")?.addEventListener("click", () => loadHmrc648History(true));
                 document.getElementById("hmrc648CreateForm")?.addEventListener("submit", submitHmrc648Create);
                 document.getElementById("hmrc648CreateClient")?.addEventListener("change", hmrc648ApplyClientPreset);
                 document.getElementById("hmrc648DetailForm")?.addEventListener("submit", submitHmrc648Detail);
                 document.getElementById("hmrc648SubmitActionButton")?.addEventListener("click", markHmrc648Submitted);
                 document.getElementById("hmrc648CaptureCodeButton")?.addEventListener("click", captureHmrc648Code);
+                document.getElementById("hmrc648ReminderButton")?.addEventListener("click", logHmrc648Reminder);
+                document.getElementById("hmrc648StatusFilter")?.addEventListener("change", (event) => {
+                    hmrc648StatusFilter = String(event.target.value || "all");
+                    renderHmrc648Screen();
+                });
+                document.getElementById("hmrc648OverdueOnly")?.addEventListener("change", (event) => {
+                    hmrc648OverdueOnly = !!event.target.checked;
+                    renderHmrc648Screen();
+                });
+                document.getElementById("hmrc648SentOnly")?.addEventListener("change", (event) => {
+                    hmrc648SentOnly = !!event.target.checked;
+                    renderHmrc648Screen();
+                });
                 document.getElementById("hmrc648QueueBody")?.addEventListener("click", (event) => {
                     const button = event.target.closest?.("[data-hmrc648-select]");
                     const row = event.target.closest?.("[data-hmrc648-row-id]");
@@ -38878,7 +39208,10 @@
                 const target = document.getElementById("badDebtList");
                 const summary = document.getElementById("badDebtSummary");
                 const raiseButton = document.getElementById("raiseBadDebtButton");
-                if (!screen || !target || !summary || !raiseButton) return;
+                const selectAllButton = document.getElementById("selectAllBadDebtButton");
+                const toolbar = document.getElementById("badDebtToolbar");
+                const showAllButton = document.getElementById("badDebtShowAllInvoicesButton");
+                if (!screen || !target || !summary || !raiseButton || !selectAllButton || !toolbar || !showAllButton) return;
 
                 const stats = badDebtReviewStats();
                 const invoices = stats.visible;
@@ -38888,6 +39221,54 @@
                 const filterLabel = badDebtFilterLabels[badDebtFilter] || badDebtFilterLabels.active;
                 const sortLabel = badDebtSortLabels[badDebtSortMode] || badDebtSortLabels["invoice-date"];
                 const sortDirectionLabel = badDebtSortDirection === "asc" ? "ascending" : "descending";
+                const aiSuggested = stats.eligible.slice(0, 6);
+                const aiSuggestedValue = aiSuggested.reduce((sum, invoice) => sum + Number(invoice.amountDue || 0), 0);
+
+                showAllButton.hidden = badDebtShowAllOutstanding;
+                toolbar.hidden = !badDebtShowAllOutstanding;
+                selectAllButton.hidden = !badDebtShowAllOutstanding;
+                raiseButton.hidden = !badDebtShowAllOutstanding;
+                if (!badDebtShowAllOutstanding) {
+                    summary.textContent = aiSuggested.length
+                        ? `AI suggested ${aiSuggested.length.toLocaleString("en-GB")} write-off${aiSuggested.length === 1 ? "" : "s"} worth ${formatCurrency(aiSuggestedValue)}.`
+                        : "AI has no write-off suggestions right now.";
+                    target.innerHTML = "";
+                    if (!aiSuggested.length) {
+                        const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
+                        emptyState.querySelector(".eyebrow").textContent = "No AI suggestions";
+                        emptyState.querySelector("h4").textContent = "No write-off candidates right now";
+                        emptyState.querySelector("p:last-child").textContent = "Use “See all outstanding invoices” to review the full bad debt queue manually.";
+                        target.appendChild(emptyState);
+                        return;
+                    }
+                    const suggestionWrap = document.createElement("div");
+                    suggestionWrap.className = "bad-debt-ai-list";
+                    aiSuggested.forEach((invoice) => {
+                        const reasons = [];
+                        const overdueDays = Number(invoice.overdueDays || 0);
+                        if (overdueDays >= 180) reasons.push(`Overdue for ${overdueDays.toLocaleString("en-GB")} days.`);
+                        else if (overdueDays >= 90) reasons.push(`Overdue for ${overdueDays.toLocaleString("en-GB")} days with sustained non-payment risk.`);
+                        else reasons.push(`${overdueDays.toLocaleString("en-GB")} days overdue and still outstanding.`);
+                        if (invoiceCategory(invoice) === "legal") reasons.push("Account currently marked Legal.");
+                        if (invoiceCategory(invoice) === "query") reasons.push("Account currently marked Query.");
+                        if (Number(invoice.amountDue || 0) >= 5000) reasons.push(`High balance exposure of ${formatCurrency(invoice.amountDue || 0)}.`);
+                        else reasons.push(`Current outstanding balance is ${formatCurrency(invoice.amountDue || 0)}.`);
+                        const card = document.createElement("article");
+                        card.className = "bad-debt-ai-card";
+                        card.innerHTML = `
+                            <div class="bad-debt-ai-head">
+                                <strong>${escapeHTML(invoice.customerName || "Unnamed client")} · ${escapeHTML(invoice.invoiceNumber || "Invoice")}</strong>
+                                <span class="late-charge-amount">${formatCurrency(invoice.amountDue || 0)}</span>
+                            </div>
+                            <p class="bad-debt-ai-meta">Due ${escapeHTML(formatDate(invoice.dueDate))} · ${overdueDays.toLocaleString("en-GB")} days overdue</p>
+                            <ul class="bad-debt-ai-reasons">${reasons.map((reason) => `<li>${escapeHTML(reason)}</li>`).join("")}</ul>
+                        `;
+                        suggestionWrap.appendChild(card);
+                    });
+                    target.appendChild(suggestionWrap);
+                    return;
+                }
+
                 summary.textContent = stats.candidateCount
                     ? `Showing ${invoices.length.toLocaleString("en-GB")} of ${stats.candidateCount.toLocaleString("en-GB")} invoice${stats.candidateCount === 1 ? "" : "s"} (${filterLabel.toLowerCase()}). Sorted by ${sortLabel.toLowerCase()} (${sortDirectionLabel}). ${stats.visibleEligibleCount.toLocaleString("en-GB")} visible write-off${stats.visibleEligibleCount === 1 ? "" : "s"} can be raised, totalling ${formatCurrency(stats.visibleEligibleAmount)}.`
                     : "No outstanding invoices are available for bad debt review.";
@@ -38920,7 +39301,6 @@
                         ? "Showing invoices not in payment plan"
                         : "Hide invoices already in payment plan";
                 }
-                const selectAllButton = document.getElementById("selectAllBadDebtButton");
                 if (selectAllButton) {
                     selectAllButton.disabled = stats.visibleEligibleCount === 0 || isOperationRunning;
                     selectAllButton.textContent = stats.visibleEligibleCount ? `Select all ${stats.visibleEligibleCount.toLocaleString("en-GB")} eligible` : "No eligible write-offs";
@@ -39057,7 +39437,14 @@
                 const filteredCount = filteredRiskAssessmentDraftClients().length;
 
                 if (builder) builder.hidden = !riskAssessmentBuilderOpen;
-                if (createButton) createButton.disabled = riskAssessmentGenerating;
+                if (createButton) {
+                    createButton.disabled = riskAssessmentGenerating || (riskAssessmentBuilderOpen && !selectedCount);
+                    createButton.textContent = riskAssessmentGenerating
+                        ? "Generating..."
+                        : riskAssessmentBuilderOpen
+                            ? (selectedCount ? `Create selected (${selectedCount})` : "Select clients to create")
+                            : "Create risk assessments";
+                }
                 if (zipButton) zipButton.disabled = !riskAssessments.length || riskAssessmentGenerating;
                 if (generateButton) {
                     generateButton.disabled = riskAssessmentGenerating || !selectedCount;
@@ -42924,7 +43311,13 @@
                 const createButton = document.getElementById("riskAssessmentsCreateButton");
                 if (createButton && createButton.dataset.riskWired !== "true") {
                     createButton.dataset.riskWired = "true";
-                    createButton.addEventListener("click", openRiskAssessmentBuilder);
+                    createButton.addEventListener("click", () => {
+                        if (!riskAssessmentBuilderOpen) {
+                            openRiskAssessmentBuilder();
+                            return;
+                        }
+                        generateRiskAssessmentsForSelection();
+                    });
                 }
                 const cancelButton = document.getElementById("riskAssessmentsCancelButton");
                 if (cancelButton && cancelButton.dataset.riskWired !== "true") {
@@ -45635,11 +46028,13 @@
                 if (raiseLateChargesButton) raiseLateChargesButton.addEventListener("click", raiseLatePaymentCharges);
                 const badDebtSearch = document.getElementById("badDebtSearch");
                 if (badDebtSearch) badDebtSearch.addEventListener("input", (event) => {
+                    badDebtShowAllOutstanding = true;
                     badDebtSearchTerm = event.target.value;
                     renderBadDebtScreen();
                 });
                 const badDebtFilterSelect = document.getElementById("badDebtFilterSelect");
                 if (badDebtFilterSelect) badDebtFilterSelect.addEventListener("change", (event) => {
+                    badDebtShowAllOutstanding = true;
                     badDebtFilter = badDebtFilterLabels[event.target.value] ? event.target.value : "active";
                     selectedBadDebtInvoiceIds.clear();
                     persistState();
@@ -45647,21 +46042,29 @@
                 });
                 const badDebtSortSelect = document.getElementById("badDebtSortSelect");
                 if (badDebtSortSelect) badDebtSortSelect.addEventListener("change", (event) => {
+                    badDebtShowAllOutstanding = true;
                     badDebtSortMode = badDebtSortLabels[event.target.value] ? event.target.value : "invoice-date";
                     persistState();
                     renderBadDebtScreen();
                 });
                 const badDebtSortDirectionButton = document.getElementById("badDebtSortDirectionButton");
                 if (badDebtSortDirectionButton) badDebtSortDirectionButton.addEventListener("click", () => {
+                    badDebtShowAllOutstanding = true;
                     badDebtSortDirection = badDebtSortDirection === "asc" ? "desc" : "asc";
                     persistState();
                     renderBadDebtScreen();
                 });
                 const badDebtPaymentPlanFilterButton = document.getElementById("badDebtPaymentPlanFilterButton");
                 if (badDebtPaymentPlanFilterButton) badDebtPaymentPlanFilterButton.addEventListener("click", () => {
+                    badDebtShowAllOutstanding = true;
                     badDebtFilter = badDebtFilter === "not-payment-plan" ? "active" : "not-payment-plan";
                     selectedBadDebtInvoiceIds.clear();
                     persistState();
+                    renderBadDebtScreen();
+                });
+                const badDebtShowAllInvoicesButton = document.getElementById("badDebtShowAllInvoicesButton");
+                if (badDebtShowAllInvoicesButton) badDebtShowAllInvoicesButton.addEventListener("click", () => {
+                    badDebtShowAllOutstanding = true;
                     renderBadDebtScreen();
                 });
                 // Legacy confirmation-statement demo controls are intentionally disabled.
@@ -47353,6 +47756,7 @@
                 }
                 if (activeView === "hmrc-64-8s") {
                     loadHmrc648Requests();
+                    loadHmrc648History();
                 }
                 const activePanelSyncRun = activeSyncRunFromPanel(panelPayload);
                 if (returnedFromXeroConnection) {
