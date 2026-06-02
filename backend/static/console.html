@@ -13525,7 +13525,7 @@
                                                     <input id="clientShowAllocatedToggle" type="checkbox">
                                                     <span>Show allocated</span>
                                                 </label>
-                                                <button class="ghost-button" id="clientTransactionsRefreshButton" type="button">Refresh from Xero</button>
+                                                <button class="ghost-button" id="clientBackToClientsButton" type="button">Back to clients</button>
                                                 <button class="ghost-button" id="clientBulkInvoiceNoteButton" type="button">Add note to selected</button>
                                                 <button class="ghost-button" id="clientBulkWriteOffButton" type="button">Write off selected</button>
                                             </div>
@@ -17646,7 +17646,14 @@
                         assignCurrentClientManager();
                         return;
                     }
-                    const refreshTransactionsButton = event.target.closest?.("#refreshTransactionsButton, #clientTransactionsRefreshButton, #actionCenterRefreshTransactionsButton");
+                    const clientBackToClientsButton = event.target.closest?.("#clientBackToClientsButton");
+                    if (clientBackToClientsButton) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        returnToLedgerView();
+                        return;
+                    }
+                    const refreshTransactionsButton = event.target.closest?.("#refreshTransactionsButton, #actionCenterRefreshTransactionsButton");
                     if (refreshTransactionsButton) {
                         event.preventDefault();
                         event.stopPropagation();
@@ -19212,12 +19219,10 @@
                 const creditList = document.getElementById("unallocatedCreditList");
                 const allocatedList = document.getElementById("allocatedCreditList");
                 const refreshButton = document.getElementById("refreshTransactionsButton");
-                const clientRefreshButton = document.getElementById("clientTransactionsRefreshButton");
                 if (!summary || !invoiceList || !creditList || !allocatedList) return;
 
                 const isLoadingForClient = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
                 if (refreshButton) refreshButton.disabled = isLoadingForClient;
-                if (clientRefreshButton) clientRefreshButton.disabled = isLoadingForClient;
                 if (!client) {
                     summary.innerHTML = "";
                     renderTransactionEmpty(invoiceList, "No client", "Select a client", "Unallocated Xero invoice balances will appear here.");
@@ -19642,8 +19647,6 @@
                 const validIds = new Set(rows.filter((row) => row.selectable).map((row) => row.invoiceId));
                 selectedClientInvoiceIds = new Set([...selectedClientInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
                 const isLoading = Boolean(client?.id && customerTransactionLoading.has(String(client.id)));
-                const refreshButton = document.getElementById("clientTransactionsRefreshButton");
-                if (refreshButton) refreshButton.disabled = isLoading;
                 if (clientStatementEmptyState(target, client, rows, isLoading)) {
                     updateClientInvoiceBulkNoteButton();
                     return;
@@ -33063,12 +33066,12 @@
                 });
                 document.getElementById("clientBulkInvoiceNoteButton")?.addEventListener("click", addNoteToSelectedClientInvoices);
                 document.getElementById("clientBulkWriteOffButton")?.addEventListener("click", writeOffSelectedClientInvoices);
+                document.getElementById("clientBackToClientsButton")?.addEventListener("click", returnToLedgerView);
                 document.getElementById("clientShowAllocatedToggle")?.addEventListener("change", (event) => {
                     showAllocatedClientTransactions = Boolean(event.target.checked);
                     renderClientScreen();
                 });
                 document.getElementById("refreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
-                document.getElementById("clientTransactionsRefreshButton")?.addEventListener("click", refreshCustomerTransactions);
                 document.getElementById("actionCenterRefreshTransactionsButton")?.addEventListener("click", refreshCustomerTransactions);
                 document.getElementById("actionCenterAssignClientManagerButton")?.addEventListener("click", () => {
                     document.getElementById("assignClientManagerButton")?.click();
