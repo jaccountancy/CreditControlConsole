@@ -17005,7 +17005,7 @@
                                         <span class="ch-settings-status is-muted" id="chImportStatus"></span>
                                     </div>
                                     <div class="ch-import-tools" id="chImportTools" hidden>
-                                        <input id="chImportPreviewSearch" type="search" placeholder="Search preview rows by company, number, manager, deadline or notes..." aria-label="Search import preview rows">
+                                        <input id="chImportPreviewSearch" type="search" placeholder="Search preview rows by company, number, manager, CH deadline or notes..." aria-label="Search import preview rows">
                                     </div>
                                     <div class="ch-import-summary" id="chImportSummary" hidden></div>
                                     <div class="ch-companies-table-wrap" id="chImportPreviewWrap" hidden>
@@ -17019,6 +17019,7 @@
                                                     <th>Company / client</th>
                                                     <th>Period end</th>
                                                     <th>Deadline</th>
+                                                    <th>CH Deadline</th>
                                                     <th>Manager</th>
                                                     <th>Auth code</th>
                                                     <th>Notes / errors</th>
@@ -48539,6 +48540,7 @@
                             data.assigned_staff,
                             data.period_end_iso || data.period_end,
                             data.due_date_iso || data.due_date,
+                            data.ch_due_date_iso || data.ch_due_date,
                             data.notes,
                             row?.lineNumber,
                             row?.action,
@@ -48554,7 +48556,7 @@
                 const start = (currentPage - 1) * pageSize;
                 const end = Math.min(start + pageSize, totalRows);
                 if (!filteredRows.length) {
-                    body.innerHTML = `<tr><td colspan="10" class="ch-empty-state">No preview rows match your search.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="11" class="ch-empty-state">No preview rows match your search.</td></tr>`;
                 } else {
                     body.innerHTML = filteredRows.slice(start, end).map((row) => {
                     const action = row.action || (row.errors?.length ? "error" : "skip");
@@ -48563,6 +48565,7 @@
                     const included = row.included !== false && action !== "error";
                     const periodEnd = row.data?.period_end_iso || row.data?.period_end || "";
                     const deadline = row.data?.due_date_iso || row.data?.due_date || "";
+                    const chDeadline = row.data?.ch_due_date_iso || "";
                     const manager = row.data?.manager_reference || row.data?.assigned_staff || "";
                     const companyName = row.data?.company_name || "";
                     const clientName = row.data?.client_name || row.data?.client_id || "";
@@ -48576,6 +48579,7 @@
                         <td>${escapeHTML(companyLabel)}${showClientSubline ? `<br><small>${escapeHTML(clientName)}</small>` : ""}</td>
                         <td>${escapeHTML(periodEnd ? chFormatDate(periodEnd) : "—")}</td>
                         <td>${escapeHTML(deadline ? chFormatDate(deadline) : "—")}</td>
+                        <td>${escapeHTML(chDeadline ? chFormatDate(chDeadline) : "—")}</td>
                         <td>${escapeHTML(manager || "—")}</td>
                         <td>${row.data?.auth_code ? "✓ in file" : "—"}</td>
                         <td>${escapeHTML(errorText || warnings || (row.existingCompany ? `Replaces ${row.existingCompany.companyName || ""}` : ""))}</td>

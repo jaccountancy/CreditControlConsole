@@ -2324,6 +2324,56 @@ def _existing_companies_by_number(numbers: list[str]) -> dict[str, dict]:
     return {row["company_number"]: row for row in rows}
 
 
+def _import_preview_deadline_sort_key(row: dict) -> tuple[int, date, int]:
+    data = row.get("data") or {}
+    ch_due = _parse_date_from_text(data.get("ch_due_date_iso") or data.get("ch_due_date"))
+    file_due = _parse_date_from_text(data.get("due_date_iso") or data.get("due_date"))
+    deadline = ch_due or file_due
+    line_number = int(row.get("lineNumber") or 0)
+    return (0 if deadline else 1, deadline or date.max, line_number)
+
+
+def _is_blank_text(value: object) -> bool:
+    return not str(value or "").strip()
+
+
+def _import_set_date_fields(payload: dict[str, str], field_prefix: str, value: date | None) -> None:
+    iso_key = f"{field_prefix}_iso"
+    text_key = field_prefix
+    if not isinstance(value, date):
+        return
+    if _is_blank_text(payload.get(iso_key)):
+        payload[iso_key] = value.isoformat()
+    if _is_blank_text(payload.get(text_key)):
+        payload[text_key] = value.isoformat()
+
+
+def _apply_import_enrichment_from_existing(row_payload: dict[str, str], existing_row: dict | None) -> None:
+    if not isinstance(existing_row, dict):
+        return
+    if _is_blank_text(row_payload.get("company_name")):
+        row_payload["company_name"] = _coerce_text(existing_row.get("company_name"), 250)
+    if _is_blank_text(row_payload.get("client_name")):
+        row_payload["client_name"] = _coerce_text(existing_row.get("client_name"), 250)
+    if _is_blank_text(row_payload.get("assigned_staff")):
+        row_payload["assigned_staff"] = _coerce_text(existing_row.get("assigned_staff_name"), 250)
+    _import_set_date_fields(row_payload, "period_end", existing_row.get("next_made_up_to_date"))
+    _import_set_date_fields(row_payload, "due_date", existing_row.get("next_due_date"))
+    next_due_date = existing_row.get("next_due_date")
+    row_payload["ch_due_date_iso"] = next_due_date.isoformat() if isinstance(next_due_date, date) else ""
+
+
+def _apply_import_enrichment_from_snapshot(row_payload: dict[str, str], snapshot: dict | None) -> None:
+    if not isinstance(snapshot, dict):
+        return
+    if _is_blank_text(row_payload.get("company_name")):
+        row_payload["company_name"] = _coerce_text(snapshot.get("companyName"), 250)
+    _import_set_date_fields(row_payload, "period_end", snapshot.get("nextMadeUpToDate"))
+    _import_set_date_fields(row_payload, "due_date", snapshot.get("nextDueDate"))
+    next_due_date = snapshot.get("nextDueDate")
+    row_payload["ch_due_date_iso"] = next_due_date.isoformat() if isinstance(next_due_date, date) else ""
+
+
 def parse_clients_import(content: bytes, filename: str) -> dict:
     text = _decode_upload(content)
     if not text.strip():
@@ -2400,8 +2450,52 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
             "warnings": [],
         })
 
-    valid_numbers = [row["data"]["company_number"] for row in parsed_rows if row["data"]["company_number"] and not row["errors"]]
+    valid_numbers = [
+        row["data"]["company_number"]
+        for row in parsed_rows
+        if row["data"]["company_number"] and _is_valid_company_number(row["data"]["company_number"])
+    ]
     existing = _existing_companies_by_number(valid_numbers)
+    snapshot_cache: dict[str, dict | None] = {}
+    snapshot_lookup_blocked = False
+
+    for row in parsed_rows:
+        data = row["data"]
+        company_number = data.get("company_number") or ""
+        if not company_number or not _is_valid_company_number(company_number):
+            data["ch_due_date_iso"] = ""
+            continue
+
+        _apply_import_enrichment_from_existing(data, existing.get(company_number))
+        needs_snapshot = (
+            _is_blank_text(data.get("company_name"))
+            or _is_blank_text(data.get("period_end_iso"))
+            or _is_blank_text(data.get("due_date_iso"))
+            or _is_blank_text(data.get("ch_due_date_iso"))
+        )
+        if needs_snapshot and not snapshot_lookup_blocked:
+            if company_number not in snapshot_cache:
+                try:
+                    snapshot_cache[company_number] = _fetch_ch_company_snapshot(company_number)
+                except HTTPException as exc:
+                    detail_text = str(exc.detail or "").lower()
+                    if "configure a companies house api key" in detail_text:
+                        snapshot_lookup_blocked = True
+                    snapshot_cache[company_number] = None
+                except Exception:
+                    snapshot_cache[company_number] = None
+            _apply_import_enrichment_from_snapshot(data, snapshot_cache.get(company_number))
+
+        period_end = _parse_date_from_text(data.get("period_end_iso") or data.get("period_end"))
+        due_date = _parse_date_from_text(data.get("due_date_iso") or data.get("due_date"))
+        data["period_end_iso"] = period_end.isoformat() if period_end else ""
+        data["due_date_iso"] = due_date.isoformat() if due_date else ""
+        if _is_blank_text(data.get("ch_due_date_iso")):
+            data["ch_due_date_iso"] = data["due_date_iso"] or ""
+        has_name = bool(str(data.get("company_name") or data.get("client_name") or "").strip())
+        row["errors"] = [message for message in (row.get("errors") or []) if message != "Provide either a company name or a client name."]
+        if not has_name:
+            row["errors"].append("Provide either a company name or a client name.")
 
     create_count = 0
     update_count = 0
@@ -2456,6 +2550,7 @@ def parse_clients_import(content: bytes, filename: str) -> dict:
     if not parsed_rows:
         skip_count = 0
     visible_rows = [row for row in parsed_rows if row.get("included") or row.get("errors") or row.get("classification") == "review"]
+    visible_rows.sort(key=_import_preview_deadline_sort_key)
 
     return {
         "filename": filename,
