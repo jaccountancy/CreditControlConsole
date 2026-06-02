@@ -20313,6 +20313,28 @@
                 return lines.join("\n");
             }
 
+            function xeroConnectionSummary(connectionReturn) {
+                const newCount = Number(connectionReturn?.newTenantsCount || 0);
+                const refreshedCount = Number(connectionReturn?.refreshedTenantsCount || 0);
+                const totalCount = Number(connectionReturn?.totalTenantsCount || 0);
+                const names = Array.isArray(connectionReturn?.newTenantNames) ? connectionReturn.newTenantNames : [];
+                const safeNames = names.slice(0, 6).filter(Boolean);
+                const hasOverflowNames = names.length > safeNames.length;
+                const baseParts = [
+                    `New accounts: ${newCount}`,
+                    `Refreshed: ${refreshedCount}`,
+                ];
+                if (totalCount > 0) baseParts.push(`Total linked: ${totalCount}`);
+                const namesPart = safeNames.length
+                    ? `New: ${safeNames.join(", ")}${hasOverflowNames ? " +" + (names.length - safeNames.length) + " more" : ""}`
+                    : "";
+                const detail = [baseParts.join(" · "), namesPart].filter(Boolean).join(" · ");
+                const toastMessage = newCount > 0
+                    ? `Xero connected. ${newCount} new account${newCount === 1 ? "" : "s"} added and ${refreshedCount} refreshed.`
+                    : `Xero connected. ${refreshedCount} account${refreshedCount === 1 ? "" : "s"} refreshed.`;
+                return { detail, toastMessage };
+            }
+
             function ignitionConnectionReturnURL() {
                 try {
                     const url = new URL(window.location.href);
@@ -47760,15 +47782,24 @@
                 }
                 const activePanelSyncRun = activeSyncRunFromPanel(panelPayload);
                 if (returnedFromXeroConnection) {
+                    const xeroSummary = xeroConnectionSummary(xeroConnectionReturn);
                     showTopbarNotice(
                         "Xero is now connected",
-                        xeroConnectionReturn.syncRunId ? "Importing customer and invoice data from Xero." : "Starting first Xero sync in a moment.",
+                        xeroConnectionReturn.syncRunId
+                            ? `Importing customer and invoice data from Xero. ${xeroSummary.detail}`
+                            : `Starting first Xero sync in a moment. ${xeroSummary.detail}`,
                         "success",
                         XERO_CONNECTED_NOTICE_DURATION_MS
                     );
-                    window.setTimeout(() => {
-                        window.alert(xeroConnectionPopupMessage(xeroConnectionReturn));
-                    }, 120);
+                    showToast(
+                        xeroSummary.toastMessage,
+                        "success",
+                        {
+                            label: "Xero settings",
+                            onClick: () => openSettingsScreen("xero-connection", "settings")
+                        },
+                        12000
+                    );
                 }
                 if (returnedFromIgnitionConnection) {
                     showToast(
