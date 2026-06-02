@@ -5174,6 +5174,45 @@
                 display: block;
                 margin-bottom: 6px;
             }
+            .copilot-briefing-lines {
+                margin: 14px 0 0;
+                padding-left: 18px;
+                display: grid;
+                gap: 8px;
+                color: var(--ink);
+                font-weight: 780;
+                line-height: 1.48;
+            }
+            .copilot-commentary-block {
+                margin-top: 12px;
+                display: grid;
+                gap: 10px;
+            }
+            .copilot-commentary-block article {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.82);
+                padding: 12px;
+            }
+            .copilot-commentary-block strong {
+                display: block;
+                margin-bottom: 5px;
+            }
+            .copilot-conversation-grid {
+                display: grid;
+                gap: 10px;
+                margin-top: 14px;
+            }
+            .copilot-conversation-turn {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.88);
+                padding: 12px;
+            }
+            .copilot-conversation-turn strong {
+                display: block;
+                margin-bottom: 4px;
+            }
             .urgency-high { border-left: 4px solid var(--red); }
             .urgency-medium { border-left: 4px solid var(--orange); }
             .urgency-low { border-left: 4px solid var(--green); }
@@ -6956,6 +6995,16 @@
             .me-report-calculation-row.has-breakdown {
                 cursor: pointer;
             }
+            .me-report-calculation-row.is-subtotal {
+                background: rgba(233, 241, 255, 0.36);
+            }
+            .me-report-calculation-row.is-result {
+                background: rgba(29, 103, 242, 0.1);
+                box-shadow: inset 2px 0 0 rgba(29, 103, 242, 0.35);
+            }
+            .me-report-calculation-row.is-result strong {
+                color: #1d67f2;
+            }
             .me-report-calculation-row.has-breakdown:hover,
             .me-report-calculation-row.has-breakdown:focus {
                 background: rgba(233, 241, 255, 0.34);
@@ -7155,6 +7204,24 @@
                 color: var(--muted);
                 font-size: 0.8rem;
                 font-weight: 800;
+            }
+            .me-report-tax-change-badge {
+                display: inline-flex;
+                align-items: center;
+                width: fit-content;
+                margin-top: 7px;
+                padding: 3px 8px;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 900;
+            }
+            .me-report-tax-change-badge.is-down {
+                background: rgba(22, 163, 74, 0.14);
+                color: #166534;
+            }
+            .me-report-tax-change-badge.is-up {
+                background: rgba(239, 68, 68, 0.14);
+                color: #b91c1c;
             }
             .me-report-light-line,
             .me-report-light-value {
@@ -8199,6 +8266,31 @@
                 gap: 8px;
                 padding-bottom: 2px;
             }
+            #meReportScreen .me-report-submission-meta-row {
+                margin-top: 8px;
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+            }
+            #meReportScreen .me-report-data-basis-pill,
+            #meReportScreen .me-report-shortcut-hint {
+                display: inline-flex;
+                align-items: center;
+                min-height: 28px;
+                padding: 4px 10px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                border-radius: 999px;
+                background: rgba(233, 241, 255, 0.44);
+                color: #1f3b78;
+                font-size: 0.74rem;
+                font-weight: 850;
+            }
+            #meReportScreen .me-report-shortcut-hint {
+                border-color: var(--line);
+                background: rgba(255, 255, 255, 0.86);
+                color: var(--muted);
+            }
             #meReportScreen .me-report-subtabs button {
                 min-height: 38px;
                 border: 1px solid var(--line);
@@ -8627,6 +8719,10 @@
             #meReportScreen .me-report-alert-card {
                 border-color: rgba(255, 159, 47, 0.34);
                 background: rgba(255, 243, 223, 0.9);
+            }
+            #meReportScreen .me-report-clear-state-card {
+                border-color: rgba(22, 163, 74, 0.26);
+                background: rgba(236, 253, 245, 0.62);
             }
             @media (max-width: 760px) {
                 #meReportScreen .me-report-upload-form {
@@ -13431,7 +13527,7 @@
                             </span>
                             <div class="sync-inline-copy">
                                 <strong id="aiInlineTitle">Jenius AI is analysing the Xero data</strong>
-                                <span id="aiInlineDetail">Building the insights dashboard</span>
+                                <span id="aiInlineDetail">Building the AI copilot briefing</span>
                                 <div class="sync-inline-progress" aria-hidden="true"><span id="aiInlineProgressFill"></span></div>
                                 <small class="sync-inline-eta" id="aiInlineEta">Working with Jenius AI</small>
                             </div>
@@ -14456,23 +14552,13 @@
 
                         <div class="insights-layout">
                             <aside class="insights-sidebar" aria-label="Insights navigation">
-                                <button class="is-active" type="button" data-insight-section="overview">Overview</button>
-                                <button type="button" data-insight-section="customers">Top customers</button>
-                                <button type="button" data-insight-section="trends">Trends</button>
-                                <button type="button" data-insight-section="ageing">Ageing</button>
-                                <button type="button" data-insight-section="workflows">Workflows</button>
-                                <button type="button" data-insight-section="lpcs">LPCs</button>
-                                <button type="button" data-insight-section="customer-intelligence">Customer Intelligence</button>
-                                <button type="button" data-insight-section="debt-analysis">Debt Analysis</button>
-                                <button type="button" data-insight-section="loans-provided">Loans provided</button>
-                                <button type="button" data-insight-section="bank-extraction">Bank Statement Extraction</button>
-                                <button type="button" data-insight-section="settled-invoices">Settled Invoice Analysis</button>
+                                <button class="is-active" type="button" data-insight-section="copilot">AI Copilot Briefing</button>
                             </aside>
                             <section class="insights-main" id="insightsContent">
                                 <div class="insights-empty">
                                     <span class="sync-inline-spinner" aria-hidden="true"></span>
-                                    <strong>Preparing insights</strong>
-                                    <p>Jenius AI will analyse the latest Xero import and build the dashboard.</p>
+                                    <strong>Preparing AI copilot briefing</strong>
+                                    <p>Jenius AI is building a full operational briefing with plays, commentary and trend signals.</p>
                                 </div>
                             </section>
                         </div>
@@ -15439,7 +15525,8 @@
             let userActivityLoggingWired = false;
             let insightsData = null;
             let insightsLoading = false;
-            let activeInsightsSection = persistedUIState.activeInsightsSection || "overview";
+            let activeInsightsSection = persistedUIState.activeInsightsSection || "copilot";
+            if (activeInsightsSection !== "copilot") activeInsightsSection = "copilot";
             let insightsClockTimer = null;
             let hasAutoStartedInitialSync = false;
             let hasLoadedWorkingSyncPanel = false;
@@ -15736,6 +15823,14 @@
             let meReportBalanceSheetSearchTerm = "";
             let meReportBalanceSheetSortMode = "section-asc";
             let meReportBalanceSheetFilterMode = "all";
+            let meReportViewStateByClient = (persistedUIState.meReportViewStateByClient && typeof persistedUIState.meReportViewStateByClient === "object" && !Array.isArray(persistedUIState.meReportViewStateByClient))
+                ? persistedUIState.meReportViewStateByClient
+                : {};
+            let meReportLastStateClientId = "";
+            let meReportTaxDeltaByClientId = {};
+            let meReportKeyboardShortcutsWired = false;
+            let meReportShortcutPrefix = "";
+            let meReportShortcutTimer = null;
             let activeMeReportSyncRunId = null;
             let latestMeReportSyncRun = null;
             let meReportSyncStartedAt = 0;
@@ -15832,6 +15927,7 @@
                 upload: '<path d="M12 3v12"></path><path d="m7 8 5-5 5 5"></path><path d="M5 15v4h14v-4"></path>',
                 edit: '<path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path>',
                 download: '<path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path>',
+                copy: '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path>',
                 file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path><path d="M14 2v6h6"></path>',
                 refresh: '<path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path>',
                 plus: '<path d="M12 5v14"></path><path d="M5 12h14"></path>',
@@ -16637,6 +16733,7 @@
                         selectedFilter,
                         clientFilter,
                         meReportClientStatusFilter,
+                        meReportViewStateByClient,
                         lateChargeFilter,
                         badDebtFilter,
                         activeInsightsSection,
@@ -27535,8 +27632,10 @@
                 if (!clientId) return;
                 selectedMeReportClientId = clientId;
                 meReportWorkspaceOpen = true;
-                activeMeReportTab = "submission-history";
+                const savedState = meReportSavedViewState(clientId);
+                activeMeReportTab = meReportWorkspaceTabKeys.has(savedState?.workspaceTab) ? savedState.workspaceTab : "submission-history";
                 selectedMeReportSubmissionId = "";
+                meReportApplySavedViewState(clientId);
                 renderMeReportScreen();
             }
 
@@ -27926,6 +28025,7 @@
                     return;
                 }
 
+                if (!meReportWorkspaceOpen) meReportLastStateClientId = "";
                 if (meReportWorkspaceOpen) {
                     const client = selectedMeReportClient();
                     if (!client) {
@@ -27935,6 +28035,10 @@
                         detail.hidden = true;
                         renderMeReportScreen();
                         return;
+                    }
+                    if (client.id !== meReportLastStateClientId) {
+                        meReportApplySavedViewState(client.id);
+                        meReportLastStateClientId = client.id;
                     }
                     const tabs = [
                         ["overview", "Overview"],
@@ -27956,6 +28060,7 @@
                     actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
                         button.addEventListener("click", () => {
                             activeMeReportTab = button.dataset.meReportTab;
+                            meReportPersistViewStateForClient(client.id);
                             renderMeReportScreen();
                         });
                     });
@@ -28075,6 +28180,7 @@
                 meReportWorkspaceOpen = true;
                 activeMeReportTab = "submission-history";
                 selectedMeReportSubmissionId = "";
+                meReportPersistViewStateForClient(selectedMeReportClientId);
                 renderMeReportScreen();
                 const fileInput = document.getElementById("meReportBulkSubmissionFiles");
                 if (fileInput) fileInput.click();
@@ -28118,6 +28224,43 @@
                 ["fixed-assets", "Fixed assets"]
             ];
             const meReportSubmissionTabKeys = new Set(meReportSubmissionTabs.map(([key]) => key));
+            const meReportWorkspaceTabKeys = new Set(["overview", "submission-history", "report-insights", "tax", "dividends", "dla", "alerts", "mappings", "reports"]);
+
+            function meReportSavedViewState(clientId = "") {
+                if (!clientId) return null;
+                const state = meReportViewStateByClient?.[clientId];
+                return state && typeof state === "object" ? state : null;
+            }
+
+            function meReportPersistViewStateForClient(clientId = "") {
+                if (!clientId) return;
+                meReportViewStateByClient[clientId] = {
+                    workspaceTab: activeMeReportTab,
+                    submissionTab: activeMeReportSubmissionTab,
+                    plSearch: meReportProfitLossSearchTerm,
+                    plSort: meReportProfitLossSortMode,
+                    plFilter: meReportProfitLossFilterMode,
+                    plFocus: meReportProfitLossMetricFocus,
+                    bsSearch: meReportBalanceSheetSearchTerm,
+                    bsSort: meReportBalanceSheetSortMode,
+                    bsFilter: meReportBalanceSheetFilterMode
+                };
+                persistState();
+            }
+
+            function meReportApplySavedViewState(clientId = "") {
+                const state = meReportSavedViewState(clientId);
+                if (!state) return;
+                if (meReportWorkspaceTabKeys.has(state.workspaceTab)) activeMeReportTab = state.workspaceTab;
+                if (meReportSubmissionTabKeys.has(state.submissionTab)) activeMeReportSubmissionTab = state.submissionTab;
+                meReportProfitLossSearchTerm = String(state.plSearch || "");
+                meReportProfitLossSortMode = String(state.plSort || "month-asc");
+                meReportProfitLossFilterMode = String(state.plFilter || "all");
+                meReportProfitLossMetricFocus = String(state.plFocus || "all");
+                meReportBalanceSheetSearchTerm = String(state.bsSearch || "");
+                meReportBalanceSheetSortMode = String(state.bsSort || "section-asc");
+                meReportBalanceSheetFilterMode = String(state.bsFilter || "all");
+            }
 
             function renderMeReportMetricPill(label, value) {
                 return `<article class="me-report-metric-pill"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value)}</strong></article>`;
@@ -28250,6 +28393,14 @@
                 const note = section455 > 0
                     ? `CT ${formatCurrency(detail.tax || summary.estimatedCorporationTax || 0)} · s455 ${formatCurrency(section455)}`
                     : `${escapeHTML(detail.rateBand)} · effective ${formatPercent(detail.effectiveRate)}`;
+                const recalculatedAt = summary.lastCalculatedAt || summary.calculatedAt || summary.updatedAt || summary.generatedAt || "";
+                const recalcCopy = recalculatedAt ? `Recalculated ${formatDateTime(recalculatedAt)}` : "";
+                const deltaKey = String(summary.taxAdjustmentOverrideClientId || summary.clientId || "");
+                const deltaState = deltaKey ? meReportTaxDeltaByClientId[deltaKey] : null;
+                const deltaValue = Number(deltaState?.delta || 0);
+                const deltaBadge = Math.abs(deltaValue) >= 0.005
+                    ? `<span class="me-report-tax-change-badge ${deltaValue < 0 ? "is-down" : "is-up"}">CT ${deltaValue < 0 ? "down" : "up"} ${formatCurrency(Math.abs(deltaValue))}</span>`
+                    : "";
                 return `<article class="me-report-tax-estimate-card">
                     <div class="me-report-metric-head">
                         <span>CT estimate</span>
@@ -28262,6 +28413,8 @@
                     </div>
                     <strong>${formatCurrency(shownTax)}</strong>
                     <small>${note}</small>
+                    ${recalcCopy ? `<small>${escapeHTML(recalcCopy)}</small>` : ""}
+                    ${deltaBadge}
                 </article>`;
             }
 
@@ -29529,8 +29682,12 @@
                                 const breakdown = meReportCalculationBreakdown(row, title, safeRows, summary);
                                 const rowKey = `${title}:${index}:${row.label || ""}`;
                                 const expanded = breakdown.length && expandedMeReportCalculationKey === rowKey;
+                                const treatmentText = String(row.treatment || "").toLowerCase();
+                                const rowToneClass = treatmentText.includes("result")
+                                    ? " is-result"
+                                    : (treatmentText.includes("subtotal") ? " is-subtotal" : "");
                                 return `
-                                    <div class="me-report-calculation-row${breakdown.length ? " has-breakdown" : ""}${expanded ? " is-expanded" : ""}" role="row" ${breakdown.length ? `tabindex="0" data-me-calculation-row="${escapeHTML(rowKey)}"` : ""}>
+                                    <div class="me-report-calculation-row${breakdown.length ? " has-breakdown" : ""}${expanded ? " is-expanded" : ""}${rowToneClass}" role="row" ${breakdown.length ? `tabindex="0" data-me-calculation-row="${escapeHTML(rowKey)}"` : ""}>
                                         <span>${escapeHTML(row.label || "")}</span>
                                         <strong>${formatCurrency(row.amount || 0)}</strong>
                                         <em>${escapeHTML(row.treatment || "")}</em>
@@ -29858,17 +30015,42 @@
                 `;
             }
 
+            function meReportSubmissionDataBasisText(tab = "insights", summary = {}) {
+                const period = meReportPeriodRangeLabel(summary);
+                if (tab === "tax") return `Data basis: Corporation tax from YTD earnings${period ? ` (${period})` : ""}`;
+                if (tab === "dividends") return `Data basis: Dividend capacity from YTD reserves and CT provision${period ? ` (${period})` : ""}`;
+                if (tab === "profit-loss") return "Data basis: Profit and Loss monthly schedule (all extracted months)";
+                if (tab === "balance-sheet") return "Data basis: Balance Sheet plus Trial Balance nominal-code matching";
+                if (tab === "vat") return "Data basis: Rolling 12-month VAT turnover from extracted monthly figures";
+                if (tab === "dla") return "Data basis: Director loan balance and transaction detail from extracted report lines";
+                if (tab === "fixed-assets") return "Data basis: Fixed asset reconciliation and depreciation schedule";
+                return "Data basis: Review anomalies compiled across all extracted schedules";
+            }
+
+            function renderMeReportShortcutHint() {
+                return `
+                    <span class="me-report-shortcut-hint" title="Keyboard shortcuts: / focuses search, g then t opens Corporation tax, g then p opens YTD Profit and Loss">
+                        Shortcuts: / · g t · g p
+                    </span>
+                `;
+            }
+
             function renderMeReportSubmissionHeader(client, submission, summary = {}) {
                 const reportLabel = meReportSubmissionShortBookkeepingLabel(submission)
                     || meReportSubmissionTableLabel(submission)
                     || submission?.filename
                     || "Overview report";
+                const dataBasis = meReportSubmissionDataBasisText(activeMeReportSubmissionTab, summary);
                 return `
                     <div class="jashflow-detail-head me-report-report-toolbar me-report-report-summary-card">
                         <div>
                             <p class="eyebrow">JUK Overview Report insights</p>
                             <h3>${escapeHTML(client.clientName)} · ${escapeHTML(meReportSubmissionBookkeepingLabel(submission))}</h3>
                             <p class="detail-meta">${escapeHTML(reportLabel)} · processed ${escapeHTML(formatDate(submission?.completedAt || submission?.createdAt))}</p>
+                            <div class="me-report-submission-meta-row">
+                                <span class="me-report-data-basis-pill">${escapeHTML(dataBasis)}</span>
+                                ${renderMeReportShortcutHint()}
+                            </div>
                         </div>
                         <div class="detail-actions">
                             <button class="ghost-button" type="button" data-me-report-back-reports>Back to reports</button>
@@ -30832,6 +31014,21 @@
                 `;
             }
 
+            function meReportCorporationTaxSummaryCopy(client = {}, summary = {}) {
+                const period = meReportPeriodRangeLabel(summary) || "Current YTD period";
+                const recalcAt = summary.lastCalculatedAt || summary.calculatedAt || summary.updatedAt || "";
+                return [
+                    `${client.clientName || "Client"} · Corporation tax summary`,
+                    `Period: ${period}`,
+                    `Accounting profit: ${formatCurrency(summary.accountingProfit || 0)}`,
+                    `Tax adjustments: ${formatCurrency(summary.taxAdjustments || 0)}`,
+                    `Taxable profit: ${formatCurrency(summary.estimatedTaxableProfit || 0)}`,
+                    `CT estimate: ${formatCurrency(summary.estimatedCorporationTax || 0)}`,
+                    `Rate basis: ${summary.corporationTaxRateBand || meReportTaxBreakdown(summary).rateBand}`,
+                    recalcAt ? `Last recalculated: ${formatDateTime(recalcAt)}` : ""
+                ].filter(Boolean).join("\n");
+            }
+
             function renderMeReportTaxTab(client = {}, summary = {}, broughtForwardTradingLoss = 0) {
                 const periodLabel = meReportPeriodRangeLabel(summary);
                 const taxOverrideClientId = summary.taxAdjustmentOverrideClientId || client.id || "";
@@ -30862,7 +31059,7 @@
                             </tbody>
                         </table>
                     </article>`
-                    : `<article class="me-report-insight-card">
+                    : `<article class="me-report-insight-card me-report-clear-state-card">
                         <p class="eyebrow">Capital allowances review</p>
                         <h3>No fixed asset exclusions are currently blocking CT capital allowances</h3>
                         <p class="detail-meta">Any include/exclude decision is remembered for the next report upload for this client.</p>
@@ -30880,7 +31077,10 @@
                         <p class="eyebrow">CT rate breakdown</p>
                         <div class="me-report-card-heading-row">
                             <h3>${escapeHTML(meReportTaxBreakdown(summary).rateBand)}</h3>
-                            ${periodLabel ? `<h3>${escapeHTML(periodLabel)}</h3>` : ""}
+                            <div class="detail-actions">
+                                ${periodLabel ? `<h3>${escapeHTML(periodLabel)}</h3>` : ""}
+                                <button class="ghost-button" type="button" data-me-copy-ct-summary="${escapeHTML(client.id || "")}">${iconSVG("copy")}<span>Copy CT summary</span></button>
+                            </div>
                         </div>
                         <p class="detail-meta">CT estimate is calculated using current-year YTD earnings (not a single-month profit figure), then adjusted for tax add-backs, allowances and brought-forward losses.</p>
                         ${renderMeReportTaxBreakdownTable(summary)}
@@ -31472,7 +31672,85 @@
                 window.setTimeout(() => URL.revokeObjectURL(url), 60000);
             }
 
+            function meReportFocusActiveSearchInput() {
+                const candidates = [
+                    "[data-me-pl-search]",
+                    "[data-me-bs-search]"
+                ];
+                const target = candidates
+                    .map((selector) => document.querySelector(selector))
+                    .find((input) => input && input.offsetParent !== null);
+                if (!target) return;
+                target.focus();
+                target.select?.();
+            }
+
+            function meReportClearShortcutPrefix() {
+                meReportShortcutPrefix = "";
+                if (meReportShortcutTimer) {
+                    window.clearTimeout(meReportShortcutTimer);
+                    meReportShortcutTimer = null;
+                }
+            }
+
+            function meReportArmShortcutPrefix(prefix = "") {
+                meReportClearShortcutPrefix();
+                meReportShortcutPrefix = prefix;
+                meReportShortcutTimer = window.setTimeout(() => {
+                    meReportClearShortcutPrefix();
+                }, 1200);
+            }
+
+            function meReportShortcutOpenSubmissionTab(tabKey = "", client = selectedMeReportClient()) {
+                if (!meReportSubmissionTabKeys.has(tabKey)) return;
+                if (!client || activeMeReportTab !== "report-insights") return;
+                activeMeReportSubmissionTab = tabKey;
+                meReportPersistViewStateForClient(client.id);
+                renderMeReportScreen();
+            }
+
+            function wireMeReportKeyboardShortcuts() {
+                if (meReportKeyboardShortcutsWired) return;
+                meReportKeyboardShortcutsWired = true;
+                document.addEventListener("keydown", (event) => {
+                    if (activeView !== "me-report" || !meReportWorkspaceOpen || activeMeReportTab !== "report-insights") return;
+                    const target = event.target;
+                    const inEditable = target && (
+                        target.tagName === "INPUT"
+                        || target.tagName === "TEXTAREA"
+                        || target.tagName === "SELECT"
+                        || target.isContentEditable
+                    );
+                    const key = String(event.key || "").toLowerCase();
+                    if (key === "/" && !inEditable) {
+                        event.preventDefault();
+                        meReportFocusActiveSearchInput();
+                        meReportClearShortcutPrefix();
+                        return;
+                    }
+                    if (inEditable) return;
+                    if (key === "g") {
+                        meReportArmShortcutPrefix("g");
+                        return;
+                    }
+                    if (meReportShortcutPrefix === "g" && key === "t") {
+                        event.preventDefault();
+                        meReportShortcutOpenSubmissionTab("tax");
+                        meReportClearShortcutPrefix();
+                        return;
+                    }
+                    if (meReportShortcutPrefix === "g" && key === "p") {
+                        event.preventDefault();
+                        meReportShortcutOpenSubmissionTab("profit-loss");
+                        meReportClearShortcutPrefix();
+                        return;
+                    }
+                    if (meReportShortcutPrefix) meReportClearShortcutPrefix();
+                }, true);
+            }
+
             function wireMeReportDynamicActions(client) {
+                wireMeReportKeyboardShortcuts();
                 document.getElementById("meReportSubmissionForm")?.addEventListener("submit", (event) => uploadMeReportSubmission(event, client.id));
                 const submissionInput = document.getElementById("meReportSubmissionFile");
                 const selectedPreviewButton = document.getElementById("previewSelectedMeReportFileButton");
@@ -31491,6 +31769,7 @@
                         selectedMeReportSubmissionId = button.dataset.meSubmissionOpen || "";
                         activeMeReportTab = "report-insights";
                         activeMeReportSubmissionTab = "insights";
+                        meReportPersistViewStateForClient(client.id);
                         meReportWorkspaceOpen = true;
                         renderMeReportScreen();
                     });
@@ -31502,6 +31781,7 @@
                     button.addEventListener("click", () => {
                         activeMeReportTab = "submission-history";
                         selectedMeReportSubmissionId = "";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
@@ -31510,6 +31790,7 @@
                         meReportWorkspaceOpen = false;
                         activeMeReportTab = "overview";
                         selectedMeReportSubmissionId = "";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
@@ -31519,24 +31800,28 @@
                 document.querySelectorAll("[data-me-report-subtab]").forEach((button) => {
                     button.addEventListener("click", () => {
                         activeMeReportSubmissionTab = button.dataset.meReportSubtab || "insights";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
                 document.querySelectorAll("[data-me-pl-search]").forEach((input) => {
                     input.addEventListener("input", () => {
                         meReportProfitLossSearchTerm = input.value || "";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
                 document.querySelectorAll("[data-me-pl-filter]").forEach((select) => {
                     select.addEventListener("change", () => {
                         meReportProfitLossFilterMode = select.value || "all";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
                 document.querySelectorAll("[data-me-pl-sort]").forEach((select) => {
                     select.addEventListener("change", () => {
                         meReportProfitLossSortMode = select.value || "month-asc";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
@@ -31545,25 +31830,53 @@
                         const requested = button.dataset.mePlFocus || "all";
                         if (requested === meReportProfitLossMetricFocus) meReportProfitLossMetricFocus = "all";
                         else meReportProfitLossMetricFocus = requested;
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
                 document.querySelectorAll("[data-me-bs-search]").forEach((input) => {
                     input.addEventListener("input", () => {
                         meReportBalanceSheetSearchTerm = input.value || "";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
                 document.querySelectorAll("[data-me-bs-filter]").forEach((select) => {
                     select.addEventListener("change", () => {
                         meReportBalanceSheetFilterMode = select.value || "all";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
                     });
                 });
                 document.querySelectorAll("[data-me-bs-sort]").forEach((select) => {
                     select.addEventListener("change", () => {
                         meReportBalanceSheetSortMode = select.value || "section-asc";
+                        meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-copy-ct-summary]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const context = activeMeReportInsightContext();
+                        if (!context) return;
+                        const copyText = meReportCorporationTaxSummaryCopy(context.client, context.summary);
+                        try {
+                            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(copyText);
+                            else {
+                                const input = document.createElement("textarea");
+                                input.value = copyText;
+                                input.setAttribute("readonly", "readonly");
+                                input.style.position = "fixed";
+                                input.style.opacity = "0";
+                                document.body.appendChild(input);
+                                input.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(input);
+                            }
+                            showToast("CT summary copied", "success");
+                        } catch {
+                            showToast("Unable to copy CT summary", "error");
+                        }
                     });
                 });
                 document.querySelectorAll("[data-me-report-dismiss-warning]").forEach((button) => {
@@ -32032,11 +32345,19 @@
                 } else {
                     next[stepKey].remove = [...new Set([...(next[stepKey].remove || []), code])];
                 }
+                const currentSummary = meReportAdjustedSummary(client, baseSummary);
+                const previewClient = { ...client, taxAdjustmentOverrides: next };
+                const nextSummary = meReportAdjustedSummary(previewClient, baseSummary);
+                const ctDelta = Number(nextSummary.estimatedCorporationTax || 0) - Number(currentSummary.estimatedCorporationTax || 0);
                 await updateMeReportClientPreferences(
                     client.id,
                     { taxAdjustmentOverrides: next },
                     include ? `${config.label}: ${code} included in CT estimate` : `${config.label}: ${code} excluded from CT estimate`
                 );
+                meReportTaxDeltaByClientId[client.id] = {
+                    delta: ctDelta,
+                    updatedAt: new Date().toISOString()
+                };
             }
 
             async function editMeReportTaxAdjustmentCodes(clientId = "", stepKey = "") {
@@ -33479,7 +33800,7 @@
                     };
                 }
                 if (insightsLoading) {
-                    const detail = document.getElementById("aiInlineDetail")?.textContent || "Building the insights dashboard.";
+                    const detail = document.getElementById("aiInlineDetail")?.textContent || "Building the AI copilot briefing.";
                     return {
                         kicker: "Analysing",
                         title: aiInlineTitleForDetail(detail),
@@ -33794,7 +34115,7 @@
                 return "Jenius AI is analysing the Xero data";
             }
 
-            function setAiLoading(loading, detail = "Building the insights dashboard") {
+            function setAiLoading(loading, detail = "Building the AI copilot briefing") {
                 insightsLoading = loading;
                 const banner = document.getElementById("aiInlineBanner");
                 if (banner) {
@@ -34000,7 +34321,7 @@
             async function loadInsights(force = false) {
                 if (insightsLoading) return;
                 if (insightsData && !force) return;
-                setAiLoading(true, force ? "Refreshing insights with Jenius AI (OpenAI)." : "Building the insights dashboard");
+                setAiLoading(true, force ? "Refreshing AI copilot briefing with Jenius AI (OpenAI)." : "Building the AI copilot briefing");
                 renderInsightsScreen();
                 try {
                     insightsData = await requestJSON(api.endpoints.insights);
@@ -34024,14 +34345,12 @@
 
             function openInsightsScreen() {
                 activeView = "insights";
-                activeInsightsSection = activeInsightsSection || "overview";
-                if (activeInsightsSection === "ai" || activeInsightsSection === "ai-copilot") activeInsightsSection = "overview";
+                activeInsightsSection = "copilot";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
                 scrollConsoleToTop();
                 loadInsights();
-                ensureInsightsSectionData(activeInsightsSection);
             }
 
             function ensureInsightsSectionData(section) {
@@ -34080,7 +34399,7 @@
                     return;
                 }
                 screen.hidden = false;
-                if (activeInsightsSection === "ai" || activeInsightsSection === "ai-copilot") activeInsightsSection = "overview";
+                activeInsightsSection = "copilot";
                 startInsightsClock();
                 document.querySelectorAll("[data-insight-section]").forEach((button) => {
                     button.classList.toggle("is-active", button.dataset.insightSection === activeInsightsSection);
@@ -34095,23 +34414,10 @@
                     ? `Analysis generated ${formatDate(analytics.generatedAt)} · ${ai.status === "ready" ? "OpenAI powered" : "Local analytics"}`
                     : "AI analysis, reports and collection trends from synced Xero data.";
                 if (insightsLoading && !insightsData) {
-                    target.innerHTML = `<div class="insights-empty"><span class="sync-inline-spinner" aria-hidden="true"></span><strong>Jenius AI is analysing the Xero data</strong><p>Building customer rankings, workflow charts, ageing buckets and AI actions.</p></div>`;
+                    target.innerHTML = `<div class="insights-empty"><span class="sync-inline-spinner" aria-hidden="true"></span><strong>Jenius AI is analysing the Xero data</strong><p>Building a full operational copilot briefing with plays, risks and commentary.</p></div>`;
                     return;
                 }
-                const sections = {
-                    overview: overviewInsights(analytics, ai),
-                    customers: topCustomersInsights(analytics),
-                    trends: trendsInsights(analytics),
-                    ageing: ageingInsights(analytics),
-                    workflows: workflowInsights(analytics),
-                    lpcs: latePaymentChargeInsights(),
-                    "customer-intelligence": customerIntelligenceInsights(analytics),
-                    "debt-analysis": debtAnalysisInsights(analytics),
-                    "loans-provided": loansProvidedInsights(),
-                    "bank-extraction": bankStatementExtractionInsights(),
-                    "settled-invoices": settledInvoiceAnalysisInsights()
-                };
-                target.innerHTML = sections[activeInsightsSection] || sections.overview;
+                target.innerHTML = aiCopilotHomeInsights(analytics, ai);
             }
 
             function insightCard(label, value, detail) {
@@ -34291,32 +34597,97 @@
                 });
             }
 
-            function overviewInsights(analytics, ai) {
+            function aiBriefingLines(ai, analytics) {
+                const supplied = Array.isArray(ai.briefingLines) ? ai.briefingLines.map((line) => String(line || "").trim()).filter(Boolean) : [];
+                if (supplied.length >= 5) return supplied.slice(0, 5);
                 const totals = insightTotals(analytics);
-                const riskInvoices = insightRiskInvoices(analytics);
-                const statusCounts = analytics.statusCounts || [];
                 const overdueRatio = Number(totals.totalOutstanding || 0) ? (Number(totals.totalOverdue || 0) / Number(totals.totalOutstanding || 0)) * 100 : 0;
-                const actionRows = [
-                    {
-                        title: "Overdue concentration",
-                        detail: `${formatPercent(overdueRatio)} of the open ledger is overdue.`,
-                        value: formatCurrency(totals.totalOverdue || 0),
-                        urgency: overdueRatio >= 50 ? "high" : overdueRatio >= 25 ? "medium" : "low",
-                    },
-                    {
-                        title: "Oldest exposure",
-                        detail: riskInvoices[0] ? `${riskInvoices[0].customerName || "Client"} · ${riskInvoices[0].invoiceNumber || "Invoice"}` : "No overdue invoice currently found.",
-                        value: riskInvoices[0] ? `${Number(riskInvoices[0].overdueDays || 0).toLocaleString("en-GB")} days` : "Clear",
-                        urgency: Number(riskInvoices[0]?.overdueDays || 0) >= 90 ? "high" : "medium",
-                    },
-                    {
-                        title: "Workflow pressure",
-                        detail: "Legal, 7 Day Notice and payment plan queues are separated from ordinary overdue balances.",
-                        value: formatCurrency(Number(totals.legalValue || 0) + Number(totals.sevenDayNoticeValue || 0) + Number(totals.paymentPlanValue || 0)),
-                        urgency: Number(totals.legalValue || 0) > 0 ? "medium" : "low",
-                    },
+                const latest = insightMonthlyRows(analytics).slice(-1)[0] || {};
+                return [
+                    `Open ledger is ${formatCurrency(totals.totalOutstanding || 0)} across ${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices.`,
+                    `Overdue value is ${formatCurrency(totals.totalOverdue || 0)} (${formatPercent(overdueRatio)} of current exposure).`,
+                    `Oldest overdue balance is ${Number(totals.maxDaysOverdue || 0).toLocaleString("en-GB")} days.`,
+                    `Latest cash collection ratio is ${formatPercent(latest.collectionRatio || 0)}${latest.label ? ` in ${latest.label}` : ""}.`,
+                    `Workflow queues: Legal ${formatCurrency(totals.legalValue || 0)}, 7 Day Notice ${formatCurrency(totals.sevenDayNoticeValue || 0)}, Payment Plan ${formatCurrency(totals.paymentPlanValue || 0)}.`,
                 ];
-                return `<div class="insight-two-column">${aiSummary(ai)}<section class="insight-chart"><span>Control Actions</span>${insightActionCards(actionRows)}</section></div><div class="insight-two-column">${donutChart("Outstanding by status", statusCounts, "value")}${barChart("Status value mix", statusCounts, "value")}</div>`;
+            }
+
+            function aiCopilotHomeInsights(analytics, ai) {
+                const totals = insightTotals(analytics);
+                const statusCounts = analytics.statusCounts || [];
+                const monthly = insightMonthlyRows(analytics);
+                const topCustomers = analytics.topCustomers || [];
+                const briefingLines = aiBriefingLines(ai, analytics);
+                const playRows = Array.isArray(ai.nextPlays) && ai.nextPlays.length
+                    ? ai.nextPlays.map((play) => ({
+                        title: play.title || "Recommended play",
+                        detail: `${play.whyNow || ""} ${play.howToPlay || ""}`.trim(),
+                        value: play.expectedImpact || "",
+                        urgency: play.urgency || "medium",
+                    }))
+                    : (ai.priorityActions || []).map((action) => ({
+                        title: action.title || "Recommended play",
+                        detail: action.reason || "",
+                        value: action.impact || "",
+                        urgency: action.urgency || "medium",
+                    }));
+                const conversations = (ai.conversations || []).filter((item) => item && (item.question || item.answer)).slice(0, 4);
+                const commentary = ai.commentary || {};
+                const commentaryWatchouts = Array.isArray(commentary.watchouts) ? commentary.watchouts : [];
+                const commentaryWins = Array.isArray(commentary.wins) ? commentary.wins : [];
+                const monthlyRecent = monthly.slice(-6);
+                const topCustomerRows = topCustomers.slice(0, 8).map((customer) => ({
+                    name: customer.name || "Client",
+                    value: Number(customer.totalDue || 0),
+                }));
+                return `${insightCardGrid([
+                    ["Open ledger", formatCurrency(totals.totalOutstanding || 0), `${Number(totals.openInvoiceCount || 0).toLocaleString("en-GB")} open invoices`],
+                    ["Overdue", formatCurrency(totals.totalOverdue || 0), `${formatPercent(Number(totals.totalOutstanding || 0) ? (Number(totals.totalOverdue || 0) / Number(totals.totalOutstanding || 0)) * 100 : 0)} of open exposure`],
+                    ["Accounts monitored", Number(totals.customerCount || 0).toLocaleString("en-GB"), "Live customer ledger coverage"],
+                    ["Oldest debt", `${Number(totals.maxDaysOverdue || 0).toLocaleString("en-GB")} days`, "Highest overdue age currently open"],
+                ])}
+                <section class="insight-chart ai-summary-card">
+                    <div class="ai-summary-head">
+                        <span>AI Copilot Briefing</span>
+                        <mark>${escapeHTML(ai.status === "ready" ? "OpenAI" : "Local")}</mark>
+                    </div>
+                    <h3>${escapeHTML(ai.summary || "Credit control operational briefing")}</h3>
+                    <ol class="copilot-briefing-lines">${briefingLines.map((line) => `<li>${escapeHTML(line)}</li>`).join("")}</ol>
+                    ${ai.narrative ? `<p class="ai-summary-note">${escapeHTML(ai.narrative)}</p>` : ""}
+                </section>
+                <div class="insight-two-column">
+                    <section class="insight-chart">
+                        <span>Recommended Next Plays</span>
+                        ${insightActionCards(playRows, "No next plays are currently available.")}
+                    </section>
+                    <section class="insight-chart">
+                        <span>Copilot Commentary</span>
+                        <div class="copilot-commentary-block">
+                            <article><strong>What has happened recently</strong><p>${escapeHTML(commentary.recent || "Recent commentary is building from the latest synced ledger.")}</p></article>
+                            <article><strong>Watchouts</strong><p>${escapeHTML(commentaryWatchouts.join(" • ") || "No watchouts flagged.")}</p></article>
+                            <article><strong>Wins</strong><p>${escapeHTML(commentaryWins.join(" • ") || "No wins flagged yet.")}</p></article>
+                        </div>
+                    </section>
+                </div>
+                <div class="insight-two-column">
+                    ${barChart("Top customer exposure", topCustomerRows, "value", "name")}
+                    ${barChart("Last 6 months collection ratio", monthlyRecent, "collectionRatio", "label")}
+                </div>
+                <div class="insight-two-column">
+                    ${donutChart("Outstanding by status", statusCounts, "value")}
+                    ${barChart("Status value mix", statusCounts, "value")}
+                </div>
+                <section class="insight-chart">
+                    <span>Conversational Discussions</span>
+                    <div class="copilot-conversation-grid">
+                        ${conversations.length ? conversations.map((item) => `
+                            <article class="copilot-conversation-turn">
+                                <strong>${escapeHTML(item.question || "Question")}</strong>
+                                <p>${escapeHTML(item.answer || "")}</p>
+                            </article>
+                        `).join("") : `<p>No conversational discussions are available yet.</p>`}
+                    </div>
+                </section>`;
             }
 
             function topCustomersInsights(analytics) {
@@ -38522,10 +38893,9 @@
                 });
                 document.querySelectorAll("[data-insight-section]").forEach((button) => {
                     button.addEventListener("click", () => {
-                        activeInsightsSection = button.dataset.insightSection || "overview";
+                        activeInsightsSection = "copilot";
                         persistState();
                         renderInsightsScreen();
-                        ensureInsightsSectionData(activeInsightsSection);
                     });
                 });
                 document.getElementById("clientInvoiceSelect")?.addEventListener("change", (event) => {

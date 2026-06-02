@@ -15662,9 +15662,30 @@ def _build_insights_analytics(user: dict) -> dict:
 OPENAI_INSIGHTS_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["summary", "priorityActions", "risks", "opportunities", "narrative"],
+    "required": ["summary", "briefingLines", "nextPlays", "risks", "opportunities", "narrative", "conversations", "commentary"],
     "properties": {
         "summary": {"type": "string"},
+        "briefingLines": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "items": {"type": "string"},
+        },
+        "nextPlays": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["title", "whyNow", "howToPlay", "expectedImpact", "urgency"],
+                "properties": {
+                    "title": {"type": "string"},
+                    "whyNow": {"type": "string"},
+                    "howToPlay": {"type": "string"},
+                    "expectedImpact": {"type": "string"},
+                    "urgency": {"type": "string", "enum": ["high", "medium", "low"]},
+                },
+            },
+        },
         "priorityActions": {
             "type": "array",
             "items": {
@@ -15706,6 +15727,34 @@ OPENAI_INSIGHTS_SCHEMA = {
             },
         },
         "narrative": {"type": "string"},
+        "conversations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["question", "answer"],
+                "properties": {
+                    "question": {"type": "string"},
+                    "answer": {"type": "string"},
+                },
+            },
+        },
+        "commentary": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["recent", "watchouts", "wins"],
+            "properties": {
+                "recent": {"type": "string"},
+                "watchouts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "wins": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+        },
     },
 }
 
@@ -15713,6 +15762,13 @@ OPENAI_INSIGHTS_SCHEMA = {
 def _fallback_ai_insights(analytics: dict, status_value: str = "local") -> dict:
     totals = analytics["totals"]
     top_customer = analytics["topCustomers"][0] if analytics["topCustomers"] else None
+    monthly = analytics.get("monthly") or []
+    latest_month = monthly[-1] if monthly else {}
+    previous_month = monthly[-2] if len(monthly) > 1 else {}
+    collection_ratio = float(latest_month.get("collectionRatio") or 0)
+    previous_collection_ratio = float(previous_month.get("collectionRatio") or 0)
+    collection_ratio_movement = collection_ratio - previous_collection_ratio
+    overdue_ratio = (float(totals["totalOverdue"]) / float(totals["totalOutstanding"]) * 100) if totals["totalOutstanding"] else 0
     actions = []
     if top_customer and top_customer["totalDue"] > 0:
         actions.append(
@@ -15741,9 +15797,43 @@ def _fallback_ai_insights(analytics: dict, status_value: str = "local") -> dict:
                 "urgency": "medium",
             }
         )
+    next_plays = []
+    for action in actions[:5]:
+        next_plays.append(
+            {
+                "title": action["title"],
+                "whyNow": action["reason"],
+                "howToPlay": action["impact"],
+                "expectedImpact": action["impact"],
+                "urgency": action["urgency"],
+            }
+        )
+    briefing_lines = [
+        f"Open ledger is £{totals['totalOutstanding']:,.2f} across {totals['openInvoiceCount']:,} open invoices.",
+        f"Overdue value is £{totals['totalOverdue']:,.2f} ({overdue_ratio:.1f}% of open exposure).",
+        f"The oldest overdue balance is {totals['maxDaysOverdue']:,} days old.",
+        f"Latest collection ratio is {collection_ratio:.1f}% ({collection_ratio_movement:+.1f} pts month-on-month).",
+        f"Current workflow pressure: Legal £{totals['legalValue']:,.2f}, 7 Day Notice £{totals['sevenDayNoticeValue']:,.2f}, Payment Plans £{totals['paymentPlanValue']:,.2f}.",
+    ]
+    conversations = [
+        {
+            "question": "What changed most this month?",
+            "answer": f"Collection ratio moved by {collection_ratio_movement:+.1f} points to {collection_ratio:.1f}%, while overdue sits at £{totals['totalOverdue']:,.2f}.",
+        },
+        {
+            "question": "Where should we focus first?",
+            "answer": f"Start with the largest overdue concentration and any account above 90 days overdue, especially {top_customer['name']}." if top_customer else "Start with invoices in 90+ days and legal or notice workflows.",
+        },
+        {
+            "question": "What can improve cash fastest?",
+            "answer": "Run same-day chase actions on top balances, then isolate payment-plan commitments to catch broken promises early.",
+        },
+    ]
     return {
         "status": status_value,
         "summary": f"{totals['openInvoiceCount']} open invoices total £{totals['totalOutstanding']:,.2f}, with £{totals['totalOverdue']:,.2f} overdue.",
+        "briefingLines": briefing_lines,
+        "nextPlays": next_plays,
         "priorityActions": actions[:5],
         "risks": [
             {
@@ -15764,6 +15854,18 @@ def _fallback_ai_insights(analytics: dict, status_value: str = "local") -> dict:
                 "value": f"£{totals['paymentPlanValue']:,.2f}",
             }
         ],
+        "conversations": conversations,
+        "commentary": {
+            "recent": "Local copilot briefing generated from synced ledger analytics.",
+            "watchouts": [
+                f"{totals['maxDaysOverdue']:,} day overdue tail remains open.",
+                "Legal and notice queues should be reviewed before generic reminder sends.",
+            ],
+            "wins": [
+                f"Total paid to date: £{totals['totalPaid']:,.2f}.",
+                "Priority actions have been generated from current exposure and overdue age.",
+            ],
+        },
         "narrative": "These insights are calculated locally from the synced Xero data.",
     }
 
@@ -17075,8 +17177,10 @@ async def _generate_openai_insights(analytics: dict) -> dict:
                         "type": "input_text",
                         "text": (
                             "You are Jenius AI, an operational credit-control analyst. "
-                            "Return concise JSON only. Focus on collection priority, overdue risk, payment plans, "
-                            "legal escalation, and month-on-month movement. Do not invent figures not present in the input."
+                            "Return concise JSON only. Produce a full copilot briefing with exactly five plain-English briefing lines, "
+                            "recommended next plays, conversational Q&A snippets, commentary, risks, and opportunities. "
+                            "Focus on collection priority, overdue risk, payment plans, legal escalation, and month-on-month movement. "
+                            "Do not invent figures not present in the input."
                         ),
                     }
                 ],
@@ -17099,6 +17203,17 @@ async def _generate_openai_insights(analytics: dict) -> dict:
     try:
         text = _extract_response_text(await _post_openai_responses(request_body, "insights generation"))
         parsed = json.loads(text) if text else {}
+        if not isinstance(parsed.get("priorityActions"), list):
+            parsed["priorityActions"] = [
+                {
+                    "title": str(play.get("title") or "Recommended play"),
+                    "reason": str(play.get("whyNow") or ""),
+                    "impact": str(play.get("expectedImpact") or play.get("howToPlay") or ""),
+                    "urgency": str(play.get("urgency") or "medium"),
+                }
+                for play in (parsed.get("nextPlays") or [])[:5]
+                if isinstance(play, dict)
+            ]
         return {"status": "ready", **parsed}
     except Exception as exc:
         logger.exception("OpenAI insights generation failed")
