@@ -1264,7 +1264,6 @@ CREATE TABLE IF NOT EXISTS ch_companies (
 CREATE INDEX IF NOT EXISTS ch_companies_client_idx ON ch_companies (client_id);
 CREATE INDEX IF NOT EXISTS ch_companies_due_idx ON ch_companies (next_due_date);
 CREATE INDEX IF NOT EXISTS ch_companies_status_idx ON ch_companies (internal_status);
-CREATE INDEX IF NOT EXISTS ch_companies_filing_authority_idx ON ch_companies (filing_authority_status, filing_authority_expires_at);
 
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_status TEXT NOT NULL DEFAULT 'pending';
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_reference TEXT NOT NULL DEFAULT '';
