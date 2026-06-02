@@ -14962,11 +14962,10 @@
                                                 <th><input type="checkbox" id="chCompaniesSelectAll" aria-label="Select all visible companies"></th>
                                                 <th>Company</th>
                                                 <th>Number</th>
-                                                <th>Client</th>
                                                 <th>Status</th>
-                                                <th>Due</th>
+                                                <th>Period End</th>
+                                                <th>Deadline</th>
                                                 <th>Auth code</th>
-                                                <th>Assigned</th>
                                             </tr>
                                         </thead>
                                         <tbody id="chCompaniesTableBody"></tbody>
@@ -42122,7 +42121,7 @@
                 if (!body) return;
                 const companies = companiesHouseState.companies || [];
                 if (!companies.length) {
-                    body.innerHTML = `<tr><td colspan="8" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
+                    body.innerHTML = `<tr><td colspan="7" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
                     chUpdateWorkflowControls();
                     return;
                 }
@@ -42136,11 +42135,10 @@
                         <td><input type="checkbox" data-ch-select-company value="${escapeHTML(companyId)}" ${isChecked ? "checked" : ""} aria-label="Select ${escapeHTML(company.companyName || "company")}"></td>
                         <td><strong>${escapeHTML(company.companyName || "—")}</strong><br><small style="color: var(--muted)">${escapeHTML(latestSubmissionLabel)}</small></td>
                         <td>${escapeHTML(company.companyNumber || "—")}</td>
-                        <td>${escapeHTML(company.clientName || "—")}<br><small style="color: var(--muted)">${escapeHTML(company.clientId || "")}</small></td>
                         <td>${chCompanyStatusCell(company)}</td>
+                        <td><span class="ch-pill">${escapeHTML(company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—")}</span></td>
                         <td>${chCompanyDueCell(company)}</td>
                         <td>${chCompanyAuthCell(company)}</td>
-                        <td>${escapeHTML(company.assignedStaffName || "—")}</td>
                     </tr>`;
                 }).join("");
                 chUpdateWorkflowControls();
