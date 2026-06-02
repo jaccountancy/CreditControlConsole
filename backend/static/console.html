@@ -14822,9 +14822,142 @@
             .risk-assessment-picker-controls .ghost-button {
                 white-space: nowrap;
             }
-            .xero-lock-date-mapping-input { width: 130px; }
-            .xero-lock-date-flag-cell { min-width: 210px; }
+            .xero-lock-date-mapping-input {
+                width: 156px;
+                min-height: 38px;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                padding: 0 10px;
+                font: inherit;
+                font-size: 0.85rem;
+                font-weight: 780;
+                color: var(--ink);
+                background: #fff;
+            }
+            .xero-lock-date-flag-cell {
+                min-width: 280px;
+            }
             .xero-lock-date-main-pill { margin-left: 6px; }
+            #xeroLockDateScreen .detail-panel {
+                display: grid;
+                gap: 14px;
+            }
+            #xeroLockDateScreen .detail-hero {
+                align-items: flex-start;
+                padding-bottom: 14px;
+                border-bottom: 1px solid var(--line);
+            }
+            #xeroLockDateScreen .detail-actions {
+                gap: 8px;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+            #xeroLockDateScreen .late-charge-summary {
+                margin: 0;
+                font-size: 0.88rem;
+                font-weight: 780;
+                line-height: 1.45;
+            }
+            #xeroLockDateScreen .late-charge-summary + .late-charge-summary {
+                margin-top: -8px;
+            }
+            .xero-lock-date-stats {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                gap: 10px;
+            }
+            .xero-lock-date-stat {
+                padding: 11px 12px;
+                border-radius: 12px;
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.92);
+                display: grid;
+                gap: 4px;
+            }
+            .xero-lock-date-stat span {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.07em;
+                text-transform: uppercase;
+            }
+            .xero-lock-date-stat strong {
+                color: var(--ink);
+                font-size: 1.08rem;
+                font-weight: 950;
+                line-height: 1.15;
+            }
+            #xeroLockDateScreen .ch-companies-table-wrap {
+                overflow: auto;
+                max-height: min(64vh, 760px);
+                border-radius: 16px;
+            }
+            #xeroLockDateScreen .ch-table {
+                min-width: 1240px;
+                font-size: 0.86rem;
+            }
+            #xeroLockDateScreen .ch-table th,
+            #xeroLockDateScreen .ch-table td {
+                padding: 12px 14px;
+            }
+            #xeroLockDateScreen .ch-table th {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                font-size: 0.72rem;
+                letter-spacing: 0.08em;
+                background: #edf4ff;
+            }
+            .xero-lock-tenant-cell strong,
+            .xero-lock-submitted-cell strong,
+            .xero-lock-date-cell strong {
+                display: block;
+                color: var(--ink);
+                font-size: 0.9rem;
+                font-weight: 900;
+            }
+            .xero-lock-tenant-cell small,
+            .xero-lock-submitted-cell small,
+            .xero-lock-date-cell small,
+            .xero-lock-date-flag-cell small {
+                display: block;
+                margin-top: 4px;
+                color: #637695;
+                font-size: 0.78rem;
+                font-weight: 760;
+            }
+            .xero-lock-mapping-cell {
+                min-width: 218px;
+            }
+            .xero-lock-mapping-controls {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .xero-lock-mapping-controls .ghost-button {
+                min-height: 38px;
+                padding-inline: 14px;
+                font-size: 0.8rem;
+                font-weight: 900;
+            }
+            #xeroLockDateScreen .ch-pill {
+                font-size: 0.73rem;
+                letter-spacing: 0.05em;
+                font-weight: 900;
+            }
+            @media (max-width: 960px) {
+                #xeroLockDateScreen .detail-hero {
+                    flex-direction: column;
+                }
+                #xeroLockDateScreen .detail-actions {
+                    width: 100%;
+                    justify-content: flex-start;
+                }
+                #xeroLockDateScreen .detail-actions .ghost-button {
+                    flex: 1 1 170px;
+                }
+            }
             .hmrc648-panel {
                 gap: 16px;
             }
@@ -16803,6 +16936,7 @@
                             </div>
                             <p class="late-charge-summary" id="xeroLockDateSummary">Loading lock-date data…</p>
                             <p class="late-charge-summary" id="xeroLockDateCHHealth">Companies House API status not checked yet.</p>
+                            <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
                             <div class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Xero lock dates">
                                     <thead>
@@ -25839,19 +25973,37 @@
             function renderXeroLockDateScreen() {
                 const summary = document.getElementById("xeroLockDateSummary");
                 const health = document.getElementById("xeroLockDateCHHealth");
+                const stats = document.getElementById("xeroLockDateStats");
                 const body = document.getElementById("xeroLockDateTableBody");
                 if (!summary || !body || !health) return;
                 if (xeroLockDateLoading) {
                     summary.textContent = "Loading lock-date data…";
+                    if (stats) stats.innerHTML = "";
                 } else {
                     const rows = xeroLockDateOverview.rows || [];
                     const flagged = rows.filter((row) => row?.flags?.accountsFiledNotLocked).length;
                     const unmapped = rows.filter((row) => row?.flags?.mappingMissing).length;
                     const refreshed = Number(xeroLockDateOverview.meta?.refreshedTenants || 0);
                     const cached = Number(xeroLockDateOverview.meta?.cachedTenants || 0);
+                    const periodLocked = rows.filter((row) => Boolean(row?.periodLockDate)).length;
+                    const accountsFiled = rows.filter((row) => Boolean(row?.companiesHouse?.accountsFiledDate)).length;
                     summary.textContent = rows.length
                         ? `${rows.length.toLocaleString("en-GB")} tenant${rows.length === 1 ? "" : "s"} loaded · ${flagged.toLocaleString("en-GB")} flagged · ${unmapped.toLocaleString("en-GB")} unmapped · ${refreshed.toLocaleString("en-GB")} refreshed · ${cached.toLocaleString("en-GB")} cached.`
                         : "No Xero tenants are connected yet.";
+                    if (stats) {
+                        stats.innerHTML = [
+                            { label: "Tenants loaded", value: rows.length.toLocaleString("en-GB") },
+                            { label: "With Xero lock date", value: periodLocked.toLocaleString("en-GB") },
+                            { label: "CH accounts filed", value: accountsFiled.toLocaleString("en-GB") },
+                            { label: "Needs mapping", value: unmapped.toLocaleString("en-GB") },
+                            { label: "Flagged mismatches", value: flagged.toLocaleString("en-GB") }
+                        ].map((card) => `
+                            <article class="xero-lock-date-stat">
+                                <span>${escapeHTML(card.label)}</span>
+                                <strong>${escapeHTML(card.value)}</strong>
+                            </article>
+                        `).join("");
+                    }
                 }
                 const checkedAtLabel = xeroLockDateCHHealth.checkedAt
                     ? new Date(xeroLockDateCHHealth.checkedAt).toLocaleString("en-GB")
@@ -25871,26 +26023,34 @@
                         const chLabel = [companiesHouse?.companyName, companiesHouse?.clientName].filter(Boolean).join(" · ");
                         return `
                             <tr>
-                                <td>
+                                <td class="xero-lock-tenant-cell">
                                     <strong>${escapeHTML(row?.tenantName || "Xero organisation")}</strong>
                                     ${row?.isMainTenant ? `<span class="ch-pill is-info xero-lock-date-main-pill">Main tenant</span>` : ""}
                                     <small>${escapeHTML(tenantId)}</small>
                                 </td>
-                                <td>${escapeHTML(periodLock)}</td>
-                                <td>${escapeHTML(yearEndLock)}</td>
-                                <td>
+                                <td class="xero-lock-date-cell">
+                                    <strong>${escapeHTML(periodLock)}</strong>
+                                    <small>Period lock</small>
+                                </td>
+                                <td class="xero-lock-date-cell">
+                                    <strong>${escapeHTML(yearEndLock)}</strong>
+                                    <small>Year-end lock</small>
+                                </td>
+                                <td class="xero-lock-submitted-cell">
                                     <strong>${escapeHTML(filedDate)}</strong>
                                     <small>${escapeHTML(chLabel || "No mapped company details")}</small>
                                 </td>
-                                <td>
-                                    <input
-                                        class="xero-lock-date-mapping-input"
-                                        type="text"
-                                        value="${escapeHTML(mapping?.companyNumber || "")}"
-                                        data-xero-lock-map-company-number="${escapeHTML(tenantId)}"
-                                        placeholder="Company no."
-                                    >
-                                    <button class="ghost-button" type="button" data-xero-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                <td class="xero-lock-mapping-cell">
+                                    <div class="xero-lock-mapping-controls">
+                                        <input
+                                            class="xero-lock-date-mapping-input"
+                                            type="text"
+                                            value="${escapeHTML(mapping?.companyNumber || "")}"
+                                            data-xero-lock-map-company-number="${escapeHTML(tenantId)}"
+                                            placeholder="Company no."
+                                        >
+                                        <button class="ghost-button" type="button" data-xero-lock-map-save="${escapeHTML(tenantId)}">Save</button>
+                                    </div>
                                 </td>
                                 <td class="xero-lock-date-flag-cell">
                                     ${isFlagged
