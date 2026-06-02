@@ -20482,16 +20482,27 @@
                 return `${loginEndpoint}${separator}redirect_to=${encodeURIComponent(xeroConnectionReturnURL())}`;
             }
 
-            function forceXeroConnectURL() {
-                const base = loginURL();
+            function forceXeroConnectURL(targetSection = "") {
+                const base = endpointURL(api.endpoints.login);
                 if (!base) return "";
-                return `${base}${base.includes("?") ? "&" : "?"}force=1`;
+                const target = String(targetSection || "").trim();
+                const separator = base.includes("?") ? "&" : "?";
+                if (!target) {
+                    const redirectURL = xeroConnectionReturnURL();
+                    return `${base}${separator}force=1&redirect_to=${encodeURIComponent(redirectURL)}`;
+                }
+                const redirectURL = xeroConnectionReturnURL(target);
+                return `${base}${separator}force=1&xero_target=${encodeURIComponent(target)}&redirect_to=${encodeURIComponent(redirectURL)}`;
             }
 
-            function xeroConnectionReturnURL() {
+            function xeroConnectionReturnURL(targetSection = "") {
                 try {
                     const url = new URL(window.location.href);
                     url.searchParams.set("xero", "connected");
+                    const cleanTarget = String(targetSection || "").trim();
+                    const sectionHash = appNavHashes[cleanTarget] || "";
+                    if (sectionHash) url.hash = `#${sectionHash}`;
+                    if (cleanTarget) url.searchParams.set("xero_target", cleanTarget);
                     return url.toString();
                 } catch {
                     return window.location.href;
@@ -20506,7 +20517,8 @@
                     newTenantsCount: 0,
                     refreshedTenantsCount: 0,
                     totalTenantsCount: 0,
-                    newTenantNames: []
+                    newTenantNames: [],
+                    targetSection: "",
                 };
                 const isHostedPage = window.location.protocol === "https:" || window.location.protocol === "http:";
                 if (!isHostedPage) return result;
@@ -20522,6 +20534,7 @@
                     const refreshedTenants = url.searchParams.get("xero_refreshed_tenants") || hashParams.get("xero_refreshed_tenants") || "";
                     const totalTenants = url.searchParams.get("xero_total_tenants") || hashParams.get("xero_total_tenants") || "";
                     const newTenantNamesText = url.searchParams.get("xero_new_tenant_names") || hashParams.get("xero_new_tenant_names") || "";
+                    const targetSection = url.searchParams.get("xero_target") || hashParams.get("xero_target") || "";
                     if (!connected && !sessionToken && !syncRunId) return result;
                     if (sessionToken) storePanelSessionToken(sessionToken);
                     url.searchParams.delete("xero");
@@ -20532,6 +20545,7 @@
                     url.searchParams.delete("xero_refreshed_tenants");
                     url.searchParams.delete("xero_total_tenants");
                     url.searchParams.delete("xero_new_tenant_names");
+                    url.searchParams.delete("xero_target");
                     if (hashLooksParametric) {
                         hashParams.delete("xero");
                         hashParams.delete("panel_session");
@@ -20541,6 +20555,7 @@
                         hashParams.delete("xero_refreshed_tenants");
                         hashParams.delete("xero_total_tenants");
                         hashParams.delete("xero_new_tenant_names");
+                        hashParams.delete("xero_target");
                         const nextHash = hashParams.toString();
                         url.hash = nextHash ? `#${nextHash}` : "";
                     }
@@ -20555,6 +20570,7 @@
                         .split("|")
                         .map((item) => item.trim())
                         .filter(Boolean);
+                    result.targetSection = String(targetSection || "").trim();
                     return result;
                 } catch {
                     return result;
@@ -26588,7 +26604,8 @@
                 }
             }
 
-            async function populateMissingXeroLockDateMappings(button) {
+            async function populateMissingXeroLockDateMappings(button, options = {}) {
+                const silent = Boolean(options?.silent);
                 button?.setAttribute("disabled", "disabled");
                 try {
                     const payload = await requestJSON(api.endpoints.xeroLockPopulateMappings, {
@@ -26600,10 +26617,12 @@
                     const populated = Number(summary.populatedCount || 0);
                     const skipped = Number(summary.skippedCount || 0);
                     const failed = Number(summary.failedCount || 0);
-                    showToast(
-                        `Populate complete: ${populated} mapped, ${skipped} skipped${failed ? `, ${failed} failed` : ""}.`,
-                        failed ? "info" : "success"
-                    );
+                    if (!silent) {
+                        showToast(
+                            `Populate complete: ${populated} mapped, ${skipped} skipped${failed ? `, ${failed} failed` : ""}.`,
+                            failed ? "info" : "success"
+                        );
+                    }
                     const failedRows = Array.isArray(payload?.failed) ? payload.failed : [];
                     const skippedRows = Array.isArray(payload?.skipped) ? payload.skipped : [];
                     const detailRows = [
@@ -26618,7 +26637,7 @@
                             reason: String(row?.reason || "No reason supplied"),
                         })),
                     ];
-                    if (detailRows.length) {
+                    if (detailRows.length && !silent) {
                         await showOperationReviewDialog({
                             eyebrow: "Populate Company Numbers",
                             title: "Populate results",
@@ -26639,7 +26658,7 @@
                         });
                     }
                 } catch (error) {
-                    showToast(error.message || "Unable to populate company numbers", "error");
+                    if (!silent) showToast(error.message || "Unable to populate company numbers", "error");
                 } finally {
                     button?.removeAttribute("disabled");
                 }
@@ -46467,7 +46486,7 @@
                     settingsConnectClientXerosButton.dataset.lockDateWired = "true";
                     settingsConnectClientXerosButton.addEventListener("click", (event) => {
                         event.preventDefault();
-                        const url = forceXeroConnectURL();
+                        const url = forceXeroConnectURL("xero-lock-date");
                         if (!url) {
                             window.alert("Unable to start the Xero login flow.");
                             return;
@@ -46481,7 +46500,7 @@
                     connectXeroLockDateButton.dataset.lockDateWired = "true";
                     connectXeroLockDateButton.addEventListener("click", (event) => {
                         event.preventDefault();
-                        const url = forceXeroConnectURL();
+                        const url = forceXeroConnectURL("xero-lock-date");
                         if (!url) {
                             window.alert("Unable to start the Xero login flow.");
                             return;
@@ -48545,6 +48564,8 @@
                 const initialSection = appNavSectionFromHash();
                 if (returnedFromIgnitionConnection) {
                     activeView = "ignition";
+                } else if (returnedFromXeroConnection && xeroConnectionReturn.targetSection && appNavHashes[xeroConnectionReturn.targetSection]) {
+                    navigateApp(xeroConnectionReturn.targetSection);
                 } else if (initialSection) {
                     navigateApp(initialSection);
                 }
@@ -48617,6 +48638,20 @@
                         },
                         12000
                     );
+                    if (xeroConnectionReturn.targetSection === "xero-lock-date") {
+                        try {
+                            await loadXeroLockDateOverview(true);
+                            if (Number(xeroConnectionReturn.newTenantsCount || 0) > 0) {
+                                await populateMissingXeroLockDateMappings(null, { silent: true });
+                                await loadXeroLockDateOverview(true);
+                            }
+                            if (activeView === "xero-lock-date") {
+                                showToast("Returned to Lock Dates. Review tenant mappings, then run mismatch checks.", "info");
+                            }
+                        } catch (error) {
+                            console.error("Unable to continue lock-date workflow after Xero connection", error);
+                        }
+                    }
                 }
                 if (returnedFromIgnitionConnection) {
                     showToast(
