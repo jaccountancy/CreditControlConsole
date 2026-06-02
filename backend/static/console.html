@@ -28631,21 +28631,56 @@
                 `;
             }
 
+            function meReportFixedAssetRowMoney(row = {}, keys = []) {
+                for (const key of keys) {
+                    const value = Number(row[key]);
+                    if (Number.isFinite(value)) return meReportMoneyValue(value);
+                }
+                return 0;
+            }
+
+            function meReportFixedAssetTotals(summary = {}, rows = meReportObjectRows(summary.fixedAssetChecks)) {
+                const registerFromRows = rows.reduce((sum, row) => (
+                    sum + meReportFixedAssetRowMoney(row, ["assetRegisterClosingCost", "assetRegisterClosingBalance", "registerClosingCost", "register"])
+                ), 0);
+                const balanceSheetFromRows = rows.reduce((sum, row) => (
+                    sum + meReportFixedAssetRowMoney(row, ["balanceSheetClosingCost", "balanceSheetFixedAssets", "balanceSheetClosingBalance", "balanceSheet"])
+                ), 0);
+                const differenceFromRows = rows.reduce((sum, row) => {
+                    const explicit = meReportFixedAssetRowMoney(row, ["difference", "closingCostDifference", "closingBookDifference"]);
+                    if (Math.abs(explicit) >= 0.005) return sum + Math.abs(explicit);
+                    const balanceSheet = meReportFixedAssetRowMoney(row, ["balanceSheetClosingCost", "balanceSheetFixedAssets", "balanceSheetClosingBalance", "balanceSheet"]);
+                    const register = meReportFixedAssetRowMoney(row, ["assetRegisterClosingCost", "assetRegisterClosingBalance", "registerClosingCost", "register"]);
+                    return sum + Math.abs(meReportMoneyValue(balanceSheet - register));
+                }, 0);
+                const useSummaryOrRows = (summaryValue, rowValue) => {
+                    const value = meReportMoneyValue(summaryValue);
+                    const fallback = meReportMoneyValue(rowValue);
+                    return Math.abs(value) >= 0.005 || Math.abs(fallback) < 0.005 ? value : fallback;
+                };
+                return {
+                    registerTotal: useSummaryOrRows(summary.fixedAssetRegisterTotal, registerFromRows),
+                    balanceSheetTotal: useSummaryOrRows(summary.balanceSheetFixedAssetTotal, balanceSheetFromRows),
+                    differenceTotal: useSummaryOrRows(summary.fixedAssetDifference, differenceFromRows)
+                };
+            }
+
             function renderMeReportFixedAssetsTab(client = {}, summary = {}) {
                 const fixedAssetRows = meReportObjectRows(summary.fixedAssetChecks);
+                const fixedAssetTotals = meReportFixedAssetTotals(summary, fixedAssetRows);
                 const overrides = summary.taxAdjustmentOverrides || meReportClientTaxOverrides(client);
                 const allowanceRowsByKey = new Map(meReportFixedAssetAllowanceRows(summary, overrides).map((row) => [row.code, row]));
                 const clientId = summary.taxAdjustmentOverrideClientId || client.id || "";
                 return `
                     <div class="ignition-summary-grid">
-                        ${renderMeReportMetric("Register total", formatCurrency(summary.fixedAssetRegisterTotal || 0))}
-                        ${renderMeReportMetric("Balance Sheet fixed assets", formatCurrency(summary.balanceSheetFixedAssetTotal || 0))}
-                        ${renderMeReportMetric("Difference", formatCurrency(summary.fixedAssetDifference || 0))}
+                        ${renderMeReportMetric("Register total", formatCurrency(fixedAssetTotals.registerTotal))}
+                        ${renderMeReportMetric("Balance Sheet fixed assets", formatCurrency(fixedAssetTotals.balanceSheetTotal))}
+                        ${renderMeReportMetric("Difference", formatCurrency(fixedAssetTotals.differenceTotal))}
                         ${renderMeReportMetric("Review count", Number(summary.capitalAllowanceReviewCount || fixedAssetRows.length || 0).toLocaleString("en-GB"))}
                     </div>
                     <article class="me-report-insight-card me-report-table-card">
                         <table>
-                            <thead><tr><th>Asset class</th><th>Balance Sheet</th><th>Register</th><th>Difference</th><th>Treatment</th><th>CT action</th></tr></thead>
+                            <thead><tr><th>Asset class</th><th>Balance Sheet</th><th>Fixed Asset Register</th><th>Difference</th><th>Treatment</th><th>CT action</th></tr></thead>
                             <tbody>
                                 ${fixedAssetRows.map((row) => {
                                     const key = meReportFixedAssetAllowanceKey(row);
