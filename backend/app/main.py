@@ -84,6 +84,8 @@ from .services import (
     insights_payload,
     ignition_payload,
     ignition_renewals_payload,
+    generate_risk_assessments_payload,
+    build_risk_assessments_zip_payload,
     invoice_detail,
     install_sync_signal_handlers,
     add_jashflow_charge,
@@ -911,6 +913,28 @@ def api_practice_pack_download(run_id: str, user: dict = Depends(require_panel_u
     download = retained_practice_pack_download(user, run_id)
     headers = {"Content-Disposition": f'attachment; filename="{download["filename"]}"'}
     return Response(content=download["bytes"], media_type=download["contentType"], headers=headers)
+
+
+@app.post("/api/risk-assessments/generate")
+async def api_risk_assessments_generate(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    clients = (body or {}).get("clients") or []
+    return await generate_risk_assessments_payload(user, clients)
+
+
+@app.post("/api/risk-assessments/export-zip")
+async def api_risk_assessments_export_zip(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    assessments = (body or {}).get("assessments") or []
+    payload = build_risk_assessments_zip_payload(user, assessments)
+    headers = {"Content-Disposition": f'attachment; filename="{payload["filename"]}"'}
+    return Response(content=payload["bytes"], media_type=payload["contentType"], headers=headers)
 
 
 @app.post("/api/panel/sync")

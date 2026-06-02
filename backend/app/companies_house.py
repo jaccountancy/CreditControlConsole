@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
 from email.utils import formataddr
+from functools import lru_cache
 from uuid import uuid4
 from xml.etree import ElementTree as ET
 
@@ -25,6 +26,11 @@ from .database import get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret
 from .services import get_xero_connection_for_user, gmail_connection_for_user, refresh_gmail_connection
 from .xero import create_sales_invoice, fetch_invoice_pdf
+
+try:
+    from lxml import etree as LET
+except Exception:  # pragma: no cover - optional dependency guard
+    LET = None
 
 CH_API_KEY_LABEL = "ch:api_key"
 CH_PRESENTER_AUTH_LABEL = "ch:presenter_auth"
@@ -72,6 +78,8 @@ CH_HEADER_NS = "http://xmlgw.companieshouse.gov.uk/Header"
 CH_FORMS_NS = "http://xmlgw.companieshouse.gov.uk"
 CH_GATEWAY_MAX_ATTEMPTS = 3
 CH_GATEWAY_BACKOFF_SECONDS = 1.0
+CH_XSD_VALIDATION_ENABLED = True
+CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd"
 
 logger = logging.getLogger(__name__)
 _CH_SYNC_LOCK = threading.Lock()
@@ -890,7 +898,149 @@ def _normalise_shareholdings(share_capital: dict | None) -> list[dict]:
     return output[:5000]
 
 
-def _validate_cs01_payload(company_row: dict, review_date: date) -> list[str]:
+def _first_bool_from_sources(*sources: object) -> bool | None:
+    for source in sources:
+        if source is None:
+            continue
+        if isinstance(source, bool):
+            return source
+        if isinstance(source, (int, float)) and source in {0, 1}:
+            return bool(source)
+        text = str(source).strip().lower()
+        if text in {"true", "1", "yes", "y"}:
+            return True
+        if text in {"false", "0", "no", "n"}:
+            return False
+    return None
+
+
+def _build_cs01_payload(company_row: dict) -> dict:
+    share_capital = company_row.get("share_capital") if isinstance(company_row.get("share_capital"), dict) else {}
+    statement_of_capital = share_capital.get("statementOfCapital") if isinstance(share_capital.get("statementOfCapital"), dict) else {}
+    confirmation_statement = share_capital.get("confirmationStatement") if isinstance(share_capital.get("confirmationStatement"), dict) else {}
+    cs_flags = share_capital.get("cs01Flags") if isinstance(share_capital.get("cs01Flags"), dict) else {}
+    payload = {
+        "sicCodes": company_row.get("sic_codes") if isinstance(company_row.get("sic_codes"), list) else [],
+        "statementOfCapital": statement_of_capital,
+        "shareholdings": _normalise_shareholdings(share_capital),
+    }
+
+    for key in (
+        "tradingOnMarket",
+        "dtr5Applies",
+        "pscExemptAsTradingOnRegulatedMarket",
+        "pscExemptAsSharesAdmittedOnMarket",
+        "pscExemptAsTradingOnUKRegulatedMarket",
+    ):
+        value = _first_bool_from_sources(
+            company_row.get(key),
+            confirmation_statement.get(key),
+            cs_flags.get(key),
+        )
+        if value is not None:
+            payload[key] = value
+
+    pscs = company_row.get("pscs") if isinstance(company_row.get("pscs"), list) else []
+    has_pscs = any(isinstance(item, dict) and not str(item.get("ceasedOn") or "").strip() for item in pscs)
+    exemption_keys = (
+        "pscExemptAsTradingOnRegulatedMarket",
+        "pscExemptAsSharesAdmittedOnMarket",
+        "pscExemptAsTradingOnUKRegulatedMarket",
+    )
+    exemptions_present = any(payload.get(key) is True for key in exemption_keys)
+
+    if payload.get("dtr5Applies") is True and payload.get("tradingOnMarket") is None:
+        payload["tradingOnMarket"] = True
+
+    if not has_pscs and not exemptions_present:
+        if payload.get("dtr5Applies") is True:
+            payload["pscExemptAsSharesAdmittedOnMarket"] = True
+        elif payload.get("tradingOnMarket") is True:
+            payload["pscExemptAsTradingOnRegulatedMarket"] = True
+
+    if payload.get("pscExemptAsTradingOnUKRegulatedMarket") is True and payload.get("pscExemptAsTradingOnRegulatedMarket") is None:
+        payload["pscExemptAsTradingOnRegulatedMarket"] = True
+    return payload
+
+
+def _cs01_psc_market_errors(pscs: list[dict], cs_payload: dict) -> list[str]:
+    errors: list[str] = []
+    has_pscs = any(isinstance(item, dict) and not str(item.get("ceasedOn") or "").strip() for item in pscs)
+    trading_on_market = cs_payload.get("tradingOnMarket")
+    dtr5_applies = cs_payload.get("dtr5Applies")
+    exempt_regulated = cs_payload.get("pscExemptAsTradingOnRegulatedMarket")
+    exempt_shares = cs_payload.get("pscExemptAsSharesAdmittedOnMarket")
+    exempt_uk_regulated = cs_payload.get("pscExemptAsTradingOnUKRegulatedMarket")
+    exemption_truths = {
+        "PSCExemptAsTradingOnRegulatedMarket": exempt_regulated is True,
+        "PSCExemptAsSharesAdmittedOnMarket": exempt_shares is True,
+        "PSCExemptAsTradingOnUKRegulatedMarket": exempt_uk_regulated is True,
+    }
+    enabled_exemptions = [label for label, enabled in exemption_truths.items() if enabled]
+
+    if dtr5_applies is True and trading_on_market is False:
+        errors.append("DTR5Applies cannot be true when TradingOnMarket is false.")
+    if exempt_regulated is True and trading_on_market is False:
+        errors.append("PSCExemptAsTradingOnRegulatedMarket requires TradingOnMarket to be true.")
+    if exempt_shares is True and dtr5_applies is False:
+        errors.append("PSCExemptAsSharesAdmittedOnMarket requires DTR5Applies to be true.")
+    if exempt_uk_regulated is True and trading_on_market is False:
+        errors.append("PSCExemptAsTradingOnUKRegulatedMarket requires TradingOnMarket to be true.")
+    if len(enabled_exemptions) > 1 and not (
+        set(enabled_exemptions)
+        == {"PSCExemptAsTradingOnRegulatedMarket", "PSCExemptAsTradingOnUKRegulatedMarket"}
+    ):
+        errors.append("Only one PSC exemption route can be selected for CS01 (except UK regulated market + regulated market pairing).")
+    if has_pscs and enabled_exemptions:
+        errors.append("Active PSC records and PSC exemption flags cannot both be supplied.")
+    if not has_pscs and not enabled_exemptions:
+        errors.append("No active PSCs were found and no PSC exemption was selected for CS01.")
+    return errors
+
+
+@lru_cache(maxsize=2)
+def _load_ch_xsd_schema(schema_url: str):
+    if LET is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="CS01 XML validation requires the 'lxml' package to be installed.",
+        )
+    try:
+        schema_doc = LET.parse(schema_url)
+        return LET.XMLSchema(schema_doc)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Unable to load Companies House XSD schema for validation ({schema_url}).",
+        ) from exc
+
+
+def _validate_ch_submission_xml_against_xsd(xml_payload: bytes) -> list[str]:
+    if not CH_XSD_VALIDATION_ENABLED:
+        return []
+    if LET is None:
+        logger.warning("Skipping CH XSD validation because lxml is not installed.")
+        return []
+    try:
+        schema = _load_ch_xsd_schema(CH_FORM_SUBMISSION_XSD_URL)
+        xml_doc = LET.fromstring(xml_payload)
+        form_submission_nodes = xml_doc.xpath("//*[local-name()='FormSubmission']")
+        if not form_submission_nodes:
+            return ["Generated XML is missing FormSubmission, so XSD validation could not run."]
+        xml_doc = form_submission_nodes[0]
+    except HTTPException as exc:
+        logger.warning("Skipping CH XSD validation because schema could not be loaded: %s", exc.detail)
+        return []
+    except Exception as exc:
+        return [f"Unable to parse generated CS01 XML for XSD validation: {str(exc) or exc.__class__.__name__}"]
+    if schema.validate(xml_doc):
+        return []
+    return [str(error.message) for error in schema.error_log][:10]
+
+
+def _validate_cs01_payload(company_row: dict, review_date: date, cs_payload: dict | None = None) -> list[str]:
     errors: list[str] = []
     company_number = normalise_company_number(company_row.get("company_number"))
     if not _is_valid_company_number(company_number):
@@ -908,6 +1058,9 @@ def _validate_cs01_payload(company_row: dict, review_date: date) -> list[str]:
                 errors.append(f"Shareholding row {idx} is missing NumberHeld.")
             if not item.get("shareholders"):
                 errors.append(f"Shareholding row {idx} must include at least one shareholder.")
+    pscs = company_row.get("pscs") if isinstance(company_row.get("pscs"), list) else []
+    payload = cs_payload if isinstance(cs_payload, dict) else _build_cs01_payload(company_row)
+    errors.extend(_cs01_psc_market_errors(pscs, payload))
     return errors
 
 
@@ -1173,6 +1326,73 @@ def _extract_payment_evidence(response_root: ET.Element) -> dict:
     return evidence
 
 
+def _payment_evidence_complete(evidence: dict | None) -> bool:
+    if not isinstance(evidence, dict):
+        return False
+    for key in ("paymentReference", "chargeReference", "paymentStatus", "paid", "amount"):
+        if _xml_text(evidence.get(key)):
+            return True
+    return False
+
+
+def _payment_confirmation_fallback_evidence(*, source: str, status_code: str, now: datetime) -> dict:
+    return {
+        "paymentConfirmationFallback": True,
+        "paymentConfirmationSource": source,
+        "statusCode": _xml_text(status_code, "UNKNOWN"),
+        "confirmedAt": now.isoformat(),
+    }
+
+
+def _status_poll_payment_reconciliation(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    submission_number: str,
+    now: datetime,
+) -> dict:
+    try:
+        request_xml = _build_ch_status_xml(
+            presenter_id=presenter_id,
+            presenter_auth=presenter_auth,
+            environment=environment,
+            transaction_id=_ch_txn_id(),
+            submission_number=submission_number,
+        )
+        response_text, response_root = _post_ch_gateway(request_xml)
+        parsed = _parse_ch_status_response(response_text=response_text, response_root=response_root)
+        status_row = next((item for item in parsed.get("statuses", []) if item.get("submissionNumber") == submission_number), None)
+        status_code = _xml_text((status_row or {}).get("statusCode"), "UNKNOWN")
+        payment_evidence = parsed.get("paymentEvidence") or {}
+        if not _payment_evidence_complete(payment_evidence):
+            payment_evidence = {
+                **payment_evidence,
+                **_payment_confirmation_fallback_evidence(
+                    source="status_poll_acceptance",
+                    status_code=status_code,
+                    now=now,
+                ),
+            }
+        return {
+            "ok": True,
+            "statusCode": status_code,
+            "paymentEvidence": payment_evidence,
+            "rawResponse": parsed.get("rawResponse") or response_text[:30000],
+        }
+    except Exception as exc:
+        logger.exception("Unable to reconcile payment evidence via status poll for %s", submission_number)
+        return {
+            "ok": False,
+            "error": str(exc) or exc.__class__.__name__,
+            "paymentEvidence": _payment_confirmation_fallback_evidence(
+                source="accepted_without_gateway_payment_fields",
+                status_code="ACCEPT",
+                now=now,
+            ),
+        }
+
+
 def _record_dead_letter(
     *,
     company_id: str,
@@ -1329,7 +1549,7 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
             if requested_submission_numbers:
                 cursor.execute(
                     """
-                    SELECT id, company_id, submission_reference, status, response_payload, rejection_reason
+                    SELECT id, company_id, submission_reference, status, response_payload, rejection_reason, payment_evidence
                     FROM ch_submissions
                     WHERE submission_reference = ANY(%s)
                     """,
@@ -1338,7 +1558,7 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
             else:
                 cursor.execute(
                     """
-                    SELECT id, company_id, submission_reference, status, response_payload, rejection_reason
+                    SELECT id, company_id, submission_reference, status, response_payload, rejection_reason, payment_evidence
                     FROM ch_submissions
                     WHERE status IN ('submitted')
                     ORDER BY submitted_at DESC
@@ -1382,7 +1602,19 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
             internal_status = _reconcile_submission_status_code(status_code)
             rejection_reason = _xml_text(status_row.get("rejectionReason"))
             payment_evidence = parsed.get("paymentEvidence") or {}
+            existing_payment_evidence = row.get("payment_evidence") if isinstance(row.get("payment_evidence"), dict) else {}
+            merged_payment_evidence = {**existing_payment_evidence, **payment_evidence}
             now = utcnow()
+            payment_confirmed = True if internal_status == "accepted" else None
+            if internal_status == "accepted" and not _payment_evidence_complete(merged_payment_evidence):
+                merged_payment_evidence = {
+                    **merged_payment_evidence,
+                    **_payment_confirmation_fallback_evidence(
+                        source="status_reconciliation_acceptance",
+                        status_code=status_code,
+                        now=now,
+                    ),
+                }
             with get_connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -1390,7 +1622,7 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
                         UPDATE ch_submissions
                         SET status = %s,
                             rejection_reason = %s,
-                            payment_confirmed = CASE WHEN %s = 'accepted' THEN TRUE ELSE payment_confirmed END,
+                            payment_confirmed = CASE WHEN %s IS TRUE THEN TRUE ELSE payment_confirmed END,
                             payment_evidence = COALESCE(payment_evidence, '{}'::jsonb) || %s::jsonb,
                             response_payload = COALESCE(response_payload, '{}'::jsonb) || %s::jsonb,
                             completed_at = CASE WHEN %s IN ('accepted', 'rejected') THEN COALESCE(completed_at, %s) ELSE completed_at END,
@@ -1400,9 +1632,9 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
                         (
                             internal_status,
                             rejection_reason,
-                            internal_status,
-                            json.dumps(payment_evidence),
-                            json.dumps({"statusPoll": {"statusCode": status_code, "rawResponse": parsed.get("rawResponse", "")}}),
+                            payment_confirmed,
+                            json.dumps(merged_payment_evidence),
+                            json.dumps({"statusPoll": {"statusCode": status_code, "rawResponse": parsed.get("rawResponse", ""), "paymentEvidence": payment_evidence}}),
                             internal_status,
                             now,
                             now,
@@ -2273,8 +2505,6 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
     if configured_fee_amount <= Decimal("0.00"):
         configured_fee_amount = Decimal("13.00")
     preflight_errors: list[str] = []
-    if not decrypt_api_key():
-        preflight_errors.append("Configure a Companies House API key in settings.")
     if not presenter_id:
         preflight_errors.append("Set Presenter ID in Companies House settings.")
     if not presenter_auth:
@@ -2441,8 +2671,10 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
 
         submission_reference = _ch_submission_number()
         transaction_id = _ch_txn_id()
-        review_date = next_due if isinstance(next_due, date) and next_due <= today else today
-        validation_errors = _validate_cs01_payload(row, review_date)
+        made_up_to = row.get("next_made_up_to_date")
+        review_date = made_up_to if isinstance(made_up_to, date) and made_up_to <= today else today
+        cs_payload = _build_cs01_payload(row)
+        validation_errors = _validate_cs01_payload(row, review_date, cs_payload=cs_payload)
         if validation_errors:
             reason = " | ".join(validation_errors[:5])
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
@@ -2455,14 +2687,6 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 }
             )
             continue
-        share_capital = row.get("share_capital") if isinstance(row.get("share_capital"), dict) else {}
-        cs_payload = {
-            "sicCodes": row.get("sic_codes") if isinstance(row.get("sic_codes"), list) else [],
-            "statementOfCapital": share_capital.get("statementOfCapital")
-            if isinstance(share_capital.get("statementOfCapital"), dict)
-            else {},
-            "shareholdings": _normalise_shareholdings(share_capital),
-        }
         idempotency_key = _submission_idempotency_key(company_id, review_date)
         with get_connection() as connection:
             with connection.cursor() as cursor:
@@ -2538,6 +2762,12 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 submission_number=submission_reference,
                 cs_payload=cs_payload,
             )
+            xml_validation_errors = _validate_ch_submission_xml_against_xsd(request_xml)
+            if xml_validation_errors:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Generated CS01 XML failed CH XSD validation: {' | '.join(xml_validation_errors[:3])}",
+                )
             response_text, response_root = _post_ch_gateway(request_xml)
             parsed_submission = _parse_ch_submission_response(
                 response_text=response_text,
@@ -2622,6 +2852,28 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         rejection_reason = _xml_text(parsed_submission.get("rejectionReason"))
         fee_amount = configured_fee_amount
         payment_evidence = parsed_submission.get("paymentEvidence") or {}
+        payment_reconciliation: dict | None = None
+        if status_value == "accepted" and not _payment_evidence_complete(payment_evidence):
+            payment_reconciliation = _status_poll_payment_reconciliation(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                submission_number=submission_reference,
+                now=now,
+            )
+            payment_evidence = {
+                **payment_evidence,
+                **(payment_reconciliation.get("paymentEvidence") or {}),
+            }
+        if status_value == "accepted" and not _payment_evidence_complete(payment_evidence):
+            payment_evidence = {
+                **payment_evidence,
+                **_payment_confirmation_fallback_evidence(
+                    source="gateway_accept_without_payment_fields",
+                    status_code=_xml_text(parsed_submission.get("statusCode"), "ACCEPT"),
+                    now=now,
+                ),
+            }
         payment_confirmed = True if status_value == "accepted" else None
         response_payload = {
             "queuedAt": now.isoformat(),
@@ -2632,6 +2884,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             "gatewayStatuses": parsed_submission.get("statuses") or [],
             "gatewayErrors": parsed_submission.get("errors") or [],
             "paymentEvidence": payment_evidence,
+            "paymentReconciliation": payment_reconciliation or {},
             "rawResponse": parsed_submission.get("rawResponse") or "",
         }
 
@@ -3650,4 +3903,3 @@ def replay_dead_letter_submissions(user: dict, payload: dict | None = None) -> d
         payload={"companyIds": deduped_company_ids, "deadLetterIds": dead_letter_ids},
     )
     return result
-

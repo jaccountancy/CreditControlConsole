@@ -100,6 +100,7 @@ LATE_PAYMENT_CHARGE_BASE_AMOUNTS = (Decimal("20.00"), Decimal("30.00"), Decimal(
 DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT = LATE_PAYMENT_CHARGE_BASE_AMOUNTS[0]
 LATE_PAYMENT_CHARGE_VAT_RATE = Decimal("0.20")
 OPENAI_INSIGHTS_TIMEOUT_SECONDS = 135
+RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
 SYNC_PHASE_CREDITS = "customer_credits"
@@ -145,6 +146,31 @@ _SYNC_SIGNAL_HANDLERS_INSTALLED = False
 DEVELOPER_LOG_CLEAR_EVENT_TYPE = "developer.logs.cleared"
 _PRACTICE_PACK_RETENTION_LOCK = threading.Lock()
 _PRACTICE_PACK_RETENTION_BY_USER: dict[str, list[dict]] = {}
+
+OPENAI_RISK_ASSESSMENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "clientName",
+        "riskLevel",
+        "riskScore",
+        "evaluation",
+        "commentary",
+        "keyConcerns",
+        "recommendedActions",
+        "reviewWindow",
+    ],
+    "properties": {
+        "clientName": {"type": "string"},
+        "riskLevel": {"type": "string", "enum": ["Low", "Moderate", "High", "Critical"]},
+        "riskScore": {"type": "integer", "minimum": 1, "maximum": 100},
+        "evaluation": {"type": "string"},
+        "commentary": {"type": "string"},
+        "keyConcerns": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 6},
+        "recommendedActions": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 6},
+        "reviewWindow": {"type": "string"},
+    },
+}
 
 
 def _json_default(value):
@@ -17469,6 +17495,274 @@ async def practice_pack_payload(
     retained = _practice_pack_store_retained_run(user, payload, zip_buffer.getvalue())
     payload["retainedRun"] = retained
     return payload
+
+
+def _risk_assessment_name(value: str | None) -> str:
+    text = str(value or "").strip()
+    return re.sub(r"\s+", " ", text)
+
+
+def _risk_assessment_level_from_score(score: int) -> str:
+    if score >= 85:
+        return "Critical"
+    if score >= 65:
+        return "High"
+    if score >= 40:
+        return "Moderate"
+    return "Low"
+
+
+def _risk_assessment_filename_part(value: str | None) -> str:
+    safe = re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+    return safe[:90] or "client"
+
+
+def _risk_assessment_fallback(client_name: str, last_assessment_at: str) -> dict:
+    seed = int(hashlib.sha1(client_name.lower().encode("utf-8")).hexdigest()[:8], 16)
+    score = 35 + (seed % 56)
+    level = _risk_assessment_level_from_score(score)
+    review_window = "Review monthly" if level in {"High", "Critical"} else "Review quarterly"
+    previous = (
+        f"The last recorded assessment date was {last_assessment_at}. "
+        if last_assessment_at
+        else "There is no prior assessment date recorded in this upload. "
+    )
+    commentary = (
+        f"{client_name} has been profiled using the uploaded BM client dataset and a fallback risk template because live AI generation was unavailable. "
+        f"{previous}"
+        f"The current weighted score is {score}/100 which maps to a {level.lower()} risk profile. "
+        "This profile assumes normal trading behaviour, but applies additional caution where payment visibility, filing discipline, and internal controls cannot be independently verified from the upload alone. "
+        "The main exposure is concentration risk: if cashflow tightens, a single delayed payment cycle can quickly increase aged debt and place pressure on working capital. "
+        "A second exposure is reporting latency, where management information is delivered late or without enough supporting context for confident credit decisions. "
+        "A third exposure is operational dependency on key individuals, which increases continuity risk when approvals, reconciliations, or debt follow-up are not consistently delegated. "
+        "Mitigation should focus on introducing a fixed review cadence, documented control checkpoints, and explicit escalation triggers for balances that exceed internal thresholds. "
+        "For now, the account can remain active, but should be monitored with clear action ownership and written commentary updates after each review cycle."
+    )
+    return {
+        "clientName": client_name,
+        "riskLevel": level,
+        "riskScore": score,
+        "evaluation": f"{level} risk profile based on the current credit-control signal set.",
+        "commentary": commentary,
+        "keyConcerns": [
+            "Potential concentration risk if collections slip in a single cycle.",
+            "Limited assurance from delayed or incomplete management reporting.",
+            "Operational dependence on key contacts for core finance processes.",
+        ],
+        "recommendedActions": [
+            "Apply a fixed review cadence with accountable owners and dated notes.",
+            "Set explicit escalation thresholds for aged debt and cashflow signals.",
+            "Require documented reconciliations and management information sign-off.",
+        ],
+        "reviewWindow": review_window,
+        "engine": "fallback",
+    }
+
+
+async def _generate_openai_risk_assessment(client_name: str, last_assessment_at: str = "") -> dict:
+    compact_payload = {
+        "clientName": client_name,
+        "lastAssessmentAt": last_assessment_at,
+        "today": date.today().isoformat(),
+    }
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You are Jenius AI and you write professional UK accountancy credit-risk assessments. "
+                            "Return JSON only using the schema. "
+                            "Write a clear evaluation and a substantial commentary paragraph with practical, concrete risk language suitable for client files."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": json.dumps(compact_payload, default=_json_default)}],
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "credit_control_risk_assessment",
+                "schema": OPENAI_RISK_ASSESSMENT_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 2000,
+    }
+    text = _extract_response_text(await _post_openai_responses(request_body, "risk assessment generation"))
+    parsed = json.loads(text) if text else {}
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI risk assessment returned an invalid payload.")
+    return parsed
+
+
+def _normalise_risk_assessment_payload(row: dict, fallback_name: str, fallback_last_assessment_at: str = "") -> dict:
+    name = _risk_assessment_name(row.get("clientName") or fallback_name)
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each risk assessment must include a client name.")
+    score = int(row.get("riskScore") or 0)
+    if score <= 0:
+        score = int(_risk_assessment_fallback(name, fallback_last_assessment_at)["riskScore"])
+    score = max(1, min(100, score))
+    level = str(row.get("riskLevel") or _risk_assessment_level_from_score(score)).strip().title()
+    if level not in {"Low", "Moderate", "High", "Critical"}:
+        level = _risk_assessment_level_from_score(score)
+    concerns = [str(item).strip() for item in (row.get("keyConcerns") or []) if str(item).strip()][:6]
+    actions = [str(item).strip() for item in (row.get("recommendedActions") or []) if str(item).strip()][:6]
+    if not concerns:
+        concerns = _risk_assessment_fallback(name, fallback_last_assessment_at)["keyConcerns"]
+    if not actions:
+        actions = _risk_assessment_fallback(name, fallback_last_assessment_at)["recommendedActions"]
+    return {
+        "clientName": name,
+        "riskLevel": level,
+        "riskScore": score,
+        "evaluation": str(row.get("evaluation") or f"{level} risk profile based on current signals.").strip(),
+        "commentary": str(row.get("commentary") or _risk_assessment_fallback(name, fallback_last_assessment_at)["commentary"]).strip(),
+        "keyConcerns": concerns,
+        "recommendedActions": actions,
+        "reviewWindow": str(row.get("reviewWindow") or ("Review monthly" if level in {"High", "Critical"} else "Review quarterly")).strip(),
+    }
+
+
+async def generate_risk_assessments_payload(user: dict, clients: list[dict] | list[str]) -> dict:
+    if not isinstance(clients, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="`clients` must be an array.")
+    if not clients:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one client.")
+    if len(clients) > RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A maximum of {RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST} clients can be generated per request.",
+        )
+
+    settings = get_settings()
+    seen: set[str] = set()
+    rows: list[dict] = []
+    for item in clients:
+        if isinstance(item, dict):
+            name = _risk_assessment_name(item.get("clientName") or item.get("name"))
+            last_assessment_at = str(item.get("lastAssessmentAt") or "").strip()
+        else:
+            name = _risk_assessment_name(str(item))
+            last_assessment_at = ""
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        rows.append({"clientName": name, "lastAssessmentAt": last_assessment_at})
+
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid client names were supplied.")
+
+    generated_at = _iso(utcnow())
+    output = []
+    for row in rows:
+        client_name = row["clientName"]
+        last_assessment_at = row["lastAssessmentAt"]
+        engine = "fallback"
+        payload = _risk_assessment_fallback(client_name, last_assessment_at)
+        if settings.openai_api_key:
+            try:
+                payload = await _generate_openai_risk_assessment(client_name, last_assessment_at)
+                engine = "openai"
+            except Exception as exc:
+                logger.exception("OpenAI risk assessment generation failed for %s", client_name)
+                payload = _risk_assessment_fallback(client_name, last_assessment_at)
+                payload["error"] = str(exc) or exc.__class__.__name__
+                engine = "fallback"
+        normalised = _normalise_risk_assessment_payload(payload, client_name, last_assessment_at)
+        output.append(
+            {
+                "id": str(uuid4()),
+                "clientName": normalised["clientName"],
+                "lastAssessmentAt": last_assessment_at,
+                "generatedAt": generated_at,
+                "riskLevel": normalised["riskLevel"],
+                "riskScore": normalised["riskScore"],
+                "evaluation": normalised["evaluation"],
+                "commentary": normalised["commentary"],
+                "keyConcerns": normalised["keyConcerns"],
+                "recommendedActions": normalised["recommendedActions"],
+                "reviewWindow": normalised["reviewWindow"],
+                "engine": engine,
+            }
+        )
+    return {"status": "ok", "generatedAt": generated_at, "assessments": output}
+
+
+def _risk_assessment_pdf_bytes(assessment: dict) -> bytes:
+    lines = [
+        f"Client: {assessment.get('clientName') or 'Client'}",
+        f"Generated: {assessment.get('generatedAt') or ''}",
+        f"Risk level: {assessment.get('riskLevel') or ''}",
+        f"Risk score: {assessment.get('riskScore') or ''}/100",
+        "",
+        f"Evaluation: {assessment.get('evaluation') or ''}",
+        "",
+        "Commentary:",
+        str(assessment.get("commentary") or ""),
+        "",
+        "Key concerns:",
+    ]
+    for concern in assessment.get("keyConcerns") or []:
+        lines.append(f"- {concern}")
+    lines.append("")
+    lines.append("Recommended actions:")
+    for action in assessment.get("recommendedActions") or []:
+        lines.append(f"- {action}")
+    lines.append("")
+    lines.append(f"Review window: {assessment.get('reviewWindow') or ''}")
+    return _minimal_me_report_pdf(lines)
+
+
+def build_risk_assessments_zip_payload(user: dict, assessments: list[dict]) -> dict:
+    if not isinstance(assessments, list) or not assessments:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one risk assessment to export.")
+    if len(assessments) > 1000:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Risk assessment ZIP export is limited to 1,000 files.")
+
+    used_names: set[str] = set()
+    output_files: list[tuple[str, bytes]] = []
+    for row in assessments:
+        if not isinstance(row, dict):
+            continue
+        normalised = _normalise_risk_assessment_payload(
+            row,
+            str(row.get("clientName") or row.get("name") or ""),
+            str(row.get("lastAssessmentAt") or ""),
+        )
+        generated_at = str(row.get("generatedAt") or _iso(utcnow()))
+        payload = {
+            **normalised,
+            "generatedAt": generated_at,
+        }
+        base_name = _risk_assessment_filename_part(normalised["clientName"])
+        filename = f"{base_name}-risk-assessment.pdf"
+        filename = _practice_pack_unique_filename(filename, used_names)
+        output_files.append((filename, _risk_assessment_pdf_bytes(payload)))
+
+    if not output_files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid risk assessments were supplied.")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for filename, data in output_files:
+            archive.writestr(filename, data)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return {
+        "status": "ok",
+        "filename": f"risk-assessments-{timestamp}.zip",
+        "contentType": "application/zip",
+        "bytes": buffer.getvalue(),
+        "count": len(output_files),
+    }
 
 
 async def _generate_openai_insights(analytics: dict) -> dict:

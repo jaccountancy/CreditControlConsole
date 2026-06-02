@@ -126,3 +126,11 @@ Ignition integration uses Ignition's Reporting API OAuth application from Develo
 - Payment evidence present for accepted filings where gateway returns payment metadata.
 - Duplicate submissions prevented by idempotency key.
 - Filing authority status set to `authorised` for all filed clients.
+
+## Compliance and authorization policy
+
+- A company must have `filing_authority_status = authorised` before CS01 submission is allowed.
+- Record `filing_authority_reference`, `filing_authority_received_at`, and `filing_authority_expires_at` for each client authority.
+- If authority expires or is revoked, submissions are blocked and logged as skipped with audit evidence.
+- Authentication codes are encrypted at rest. Legacy ciphertext remains decryptable for backward compatibility and is replaced on next save.
+- Use the submissions attempts export for client-facing evidence and internal compliance archive.

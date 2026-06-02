@@ -14131,6 +14131,10 @@
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10.2 4.6 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.8 4.6a2 2 0 0 0-3.6 0Z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg></span>
                             <span class="app-nav-copy"><strong>Bad Debt</strong><span>Invoice Write offs</span></span>
                         </a>
+                        <a class="app-nav-button" href="#credit-control-risk-assessments" data-app-nav="risk-assessments">
+                            <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5 6v6c0 4.7 2.8 8.3 7 9 4.2-.7 7-4.3 7-9V6l-7-3Z"></path><path d="m9.5 12 2 2 4-4"></path></svg></span>
+                            <span class="app-nav-copy"><strong>Risk Assessments</strong><span>Client risk</span></span>
+                        </a>
                         <a class="app-nav-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
                             <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                             <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>Companies House</span></span>
@@ -15080,6 +15084,53 @@
                         </section>
                     </section>
 
+                    <section class="late-charges-screen detail-card" id="riskAssessmentsScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Risk oversight</p>
+                                    <h3>Risk Assessments</h3>
+                                    <p class="detail-meta">Generate detailed AI risk writeups from BM Client CSV data and keep a full assessment history.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="primary-button" id="riskAssessmentsCreateButton" type="button">Create risk assessments</button>
+                                    <button class="ghost-button" id="riskAssessmentsDownloadZipButton" type="button">Download PDF ZIP</button>
+                                </div>
+                            </div>
+                            <section class="ch-import-card" id="riskAssessmentsBuilder" hidden>
+                                <div>
+                                    <p class="ch-section-title">Build risk assessments</p>
+                                    <p class="ch-section-sub">Upload BM Client CSV, select clients, and generate rich commentary with evaluation and recommendations.</p>
+                                </div>
+                                <label>
+                                    BM Client CSV
+                                    <input id="riskAssessmentsBmCsvInput" type="file" accept=".csv,text/csv">
+                                </label>
+                                <p class="settings-help" id="riskAssessmentsCsvStatus">Upload a BM Client CSV to load clients for selection.</p>
+                                <div class="ch-companies-table-wrap" id="riskAssessmentsClientPicker" hidden></div>
+                                <div class="detail-actions">
+                                    <button class="primary-button" id="riskAssessmentsGenerateButton" type="button">Generate selected</button>
+                                    <button class="ghost-button" id="riskAssessmentsCancelButton" type="button">Cancel</button>
+                                </div>
+                            </section>
+                            <div class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Risk assessments history">
+                                    <thead>
+                                        <tr>
+                                            <th>Generated</th>
+                                            <th>Client</th>
+                                            <th>Risk</th>
+                                            <th>Score</th>
+                                            <th>Evaluation</th>
+                                            <th>Commentary</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="riskAssessmentsTableBody"></tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </section>
+
                     <section class="late-charges-screen detail-card" id="confirmationStatementsScreen" hidden>
                         <section class="detail-panel confirmation-statements-workspace">
                             <div class="confirmation-statements-hero">
@@ -15243,6 +15294,27 @@
                                             <input id="chCompanyDetailClientId" name="clientId" type="text">
                                         </label>
                                         <label>
+                                            Filing authority
+                                            <select id="chCompanyDetailFilingAuthorityStatus" name="filingAuthorityStatus">
+                                                <option value="pending">Pending</option>
+                                                <option value="authorised">Authorised</option>
+                                                <option value="expired">Expired</option>
+                                                <option value="revoked">Revoked</option>
+                                            </select>
+                                        </label>
+                                        <label>
+                                            Authority reference
+                                            <input id="chCompanyDetailFilingAuthorityReference" name="filingAuthorityReference" type="text">
+                                        </label>
+                                        <label>
+                                            Authority received at
+                                            <input id="chCompanyDetailFilingAuthorityReceivedAt" name="filingAuthorityReceivedAt" type="datetime-local">
+                                        </label>
+                                        <label>
+                                            Authority expires at
+                                            <input id="chCompanyDetailFilingAuthorityExpiresAt" name="filingAuthorityExpiresAt" type="datetime-local">
+                                        </label>
+                                        <label>
                                             Contact email
                                             <input id="chCompanyDetailEmail" name="contactEmail" type="email">
                                         </label>
@@ -15345,6 +15417,7 @@
                                     </div>
                                     <div class="ch-settings-actions">
                                         <button class="ghost-button" type="button" id="chSubmissionAttemptsRefreshButton">Refresh attempts</button>
+                                        <button class="ghost-button" type="button" id="chSubmissionReplaySelectedButton" disabled>Replay selected dead letters</button>
                                         <a class="ghost-button" id="chSubmissionAttemptsExportButton" href="/api/companies-house/submissions/attempts/export.csv" target="_blank" rel="noopener">Export CSV</a>
                                     </div>
                                     <div class="ch-companies-table-wrap">
@@ -15357,6 +15430,7 @@
                                                     <th>Payment</th>
                                                     <th>Fee</th>
                                                     <th>Dead letter</th>
+                                                    <th>Replay</th>
                                                 </tr>
                                             </thead>
                                             <tbody id="chSubmissionAttemptsBody"></tbody>
@@ -16789,6 +16863,7 @@
             const USER_ACTIVITY_KEY = `${STORAGE_KEY}:user-activity-log`;
             const PRACTICE_PACK_ASSIGNMENTS_KEY = `${STORAGE_KEY}:practice-pack-assignments`;
             const PRACTICE_PACK_HISTORY_KEY = `${STORAGE_KEY}:practice-pack-history`;
+            const RISK_ASSESSMENTS_KEY = `${STORAGE_KEY}:risk-assessments`;
             const BANK_SA100_DISALLOWANCES_KEY = `${STORAGE_KEY}:bank-sa100-disallowances`;
             const BANK_SA100_MILEAGE_ENTRIES_KEY = `${STORAGE_KEY}:bank-sa100-mileage-entries`;
             const BANK_SA100_MANUAL_INVOICES_KEY = `${STORAGE_KEY}:bank-sa100-manual-invoices`;
@@ -16910,6 +16985,7 @@
                 insights: "Insights",
                 "late-charges": "Late Payment Charges",
                 "bad-debt": "Bad Debt",
+                "risk-assessments": "Risk Assessments",
                 "confirmation-statements": "Confirmation Statements",
                 "company-secreterial": "Company Secreterial",
                 jashflow: "Jashflow",
@@ -16926,6 +17002,7 @@
                 insights: "Home dashboard for performance signals, risk trends, cash movement, and operational priorities.",
                 "late-charges": "Review overdue invoices that may qualify for late payment charges before posting them.",
                 "bad-debt": "Assess accounts for write-off, prepare bad debt actions, and track the decision trail.",
+                "risk-assessments": "Review client credit exposure and maintain a consistent risk assessment process.",
                 "confirmation-statements": "Manage Companies House confirmation statement workflow, filing queue, and linked Xero invoices.",
                 "company-secreterial": "Manage company secretarial tasks, statutory records, and filing deadlines.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
@@ -16998,6 +17075,12 @@
             let showAllocatedClientTransactions = false;
             let selectedLateChargeInvoiceIds = new Set();
             let selectedBadDebtInvoiceIds = new Set();
+            let riskAssessments = loadRiskAssessments();
+            let riskAssessmentBuilderOpen = false;
+            let riskAssessmentGenerating = false;
+            let riskAssessmentDraftClients = [];
+            let riskAssessmentSelectedClientKeys = new Set();
+            let riskAssessmentLastCsvFileName = "";
             let topbarContactDetailsOpen = false;
             let latePaymentChargeBaseAmounts = new Map();
             let lateChargeSearchTerm = "";
@@ -17638,6 +17721,8 @@
                         practicePackGenerate: config.endpoints?.practicePackGenerate || "/api/practice-packs/generate",
                         practicePackRuns: config.endpoints?.practicePackRuns || "/api/practice-packs/runs",
                         practicePackRunDownload: config.endpoints?.practicePackRunDownload || "/api/practice-packs/runs/:runId/download",
+                        riskAssessmentsGenerate: config.endpoints?.riskAssessmentsGenerate || "/api/risk-assessments/generate",
+                        riskAssessmentsExportZip: config.endpoints?.riskAssessmentsExportZip || "/api/risk-assessments/export-zip",
                         status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
                         bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
                         factoryReset: config.endpoints?.factoryReset || "/api/panel/factory-reset",
@@ -17920,6 +18005,60 @@
                         ...practicePackServerRuns.filter((record) => record.id && record.id !== retained.id)
                     ];
                     practicePackRunsLoaded = true;
+                }
+            }
+
+            function normaliseRiskAssessmentRecord(record) {
+                if (!record || typeof record !== "object") return null;
+                const clientName = String(record.clientName || "").trim();
+                if (!clientName) return null;
+                const riskScore = Math.max(1, Math.min(100, Number(record.riskScore || 0) || 50));
+                const riskLevel = ["Low", "Moderate", "High", "Critical"].includes(String(record.riskLevel || ""))
+                    ? String(record.riskLevel)
+                    : (riskScore >= 85 ? "Critical" : riskScore >= 65 ? "High" : riskScore >= 40 ? "Moderate" : "Low");
+                const keyConcerns = Array.isArray(record.keyConcerns)
+                    ? record.keyConcerns.map((value) => String(value || "").trim()).filter(Boolean).slice(0, 8)
+                    : [];
+                const recommendedActions = Array.isArray(record.recommendedActions)
+                    ? record.recommendedActions.map((value) => String(value || "").trim()).filter(Boolean).slice(0, 8)
+                    : [];
+                return {
+                    id: String(record.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+                    clientName,
+                    matchKey: normalisePracticePackClientMatchName(clientName),
+                    generatedAt: String(record.generatedAt || new Date().toISOString()),
+                    lastAssessmentAt: String(record.lastAssessmentAt || ""),
+                    riskLevel,
+                    riskScore,
+                    evaluation: String(record.evaluation || "").trim(),
+                    commentary: String(record.commentary || "").trim(),
+                    keyConcerns,
+                    recommendedActions,
+                    reviewWindow: String(record.reviewWindow || "").trim(),
+                    engine: String(record.engine || "local")
+                };
+            }
+
+            function loadRiskAssessments() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(RISK_ASSESSMENTS_KEY) || "{}");
+                    const records = Array.isArray(stored.records)
+                        ? stored.records.map((record) => normaliseRiskAssessmentRecord(record)).filter(Boolean)
+                        : [];
+                    return records
+                        .sort((left, right) => (new Date(right.generatedAt || 0).getTime() || 0) - (new Date(left.generatedAt || 0).getTime() || 0))
+                        .slice(0, 2000);
+                } catch {
+                    try { localStorage.removeItem(RISK_ASSESSMENTS_KEY); } catch { /* ignore */ }
+                    return [];
+                }
+            }
+
+            function persistRiskAssessments() {
+                try {
+                    localStorage.setItem(RISK_ASSESSMENTS_KEY, JSON.stringify({ records: riskAssessments.slice(0, 2000) }));
+                } catch (error) {
+                    console.warn("Unable to persist risk assessments", error);
                 }
             }
 
@@ -19823,6 +19962,7 @@
                 if (activeView === "insights") return "home";
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "bad-debt") return "bad-debt";
+                if (activeView === "risk-assessments") return "risk-assessments";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
                 if (activeView === "company-secreterial") return "company-secreterial";
                 if (activeView === "jashflow") return "jashflow";
@@ -19963,6 +20103,7 @@
             function topbarToneForActiveView() {
                 if (activeView === "late-charges") return "lpc";
                 if (activeView === "bad-debt") return "danger";
+                if (activeView === "risk-assessments") return "danger";
                 if (activeView === "confirmation-statements") return "credit";
                 if (activeView === "company-secreterial") return "credit";
                 if (activeView === "jashflow") return "jashflow";
@@ -20078,6 +20219,7 @@
                 setElementVisible(document.getElementById("insightsScreen"), activeView === "insights");
                 setElementVisible(document.getElementById("lateChargesScreen"), activeView === "late-charges");
                 setElementVisible(document.getElementById("badDebtScreen"), activeView === "bad-debt");
+                setElementVisible(document.getElementById("riskAssessmentsScreen"), activeView === "risk-assessments");
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
                 setElementVisible(document.getElementById("companySecreterialScreen"), activeView === "company-secreterial");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
@@ -20089,7 +20231,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "confirmation-statements", "company-secreterial", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "company-secreterial", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -20142,6 +20284,7 @@
                 if (section === "clients") return openLedgerSection("clients");
                 if (section === "lpcs") return openLateChargesScreen();
                 if (section === "bad-debt") return openBadDebtScreen();
+                if (section === "risk-assessments") return openRiskAssessmentsScreen();
                 if (section === "confirmation-statements") return openConfirmationStatementsScreen();
                 if (section === "company-secreterial") return openCompanySecreterialScreen();
                 if (section === "jashflow") return openJashflowScreen();
@@ -20319,6 +20462,7 @@
                 clients: "credit-control-clients",
                 lpcs: "credit-control-lpcs",
                 "bad-debt": "credit-control-bad-debt",
+                "risk-assessments": "credit-control-risk-assessments",
                 "confirmation-statements": "credit-control-confirmation-statements",
                 "company-secreterial": "credit-control-company-secreterial",
                 jashflow: "credit-control-jashflow",
@@ -21710,6 +21854,7 @@
                 const insightsScreen = document.getElementById("insightsScreen");
                 const lateChargesScreen = document.getElementById("lateChargesScreen");
                 const badDebtScreen = document.getElementById("badDebtScreen");
+                const riskAssessmentsScreen = document.getElementById("riskAssessmentsScreen");
                 const jashflowScreen = document.getElementById("jashflowScreen");
                 const bankStatementsScreen = document.getElementById("bankStatementsScreen");
                 const ignitionScreen = document.getElementById("ignitionScreen");
@@ -21721,6 +21866,7 @@
                 setElementVisible(insightsScreen, activeView === "insights");
                 setElementVisible(lateChargesScreen, activeView === "late-charges");
                 setElementVisible(badDebtScreen, activeView === "bad-debt");
+                setElementVisible(riskAssessmentsScreen, activeView === "risk-assessments");
                 setElementVisible(document.getElementById("confirmationStatementsScreen"), activeView === "confirmation-statements");
                 if (activeView === "confirmation-statements" && typeof loadCompaniesHouseSettings === "function") {
                     loadCompaniesHouseSettings();
@@ -23265,6 +23411,15 @@
                 activeView = "bad-debt";
                 syncActiveViewShell();
                 closeTopbarMenu();
+                renderAll();
+                scrollConsoleToTop();
+            }
+
+            function openRiskAssessmentsScreen() {
+                activeView = "risk-assessments";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
                 renderAll();
                 scrollConsoleToTop();
             }
@@ -36230,6 +36385,7 @@
                     insights: "Home insights",
                     "late-charges": "Late Payment Charges",
                     "bad-debt": "Bad Debt",
+                    "risk-assessments": "Risk Assessments",
                     "confirmation-statements": "Confirmation Statements",
                     "company-secreterial": "Company Secreterial",
                     jashflow: "Jashflow",
@@ -36805,6 +36961,7 @@
                 if (activeView === "insights") activeNavSection = "home";
                 else if (activeView === "late-charges") activeNavSection = "lpcs";
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
+                else if (activeView === "risk-assessments") activeNavSection = "risk-assessments";
                 else if (activeView === "confirmation-statements") activeNavSection = "confirmation-statements";
                 else if (activeView === "company-secreterial") activeNavSection = "company-secreterial";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
@@ -42389,6 +42546,8 @@
                 importPreviewPage: 1,
                 importPreviewPageSize: 500,
                 importBusy: false,
+                deadLetters: [],
+                selectedDeadLetterIds: new Set(),
                 workflowBusy: false,
                 workflowOpen: false,
                 topbarSyncing: false,
@@ -42411,6 +42570,22 @@
             function chFormatDateTime(value) {
                 if (!value) return "—";
                 try { return new Date(value).toLocaleString("en-GB"); } catch { return value; }
+            }
+
+            function isoToLocalDatetimeInput(value) {
+                if (!value) return "";
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return "";
+                const pad = (part) => String(part).padStart(2, "0");
+                return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+            }
+
+            function localDatetimeInputToISOString(value) {
+                const text = String(value || "").trim();
+                if (!text) return null;
+                const date = new Date(text);
+                if (Number.isNaN(date.getTime())) return null;
+                return date.toISOString();
             }
 
             function chDaysUntil(value) {
@@ -42895,6 +43070,10 @@
                 document.getElementById("chCompanyDetailStaff").value = company.assignedStaffName || "";
                 document.getElementById("chCompanyDetailClientName").value = company.clientName || "";
                 document.getElementById("chCompanyDetailClientId").value = company.clientId || "";
+                document.getElementById("chCompanyDetailFilingAuthorityStatus").value = company.filingAuthorityStatus || "pending";
+                document.getElementById("chCompanyDetailFilingAuthorityReference").value = company.filingAuthorityReference || "";
+                document.getElementById("chCompanyDetailFilingAuthorityReceivedAt").value = isoToLocalDatetimeInput(company.filingAuthorityReceivedAt);
+                document.getElementById("chCompanyDetailFilingAuthorityExpiresAt").value = isoToLocalDatetimeInput(company.filingAuthorityExpiresAt);
                 document.getElementById("chCompanyDetailEmail").value = company.contactEmail || "";
                 document.getElementById("chCompanyDetailPhone").value = company.contactPhone || "";
                 document.getElementById("chCompanyDetailNotes").value = company.notes || "";
@@ -42922,6 +43101,10 @@
                     assignedStaffName: document.getElementById("chCompanyDetailStaff")?.value || "",
                     clientName: document.getElementById("chCompanyDetailClientName")?.value || "",
                     clientId: document.getElementById("chCompanyDetailClientId")?.value || "",
+                    filingAuthorityStatus: document.getElementById("chCompanyDetailFilingAuthorityStatus")?.value || "pending",
+                    filingAuthorityReference: document.getElementById("chCompanyDetailFilingAuthorityReference")?.value || "",
+                    filingAuthorityReceivedAt: localDatetimeInputToISOString(document.getElementById("chCompanyDetailFilingAuthorityReceivedAt")?.value),
+                    filingAuthorityExpiresAt: localDatetimeInputToISOString(document.getElementById("chCompanyDetailFilingAuthorityExpiresAt")?.value),
                     contactEmail: document.getElementById("chCompanyDetailEmail")?.value || "",
                     contactPhone: document.getElementById("chCompanyDetailPhone")?.value || "",
                     notes: document.getElementById("chCompanyDetailNotes")?.value || "",
@@ -43153,21 +43336,28 @@
                     if (body) {
                         body.innerHTML = rows.length ? rows.map((row) => `<tr><td>${escapeHTML(row.filename || "—")}</td><td>${escapeHTML(row.importType || "—")}</td><td>${Number(row.createCount || 0).toLocaleString("en-GB")}</td><td>${Number(row.updateCount || 0).toLocaleString("en-GB")}</td><td>${Number(row.skipCount || 0).toLocaleString("en-GB")}</td><td>${row.errorCount ? `<span class=\"ch-pill is-bad\">${row.errorCount}</span>` : "0"}</td><td><span class="ch-pill ${row.status === "completed" ? "is-good" : "is-info"}">${escapeHTML(row.status || "—")}</span></td><td>${escapeHTML(chFormatDateTime(row.createdAt))}</td></tr>`).join("") : `<tr><td colspan="8" class="ch-empty-state">No imports yet.</td></tr>`;
                     }
-                    const deadLetterMap = new Map((deadLettersPayload?.deadLetters || []).map((row) => [String(row.submissionId || ""), row]));
+                    const deadLetters = deadLettersPayload?.deadLetters || [];
+                    companiesHouseState.deadLetters = deadLetters;
+                    const deadLetterMap = new Map(deadLetters.map((row) => [String(row.submissionId || ""), row]));
                     const attempts = attemptsPayload?.attempts || [];
                     const attemptsBody = document.getElementById("chSubmissionAttemptsBody");
+                    const selectedDeadLetterIds = new Set();
                     if (attemptsBody) {
                         attemptsBody.innerHTML = attempts.length
                             ? attempts.map((row) => {
                                 const isDead = !!row.deadLetter || deadLetterMap.has(String(row.id || ""));
                                 const deadLetter = deadLetterMap.get(String(row.id || ""));
                                 const deadReason = row.deadLetterReason || deadLetter?.reason || "";
+                                const deadLetterId = String(deadLetter?.id || "");
                                 const paymentText = row.paymentConfirmed === true
                                     ? "Confirmed"
                                     : row.paymentConfirmed === false
                                     ? "Not confirmed"
                                     : "Pending";
                                 const paymentClass = row.paymentConfirmed === true ? "is-good" : row.paymentConfirmed === false ? "is-bad" : "is-info";
+                                const replayControl = isDead && deadLetterId
+                                    ? `<label class="ch-checkbox"><input type="checkbox" data-ch-dead-letter-replay="${escapeHTML(deadLetterId)}"><span>Select</span></label>`
+                                    : "—";
                                 return `<tr>
                                     <td>${escapeHTML(row.companyName || "—")}<br><small>${escapeHTML(row.companyNumber || "—")}</small></td>
                                     <td><span class="ch-pill ${row.status === "accepted" ? "is-good" : row.status === "rejected" ? "is-bad" : "is-info"}">${escapeHTML(row.status || "—")}</span></td>
@@ -43175,14 +43365,64 @@
                                     <td><span class="ch-pill ${paymentClass}">${escapeHTML(paymentText)}</span></td>
                                     <td>£${Number(row.feeAmount || 0).toFixed(2)}<br><small>${escapeHTML(row.paymentReference || "—")}</small></td>
                                     <td>${isDead ? `<span class="ch-pill is-bad">Yes</span><br><small>${escapeHTML(deadReason || "Dead-lettered")}</small>` : `<span class="ch-pill is-good">No</span>`}</td>
+                                    <td>${replayControl}</td>
                                 </tr>`;
                             }).join("")
-                            : `<tr><td colspan="6" class="ch-empty-state">No submission attempts yet.</td></tr>`;
+                            : `<tr><td colspan="7" class="ch-empty-state">No submission attempts yet.</td></tr>`;
+                        attemptsBody.querySelectorAll("input[data-ch-dead-letter-replay]").forEach((checkbox) => {
+                            checkbox.addEventListener("change", () => {
+                                const deadLetterId = String(checkbox.getAttribute("data-ch-dead-letter-replay") || "");
+                                if (!deadLetterId) return;
+                                if (checkbox.checked) selectedDeadLetterIds.add(deadLetterId);
+                                else selectedDeadLetterIds.delete(deadLetterId);
+                                companiesHouseState.selectedDeadLetterIds = new Set(selectedDeadLetterIds);
+                                const replayButton = document.getElementById("chSubmissionReplaySelectedButton");
+                                if (replayButton) replayButton.disabled = !companiesHouseState.selectedDeadLetterIds.size;
+                            });
+                        });
                     }
+                    companiesHouseState.selectedDeadLetterIds = selectedDeadLetterIds;
+                    const replayButton = document.getElementById("chSubmissionReplaySelectedButton");
+                    if (replayButton) replayButton.disabled = !companiesHouseState.selectedDeadLetterIds.size;
                     companiesHouseState.tabLoaded.audit = true;
                 } catch (error) {
                     console.error("Unable to load imports", error);
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                }
+            }
+
+            async function replaySelectedDeadLetterSubmissions() {
+                const deadLetterIds = Array.from(companiesHouseState.selectedDeadLetterIds || []).filter(Boolean);
+                if (!deadLetterIds.length) {
+                    showToast("Select at least one dead-letter attempt to replay.", "error");
+                    return;
+                }
+                if (!window.confirm(`Replay ${deadLetterIds.length} dead-letter submission${deadLetterIds.length === 1 ? "" : "s"} now?`)) return;
+                const replayButton = document.getElementById("chSubmissionReplaySelectedButton");
+                if (replayButton) replayButton.disabled = true;
+                try {
+                    const payload = await requestJSON("/api/companies-house/dead-letters/replay", {
+                        method: "POST",
+                        body: JSON.stringify({ deadLetterIds }),
+                    });
+                    const result = payload?.result || {};
+                    const submittedCount = Number(result.submittedCount || 0);
+                    const failedCount = Number(result.failedCount || 0);
+                    const skippedCount = Number(result.skippedCount || 0);
+                    showToast(
+                        `Replay requested. Submitted ${submittedCount}, skipped ${skippedCount}, failed ${failedCount}.`,
+                        failedCount ? "info" : "success"
+                    );
+                    companiesHouseState.selectedDeadLetterIds = new Set();
+                    await loadCompaniesHouseImports(true);
+                    companiesHouseState.tabLoaded.dashboard = false;
+                    loadCompaniesHouseDashboard(true);
+                } catch (error) {
+                    console.error("Unable to replay dead letters", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    showToast(error?.message || "Unable to replay dead letters.", "error");
+                } finally {
+                    if (replayButton) replayButton.disabled = !(companiesHouseState.selectedDeadLetterIds || new Set()).size;
                 }
             }
 
@@ -43271,6 +43511,7 @@
                 document.getElementById("chImportCommitButton")?.addEventListener("click", commitCompaniesHouseImport);
                 document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
                 document.getElementById("chSubmissionAttemptsRefreshButton")?.addEventListener("click", () => loadCompaniesHouseImports(true));
+                document.getElementById("chSubmissionReplaySelectedButton")?.addEventListener("click", replaySelectedDeadLetterSubmissions);
                 document.getElementById("chImportPrevPageButton")?.addEventListener("click", () => {
                     companiesHouseState.importPreviewPage = Math.max(1, Number(companiesHouseState.importPreviewPage || 1) - 1);
                     chRenderImportPreview(companiesHouseState.importPreview);

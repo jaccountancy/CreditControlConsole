@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 import unittest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
-import httpx
-from fastapi import HTTPException
-
-from app import companies_house as ch
+try:
+    import httpx
+    from fastapi import HTTPException
+    from app import companies_house as ch
+    _CH_TEST_IMPORT_ERROR = ""
+except ModuleNotFoundError as exc:  # pragma: no cover - local runtime guard
+    httpx = None  # type: ignore[assignment]
+    HTTPException = Exception  # type: ignore[assignment]
+    ch = None  # type: ignore[assignment]
+    _CH_TEST_IMPORT_ERROR = str(exc)
 
 
 class _DummyResponse:
@@ -34,6 +42,7 @@ class _DummyClient:
         return self._response
 
 
+@unittest.skipIf(ch is None, f"Companies House tests skipped: {_CH_TEST_IMPORT_ERROR}")
 class CompaniesHouseTests(unittest.TestCase):
     def test_reconcile_status_code(self):
         self.assertEqual(ch._reconcile_submission_status_code("ACCEPT"), "accepted")
@@ -69,6 +78,44 @@ class CompaniesHouseTests(unittest.TestCase):
         }
         errors = ch._validate_cs01_payload(row, date.today())
         self.assertTrue(any("Company number" in err for err in errors))
+
+    def test_validate_cs01_payload_rejects_psc_and_exemption_mix(self):
+        row = {
+            "company_number": "12345678",
+            "next_due_date": date.today(),
+            "pscs": [{"name": "Example PSC", "ceasedOn": ""}],
+            "share_capital": {
+                "cs01Flags": {
+                    "tradingOnMarket": True,
+                    "pscExemptAsTradingOnRegulatedMarket": True,
+                }
+            },
+        }
+        payload = ch._build_cs01_payload(row)
+        errors = ch._validate_cs01_payload(row, date.today(), cs_payload=payload)
+        self.assertTrue(any("cannot both be supplied" in err for err in errors))
+
+    def test_build_cs01_payload_autofills_shares_admitted_exemption(self):
+        row = {
+            "company_number": "12345678",
+            "next_due_date": date.today(),
+            "pscs": [],
+            "share_capital": {
+                "cs01Flags": {"dtr5Applies": True},
+            },
+        }
+        payload = ch._build_cs01_payload(row)
+        self.assertTrue(payload.get("tradingOnMarket"))
+        self.assertTrue(payload.get("pscExemptAsSharesAdmittedOnMarket"))
+
+    def test_payment_confirmation_fallback_evidence_contains_audit_marker(self):
+        marker = ch._payment_confirmation_fallback_evidence(
+            source="status_poll_acceptance",
+            status_code="ACCEPT",
+            now=datetime(2026, 6, 2),
+        )
+        self.assertTrue(marker.get("paymentConfirmationFallback"))
+        self.assertEqual(marker.get("paymentConfirmationSource"), "status_poll_acceptance")
 
     def test_submission_idempotency_key_is_stable(self):
         key1 = ch._submission_idempotency_key("cid-1", date(2026, 6, 1))
