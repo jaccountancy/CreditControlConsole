@@ -30855,8 +30855,89 @@
                 `;
             }
 
-            function renderMeReportSubmissionTabPanel(client, summary, tab) {
+            function meReportReviewerGeneratedInsights(client = {}, summary = {}) {
+                const items = [];
+                const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
+                const absolute = (value) => Math.abs(Number(value || 0));
+                const registerTotal = meReportMoneyValue(summary.fixedAssetRegisterTotal || 0);
+                const balanceSheetFixedAssets = meReportMoneyValue(summary.balanceSheetFixedAssetTotal || 0);
+                const fixedAssetDifference = meReportMoneyValue(
+                    summary.fixedAssetDifference
+                    ?? (Math.abs(registerTotal) || Math.abs(balanceSheetFixedAssets) ? (balanceSheetFixedAssets - registerTotal) : 0)
+                );
+                if (Math.abs(fixedAssetDifference) >= 0.01) {
+                    items.push(`Fixed assets are out by ${formatCurrency(fixedAssetDifference)} between the Balance Sheet and fixed asset register; reconcile and post correcting journals before sign-off.`);
+                }
+
+                const hasFixedAssets = Math.abs(registerTotal) >= 0.01 || Math.abs(balanceSheetFixedAssets) >= 0.01
+                    || trialBalanceAccounts.some((account) => /fixed asset|plant|equipment|depreciation|accumulated depreciation/i.test(String(account.accountName || account.accountType || "")));
+                const depreciationAddBack = absolute(summary.depreciationAddBack || 0);
+                if (hasFixedAssets && depreciationAddBack < 0.01) {
+                    items.push("Fixed assets exist but no depreciation add-back is showing; confirm depreciation has been posted and mapped correctly.");
+                }
+
+                if (meReportVatWarningVisible(client, summary)) {
+                    const rolling = formatCurrency(meReportRolling12MonthTurnover(summary));
+                    const threshold = formatCurrency(summary.vatThreshold || 90000);
+                    items.push(`Rolling VAT turnover is ${rolling} against a threshold of ${threshold} and VAT registration is not confirmed; confirm status and evidence now.`);
+                }
+
+                const payableAccounts = trialBalanceAccounts.filter((account) => /wages payable|payroll payable|pension payable|pensions payable|paye|nic payable/.test(String(account.accountName || "").toLowerCase()));
+                payableAccounts.forEach((account) => {
+                    const amount = meReportMoneyValue(account.amount ?? (Number(account.debitYTD || 0) - Number(account.creditYTD || 0)));
+                    if (Math.abs(amount) < 0.01) return;
+                    items.push(`${account.accountName || "Payable control account"} is not zero (${formatCurrency(amount)}); confirm payroll/pension liabilities are fully cleared or correctly accrued.`);
+                });
+
+                const invoiceLikeEntries = trialBalanceAccounts.flatMap((account) => (
+                    meReportObjectRows(account.transactions).map((transaction) => ({
+                        description: String(transaction.description || "").toLowerCase(),
+                        amount: meReportMoneyValue(transaction.amount || 0),
+                        accountName: String(account.accountName || ""),
+                        accountCode: String(account.accountCode || "")
+                    }))
+                )).filter((row) => /invoice|bill|credit note|supplier invoice|cn\b/.test(row.description));
+                if (invoiceLikeEntries.length) {
+                    const uniqueAccounts = new Set(invoiceLikeEntries.map((row) => `${row.accountCode} ${row.accountName}`.trim()).filter(Boolean));
+                    items.push(`Nominal transaction detail includes ${invoiceLikeEntries.length.toLocaleString("en-GB")} invoice/bill-style postings across ${uniqueAccounts.size.toLocaleString("en-GB")} account(s); verify supplier invoice matching and check for duplicate spend-money + bill posting.`);
+                }
+
+                return items;
+            }
+
+            function meReportReviewerInsights(client = {}, summary = {}) {
                 const insights = summary.profitAndLossInsights || {};
+                const manual = [
+                    ...meReportInsightItems(insights.needsAttention, []),
+                    ...meReportInsightItems(insights.priorities, []),
+                    ...meReportInsightItems(summary.warnings, []),
+                ];
+                const generated = meReportReviewerGeneratedInsights(client, summary);
+                const merged = [...manual, ...generated]
+                    .map((item) => String(item || "").trim())
+                    .filter(Boolean);
+                const seen = new Set();
+                return merged.filter((item) => {
+                    const key = item.toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                }).slice(0, 14);
+            }
+
+            function renderMeReportReviewerInsightCard(client = {}, summary = {}) {
+                const rows = meReportReviewerInsights(client, summary);
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">Bookkeeping Review Anomalies</p>
+                        <h3>${rows.length.toLocaleString("en-GB")} review check${rows.length === 1 ? "" : "s"} flagged</h3>
+                        <p class="detail-meta">Reviewer-only checks for posting accuracy, classification and completeness before approval.</p>
+                        <ul>${rows.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>
+                    </article>
+                `;
+            }
+
+            function renderMeReportSubmissionTabPanel(client, summary, tab) {
                 const broughtForwardTradingLoss = meReportBroughtForwardTradingLoss(client, summary);
                 let panel = "";
                 switch (tab) {
@@ -30884,11 +30965,7 @@
                     case "insights":
                     default:
                         panel = `
-                        <div class="me-report-insight-grid">
-                            ${renderMeReportInsightList("Going well", insights.goingWell, ["Profit and loss data has been extracted and is ready for client commentary."])}
-                            ${renderMeReportInsightList("Needs attention", insights.needsAttention, summary.warnings || ["Review CT, DLA, VAT and dividend assumptions before issuing advice."])}
-                            ${renderMeReportInsightList("Priorities", insights.priorities, ["Approve exceptions, confirm tax treatment, then send the client report."])}
-                        </div>
+                        ${renderMeReportReviewerInsightCard(client, summary)}
                         ${renderMeReportQualityTables(client, summary)}
                         ${renderMeReportForecastBars(summary)}
                     `;
