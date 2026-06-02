@@ -2949,7 +2949,6 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
                 and row.get("filing_authority_expires_at").date() >= today
             )
         )
-        and (due_in_days is None or due_in_days <= 60)
     )
     eligible_for_invoicing = bool(latest_submission_status == "accepted" and not latest_submission_invoice_id)
     return {

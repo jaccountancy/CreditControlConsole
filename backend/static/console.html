@@ -17043,7 +17043,7 @@
                                         <article>
                                             <span>Step 1</span>
                                             <strong id="chWorkflowEligibleCount">0 eligible</strong>
-                                            <small>Due within 60 days with auth code</small>
+                                            <small>Auth code and filing authority required</small>
                                         </article>
                                         <article>
                                             <span>Step 2</span>
@@ -48460,8 +48460,6 @@
 
             function chSubmissionIneligibilityReasons(company) {
                 const reasons = [];
-                const dueInDays = Number(company?.dueInDays);
-                const hasDueInDays = Number.isFinite(dueInDays);
                 const internalStatus = String(company?.internalStatus || "active");
                 const authorityStatus = String(company?.filingAuthorityStatus || "pending").toLowerCase();
                 const authorityExpiresAt = company?.filingAuthorityExpiresAt ? new Date(company.filingAuthorityExpiresAt) : null;
@@ -48472,7 +48470,6 @@
                 if (["paused", "do_not_file", "inactive"].includes(internalStatus)) reasons.push(`Blocked by internal status (${internalStatus.replace(/_/g, " ")})`);
                 if (authorityStatus !== "authorised") reasons.push("Filing authority not authorised");
                 if (authorityExpiresAt instanceof Date && !Number.isNaN(authorityExpiresAt.getTime()) && authorityExpiresAt < now) reasons.push("Filing authority expired");
-                if (hasDueInDays && dueInDays > 60) reasons.push("Due date is more than 60 days away");
                 return reasons;
             }
 
@@ -48614,7 +48611,7 @@
                 if (companiesHouseState.workflowBusy) return;
                 const selected = chSelectedCompanies().filter((company) => company.eligibleForSubmission);
                 if (!selected.length) {
-                    chSetWorkflowStatus("Select at least one eligible company (due ≤60 days with auth code) before submitting.", "error");
+                    chSetWorkflowStatus("Select at least one eligible company (auth code and filing authority required) before submitting.", "error");
                     return;
                 }
                 if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to Companies House?`)) return;
