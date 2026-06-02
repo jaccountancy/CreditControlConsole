@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
@@ -104,6 +104,17 @@ class CompaniesHouseTests(unittest.TestCase):
         payload = ch._build_cs01_payload(row)
         errors = ch._validate_cs01_payload(row, date.today(), cs_payload=payload)
         self.assertTrue(any("cannot both be supplied" in err for err in errors))
+
+    def test_validate_cs01_payload_allows_future_review_date_within_due_window(self):
+        future_review_date = date.today() + timedelta(days=30)
+        row = {
+            "company_number": "12345678",
+            "next_made_up_to_date": future_review_date,
+            "next_due_date": date.today() + timedelta(days=60),
+            "share_capital": {},
+        }
+        errors = ch._validate_cs01_payload(row, future_review_date)
+        self.assertFalse(any("cannot be in the future" in err for err in errors))
 
     def test_build_cs01_payload_autofills_shares_admitted_exemption(self):
         row = {

@@ -48287,6 +48287,18 @@
                 return "is-good";
             }
 
+            function chFiledWithinLast12Months(value) {
+                if (!value) return false;
+                const filedAt = new Date(value);
+                if (Number.isNaN(filedAt.getTime())) return false;
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                filedAt.setHours(0, 0, 0, 0);
+                const twelveMonthsAgo = new Date(today);
+                twelveMonthsAgo.setFullYear(today.getFullYear() - 1);
+                return filedAt >= twelveMonthsAgo && filedAt <= today;
+            }
+
             function chStatusPillClass(internalStatus) {
                 if (internalStatus === "ready_to_file") return "is-good";
                 if (internalStatus === "missing_information") return "is-warn";
@@ -48544,6 +48556,7 @@
                 const selectedCount = selectedCompanies.length;
                 const selectedEligibleForSubmission = selectedCompanies.filter((company) => company.eligibleForSubmission).length;
                 const selectedEligibleForInvoicing = selectedCompanies.filter((company) => company.eligibleForInvoicing).length;
+                const selectedRecentFiledCount = selectedCompanies.filter((company) => company.eligibleForSubmission && chFiledWithinLast12Months(company.lastFiledDate)).length;
                 const eligibleTotal = (companiesHouseState.companies || []).filter((company) => company.eligibleForSubmission).length;
                 const selectAll = document.getElementById("chCompaniesSelectAll");
                 const visible = companiesHouseState.companies || [];
@@ -48592,7 +48605,7 @@
                     return;
                 }
                 chSetWorkflowStatus(
-                    `${selectedCount.toLocaleString("en-GB")} selected · ${selectedEligibleForSubmission.toLocaleString("en-GB")} ready to submit · ${selectedEligibleForInvoicing.toLocaleString("en-GB")} ready to invoice`,
+                    `${selectedCount.toLocaleString("en-GB")} selected · ${selectedEligibleForSubmission.toLocaleString("en-GB")} ready to submit · ${selectedEligibleForInvoicing.toLocaleString("en-GB")} ready to invoice${selectedRecentFiledCount ? ` · Warning: ${selectedRecentFiledCount.toLocaleString("en-GB")} filed in the last 12 months` : ""}`,
                     "muted"
                 );
             }
@@ -48612,9 +48625,10 @@
                     const latestSubmissionLabel = company.latestSubmissionStatus
                         ? `${company.latestSubmissionStatus}${company.latestSubmissionXeroInvoiceId ? " · invoiced" : ""}`
                         : "No submission";
+                    const filedWithin12Months = chFiledWithinLast12Months(company.lastFiledDate);
                     return `<tr data-company-id="${escapeHTML(companyId)}" class="${company.id === companiesHouseState.selectedCompanyId ? "is-selected" : ""}">
                         <td><input type="checkbox" data-ch-select-company value="${escapeHTML(companyId)}" ${isChecked ? "checked" : ""} aria-label="Select ${escapeHTML(company.companyName || "company")}"></td>
-                        <td><strong>${escapeHTML(company.companyName || "—")}</strong><br><small style="color: var(--muted)">${escapeHTML(latestSubmissionLabel)}</small></td>
+                        <td><strong>${escapeHTML(company.companyName || "—")}</strong><br><small style="color: var(--muted)">${escapeHTML(latestSubmissionLabel)}</small>${filedWithin12Months ? `<br><small style="color: var(--orange)">Filed within last 12 months (${escapeHTML(chFormatDate(company.lastFiledDate))})</small>` : ""}</td>
                         <td>${escapeHTML(company.companyNumber || "—")}</td>
                         <td>${chCompanyStatusCell(company)}</td>
                         <td><span class="ch-pill">${escapeHTML(company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—")}</span></td>
@@ -48712,6 +48726,18 @@
                 if (!selected.length) {
                     chSetWorkflowStatus("Select at least one eligible company (auth code and filing authority required) before submitting.", "error");
                     return;
+                }
+                const recentFiledCompanies = selected.filter((company) => chFiledWithinLast12Months(company.lastFiledDate));
+                if (recentFiledCompanies.length) {
+                    const listed = recentFiledCompanies
+                        .slice(0, 4)
+                        .map((company) => `${company.companyName || company.companyNumber || "Company"} (${chFormatDate(company.lastFiledDate)})`)
+                        .join("\n- ");
+                    const more = recentFiledCompanies.length > 4
+                        ? `\n- Plus ${recentFiledCompanies.length - 4} more`
+                        : "";
+                    const warningPrompt = `Warning: ${recentFiledCompanies.length} selected compan${recentFiledCompanies.length === 1 ? "y was" : "ies were"} filed in the last 12 months.\n\n- ${listed}${more}\n\nContinue with submission anyway?`;
+                    if (!window.confirm(warningPrompt)) return;
                 }
                 if (!window.confirm(`Submit ${selected.length} selected confirmation statement${selected.length === 1 ? "" : "s"} to Companies House?`)) return;
                 companiesHouseState.workflowBusy = true;

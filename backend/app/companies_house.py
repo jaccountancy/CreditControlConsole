@@ -1114,8 +1114,6 @@ def _validate_cs01_payload(company_row: dict, review_date: date, cs_payload: dic
     next_due = company_row.get("next_due_date")
     if isinstance(next_due, date) and review_date > next_due:
         errors.append("Review date cannot be after the recorded due date.")
-    if review_date > date.today():
-        errors.append("Review date cannot be in the future.")
     share_capital = company_row.get("share_capital") or {}
     shareholdings = _normalise_shareholdings(share_capital if isinstance(share_capital, dict) else {})
     if shareholdings:
@@ -2954,6 +2952,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         due_in_days = None
     latest_submission_status = row.get("latest_submission_status") or ""
     latest_submission_invoice_id = row.get("latest_submission_xero_invoice_id") or ""
+    latest_submission_completed_at = row.get("latest_submission_completed_at")
     internal_status = row.get("internal_status") or "active"
     blocked_internal = internal_status in {"paused", "do_not_file", "inactive"}
     has_due_date = isinstance(next_due, date)
@@ -2973,7 +2972,11 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
             )
         )
     )
-    eligible_for_invoicing = bool(latest_submission_status == "accepted" and not latest_submission_invoice_id)
+    eligible_for_invoicing = bool(
+        latest_submission_status == "accepted"
+        and latest_submission_completed_at is not None
+        and not latest_submission_invoice_id
+    )
     return {
         "id": str(row.get("id")) if row.get("id") else None,
         "companyNumber": row.get("company_number") or "",
@@ -3015,6 +3018,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "latestSubmissionAt": row.get("latest_submission_at").isoformat() if row.get("latest_submission_at") else None,
         "latestSubmissionReference": row.get("latest_submission_reference") or "",
         "latestSubmissionXeroInvoiceId": latest_submission_invoice_id,
+        "latestSubmissionCompletedAt": latest_submission_completed_at.isoformat() if latest_submission_completed_at else None,
         "dueInDays": due_in_days,
         "eligibleForSubmission": eligible_for_submission,
         "eligibleForInvoicing": eligible_for_invoicing,
@@ -3062,11 +3066,12 @@ def list_companies(filters: dict | None = None) -> list[dict]:
                latest.status AS latest_submission_status,
                latest.submitted_at AS latest_submission_at,
                latest.submission_reference AS latest_submission_reference,
-               latest.xero_invoice_id AS latest_submission_xero_invoice_id
+               latest.xero_invoice_id AS latest_submission_xero_invoice_id,
+               latest.completed_at AS latest_submission_completed_at
         FROM ch_companies c
         LEFT JOIN ch_auth_codes a ON a.company_id = c.id
         LEFT JOIN LATERAL (
-            SELECT s.id, s.status, s.submitted_at, s.submission_reference, s.xero_invoice_id
+            SELECT s.id, s.status, s.submitted_at, s.submission_reference, s.xero_invoice_id, s.completed_at
             FROM ch_submissions s
             WHERE s.company_id = c.id
             ORDER BY s.submitted_at DESC
@@ -3841,6 +3846,7 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
                        s.status AS submission_status,
                        s.submission_reference,
                        s.submitted_at,
+                       s.completed_at AS submission_completed_at,
                        s.fee_amount,
                        s.xero_invoice_id
                 FROM ch_companies c
@@ -3868,6 +3874,7 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
         company_id = str(row.get("company_id") or "")
         submission_id = str(row.get("submission_id") or "")
         status_value = str(row.get("submission_status") or "")
+        submitted_completed_at = row.get("submission_completed_at")
         company_name = row.get("company_name") or row.get("client_name") or "Client"
         company_number = row.get("company_number") or ""
         existing_invoice_id = row.get("xero_invoice_id") or ""
@@ -3877,6 +3884,16 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
             continue
         if status_value != "accepted":
             skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": f"Latest submission status is '{status_value}'."})
+            continue
+        if submitted_completed_at is None:
+            skipped.append(
+                {
+                    "companyId": company_id,
+                    "companyName": company_name,
+                    "companyNumber": company_number,
+                    "reason": "Latest submission has not completed delivery yet.",
+                }
+            )
             continue
         if existing_invoice_id:
             skipped.append({"companyId": company_id, "companyName": company_name, "companyNumber": company_number, "reason": f"Invoice already linked ({existing_invoice_id})."})
