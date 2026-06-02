@@ -2779,6 +2779,382 @@ def _save_company_auth_code(cursor, company_id: str, code: str, user_id: str | N
     )
 
 
+def _encrypt_register_auth_code(code: str, register_key: str) -> str:
+    return encrypt_secret(code, f"{CH_COMPANY_AUTH_LABEL}:register:{register_key}")
+
+
+def _decrypt_register_auth_code(encrypted: str, register_id: str, company_number: str, normalised_name: str) -> str:
+    candidates = [
+        f"{CH_COMPANY_AUTH_LABEL}:register:{register_id}",
+        f"{CH_COMPANY_AUTH_LABEL}:register:{company_number}",
+        f"{CH_COMPANY_AUTH_LABEL}:register:{normalised_name}",
+    ]
+    for label in candidates:
+        try:
+            return decrypt_secret(encrypted, label)
+        except Exception:
+            continue
+    return ""
+
+
+def _auth_register_name(row_payload: dict[str, str]) -> str:
+    return _coerce_text(
+        row_payload.get("company_name")
+        or row_payload.get("client_name")
+        or "",
+        250,
+    )
+
+
+def _upsert_auth_code_register_row(
+    cursor,
+    *,
+    company_number: str,
+    display_name: str,
+    normalised_name: str,
+    auth_code: str,
+    filename: str,
+    user_id: str | None,
+) -> tuple[str, str]:
+    register_key = company_number or normalised_name
+    encrypted = _encrypt_register_auth_code(auth_code, register_key)
+    hint = _mask(auth_code)
+    updated_row = None
+    if company_number:
+        cursor.execute(
+            """
+            UPDATE ch_auth_code_register
+            SET client_name = %s,
+                company_name = %s,
+                normalised_name = %s,
+                code_encrypted = %s,
+                code_hint = %s,
+                source_filename = %s,
+                uploaded_by_user_id = %s,
+                uploaded_at = NOW(),
+                updated_at = NOW()
+            WHERE company_number = %s
+            RETURNING id
+            """,
+            (
+                display_name,
+                display_name,
+                normalised_name,
+                encrypted,
+                hint,
+                filename,
+                user_id,
+                company_number,
+            ),
+        )
+        updated_row = cursor.fetchone()
+    else:
+        cursor.execute(
+            """
+            UPDATE ch_auth_code_register
+            SET client_name = %s,
+                company_name = %s,
+                code_encrypted = %s,
+                code_hint = %s,
+                source_filename = %s,
+                uploaded_by_user_id = %s,
+                uploaded_at = NOW(),
+                updated_at = NOW()
+            WHERE company_number = ''
+              AND normalised_name = %s
+            RETURNING id
+            """,
+            (
+                display_name,
+                display_name,
+                encrypted,
+                hint,
+                filename,
+                user_id,
+                normalised_name,
+            ),
+        )
+        updated_row = cursor.fetchone()
+    if updated_row:
+        return str(updated_row.get("id") or ""), "updated"
+    cursor.execute(
+        """
+        INSERT INTO ch_auth_code_register (
+            company_number,
+            client_name,
+            company_name,
+            normalised_name,
+            code_encrypted,
+            code_hint,
+            source_filename,
+            uploaded_by_user_id,
+            uploaded_at,
+            updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        RETURNING id
+        """,
+        (
+            company_number,
+            display_name,
+            display_name,
+            normalised_name,
+            encrypted,
+            hint,
+            filename,
+            user_id,
+        ),
+    )
+    inserted = cursor.fetchone() or {}
+    return str(inserted.get("id") or ""), "created"
+
+
+def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict]]:
+    text = _decode_upload(content)
+    if not text.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The uploaded file is empty.")
+    try:
+        reader = csv.reader(io.StringIO(text))
+        header_row = next(reader, [])
+        rows = list(reader)
+    except csv.Error as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unable to read CSV: {exc}") from exc
+    headers = [_coerce_text(value, 120) for value in header_row]
+    mapping = _resolve_header_map(headers)
+    mapping = _apply_header_profile(headers, mapping, _load_last_import_header_profile())
+    mapping = _ai_resolve_header_map(headers, mapping)
+    if "auth_code" not in mapping:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CSV must include an auth code column (for example 'Auth Code' or 'Authentication Code').",
+        )
+    output_rows: list[dict] = []
+    errors: list[dict] = []
+    for idx, raw_row in enumerate(rows, start=2):
+        row_payload: dict[str, str] = {}
+        for canonical, column_index in mapping.items():
+            row_payload[canonical] = _coerce_text(raw_row[column_index] if column_index < len(raw_row) else "", 250)
+        auth_code = _coerce_text(row_payload.get("auth_code"), 80)
+        company_number = normalise_company_number(row_payload.get("company_number"))
+        display_name = _auth_register_name(row_payload)
+        normalised_name = _normalise_company_name_for_match(display_name)
+        if not auth_code:
+            continue
+        if not company_number and not normalised_name:
+            errors.append({"lineNumber": idx, "reason": "Missing company number and name; cannot match this auth code."})
+            continue
+        output_rows.append(
+            {
+                "lineNumber": idx,
+                "companyNumber": company_number,
+                "displayName": display_name,
+                "normalisedName": normalised_name,
+                "authCode": auth_code,
+            }
+        )
+    return output_rows, errors
+
+
+def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> dict:
+    rows, parse_errors = _parse_auth_code_register_csv(content)
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No auth codes found in file. Include client/company name and auth code columns.",
+        )
+    user_id = user.get("id") if isinstance(user, dict) else None
+    created_count = 0
+    updated_count = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for row in rows:
+                _, action = _upsert_auth_code_register_row(
+                    cursor,
+                    company_number=row["companyNumber"],
+                    display_name=row["displayName"],
+                    normalised_name=row["normalisedName"],
+                    auth_code=row["authCode"],
+                    filename=_coerce_text(filename, 250),
+                    user_id=user_id,
+                )
+                if action == "created":
+                    created_count += 1
+                else:
+                    updated_count += 1
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_auth_code_register', 'bulk', 'auth_code_register_uploaded', %s::jsonb, %s)
+                """,
+                (
+                    json.dumps(
+                        {
+                            "filename": _coerce_text(filename, 250),
+                            "rows": len(rows),
+                            "created": created_count,
+                            "updated": updated_count,
+                            "errors": len(parse_errors),
+                        }
+                    ),
+                    user_id,
+                ),
+            )
+        connection.commit()
+    return {
+        "filename": _coerce_text(filename, 250),
+        "rowCount": len(rows),
+        "createdCount": created_count,
+        "updatedCount": updated_count,
+        "errorCount": len(parse_errors),
+        "errors": parse_errors[:100],
+    }
+
+
+def list_auth_code_register(limit: int = 300) -> dict:
+    safe_limit = max(20, min(int(limit or 300), 1000))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id,
+                       company_number,
+                       COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
+                       code_hint,
+                       source_filename,
+                       uploaded_at
+                FROM ch_auth_code_register
+                ORDER BY uploaded_at DESC
+                LIMIT %s
+                """,
+                (safe_limit,),
+            )
+            rows = cursor.fetchall() or []
+            cursor.execute("SELECT COUNT(*) AS total FROM ch_auth_code_register")
+            total_row = cursor.fetchone() or {}
+        connection.commit()
+    return {
+        "totalCount": int(total_row.get("total") or 0),
+        "rows": [
+            {
+                "id": str(row.get("id") or ""),
+                "companyNumber": row.get("company_number") or "",
+                "displayName": row.get("display_name") or "",
+                "authCodeHint": row.get("code_hint") or "",
+                "sourceFilename": row.get("source_filename") or "",
+                "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
+            }
+            for row in rows
+        ],
+    }
+
+
+def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            if company_ids:
+                cursor.execute(
+                    """
+                    SELECT c.id, c.company_number, c.company_name, c.client_name,
+                           (a.id IS NOT NULL) AS auth_code_on_file
+                    FROM ch_companies c
+                    LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+                    WHERE c.id = ANY(%s)
+                    ORDER BY c.company_name ASC
+                    """,
+                    (company_ids,),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT c.id, c.company_number, c.company_name, c.client_name,
+                           (a.id IS NOT NULL) AS auth_code_on_file
+                    FROM ch_companies c
+                    LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+                    WHERE a.id IS NULL
+                    ORDER BY c.company_name ASC
+                    LIMIT 1000
+                    """
+                )
+            companies = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT id, company_number, normalised_name, code_encrypted, uploaded_at
+                FROM ch_auth_code_register
+                ORDER BY uploaded_at DESC
+                """
+            )
+            register_rows = cursor.fetchall() or []
+        connection.commit()
+    by_number: dict[str, dict] = {}
+    by_name: dict[str, dict] = {}
+    for row in register_rows:
+        number = normalise_company_number(row.get("company_number"))
+        name = _coerce_text(row.get("normalised_name"), 250)
+        if number and number not in by_number:
+            by_number[number] = row
+        if name and name not in by_name:
+            by_name[name] = row
+    populated: list[dict] = []
+    skipped: list[dict] = []
+    for company in companies:
+        company_id = str(company.get("id") or "")
+        company_number = normalise_company_number(company.get("company_number"))
+        company_name = _coerce_text(company.get("company_name") or company.get("client_name"), 250)
+        if company.get("auth_code_on_file"):
+            skipped.append({"companyId": company_id, "companyNumber": company_number, "companyName": company_name, "reason": "Auth code already on file."})
+            continue
+        matched = by_number.get(company_number) if company_number else None
+        match_type = "company_number"
+        if not matched:
+            normalised_company_name = _normalise_company_name_for_match(company_name)
+            matched = by_name.get(normalised_company_name)
+            match_type = "name"
+        if not matched:
+            skipped.append({"companyId": company_id, "companyNumber": company_number, "companyName": company_name, "reason": "No auth code register match found."})
+            continue
+        register_id = str(matched.get("id") or "")
+        encrypted = _coerce_text(matched.get("code_encrypted"), 2000)
+        register_number = normalise_company_number(matched.get("company_number"))
+        register_name = _coerce_text(matched.get("normalised_name"), 250)
+        auth_code = _decrypt_register_auth_code(encrypted, register_id, register_number, register_name)
+        if not auth_code:
+            skipped.append({"companyId": company_id, "companyNumber": company_number, "companyName": company_name, "reason": "Matched register entry could not be decrypted."})
+            continue
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                _save_company_auth_code(cursor, company_id, auth_code, user_id)
+                cursor.execute(
+                    """
+                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                    VALUES ('ch_auth_code', %s, 'auth_code_populated_from_register', %s::jsonb, %s)
+                    """,
+                    (
+                        company_id,
+                        json.dumps({"matchType": match_type, "registerId": register_id}),
+                        user_id,
+                    ),
+                )
+            connection.commit()
+        populated.append(
+            {
+                "companyId": company_id,
+                "companyNumber": company_number,
+                "companyName": company_name,
+                "matchType": match_type,
+            }
+        )
+    return {
+        "targetCount": len(companies),
+        "populatedCount": len(populated),
+        "skippedCount": len(skipped),
+        "populated": populated,
+        "skipped": skipped,
+    }
+
+
 def commit_clients_import(user: dict, preview: dict) -> dict:
     rows = preview.get("rows") or []
     if not isinstance(rows, list) or not rows:
