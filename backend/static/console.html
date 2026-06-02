@@ -14718,6 +14718,29 @@
             .ch-settings-status.is-success { color: var(--green); }
             .ch-settings-status.is-error { color: var(--red); }
             .ch-settings-status.is-muted { color: var(--muted); }
+            .failure-details-card {
+                max-width: min(1120px, 96vw);
+            }
+            .failure-details-meta {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.85rem;
+                font-weight: 700;
+            }
+            .failure-details-pre {
+                margin: 0;
+                padding: 12px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: #f8fbff;
+                color: var(--ink);
+                font-size: 0.78rem;
+                line-height: 1.45;
+                white-space: pre-wrap;
+                word-break: break-word;
+                max-height: min(56vh, 560px);
+                overflow: auto;
+            }
             @media (max-width: 720px) {
                 .ch-settings-form { grid-template-columns: 1fr; }
             }
@@ -18520,6 +18543,22 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="failureDetailsPanel" aria-modal="true" role="dialog" aria-labelledby="failureDetailsTitle" hidden>
+                    <div class="developer-log-card failure-details-card">
+                        <div class="developer-log-head">
+                            <div>
+                                <h3 id="failureDetailsTitle">Request failure details</h3>
+                                <p class="failure-details-meta" id="failureDetailsSummary">Detailed diagnostics for the most recent failure.</p>
+                            </div>
+                            <div class="developer-log-actions">
+                                <button class="ghost-button" id="copyFailureDetailsButton" type="button">Copy details</button>
+                                <button class="ghost-button" id="closeFailureDetailsButton" type="button">Close</button>
+                            </div>
+                        </div>
+                        <pre class="failure-details-pre" id="failureDetailsBody">No failure details captured yet.</pre>
+                    </div>
+                </section>
+
                 <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="true"></div>
 
                 <script>
@@ -20523,6 +20562,70 @@
                 }
             }
 
+            let lastFailureDetailsText = "";
+
+            function stringifyFailureDetails(value) {
+                if (value == null) return "";
+                if (typeof value === "string") return value;
+                try {
+                    return JSON.stringify(value, null, 2);
+                } catch {
+                    return String(value);
+                }
+            }
+
+            function openFailureDetailsPanel({
+                title = "Request failure details",
+                summary = "",
+                endpoint = "",
+                method = "",
+                statusCode = "",
+                message = "",
+                details = null,
+            } = {}) {
+                const panel = document.getElementById("failureDetailsPanel");
+                const titleNode = document.getElementById("failureDetailsTitle");
+                const summaryNode = document.getElementById("failureDetailsSummary");
+                const bodyNode = document.getElementById("failureDetailsBody");
+                if (!panel || !titleNode || !summaryNode || !bodyNode) return;
+                titleNode.textContent = title || "Request failure details";
+                summaryNode.textContent = summary || "Detailed diagnostics for the most recent failure.";
+                const rows = [
+                    `Time: ${new Date().toLocaleString("en-GB")}`,
+                    endpoint ? `Endpoint: ${endpoint}` : "",
+                    method ? `Method: ${method}` : "",
+                    statusCode ? `Status: ${statusCode}` : "",
+                    message ? `Message: ${message}` : "",
+                    "",
+                    "Details:",
+                    stringifyFailureDetails(details) || "(none provided by API)",
+                ].filter(Boolean);
+                lastFailureDetailsText = rows.join("\n");
+                bodyNode.textContent = lastFailureDetailsText;
+                panel.hidden = false;
+            }
+
+            function closeFailureDetailsPanel() {
+                const panel = document.getElementById("failureDetailsPanel");
+                if (panel) panel.hidden = true;
+            }
+
+            function wireFailureDetailsPanel() {
+                document.getElementById("closeFailureDetailsButton")?.addEventListener("click", closeFailureDetailsPanel);
+                document.getElementById("copyFailureDetailsButton")?.addEventListener("click", async () => {
+                    if (!lastFailureDetailsText) return;
+                    try {
+                        await navigator.clipboard.writeText(lastFailureDetailsText);
+                        showToast("Failure details copied", "success");
+                    } catch {
+                        showToast("Unable to copy failure details", "error");
+                    }
+                });
+                document.getElementById("failureDetailsPanel")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "failureDetailsPanel") closeFailureDetailsPanel();
+                });
+            }
+
             function responsePath(url) {
                 try {
                     return new URL(url).pathname;
@@ -20534,10 +20637,12 @@
             async function requestJSON(template, options = {}, params = {}) {
                 const activityContext = requestActivityContext(template, options, params);
                 const startedAt = performance.now();
+                const resolvedEndpoint = endpointURL(template, params);
+                const method = String(options.method || "GET").toUpperCase();
                 logAPIActivity("api.started", activityContext);
                 let response;
                 try {
-                    response = await fetch(endpointURL(template, params), {
+                    response = await fetch(resolvedEndpoint, {
                         credentials: "include",
                         ...options,
                         headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(options.headers || {}) }
@@ -20546,6 +20651,14 @@
                     logAPIActivity("api.failed", activityContext, {
                         durationMs: Math.round(performance.now() - startedAt),
                         error: error?.message || String(error || "Network request failed")
+                    });
+                    openFailureDetailsPanel({
+                        title: "Network request failed",
+                        summary: `Unable to reach API for ${activityContext?.label || "request"}.`,
+                        endpoint: resolvedEndpoint,
+                        method,
+                        message: error?.message || "Network request failed",
+                        details: { error: error?.message || String(error || "Network request failed") },
                     });
                     throw error;
                 }
@@ -20564,6 +20677,15 @@
                         durationMs: Math.round(performance.now() - startedAt),
                         error: message,
                         response: sanitiseActivityValue(payload)
+                    });
+                    openFailureDetailsPanel({
+                        title: "Authentication required",
+                        summary: `Session/authentication failed for ${activityContext?.label || "request"}.`,
+                        endpoint: resolvedEndpoint,
+                        method,
+                        statusCode: response.status,
+                        message,
+                        details: payload,
                     });
                     throw new AuthRequiredError(message);
                 }
@@ -20585,6 +20707,15 @@
                         error: message,
                         response: sanitiseActivityValue(payload)
                     });
+                    openFailureDetailsPanel({
+                        title: "API request failed",
+                        summary: `Backend returned an error for ${activityContext?.label || "request"}.`,
+                        endpoint: resolvedEndpoint,
+                        method,
+                        statusCode: response.status,
+                        message,
+                        details: detail || payload,
+                    });
                     throw new APIRequestError(message, { statusCode: response.status, details: detail || payload });
                 }
                 logAPIActivity("api.completed", activityContext, {
@@ -20599,6 +20730,7 @@
             async function requestFormData(template, formData, params = {}) {
                 const activityContext = requestActivityContext(template, { method: "POST", body: formData }, params);
                 const startedAt = performance.now();
+                const resolvedEndpoint = endpointURL(template, params);
                 logAPIActivity("api.started", activityContext);
                 const headers = Object.fromEntries(
                     Object.entries({ ...api.headers, ...panelAuthHeaders() })
@@ -20606,7 +20738,7 @@
                 );
                 let response;
                 try {
-                    response = await fetch(endpointURL(template, params), {
+                    response = await fetch(resolvedEndpoint, {
                         method: "POST",
                         credentials: "include",
                         headers,
@@ -20616,6 +20748,14 @@
                     logAPIActivity("api.failed", activityContext, {
                         durationMs: Math.round(performance.now() - startedAt),
                         error: error?.message || String(error || "Network request failed")
+                    });
+                    openFailureDetailsPanel({
+                        title: "Network upload failed",
+                        summary: `Unable to reach API for ${activityContext?.label || "upload request"}.`,
+                        endpoint: resolvedEndpoint,
+                        method: "POST",
+                        message: error?.message || "Network request failed",
+                        details: { error: error?.message || String(error || "Network request failed") },
                     });
                     throw error;
                 }
@@ -20635,6 +20775,15 @@
                         error: message,
                         response: sanitiseActivityValue(payload)
                     });
+                    openFailureDetailsPanel({
+                        title: "Authentication required",
+                        summary: `Session/authentication failed for ${activityContext?.label || "upload request"}.`,
+                        endpoint: resolvedEndpoint,
+                        method: "POST",
+                        statusCode: response.status,
+                        message,
+                        details: payload,
+                    });
                     throw new AuthRequiredError(message);
                 }
                 if (!response.ok) {
@@ -20647,6 +20796,15 @@
                         durationMs: Math.round(performance.now() - startedAt),
                         error: String(baseMessage),
                         response: sanitiseActivityValue(payload)
+                    });
+                    openFailureDetailsPanel({
+                        title: "API upload failed",
+                        summary: `Backend returned an error for ${activityContext?.label || "upload request"}.`,
+                        endpoint: resolvedEndpoint,
+                        method: "POST",
+                        statusCode: response.status,
+                        message: String(baseMessage),
+                        details: detail || payload,
                     });
                     throw new APIRequestError(String(baseMessage), { statusCode: response.status, details: detail || payload });
                 }
@@ -47970,6 +48128,7 @@
                 }
                 [
                     wireLoginButtons,
+                    wireFailureDetailsPanel,
                     wireSidebarNavigation,
                     wireSyncButtons,
                     wireFilters,
