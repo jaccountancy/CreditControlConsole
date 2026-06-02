@@ -9287,6 +9287,40 @@ def _me_report_summary_rolling_turnover(summary: dict) -> Decimal:
     return _money(monthly_sales * Decimal(12)) if monthly_sales else Decimal("0.00")
 
 
+def _me_report_period_range_label(label: str) -> bool:
+    text = str(label or "").strip().lower()
+    if not text:
+        return False
+    if " to " in text:
+        return True
+    if "total" in text:
+        return True
+    month_tokens = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)"
+    if re.search(rf"\b{month_tokens}\b\s*[-–]\s*\b{month_tokens}\b", text):
+        return True
+    if re.search(rf"\b{month_tokens}\b\s*\d{{4}}\s*[-–]\s*\b{month_tokens}\b\s*\d{{4}}\b", text):
+        return True
+    return False
+
+
+def _me_report_is_implausible_vat_month_series(
+    rows: list[dict],
+    *,
+    ytd_sales: Decimal,
+    months_elapsed: int,
+) -> bool:
+    if months_elapsed <= 1 or ytd_sales <= 0:
+        return False
+    values = [_money(item.get("turnover")) for item in rows if isinstance(item, dict)]
+    values = [abs(value) for value in values if value != 0]
+    if len(values) < months_elapsed:
+        return False
+    recent_values = values[-months_elapsed:]
+    recent_sum = _money(sum(recent_values, Decimal("0.00")))
+    # If "monthly" schedule materially exceeds YTD by a large multiple, it is likely period-range extraction.
+    return recent_sum > _money(ytd_sales * Decimal("1.8"))
+
+
 def _me_report_apply_director_loan_account_overrides(summary: dict, client: dict) -> dict:
     if not isinstance(summary, dict):
         return {}
@@ -9776,15 +9810,54 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     warnings = list(dict.fromkeys(warnings))
     extracted_insights = extracted.get("profitAndLossInsights") if isinstance(extracted.get("profitAndLossInsights"), dict) else {}
     forecast = _me_report_forecast_summary(extracted, client, ytd_sales, ytd_profit, estimated_taxable_profit)
-    rolling_12_month_turnover = _money(extracted.get("rolling12MonthTurnover"))
+    extracted_rolling_turnover = _money(extracted.get("rolling12MonthTurnover"))
+    rolling_vat_months = _me_report_rolling_vat_months(extracted, period_end, extracted_rolling_turnover)
+    vat_range_labels_found = any(_me_report_period_range_label(item.get("month")) for item in rolling_vat_months)
+    vat_schedule_implausible = _me_report_is_implausible_vat_month_series(
+        rolling_vat_months,
+        ytd_sales=ytd_sales,
+        months_elapsed=months_elapsed,
+    )
+    vat_schedule_total = _money(sum(_money(item.get("turnover")) for item in rolling_vat_months if isinstance(item, dict)))
+
+    if vat_range_labels_found:
+        warnings.append(
+            "VAT schedule included range/total column labels; these were excluded from automatic rolling 12-month turnover extraction."
+        )
+        rolling_vat_months = []
+        vat_schedule_total = Decimal("0.00")
+
+    if vat_schedule_implausible:
+        warnings.append(
+            "VAT monthly turnover extraction looked inconsistent with current-year totals; using safeguarded run-rate estimate instead."
+        )
+        rolling_vat_months = []
+        vat_schedule_total = Decimal("0.00")
+        extracted_rolling_turnover = Decimal("0.00")
+
+    if extracted_rolling_turnover and vat_schedule_total:
+        mismatch_ratio = abs(extracted_rolling_turnover - vat_schedule_total) / max(vat_schedule_total, Decimal("1.00"))
+        if mismatch_ratio > Decimal("0.25"):
+            warnings.append(
+                "Extracted rolling 12-month turnover differed materially from extracted VAT month schedule; month schedule total has been used."
+            )
+            extracted_rolling_turnover = vat_schedule_total
+
+    rolling_12_month_turnover = extracted_rolling_turnover or vat_schedule_total
     if not rolling_12_month_turnover:
         rolling_12_month_turnover = _me_report_summary_rolling_turnover({
             **extracted,
+            "rolling12MonthTurnover": 0,
             "monthlySales": float(monthly_sales),
             "yearToDateSales": float(ytd_sales),
             "forecast": forecast,
         })
-    rolling_vat_months = _me_report_rolling_vat_months(extracted, period_end, rolling_12_month_turnover)
+    if not rolling_vat_months and period_end and rolling_12_month_turnover:
+        rolling_vat_months = [{
+            "month": f"12 months to {period_end.isoformat()} (safeguarded estimate)",
+            "turnover": float(rolling_12_month_turnover),
+            "source": "Run-rate safeguard from extracted YTD figures",
+        }]
     vat_threshold = ME_REPORT_DEFAULT_VAT_THRESHOLD
     vat_threshold_exceeded = rolling_12_month_turnover > vat_threshold
     vat_registered_confirmed = bool(client.get("vat_registered_confirmed"))

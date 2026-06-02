@@ -35076,25 +35076,48 @@
                     .replace(/\s+/g, " ");
             }
 
+            function meReportBalanceSheetTypeToGroup(value = "") {
+                const text = String(value || "").toLowerCase();
+                if (!text) return "";
+                if (/liabil|creditor|payable|loan|overdraft|tax creditor|vat|paye|nic/.test(text)) return "Liabilities";
+                if (/equity|reserve|capital and reserve|capital|retained|share/.test(text)) return "Equity";
+                if (/asset|bank|cash|debtor|receivable|stock|inventory|prepayment|fixed/.test(text)) return "Assets";
+                return "";
+            }
+
             function meReportBalanceSheetCodeLookup(summary = {}) {
                 const byName = new Map();
+                const byCode = new Map();
                 meReportObjectRows(summary.trialBalanceAccounts).forEach((row) => {
                     const code = String(row.accountCode || row.code || "").trim();
                     const name = String(row.accountName || row.name || "").trim();
-                    if (!code || !name) return;
+                    const accountType = String(row.accountType || row.type || "").trim();
+                    const amount = meReportMoneyValue(row.amount ?? ((row.debitYTD ?? 0) - (row.creditYTD ?? 0)));
+                    if (code && !byCode.has(code)) {
+                        byCode.set(code, { code, name, accountType, amount });
+                    }
+                    if (!name) return;
                     const key = meReportNormaliseAccountLookupText(name);
                     if (!key || byName.has(key)) return;
-                    byName.set(key, code);
+                    byName.set(key, { code, name, accountType, amount });
                 });
-                return { byName };
+                return { byName, byCode };
             }
 
             function meReportBalanceSheetGroupLabel(row = {}) {
+                const typeGroup = meReportBalanceSheetTypeToGroup(row.accountType || "");
+                if (typeGroup) return typeGroup;
                 const sectionText = `${row.section || ""} ${row.name || ""}`.toLowerCase();
                 if (/liabil|creditor|payable|loan|overdraft|vat|taxation/.test(sectionText)) return "Liabilities";
                 if (/equity|reserve|capital|retained|share/.test(sectionText)) return "Equity";
                 if (/asset|bank|cash|debtor|receivable|stock|inventory|prepayment|fixed asset|current asset/.test(sectionText)) return "Assets";
                 return Number(row.amount || 0) < 0 ? "Liabilities" : "Assets";
+            }
+
+            function meReportBalanceSheetIsSummaryRow(name = "") {
+                const text = String(name || "").trim().toLowerCase();
+                if (!text) return false;
+                return /^(total|net assets|balance difference|total assets|total liabilities|total equity)/.test(text);
             }
 
             function meReportBalanceSheetGroupSortValue(group = "") {
@@ -35105,12 +35128,19 @@
             }
 
             function meReportBalanceSheetRows(summary = {}) {
-                const { byName } = meReportBalanceSheetCodeLookup(summary);
+                const { byName, byCode } = meReportBalanceSheetCodeLookup(summary);
                 const applyCodeFallback = (row = {}) => {
                     const code = String(row.code || "").trim();
                     if (code) return code;
                     const key = meReportNormaliseAccountLookupText(row.name || "");
-                    return byName.get(key) || "";
+                    const match = byName.get(key);
+                    return match?.code || "";
+                };
+                const trialBalanceMatch = (row = {}) => {
+                    const code = applyCodeFallback(row);
+                    if (code && byCode.has(code)) return byCode.get(code);
+                    const key = meReportNormaliseAccountLookupText(row.name || "");
+                    return byName.get(key) || null;
                 };
                 const rows = meReportObjectRows(summary.balanceSheetRows).map((row) => ({
                     section: String(row.section || row.treatment || "Balance Sheet").trim(),
@@ -35118,8 +35148,19 @@
                     name: String(row.accountName || row.label || "Balance Sheet row").trim(),
                     amount: meReportMoneyValue(row.amount ?? row.balance ?? 0),
                     source: row.source || "Uploaded JUK Overview Report",
-                })).filter((row) => row.name || row.code || row.amount)
-                    .map((row) => ({ ...row, code: applyCodeFallback(row), group: meReportBalanceSheetGroupLabel(row) }));
+                })).filter((row) => (row.name || row.code || row.amount) && !meReportBalanceSheetIsSummaryRow(row.name))
+                    .map((row) => {
+                        const matched = trialBalanceMatch(row);
+                        const withCode = { ...row, code: applyCodeFallback(row) };
+                        const tbAmount = matched ? meReportMoneyValue(matched.amount || 0) : null;
+                        return {
+                            ...withCode,
+                            accountType: matched?.accountType || "",
+                            tbAmount,
+                            matchedToTrialBalance: Boolean(matched),
+                            group: meReportBalanceSheetGroupLabel({ ...withCode, accountType: matched?.accountType || "" }),
+                        };
+                    });
                 if (rows.length) return rows;
                 return meReportObjectRows(summary.balanceSheetChecks).map((row) => ({
                     section: String(row.treatment || "Balance Sheet").trim(),
@@ -35127,8 +35168,19 @@
                     name: String(row.label || "Balance Sheet row").trim(),
                     amount: meReportMoneyValue(row.amount || 0),
                     source: row.source || "Balance Sheet check",
-                })).filter((row) => row.name || row.amount)
-                    .map((row) => ({ ...row, code: applyCodeFallback(row), group: meReportBalanceSheetGroupLabel(row) }));
+                })).filter((row) => (row.name || row.amount) && !meReportBalanceSheetIsSummaryRow(row.name))
+                    .map((row) => {
+                        const matched = trialBalanceMatch(row);
+                        const withCode = { ...row, code: applyCodeFallback(row) };
+                        const tbAmount = matched ? meReportMoneyValue(matched.amount || 0) : null;
+                        return {
+                            ...withCode,
+                            accountType: matched?.accountType || "",
+                            tbAmount,
+                            matchedToTrialBalance: Boolean(matched),
+                            group: meReportBalanceSheetGroupLabel({ ...withCode, accountType: matched?.accountType || "" }),
+                        };
+                    });
             }
 
             function meReportBalanceSheetSectionOptions(rows = []) {
@@ -35164,11 +35216,13 @@
                     Liabilities: rows.filter((row) => row.group === "Liabilities"),
                     Equity: rows.filter((row) => row.group === "Equity"),
                 };
+                const amountForBalanceCheck = (row = {}) => (row.matchedToTrialBalance && Number.isFinite(Number(row.tbAmount)) ? Number(row.tbAmount || 0) : Number(row.amount || 0));
                 const totals = {
-                    assets: groupedRows.Assets.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-                    liabilities: groupedRows.Liabilities.reduce((sum, row) => sum + Number(row.amount || 0), 0),
-                    equity: groupedRows.Equity.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+                    assets: groupedRows.Assets.reduce((sum, row) => sum + amountForBalanceCheck(row), 0),
+                    liabilities: groupedRows.Liabilities.reduce((sum, row) => sum + amountForBalanceCheck(row), 0),
+                    equity: groupedRows.Equity.reduce((sum, row) => sum + amountForBalanceCheck(row), 0),
                 };
+                const matchedRows = rows.filter((row) => row.matchedToTrialBalance).length;
                 const netAssets = totals.assets - totals.liabilities;
                 const statementDelta = netAssets - totals.equity;
                 const sectionMarkup = (label, sectionRows, totalValue) => `
@@ -35187,9 +35241,12 @@
                 return `
                     <div class="ignition-summary-grid">
                         ${renderMeReportMetric("Rows shown", rows.length.toLocaleString("en-GB"))}
+                        ${renderMeReportMetric("TB matched", `${matchedRows.toLocaleString("en-GB")} / ${rows.length.toLocaleString("en-GB")}`, {
+                            detail: "Balance check uses Trial Balance values where code/name match exists"
+                        })}
                         ${renderMeReportMetric("Assets", formatCurrency(totals.assets))}
                         ${renderMeReportMetric("Liabilities", formatCurrency(totals.liabilities))}
-                        ${renderMeReportMetric("Equity", formatCurrency(totals.equity), { detail: `Balance check ${formatCurrency(statementDelta)}` })}
+                        ${renderMeReportMetric("Equity", formatCurrency(totals.equity), { detail: `Cross-check delta ${formatCurrency(statementDelta)}` })}
                     </div>
                     <article class="me-report-insight-card me-report-table-card">
                         <div class="me-report-card-heading-row">
