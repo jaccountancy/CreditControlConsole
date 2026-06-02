@@ -8352,6 +8352,24 @@ def _me_report_step(label: str, amount: Decimal, treatment: str, source: str = "
     return step
 
 
+def _me_report_dedupe_steps_by_label(steps: list[dict]) -> list[dict]:
+    deduped = []
+    seen = set()
+    for step in steps or []:
+        if not isinstance(step, dict):
+            continue
+        label = str(step.get("label") or "").strip()
+        key = label.lower()
+        if not key:
+            deduped.append(step)
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(step)
+    return deduped
+
+
 def _me_report_breakdown_item(label: str, amount: Decimal, source: str = "", code: str = "", treatment: str = "", debit=None, credit=None) -> dict:
     item = {
         "code": str(code or ""),
@@ -8530,6 +8548,16 @@ def _me_report_account_is_balance_sheet(account: dict) -> bool:
     return any(term in account_type for term in ("asset", "liability", "equity", "bank", "current"))
 
 
+def _me_report_account_identity(account: dict) -> str:
+    code = str(account.get("accountCode") or account.get("code") or "").strip().lower()
+    if code:
+        return f"code:{code}"
+    name = str(account.get("accountName") or account.get("name") or "").strip().lower()
+    if name:
+        return f"name:{name}"
+    return f"row:{id(account)}"
+
+
 def _me_report_profit_loss_monthly_breakdown(
     extracted: dict,
     period_end: date,
@@ -8659,15 +8687,36 @@ def _me_report_balance_sheet_rows(extracted: dict, trial_balance_accounts: list[
     return rows[:500]
 
 
-def _me_report_sum_accounts(accounts: list[dict], predicate) -> tuple[Decimal, list[dict]]:
+def _me_report_balance_sheet_dividends_fallback(rows: list[dict]) -> Decimal:
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("accountName") or row.get("label") or "").lower()
+        section = str(row.get("section") or "").lower()
+        if "dividend" not in name:
+            continue
+        if not section or any(term in section for term in ("equity", "capital", "reserve", "liabil", "balance")):
+            amount = abs(_money(row.get("amount")))
+            if amount > 0:
+                return amount
+    return Decimal("0.00")
+
+
+def _me_report_sum_accounts(accounts: list[dict], predicate, excluded_keys: set[str] | None = None) -> tuple[Decimal, list[dict]]:
     total = Decimal("0.00")
     matches = []
+    seen_keys = set()
+    blocked = excluded_keys if isinstance(excluded_keys, set) else set()
     for account in accounts:
         if not isinstance(account, dict) or not predicate(account):
+            continue
+        key = _me_report_account_identity(account)
+        if key in blocked or key in seen_keys:
             continue
         amount = abs(_me_report_account_amount(account))
         if amount <= 0:
             continue
+        seen_keys.add(key)
         total += amount
         matches.append(account)
     return _money(total), matches
@@ -9506,29 +9555,42 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         monthly_profit = _money(breakdown_ytd_profit / Decimal(months_elapsed))
     balance_sheet_rows = _me_report_balance_sheet_rows(extracted, trial_balance_accounts, balance_sheet)
 
-    depreciation_addback, depreciation_accounts = _me_report_sum_accounts(
-        trial_balance_accounts,
-        lambda account: (
-            "depreciation" in _me_report_account_text(account)
-            and "accumulated" not in _me_report_account_text(account)
-            and not _me_report_account_is_balance_sheet(account)
-        ),
-    )
+    allocated_addback_account_keys: set[str] = set()
+
     amortisation_addback, amortisation_accounts = _me_report_sum_accounts(
         trial_balance_accounts,
         lambda account: (
             "amortisation" in _me_report_account_text(account)
             and not _me_report_account_is_balance_sheet(account)
         ),
+        allocated_addback_account_keys,
     )
+    allocated_addback_account_keys.update(_me_report_account_identity(account) for account in amortisation_accounts)
+
+    depreciation_addback, depreciation_accounts = _me_report_sum_accounts(
+        trial_balance_accounts,
+        lambda account: (
+            "depreciation" in _me_report_account_text(account)
+            and "amortisation" not in _me_report_account_text(account)
+            and "accumulated" not in _me_report_account_text(account)
+            and not _me_report_account_is_balance_sheet(account)
+        ),
+        allocated_addback_account_keys,
+    )
+    allocated_addback_account_keys.update(_me_report_account_identity(account) for account in depreciation_accounts)
+
     non_allowable_addback, non_allowable_accounts = _me_report_sum_accounts(
         trial_balance_accounts,
         lambda account: "non-allowable" in _me_report_account_text(account) or "tax adjustment" in _me_report_account_text(account),
+        allocated_addback_account_keys,
     )
+    allocated_addback_account_keys.update(_me_report_account_identity(account) for account in non_allowable_accounts)
     penalties_addback, penalties_accounts = _me_report_sum_accounts(
         trial_balance_accounts,
         lambda account: any(term in _me_report_account_text(account) for term in ("fine", "penalt", "car fine", "parking fine", "hmrc interest")),
+        allocated_addback_account_keys,
     )
+    allocated_addback_account_keys.update(_me_report_account_identity(account) for account in penalties_accounts)
     entertaining_addback, entertaining_accounts = _me_report_sum_accounts(
         trial_balance_accounts,
         lambda account: (
@@ -9536,6 +9598,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             or "client entertaining" in _me_report_account_text(account)
             or "client entertainment" in _me_report_account_text(account)
         ),
+        allocated_addback_account_keys,
     )
 
     included_account_codes = {
@@ -9738,6 +9801,13 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
     balance_sheet_current_year_earnings = _money(balance_sheet.get("currentYearEarnings"))
     retained_earnings = _money(balance_sheet.get("retainedEarnings"))
     dividends_declared = abs(_money(balance_sheet.get("dividendsDeclared")))
+    if dividends_declared <= 0:
+        fallback_dividends = _me_report_balance_sheet_dividends_fallback(balance_sheet_rows)
+        if fallback_dividends > 0:
+            dividends_declared = fallback_dividends
+            warnings.append(
+                f"Dividends declared was inferred from Balance Sheet rows (£{fallback_dividends:,.2f}) because the primary dividendsDeclared field was missing or zero."
+            )
     dividend_transaction_breakdown = _me_report_dividend_transaction_breakdown(classified_dividend_transactions)
     if classified_dividend_transactions:
         dividends_declared = abs(_money(sum(_money(item.get("amount")) for item in classified_dividend_transactions)))

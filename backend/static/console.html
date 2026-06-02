@@ -8013,6 +8013,20 @@
             .me-report-calculation-row.is-subtotal {
                 background: rgba(233, 241, 255, 0.36);
             }
+            .me-report-calculation-row.is-add {
+                background: rgba(255, 83, 83, 0.08);
+                box-shadow: inset 2px 0 0 rgba(255, 83, 83, 0.30);
+            }
+            .me-report-calculation-row.is-add strong {
+                color: #b42318;
+            }
+            .me-report-calculation-row.is-deduct {
+                background: rgba(39, 176, 95, 0.08);
+                box-shadow: inset 2px 0 0 rgba(39, 176, 95, 0.32);
+            }
+            .me-report-calculation-row.is-deduct strong {
+                color: #15803d;
+            }
             .me-report-calculation-row.is-result {
                 background: rgba(29, 103, 242, 0.1);
                 box-shadow: inset 2px 0 0 rgba(29, 103, 242, 0.35);
@@ -9459,6 +9473,40 @@
                 font-size: 0.88rem;
                 font-weight: 800;
             }
+            #meReportScreen .me-report-dla-hero-metrics {
+                grid-column: 1 / -1;
+                display: grid;
+                grid-template-columns: repeat(6, minmax(140px, 1fr));
+                gap: 10px;
+                margin-top: 8px;
+            }
+            #meReportScreen .me-report-dla-hero-metric {
+                display: grid;
+                gap: 4px;
+                padding: 10px;
+                border: 1px solid rgba(29, 103, 242, 0.12);
+                border-radius: 8px;
+                background: rgba(255, 255, 255, 0.82);
+            }
+            #meReportScreen .me-report-dla-hero-metric span {
+                color: var(--muted);
+                font-size: 0.68rem;
+                font-weight: 900;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+            }
+            #meReportScreen .me-report-dla-hero-metric strong {
+                color: var(--ink);
+                font-size: 1.08rem;
+                font-weight: 950;
+                line-height: 1.1;
+            }
+            #meReportScreen .me-report-dla-hero-metric em {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-style: normal;
+                font-weight: 850;
+            }
             #meReportScreen .me-report-dla-status {
                 display: inline-flex;
                 align-items: center;
@@ -9735,6 +9783,21 @@
                 border-color: rgba(255, 159, 47, 0.34);
                 background: rgba(255, 243, 223, 0.9);
             }
+            #meReportScreen .me-report-critical-warning {
+                border: 2px solid rgba(220, 38, 38, 0.6);
+                background: rgba(254, 226, 226, 0.95);
+                box-shadow: 0 18px 36px rgba(220, 38, 38, 0.14);
+            }
+            #meReportScreen .me-report-critical-warning .eyebrow {
+                color: #991b1b;
+            }
+            #meReportScreen .me-report-critical-warning h3 {
+                color: #7f1d1d;
+            }
+            #meReportScreen .me-report-critical-warning .detail-meta {
+                color: #991b1b;
+                font-weight: 700;
+            }
             #meReportScreen .me-report-clear-state-card {
                 border-color: rgba(22, 163, 74, 0.26);
                 background: rgba(236, 253, 245, 0.62);
@@ -9751,6 +9814,9 @@
                 #meReportScreen .me-report-report-summary-card,
                 #meReportScreen .me-report-two-column {
                     grid-template-columns: 1fr;
+                }
+                #meReportScreen .me-report-dla-hero-metrics {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 #meReportScreen .me-report-report-row {
                     min-width: 0;
@@ -33321,6 +33387,21 @@
                 const activeRows = [];
                 const candidateRows = [];
                 const allTransactions = [];
+                const fallbackTransactions = meReportObjectRows(summary.directorLoanTransactions).map((row) => {
+                    const amount = meReportMoneyValue(row.amount ?? row.value ?? 0);
+                    const description = String(row.description || row.label || "Director loan movement").trim();
+                    const date = String(row.date || "").trim();
+                    if (!description && !date && amount === 0) return null;
+                    return {
+                        ...row,
+                        date,
+                        description,
+                        amount,
+                        source: String(row.source || "Director transfer classification").trim(),
+                        accountCode: String(row.accountCode || row.sourceAccountCode || "").trim(),
+                        accountName: String(row.accountName || row.sourceAccountName || "Director loan account").trim()
+                    };
+                }).filter(Boolean).slice(0, 240);
                 meReportDlaAccountSourceRows(summary).forEach((account) => {
                     const code = meReportDlaAccountCode(account);
                     if (!code) return;
@@ -33377,6 +33458,11 @@
                 const closingBalance = activeRows.length
                     ? meReportMoneyValue(activeRows.reduce((sum, row) => sum + meReportMoneyValue(row.closingBalance), 0))
                     : meReportMoneyValue(hasOverrideEntries ? 0 : (summary.dlaBalance || 0));
+                let transactionSource = "accountTransactions";
+                if (!allTransactions.length && fallbackTransactions.length) {
+                    allTransactions.push(...fallbackTransactions);
+                    transactionSource = "classifiedTransfers";
+                }
                 allTransactions.sort((a, b) => `${a.date || ""}${a.description || ""}`.localeCompare(`${b.date || ""}${b.description || ""}`));
                 return {
                     accounts: activeRows,
@@ -33387,7 +33473,8 @@
                     closingBalance,
                     accountCount: activeRows.length,
                     transactionCount: allTransactions.length,
-                    overrides: normalisedOverrides
+                    overrides: normalisedOverrides,
+                    transactionSource
                 };
             }
 
@@ -34313,7 +34400,11 @@
                                 const treatmentText = String(row.treatment || "").toLowerCase();
                                 const rowToneClass = treatmentText.includes("result")
                                     ? " is-result"
-                                    : (treatmentText.includes("subtotal") ? " is-subtotal" : "");
+                                    : (treatmentText.includes("subtotal")
+                                        ? " is-subtotal"
+                                        : (treatmentText.includes("deduct")
+                                            ? " is-deduct"
+                                            : (treatmentText.includes("add") ? " is-add" : "")));
                                 return `
                                     <div class="me-report-calculation-row${breakdown.length ? " has-breakdown" : ""}${expanded ? " is-expanded" : ""}${rowToneClass}" role="row" ${breakdown.length ? `tabindex="0" data-me-calculation-row="${escapeHTML(rowKey)}"` : ""}>
                                         <span>${escapeHTML(row.label || "")}</span>
@@ -35324,6 +35415,7 @@
                 const vatConfirmedAt = client.vatRegisteredConfirmedAt || summary.vatRegisteredConfirmedAt || "";
                 const thresholdExceeded = rolling > threshold;
                 const warningVisible = meReportVatWarningVisible(client, summary);
+                const criticalVatWarning = !vatRegistered && thresholdExceeded;
                 const percentage = Math.min(140, Math.max(2, Math.round(Math.abs(rolling) / Math.max(1, threshold) * 100)));
                 const vatStatusLabel = vatRegistered ? "VAT Registered" : "Not VAT Registered";
                 const vatActionLabel = vatRegistered ? "Mark as deregistered for VAT" : "Mark as VAT registered";
@@ -35332,6 +35424,16 @@
                     ? `VAT registered${vatConfirmedAt ? ` - confirmed ${formatDate(vatConfirmedAt)}` : ""}`
                     : thresholdExceeded ? "registration review required" : "below threshold";
                 return `
+                    ${criticalVatWarning ? `
+                        <article class="me-report-insight-card me-report-critical-warning">
+                            <p class="eyebrow">Critical VAT warning</p>
+                            <h3>Client is marked as Not VAT Registered but rolling 12-month turnover is above the VAT threshold.</h3>
+                            <p class="detail-meta">Rolling turnover ${formatCurrency(rolling)} exceeds threshold ${formatCurrency(threshold)}. Please review immediately and confirm VAT registration status.</p>
+                            <div class="detail-actions">
+                                <button class="primary-button" type="button" data-me-report-toggle-vat="true">Mark as VAT registered</button>
+                            </div>
+                        </article>
+                    ` : ""}
                     <article class="me-report-insight-card ${warningVisible ? "me-report-alert-card" : ""}">
                         <p class="eyebrow">VAT registration</p>
                         <h3>${formatCurrency(rolling)} rolling 12-month turnover</h3>
@@ -35652,6 +35754,8 @@
                 const closing = meReportMoneyValue(summary.dlaBalance ?? data.closingBalance);
                 const accountCount = Number(summary.dlaAccountCount ?? data.accountCount ?? 0);
                 const transactionCount = Number(summary.dlaTransactionCount ?? data.transactionCount ?? 0);
+                const section455Rate = summary.section455Rate || meReportS455Rate(summary);
+                const statusText = closing < 0 ? "Overdrawn" : (closing > 0 ? "In credit" : "Nil");
                 const chartData = { ...data, openingBalance: opening, movement, closingBalance: closing };
                 return `
                     <div class="me-report-dla-hero">
@@ -35664,15 +35768,20 @@
                             </div>
                         </div>
                         ${renderMeReportDlaSetupButton(client, summary, data)}
+                        <div class="me-report-dla-hero-metrics">
+                            <article class="me-report-dla-hero-metric"><span>Opening balance</span><strong>${formatCurrency(opening)}</strong></article>
+                            <article class="me-report-dla-hero-metric"><span>Month movement</span><strong>${formatCurrency(movement)}</strong></article>
+                            <article class="me-report-dla-hero-metric"><span>Closing DLA</span><strong>${formatCurrency(closing)}</strong></article>
+                            <article class="me-report-dla-hero-metric"><span>Status</span><strong>${escapeHTML(statusText)}</strong></article>
+                            <article class="me-report-dla-hero-metric"><span>s455 exposure</span><strong>${formatCurrency(summary.section455Tax || 0)}</strong><em>${closing < 0 ? `${formatPercent(section455Rate)} rate` : "No overdrawn exposure"}</em></article>
+                            <article class="me-report-dla-hero-metric"><span>Potential extraction</span><strong>${formatCurrency(summary.totalPotentialExtraction || 0)}</strong></article>
+                        </div>
                     </div>
-                    <div class="ignition-summary-grid">
-                        ${renderMeReportMetric("Opening balance", formatCurrency(opening))}
-                        ${renderMeReportMetric("Month movement", formatCurrency(movement))}
-                        ${renderMeReportMetric("Closing DLA", formatCurrency(closing))}
-                        ${renderMeReportMetric("Status", closing < 0 ? "Overdrawn" : (closing > 0 ? "In credit" : "Nil"))}
-                        ${renderMeReportMetric("s455 exposure", formatCurrency(summary.section455Tax || 0), { detail: closing < 0 ? `${formatPercent(summary.section455Rate || meReportS455Rate(summary))} rate` : "No overdrawn exposure" })}
-                        ${renderMeReportMetric("Potential extraction", formatCurrency(summary.totalPotentialExtraction || 0))}
-                    </div>
+                    ${data.transactionSource === "classifiedTransfers" ? `<article class="me-report-insight-card me-report-alert-card">
+                        <p class="eyebrow">DLA transaction safeguard</p>
+                        <h3>Using classified transfer rows because nominal account transaction detail was not extracted.</h3>
+                        <p class="detail-meta">Some movement-based cards can look understated when the source PDF omits account transaction lines for the DLA nominal code. Upload a report with Account Transactions detail for full precision.</p>
+                    </article>` : ""}
                     <div class="me-report-dla-layout">
                         ${renderMeReportDlaMovementChart(chartData)}
                     </div>
@@ -35758,6 +35867,7 @@
                         ${renderMeReportTaxEstimateMetric(summary)}
                         ${renderMeReportMetric("Effective tax rate", formatPercent(summary.effectiveTaxRate || 0))}
                     </div>
+                    ${capitalAllowanceReviewCard}
                     <article class="me-report-insight-card">
                         <p class="eyebrow">CT rate breakdown</p>
                         <div class="me-report-card-heading-row">
@@ -35770,7 +35880,6 @@
                         <p class="detail-meta">CT estimate is calculated using current-year YTD earnings (not a single-month profit figure), then adjusted for tax add-backs, allowances and brought-forward losses.</p>
                         ${renderMeReportTaxBreakdownTable(summary)}
                     </article>
-                    ${capitalAllowanceReviewCard}
                     ${renderMeReportCalculationTable("CT estimate", Array.isArray(summary.taxCalculationSteps) && summary.taxCalculationSteps.length ? summary.taxCalculationSteps : meReportFallbackTaxSteps(summary), summary)}
                 `;
             }
