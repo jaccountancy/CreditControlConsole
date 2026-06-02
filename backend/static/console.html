@@ -21315,6 +21315,23 @@
                 }
             }
 
+            function companiesHouseBulkSubmissionFailureContext(endpoint, statusCode, payload) {
+                const path = responsePath(endpoint);
+                if (!path.endsWith("/api/companies-house/submissions/bulk")) return null;
+                const code = Number(statusCode || 0);
+                if (code < 500) return null;
+                const requestId = payload && typeof payload === "object" ? String(payload.request_id || payload.requestId || "").trim() : "";
+                return {
+                    title: "Confirmation statement submission timed out",
+                    summary: "The server took too long to respond while submitting to Companies House.",
+                    message: [
+                        "No confirmation that the filing was sent was returned.",
+                        "Retry with 1 company selected first, then run the rest in smaller batches.",
+                        requestId ? `Request ID: ${requestId}` : "",
+                    ].filter(Boolean).join(" "),
+                };
+            }
+
             async function requestJSON(template, options = {}, params = {}) {
                 const {
                     suppressFailurePanel = false,
@@ -21390,24 +21407,25 @@
                     const message = diagnostic && !messageText.includes(diagnostic)
                         ? `${messageText} ${diagnostic}`
                         : messageText;
+                    const specialisedFailure = companiesHouseBulkSubmissionFailureContext(resolvedEndpoint, response.status, detail || payload);
                     logAPIActivity("api.failed", activityContext, {
                         statusCode: response.status,
                         durationMs: Math.round(performance.now() - startedAt),
-                        error: message,
+                        error: specialisedFailure?.message || message,
                         response: sanitiseActivityValue(payload)
                     });
                     if (!suppressFailurePanel) {
                         openFailureDetailsPanel({
-                            title: "API request failed",
-                            summary: `Backend returned an error for ${activityContext?.label || "request"}.`,
+                            title: specialisedFailure?.title || "API request failed",
+                            summary: specialisedFailure?.summary || `Backend returned an error for ${activityContext?.label || "request"}.`,
                             endpoint: resolvedEndpoint,
                             method,
                             statusCode: response.status,
-                            message,
+                            message: specialisedFailure?.message || message,
                             details: detail || payload,
                         });
                     }
-                    throw new APIRequestError(message, { statusCode: response.status, details: detail || payload });
+                    throw new APIRequestError(specialisedFailure?.message || message, { statusCode: response.status, details: detail || payload });
                 }
                 logAPIActivity("api.completed", activityContext, {
                     statusCode: response.status,
@@ -49144,8 +49162,13 @@
                     if (error instanceof AuthRequiredError) {
                         markAuthenticationRequired(error.message);
                     }
-                    chSetWorkflowStatus(error?.message || "Unable to submit selected companies.", "error");
-                    showToast(error?.message || "Unable to submit selected companies.", "error");
+                    const timeoutLikeFailure = Number(error?.statusCode || 0) >= 500
+                        && String(error?.message || "").toLowerCase().includes("respond");
+                    const workflowMessage = timeoutLikeFailure
+                        ? "Submission timed out. Retry with one company first, then use smaller batches."
+                        : (error?.message || "Unable to submit selected companies.");
+                    chSetWorkflowStatus(workflowMessage, "error");
+                    showToast(workflowMessage, "error");
                 } finally {
                     companiesHouseState.workflowBusy = false;
                     chUpdateWorkflowControls();
