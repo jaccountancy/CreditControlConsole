@@ -16504,6 +16504,50 @@ def delete_ignition_renewal_run(user: dict, run_id: str) -> dict:
     return {"renewals": ignition_renewals_payload(user)}
 
 
+def mark_ignition_renewal_proposals_ineligible(user: dict, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    proposal_external_ids = safe_payload.get("proposalExternalIds") or safe_payload.get("proposal_external_ids") or []
+    if not isinstance(proposal_external_ids, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="proposalExternalIds must be an array.")
+    cleaned_ids: list[str] = []
+    for value in proposal_external_ids:
+        proposal_id = str(value or "").strip()
+        if proposal_id and proposal_id not in cleaned_ids:
+            cleaned_ids.append(proposal_id)
+    if not cleaned_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one proposal to mark ineligible.")
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for proposal_external_id in cleaned_ids:
+                cursor.execute(
+                    """
+                    INSERT INTO ignition_renewal_ineligible_proposals (
+                        user_id,
+                        proposal_external_id,
+                        reason,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id, proposal_external_id)
+                    DO UPDATE SET
+                        reason = EXCLUDED.reason,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (user["id"], proposal_external_id, "user-marked-ineligible", now, now),
+                )
+        connection.commit()
+    record_audit_event(
+        "ignition_renewal_candidates",
+        "manual-ineligible",
+        "ignition.renewals.ineligible.marked",
+        {"count": len(cleaned_ids)},
+        user["id"],
+    )
+    return {"renewals": ignition_renewals_payload(user), "markedCount": len(cleaned_ids)}
+
+
 async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
     settings = get_settings()
     recipient = str(settings.ignition_renewals_recipient_email or "").strip()

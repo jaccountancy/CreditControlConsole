@@ -20305,6 +20305,7 @@
                                     </div>
                                     <div class="detail-actions">
                                         <button class="ghost-button" id="ignitionRenewalsDeselectAllCandidatesButton" type="button">Deselect all</button>
+                                        <button class="ghost-button danger-button" id="ignitionRenewalsMarkIneligibleCandidatesButton" type="button">Mark selected ineligible</button>
                                         <button class="ghost-button" id="closeIgnitionRenewalStartButton" type="button">Close</button>
                                         <button class="primary-button" id="confirmIgnitionRenewalStartButton" type="button">Include selected and continue</button>
                                     </div>
@@ -22572,6 +22573,7 @@
                         ignitionRenewals: config.endpoints?.ignitionRenewals || "/api/ignition/renewals",
                         ignitionRenewalsRun: config.endpoints?.ignitionRenewalsRun || "/api/ignition/renewals/run",
                         ignitionRenewalRun: config.endpoints?.ignitionRenewalRun || "/api/ignition/renewals/:runId",
+                        ignitionRenewalIneligible: config.endpoints?.ignitionRenewalIneligible || "/api/ignition/renewals/ineligible",
                         ignitionRenewalDelete: config.endpoints?.ignitionRenewalDelete || "/api/ignition/renewals/:runId",
                         ignitionRenewalEmail: config.endpoints?.ignitionRenewalEmail || "/api/ignition/renewals/:runId/email",
                         ignitionRenewalPdf: config.endpoints?.ignitionRenewalPdf || "/api/ignition/renewals/:runId/pdf",
@@ -39520,15 +39522,21 @@
                 const meta = document.getElementById("ignitionRenewalStartMeta");
                 const wrap = document.getElementById("ignitionRenewalStartCandidatesWrap");
                 const confirmButton = document.getElementById("confirmIgnitionRenewalStartButton");
+                const markIneligibleButton = document.getElementById("ignitionRenewalsMarkIneligibleCandidatesButton");
                 const candidatePool = ignitionRenewalCandidatePool();
                 const candidates = ignitionRenewalCandidates();
                 ensureIgnitionRenewalSelection();
                 const selectedSet = new Set(ignitionRenewalSelectionList());
+                const syncedCount = Number(candidatePool.syncedCount || 0);
+                const selfAssessmentExcludedCount = Number(candidatePool.selfAssessmentExcludedCount || 0);
+                const manuallyIneligibleCount = Number(candidatePool.manuallyIneligibleCount || 0);
+                const alreadyPickedCount = Number(candidatePool.alreadyPickedCount || 0);
+                const availableCount = Number(candidates.length || 0);
 
                 if (summary) {
                     summary.textContent = ignitionRenewalStartLoading
                         ? "Syncing and preparing the eligible client list for this workflow window."
-                        : `Step 1 of 2: select eligible clients for this renewal batch. ${Number(candidates.length || 0).toLocaleString("en-GB")} proposal${Number(candidates.length || 0) === 1 ? "" : "s"} available.`;
+                        : `${syncedCount.toLocaleString("en-GB")} proposal${syncedCount === 1 ? "" : "s"} synced. ${selfAssessmentExcludedCount.toLocaleString("en-GB")} excluded (Self Assessment / Annual Accounts & CT / Accountant Letter / LPC). ${availableCount.toLocaleString("en-GB")} eligible for Step 1 selection.`;
                 }
                 if (meta) {
                     meta.innerHTML = ignitionRenewalStartLoading
@@ -39540,12 +39548,17 @@
                         : [
                             ["Workflow", "Step 1 of 2"],
                             ["Window", `${formatDate(candidatePool.windowStart || "")} to ${formatDate(candidatePool.windowEnd || "")}`],
-                            ["Eligible", Number(candidates.length || 0).toLocaleString("en-GB")],
+                            ["Synced", syncedCount.toLocaleString("en-GB")],
+                            ["Excluded", selfAssessmentExcludedCount.toLocaleString("en-GB")],
+                            ["Already picked", alreadyPickedCount.toLocaleString("en-GB")],
+                            ["Marked ineligible", manuallyIneligibleCount.toLocaleString("en-GB")],
+                            ["Eligible", availableCount.toLocaleString("en-GB")],
                             ["Selected", Number(selectedSet.size || 0).toLocaleString("en-GB")],
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                 }
 
                 if (confirmButton) confirmButton.disabled = ignitionRenewalStartLoading || !selectedSet.size;
+                if (markIneligibleButton) markIneligibleButton.disabled = ignitionRenewalStartLoading || !selectedSet.size;
                 if (!wrap) return;
                 if (ignitionRenewalStartLoading) {
                     wrap.innerHTML = `
@@ -40235,6 +40248,32 @@
                     clearIgnitionRenewalsTopbarProgress();
                     renderIgnitionRenewals();
                     renderIgnitionScreen();
+                }
+            }
+
+            async function markSelectedIgnitionRenewalsIneligible() {
+                const proposalExternalIds = ignitionRenewalSelectionList();
+                if (!proposalExternalIds.length) {
+                    showToast("Select at least one proposal to mark ineligible.", "info");
+                    return;
+                }
+                if (!window.confirm(`Mark ${proposalExternalIds.length.toLocaleString("en-GB")} selected proposal${proposalExternalIds.length === 1 ? "" : "s"} as ineligible? They will be removed from suggested renewals.`)) return;
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.ignitionRenewalIneligible,
+                        { method: "POST", body: JSON.stringify({ proposalExternalIds }) }
+                    );
+                    ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    ignitionRenewalSelection = new Set();
+                    showToast(
+                        `Marked ${(Number(payload?.markedCount || proposalExternalIds.length)).toLocaleString("en-GB")} proposal${proposalExternalIds.length === 1 ? "" : "s"} ineligible.`,
+                        "success"
+                    );
+                    renderIgnitionRenewalStartModal();
+                    renderIgnitionRenewals();
+                } catch (error) {
+                    console.error("Unable to mark renewal proposals as ineligible", error);
+                    showToast(error.message || "Unable to mark selected proposals ineligible", "error");
                 }
             }
 
@@ -54255,6 +54294,8 @@
                     ignitionRenewalSelection = new Set();
                     renderIgnitionRenewalStartModal();
                 });
+                const ignitionRenewalsMarkIneligibleCandidatesButton = document.getElementById("ignitionRenewalsMarkIneligibleCandidatesButton");
+                if (ignitionRenewalsMarkIneligibleCandidatesButton) ignitionRenewalsMarkIneligibleCandidatesButton.addEventListener("click", markSelectedIgnitionRenewalsIneligible);
                 const confirmIgnitionRenewalStartButton = document.getElementById("confirmIgnitionRenewalStartButton");
                 if (confirmIgnitionRenewalStartButton) confirmIgnitionRenewalStartButton.addEventListener("click", startIgnitionRenewals);
                 const ignitionRenewalStartModal = document.getElementById("ignitionRenewalStartModal");

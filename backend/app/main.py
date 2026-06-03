@@ -92,6 +92,7 @@ from .services import (
     delete_ignition_renewal_run,
     finalise_ignition_renewals,
     ignition_renewals_report_pdf,
+    mark_ignition_renewal_proposals_ineligible,
     insights_payload,
     ignition_payload,
     ignition_renewals_payload,
@@ -1635,6 +1636,15 @@ async def api_create_ignition_renewal_run(request: Request, user: dict = Depends
     except Exception:
         payload = {}
     return {"status": "ok", **await create_ignition_renewal_run(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/ignition/renewals/ineligible")
+async def api_mark_ignition_renewals_ineligible(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **mark_ignition_renewal_proposals_ineligible(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/ignition/renewals/{run_id}")
