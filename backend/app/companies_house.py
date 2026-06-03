@@ -140,6 +140,11 @@ def _coerce_settings_amount(value, field: str) -> Decimal:
         ) from exc
 
 
+def _compact_credential(value: object) -> str:
+    """Normalise credential-style values by removing all whitespace characters."""
+    return "".join(str(value or "").split())
+
+
 def _load_settings_row() -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -286,12 +291,12 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         items = payload.get("items")
         sample_count = len(items) if isinstance(items, list) else 0
 
-    presenter_id = _xml_text(overrides.get("presenterId") or settings_row.get("presenter_id"))
+    presenter_id = _compact_credential(overrides.get("presenterId") or settings_row.get("presenter_id"))
     presenter_auth_override = overrides.get("presenterAuth")
     if presenter_auth_override is not None:
-        presenter_auth = str(presenter_auth_override).strip()
+        presenter_auth = _compact_credential(presenter_auth_override)
     else:
-        presenter_auth = decrypt_presenter_auth()
+        presenter_auth = _compact_credential(decrypt_presenter_auth())
     gateway_attempted = bool(presenter_id and presenter_auth)
     gateway_connected = False
     gateway_errors: list[str] = []
@@ -318,6 +323,8 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                     "Companies House XML gateway rejected presenter credentials or filing authority. "
                     "Check Presenter ID/auth code and account permissions."
                 )
+                if gateway_errors:
+                    gateway_error_message = f"{gateway_error_message} Gateway detail: {_xml_text(gateway_errors[0])[:220]}"
             else:
                 gateway_connected = True
         except HTTPException as exc:
@@ -353,6 +360,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         "gatewayConnected": gateway_connected,
         "gatewayAttempted": gateway_attempted,
         "gatewayErrorCount": len(gateway_errors),
+        "gatewayErrors": gateway_errors[:10],
         "gatewayResponseBytes": gateway_response_bytes,
         "gatewayError": gateway_error_message,
         "message": message,
@@ -408,7 +416,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
         presenter_auth_encrypted = existing.get("presenter_auth_encrypted") or ""
         presenter_auth_hint = existing.get("presenter_auth_hint") or ""
     else:
-        presenter_auth_value = str(new_presenter_auth).strip()
+        presenter_auth_value = _compact_credential(new_presenter_auth)
         if presenter_auth_value:
             presenter_auth_encrypted = encrypt_secret(presenter_auth_value, CH_PRESENTER_AUTH_LABEL)
             presenter_auth_hint = _mask(presenter_auth_value)
@@ -416,8 +424,8 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
             presenter_auth_encrypted = ""
             presenter_auth_hint = ""
 
-    presenter_id = str(payload.get("presenterId") or "").strip()
-    credit_account_number = str(payload.get("creditAccountNumber") or "").strip()
+    presenter_id = _compact_credential(payload.get("presenterId"))
+    credit_account_number = _compact_credential(payload.get("creditAccountNumber"))
     xero_invoice_account_code = str(payload.get("xeroInvoiceAccountCode") or "").strip()
     xero_invoice_item_code = str(payload.get("xeroInvoiceItemCode") or "").strip()
     xero_invoice_description = str(payload.get("xeroInvoiceDescription") or "Companies House confirmation statement filing").strip()
