@@ -404,7 +404,14 @@ def decrypt_api_key() -> str:
     if row is None or not row.get("api_key_encrypted"):
         settings = get_settings()
         return (settings.companies_house_api_key or "").strip()
-    return decrypt_secret(row["api_key_encrypted"], CH_API_KEY_LABEL)
+    try:
+        return decrypt_secret(row["api_key_encrypted"], CH_API_KEY_LABEL)
+    except Exception as exc:
+        logger.exception("Failed to decrypt Companies House API key from settings row")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Saved Companies House API key could not be decrypted. Re-save the API key in Companies House settings and retry.",
+        ) from exc
 
 
 def _validated_companies_house_api_key(value: str) -> str:
@@ -430,7 +437,14 @@ def decrypt_presenter_auth() -> str:
     if row is None or not row.get("presenter_auth_encrypted"):
         settings = get_settings()
         return (settings.companies_house_presenter_auth or "").strip()
-    return decrypt_secret(row["presenter_auth_encrypted"], CH_PRESENTER_AUTH_LABEL)
+    try:
+        return decrypt_secret(row["presenter_auth_encrypted"], CH_PRESENTER_AUTH_LABEL)
+    except Exception as exc:
+        logger.exception("Failed to decrypt Companies House presenter auth from settings row")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Saved Presenter authentication code could not be decrypted. Re-save the presenter auth code in Companies House settings and retry.",
+        ) from exc
 
 
 def _companies_house_api_base(environment: str) -> str:
