@@ -9614,33 +9614,75 @@
             }
             #supplierReconciliationScreen .supplier-recon-controls {
                 display: grid;
-                gap: 10px;
-                margin-bottom: 12px;
+                gap: 12px;
+                margin-bottom: 14px;
+                padding: 14px;
+                border: 1px solid rgba(29, 103, 242, 0.16);
+                border-radius: 16px;
+                background: linear-gradient(180deg, rgba(248, 251, 255, 0.96), rgba(255, 255, 255, 0.9));
             }
             #supplierReconciliationScreen .supplier-recon-controls select {
                 width: 100%;
             }
+            #supplierReconciliationScreen .supplier-recon-controls-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            #supplierReconciliationScreen .supplier-recon-client-table-wrap,
+            #supplierReconciliationScreen .supplier-recon-results-wrap {
+                border: 1px solid var(--line);
+                border-radius: 18px;
+                overflow: auto;
+                background: rgba(255, 255, 255, 0.88);
+            }
             #supplierReconciliationScreen .supplier-recon-client-table {
                 width: 100%;
+                min-width: 780px;
                 border-collapse: collapse;
-                font-size: 0.84rem;
+                table-layout: fixed;
+                font-size: 0.86rem;
             }
             #supplierReconciliationScreen .supplier-recon-client-table th,
             #supplierReconciliationScreen .supplier-recon-client-table td {
                 text-align: left;
-                padding: 8px 6px;
-                border-bottom: 1px solid rgba(61, 85, 130, 0.12);
+                padding: 12px;
+                border-bottom: 1px solid var(--line);
+                vertical-align: middle;
+            }
+            #supplierReconciliationScreen .supplier-recon-client-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            #supplierReconciliationScreen .supplier-recon-client-table small,
+            #supplierReconciliationScreen .supplier-recon-table small {
+                display: block;
+                margin-top: 3px;
+                color: var(--muted);
+                font-weight: 760;
             }
             #supplierReconciliationScreen .supplier-recon-table {
                 width: 100%;
+                min-width: 980px;
                 border-collapse: collapse;
+                table-layout: fixed;
             }
             #supplierReconciliationScreen .supplier-recon-table th,
             #supplierReconciliationScreen .supplier-recon-table td {
                 text-align: left;
-                padding: 10px 8px;
+                padding: 11px 10px;
                 border-bottom: 1px solid rgba(61, 85, 130, 0.12);
                 vertical-align: top;
+            }
+            #supplierReconciliationScreen .supplier-recon-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
             }
             #supplierReconciliationScreen .supplier-recon-row.is-red {
                 background: rgba(255, 83, 83, 0.1);
@@ -9670,6 +9712,36 @@
             #supplierReconciliationScreen .supplier-recon-status.is-green {
                 background: rgba(39, 176, 95, 0.2);
                 color: #1f7d47;
+            }
+            #supplierReconciliationScreen .supplier-recon-filter {
+                display: inline-flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            #supplierReconciliationScreen .supplier-recon-filter button {
+                min-height: 34px;
+                padding: 6px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: rgba(255, 255, 255, 0.9);
+                color: var(--ink);
+                font-size: 0.75rem;
+                font-weight: 900;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+            }
+            #supplierReconciliationScreen .supplier-recon-filter button.is-active {
+                border-color: rgba(29, 103, 242, 0.28);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            #supplierReconciliationScreen .supplier-recon-model-meta {
+                display: grid;
+                gap: 7px;
+                padding: 12px;
+                border-radius: 14px;
+                border: 1px dashed rgba(61, 85, 130, 0.22);
+                background: rgba(248, 251, 255, 0.78);
             }
             .supplier-recon-email-modal {
                 position: fixed;
@@ -16543,7 +16615,7 @@
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Companies House</strong><span>CS, Secretarial, Lock Dates</span></span>
+                                    <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>CS, Secretarial, Lock Dates</span></span>
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-company-secreterial" data-app-nav="company-secreterial">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 4h7l5 5v11H7z"></path><path d="M14 4v5h5"></path><path d="M10 12h6"></path><path d="M10 16h6"></path></svg></span>
@@ -20503,6 +20575,8 @@
             let supplierReconciliationUploading = false;
             let supplierReconciliationLoaded = false;
             let selectedSupplierReconciliationContactId = "";
+            let supplierReconciliationWorkspaceOpen = false;
+            let supplierReconciliationStatusFilter = "all";
             const supplierReconciliationMaxUploadBytes = 50 * 1024 * 1024;
             let supplierReconciliationUploadStartedAt = 0;
             let supplierReconciliationUploadTimer = null;
@@ -30985,12 +31059,24 @@
 
             function openSupplierReconciliationScreen() {
                 activeView = "supplier-reconciliation";
+                supplierReconciliationWorkspaceOpen = false;
+                supplierReconciliationStatusFilter = "all";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
                 scrollConsoleToTop();
                 loadSupplierReconciliation();
+            }
+
+            function openSupplierReconciliationXeroConnect() {
+                const url = forceXeroConnectURL("supplier-reconciliation");
+                if (!url) {
+                    window.alert("Unable to start the Xero login flow.");
+                    return;
+                }
+                showToast("Opening Xero connection", "info");
+                window.location.assign(url);
             }
 
             async function loadSupplierReconciliation(force = false) {
@@ -31081,6 +31167,164 @@
                 return "is-red";
             }
 
+            function supplierReconciliationRowsForFilter(rows, filter = supplierReconciliationStatusFilter) {
+                const target = String(filter || "all").toLowerCase();
+                if (target === "all") return rows;
+                return rows.filter((row) => String(row?.statusKey || "").toLowerCase() === target);
+            }
+
+            function supplierReconciliationStatementModel(result = supplierReconciliationData.result) {
+                const rows = Array.isArray(result?.rows) ? result.rows : [];
+                const modelRows = rows.map((row, index) => ({
+                    sequence: index + 1,
+                    invoiceNumber: String(row?.invoiceNumber || row?.reference || "").trim(),
+                    reference: String(row?.reference || "").trim(),
+                    description: String(row?.description || "").trim(),
+                    invoiceDate: String(row?.invoiceDate || "").trim(),
+                    dueDate: String(row?.dueDate || "").trim(),
+                    amount: Number(row?.amount || 0),
+                    balance: Number(row?.balance || 0),
+                    reconciliation: {
+                        statusKey: String(row?.statusKey || "missing").toLowerCase(),
+                        statusLabel: String(row?.statusLabel || "Missing in Xero"),
+                        xeroInvoiceId: String(row?.xeroInvoiceId || "").trim(),
+                        xeroInvoiceNumber: String(row?.xeroInvoiceNumber || "").trim(),
+                        xeroInvoiceStatus: String(row?.xeroInvoiceStatus || "").trim(),
+                        xeroAmountDue: Number(row?.xeroAmountDue || 0),
+                        xeroAmountPaid: Number(row?.xeroAmountPaid || 0),
+                        xeroUrl: String(row?.xeroUrl || "").trim()
+                    }
+                }));
+                const sumByStatus = (statusKey) => modelRows
+                    .filter((row) => row.reconciliation.statusKey === statusKey)
+                    .reduce((sum, row) => sum + Number(row.balance || row.amount || 0), 0);
+                return {
+                    supplierName: String(result?.supplierName || "").trim(),
+                    clientName: String(result?.clientName || "").trim(),
+                    statementDate: String(result?.statementDate || "").trim(),
+                    currencyCode: String(result?.currencyCode || "GBP").trim() || "GBP",
+                    filename: String(result?.filename || "").trim(),
+                    summary: {
+                        totalLines: modelRows.length,
+                        missingCount: modelRows.filter((row) => row.reconciliation.statusKey === "missing").length,
+                        allocatedCount: modelRows.filter((row) => row.reconciliation.statusKey === "allocated").length,
+                        paidCount: modelRows.filter((row) => row.reconciliation.statusKey === "paid").length,
+                        missingAmount: sumByStatus("missing"),
+                        allocatedAmount: sumByStatus("allocated"),
+                        paidAmount: sumByStatus("paid")
+                    },
+                    rows: modelRows
+                };
+            }
+
+            function exportSupplierReconciliationModel(result = supplierReconciliationData.result) {
+                if (!result) {
+                    showToast("Upload a supplier statement before exporting the model", "error");
+                    return;
+                }
+                const model = supplierReconciliationStatementModel(result);
+                const stem = (model.clientName || model.supplierName || "supplier-reconciliation")
+                    .replace(/[^a-z0-9]+/gi, "-")
+                    .replace(/^-|-$/g, "")
+                    .toLowerCase() || "supplier-reconciliation";
+                downloadBankJson(`${stem}-statement-model.json`, model);
+                showToast("Supplier reconciliation model exported", "success");
+            }
+
+            function supplierReconciliationSupplierReportText(result = supplierReconciliationData.result) {
+                if (!result) return "";
+                const rows = Array.isArray(result.rows) ? result.rows : [];
+                const byStatus = {
+                    paid: rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "paid"),
+                    allocated: rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "allocated"),
+                    missing: rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "missing"),
+                };
+                const nowStamp = new Intl.DateTimeFormat("en-GB", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                }).format(new Date());
+                const statementDate = result?.statementDate ? formatDate(result.statementDate) : "Unknown";
+                const supplierName = String(result?.supplierName || selectedSupplierReconciliationContact()?.name || "Supplier").trim();
+                const clientName = String(result?.clientName || "Client").trim();
+                const currency = String(result?.currencyCode || "GBP").trim() || "GBP";
+                const linesForRows = (items, options = {}) => {
+                    if (!items.length) return ["- None"];
+                    const { includeXero = false } = options;
+                    return items.map((row) => {
+                        const ref = String(row?.invoiceNumber || row?.reference || "Unspecified invoice").trim();
+                        const invoiceDate = row?.invoiceDate ? formatDate(row.invoiceDate) : "Date n/a";
+                        const amount = formatCurrency(row?.amount || 0);
+                        const balance = formatCurrency(row?.balance || 0);
+                        const xeroBits = includeXero
+                            ? ` | Xero status: ${String(row?.xeroInvoiceStatus || "Unknown")}${row?.xeroInvoiceNumber ? ` | Xero ref: ${row.xeroInvoiceNumber}` : ""}`
+                            : "";
+                        return `- ${ref} | Date: ${invoiceDate} | Amount: ${amount} | Balance: ${balance}${xeroBits}`;
+                    });
+                };
+                const header = [
+                    "SUPPLIER RECONCILIATION REPORT",
+                    `Generated: ${nowStamp}`,
+                    `Supplier: ${supplierName}`,
+                    `Client: ${clientName}`,
+                    `Statement file: ${String(result?.filename || "Unknown")}`,
+                    `Statement date: ${statementDate}`,
+                    `Currency: ${currency}`,
+                    `Total lines extracted: ${rows.length.toLocaleString("en-GB")}`,
+                    ""
+                ];
+                const paidSection = [
+                    "INVOICES RECEIVED AND PROCESSED IN XERO (PAID)",
+                    `Count: ${byStatus.paid.length.toLocaleString("en-GB")}`,
+                    ...linesForRows(byStatus.paid, { includeXero: true }),
+                    ""
+                ];
+                const allocatedSection = [
+                    "INVOICES RECEIVED AND PROCESSED IN XERO (AWAITING PAYMENT)",
+                    `Count: ${byStatus.allocated.length.toLocaleString("en-GB")}`,
+                    ...linesForRows(byStatus.allocated, { includeXero: true }),
+                    ""
+                ];
+                const missingSection = [
+                    "INVOICES MISSING FROM XERO",
+                    `Count: ${byStatus.missing.length.toLocaleString("en-GB")}`,
+                    ...linesForRows(byStatus.missing, { includeXero: false }),
+                    ""
+                ];
+                const footer = [
+                    "Action required:",
+                    byStatus.missing.length
+                        ? "Please provide the missing invoices listed above so we can post them to Xero."
+                        : "No missing invoices were identified from this statement."
+                ];
+                return [...header, ...paidSection, ...allocatedSection, ...missingSection, ...footer].join("\n");
+            }
+
+            function downloadSupplierReconciliationReport(result = supplierReconciliationData.result) {
+                if (!result) {
+                    showToast("Upload a supplier statement before downloading a report", "error");
+                    return;
+                }
+                const text = supplierReconciliationSupplierReportText(result);
+                const blob = new Blob([`${text}\n`], { type: "text/plain;charset=utf-8" });
+                const stem = String(result?.supplierName || selectedSupplierReconciliationContact()?.name || "supplier")
+                    .replace(/[^a-z0-9]+/gi, "-")
+                    .replace(/^-|-$/g, "")
+                    .toLowerCase() || "supplier";
+                const datePart = String(result?.statementDate || localDateKey()).replace(/[^0-9]/g, "") || localDateKey().replace(/-/g, "");
+                const filename = `${stem}-reconciliation-report-${datePart}.txt`;
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(link.href);
+                showToast("Supplier reconciliation report downloaded", "success");
+            }
+
             async function uploadSupplierReconciliationStatement(file) {
                 const contact = selectedSupplierReconciliationContact();
                 const connectedClient = selectedSupplierReconciliationConnectedClient();
@@ -31123,14 +31367,23 @@
                 const actionList = document.getElementById("supplierReconciliationActionList");
                 const detail = document.getElementById("supplierReconciliationDetail");
                 if (!clientList || !actionList || !detail) return;
+
                 const contacts = supplierReconciliationContacts();
-                const selectedContact = selectedSupplierReconciliationContact();
                 const connectedContacts = supplierReconciliationConnectedClients();
                 const connectedByContactId = new Set(connectedContacts.map((client) => client.xeroContactId));
+                const contactIds = new Set(contacts.map((contact) => contact.xeroContactId));
+                if (!selectedSupplierReconciliationContactId || (!contactIds.has(selectedSupplierReconciliationContactId) && contacts.length)) {
+                    selectedSupplierReconciliationContactId = connectedContacts[0]?.xeroContactId || contacts[0]?.xeroContactId || "";
+                }
+                if (!connectedContacts.some((client) => client.xeroContactId === selectedSupplierReconciliationContactId) && supplierReconciliationWorkspaceOpen) {
+                    supplierReconciliationWorkspaceOpen = false;
+                }
+                const selectedContact = selectedSupplierReconciliationContact();
                 const connectedClient = selectedSupplierReconciliationConnectedClient();
                 const activeResult = supplierReconciliationData.result && supplierReconciliationData.result.contactId === selectedSupplierReconciliationContactId
                     ? supplierReconciliationData.result
                     : null;
+
                 const processingElapsed = supplierReconciliationUploadStartedAt
                     ? Math.max(0, Math.floor((Date.now() - supplierReconciliationUploadStartedAt) / 1000))
                     : 0;
@@ -31146,81 +31399,211 @@
                 }
 
                 if (!supplierReconciliationData.xero?.connected) {
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Xero required</p><h4>Connect Xero first</h4><p>Supplier reconciliation needs an active Xero connection.</p></div>';
-                    actionList.innerHTML = "";
-                    detail.innerHTML = "";
+                    clientList.innerHTML = `
+                        <div class="empty-state">
+                            <p class="eyebrow">Xero required</p>
+                            <h4>Connect Xero before using Supplier Reconciliation</h4>
+                            <p>Link your Xero tenant first. Then choose suppliers and open their reconciliation workspaces.</p>
+                            <button class="primary-button" id="supplierReconciliationConnectXeroButton" type="button">Connect Xero</button>
+                        </div>
+                    `;
+                    actionList.innerHTML = '<div class="empty-state"><p class="eyebrow">Workspace</p><h4>Waiting for Xero connection</h4><p>Supplier actions unlock after Xero is connected.</p></div>';
+                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Results</p><h4>No supplier statement loaded</h4><p>Connect Xero and upload a statement to start reconciliation.</p></div>';
+                    document.getElementById("supplierReconciliationConnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
+                    return;
+                }
+
+                const renderConnectSupplier = async () => {
+                    if (!selectedSupplierReconciliationContactId) return;
+                    try {
+                        const response = await requestJSON(api.endpoints.supplierReconciliationClients, {
+                            method: "POST",
+                            body: JSON.stringify({ xeroContactId: selectedSupplierReconciliationContactId }),
+                        });
+                        const nextState = normaliseSupplierReconciliationPayload(response);
+                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
+                        supplierReconciliationWorkspaceOpen = true;
+                        showToast("Supplier saved to workspace", "success");
+                        renderSupplierReconciliationScreen();
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to save supplier", "error");
+                    }
+                };
+
+                const removeSupplierWorkspace = async (supplierClientId) => {
+                    if (!supplierClientId) return;
+                    try {
+                        const response = await requestJSON(
+                            api.endpoints.supplierReconciliationClient,
+                            { method: "DELETE" },
+                            { clientId: supplierClientId }
+                        );
+                        const nextState = normaliseSupplierReconciliationPayload(response);
+                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
+                        if (!supplierReconciliationConnectedClients().some((client) => client.xeroContactId === selectedSupplierReconciliationContactId)) {
+                            supplierReconciliationData.result = null;
+                            supplierReconciliationWorkspaceOpen = false;
+                        }
+                        showToast("Supplier removed from workspace", "success");
+                        renderSupplierReconciliationScreen();
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to remove supplier", "error");
+                    }
+                };
+
+                if (!supplierReconciliationWorkspaceOpen) {
+                    clientList.innerHTML = `
+                        <div class="jashflow-detail-head">
+                            <div>
+                                <p class="eyebrow">Supplier Reconciliation</p>
+                                <h3>Saved supplier workspaces</h3>
+                                <p class="detail-meta">Connect suppliers once, then access their workspace to upload statements and review missing invoices quickly.</p>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
+                                <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
+                            </div>
+                        </div>
+                        <div class="supplier-recon-controls">
+                            <label>
+                                Add supplier contact
+                                <select id="supplierReconciliationContactSelect">
+                                    ${contacts.length
+                                        ? contacts.map((contact) => `<option value="${escapeHTML(contact.xeroContactId)}" ${contact.xeroContactId === selectedSupplierReconciliationContactId ? "selected" : ""}>${escapeHTML(contact.name || contact.xeroContactId)}${contact.email ? ` · ${escapeHTML(contact.email)}` : ""}${connectedByContactId.has(contact.xeroContactId) ? " · Connected" : ""}</option>`).join("")
+                                        : '<option value="">No Xero supplier contacts available</option>'}
+                                </select>
+                            </label>
+                            <div class="supplier-recon-controls-actions">
+                                <button class="primary-button" id="supplierReconciliationConnectButton" type="button" ${contacts.length ? "" : "disabled"}>Connect supplier</button>
+                            </div>
+                        </div>
+                        <div class="supplier-recon-client-table-wrap">
+                            <table class="supplier-recon-client-table" aria-label="Connected supplier clients">
+                                <thead>
+                                    <tr>
+                                        <th>Supplier</th>
+                                        <th>Email</th>
+                                        <th>Workspace status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${connectedContacts.length
+                                        ? connectedContacts.map((contact) => `
+                                            <tr>
+                                                <td><strong>${escapeHTML(contact.name || contact.xeroContactId)}</strong><small>Connected ${contact.createdAt ? formatDate(contact.createdAt) : "recently"}</small></td>
+                                                <td>${escapeHTML(contact.email || "No email saved")}</td>
+                                                <td><span class="supplier-recon-status is-green">Ready</span></td>
+                                                <td>
+                                                    <div class="detail-actions">
+                                                        <button class="primary-button" type="button" data-supplier-recon-open="${escapeHTML(contact.xeroContactId)}">Access workspace</button>
+                                                        <button class="ghost-button danger-button" type="button" data-supplier-recon-remove="${escapeHTML(contact.id)}">Remove</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        `).join("")
+                                        : '<tr><td colspan="4">No suppliers connected yet. Add one above to create a workspace.</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    actionList.innerHTML = '<div class="empty-state"><p class="eyebrow">Workspace</p><h4>Select a supplier workspace</h4><p>Use Access workspace to upload statements and reconcile invoice rows.</p></div>';
+                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Report output</p><h4>Supplier reconciliation report will appear here</h4><p>After extraction, this area shows paid, awaiting payment, and missing invoices from the statement.</p></div>';
+
+                    const contactSelect = document.getElementById("supplierReconciliationContactSelect");
+                    if (contactSelect && contactSelect.value !== selectedSupplierReconciliationContactId) {
+                        contactSelect.value = selectedSupplierReconciliationContactId;
+                    }
+                    contactSelect?.addEventListener("change", (event) => {
+                        selectedSupplierReconciliationContactId = String(event.target.value || "");
+                    });
+                    document.getElementById("supplierReconciliationConnectButton")?.addEventListener("click", renderConnectSupplier);
+                    document.getElementById("supplierReconciliationReconnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
+                    document.getElementById("supplierReconciliationRefreshButton")?.addEventListener("click", () => loadSupplierReconciliation(true));
+                    document.querySelectorAll("[data-supplier-recon-open]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            selectedSupplierReconciliationContactId = button.dataset.supplierReconOpen || "";
+                            supplierReconciliationWorkspaceOpen = true;
+                            supplierReconciliationStatusFilter = "all";
+                            renderSupplierReconciliationScreen();
+                        });
+                    });
+                    document.querySelectorAll("[data-supplier-recon-remove]").forEach((button) => {
+                        button.addEventListener("click", () => removeSupplierWorkspace(button.dataset.supplierReconRemove || ""));
+                    });
                     return;
                 }
 
                 clientList.innerHTML = `
                     <div class="jashflow-detail-head">
                         <div>
-                            <p class="eyebrow">Supplier Reconciliation</p>
-                            <h3>Supplier connections</h3>
-                            <p class="detail-meta">Select a supplier contact, connect it to this workspace, then upload a statement.</p>
+                            <p class="eyebrow">Supplier workspace</p>
+                            <h3>${escapeHTML(selectedContact?.name || "Supplier")}</h3>
+                            <p class="detail-meta">${escapeHTML(supplierReconciliationData.xero?.tenantName || "Connected tenant")}</p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="ghost-button" id="supplierReconciliationBackToListButton" type="button">Back to suppliers</button>
+                            <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
+                            <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
                         </div>
                     </div>
-                    <div class="supplier-recon-controls">
-                        <label>
-                            Supplier contact
-                            <select id="supplierReconciliationContactSelect">
-                                ${contacts.map((contact) => `<option value="${escapeHTML(contact.xeroContactId)}" ${contact.xeroContactId === selectedSupplierReconciliationContactId ? "selected" : ""}>${escapeHTML(contact.name || contact.xeroContactId)}${contact.email ? ` · ${escapeHTML(contact.email)}` : ""}${connectedByContactId.has(contact.xeroContactId) ? " · Connected" : ""}</option>`).join("")}
-                            </select>
-                        </label>
-                        <button class="primary-button" id="supplierReconciliationConnectButton" type="button" ${contacts.length ? "" : "disabled"}>Save supplier</button>
-                    </div>
-                    <table class="supplier-recon-client-table" aria-label="Connected supplier clients">
-                        <thead><tr><th>Supplier</th><th>Status</th><th>Action</th></tr></thead>
-                        <tbody>
-                            ${connectedContacts.length ? connectedContacts.map((contact) => `
-                                <tr>
-                                    <td><strong>${escapeHTML(contact.name || contact.xeroContactId)}</strong><br><small>${escapeHTML(contact.email || "No email")}</small></td>
-                                    <td><span class="supplier-recon-status is-green">Connected</span></td>
-                                    <td><button class="ghost-button" type="button" data-supplier-recon-open="${escapeHTML(contact.xeroContactId)}">Open</button> <button class="ghost-button danger-button" type="button" data-supplier-recon-remove="${escapeHTML(contact.id)}">Remove</button></td>
-                                </tr>
-                            `).join("") : '<tr><td colspan="3">No suppliers connected yet.</td></tr>'}
-                        </tbody>
-                    </table>
                 `;
 
                 actionList.innerHTML = `
                     <div class="jashflow-detail-head">
                         <div>
-                            <p class="eyebrow">Actions</p>
+                            <p class="eyebrow">Statement workflow</p>
                             <h3>${escapeHTML(selectedContact?.name || "No supplier selected")}</h3>
-                            <p class="detail-meta">${escapeHTML(supplierReconciliationData.xero?.tenantName || "Connected tenant")}</p>
+                            <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Upload supplier statements and generate a report back to the supplier in one click."}</p>
                         </div>
                     </div>
                     <div class="detail-actions">
                         <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${selectedContact && connectedClient ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
+                        <button class="ghost-button" id="supplierReconciliationReportButton" type="button" ${activeResult ? "" : "disabled"}>Download supplier report</button>
                         <button class="ghost-button" id="supplierReconciliationEmailButton" type="button" ${(supplierReconciliationMissingRows(activeResult).length > 0) ? "" : "disabled"}>Email missing invoices</button>
-                        <button class="ghost-button" id="supplierReconciliationDisconnectButton" type="button" ${connectedClient ? "" : "disabled"}>Disconnect</button>
-                        <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
+                        <button class="ghost-button" id="supplierReconciliationExportModelButton" type="button" ${activeResult ? "" : "disabled"}>Export extracted model</button>
+                        <button class="ghost-button danger-button" id="supplierReconciliationDisconnectButton" type="button" ${connectedClient ? "" : "disabled"}>Disconnect supplier</button>
                     </div>
-                    <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Rows are highlighted red when missing in Xero, yellow when found but not fully paid, and green when paid."}</p>
                 `;
 
                 const result = activeResult;
                 if (!result || result.contactId !== selectedSupplierReconciliationContactId) {
-                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Awaiting upload</p><h4>Upload a supplier statement PDF</h4><p>We will extract every line, reconcile it to Xero bills, and show direct links to transactions.</p></div>';
+                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Awaiting upload</p><h4>Upload a supplier statement PDF</h4><p>We will extract each row, match against Xero bills, and split the output into paid, awaiting payment, and missing invoices.</p></div>';
                 } else {
                     const rows = Array.isArray(result.rows) ? result.rows : [];
                     const summary = result.summary || {};
+                    const filteredRows = supplierReconciliationRowsForFilter(rows, supplierReconciliationStatusFilter);
+                    const model = supplierReconciliationStatementModel(result);
+                    const filterButtons = [
+                        { key: "all", label: `All (${rows.length.toLocaleString("en-GB")})` },
+                        { key: "missing", label: `Missing (${Number(summary.missingCount || 0).toLocaleString("en-GB")})` },
+                        { key: "allocated", label: `Awaiting payment (${Number(summary.allocatedCount || 0).toLocaleString("en-GB")})` },
+                        { key: "paid", label: `Paid (${Number(summary.paidCount || 0).toLocaleString("en-GB")})` },
+                    ];
                     detail.innerHTML = `
                         <div class="jashflow-detail-head">
                             <div>
                                 <p class="eyebrow">Statement results</p>
                                 <h3>${escapeHTML(result.filename || "Supplier statement")}</h3>
-                                <p class="detail-meta">${escapeHTML(result.statementDate ? formatDate(result.statementDate) : "No statement date")} · ${escapeHTML(result.currencyCode || "GBP")} · ${Number(summary.totalLines || rows.length).toLocaleString("en-GB")} lines</p>
+                                <p class="detail-meta">${escapeHTML(result.statementDate ? formatDate(result.statementDate) : "No statement date")} · ${escapeHTML(result.currencyCode || "GBP")} · ${Number(summary.totalLines || rows.length).toLocaleString("en-GB")} lines extracted</p>
                             </div>
                         </div>
                         <div class="ignition-summary-grid">
                             <article><span>Missing</span><strong>${Number(summary.missingCount || 0).toLocaleString("en-GB")}</strong></article>
-                            <article><span>Outstanding / allocated</span><strong>${Number(summary.allocatedCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Awaiting payment</span><strong>${Number(summary.allocatedCount || 0).toLocaleString("en-GB")}</strong></article>
                             <article><span>Paid</span><strong>${Number(summary.paidCount || 0).toLocaleString("en-GB")}</strong></article>
                             <article><span>Matched bills</span><strong>${Number(summary.matchedBillCount || 0).toLocaleString("en-GB")}</strong></article>
                         </div>
-                        <div class="me-report-report-table" role="table" aria-label="Supplier reconciliation rows">
+                        <div class="supplier-recon-model-meta">
+                            <strong>Supplier-facing report is ready</strong>
+                            <span>${Number(model.summary.totalLines || 0).toLocaleString("en-GB")} rows summarised. Download report to share what is paid, awaiting payment, and missing from Xero.</span>
+                        </div>
+                        <div class="supplier-recon-filter" role="tablist" aria-label="Supplier reconciliation filters">
+                            ${filterButtons.map((item) => `<button type="button" data-supplier-recon-filter="${item.key}" class="${supplierReconciliationStatusFilter === item.key ? "is-active" : ""}">${escapeHTML(item.label)}</button>`).join("")}
+                        </div>
+                        <div class="supplier-recon-results-wrap" role="table" aria-label="Supplier reconciliation rows">
                             <table class="supplier-recon-table">
                                 <thead>
                                     <tr>
@@ -31233,99 +31616,39 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${rows.length ? rows.map((row) => `
+                                    ${filteredRows.length ? filteredRows.map((row) => `
                                         <tr class="supplier-recon-row ${supplierReconciliationRowClass(row)}">
-                                            <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><br><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
+                                            <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
                                             <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
                                             <td>${formatCurrency(row.amount || 0)}</td>
                                             <td>${formatCurrency(row.balance || 0)}</td>
                                             <td><span class="supplier-recon-status ${supplierReconciliationRowClass(row)}">${escapeHTML(row.statusLabel || "Unknown")}</span></td>
                                             <td>${row.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row.xeroUrl)}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
                                         </tr>
-                                    `).join("") : '<tr><td colspan="6">No statement lines were extracted.</td></tr>'}
+                                    `).join("") : `<tr><td colspan="6">No rows match the ${escapeHTML(supplierReconciliationStatusFilter)} filter.</td></tr>`}
                                 </tbody>
                             </table>
                         </div>
                     `;
                 }
 
-                const contactSelect = document.getElementById("supplierReconciliationContactSelect");
-                if (contactSelect && contactSelect.value !== selectedSupplierReconciliationContactId) {
-                    contactSelect.value = selectedSupplierReconciliationContactId;
-                }
-                contactSelect?.addEventListener("change", (event) => {
-                    selectedSupplierReconciliationContactId = String(event.target.value || "");
+                document.getElementById("supplierReconciliationBackToListButton")?.addEventListener("click", () => {
+                    supplierReconciliationWorkspaceOpen = false;
+                    supplierReconciliationStatusFilter = "all";
                     renderSupplierReconciliationScreen();
                 });
-
-                document.getElementById("supplierReconciliationConnectButton")?.addEventListener("click", async () => {
-                    if (!selectedSupplierReconciliationContactId) return;
-                    try {
-                        const response = await requestJSON(api.endpoints.supplierReconciliationClients, {
-                            method: "POST",
-                            body: JSON.stringify({ xeroContactId: selectedSupplierReconciliationContactId }),
-                        });
-                        const nextState = normaliseSupplierReconciliationPayload(response);
-                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
-                        showToast("Supplier saved to workspace", "success");
-                        renderSupplierReconciliationScreen();
-                    } catch (error) {
-                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                        else showToast(error.message || "Unable to save supplier", "error");
-                    }
-                });
-                document.querySelectorAll("[data-supplier-recon-open]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        selectedSupplierReconciliationContactId = button.dataset.supplierReconOpen || "";
-                        renderSupplierReconciliationScreen();
-                    });
-                });
-                document.querySelectorAll("[data-supplier-recon-remove]").forEach((button) => {
-                    button.addEventListener("click", async () => {
-                        const supplierClientId = button.dataset.supplierReconRemove || "";
-                        if (!supplierClientId) return;
-                        try {
-                            const response = await requestJSON(
-                                api.endpoints.supplierReconciliationClient,
-                                { method: "DELETE" },
-                                { clientId: supplierClientId }
-                            );
-                            const nextState = normaliseSupplierReconciliationPayload(response);
-                            supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
-                            if (!supplierReconciliationConnectedClients().some((client) => client.xeroContactId === selectedSupplierReconciliationContactId)) {
-                                supplierReconciliationData.result = null;
-                            }
-                            showToast("Supplier removed from workspace", "success");
-                            renderSupplierReconciliationScreen();
-                        } catch (error) {
-                            if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                            else showToast(error.message || "Unable to remove supplier", "error");
-                        }
-                    });
-                });
-                document.getElementById("supplierReconciliationDisconnectButton")?.addEventListener("click", async () => {
-                    const activeClient = selectedSupplierReconciliationConnectedClient();
-                    if (!activeClient?.id) return;
-                    try {
-                        const response = await requestJSON(
-                            api.endpoints.supplierReconciliationClient,
-                            { method: "DELETE" },
-                            { clientId: activeClient.id }
-                        );
-                        const nextState = normaliseSupplierReconciliationPayload(response);
-                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: null };
-                        showToast("Supplier disconnected", "success");
-                        renderSupplierReconciliationScreen();
-                    } catch (error) {
-                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                        else showToast(error.message || "Unable to disconnect supplier", "error");
-                    }
-                });
+                document.getElementById("supplierReconciliationReconnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
                 document.getElementById("supplierReconciliationRefreshButton")?.addEventListener("click", () => loadSupplierReconciliation(true));
                 document.getElementById("supplierReconciliationUploadButton")?.addEventListener("click", () => {
                     if (supplierReconciliationUploading) return;
                     const fileInput = document.getElementById("supplierReconciliationFileInput");
                     fileInput?.click();
+                });
+                document.getElementById("supplierReconciliationReportButton")?.addEventListener("click", () => {
+                    downloadSupplierReconciliationReport(activeResult);
+                });
+                document.getElementById("supplierReconciliationExportModelButton")?.addEventListener("click", () => {
+                    exportSupplierReconciliationModel(activeResult);
                 });
                 document.getElementById("supplierReconciliationEmailButton")?.addEventListener("click", () => {
                     const draft = supplierReconciliationEmailDraft(activeResult);
@@ -31338,6 +31661,17 @@
                     if (subjectInput) subjectInput.value = draft.subject;
                     if (bodyInput) bodyInput.value = draft.body;
                     setSupplierReconciliationEmailModalOpen(true);
+                });
+                document.getElementById("supplierReconciliationDisconnectButton")?.addEventListener("click", async () => {
+                    const activeClient = selectedSupplierReconciliationConnectedClient();
+                    if (!activeClient?.id) return;
+                    await removeSupplierWorkspace(activeClient.id);
+                });
+                document.querySelectorAll("[data-supplier-recon-filter]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        supplierReconciliationStatusFilter = String(button.dataset.supplierReconFilter || "all");
+                        renderSupplierReconciliationScreen();
+                    });
                 });
             }
 
