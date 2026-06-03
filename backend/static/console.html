@@ -21916,6 +21916,19 @@
                     if (typeof payload.message === "string") return payload.message;
                     return "";
                 })().trim();
+                const schemaMismatchPattern = /(no unique or exclusion constraint matching the on conflict specification|ch_submission_schema_mismatch|idempotency conflict rule)/i;
+                if (schemaMismatchPattern.test(detailMessage)) {
+                    return {
+                        title: "Bulk submission unavailable (schema mismatch)",
+                        summary: "The backend database schema does not match the submission idempotency rule.",
+                        message: [
+                            "No filing was dispatched to Companies House.",
+                            "This is a server configuration issue, not client data.",
+                            "Apply backend schema updates and retry.",
+                            detailMessage,
+                        ].filter(Boolean).join(" "),
+                    };
+                }
                 const timeoutPattern = /(timed out|timeout|took too long|no confirmation that the filing was sent was returned)/i;
                 const looksLikeTimeout = code === 504 || code === 524 || timeoutPattern.test(detailMessage);
                 if (!looksLikeTimeout) return null;

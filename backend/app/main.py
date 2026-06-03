@@ -323,6 +323,26 @@ def wants_json(request: Request) -> bool:
     return "application/json" in accept or "application/json" in content_type
 
 
+def companies_house_bulk_submission_error_detail(exc: Exception) -> dict:
+    error_text = str(exc) or exc.__class__.__name__
+    lowered = error_text.lower()
+    detail = {
+        "message": "Unexpected server error while processing Companies House bulk submission.",
+        "error": error_text,
+        "type": exc.__class__.__name__,
+    }
+    if "on conflict specification" in lowered and "no unique or exclusion constraint" in lowered:
+        detail["message"] = (
+            "Companies House bulk submission failed before dispatch because the backend database schema "
+            "does not match the expected idempotency conflict rule."
+        )
+        detail["code"] = "CH_SUBMISSION_SCHEMA_MISMATCH"
+        detail["hint"] = (
+            "Deploy/restart the backend so startup schema updates are applied, then retry bulk submission."
+        )
+    return detail
+
+
 def xero_login_error_response(
     message: str,
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1276,11 +1296,7 @@ async def api_companies_house_submit_bulk(
         logger.exception("Unexpected Companies House bulk submission route failure")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": "Unexpected server error while processing Companies House bulk submission.",
-                "error": str(exc) or exc.__class__.__name__,
-                "type": exc.__class__.__name__,
-            },
+            detail=companies_house_bulk_submission_error_detail(exc),
         ) from exc
 
 

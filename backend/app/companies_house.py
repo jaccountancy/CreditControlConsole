@@ -3886,22 +3886,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                         updated_at
                     )
                     VALUES (%s, %s, 'submit', %s, %s, %s, %s, 'queued', %s::jsonb, %s, %s, %s, %s)
-                    ON CONFLICT (idempotency_key) DO UPDATE
-                    SET attempt_type = EXCLUDED.attempt_type,
-                        submission_reference = EXCLUDED.submission_reference,
-                        transaction_id = EXCLUDED.transaction_id,
-                        fee_amount = EXCLUDED.fee_amount,
-                        payment_reference = EXCLUDED.payment_reference,
-                        status = EXCLUDED.status,
-                        rejection_reason = NULL,
-                        response_payload = EXCLUDED.response_payload,
-                        submitted_by_user_id = EXCLUDED.submitted_by_user_id,
-                        submitted_at = EXCLUDED.submitted_at,
-                        updated_at = EXCLUDED.updated_at,
-                        completed_at = NULL,
-                        dead_letter = FALSE,
-                        dead_letter_reason = NULL
-                    WHERE ch_submissions.status = 'rejected'
+                    ON CONFLICT DO NOTHING
                     RETURNING id
                     """,
                     (
@@ -3927,6 +3912,49 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                     ),
                 )
                 queued_row = cursor.fetchone()
+                if not queued_row:
+                    cursor.execute(
+                        """
+                        UPDATE ch_submissions
+                        SET attempt_type = 'submit',
+                            submission_reference = %s,
+                            transaction_id = %s,
+                            fee_amount = %s,
+                            payment_reference = %s,
+                            status = 'queued',
+                            rejection_reason = NULL,
+                            response_payload = %s::jsonb,
+                            submitted_by_user_id = %s,
+                            submitted_at = %s,
+                            updated_at = %s,
+                            completed_at = NULL,
+                            dead_letter = FALSE,
+                            dead_letter_reason = NULL
+                        WHERE idempotency_key = %s
+                          AND status = 'rejected'
+                        RETURNING id
+                        """,
+                        (
+                            submission_reference,
+                            transaction_id,
+                            configured_fee_amount,
+                            credit_account_number,
+                            json.dumps(
+                                {
+                                    "queuedAt": now.isoformat(),
+                                    "source": "bulk_workflow",
+                                    "mode": "live_gateway",
+                                    "companyNumber": company_number,
+                                    "workflowAction": workflow_action,
+                                }
+                            ),
+                            user_id,
+                            now,
+                            now,
+                            idempotency_key,
+                        ),
+                    )
+                    queued_row = cursor.fetchone()
             connection.commit()
         if not queued_row:
             reason = "Latest submission is not retryable yet (already queued/submitted/accepted for this period)."
