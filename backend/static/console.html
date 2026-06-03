@@ -19948,6 +19948,8 @@
             let meReportBulkUploadStartedAt = 0;
             let meReportBulkUploadExpectedCount = 0;
             let meReportProcessingUiTimer = null;
+            let meReportBulkQueuePollTimer = null;
+            let meReportBulkQueuePollRemaining = 0;
             let meReportBulkManualMatchState = null;
             let meReportLossDialogState = null;
             let meReportDlaSetupDialogState = null;
@@ -35356,12 +35358,47 @@
                     else showToast(error.message || "Unable to load ME Report data", "error");
                 } finally {
                     meReportLoading = false;
+                    if (!meReportHasPendingSubmissionWork()) stopMeReportBulkQueuePolling();
                     renderMeReportScreen();
                 }
             }
 
+            function stopMeReportBulkQueuePolling() {
+                if (meReportBulkQueuePollTimer) {
+                    window.clearInterval(meReportBulkQueuePollTimer);
+                    meReportBulkQueuePollTimer = null;
+                }
+                meReportBulkQueuePollRemaining = 0;
+            }
+
+            function startMeReportBulkQueuePolling(seconds = 150) {
+                stopMeReportBulkQueuePolling();
+                meReportBulkQueuePollRemaining = Math.max(15, Number(seconds || 0));
+                meReportBulkQueuePollTimer = window.setInterval(async () => {
+                    meReportBulkQueuePollRemaining -= 5;
+                    if (meReportBulkQueuePollRemaining <= 0) {
+                        stopMeReportBulkQueuePolling();
+                        return;
+                    }
+                    try {
+                        await loadMeReport(true);
+                    } catch (error) {
+                        console.warn("Unable to refresh ME Report during background bulk polling", error);
+                    }
+                }, 5000);
+            }
+
             function meReportRunForDisplay() {
                 return latestMeReportSyncRun || meReportData.activeSyncRun || meReportData.syncRun || null;
+            }
+
+            function meReportHasPendingSubmissionWork() {
+                return (meReportData.clients || []).some((client) => (
+                    (client.submissions || []).some((submission) => {
+                        const status = String(submission?.status || "").toLowerCase();
+                        return status && status !== "completed" && status !== "failed";
+                    })
+                ));
             }
 
             function setMeReportText(id, value) {
@@ -40532,9 +40569,10 @@
                 meReportWorkspaceOpen = false;
                 const results = response?.bulk?.results || [];
                 const processed = results.filter((item) => item.status === "processed").length;
+                const queued = results.filter((item) => item.status === "queued").length;
                 const needsReviewItems = results.filter((item) => item.status === "needs_review");
                 const failedItems = results.filter((item) => item.status === "failed");
-                const reviewItems = results.filter((item) => item.status !== "processed");
+                const reviewItems = results.filter((item) => !["processed", "queued"].includes(String(item.status || "")));
                 const needsReview = reviewItems.length;
                 const reviewNames = reviewItems
                     .map((item) => item.clientName || item.detectedClientName || item.filename || "")
@@ -40543,18 +40581,30 @@
                     .join(", ");
                 const reviewDetail = needsReview && reviewNames ? `: ${reviewNames}` : "";
                 ensureMeReportSelection();
-                showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review${reviewDetail}` : ""}.`, needsReview ? "warning" : "success");
-                showToast(`${processed} ME Report file${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
+                const summaryParts = [];
+                if (queued) summaryParts.push(`${queued} queued in background`);
+                if (processed) summaryParts.push(`${processed} processed`);
+                if (needsReview) summaryParts.push(`${needsReview} need review${reviewDetail}`);
+                const summaryText = summaryParts.length ? `${summaryParts.join(", ")}.` : "No files were accepted for processing.";
+                showTopbarNotice("Bulk ME upload update", summaryText, needsReview ? "warning" : "success");
+                showToast(
+                    `${queued ? `${queued} queued` : `${processed} processed`}${needsReview ? `; ${needsReview} need review` : ""}`,
+                    needsReview ? "error" : "success"
+                );
                 if (allowManualMatch && needsReviewItems.length) {
                     openMeReportBulkMatchPanel(needsReviewItems, sourceFiles);
                 } else if (!needsReviewItems.length) {
                     closeMeReportBulkMatchPanel();
                 }
+                if (queued) {
+                    startMeReportBulkQueuePolling();
+                    showToast("Background processing started. This table will refresh automatically.", "info");
+                }
                 if (failedItems.length && !needsReviewItems.length) {
                     showToast(`${failedItems.length.toLocaleString("en-GB")} ME Report file${failedItems.length === 1 ? "" : "s"} failed during extraction. Open Developer log if it repeats.`, "error");
                 }
                 renderMeReportScreen();
-                return { processed, needsReview: needsReviewItems.length, failed: failedItems.length };
+                return { processed, queued, needsReview: needsReviewItems.length, failed: failedItems.length };
             }
 
             async function uploadBulkMeReportSubmissions(files) {

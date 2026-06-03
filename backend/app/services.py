@@ -12814,7 +12814,33 @@ def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
     return client_id
 
 
-async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -> dict:
+def _run_me_report_bulk_submission_job(user: dict, client_id: str, filename: str, content_type: str, content: bytes) -> None:
+    async def _worker() -> None:
+        submission_id, _ = await upload_me_report_submission_pdf(
+            user,
+            client_id,
+            filename,
+            content_type,
+            content,
+        )
+        generate_me_report(user, client_id, {})
+        logger.info("Bulk ME Report background job completed for %s (%s)", filename, submission_id)
+
+    try:
+        asyncio.run(_worker())
+    except Exception:
+        logger.exception("Bulk ME Report background job failed for %s", filename)
+
+
+def _queue_me_report_bulk_submission_job(user: dict, client_id: str, filename: str, content_type: str, content: bytes) -> None:
+    threading.Thread(
+        target=_run_me_report_bulk_submission_job,
+        args=(dict(user), client_id, filename, content_type, content),
+        daemon=True,
+    ).start()
+
+
+async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict], process_in_background: bool = True) -> dict:
     semaphore = asyncio.Semaphore(4)
     contacts = _me_report_contact_options(user)
 
@@ -12876,6 +12902,20 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                 }
             client_id = _me_report_client_id_for_contact(user, contact)
             try:
+                if process_in_background:
+                    _queue_me_report_bulk_submission_job(user, client_id, filename, content_type, content)
+                    return {
+                        "index": file_index,
+                        "filename": filename,
+                        "status": "queued",
+                        "detectedClientName": detected_name,
+                        "clientId": client_id,
+                        "xeroContactId": contact.get("xeroContactId") or "",
+                        "clientName": contact.get("name") or detected_name,
+                        "candidateNames": candidate_names[:8],
+                        "recipientEmail": contact.get("email") or "",
+                        "message": "Queued for background extraction and report build.",
+                    }
                 submission_id, _ = await upload_me_report_submission_pdf(
                     user,
                     client_id,
@@ -12902,7 +12942,13 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                 return {"index": file_index, "filename": filename, "status": "failed", "detectedClientName": detected_name, "clientName": contact.get("name") or "", "message": str(getattr(exc, "detail", exc))[:1000]}
 
     results = await asyncio.gather(*(process_file(file_item) for file_item in files))
-    record_audit_event("me_report_bulk_upload", user["id"], "me_report.bulk_upload", {"count": len(files), "results": results}, user["id"])
+    record_audit_event(
+        "me_report_bulk_upload",
+        user["id"],
+        "me_report.bulk_upload",
+        {"count": len(files), "background": process_in_background, "results": results},
+        user["id"],
+    )
     return {"bulk": {"results": results}, "meReport": me_report_payload(user)}
 
 
