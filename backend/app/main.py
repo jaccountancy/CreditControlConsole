@@ -38,9 +38,11 @@ from .companies_house import (
     get_company_detail,
     list_dead_letters,
     list_companies,
+    list_auth_code_register,
     list_imports as list_companies_house_imports,
     list_submission_attempts,
     parse_clients_import,
+    populate_auth_codes_from_register,
     populate_xero_lock_date_company_numbers,
     replay_dead_letter_submissions,
     run_companies_house_submission_reconciliation,
@@ -50,6 +52,7 @@ from .companies_house import (
     start_companies_house_auto_sync_worker,
     sync_companies_house_companies,
     test_companies_house_connection,
+    upload_auth_code_register_csv,
     update_company,
 )
 from .config import get_settings
@@ -1116,6 +1119,34 @@ def api_companies_house_settings_test_connection(user: dict = Depends(require_pa
     return {"status": "ok", "result": test_companies_house_connection()}
 
 
+@app.post("/api/companies-house/auth-code-register/upload")
+async def api_companies_house_auth_code_register_upload(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    content = await file.read()
+    result = upload_auth_code_register_csv(user, content, file.filename or "auth-code-register.csv")
+    return {"status": "ok", "result": result}
+
+
+@app.get("/api/companies-house/auth-code-register")
+def api_companies_house_auth_code_register_list(
+    limit: int = Query(300, ge=20, le=1000),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **list_auth_code_register(limit=limit)}
+
+
+@app.post("/api/companies-house/auth-code-register/populate")
+async def api_companies_house_auth_code_register_populate(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    result = populate_auth_codes_from_register(user, payload)
+    return {"status": "ok", "result": result}
+
+
 @app.get("/api/companies-house/dashboard")
 def api_companies_house_dashboard(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **companies_house_dashboard_summary()}
@@ -1540,7 +1571,7 @@ async def api_bulk_upload_me_report_submissions(
         parsed_manual_matches = loaded_matches if isinstance(loaded_matches, dict) else {}
     file_payloads = []
     for index, file in enumerate(files):
-        filename = file.filename or "overview-report.pdf"
+        filename = file.filename or "overview-report"
         manual_xero_contact_id = str(
             parsed_manual_matches.get(str(index))
             or parsed_manual_matches.get(filename)
@@ -1550,7 +1581,7 @@ async def api_bulk_upload_me_report_submissions(
             {
                 "index": index,
                 "filename": filename,
-                "content_type": file.content_type or "application/pdf",
+                "content_type": file.content_type or "application/octet-stream",
                 "content": await file.read(),
                 "manual_xero_contact_id": manual_xero_contact_id,
             }
@@ -1667,8 +1698,8 @@ async def api_upload_me_report_submission(
     _, payload = await upload_me_report_submission_pdf(
         user,
         client_id,
-        file.filename or "management-accounts.pdf",
-        file.content_type or "application/pdf",
+        file.filename or "management-accounts",
+        file.content_type or "application/octet-stream",
         content,
     )
     return {"status": "ok", "meReport": payload}

@@ -10,6 +10,7 @@ import signal
 import smtplib
 import threading
 import zipfile
+import xml.etree.ElementTree as ET
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -385,12 +386,13 @@ def _openai_error_detail(response: httpx.Response) -> tuple[str, str]:
     return str(payload)[:500], ""
 
 
-async def _post_openai_responses(request_body: dict, purpose: str) -> dict:
+async def _post_openai_responses(request_body: dict, purpose: str, preferred_model: str | None = None) -> dict:
     settings = get_settings()
     attempted: list[str] = []
     last_message = ""
+    requested_model = preferred_model if str(preferred_model or "").strip() else settings.openai_model
     async with httpx.AsyncClient(timeout=OPENAI_INSIGHTS_TIMEOUT_SECONDS) as client:
-        for model_name in _openai_model_candidates(settings.openai_model):
+        for model_name in _openai_model_candidates(requested_model):
             attempted.append(model_name)
             response = await client.post(
                 "https://api.openai.com/v1/responses",
@@ -8572,7 +8574,7 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading ME Report PDFs.")
-    if len(file_bytes) > 50 * 1024 * 1024:
+    if len(file_bytes) > ME_REPORT_MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF files must be under 50 MB for extraction.")
     encoded = base64.b64encode(file_bytes).decode("ascii")
     prompt = (
@@ -8633,11 +8635,96 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         },
         "max_output_tokens": 12000,
     }
-    text = _extract_response_text(await _post_openai_responses(request_body, "ME Report PDF extraction"))
+    text = _extract_response_text(
+        await _post_openai_responses(
+            request_body,
+            "ME Report PDF extraction",
+            preferred_model=settings.me_report_openai_model or settings.openai_model,
+        )
+    )
     try:
         return json.loads(text) if text else {}
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned ME Report extraction that was not valid JSON.") from exc
+
+
+async def _extract_me_report_spreadsheet(file_bytes: bytes, filename: str, client: dict) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading JUK Overview files.",
+        )
+    if len(file_bytes) > ME_REPORT_MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Spreadsheet files must be under 50 MB for extraction.")
+    spreadsheet_text = _me_report_spreadsheet_text(file_bytes, filename)
+    prompt = (
+        "Extract a month-end bookkeeping summary from this uploaded overview spreadsheet (Excel export). "
+        "Use the provided workbook text dump as source evidence and return JSON only. "
+        "The format is expected to include: Review of Transactions, Profit and Loss - YTD, Profit and Loss "
+        "(and VAT Registration check), Balance Sheet, Fixed Asset Reconciliation, Depreciation Schedule, "
+        "Aged Payables, Aged Receivables and Trial Balance. Use GBP numbers without currency symbols. "
+        "For accountingProfit and yearToDateProfit use Profit (loss) before taxation from Profit and Loss - YTD if present. "
+        "Extract rolling12MonthTurnover from the VAT Registration check or rolling 12-month turnover/taxable turnover line if shown; return 0 only when it is not present. "
+        "Also extract the full rollingVatTurnoverMonths schedule when the report shows the 12 monthly taxable turnover figures. "
+        "Extract profitAndLossMonthlyBreakdown where monthly columns are shown; return one row per month with total income, total expenses and profit/loss for that month. "
+        "Extract Trial Balance YTD debit and credit values for every balance sheet code and every account relevant to depreciation, "
+        "amortisation, non-allowable expenses, fines, penalties, entertaining, legal fees, motor/private-use review and fixed assets. "
+        "For each Trial Balance account, include the transaction-level rows shown for that account in Review of Transactions or account detail pages; "
+        "return an empty transactions array when only totals are shown. "
+        "Extract Balance Sheet current year earnings, retained earnings, dividends declared and total equity with negatives preserved. "
+        "Extract balanceSheetRows for every Balance Sheet row shown. "
+        "For dividendTransactions and directorTransferTransactions, use posted account code/name as decisive signal. "
+        "Only put rows in dividendTransactions where the posted account is dividends and not DLA/salary/payroll. "
+        "Put director drawings, transfers, cash withdrawals, salary, wages, payroll, and director loan movements in directorTransferTransactions. "
+        "Extract fixed asset reconciliation differences by asset class and whether depreciation schedule shows nil depreciation. "
+        "Put clearly disallowable costs (fines, penalties, non-allowable tax adjustment accounts) in disallowedExpenses. "
+        "For ambiguous items include warnings instead of forced tax judgements. "
+        "Also extract plain-English client insights: what is going well, what needs attention, and top month-end priorities. "
+        "Review chart of accounts for likely spelling mistakes, odd labels, duplicates, or confusing names. "
+        f"The client workspace is {client.get('client_name') or 'unknown'}."
+    )
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {
+                        "type": "input_text",
+                        "text": (
+                            f"Workbook filename: {filename or 'overview.xlsx'}\n"
+                            "Workbook extracted rows (sheet by sheet):\n"
+                            f"{spreadsheet_text}"
+                        ),
+                    },
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "me_report_spreadsheet_extraction",
+                "schema": ME_REPORT_PDF_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 12000,
+    }
+    text = _extract_response_text(
+        await _post_openai_responses(
+            request_body,
+            "ME Report spreadsheet extraction",
+            preferred_model=settings.me_report_openai_model or settings.openai_model,
+        )
+    )
+    try:
+        return json.loads(text) if text else {}
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OpenAI returned ME Report spreadsheet extraction that was not valid JSON.",
+        ) from exc
 
 
 def _me_report_step_note(label: str, treatment: str, source: str) -> str:
@@ -10423,8 +10510,8 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
 
 async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: str, content_type: str, file_bytes: bytes) -> tuple[str, dict]:
     client = _me_report_client_row(user, client_id)
-    if not filename.lower().endswith(".pdf") and "pdf" not in (content_type or "").lower():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a PDF management accounts file.")
+    upload_kind = _me_report_upload_kind(filename, content_type)
+    default_content_type = "application/pdf" if upload_kind == "pdf" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -10435,13 +10522,20 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
                 VALUES (%s, %s, %s, 'processing', %s, %s)
                 RETURNING id
                 """,
-                (client_id, filename, content_type or "application/pdf", user["id"], utcnow()),
+                (client_id, filename, content_type or default_content_type, user["id"], utcnow()),
             )
             submission_id = cursor.fetchone()["id"]
         connection.commit()
 
     try:
-        extracted = await _extract_me_report_pdf(file_bytes, filename, client)
+        if upload_kind == "spreadsheet":
+            extracted = await _extract_me_report_spreadsheet(file_bytes, filename, client)
+            payload_source = "uploaded_spreadsheet"
+            summary_fallback = "Management accounts spreadsheet processed by Jenius AI."
+        else:
+            extracted = await _extract_me_report_pdf(file_bytes, filename, client)
+            payload_source = "uploaded_pdf"
+            summary_fallback = "Management accounts PDF processed by Jenius AI."
         review_summary = _build_me_report_pdf_summary(extracted, client)
         estimated_ct = _money(review_summary.get("estimatedCorporationTax"))
         dividend_capacity = _money(review_summary.get("dividendCapacity"))
@@ -10450,7 +10544,7 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
         traffic_light = str(review_summary.get("trafficLight") or "amber").lower()
         if traffic_light not in {"green", "amber", "red"}:
             traffic_light = "amber"
-        summary_text = str(review_summary.get("commentary") or extracted.get("summary") or "Management accounts PDF processed by Jenius AI.").strip()[:1200]
+        summary_text = str(review_summary.get("commentary") or extracted.get("summary") or summary_fallback).strip()[:1200]
         enriched_payload = {
             **extracted,
             "calculationSummary": review_summary,
@@ -10491,7 +10585,7 @@ async def upload_me_report_submission_pdf(user: dict, client_id: str, filename: 
                         period_end,
                         traffic_light,
                         json.dumps(review_summary, default=_json_default),
-                        json.dumps({"source": "uploaded_pdf", "submissionId": str(submission_id), "extracted": enriched_payload}, default=_json_default),
+                        json.dumps({"source": payload_source, "submissionId": str(submission_id), "extracted": enriched_payload}, default=_json_default),
                         user["id"],
                         utcnow(),
                         utcnow(),
@@ -12248,6 +12342,21 @@ def _extract_me_report_bulk_pdf_lines(file_bytes: bytes, max_pages: int = 1) -> 
     return [line.strip() for line in str(text or "").splitlines() if line.strip()]
 
 
+def _extract_me_report_bulk_file_lines(
+    file_bytes: bytes,
+    filename: str = "",
+    content_type: str | None = None,
+    max_pages: int = 1,
+) -> list[str]:
+    try:
+        upload_kind = _me_report_upload_kind(filename, content_type)
+    except HTTPException:
+        return []
+    if upload_kind == "spreadsheet":
+        return _extract_me_report_bulk_spreadsheet_lines(file_bytes)
+    return _extract_me_report_bulk_pdf_lines(file_bytes, max_pages=max_pages)
+
+
 def _extract_me_report_bulk_client_candidates_from_lines(lines: list[str], filename: str = "") -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
@@ -12274,7 +12383,7 @@ def _extract_me_report_bulk_client_candidates_from_lines(lines: list[str], filen
 
 
 def _extract_me_report_bulk_client_candidates(file_bytes: bytes, filename: str = "") -> list[str]:
-    return _extract_me_report_bulk_client_candidates_from_lines(_extract_me_report_bulk_pdf_lines(file_bytes), filename)
+    return _extract_me_report_bulk_client_candidates_from_lines(_extract_me_report_bulk_file_lines(file_bytes, filename), filename)
 
 
 def _extract_me_report_bulk_client_name(file_bytes: bytes, filename: str = "") -> str:
@@ -12414,9 +12523,10 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
     async def process_file(file_item: dict) -> dict:
         async with semaphore:
             file_index = file_item.get("index")
-            filename = file_item.get("filename") or "overview-report.pdf"
+            filename = file_item.get("filename") or "overview-report"
             content = file_item.get("content") or b""
-            lines = _extract_me_report_bulk_pdf_lines(content)
+            content_type = file_item.get("content_type") or ""
+            lines = _extract_me_report_bulk_file_lines(content, filename, content_type)
             candidate_names = _extract_me_report_bulk_client_candidates_from_lines(lines, filename)
             detected_name = candidate_names[0] if candidate_names else ""
             manual_xero_contact_id = str(file_item.get("manual_xero_contact_id") or "").strip()
@@ -12444,7 +12554,13 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                 }
             client_id = _me_report_client_id_for_contact(user, contact)
             try:
-                submission_id, _ = await upload_me_report_submission_pdf(user, client_id, filename, file_item.get("content_type") or "application/pdf", content)
+                submission_id, _ = await upload_me_report_submission_pdf(
+                    user,
+                    client_id,
+                    filename,
+                    content_type,
+                    content,
+                )
                 report_result = generate_me_report(user, client_id, {})
                 return {
                     "index": file_index,
@@ -20140,3 +20256,159 @@ async def bulk_update_invoice_status(user: dict, invoice_ids: list[str], status_
         "xeroFailedCount": failed,
         "errors": errors[:5],
     }
+ME_REPORT_EXCEL_EXTENSIONS = (".xlsx", ".xlsm")
+ME_REPORT_PDF_EXTENSIONS = (".pdf",)
+ME_REPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+def _me_report_filename_lower(filename: str) -> str:
+    return str(filename or "").strip().lower()
+
+
+def _me_report_upload_kind(filename: str, content_type: str | None = None) -> str:
+    lower_name = _me_report_filename_lower(filename)
+    content_type_text = str(content_type or "").lower()
+    if lower_name.endswith(ME_REPORT_PDF_EXTENSIONS) or "pdf" in content_type_text:
+        return "pdf"
+    if lower_name.endswith(ME_REPORT_EXCEL_EXTENSIONS):
+        return "spreadsheet"
+    if lower_name.endswith(".xls"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Legacy .xls files are not supported yet. Save as .xlsx and upload again.",
+        )
+    if "sheet" in content_type_text or "excel" in content_type_text or "spreadsheet" in content_type_text:
+        return "spreadsheet"
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Upload either a PDF management accounts file or an Excel workbook (.xlsx).",
+    )
+
+
+def _xlsx_column_index(cell_ref: str) -> int:
+    letters = "".join(ch for ch in str(cell_ref or "") if ch.isalpha()).upper()
+    if not letters:
+        return 0
+    value = 0
+    for char in letters:
+        value = (value * 26) + (ord(char) - 64)
+    return max(0, value - 1)
+
+
+def _xlsx_shared_strings(workbook: zipfile.ZipFile) -> list[str]:
+    try:
+        payload = workbook.read("xl/sharedStrings.xml")
+    except KeyError:
+        return []
+    namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    root = ET.fromstring(payload)
+    values: list[str] = []
+    for item in root.findall("x:si", namespace):
+        parts = [node.text or "" for node in item.findall(".//x:t", namespace)]
+        values.append("".join(parts).strip())
+    return values
+
+
+def _xlsx_sheet_targets(workbook: zipfile.ZipFile) -> list[tuple[str, str]]:
+    namespace_main = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    namespace_rel = {"r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
+    rel_namespace = {"x": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    workbook_xml = ET.fromstring(workbook.read("xl/workbook.xml"))
+    rel_xml = ET.fromstring(workbook.read("xl/_rels/workbook.xml.rels"))
+    rel_map: dict[str, str] = {}
+    for rel in rel_xml.findall("x:Relationship", rel_namespace):
+        rel_id = str(rel.attrib.get("Id") or "")
+        target = str(rel.attrib.get("Target") or "")
+        if not rel_id or not target:
+            continue
+        rel_map[rel_id] = target.removeprefix("/")
+    output: list[tuple[str, str]] = []
+    for sheet in workbook_xml.findall("x:sheets/x:sheet", namespace_main):
+        name = str(sheet.attrib.get("name") or "Sheet").strip() or "Sheet"
+        rel_id = str(sheet.attrib.get(f"{{{namespace_rel['r']}}}id") or "")
+        target = rel_map.get(rel_id, "")
+        if not target:
+            continue
+        if not target.startswith("xl/"):
+            target = f"xl/{target.lstrip('/')}"
+        output.append((name, target))
+    return output
+
+
+def _xlsx_cell_text(cell: ET.Element, shared_strings: list[str], namespace: dict[str, str]) -> str:
+    cell_type = str(cell.attrib.get("t") or "")
+    if cell_type == "inlineStr":
+        parts = [node.text or "" for node in cell.findall(".//x:t", namespace)]
+        return "".join(parts).strip()
+    raw_value = cell.find("x:v", namespace)
+    value_text = str(raw_value.text or "").strip() if raw_value is not None else ""
+    if not value_text:
+        return ""
+    if cell_type == "s":
+        try:
+            return str(shared_strings[int(value_text)] or "").strip()
+        except (ValueError, IndexError):
+            return ""
+    if cell_type == "b":
+        return "TRUE" if value_text == "1" else "FALSE"
+    return value_text
+
+
+def _extract_me_report_bulk_spreadsheet_lines(
+    file_bytes: bytes,
+    max_sheets: int = 4,
+    max_rows_per_sheet: int = 90,
+    max_columns_per_row: int = 18,
+) -> list[str]:
+    lines: list[str] = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as workbook:
+            shared_strings = _xlsx_shared_strings(workbook)
+            sheets = _xlsx_sheet_targets(workbook)[: max(1, max_sheets)]
+            namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            for sheet_name, target in sheets:
+                try:
+                    sheet_root = ET.fromstring(workbook.read(target))
+                except KeyError:
+                    continue
+                lines.append(f"Sheet: {sheet_name}")
+                row_count = 0
+                for row in sheet_root.findall("x:sheetData/x:row", namespace):
+                    if row_count >= max(1, max_rows_per_sheet):
+                        break
+                    values_by_column: dict[int, str] = {}
+                    for cell in row.findall("x:c", namespace):
+                        col_index = _xlsx_column_index(cell.attrib.get("r", ""))
+                        if col_index >= max(1, max_columns_per_row):
+                            continue
+                        cell_text = _xlsx_cell_text(cell, shared_strings, namespace)
+                        if cell_text:
+                            values_by_column[col_index] = cell_text
+                    if not values_by_column:
+                        continue
+                    max_col = min(max(values_by_column), max_columns_per_row - 1)
+                    row_values = [values_by_column.get(index, "") for index in range(0, max_col + 1)]
+                    compact = [str(item).strip() for item in row_values if str(item).strip()]
+                    if not compact:
+                        continue
+                    lines.append(" | ".join(compact))
+                    row_count += 1
+    except Exception:
+        return []
+    return lines
+
+
+def _me_report_spreadsheet_text(file_bytes: bytes, filename: str) -> str:
+    lines = _extract_me_report_bulk_spreadsheet_lines(
+        file_bytes,
+        max_sheets=8,
+        max_rows_per_sheet=180,
+        max_columns_per_row=24,
+    )
+    if not lines:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to read spreadsheet contents from {filename or 'uploaded workbook'}. Save as .xlsx and try again.",
+        )
+    joined = "\n".join(lines)
+    return joined[:180000]

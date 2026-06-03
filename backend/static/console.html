@@ -16099,7 +16099,7 @@
                             <article><span>ME Report Clients</span><strong id="insightsTopbarMeClientsValue">0</strong><p id="insightsTopbarMeClientsDetail">Month-end workspaces</p></article>
                             <article><span>Jashflow Clients</span><strong id="insightsTopbarJashflowClientsValue">0</strong><p id="insightsTopbarJashflowClientsDetail">Loan accounts in scope</p></article>
                             <article><span>Statements MTD</span><strong id="insightsTopbarBankStatementsMtdValue">0</strong><p id="insightsTopbarBankStatementsMtdDetail">Completed extraction uploads</p></article>
-                            <article><span>JUK Reports MTD</span><strong id="insightsTopbarJukReportsMtdValue">0</strong><p id="insightsTopbarJukReportsMtdDetail">Overview PDFs processed</p></article>
+                            <article><span>JUK Reports MTD</span><strong id="insightsTopbarJukReportsMtdValue">0</strong><p id="insightsTopbarJukReportsMtdDetail">Overview reports processed</p></article>
                             <article><span>LPC Raised MTD</span><strong id="insightsTopbarLateChargesMtdValue">0</strong><p id="insightsTopbarLateChargesMtdDetail">Late payment charges raised</p></article>
                             <article><span>Write-Offs MTD</span><strong id="insightsTopbarWriteOffsMtdValue">0</strong><p id="insightsTopbarWriteOffsMtdDetail">Invoices written off</p></article>
                         </div>
@@ -16182,7 +16182,7 @@
                             <div class="me-report-topbar-metrics" id="meReportTopbarMetrics" aria-label="Selected ME Report summary" hidden></div>
                             <div class="me-report-topbar-core-actions">
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
-                                <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload overview</button>
+                                <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload JUK Overview report from Xero</button>
                             </div>
                             <div class="me-report-topbar-workspace-actions" id="meReportWorkspaceTopbarActions" hidden>
                                 <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send</button>
@@ -17361,6 +17361,39 @@
                                     <span class="ch-settings-status is-muted" id="companiesHouseSettingsStatus">Loading settings…</span>
                                 </div>
                             </section>
+                            <section class="ch-settings-card" id="companiesHouseAuthCodeRegisterCard">
+                                <div class="ch-settings-head">
+                                    <div>
+                                        <p class="eyebrow">Client auth code directory</p>
+                                        <h3>Upload and manage auth code register</h3>
+                                        <p class="detail-meta">Upload a CSV register of client/company auth codes, then backfill missing company auth codes from the directory.</p>
+                                    </div>
+                                </div>
+                                <div class="ch-import-dropzone">
+                                    Upload auth code CSV
+                                    <input id="chAuthCodeRegisterFile" type="file" accept=".csv,text/csv">
+                                </div>
+                                <div class="ch-settings-actions">
+                                    <button class="primary-button" type="button" id="chAuthCodeRegisterUploadButton" disabled>Upload directory file</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterPopulateButton">Populate missing company auth codes</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterReloadButton">Reload directory</button>
+                                    <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Choose a CSV file to upload.</span>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Company</th>
+                                                <th>Number</th>
+                                                <th>Auth code</th>
+                                                <th>Source file</th>
+                                                <th>Uploaded</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="chAuthCodeRegisterTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </section>
                             </section>
                             <div id="confirmationStatementLegacyDemo" hidden aria-hidden="true">
                             <div class="late-charge-bulk-toolbar">
@@ -18173,7 +18206,7 @@
                                 <button class="primary-button" type="submit">Save client</button>
                             </form>
                         </section>
-                        <input id="meReportBulkSubmissionFiles" type="file" accept="application/pdf,.pdf" multiple hidden>
+                        <input id="meReportBulkSubmissionFiles" type="file" accept="application/pdf,.pdf,.xlsx,.xlsm,.xls" multiple hidden>
                         <section class="detail-panel bank-statement-workspace">
                             <div class="bank-extraction-client-list" id="meReportClientList"></div>
                             <div class="bank-account-list" id="meReportActionList"></div>
@@ -35382,7 +35415,7 @@
                 const bulkUploadButton = document.getElementById("bulkUploadMeReportsButton");
                 if (bulkUploadButton) {
                     bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
-                    bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Upload overview";
+                    bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Upload JUK Overview report from Xero";
                 }
                 const workspaceClient = meReportWorkspaceOpen ? selectedMeReportClient() : null;
                 const workspaceClientArchived = workspaceClient ? meReportClientStatus(workspaceClient) === "archived" : false;
@@ -39089,7 +39122,7 @@
                                     `;
                                 }).join("")}
                             </section>
-                        `).join("") || '<div class="empty-state"><p class="eyebrow">No reports</p><h4>No JUK Overview Reports uploaded yet</h4><p>Upload the latest overview report PDF to build CT, dividend, forecast and Profit and Loss insights from the source document.</p></div>'}
+                        `).join("") || '<div class="empty-state"><p class="eyebrow">No reports</p><h4>No JUK Overview Reports uploaded yet</h4><p>Upload the latest overview report (PDF or Excel) to build CT, dividend, forecast and Profit and Loss insights from the source document.</p></div>'}
                     </div>
                 `;
             }
@@ -39184,7 +39217,7 @@
             function previewSelectedMeReportFile() {
                 const input = document.getElementById("meReportSubmissionFile");
                 const file = input?.files?.[0];
-                if (!file) return showToast("Choose a PDF before previewing", "error");
+                if (!file) return showToast("Choose a JUK Overview file before previewing", "error");
                 const url = URL.createObjectURL(file);
                 window.open(url, "_blank", "noopener");
                 window.setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -39975,11 +40008,11 @@
                 if (meReportUploadProcessing) return;
                 const input = document.getElementById("meReportSubmissionFile");
                 const file = input?.files?.[0];
-                if (!file) return showToast("Choose a PDF to upload", "error");
+                if (!file) return showToast("Choose a JUK Overview PDF or Excel file to upload", "error");
                 const formData = new FormData();
                 formData.append("file", file);
                 meReportUploadProcessing = true;
-                setAiLoading(true, "Jenius AI is extracting the overview report PDF.");
+                setAiLoading(true, "Jenius AI is extracting the JUK Overview report.");
                 renderMeReportScreen();
                 try {
                     const response = await requestFormData(api.endpoints.meReportSubmissions, formData, { clientId });
@@ -39987,12 +40020,12 @@
                     selectedMeReportClientId = clientId;
                     meReportWorkspaceOpen = true;
                     activeMeReportTab = "submission-history";
-                    showTopbarNotice("ME Report extraction complete", "Jenius AI processed the uploaded overview report PDF.", "success");
-                    showToast("ME Report PDF processed", "success");
+                    showTopbarNotice("ME Report extraction complete", "Jenius AI processed the uploaded JUK Overview report.", "success");
+                    showToast("ME Report upload processed", "success");
                     renderMeReportScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to process ME Report PDF", "error");
+                    else showToast(error.message || "Unable to process ME Report upload", "error");
                 } finally {
                     meReportUploadProcessing = false;
                     setAiLoading(false);
@@ -40025,7 +40058,7 @@
                 if (summary) {
                     summary.textContent = pending.length
                         ? `Review ${pending.length.toLocaleString("en-GB")} OpenAI client match${pending.length === 1 ? "" : "es"} before background processing starts.`
-                        : "No ME Report PDFs are waiting for a manual match.";
+                        : "No ME Report files are waiting for a manual match.";
                 }
                 const saveButton = document.getElementById("saveMeReportBulkMatchButton");
                 if (saveButton) {
@@ -40037,11 +40070,11 @@
                         : `Confirm ${readyCount.toLocaleString("en-GB")} and process in background`;
                 }
                 if (!contacts.length) {
-                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No Xero contacts</p><h4>Sync Xero contacts before matching PDFs</h4><p>The manual match list needs the ME Report Xero contact dropdown data.</p></div>`;
+                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No Xero contacts</p><h4>Sync Xero contacts before matching files</h4><p>The manual match list needs the ME Report Xero contact dropdown data.</p></div>`;
                     return;
                 }
                 if (!pending.length) {
-                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No matches needed</p><h4>Every uploaded PDF has either processed or failed for another reason</h4></div>`;
+                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No matches needed</p><h4>Every uploaded file has either processed or failed for another reason</h4></div>`;
                     return;
                 }
                 list.innerHTML = pending.map((entry, index) => {
@@ -40079,7 +40112,7 @@
                     return `
                         <div class="me-report-bulk-match-row ${rowClass}" data-me-report-bulk-match-row="${index}">
                             <div>
-                                <strong>${escapeHTML(item.filename || entry.file?.name || "ME Report PDF")}</strong>
+                                <strong>${escapeHTML(item.filename || entry.file?.name || "ME Report file")}</strong>
                                 <small>${escapeHTML(candidates || item.message || "No client name could be matched automatically from page one.")}</small>
                             </div>
                             <div class="me-report-bulk-match-right">
@@ -40150,11 +40183,11 @@
                     status: "needs-review",
                 })).filter((entry) => entry.file);
                 if (!pending.length) {
-                    showToast("Choose the unmatched ME Report PDF again to manually match it.", "error");
+                    showToast("Choose the unmatched ME Report file again to manually match it.", "error");
                     return;
                 }
                 if (pending.length !== reviewItems.length) {
-                    showToast("Some unmatched PDFs could not be kept by the browser. Re-upload those files to match them manually.", "error");
+                    showToast("Some unmatched files could not be kept by the browser. Re-upload those files to match them manually.", "error");
                 }
                 const contacts = meReportContactOptions();
                 pending.forEach((entry) => {
@@ -40191,33 +40224,38 @@
                 const reviewDetail = needsReview && reviewNames ? `: ${reviewNames}` : "";
                 ensureMeReportSelection();
                 showTopbarNotice("Bulk ME upload complete", `${processed} processed${needsReview ? `, ${needsReview} need review${reviewDetail}` : ""}.`, needsReview ? "warning" : "success");
-                showToast(`${processed} ME Report PDF${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
+                showToast(`${processed} ME Report file${processed === 1 ? "" : "s"} processed${needsReview ? `; ${needsReview} need review` : ""}`, needsReview ? "error" : "success");
                 if (allowManualMatch && needsReviewItems.length) {
                     openMeReportBulkMatchPanel(needsReviewItems, sourceFiles);
                 } else if (!needsReviewItems.length) {
                     closeMeReportBulkMatchPanel();
                 }
                 if (failedItems.length && !needsReviewItems.length) {
-                    showToast(`${failedItems.length.toLocaleString("en-GB")} ME Report PDF${failedItems.length === 1 ? "" : "s"} failed during extraction. Open Developer log if it repeats.`, "error");
+                    showToast(`${failedItems.length.toLocaleString("en-GB")} ME Report file${failedItems.length === 1 ? "" : "s"} failed during extraction. Open Developer log if it repeats.`, "error");
                 }
                 renderMeReportScreen();
                 return { processed, needsReview: needsReviewItems.length, failed: failedItems.length };
             }
 
             async function uploadBulkMeReportSubmissions(files) {
-                const selectedFiles = Array.from(files || []).filter((file) => file.type === "application/pdf" || /\.pdf$/i.test(file.name || ""));
-                if (!selectedFiles.length) return showToast("Choose at least one PDF to bulk upload", "error");
+                const selectedFiles = Array.from(files || []).filter((file) => (
+                    /\.pdf$/i.test(file.name || "")
+                    || /\.xlsx$/i.test(file.name || "")
+                    || /\.xlsm$/i.test(file.name || "")
+                    || file.type === "application/pdf"
+                ));
+                if (!selectedFiles.length) return showToast("Choose at least one JUK Overview PDF or Excel file to bulk upload", "error");
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
                 meReportBulkUploading = true;
-                setAiLoading(true, `Jenius AI is processing ${selectedFiles.length} month-end PDF${selectedFiles.length === 1 ? "" : "s"}.`);
+                setAiLoading(true, `Jenius AI is processing ${selectedFiles.length} JUK Overview file${selectedFiles.length === 1 ? "" : "s"}.`);
                 renderMeReportScreen();
                 try {
                     const response = await requestFormData(api.endpoints.meReportBulkSubmissions, formData);
                     completeBulkMeReportUpload(response, selectedFiles);
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to bulk upload ME Report PDFs", "error");
+                    else showToast(error.message || "Unable to bulk upload ME Report files", "error");
                 } finally {
                     meReportBulkUploading = false;
                     setAiLoading(false);
@@ -40246,14 +40284,14 @@
                 const formData = new FormData();
                 const manualMatches = {};
                 selectedEntries.forEach((entry, index) => {
-                    formData.append("files", entry.file, entry.file.name || entry.item?.filename || "overview-report.pdf");
+                    formData.append("files", entry.file, entry.file.name || entry.item?.filename || "overview-report");
                     manualMatches[String(index)] = entry.contactId;
                 });
                 formData.append("manualMatches", JSON.stringify(manualMatches));
                 state.submitting = true;
                 meReportBulkUploading = true;
                 closeMeReportBulkMatchPanel();
-                setAiLoading(true, `OpenAI client matches confirmed. Processing ${selectedEntries.length} overview PDF${selectedEntries.length === 1 ? "" : "s"} in the background.`);
+                setAiLoading(true, `OpenAI client matches confirmed. Processing ${selectedEntries.length} overview file${selectedEntries.length === 1 ? "" : "s"} in the background.`);
                 renderMeReportScreen();
                 showToast("Matches confirmed. Processing started in the background.", "success");
                 requestFormData(api.endpoints.meReportBulkSubmissions, formData)
@@ -40262,7 +40300,7 @@
                     })
                     .catch((error) => {
                         if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                        else showToast(error.message || "Unable to process confirmed ME Report PDFs", "error");
+                        else showToast(error.message || "Unable to process confirmed ME Report files", "error");
                     })
                     .finally(() => {
                         meReportBulkUploading = false;
@@ -42873,7 +42911,7 @@
                     bankStatementsMtdValue: bankStatementsMtd.toLocaleString("en-GB"),
                     bankStatementsMtdDetail: "Completed extraction uploads",
                     jukReportsMtdValue: meReportsMtd.toLocaleString("en-GB"),
-                    jukReportsMtdDetail: "Overview PDFs processed",
+                    jukReportsMtdDetail: "Overview reports processed",
                     lateChargesMtdValue: lateChargesMtd.toLocaleString("en-GB"),
                     lateChargesMtdDetail: "Late payment charges raised",
                     writeOffsMtdValue: writeOffsMtd.toLocaleString("en-GB"),
@@ -48135,7 +48173,16 @@
                 });
             }
 
-            const companiesHouseSettings = { loaded: false, loading: false, saving: false, testing: false };
+            const companiesHouseSettings = {
+                loaded: false,
+                loading: false,
+                saving: false,
+                testing: false,
+                authRegisterLoading: false,
+                authRegisterUploading: false,
+                authRegisterPopulating: false,
+                authRegisterLoaded: false,
+            };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
                 const node = document.getElementById("companiesHouseSettingsStatus");
@@ -48143,6 +48190,39 @@
                 node.textContent = message || "";
                 node.classList.remove("is-success", "is-error", "is-muted");
                 node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function setAuthCodeRegisterStatus(message, tone) {
+                const node = document.getElementById("chAuthCodeRegisterStatus");
+                if (!node) return;
+                node.textContent = message || "";
+                node.classList.remove("is-success", "is-error", "is-muted");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function renderAuthCodeRegisterDirectory(rows, totalCount = 0) {
+                const body = document.getElementById("chAuthCodeRegisterTableBody");
+                if (!body) return;
+                const list = Array.isArray(rows) ? rows : [];
+                if (!list.length) {
+                    body.innerHTML = '<tr><td colspan="5" class="ch-empty-state">No auth code directory rows uploaded yet.</td></tr>';
+                    setAuthCodeRegisterStatus("Directory is empty. Upload a CSV to create entries.", "muted");
+                    return;
+                }
+                body.innerHTML = list.map((row) => {
+                    const uploadedLabel = row?.uploadedAt ? chFormatDateTime(row.uploadedAt) : "—";
+                    return `<tr>
+                        <td>${escapeHTML(row?.displayName || "—")}</td>
+                        <td>${escapeHTML(row?.companyNumber || "—")}</td>
+                        <td>${escapeHTML(row?.authCodeHint || "stored")}</td>
+                        <td>${escapeHTML(row?.sourceFilename || "—")}</td>
+                        <td>${escapeHTML(uploadedLabel)}</td>
+                    </tr>`;
+                }).join("");
+                setAuthCodeRegisterStatus(
+                    `Loaded ${list.length.toLocaleString("en-GB")} rows (${Number(totalCount || list.length).toLocaleString("en-GB")} total).`,
+                    "muted"
+                );
             }
 
             function applyCompaniesHouseSettings(settings) {
@@ -48210,6 +48290,29 @@
                     }
                 } finally {
                     companiesHouseSettings.loading = false;
+                }
+            }
+
+            async function loadAuthCodeRegisterDirectory(force = false) {
+                if (companiesHouseSettings.authRegisterLoading) return;
+                if (companiesHouseSettings.authRegisterLoaded && !force) return;
+                companiesHouseSettings.authRegisterLoading = true;
+                setAuthCodeRegisterStatus("Loading auth code directory…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/auth-code-register?limit=300");
+                    const rows = payload?.rows || [];
+                    const totalCount = Number(payload?.totalCount || rows.length || 0);
+                    renderAuthCodeRegisterDirectory(rows, totalCount);
+                    companiesHouseSettings.authRegisterLoaded = true;
+                } catch (error) {
+                    console.error("Unable to load auth code directory", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        setAuthCodeRegisterStatus(error?.message || "Unable to load auth code directory.", "error");
+                    }
+                } finally {
+                    companiesHouseSettings.authRegisterLoading = false;
                 }
             }
 
@@ -48298,6 +48401,97 @@
                 }
             }
 
+            async function uploadAuthCodeRegisterFileHandler() {
+                if (companiesHouseSettings.authRegisterUploading || companiesHouseSettings.authRegisterPopulating) return;
+                const fileInput = document.getElementById("chAuthCodeRegisterFile");
+                const file = fileInput?.files?.[0];
+                if (!file) {
+                    setAuthCodeRegisterStatus("Choose a CSV file first.", "error");
+                    return;
+                }
+                companiesHouseSettings.authRegisterUploading = true;
+                const uploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
+                const populateButton = document.getElementById("chAuthCodeRegisterPopulateButton");
+                const reloadButton = document.getElementById("chAuthCodeRegisterReloadButton");
+                if (uploadButton) uploadButton.disabled = true;
+                if (populateButton) populateButton.disabled = true;
+                if (reloadButton) reloadButton.disabled = true;
+                setAuthCodeRegisterStatus("Uploading auth code register…", "muted");
+                try {
+                    const form = new FormData();
+                    form.append("file", file);
+                    const response = await fetch(endpointURL("/api/companies-house/auth-code-register/upload"), {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() },
+                        body: form,
+                    });
+                    if (!response.ok) {
+                        const errorPayload = await response.json().catch(() => ({}));
+                        const detail = errorPayload?.detail;
+                        throw new Error(typeof detail === "string" ? detail : detail?.message || `Upload failed (${response.status})`);
+                    }
+                    const payload = await response.json();
+                    const result = payload?.result || {};
+                    setAuthCodeRegisterStatus(
+                        `Uploaded ${result.rowCount || 0} rows (${result.createdCount || 0} created, ${result.updatedCount || 0} updated, ${result.errorCount || 0} parse issues).`,
+                        "success"
+                    );
+                    showToast("Auth code register uploaded.", "success");
+                    await loadAuthCodeRegisterDirectory(true);
+                } catch (error) {
+                    console.error("Unable to upload auth code register", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    setAuthCodeRegisterStatus(error?.message || "Unable to upload auth code register.", "error");
+                    showToast(error?.message || "Unable to upload auth code register.", "error");
+                } finally {
+                    companiesHouseSettings.authRegisterUploading = false;
+                    if (uploadButton) uploadButton.disabled = !(fileInput?.files?.length);
+                    if (populateButton) populateButton.disabled = false;
+                    if (reloadButton) reloadButton.disabled = false;
+                }
+            }
+
+            async function populateAuthCodesFromDirectoryHandler() {
+                if (companiesHouseSettings.authRegisterUploading || companiesHouseSettings.authRegisterPopulating) return;
+                companiesHouseSettings.authRegisterPopulating = true;
+                const uploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
+                const populateButton = document.getElementById("chAuthCodeRegisterPopulateButton");
+                const reloadButton = document.getElementById("chAuthCodeRegisterReloadButton");
+                if (uploadButton) uploadButton.disabled = true;
+                if (populateButton) populateButton.disabled = true;
+                if (reloadButton) reloadButton.disabled = true;
+                setAuthCodeRegisterStatus("Populating missing company auth codes from directory…", "muted");
+                try {
+                    const payload = await requestJSON("/api/companies-house/auth-code-register/populate", {
+                        method: "POST",
+                        body: JSON.stringify({}),
+                    });
+                    const result = payload?.result || {};
+                    setAuthCodeRegisterStatus(
+                        `Populate complete: ${Number(result.populatedCount || 0).toLocaleString("en-GB")} populated, ${Number(result.skippedCount || 0).toLocaleString("en-GB")} skipped.`,
+                        "success"
+                    );
+                    companiesHouseState.tabLoaded.companies = false;
+                    showToast("Missing auth codes populated from directory.", "success");
+                    if (companiesHouseState.activeTab === "companies") loadCompaniesHouseCompanies(true);
+                } catch (error) {
+                    console.error("Unable to populate auth codes from directory", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    setAuthCodeRegisterStatus(error?.message || "Unable to populate auth codes.", "error");
+                    showToast(error?.message || "Unable to populate auth codes.", "error");
+                } finally {
+                    companiesHouseSettings.authRegisterPopulating = false;
+                    if (uploadButton) uploadButton.disabled = !(document.getElementById("chAuthCodeRegisterFile")?.files?.length);
+                    if (populateButton) populateButton.disabled = false;
+                    if (reloadButton) reloadButton.disabled = false;
+                }
+            }
+
             function wireCompaniesHouseSettings() {
                 document.getElementById("saveCompaniesHouseSettingsButton")?.addEventListener("click", saveCompaniesHouseSettingsHandler);
                 document.getElementById("testCompaniesHouseConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
@@ -48305,6 +48499,16 @@
                 document.getElementById("companiesHouseSettingsForm")?.addEventListener("submit", (event) => {
                     event.preventDefault();
                     saveCompaniesHouseSettingsHandler();
+                });
+                document.getElementById("chAuthCodeRegisterUploadButton")?.addEventListener("click", uploadAuthCodeRegisterFileHandler);
+                document.getElementById("chAuthCodeRegisterPopulateButton")?.addEventListener("click", populateAuthCodesFromDirectoryHandler);
+                document.getElementById("chAuthCodeRegisterReloadButton")?.addEventListener("click", () => loadAuthCodeRegisterDirectory(true));
+                document.getElementById("chAuthCodeRegisterFile")?.addEventListener("change", (event) => {
+                    const input = event?.target;
+                    const hasFile = !!input?.files?.length;
+                    const uploadButton = document.getElementById("chAuthCodeRegisterUploadButton");
+                    if (uploadButton) uploadButton.disabled = !hasFile;
+                    if (hasFile) setAuthCodeRegisterStatus("Ready to upload selected CSV.", "muted");
                 });
             }
 
@@ -48428,7 +48632,10 @@
                 else if (tab === "companies") loadCompaniesHouseCompanies();
                 else if (tab === "import") loadCompaniesHouseImports();
                 else if (tab === "audit") loadCompaniesHouseImports();
-                else if (tab === "settings") loadCompaniesHouseSettings();
+                else if (tab === "settings") {
+                    loadCompaniesHouseSettings();
+                    loadAuthCodeRegisterDirectory();
+                }
             }
 
             function renderConfirmationStatementsOnboarding() {

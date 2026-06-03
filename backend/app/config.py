@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     bad_debt_write_off_account_code: str = "402"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
+    me_report_openai_model: str = "gpt-5"
     ignition_client_id: str | None = None
     ignition_client_secret: str | None = None
     ignition_redirect_uri: str | None = None
