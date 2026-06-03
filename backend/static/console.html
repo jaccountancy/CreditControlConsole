@@ -18640,6 +18640,10 @@
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Confirmation Statements</strong><span>CS, Secretarial, Lock Dates</span></span>
                             </a>
+                            <a class="settings-sidebar-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Client Register</strong><span>CH auth code directory</span></span>
+                            </a>
                             <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
@@ -40438,12 +40442,14 @@
                 if (!ignitionRenewalHistorySelectedRunId) ignitionRenewalHistorySelectedRunId = runList[0].id || "";
                 const selectedRun = ignitionRenewalHistoryByRunId.get(ignitionRenewalHistorySelectedRunId) || null;
                 const selectedSummary = runList.find((run) => run.id === ignitionRenewalHistorySelectedRunId) || selectedRun || runList[0];
+                const selectedBatchRef = ignitionRenewalBatchReferenceForRun(selectedSummary);
                 const runItems = Array.isArray(selectedRun?.items) ? selectedRun.items : [];
                 const totalCurrent = runItems.reduce((sum, item) => sum + Number(item.currentMonthlyFee || 0), 0);
                 const totalNew = runItems.reduce((sum, item) => sum + Number(item.newMonthlyFee || 0), 0);
                 const variance = totalNew - totalCurrent;
                 meta.innerHTML = [
-                    ["Run", selectedSummary?.createdAt ? formatDateTime(selectedSummary.createdAt) : (selectedSummary?.windowStart || "Unknown")],
+                    ["Run", selectedBatchRef],
+                    ["Created", selectedSummary?.createdAt ? formatDateTime(selectedSummary.createdAt) : "No timestamp"],
                     ["Status", selectedSummary?.status || "draft"],
                     ["Clients", Number(runItems.length || 0).toLocaleString("en-GB")],
                     ["Current fee", formatCurrency(totalCurrent)],
@@ -40453,7 +40459,7 @@
 
                 const listMarkup = runList.map((run) => `
                     <button class="ignition-renewal-history-run-button ${run.id === ignitionRenewalHistorySelectedRunId ? "is-active" : ""}" type="button" data-renewal-history-run-id="${escapeHTML(run.id || "")}">
-                        <strong>${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "Renewal run")}</strong>
+                        <strong>${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}</strong>
                         <span>${escapeHTML(run.status || "draft")} · ${Number(run.itemCount || 0).toLocaleString("en-GB")} client${Number(run.itemCount || 0) === 1 ? "" : "s"}</span>
                         <small>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "No timestamp")}</small>
                     </button>
