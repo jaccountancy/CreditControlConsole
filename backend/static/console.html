@@ -10395,6 +10395,9 @@
             #supplierReconciliationScreen .bank-statement-workspace {
                 min-height: calc(100vh - 290px);
             }
+            #supplierReconciliationScreen .supplier-recon-submitted-shell {
+                margin-top: -8px;
+            }
             .supplier-recon-email-modal {
                 position: fixed;
                 inset: 0;
@@ -19642,6 +19645,9 @@
                             <div class="bank-account-detail" id="supplierReconciliationDetail"></div>
                         </section>
                     </section>
+                    <section class="late-charges-screen detail-card" id="supplierReconciliationStatementPageScreen" hidden>
+                        <section class="detail-panel" id="supplierReconciliationStatementPageDetail"></section>
+                    </section>
                     <div class="supplier-recon-email-modal" id="supplierReconciliationEmailModal" hidden>
                         <section class="supplier-recon-email-panel" role="dialog" aria-modal="true" aria-labelledby="supplierReconciliationEmailTitle">
                             <div class="jashflow-detail-head">
@@ -21596,6 +21602,7 @@
             let supplierReconciliationSupplierScreenOpen = false;
             let supplierReconciliationSelectedSupplierId = "";
             let supplierReconciliationSelectedStatementId = "";
+            let supplierReconciliationStatementPageStatementId = "";
             const supplierReconciliationMaxUploadBytes = 50 * 1024 * 1024;
             let supplierReconciliationUploadStartedAt = 0;
             let supplierReconciliationUploadTimer = null;
@@ -24859,6 +24866,7 @@
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
                 setElementVisible(document.getElementById("supplierReconciliationScreen"), activeView === "supplier-reconciliation");
+                setElementVisible(document.getElementById("supplierReconciliationStatementPageScreen"), activeView === "supplier-reconciliation-statement-page");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
                 setElementVisible(document.getElementById("ignitionClientsScreen"), activeView === "ignition-clients");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
@@ -24867,7 +24875,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "sa100-prep", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "sa100-prep", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -32438,7 +32446,7 @@
                             paidCount: Number(item.paidCount || 0),
                             errorMessage: String(item.errorMessage || "").trim()
                         }))
-                        .filter((item) => item.id && item.supplierContactId)
+                        .filter((item) => item.id && item.tenantId)
                         .slice(0, 240);
                 } catch {
                     return [];
@@ -32554,6 +32562,28 @@
                 return supplierReconciliationSupplierStatements().find((row) => row.id === statementId) || null;
             }
 
+            function supplierReconciliationStatementRecordById(statementId) {
+                const id = String(statementId || "").trim();
+                if (!id) return null;
+                return (supplierReconciliationStatements || []).find((row) => row.id === id) || null;
+            }
+
+            function supplierReconciliationResultFromStatement(statement) {
+                if (!statement || typeof statement !== "object") return null;
+                return {
+                    submissionId: statement.id,
+                    tenantId: statement.tenantId,
+                    contactId: statement.supplierContactId || "",
+                    supplierName: statement.supplierName || statement?.supplierProfile?.name || "",
+                    filename: statement.filename || "Supplier statement",
+                    statementDate: statement.statementDate || "",
+                    currencyCode: statement.currencyCode || "GBP",
+                    supplierProfile: statement.supplierProfile || {},
+                    rows: Array.isArray(statement.rows) ? statement.rows : [],
+                    summary: statement.summary || {}
+                };
+            }
+
             function upsertSupplierReconciliationStatement(statement = {}) {
                 const id = String(statement.id || "").trim();
                 const tenantId = String(statement.tenantId || "").trim();
@@ -32628,6 +32658,60 @@
                 }
             }
 
+            function syncSupplierReconciliationHistoryFromStatements() {
+                const history = Array.isArray(supplierReconciliationSubmissionHistory) ? supplierReconciliationSubmissionHistory.slice() : [];
+                const statements = Array.isArray(supplierReconciliationStatements) ? supplierReconciliationStatements : [];
+                const byId = new Map(history.map((row) => [String(row.id || "").trim(), row]));
+                let changed = false;
+                statements.forEach((statement) => {
+                    const id = String(statement?.id || "").trim();
+                    if (!id) return;
+                    const summary = statement?.summary || {};
+                    const existing = byId.get(id);
+                    if (!existing) {
+                        history.push({
+                            id,
+                            tenantId: String(statement?.tenantId || "").trim(),
+                            supplierContactId: String(statement?.supplierContactId || "").trim(),
+                            supplierName: String(statement?.supplierName || "").trim(),
+                            filename: String(statement?.filename || "").trim(),
+                            submittedAt: String(statement?.submittedAt || "").trim(),
+                            completedAt: String(statement?.completedAt || "").trim(),
+                            status: String(statement?.status || "processed").trim().toLowerCase(),
+                            missingCount: Number(summary.missingCount || 0),
+                            allocatedCount: Number(summary.allocatedCount || 0),
+                            paidCount: Number(summary.paidCount || 0),
+                            errorMessage: ""
+                        });
+                        changed = true;
+                        return;
+                    }
+                    const next = {
+                        ...existing,
+                        tenantId: existing.tenantId || String(statement?.tenantId || "").trim(),
+                        supplierContactId: existing.supplierContactId || String(statement?.supplierContactId || "").trim(),
+                        supplierName: existing.supplierName || String(statement?.supplierName || "").trim(),
+                        filename: existing.filename || String(statement?.filename || "").trim(),
+                        submittedAt: existing.submittedAt || String(statement?.submittedAt || "").trim(),
+                        completedAt: existing.completedAt || String(statement?.completedAt || "").trim(),
+                        status: existing.status || String(statement?.status || "processed").trim().toLowerCase(),
+                        missingCount: Number(existing.missingCount || summary.missingCount || 0),
+                        allocatedCount: Number(existing.allocatedCount || summary.allocatedCount || 0),
+                        paidCount: Number(existing.paidCount || summary.paidCount || 0),
+                    };
+                    if (JSON.stringify(next) !== JSON.stringify(existing)) {
+                        const index = history.findIndex((row) => String(row.id || "").trim() === id);
+                        if (index >= 0) history[index] = next;
+                        changed = true;
+                    }
+                });
+                if (!changed) return;
+                supplierReconciliationSubmissionHistory = history
+                    .filter((row) => String(row?.id || "").trim() && String(row?.tenantId || "").trim())
+                    .slice(0, 240);
+                persistSupplierReconciliationSubmissionHistory();
+            }
+
             function supplierReconciliationSubmissionStatusLabel(status) {
                 const key = String(status || "").toLowerCase();
                 if (key === "processed") return "Processed";
@@ -32644,6 +32728,7 @@
 
             function openSupplierReconciliationScreen() {
                 activeView = "supplier-reconciliation";
+                supplierReconciliationStatementPageStatementId = "";
                 supplierReconciliationWorkspaceOpen = false;
                 supplierReconciliationWorkspaceTenantId = "";
                 supplierReconciliationWorkspaceTenantName = "";
@@ -32658,6 +32743,31 @@
                 renderAll();
                 scrollConsoleToTop();
                 loadSupplierReconciliation();
+            }
+
+            function openSupplierReconciliationStatementPage(statementId) {
+                const statement = supplierReconciliationStatementRecordById(statementId);
+                if (!statement) {
+                    showToast("Statement not found", "error");
+                    return;
+                }
+                if (String(statement.status || "").toLowerCase() !== "processed") {
+                    showToast("Statement page is available once processing has completed", "info");
+                    return;
+                }
+                const result = supplierReconciliationResultFromStatement(statement);
+                if (!result) {
+                    showToast("Unable to open statement page", "error");
+                    return;
+                }
+                supplierReconciliationStatementPageStatementId = String(statement.id || "").trim();
+                supplierReconciliationSelectedStatementId = supplierReconciliationStatementPageStatementId;
+                supplierReconciliationData.result = result;
+                selectedSupplierReconciliationContactId = result.contactId || selectedSupplierReconciliationContactId;
+                activeView = "supplier-reconciliation-statement-page";
+                syncActiveViewShell();
+                renderAll();
+                scrollConsoleToTop();
             }
 
             function openSupplierReconciliationXeroConnect() {
@@ -32696,6 +32806,7 @@
                     else showToast(error.message || "Unable to load supplier reconciliation", "error");
                 } finally {
                     supplierReconciliationLoading = false;
+                    syncSupplierReconciliationHistoryFromStatements();
                     renderSupplierReconciliationScreen();
                 }
             }
@@ -33187,6 +33298,9 @@
                         if (item.id !== submissionId) return item;
                         return {
                             ...item,
+                            supplierContactId: matchedContactId || item.supplierContactId || "",
+                            supplierName: String(statementModel.supplierName || item.supplierName || ""),
+                            filename: String(supplierReconciliationData.result?.filename || item.filename || file.name || "supplier-statement.pdf"),
                             completedAt: new Date().toISOString(),
                             status: "processed",
                             missingCount: Number(summary.missingCount || 0),
@@ -33238,6 +33352,7 @@
                 const detail = document.getElementById("supplierReconciliationDetail");
                 const topbarActions = document.getElementById("supplierReconciliationTopbarActions");
                 if (!clientList || !actionList || !detail) return;
+                syncSupplierReconciliationHistoryFromStatements();
                 const setSupplierReconciliationTopbarActions = (markup = "") => {
                     if (!topbarActions) return;
                     const resolvedMarkup = String(markup || "").trim();
@@ -33578,16 +33693,15 @@
                         return String(left.name || "").localeCompare(String(right.name || ""));
                     });
                 setSupplierReconciliationTopbarActions(`
-                    <div class="supplier-reconciliation-topbar-main">
-                        <button class="ghost-button" id="supplierReconciliationBackToListButton" type="button">Back to client workspaces</button>
-                        <button class="ghost-button danger-button" id="supplierReconciliationDeleteWorkspaceButton" type="button">Delete workspace</button>
-                        <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
-                        <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
-                        <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
-                            <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
-                            <button type="button" data-supplier-recon-tab="report-output" class="${supplierReconciliationWorkspaceTab === "report-output" ? "is-active" : ""}">Report Output</button>
+                        <div class="supplier-reconciliation-topbar-main">
+                            <button class="ghost-button" id="supplierReconciliationBackToListButton" type="button">Back to client workspaces</button>
+                            <button class="ghost-button danger-button" id="supplierReconciliationDeleteWorkspaceButton" type="button">Delete workspace</button>
+                            <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
+                            <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
+                            <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
+                                <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
+                            </div>
                         </div>
-                    </div>
                     <div class="supplier-reconciliation-topbar-secondary">
                         <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${supplierReconciliationWorkspaceTenantId ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
                         <button class="ghost-button" id="supplierReconciliationReportButton" type="button" ${activeResult ? "" : "disabled"}>Download supplier report</button>
@@ -33654,7 +33768,7 @@
                         <div>
                             <p class="eyebrow">Workspace</p>
                             <h3>${escapeHTML(connectedClient?.name || selectedContact?.name || "No supplier selected")}</h3>
-                            <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Manage statement submissions, then move to Report Output to review reconciliation results."}</p>
+                            <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Open a processed statement from Submitted Statements to view the Statement Page."}</p>
                         </div>
                     </div>
                     ${supplierReconciliationWorkspaceTab === "workspace" ? `
@@ -33849,11 +33963,12 @@
                         .sort((left, right) => String(right.submittedAt || "").localeCompare(String(left.submittedAt || "")))
                         .slice(0, 100);
                     detail.innerHTML = `
+                        <div class="supplier-recon-submitted-shell">
                         <div class="jashflow-detail-head">
                             <div>
                                 <p class="eyebrow">Submitted statements</p>
                                 <h3>Supplier statement queue</h3>
-                                <p class="detail-meta">Track submitted statements across suppliers with live processing status.</p>
+                                <p class="detail-meta">Track submitted statements across suppliers. Open Statement Page once a statement is processed.</p>
                             </div>
                         </div>
                         <div class="supplier-recon-history-table-wrap">
@@ -33872,10 +33987,12 @@
                                 </thead>
                                 <tbody>
                                     ${historyRows.length ? historyRows.map((row) => `
-                                        <tr data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">
+                                        <tr>
                                             <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "In progress")}</small></td>
-                                            <td><strong>${escapeHTML(row.supplierName || row.supplierContactId || "Unknown supplier")}</strong><small>${escapeHTML(row.supplierContactId || "")}</small></td>
-                                            <td>${escapeHTML(row.filename || "Statement")}</td>
+                                            <td><strong>${escapeHTML(row.supplierName || row.supplierContactId || "Unknown supplier")}</strong><small>${escapeHTML(row.supplierContactId || "")}</small><small><button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Open supplier</button></small></td>
+                                            <td>${String(row.status || "").toLowerCase() === "processed"
+                                                ? `<button class="ghost-button" type="button" data-supplier-recon-open-statement-page="${escapeHTML(row.id)}">${escapeHTML(row.filename || "Statement")}</button><small>Open Statement Page</small>`
+                                                : `${escapeHTML(row.filename || "Statement")}<small>Available after processing</small>`}</td>
                                             <td><span class="supplier-recon-status ${supplierReconciliationSubmissionStatusClass(row.status)}">${escapeHTML(supplierReconciliationSubmissionStatusLabel(row.status))}</span>${row.errorMessage ? `<small>${escapeHTML(row.errorMessage)}</small>` : ""}</td>
                                             <td>${Number(row.missingCount || 0).toLocaleString("en-GB")}</td>
                                             <td>${Number(row.allocatedCount || 0).toLocaleString("en-GB")}</td>
@@ -33885,6 +34002,7 @@
                                     `).join("") : '<tr><td colspan="8">No submitted supplier statements yet.</td></tr>'}
                                 </tbody>
                             </table>
+                        </div>
                         </div>
                     `;
                 } else if (!result || (result.contactId !== selectedSupplierReconciliationContactId && String(result.tenantId || "") !== String(supplierReconciliationWorkspaceTenantId || ""))) {
@@ -34119,6 +34237,14 @@
                         deleteSupplierReconciliationStatementRecord(statementId);
                     });
                 });
+                document.querySelectorAll("[data-supplier-recon-open-statement-page]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        const statementId = String(button.dataset.supplierReconOpenStatementPage || "").trim();
+                        if (!statementId) return;
+                        openSupplierReconciliationStatementPage(statementId);
+                    });
+                });
                 document.querySelectorAll("[data-supplier-recon-open-statement]").forEach((row) => {
                     row.addEventListener("click", () => {
                         const statementId = String(row.getAttribute("data-supplier-recon-open-statement") || "").trim();
@@ -34157,6 +34283,158 @@
                 document.getElementById("supplierReconciliationSupplierSortMode")?.addEventListener("change", (event) => {
                     supplierReconciliationSupplierSortMode = String(event.target.value || "name-asc");
                     renderSupplierReconciliationScreen();
+                });
+            }
+
+            function renderSupplierReconciliationStatementPage() {
+                const screen = document.getElementById("supplierReconciliationStatementPageScreen");
+                const detail = document.getElementById("supplierReconciliationStatementPageDetail");
+                if (!screen || !detail) return;
+                if (activeView !== "supplier-reconciliation-statement-page") {
+                    detail.innerHTML = "";
+                    return;
+                }
+
+                const statement = supplierReconciliationStatementRecordById(supplierReconciliationStatementPageStatementId);
+                const result = statement ? supplierReconciliationResultFromStatement(statement) : null;
+                if (!result) {
+                    detail.innerHTML = `
+                        <div class="empty-state">
+                            <p class="eyebrow">Statement page</p>
+                            <h4>No statement selected</h4>
+                            <p>Go back to Supplier Reconciliation and open a processed statement.</p>
+                            <button class="ghost-button" type="button" id="supplierReconciliationStatementPageBackButton">Back to supplier reconciliation</button>
+                        </div>
+                    `;
+                    document.getElementById("supplierReconciliationStatementPageBackButton")?.addEventListener("click", () => {
+                        activeView = "supplier-reconciliation";
+                        supplierReconciliationStatementPageStatementId = "";
+                        renderAll();
+                    });
+                    return;
+                }
+
+                supplierReconciliationData.result = result;
+                const rows = Array.isArray(result.rows) ? result.rows : [];
+                const summary = result.summary || {};
+                const paidRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "paid");
+                const unpaidRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "allocated");
+                const missingRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "missing");
+                const xeroOnlyRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "xero_only");
+                const xeroCreditRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "xero_credit_unallocated");
+                const xeroCashRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "xero_cash_unallocated");
+                const xeroFlagRows = [...xeroOnlyRows, ...xeroCreditRows, ...xeroCashRows];
+                const model = supplierReconciliationStatementModel(result);
+                const profile = model.supplierProfile || {};
+                const renderRows = (groupRows, emptyCopy) => (
+                    groupRows.length
+                        ? groupRows.map((row) => `
+                            <tr class="supplier-recon-row ${supplierReconciliationRowClass(row)}">
+                                <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
+                                <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
+                                <td>${formatCurrency(row.amount || 0)}</td>
+                                <td>${formatCurrency(row.balance || 0)}</td>
+                                <td>${row.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row.xeroUrl)}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
+                            </tr>
+                        `).join("")
+                        : `<tr><td colspan="5">${escapeHTML(emptyCopy)}</td></tr>`
+                );
+
+                detail.innerHTML = `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Statement Page</p>
+                            <h3>${escapeHTML(result.filename || "Supplier statement")}</h3>
+                            <p class="detail-meta">${escapeHTML(result.statementDate ? formatDate(result.statementDate) : "No statement date")} · ${escapeHTML(result.currencyCode || "GBP")} · ${Number(summary.totalLines || rows.length).toLocaleString("en-GB")} lines extracted</p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="ghost-button" type="button" id="supplierReconciliationStatementPageBackButton">Back to supplier reconciliation</button>
+                            <button class="ghost-button" type="button" id="supplierReconciliationStatementPageReportButton">Download supplier report</button>
+                            <button class="ghost-button" type="button" id="supplierReconciliationStatementPageEmailButton" ${(supplierReconciliationMissingRows(result).length > 0) ? "" : "disabled"}>Email missing invoices</button>
+                            <button class="ghost-button" type="button" id="supplierReconciliationStatementPageExportModelButton">Export extracted model</button>
+                        </div>
+                    </div>
+                    <div class="ignition-summary-grid">
+                        <article><span>Missing</span><strong>${Number(summary.missingCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Awaiting payment</span><strong>${Number(summary.allocatedCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Paid</span><strong>${Number(summary.paidCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Xero-only invoices</span><strong>${Number(summary.xeroOnlyCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Unallocated credits</span><strong>${Number(summary.xeroUnallocatedCreditCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Unallocated cash</span><strong>${Number(summary.xeroUnallocatedCashCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article><span>Matched bills</span><strong>${Number(summary.matchedBillCount || 0).toLocaleString("en-GB")}</strong></article>
+                    </div>
+                    <div class="supplier-recon-model-meta">
+                        <strong>Supplier-facing report is ready</strong>
+                        <span>${Number(model.summary.totalLines || 0).toLocaleString("en-GB")} rows summarised. Includes statement-to-Xero matches and Xero-only flags for invoices, unallocated credits, and unallocated cash.</span>
+                    </div>
+                    <div class="supplier-recon-history-table-wrap">
+                        <table class="supplier-recon-history-table" aria-label="Extracted supplier profile">
+                            <thead>
+                                <tr>
+                                    <th>Supplier name</th>
+                                    <th>Address</th>
+                                    <th>Email / Phone</th>
+                                    <th>Bank details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>${escapeHTML(profile.name || "Unknown supplier")}</strong><small>${profile.companiesHouseName ? `Companies House: ${escapeHTML(profile.companiesHouseName)}${profile.companyNumber ? ` (${escapeHTML(profile.companyNumber)})` : ""}` : (profile.companyNumber ? `Company no: ${escapeHTML(profile.companyNumber)}` : "No company number extracted")}</small></td>
+                                    <td>${escapeHTML(profile.address || "No address extracted")}</td>
+                                    <td><strong>${escapeHTML(profile.email || "No email")}</strong><small>${escapeHTML(profile.phone || "No phone extracted")}</small></td>
+                                    <td><strong>${escapeHTML(profile.bankName || "No bank name")}</strong><small>${escapeHTML([profile.bankAccountNumber, profile.bankSortCode, profile.bankIban, profile.bankSwiftBic].filter(Boolean).join(" · ") || "No bank details extracted")}</small></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="supplier-recon-results-wrap" role="table" aria-label="Supplier reconciliation rows">
+                        <table class="supplier-recon-table">
+                            <thead><tr><th colspan="5">Invoices We Have (Paid)</th></tr></thead>
+                            <tbody>${renderRows(paidRows, "No paid invoices found from this statement.")}</tbody>
+                        </table>
+                    </div>
+                    <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices awaiting payment">
+                        <table class="supplier-recon-table">
+                            <thead><tr><th colspan="5">Invoices We Have (Unpaid / Awaiting Payment)</th></tr></thead>
+                            <tbody>${renderRows(unpaidRows, "No unpaid invoices found from this statement.")}</tbody>
+                        </table>
+                    </div>
+                    <div class="supplier-recon-results-wrap" role="table" aria-label="Missing invoices">
+                        <table class="supplier-recon-table">
+                            <thead><tr><th colspan="5">Invoices We Do Not Have (Missing In Xero)</th></tr></thead>
+                            <tbody>${renderRows(missingRows, "No missing invoices identified from this statement.")}</tbody>
+                        </table>
+                    </div>
+                    <div class="supplier-recon-results-wrap" role="table" aria-label="Xero items not present on statement">
+                        <table class="supplier-recon-table">
+                            <thead><tr><th colspan="5">Items On Xero Not On Statement (Invoices / Credits / Cash)</th></tr></thead>
+                            <tbody>${renderRows(xeroFlagRows, "No Xero-only invoice, credit, or cash flags for this supplier.")}</tbody>
+                        </table>
+                    </div>
+                `;
+
+                document.getElementById("supplierReconciliationStatementPageBackButton")?.addEventListener("click", () => {
+                    activeView = "supplier-reconciliation";
+                    supplierReconciliationStatementPageStatementId = "";
+                    renderAll();
+                });
+                document.getElementById("supplierReconciliationStatementPageReportButton")?.addEventListener("click", () => {
+                    downloadSupplierReconciliationReport(result);
+                });
+                document.getElementById("supplierReconciliationStatementPageExportModelButton")?.addEventListener("click", () => {
+                    exportSupplierReconciliationModel(result);
+                });
+                document.getElementById("supplierReconciliationStatementPageEmailButton")?.addEventListener("click", () => {
+                    const draft = supplierReconciliationEmailDraft(result);
+                    const toInput = document.getElementById("supplierReconciliationEmailTo");
+                    const clientNameInput = document.getElementById("supplierReconciliationEmailClientName");
+                    const subjectInput = document.getElementById("supplierReconciliationEmailSubject");
+                    const bodyInput = document.getElementById("supplierReconciliationEmailBody");
+                    if (toInput) toInput.value = draft.to;
+                    if (clientNameInput) clientNameInput.value = draft.clientName;
+                    if (subjectInput) subjectInput.value = draft.subject;
+                    if (bodyInput) bodyInput.value = draft.body;
+                    setSupplierReconciliationEmailModalOpen(true);
                 });
             }
 
@@ -46983,7 +47261,7 @@
                 else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
                 else if (activeView === "bank-statements") activeNavSection = "bank-statements";
-                else if (activeView === "supplier-reconciliation") activeNavSection = "supplier-reconciliation";
+                else if (activeView === "supplier-reconciliation" || activeView === "supplier-reconciliation-statement-page") activeNavSection = "supplier-reconciliation";
                 else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "me-report") activeNavSection = "me-report";
                 else if (activeView === "sa100-prep") activeNavSection = "sa100-prep";
@@ -49739,6 +50017,7 @@
                 renderJashflowScreen();
                 renderBankStatementsScreen();
                 renderSupplierReconciliationScreen();
+                renderSupplierReconciliationStatementPage();
                 renderBankAccountPanel();
                 renderBankStatementUploadPanel();
                 renderBankSa100EntryPanel();
