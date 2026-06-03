@@ -32135,6 +32135,8 @@
                     const missingRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "missing");
                     const model = supplierReconciliationStatementModel(result);
                     const profile = model.supplierProfile || {};
+                    const xeroMatch = result?.xeroMatch || {};
+                    const matchCandidates = Array.isArray(xeroMatch.candidates) ? xeroMatch.candidates : [];
                     const renderRows = (groupRows, emptyCopy) => (
                         groupRows.length
                             ? groupRows.map((row) => `
@@ -32166,6 +32168,39 @@
                             <strong>Supplier-facing report is ready</strong>
                             <span>${Number(model.summary.totalLines || 0).toLocaleString("en-GB")} rows summarised. Download report to share what is paid, awaiting payment, and missing from Xero.</span>
                         </div>
+                        ${xeroMatch.proposedContactId ? `
+                            <div class="supplier-recon-model-meta">
+                                <strong>Xero contact auto-match</strong>
+                                <span>Matched to ${escapeHTML(xeroMatch.proposedName || xeroMatch.proposedContactId)} (${Math.round(Number(xeroMatch.confidence || 0) * 100)}% confidence). ${xeroMatch.needsConfirmation ? "Confirm this match or pick a different contact." : "Match confidence is high."}</span>
+                                <div class="detail-actions">
+                                    <button class="primary-button" type="button" data-supplier-recon-confirm-match="${escapeHTML(xeroMatch.proposedContactId)}">Confirm match</button>
+                                </div>
+                                ${matchCandidates.length ? `
+                                    <div class="supplier-recon-history-table-wrap">
+                                        <table class="supplier-recon-history-table" aria-label="Xero match candidates">
+                                            <thead>
+                                                <tr>
+                                                    <th>Candidate</th>
+                                                    <th>Email</th>
+                                                    <th>Match</th>
+                                                    <th>Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${matchCandidates.map((candidate) => `
+                                                    <tr>
+                                                        <td><strong>${escapeHTML(candidate.name || candidate.xeroContactId || "Contact")}</strong><small>${escapeHTML(candidate.xeroContactId || "")}</small></td>
+                                                        <td>${escapeHTML(candidate.email || "No email")}</td>
+                                                        <td>${Math.round(Number(candidate.score || 0) * 100)}% (${escapeHTML(candidate.method || "match")})</td>
+                                                        <td><button class="ghost-button" type="button" data-supplier-recon-select-candidate="${escapeHTML(candidate.xeroContactId || "")}">Select</button></td>
+                                                    </tr>
+                                                `).join("")}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ` : ""}
+                            </div>
+                        ` : ""}
                         <div class="supplier-recon-history-table-wrap">
                             <table class="supplier-recon-history-table" aria-label="Extracted supplier profile">
                                 <thead>
@@ -32277,6 +32312,37 @@
                 });
                 document.querySelectorAll("[data-supplier-recon-remove]").forEach((button) => {
                     button.addEventListener("click", () => removeSupplierWorkspace(button.dataset.supplierReconRemove || ""));
+                });
+                document.querySelectorAll("[data-supplier-recon-confirm-match]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const contactId = String(button.dataset.supplierReconConfirmMatch || "");
+                        if (!contactId) return;
+                        selectedSupplierReconciliationContactId = contactId;
+                        showToast("Supplier match confirmed. You can continue with this workspace.", "success");
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+                document.querySelectorAll("[data-supplier-recon-select-candidate]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const contactId = String(button.dataset.supplierReconSelectCandidate || "");
+                        if (!contactId) return;
+                        selectedSupplierReconciliationContactId = contactId;
+                        await renderConnectSupplier();
+                        showToast("Alternative supplier selected. Re-upload the statement to re-run reconciliation with this supplier.", "info");
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+                document.getElementById("supplierReconciliationSupplierSearchInput")?.addEventListener("input", (event) => {
+                    supplierReconciliationSupplierSearchTerm = String(event.target.value || "");
+                    renderSupplierReconciliationScreen();
+                });
+                document.getElementById("supplierReconciliationSupplierFilter")?.addEventListener("change", (event) => {
+                    supplierReconciliationSupplierFilter = String(event.target.value || "all");
+                    renderSupplierReconciliationScreen();
+                });
+                document.getElementById("supplierReconciliationSupplierSortMode")?.addEventListener("change", (event) => {
+                    supplierReconciliationSupplierSortMode = String(event.target.value || "name-asc");
+                    renderSupplierReconciliationScreen();
                 });
                 document.getElementById("supplierReconciliationAddClientXerosButton")?.addEventListener("click", async () => {
                     if (!supplierReconciliationWorkspaceTenantId) return;
