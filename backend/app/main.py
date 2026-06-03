@@ -1675,6 +1675,7 @@ async def api_update_me_report_settings(request: Request, user: dict = Depends(r
 async def api_bulk_upload_me_report_submissions(
     files: list[UploadFile] = File(...),
     manual_matches: str = Form("", alias="manualMatches"),
+    tenant_id: str = Form("", alias="tenantId"),
     user: dict = Depends(require_panel_user),
 ):
     parsed_manual_matches = {}
@@ -1701,7 +1702,10 @@ async def api_bulk_upload_me_report_submissions(
                 "manual_xero_contact_id": manual_xero_contact_id,
             }
         )
-    return {"status": "ok", **await bulk_upload_me_report_submission_pdfs(user, file_payloads)}
+    return {
+        "status": "ok",
+        **await bulk_upload_me_report_submission_pdfs(user, file_payloads, tenant_id=tenant_id or None),
+    }
 
 
 @app.post("/api/me-report/clients")

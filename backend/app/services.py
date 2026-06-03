@@ -7362,11 +7362,20 @@ def _me_report_contact_email(row: dict) -> str:
     return str((fallback or {}).get("email") or "").strip()
 
 
-def _me_report_contact_options(user: dict) -> list[dict]:
+def _me_report_contact_options(user: dict, tenant_id: str | None = None) -> list[dict]:
+    requested_tenant_id = str(tenant_id or "").strip()
     try:
-        connection_row = get_xero_connection_for_user(user["id"])
+        if requested_tenant_id:
+            source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+            connection_row = next((row for row in source_rows if str(row.get("tenant_id") or "").strip() == requested_tenant_id), None)
+            if not connection_row:
+                return []
+        else:
+            connection_row = get_xero_connection_for_user(user["id"])
     except HTTPException:
         return []
+    active_tenant_id = str(connection_row.get("tenant_id") or "")
+    active_tenant_name = str(connection_row.get("tenant_name") or "")
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -7378,7 +7387,7 @@ def _me_report_contact_options(user: dict) -> list[dict]:
                 ORDER BY LOWER(name) ASC
                 LIMIT 2500
                 """,
-                (connection_row.get("tenant_id"),),
+                (active_tenant_id,),
             )
             rows = cursor.fetchall()
         connection.commit()
@@ -7388,6 +7397,8 @@ def _me_report_contact_options(user: dict) -> list[dict]:
             "xeroContactId": row.get("xero_contact_id") or "",
             "name": row.get("name") or "Unnamed Xero contact",
             "email": _me_report_contact_email(row),
+            "tenantId": active_tenant_id,
+            "tenantName": active_tenant_name,
             "primaryPerson": row.get("primary_person") or "",
             "contactPeople": row.get("contact_people") if isinstance(row.get("contact_people"), list) else [],
         }
@@ -7396,12 +7407,19 @@ def _me_report_contact_options(user: dict) -> list[dict]:
     ]
 
 
-def _me_report_contact_for_user(user: dict, xero_contact_id: str) -> dict | None:
+def _me_report_contact_for_user(user: dict, xero_contact_id: str, tenant_id: str | None = None) -> dict | None:
     xero_contact_id = str(xero_contact_id or "").strip()
     if not xero_contact_id:
         return None
     try:
-        connection_row = get_xero_connection_for_user(user["id"])
+        requested_tenant_id = str(tenant_id or "").strip()
+        if requested_tenant_id:
+            source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+            connection_row = next((row for row in source_rows if str(row.get("tenant_id") or "").strip() == requested_tenant_id), None)
+            if not connection_row:
+                return None
+        else:
+            connection_row = get_xero_connection_for_user(user["id"])
     except HTTPException:
         return None
     with get_connection() as connection:
@@ -8180,7 +8198,20 @@ def me_report_payload(user: dict) -> dict:
     except HTTPException:
         xero_connection = None
     settings_row = _me_report_settings_row(user)
-    contact_options = _me_report_contact_options(user)
+    connection_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    connections = [
+        {
+            "tenantId": str(row.get("tenant_id") or ""),
+            "tenantName": str(row.get("tenant_name") or ""),
+            "tenantType": str(row.get("tenant_type") or ""),
+            "updatedAt": _iso(row.get("updated_at")) or "",
+            "createdAt": _iso(row.get("created_at")) or "",
+        }
+        for row in sorted(connection_rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name), reverse=True)
+        if str(row.get("tenant_id") or "").strip()
+    ]
+    contact_options = _me_report_contact_options(user, xero_connection.get("tenant_id") if xero_connection else None)
     return {
         "summary": summary,
         "clients": clients,
@@ -8191,6 +8222,7 @@ def me_report_payload(user: dict) -> dict:
             "tenantName": xero_connection.get("tenant_name") if xero_connection else "",
             "tenantId": xero_connection.get("tenant_id") if xero_connection else "",
             "contacts": contact_options,
+            "connections": connections,
         },
         "syncRun": _serialize_me_report_sync_run(active_run or latest_run),
         "activeSyncRun": _serialize_me_report_sync_run(active_run),
@@ -13045,8 +13077,20 @@ def _me_report_contact_match_for_bulk_candidates(contacts: list[dict], candidate
     return None, ""
 
 
-def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
+def _me_report_client_id_for_contact(user: dict, contact: dict, tenant_id: str | None = None) -> str:
     xero_contact_id = contact.get("xeroContactId") or ""
+    requested_tenant_id = str(tenant_id or contact.get("tenantId") or "").strip()
+    connection_row = {}
+    try:
+        if requested_tenant_id:
+            source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+            connection_row = next((row for row in source_rows if str(row.get("tenant_id") or "").strip() == requested_tenant_id), None) or {}
+        else:
+            connection_row = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        connection_row = {}
+    active_tenant_id = str(connection_row.get("tenant_id") or requested_tenant_id or "")
+    active_tenant_name = str(connection_row.get("tenant_name") or contact.get("tenantName") or "")
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -13055,19 +13099,20 @@ def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
                 FROM me_report_clients
                 WHERE user_id = %s
                   AND xero_contact_id = %s
+                  AND (
+                    COALESCE(NULLIF(xero_tenant_id, ''), %s) = %s
+                    OR xero_tenant_id IS NULL
+                    OR xero_tenant_id = ''
+                  )
                 ORDER BY created_at DESC
                 LIMIT 1
                 """,
-                (user["id"], xero_contact_id),
+                (user["id"], xero_contact_id, active_tenant_id, active_tenant_id),
             )
             row = cursor.fetchone()
             if row:
                 client_id = str(row["id"])
             else:
-                try:
-                    connection_row = get_xero_connection_for_user(user["id"])
-                except HTTPException:
-                    connection_row = {}
                 cursor.execute(
                     """
                     INSERT INTO me_report_clients (
@@ -13088,8 +13133,8 @@ def _me_report_client_id_for_contact(user: dict, contact: dict) -> str:
                         contact.get("name") or "",
                         contact.get("email") or "",
                         connection_row.get("id"),
-                        connection_row.get("tenant_id"),
-                        connection_row.get("tenant_name") or "",
+                        active_tenant_id,
+                        active_tenant_name,
                         "connected" if connection_row else "not_connected",
                         utcnow(),
                         utcnow(),
@@ -13126,9 +13171,14 @@ def _queue_me_report_bulk_submission_job(user: dict, client_id: str, filename: s
     ).start()
 
 
-async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict], process_in_background: bool = True) -> dict:
+async def bulk_upload_me_report_submission_pdfs(
+    user: dict,
+    files: list[dict],
+    process_in_background: bool = True,
+    tenant_id: str | None = None,
+) -> dict:
     semaphore = asyncio.Semaphore(4)
-    contacts = _me_report_contact_options(user)
+    contacts = _me_report_contact_options(user, tenant_id)
 
     async def process_file(file_item: dict) -> dict:
         async with semaphore:
@@ -13186,7 +13236,7 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict], p
                     "candidateNames": candidate_names[:8],
                     "message": "No matching Xero contact found from the first page client lines or filename.",
                 }
-            client_id = _me_report_client_id_for_contact(user, contact)
+            client_id = _me_report_client_id_for_contact(user, contact, tenant_id)
             try:
                 if process_in_background:
                     _queue_me_report_bulk_submission_job(user, client_id, filename, content_type, content)

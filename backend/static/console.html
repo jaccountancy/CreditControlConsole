@@ -21129,6 +21129,10 @@
                             </div>
                             <div class="me-report-bulk-match-body">
                                 <p class="me-report-bulk-match-help">Each uploaded PDF was matched automatically from page one. Confirm with the tick, or reject with the cross to delete the upload or pick a different Xero contact.</p>
+                                <label class="me-report-client-control">
+                                    Xero account
+                                    <select id="meReportBulkMatchTenantSelect" aria-label="Select Xero account for ME Report matching"></select>
+                                </label>
                                 <div class="me-report-bulk-match-list" id="meReportBulkMatchList"></div>
                             </div>
                         </form>
@@ -21986,6 +21990,7 @@
             let meReportBulkQueuePollTimer = null;
             let meReportBulkQueuePollRemaining = 0;
             let meReportBulkManualMatchState = null;
+            let meReportBulkMatchTenantId = "";
             let meReportContactRefreshInFlight = false;
             let meReportContactRefreshAttempted = false;
             let meReportLossDialogState = null;
@@ -40464,22 +40469,59 @@
                 if (element) element.textContent = value;
             }
 
-            function meReportContactOptions() {
-                return Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
+            function meReportXeroConnections() {
+                const connections = Array.isArray(meReportData.xero?.connections) ? meReportData.xero.connections : [];
+                if (connections.length) return connections.filter((connection) => String(connection?.tenantId || "").trim());
+                const tenantId = String(meReportData.xero?.tenantId || "").trim();
+                const tenantName = String(meReportData.xero?.tenantName || "").trim();
+                return tenantId ? [{ tenantId, tenantName: tenantName || tenantId, tenantType: "" }] : [];
             }
 
-            async function refreshMeReportContactOptionsFromXero() {
+            function meReportActiveTenantId() {
+                const configured = String(meReportBulkMatchTenantId || "").trim();
+                if (configured) return configured;
+                const fallback = String(meReportData.xero?.tenantId || "").trim();
+                if (fallback) return fallback;
+                const first = meReportXeroConnections()[0];
+                return String(first?.tenantId || "").trim();
+            }
+
+            function meReportContactOptions(tenantId = "") {
+                const contacts = Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
+                const targetTenantId = String(tenantId || "").trim();
+                if (!targetTenantId) return contacts;
+                const tenantScoped = contacts.filter((contact) => String(contact?.tenantId || "").trim() === targetTenantId);
+                return tenantScoped.length ? tenantScoped : contacts;
+            }
+
+            async function refreshMeReportContactOptionsFromXero(tenantId = "") {
                 if (meReportContactRefreshInFlight || !meReportData.xero?.connected) return;
                 meReportContactRefreshInFlight = true;
+                const requestedTenantId = String(tenantId || meReportActiveTenantId() || "").trim();
                 try {
-                    const payload = await requestJSON("/api/supplier-reconciliation/contacts");
-                    const contacts = payload?.supplierReconciliation?.xero?.contacts;
+                    const contactsEndpoint = requestedTenantId
+                        ? `/api/supplier-reconciliation/contacts?tenantId=${encodeURIComponent(requestedTenantId)}`
+                        : "/api/supplier-reconciliation/contacts";
+                    const payload = await requestJSON(contactsEndpoint);
+                    const xeroPayload = payload?.supplierReconciliation?.xero || {};
+                    const contacts = Array.isArray(xeroPayload.contacts) ? xeroPayload.contacts : [];
+                    const contactTenantId = String(xeroPayload.tenantId || requestedTenantId || "").trim();
+                    const contactTenantName = String(xeroPayload.tenantName || "").trim();
                     if (Array.isArray(contacts) && contacts.length) {
                         meReportData = {
                             ...meReportData,
                             xero: {
                                 ...(meReportData.xero || {}),
-                                contacts
+                                contacts: contacts.map((contact) => ({
+                                    ...contact,
+                                    tenantId: String(contact?.tenantId || contactTenantId),
+                                    tenantName: String(contact?.tenantName || contactTenantName),
+                                })),
+                                tenantId: contactTenantId || meReportData.xero?.tenantId || "",
+                                tenantName: contactTenantName || meReportData.xero?.tenantName || "",
+                                connections: Array.isArray(xeroPayload.connections) && xeroPayload.connections.length
+                                    ? xeroPayload.connections
+                                    : meReportXeroConnections(),
                             }
                         };
                     }
@@ -40491,8 +40533,8 @@
                 }
             }
 
-            function meReportContactOptionHTML(selectedId = "") {
-                const contacts = meReportContactOptions();
+            function meReportContactOptionHTML(selectedId = "", tenantId = "") {
+                const contacts = meReportContactOptions(tenantId || meReportActiveTenantId());
                 return [
                     '<option value="">Choose Xero contact...</option>',
                     ...contacts.map((contact) => {
@@ -45519,6 +45561,7 @@
                 const panel = document.getElementById("meReportBulkMatchPanel");
                 if (panel) panel.hidden = true;
                 meReportBulkManualMatchState = null;
+                meReportBulkMatchTenantId = "";
                 meReportContactRefreshAttempted = false;
             }
 
@@ -45528,7 +45571,29 @@
                 if (!panel || !list) return;
                 const state = meReportBulkManualMatchState || { pending: [], submitting: false };
                 const pending = state.pending || [];
-                const contacts = meReportContactOptions();
+                const connections = meReportXeroConnections();
+                if (!meReportBulkMatchTenantId) {
+                    meReportBulkMatchTenantId = meReportActiveTenantId();
+                }
+                if (meReportBulkMatchTenantId && !connections.some((connection) => String(connection?.tenantId || "") === meReportBulkMatchTenantId)) {
+                    meReportBulkMatchTenantId = String(connections[0]?.tenantId || meReportData.xero?.tenantId || "");
+                }
+                const activeTenantId = meReportActiveTenantId();
+                const contacts = meReportContactOptions(activeTenantId);
+                const tenantSelect = document.getElementById("meReportBulkMatchTenantSelect");
+                if (tenantSelect) {
+                    const hasConnections = connections.length > 0;
+                    tenantSelect.disabled = state.submitting || !hasConnections;
+                    tenantSelect.innerHTML = hasConnections
+                        ? connections.map((connection) => {
+                            const tenantId = String(connection?.tenantId || "");
+                            const tenantName = String(connection?.tenantName || tenantId || "Xero account");
+                            const tenantType = String(connection?.tenantType || "");
+                            const label = tenantType ? `${tenantName} (${tenantType})` : tenantName;
+                            return `<option value="${escapeHTML(tenantId)}"${tenantId === activeTenantId ? " selected" : ""}>${escapeHTML(label)}</option>`;
+                        }).join("")
+                        : '<option value="">No Xero accounts connected</option>';
+                }
                 const summary = document.getElementById("meReportBulkMatchSummary");
                 if (summary) {
                     summary.textContent = pending.length
@@ -45554,7 +45619,7 @@
                 }
                 if (!contacts.length && meReportData.xero?.connected && !meReportContactRefreshInFlight && !meReportContactRefreshAttempted) {
                     meReportContactRefreshAttempted = true;
-                    refreshMeReportContactOptionsFromXero();
+                    refreshMeReportContactOptionsFromXero(activeTenantId);
                 }
                 list.innerHTML = `${pending.map((entry, index) => {
                     const item = entry.item || {};
@@ -45604,7 +45669,7 @@
                                     <label>
                                         Xero contact
                                         <select data-me-report-bulk-match-select="${index}" ${state.submitting ? "disabled" : ""}>
-                                            ${meReportContactOptionHTML(entry.contactId || "")}
+                                            ${meReportContactOptionHTML(entry.contactId || "", activeTenantId)}
                                         </select>
                                     </label>
                                 ` : ""}
@@ -45651,6 +45716,26 @@
                         renderMeReportBulkMatchPanel();
                     });
                 });
+                if (tenantSelect && tenantSelect.dataset.wired !== "true") {
+                    tenantSelect.dataset.wired = "true";
+                    tenantSelect.addEventListener("change", () => {
+                        meReportBulkMatchTenantId = String(tenantSelect.value || "").trim();
+                        meReportContactRefreshAttempted = false;
+                        const visibleContacts = meReportContactOptions(meReportBulkMatchTenantId);
+                        if (meReportBulkManualMatchState?.pending?.length) {
+                            meReportBulkManualMatchState.pending.forEach((entry) => {
+                                if (!entry?.contactId) return;
+                                const stillValid = visibleContacts.some((contact) => String(contact?.xeroContactId || "") === String(entry.contactId || ""));
+                                if (!stillValid) {
+                                    entry.contactId = "";
+                                    entry.status = "rematch";
+                                }
+                            });
+                        }
+                        renderMeReportBulkMatchPanel();
+                        refreshMeReportContactOptionsFromXero(meReportBulkMatchTenantId);
+                    });
+                }
             }
 
             function openMeReportBulkMatchPanel(reviewItems = [], sourceFiles = []) {
@@ -45668,7 +45753,8 @@
                 if (pending.length !== reviewItems.length) {
                     showToast("Some unmatched files could not be kept by the browser. Re-upload those files to match them manually.", "error");
                 }
-                const contacts = meReportContactOptions();
+                meReportBulkMatchTenantId = meReportActiveTenantId();
+                const contacts = meReportContactOptions(meReportBulkMatchTenantId);
                 pending.forEach((entry) => {
                     const suggestion = meReportSuggestedContactForReviewItem(entry.item, contacts);
                     if (!suggestion?.contactId) return;
@@ -45740,6 +45826,8 @@
                 if (!selectedFiles.length) return showToast("Choose at least one JUK Overview PDF or Excel file to bulk upload", "error");
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
+                const tenantId = meReportActiveTenantId();
+                if (tenantId) formData.append("tenantId", tenantId);
                 meReportBulkUploading = true;
                 meReportBulkUploadStartedAt = Date.now();
                 meReportBulkUploadExpectedCount = selectedFiles.length;
@@ -45792,6 +45880,8 @@
                     manualMatches[String(index)] = entry.contactId;
                 });
                 formData.append("manualMatches", JSON.stringify(manualMatches));
+                const tenantId = meReportActiveTenantId();
+                if (tenantId) formData.append("tenantId", tenantId);
                 state.submitting = true;
                 meReportBulkUploading = true;
                 meReportBulkUploadStartedAt = Date.now();
