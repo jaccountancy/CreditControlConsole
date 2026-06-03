@@ -18984,12 +18984,12 @@
                                     <p class="ch-section-heading">Filing credentials (Presenter)</p>
                                     <label>
                                         Presenter ID
-                                        <input id="chSettingsPresenterId" name="presenterId" type="text" placeholder="e.g. AB1234">
+                                        <input id="chSettingsPresenterId" name="presenterId" type="text" placeholder="Hardcoded in backend" readonly>
                                     </label>
                                     <label>
                                         Presenter authentication code
-                                        <input id="chSettingsPresenterAuth" name="presenterAuth" type="text" autocomplete="off" placeholder="Presenter authentication code">
-                                        <span class="ch-field-hint" id="chSettingsPresenterAuthHint">Not configured.</span>
+                                        <input id="chSettingsPresenterAuth" name="presenterAuth" type="text" autocomplete="off" placeholder="Hardcoded in backend" readonly>
+                                        <span class="ch-field-hint" id="chSettingsPresenterAuthHint">Hardcoded in backend (read-only).</span>
                                     </label>
                                     <label class="is-wide">
                                         Companies House credit account number
@@ -53548,11 +53548,9 @@
                 if (companiesHouseSettings.saving || companiesHouseSettings.testing) return;
                 const value = (id) => (document.getElementById(id)?.value || "").trim();
                 const apiKey = document.getElementById("chSettingsApiKey")?.value || "";
-                const presenterAuth = document.getElementById("chSettingsPresenterAuth")?.value || "";
                 const body = {
                     environment: document.getElementById("chSettingsEnvironment")?.value || "sandbox",
                     notifyEmail: value("chSettingsNotifyEmail"),
-                    presenterId: value("chSettingsPresenterId"),
                     creditAccountNumber: value("chSettingsCreditAccount"),
                     xeroInvoiceAccountCode: value("chSettingsXeroAccountCode"),
                     xeroInvoiceItemCode: value("chSettingsXeroItemCode"),
@@ -53562,7 +53560,6 @@
                     autoSyncEnabled: !!document.getElementById("chSettingsAutoSync")?.checked,
                 };
                 if (apiKey.trim()) body.apiKey = apiKey.trim();
-                if (presenterAuth.trim()) body.presenterAuth = presenterAuth.trim();
                 companiesHouseSettings.saving = true;
                 const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
                 if (saveButton) saveButton.disabled = true;
@@ -53590,9 +53587,7 @@
             async function testCompaniesHouseConnectionHandler() {
                 if (companiesHouseSettings.saving || companiesHouseSettings.testing) return;
                 companiesHouseSettings.testing = true;
-                const value = (id) => (document.getElementById(id)?.value || "").trim();
                 const apiKey = document.getElementById("chSettingsApiKey")?.value || "";
-                const presenterAuth = document.getElementById("chSettingsPresenterAuth")?.value || "";
                 const testButton = document.getElementById("testCompaniesHouseConnectionButton");
                 const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
                 const reloadButton = document.getElementById("reloadCompaniesHouseSettingsButton");
@@ -53603,10 +53598,8 @@
                 try {
                     const body = {
                         environment: document.getElementById("chSettingsEnvironment")?.value || "sandbox",
-                        presenterId: value("chSettingsPresenterId"),
                     };
                     if (apiKey.trim()) body.apiKey = apiKey.trim();
-                    if (presenterAuth.trim()) body.presenterAuth = presenterAuth.trim();
                     const payload = await requestJSON("/api/companies-house/settings/test-connection", {
                         method: "POST",
                         body: JSON.stringify(body),

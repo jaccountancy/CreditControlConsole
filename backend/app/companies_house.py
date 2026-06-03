@@ -35,6 +35,8 @@ except Exception:  # pragma: no cover - optional dependency guard
 CH_API_KEY_LABEL = "ch:api_key"
 CH_PRESENTER_AUTH_LABEL = "ch:presenter_auth"
 CH_COMPANY_AUTH_LABEL = "ch:company_auth"
+HARDCODED_CH_PRESENTER_ID = "00046248000"
+HARDCODED_CH_PRESENTER_AUTH = "PLCTL2F87WL"
 
 VALID_ENVIRONMENTS = {"sandbox", "production"}
 MASK_VISIBLE_CHARS = 4
@@ -145,6 +147,14 @@ def _compact_credential(value: object) -> str:
     return str(value or "").strip()
 
 
+def configured_presenter_id() -> str:
+    return HARDCODED_CH_PRESENTER_ID
+
+
+def configured_presenter_auth() -> str:
+    return HARDCODED_CH_PRESENTER_AUTH
+
+
 def _load_settings_row() -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -184,29 +194,17 @@ def _serialise(row: dict) -> dict:
         if environment == "production"
         else settings.companies_house_sandbox_api_base
     )
-    presenter_auth = ""
-    presenter_auth_encrypted = row.get("presenter_auth_encrypted")
-    if presenter_auth_encrypted:
-        try:
-            presenter_auth = decrypt_secret(presenter_auth_encrypted, CH_PRESENTER_AUTH_LABEL)
-        except Exception as exc:
-            logger.exception("Failed to decrypt Companies House presenter auth while loading settings")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Saved Presenter authentication code could not be decrypted. Re-save the presenter auth code in Companies House settings and retry.",
-            ) from exc
-    else:
-        presenter_auth = (settings.companies_house_presenter_auth or "").strip()
+    presenter_auth = configured_presenter_auth()
     return {
         "environment": environment,
         "apiBaseUrl": api_base,
         "apiKey": decrypt_api_key(),
         "apiKeyHint": row.get("api_key_hint") or "",
         "apiKeyConfigured": bool(row.get("api_key_encrypted")),
-        "presenterId": row.get("presenter_id") or "",
+        "presenterId": configured_presenter_id(),
         "presenterAuth": presenter_auth,
-        "presenterAuthHint": row.get("presenter_auth_hint") or "",
-        "presenterAuthConfigured": bool(row.get("presenter_auth_encrypted")),
+        "presenterAuthHint": "Hardcoded in backend",
+        "presenterAuthConfigured": True,
         "creditAccountNumber": row.get("credit_account_number") or "",
         "xeroInvoiceAccountCode": row.get("xero_invoice_account_code") or "",
         "xeroInvoiceItemCode": row.get("xero_invoice_item_code") or "",
@@ -332,12 +330,8 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         items = payload.get("items")
         sample_count = len(items) if isinstance(items, list) else 0
 
-    presenter_id = _compact_credential(overrides.get("presenterId") or settings_row.get("presenter_id"))
-    presenter_auth_override = overrides.get("presenterAuth")
-    if presenter_auth_override is not None:
-        presenter_auth = _compact_credential(presenter_auth_override)
-    else:
-        presenter_auth = _compact_credential(decrypt_presenter_auth())
+    presenter_id = configured_presenter_id()
+    presenter_auth = configured_presenter_auth()
     gateway_attempted = bool(presenter_id and presenter_auth)
     gateway_connected = False
     gateway_errors: list[str] = []
@@ -477,20 +471,10 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
             api_key_encrypted = ""
             api_key_hint = ""
 
-    new_presenter_auth = payload.get("presenterAuth")
-    if new_presenter_auth is None:
-        presenter_auth_encrypted = existing.get("presenter_auth_encrypted") or ""
-        presenter_auth_hint = existing.get("presenter_auth_hint") or ""
-    else:
-        presenter_auth_value = _compact_credential(new_presenter_auth)
-        if presenter_auth_value:
-            presenter_auth_encrypted = encrypt_secret(presenter_auth_value, CH_PRESENTER_AUTH_LABEL)
-            presenter_auth_hint = _mask(presenter_auth_value)
-        else:
-            presenter_auth_encrypted = ""
-            presenter_auth_hint = ""
-
-    presenter_id = _compact_credential(payload.get("presenterId"))
+    presenter_id = configured_presenter_id()
+    presenter_auth_value = configured_presenter_auth()
+    presenter_auth_encrypted = encrypt_secret(presenter_auth_value, CH_PRESENTER_AUTH_LABEL)
+    presenter_auth_hint = _mask(presenter_auth_value)
     credit_account_number = _compact_credential(payload.get("creditAccountNumber"))
     xero_invoice_account_code = str(payload.get("xeroInvoiceAccountCode") or "").strip()
     xero_invoice_item_code = str(payload.get("xeroInvoiceItemCode") or "").strip()
@@ -557,7 +541,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
         payload={
             "environment": environment,
             "apiKeyChanged": new_api_key is not None,
-            "presenterAuthChanged": new_presenter_auth is not None,
+            "presenterAuthChanged": False,
         },
     )
 
@@ -598,18 +582,7 @@ def _validated_companies_house_api_key(value: str) -> str:
 
 
 def decrypt_presenter_auth() -> str:
-    row = _load_settings_row()
-    if row is None or not row.get("presenter_auth_encrypted"):
-        settings = get_settings()
-        return (settings.companies_house_presenter_auth or "").strip()
-    try:
-        return decrypt_secret(row["presenter_auth_encrypted"], CH_PRESENTER_AUTH_LABEL)
-    except Exception as exc:
-        logger.exception("Failed to decrypt Companies House presenter auth from settings row")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Saved Presenter authentication code could not be decrypted. Re-save the presenter auth code in Companies House settings and retry.",
-        ) from exc
+    return configured_presenter_auth()
 
 
 def _companies_house_api_base(environment: str) -> str:
@@ -1896,7 +1869,7 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
     requested_submission_numbers = [str(value or "").strip() for value in (payload.get("submissionNumbers") or []) if str(value or "").strip()]
     limit = max(1, min(int(payload.get("limit") or 200), 500))
     settings_row = _ensure_settings_row()
-    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_id = configured_presenter_id()
     presenter_auth = decrypt_presenter_auth()
     environment = _xml_text(settings_row.get("environment"), "sandbox")
     if not presenter_id or not presenter_auth:
@@ -3942,7 +3915,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Maximum 500 companies per bulk submission.")
     settings_row = _ensure_settings_row()
     environment = _xml_text(settings_row.get("environment"), "sandbox")
-    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_id = configured_presenter_id()
     presenter_auth = decrypt_presenter_auth()
     credit_account_number = _xml_text(settings_row.get("credit_account_number"))
     configured_fee_amount = _coerce_settings_amount(
@@ -5591,7 +5564,7 @@ def export_companies_house_support_report(limit: int = 50, status_filter: str = 
 
     settings_row = _ensure_settings_row()
     environment = _xml_text(settings_row.get("environment"), "sandbox")
-    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_id = configured_presenter_id()
     presenter_auth = decrypt_presenter_auth()
     now = utcnow()
 
