@@ -37951,6 +37951,40 @@
                 return Boolean(submission?.calculation && Object.keys(submission.calculation || {}).length && !["processing", "failed", "error"].includes(status));
             }
 
+            const ME_REPORT_SUBMISSION_ESTIMATED_SECONDS = 10 * 60;
+
+            function meReportSubmissionProcessingState(submission) {
+                const status = String(submission?.status || "").toLowerCase();
+                const isProcessing = ["queued", "processing", "running", "pending"].includes(status);
+                if (!isProcessing) return null;
+                const startedAtValue = submission?.createdAt || "";
+                const startedAtMillis = Date.parse(startedAtValue);
+                const startedAt = Number.isFinite(startedAtMillis) ? startedAtMillis : Date.now();
+                const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                const remainingSeconds = Math.max(0, ME_REPORT_SUBMISSION_ESTIMATED_SECONDS - elapsedSeconds);
+                const overdueSeconds = Math.max(0, elapsedSeconds - ME_REPORT_SUBMISSION_ESTIMATED_SECONDS);
+                const etaAt = new Date(startedAt + (ME_REPORT_SUBMISSION_ESTIMATED_SECONDS * 1000));
+                return {
+                    status,
+                    elapsedSeconds,
+                    remainingSeconds,
+                    overdueSeconds,
+                    etaClock: etaAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false }),
+                };
+            }
+
+            function meReportSubmissionStatusDetail(submission) {
+                const processing = meReportSubmissionProcessingState(submission);
+                if (processing) {
+                    if (processing.remainingSeconds > 0) {
+                        return `ETA ${processing.etaClock} · ${formatSyncDuration(processing.remainingSeconds)} remaining`;
+                    }
+                    return `Past ETA by ${formatSyncDuration(processing.overdueSeconds)} · still processing`;
+                }
+                if (submission?.completedAt) return `Completed ${formatDate(submission.completedAt)}`;
+                return "";
+            }
+
             function groupedMeReportSubmissions(submissions) {
                 const groups = new Map();
                 (submissions || []).slice().sort((a, b) => {
