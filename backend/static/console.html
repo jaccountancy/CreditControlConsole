@@ -3105,28 +3105,29 @@
                 line-height: 1;
             }
             .ignition-renewals-topbar-button {
-                flex: 0 0 auto;
-                min-height: 42px;
+                flex: 1 1 100%;
+                display: flex;
+                align-items: center;
+                justify-content: flex-end;
+                gap: 8px;
+                flex-wrap: wrap;
                 margin-left: auto;
-                padding: 10px 16px;
-                border: 1px solid rgba(29, 103, 242, 0.2);
-                border-radius: 999px;
-                background: var(--blue-soft);
-                color: var(--blue);
-                box-shadow: 0 8px 18px rgba(29, 103, 242, 0.08);
-                font: inherit;
-                font-weight: 900;
-                cursor: pointer;
-                white-space: nowrap;
-                transition: flex-basis 0.32s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.32s cubic-bezier(0.16, 1, 0.3, 1), min-width 0.32s cubic-bezier(0.16, 1, 0.3, 1), padding 0.28s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease, border-width 0.24s ease;
             }
             .ignition-renewals-topbar-button[hidden] {
                 display: none;
             }
+            .ignition-renewals-topbar-button button {
+                min-height: 36px;
+                padding: 7px 11px;
+                border-radius: 999px;
+                font-size: 0.78rem;
+                font-weight: 900;
+                white-space: nowrap;
+            }
             .ignition-renewals-topbar-button:not([hidden]) + .global-activity-toggle {
                 margin-left: 0;
             }
-            .ignition-renewals-topbar-button:disabled {
+            .ignition-renewals-topbar-button button:disabled {
                 cursor: not-allowed;
                 opacity: 0.58;
             }
@@ -13143,6 +13144,57 @@
                 white-space: nowrap;
                 font-weight: 900;
             }
+            .ignition-renewal-history-wrap {
+                display: grid;
+                grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
+                gap: 12px;
+                min-height: 0;
+            }
+            .ignition-renewal-history-runs {
+                display: grid;
+                gap: 8px;
+                align-content: start;
+                padding: 10px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(255, 255, 255, 0.92);
+                overflow: auto;
+            }
+            .ignition-renewal-history-run-button {
+                width: 100%;
+                text-align: left;
+                border: 1px solid var(--line);
+                border-radius: 10px;
+                background: #ffffff;
+                padding: 9px 10px;
+                cursor: pointer;
+                font: inherit;
+            }
+            .ignition-renewal-history-run-button.is-active {
+                border-color: rgba(29, 103, 242, 0.32);
+                background: var(--blue-soft);
+            }
+            .ignition-renewal-history-run-button strong,
+            .ignition-renewal-history-run-button span,
+            .ignition-renewal-history-run-button small {
+                display: block;
+            }
+            .ignition-renewal-history-run-button span,
+            .ignition-renewal-history-run-button small {
+                color: var(--muted);
+                font-size: 0.74rem;
+                line-height: 1.35;
+            }
+            .ignition-renewal-history-report {
+                min-width: 0;
+                display: grid;
+                gap: 8px;
+            }
+            @media (max-width: 980px) {
+                .ignition-renewal-history-wrap {
+                    grid-template-columns: 1fr;
+                }
+            }
             .ignition-client-panel {
                 display: grid;
                 gap: 14px;
@@ -17630,7 +17682,7 @@
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-ignition" data-app-nav="ignition">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Ignition</strong><span>API Integration</span></span>
+                                    <span class="app-nav-copy"><strong>Renewals</strong><span>Proposal workspace</span></span>
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-me-report" data-app-nav="me-report">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h2"></path><path d="M12 15h4"></path></svg></span>
@@ -17887,14 +17939,6 @@
                                 <strong id="bankContinuityTopbarTitle">No transactional gaps detected</strong>
                             </span>
                         </div>
-                        <nav class="ignition-tabs ignition-topbar-tabs" id="ignitionTopbarTabs" aria-label="Ignition sections" hidden>
-                            <button class="is-active" type="button" data-ignition-tab="overview">Overview</button>
-                            <button type="button" data-ignition-tab="clients">Client register</button>
-                            <button type="button" data-ignition-tab="renewals">Renewals</button>
-                            <button type="button" data-ignition-tab="staff-income">Income by staff</button>
-                            <button type="button" data-ignition-tab="subscriptions">Subscriptions</button>
-                            <button type="button" data-ignition-tab="creators">Proposal creators</button>
-                        </nav>
                         <div class="me-report-topbar-actions" id="meReportTopbarActions" aria-label="ME Report actions" hidden>
                             <div class="me-report-topbar-metrics" id="meReportTopbarMetrics" aria-label="Selected ME Report summary" hidden></div>
                             <div class="me-report-topbar-core-actions">
@@ -18038,7 +18082,7 @@
                                     <button type="button" id="menuBadDebtButton">Bad Debt</button>
                                     <button type="button" id="menuJashflowButton">Jashflow</button>
                                     <button type="button" id="menuBankStatementsButton">Bank Statements</button>
-                                    <button type="button" id="menuIgnitionButton">Ignition</button>
+                                    <button type="button" id="menuIgnitionButton">Renewals</button>
                                     <button type="button" id="menuMeReportButton">ME Report</button>
                                     <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
                                     <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
@@ -18052,6 +18096,16 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12a9 9 0 0 1-15 6.7"></path><path d="M3 12a9 9 0 0 1 15-6.7"></path><path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path></svg>
                             <span>Refresh Data</span>
                         </button>
+                        <div class="ignition-renewals-topbar-button" id="ignitionRenewalsTopbarActions" hidden>
+                            <button class="primary-button" id="openIgnitionRenewalsModalButton" type="button">Open proposal workspace</button>
+                            <button class="ghost-button" id="startIgnitionRenewalsButton" type="button">Create proposal list</button>
+                            <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
+                            <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
+                            <button class="ghost-button" id="exportIgnitionRenewalsPdfButton" type="button">Export PDF</button>
+                            <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise and raise ELs</button>
+                            <button class="ghost-button" id="openIgnitionRenewalHistoryButton" type="button">Renewal history</button>
+                            <button class="ghost-button" id="closeIgnitionRenewalsModalButton" type="button" hidden>Close workspace</button>
+                        </div>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
                             <span class="global-activity-count" id="globalActivityCount">0</span>
                         </button>
@@ -19898,9 +19952,6 @@
                                     <p class="detail-meta" id="ignitionRenewalsLaunchSummary">Review accepted proposals with period end dates in the upcoming 8 weeks for active clients only.</p>
                                 </div>
                                 <div class="ignition-renewals-launch-meta" id="ignitionRenewalsLaunchMeta"></div>
-                                <div class="detail-actions">
-                                    <button class="primary-button" id="openIgnitionRenewalsModalButton" type="button">Open proposal workspace</button>
-                                </div>
                             </section>
                         </section>
                         <div class="ignition-renewals-modal" id="ignitionRenewalsModal" hidden>
@@ -19911,17 +19962,25 @@
                                         <h3 id="ignitionRenewalsModalTitle">Proposal workspace</h3>
                                         <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.</p>
                                     </div>
-                                    <div class="detail-actions">
-                                        <button class="ghost-button" id="startIgnitionRenewalsButton" type="button">Create proposal list</button>
-                                        <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
-                                        <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
-                                        <button class="ghost-button" id="exportIgnitionRenewalsPdfButton" type="button">Export PDF</button>
-                                        <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise and raise ELs</button>
-                                        <button class="ghost-button" id="closeIgnitionRenewalsModalButton" type="button">Close</button>
-                                    </div>
                                 </div>
                                 <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalsTableWrap"></div>
+                            </section>
+                        </div>
+                        <div class="ignition-renewals-modal" id="ignitionRenewalHistoryModal" hidden>
+                            <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalHistoryTitle">
+                                <div class="ignition-renewals-modal-head">
+                                    <div>
+                                        <p class="eyebrow">Renewals history</p>
+                                        <h3 id="ignitionRenewalHistoryTitle">Renewal workflow reports</h3>
+                                        <p class="detail-meta" id="ignitionRenewalHistorySummary">Review prior renewal runs and compare previous fee to new fee for each client.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="closeIgnitionRenewalHistoryButton" type="button">Close</button>
+                                    </div>
+                                </div>
+                                <div class="ignition-renewals-meta" id="ignitionRenewalHistoryMeta"></div>
+                                <div class="ignition-renewals-table-wrap" id="ignitionRenewalHistoryTableWrap"></div>
                             </section>
                         </div>
                         <section class="ignition-tab-panel" data-ignition-panel="staff-income" hidden>
@@ -21349,7 +21408,7 @@
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
                 "supplier-reconciliation": "Supplier Reconciliation",
-                ignition: "Ignition",
+                ignition: "Renewals",
                 "ignition-clients": "Ignition Client Register",
                 "me-report": "ME Report",
                 "practice-packs": "Practice Pack Generator",
@@ -21373,7 +21432,7 @@
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
                 "supplier-reconciliation": "",
-                ignition: "Sync and analyse Ignition clients, proposals, fees, payments, collections, and renewal data.",
+                ignition: "Review and run proposal renewals from synced Ignition data.",
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
                 "me-report": "Prepare month-end client snapshots, review reporting data, and manage ME Report emails.",
                 "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
@@ -21756,6 +21815,10 @@
             let ignitionRenewalsStartedAt = 0;
             let ignitionRenewalsProgressTimer = null;
             let ignitionRenewalsModalOpen = false;
+            let ignitionRenewalHistoryModalOpen = false;
+            let ignitionRenewalHistoryLoading = false;
+            let ignitionRenewalHistorySelectedRunId = "";
+            const ignitionRenewalHistoryByRunId = new Map();
             const ignitionRenewalsEstimatedSeconds = 90;
             let isIgnitionSyncing = false;
             let activeIgnitionSyncRunId = null;
@@ -21765,8 +21828,8 @@
             let ignitionClientSearchTerm = "";
             let ignitionClientSortMode = "activity-desc";
             let ignitionClientFilter = "all";
-            const ignitionTabKeys = new Set(["overview", "clients", "renewals", "staff-income", "subscriptions", "creators"]);
-            let activeIgnitionTab = "overview";
+            const ignitionTabKeys = new Set(["renewals"]);
+            let activeIgnitionTab = "renewals";
             let meReportData = { clients: [], summary: {}, treatmentCategories: [], settings: {}, xero: {}, syncRun: null, activeSyncRun: null };
             let meReportClientStatusFilter = ["active", "archived", "all"].includes(persistedUIState.meReportClientStatusFilter)
                 ? persistedUIState.meReportClientStatusFilter
@@ -25021,10 +25084,11 @@
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
                 document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "sa100-prep", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
-                const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
-                if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
+                const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
+                if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
-                if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
+                if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = true;
+                if (activeView !== "ignition" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
                 const meReportTopbarActions = document.getElementById("meReportTopbarActions");
                 if (meReportTopbarActions) meReportTopbarActions.hidden = activeView !== "me-report";
                 const supplierReconciliationTopbarActions = document.getElementById("supplierReconciliationTopbarActions");
@@ -38360,6 +38424,7 @@
 
             function openIgnitionScreen() {
                 activeView = "ignition";
+                activeIgnitionTab = "renewals";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
@@ -38369,7 +38434,7 @@
 
             function openIgnitionClientsScreen() {
                 activeView = "ignition";
-                activeIgnitionTab = "clients";
+                activeIgnitionTab = "renewals";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 renderAll();
@@ -38378,7 +38443,7 @@
             }
 
             function renderIgnitionTabs() {
-                if (!ignitionTabKeys.has(activeIgnitionTab)) activeIgnitionTab = "overview";
+                if (!ignitionTabKeys.has(activeIgnitionTab)) activeIgnitionTab = "renewals";
                 document.querySelectorAll("[data-ignition-tab]").forEach((button) => {
                     const active = button.dataset.ignitionTab === activeIgnitionTab;
                     button.classList.toggle("is-active", active);
@@ -38484,6 +38549,17 @@
                     openRenewalsModalButton.disabled = !connected || ignitionLoading;
                     openRenewalsModalButton.textContent = ignitionRenewalsLoading ? "Preparing..." : "Open proposal workspace";
                     openRenewalsModalButton.title = connected ? "Open the dedicated renewals proposal workspace" : "Connect Ignition before reviewing renewals";
+                }
+                const closeRenewalsModalButton = document.getElementById("closeIgnitionRenewalsModalButton");
+                if (closeRenewalsModalButton) {
+                    closeRenewalsModalButton.hidden = !ignitionRenewalsModalOpen;
+                    closeRenewalsModalButton.disabled = !ignitionRenewalsModalOpen;
+                }
+                const historyButton = document.getElementById("openIgnitionRenewalHistoryButton");
+                if (historyButton) {
+                    const hasHistory = Boolean((ignitionData.renewals?.recentRuns || []).length || ignitionRenewalRun()?.id);
+                    historyButton.disabled = ignitionLoading || !hasHistory;
+                    historyButton.title = hasHistory ? "View previously saved renewal workflow reports" : "No renewal history available yet";
                 }
 
                 const totals = ignitionData.dashboard?.totals || {};
@@ -38907,6 +38983,8 @@
                 ignitionRenewalsModalOpen = Boolean(isOpen);
                 const modal = document.getElementById("ignitionRenewalsModal");
                 if (modal) modal.hidden = !ignitionRenewalsModalOpen;
+                const closeButton = document.getElementById("closeIgnitionRenewalsModalButton");
+                if (closeButton) closeButton.hidden = !ignitionRenewalsModalOpen;
                 if (ignitionRenewalsModalOpen) {
                     renderIgnitionRenewals();
                     window.setTimeout(() => document.getElementById("startIgnitionRenewalsButton")?.focus(), 0);
@@ -38919,6 +38997,139 @@
 
             function closeIgnitionRenewalsModal() {
                 setIgnitionRenewalsModalOpen(false);
+            }
+
+            function setIgnitionRenewalHistoryOpen(isOpen) {
+                ignitionRenewalHistoryModalOpen = Boolean(isOpen);
+                const modal = document.getElementById("ignitionRenewalHistoryModal");
+                if (modal) modal.hidden = !ignitionRenewalHistoryModalOpen;
+                if (ignitionRenewalHistoryModalOpen) renderIgnitionRenewalHistory();
+            }
+
+            async function loadIgnitionRenewalHistoryRun(runId, force = false) {
+                if (!runId || (!force && ignitionRenewalHistoryByRunId.has(runId))) return;
+                ignitionRenewalHistoryLoading = true;
+                renderIgnitionRenewalHistory();
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewalRun, {}, { runId });
+                    const run = payload?.renewals?.currentRun || null;
+                    if (run?.id) ignitionRenewalHistoryByRunId.set(run.id, run);
+                } catch (error) {
+                    console.error("Unable to load renewal history report", error);
+                    showToast(error.message || "Unable to load renewal history report", "error");
+                } finally {
+                    ignitionRenewalHistoryLoading = false;
+                    renderIgnitionRenewalHistory();
+                }
+            }
+
+            async function openIgnitionRenewalHistory() {
+                const runs = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                const fallback = ignitionRenewalRun();
+                if (!runs.length && !fallback?.id) {
+                    showToast("No renewal history is available yet.", "info");
+                    return;
+                }
+                ignitionRenewalHistoryByRunId.clear();
+                if (fallback?.id) ignitionRenewalHistoryByRunId.set(fallback.id, fallback);
+                ignitionRenewalHistorySelectedRunId = runs[0]?.id || fallback?.id || "";
+                setIgnitionRenewalHistoryOpen(true);
+                await loadIgnitionRenewalHistoryRun(ignitionRenewalHistorySelectedRunId);
+            }
+
+            function closeIgnitionRenewalHistory() {
+                setIgnitionRenewalHistoryOpen(false);
+            }
+
+            function renderIgnitionRenewalHistory() {
+                const meta = document.getElementById("ignitionRenewalHistoryMeta");
+                const wrap = document.getElementById("ignitionRenewalHistoryTableWrap");
+                if (!meta || !wrap) return;
+                const runs = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                const fallback = ignitionRenewalRun();
+                const runList = runs.length
+                    ? runs
+                    : (fallback?.id ? [fallback] : []);
+
+                if (!runList.length) {
+                    meta.innerHTML = '<span>Status: No history yet</span>';
+                    wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No history</p><h4>No renewal workflow reports are available</h4><p>Finalise a renewals run and it will appear here for future review.</p></div>';
+                    return;
+                }
+
+                if (!ignitionRenewalHistorySelectedRunId) ignitionRenewalHistorySelectedRunId = runList[0].id || "";
+                const selectedRun = ignitionRenewalHistoryByRunId.get(ignitionRenewalHistorySelectedRunId) || null;
+                const selectedSummary = runList.find((run) => run.id === ignitionRenewalHistorySelectedRunId) || selectedRun || runList[0];
+                const runItems = Array.isArray(selectedRun?.items) ? selectedRun.items : [];
+                const totalCurrent = runItems.reduce((sum, item) => sum + Number(item.currentMonthlyFee || 0), 0);
+                const totalNew = runItems.reduce((sum, item) => sum + Number(item.newMonthlyFee || 0), 0);
+                const variance = totalNew - totalCurrent;
+                meta.innerHTML = [
+                    ["Run", selectedSummary?.createdAt ? formatDateTime(selectedSummary.createdAt) : (selectedSummary?.windowStart || "Unknown")],
+                    ["Status", selectedSummary?.status || "draft"],
+                    ["Clients", Number(runItems.length || 0).toLocaleString("en-GB")],
+                    ["Current fee", formatCurrency(totalCurrent)],
+                    ["New fee", formatCurrency(totalNew)],
+                    ["Variance", formatCurrency(variance)]
+                ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+
+                const listMarkup = runList.map((run) => `
+                    <button class="ignition-renewal-history-run-button ${run.id === ignitionRenewalHistorySelectedRunId ? "is-active" : ""}" type="button" data-renewal-history-run-id="${escapeHTML(run.id || "")}">
+                        <strong>${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "Renewal run")}</strong>
+                        <span>${escapeHTML(run.status || "draft")} · ${Number(run.itemCount || 0).toLocaleString("en-GB")} client${Number(run.itemCount || 0) === 1 ? "" : "s"}</span>
+                        <small>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "No timestamp")}</small>
+                    </button>
+                `).join("");
+
+                const reportMarkup = ignitionRenewalHistoryLoading
+                    ? '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading renewal report</h4><p>Fetching the client-level history report for this renewals workflow.</p></div>'
+                    : !selectedRun
+                    ? '<div class="empty-state"><p class="eyebrow">Select a run</p><h4>Choose a renewal run</h4><p>Select a workflow on the left to load client fee changes.</p></div>'
+                    : !runItems.length
+                    ? '<div class="empty-state"><p class="eyebrow">No client rows</p><h4>This renewal run has no stored fee lines</h4><p>Run details are available, but no client fee rows were saved for this run.</p></div>'
+                    : `
+                        <table class="ignition-renewals-table">
+                            <thead>
+                                <tr>
+                                    <th>Client</th>
+                                    <th>Renewal Date</th>
+                                    <th>Plan</th>
+                                    <th>Current Fee</th>
+                                    <th>New Fee</th>
+                                    <th>Variance</th>
+                                    <th>Comments</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${runItems.map((item) => `
+                                    <tr>
+                                        <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
+                                        <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
+                                        <td>${escapeHTML(item.planName || "")}</td>
+                                        <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
+                                        <td class="money-cell">${formatCurrency(item.newMonthlyFee || 0)}</td>
+                                        <td class="money-cell">${formatCurrency((Number(item.newMonthlyFee || 0) - Number(item.currentMonthlyFee || 0)))}</td>
+                                        <td>${escapeHTML(item.comments || "")}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    `;
+                wrap.innerHTML = `
+                    <div class="ignition-renewal-history-wrap">
+                        <div class="ignition-renewal-history-runs">${listMarkup}</div>
+                        <div class="ignition-renewal-history-report">${reportMarkup}</div>
+                    </div>
+                `;
+                wrap.querySelectorAll("[data-renewal-history-run-id]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const runId = button.dataset.renewalHistoryRunId || "";
+                        if (!runId || runId === ignitionRenewalHistorySelectedRunId) return;
+                        ignitionRenewalHistorySelectedRunId = runId;
+                        renderIgnitionRenewalHistory();
+                        await loadIgnitionRenewalHistoryRun(runId);
+                    });
+                });
             }
 
             function renderIgnitionRenewalsLaunch() {
@@ -47664,7 +47875,9 @@
                 renderConfirmationStatementsTopbarSummary();
                 renderBankAccountTopbarSummary();
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
-                if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = !isIgnitionView();
+                if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = true;
+                const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
+                if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const meReportTopbarActions = document.getElementById("meReportTopbarActions");
                 if (meReportTopbarActions) meReportTopbarActions.hidden = activeView !== "me-report";
                 renderMeReportTopbarSummary();
@@ -53028,7 +53241,7 @@
                     if (event.target.id === "bankSa100EntryPanel") closeBankSa100EntryPanel();
                 });
                 document.querySelectorAll("[data-ignition-tab]").forEach((button) => {
-                    button.addEventListener("click", () => activateIgnitionTab(button.dataset.ignitionTab || "overview"));
+                    button.addEventListener("click", () => activateIgnitionTab(button.dataset.ignitionTab || "renewals"));
                 });
                 const openIgnitionClientsButton = document.getElementById("openIgnitionClientsButton");
                 if (openIgnitionClientsButton) openIgnitionClientsButton.addEventListener("click", openIgnitionClientsScreen);
@@ -53064,6 +53277,14 @@
                 const ignitionRenewalsModal = document.getElementById("ignitionRenewalsModal");
                 if (ignitionRenewalsModal) ignitionRenewalsModal.addEventListener("click", (event) => {
                     if (event.target.id === "ignitionRenewalsModal") closeIgnitionRenewalsModal();
+                });
+                const openIgnitionRenewalHistoryButton = document.getElementById("openIgnitionRenewalHistoryButton");
+                if (openIgnitionRenewalHistoryButton) openIgnitionRenewalHistoryButton.addEventListener("click", openIgnitionRenewalHistory);
+                const closeIgnitionRenewalHistoryButton = document.getElementById("closeIgnitionRenewalHistoryButton");
+                if (closeIgnitionRenewalHistoryButton) closeIgnitionRenewalHistoryButton.addEventListener("click", closeIgnitionRenewalHistory);
+                const ignitionRenewalHistoryModal = document.getElementById("ignitionRenewalHistoryModal");
+                if (ignitionRenewalHistoryModal) ignitionRenewalHistoryModal.addEventListener("click", (event) => {
+                    if (event.target.id === "ignitionRenewalHistoryModal") closeIgnitionRenewalHistory();
                 });
                 const saveIgnitionRenewalsButton = document.getElementById("saveIgnitionRenewalsButton");
                 if (saveIgnitionRenewalsButton) saveIgnitionRenewalsButton.addEventListener("click", saveIgnitionRenewals);
