@@ -218,14 +218,6 @@ def test_companies_house_connection() -> dict:
             detail="Configure a Companies House API key before running a connection test.",
         )
 
-    presenter_id = _xml_text(settings_row.get("presenter_id"))
-    presenter_auth = decrypt_presenter_auth()
-    if not presenter_id or not presenter_auth:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Configure Presenter ID and Presenter authentication code before running a full connection test.",
-        )
-
     base_url = _companies_house_api_base(environment)
     endpoint = f"{base_url}/company/00000000"
     rest_started = utcnow()
@@ -260,27 +252,57 @@ def test_companies_house_connection() -> dict:
         items = payload.get("items")
         sample_count = len(items) if isinstance(items, list) else 0
 
-    gateway_started = utcnow()
-    gateway_request = _build_ch_status_xml(
-        presenter_id=presenter_id,
-        presenter_auth=presenter_auth,
-        environment=environment,
-        transaction_id=_ch_txn_id(),
-        submission_number="ZZZZZZ",
-    )
-    gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
-    gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
-    gateway_errors = _ch_gateway_errors(gateway_response_root)
-    gateway_error_text = " | ".join(gateway_errors).lower()
-    if any(token in gateway_error_text for token in ("authorisation", "authorization", "authentication", "senderid", "sender id")):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Companies House XML gateway rejected presenter credentials or filing authority. Check Presenter ID/auth code and account permissions.",
+    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_auth = decrypt_presenter_auth()
+    gateway_attempted = bool(presenter_id and presenter_auth)
+    gateway_connected = False
+    gateway_errors: list[str] = []
+    gateway_error_message = ""
+    gateway_response_bytes = 0
+    gateway_duration_ms = 0
+    if gateway_attempted:
+        gateway_started = utcnow()
+        try:
+            gateway_request = _build_ch_status_xml(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                transaction_id=_ch_txn_id(),
+                submission_number="ZZZZZZ",
+            )
+            gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
+            gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
+            gateway_response_bytes = len(gateway_response_text.encode("utf-8"))
+            gateway_errors = _ch_gateway_errors(gateway_response_root)
+            gateway_error_text = " | ".join(gateway_errors).lower()
+            if any(token in gateway_error_text for token in ("authorisation", "authorization", "authentication", "senderid", "sender id")):
+                gateway_error_message = (
+                    "Companies House XML gateway rejected presenter credentials or filing authority. "
+                    "Check Presenter ID/auth code and account permissions."
+                )
+            else:
+                gateway_connected = True
+        except HTTPException as exc:
+            gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
+            gateway_error_message = str(exc.detail or "Companies House XML gateway connection test failed.")
+    else:
+        gateway_error_message = (
+            "XML gateway test skipped because Presenter ID/auth code are not configured. "
+            "REST sync features are available; filing features require presenter credentials."
         )
 
     duration_ms = rest_duration_ms + gateway_duration_ms
+    connected = bool(gateway_connected and gateway_attempted) if gateway_attempted else True
+    if connected:
+        message = "Companies House REST and XML gateway connections are working."
+    elif gateway_attempted:
+        message = (
+            f"REST connection is working, but XML gateway failed: {gateway_error_message or 'Unknown gateway error.'}"
+        )
+    else:
+        message = "REST connection is working. XML gateway test was skipped because presenter credentials are missing."
     return {
-        "connected": True,
+        "connected": connected,
         "environment": environment,
         "apiBaseUrl": base_url,
         "endpoint": endpoint,
@@ -290,10 +312,12 @@ def test_companies_house_connection() -> dict:
         "gatewayDurationMs": gateway_duration_ms,
         "sampleResultCount": sample_count,
         "restConnected": True,
-        "gatewayConnected": True,
+        "gatewayConnected": gateway_connected,
+        "gatewayAttempted": gateway_attempted,
         "gatewayErrorCount": len(gateway_errors),
-        "gatewayResponseBytes": len(gateway_response_text.encode("utf-8")),
-        "message": "Companies House REST and XML gateway connections are working.",
+        "gatewayResponseBytes": gateway_response_bytes,
+        "gatewayError": gateway_error_message,
+        "message": message,
     }
 
 

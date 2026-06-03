@@ -16742,6 +16742,146 @@ def _normalise_supplier_match_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
+def _normalise_companies_house_number(value: str) -> str:
+    text = re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+    if not text:
+        return ""
+    if text.isdigit():
+        if len(text) > 8:
+            text = text[-8:]
+        return text.zfill(8)
+    if len(text) == 8 and text[:2].isalpha() and text[2:].isdigit():
+        return text
+    return text
+
+
+def _is_valid_companies_house_number(value: str) -> bool:
+    text = _normalise_companies_house_number(value)
+    if not text:
+        return False
+    return bool(
+        re.fullmatch(r"\d{8}", text)
+        or re.fullmatch(r"[A-Z]{2}\d{6}", text)
+    )
+
+
+def _supplier_statement_company_number_candidates(statement_text: str) -> list[str]:
+    text = str(statement_text or "")
+    if not text:
+        return []
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def push(value: str) -> None:
+        candidate = _normalise_companies_house_number(value)
+        if not _is_valid_companies_house_number(candidate):
+            return
+        if candidate in seen:
+            return
+        seen.add(candidate)
+        candidates.append(candidate)
+
+    labelled_patterns = (
+        r"(?:company|companies\s+house|registration)\s*(?:number|no|#)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\s]{5,14})",
+        r"\b(?:company|companies\s+house|registration)\s*(?:number|no|#)\b[^\n]{0,30}",
+    )
+    for pattern in labelled_patterns:
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            groups = match.groups() if match.groups() else [match.group(0)]
+            for group in groups:
+                push(group)
+
+    for token in re.findall(r"\b(?:[A-Z]{2}\s*\d{6}|\d{8})\b", text.upper()):
+        push(token)
+
+    return candidates[:8]
+
+
+def _supplier_statement_cached_company_name(company_number: str) -> str:
+    number = _normalise_companies_house_number(company_number)
+    if not _is_valid_companies_house_number(number):
+        return ""
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT company_name, client_name
+                    FROM ch_companies
+                    WHERE UPPER(company_number) = %s
+                    LIMIT 1
+                    """,
+                    (number,),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+    except Exception:
+        return ""
+    if not row:
+        return ""
+    return str(row.get("company_name") or row.get("client_name") or "").strip()
+
+
+def _supplier_statement_companies_house_name(company_number: str) -> str:
+    number = _normalise_companies_house_number(company_number)
+    if not _is_valid_companies_house_number(number):
+        return ""
+    cached_name = _supplier_statement_cached_company_name(number)
+    if cached_name:
+        return cached_name
+
+    settings = get_settings()
+    api_key = str(settings.companies_house_api_key or "").strip()
+    if not api_key:
+        return ""
+    environment = str(settings.companies_house_environment or "sandbox").strip().lower()
+    base_url = (
+        settings.companies_house_production_api_base
+        if environment == "production"
+        else settings.companies_house_sandbox_api_base
+    ).rstrip("/")
+    url = f"{base_url}/company/{number}"
+    try:
+        with httpx.Client(
+            timeout=20.0,
+            auth=(api_key, ""),
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "CreditControlConsole/supplier-reconciliation",
+            },
+        ) as client:
+            response = client.get(url)
+        if response.status_code == 404:
+            return ""
+        if response.is_error:
+            logger.warning("Companies House lookup failed for %s with status %s", number, response.status_code)
+            return ""
+        payload = response.json()
+    except Exception:
+        logger.exception("Companies House lookup failed for supplier statement company number %s", number)
+        return ""
+    return str((payload or {}).get("company_name") or "").strip()
+
+
+def _supplier_statement_companies_house_identity(statement_text: str) -> dict:
+    company_numbers = _supplier_statement_company_number_candidates(statement_text)
+    for company_number in company_numbers:
+        company_name = _supplier_statement_companies_house_name(company_number)
+        if company_name:
+            return {"companyNumber": company_number, "companyName": company_name}
+    if company_numbers:
+        return {"companyNumber": company_numbers[0], "companyName": ""}
+    return {"companyNumber": "", "companyName": ""}
+
+
+def _supplier_compact_name(value: str) -> str:
+    text = _normalise_supplier_match_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"\b(ltd|limited|llp|plc|inc|co|company|corp|corporation)\b", "", text)
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
 def _supplier_match_tokens(value: str) -> list[str]:
     text = _normalise_supplier_match_text(value)
     if not text:
@@ -16866,9 +17006,19 @@ def _supplier_reconciliation_best_contact_match(contacts: list[dict], supplier_n
                 score = 0.0
                 method = "name_similarity"
                 overlap = _supplier_token_overlap_score(supplier_name, contact_name)
+                supplier_compact = _supplier_compact_name(supplier_name)
+                contact_compact = _supplier_compact_name(contact_name)
                 if supplier_name_norm == contact_name_norm:
                     score = 0.985
                     method = "name_exact"
+                elif supplier_compact and contact_compact and supplier_compact == contact_compact:
+                    score = 0.98
+                    method = "name_compact"
+                elif supplier_compact and contact_compact and (
+                    supplier_compact in contact_compact or contact_compact in supplier_compact
+                ):
+                    score = 0.955
+                    method = "compact_contains"
                 elif overlap >= 0.92:
                     score = 0.965
                     method = "token_overlap"
@@ -16960,12 +17110,18 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
     extraction_supplier_name = str(extracted.get("supplierName") or "").strip()
     extraction_client_name = str(extracted.get("clientName") or "").strip()
     extraction_email = str(extracted.get("emailAddress") or "").strip()
+    companies_house_identity = _supplier_statement_companies_house_identity(statement_text)
+    companies_house_company_name = str(companies_house_identity.get("companyName") or "").strip()
+    companies_house_company_number = str(companies_house_identity.get("companyNumber") or "").strip()
     supplier_name_candidates = _supplier_statement_name_candidates(
         statement_text,
         filename or "supplier-statement.pdf",
         extraction_supplier_name,
         extraction_client_name,
     )
+    if companies_house_company_name:
+        supplier_name_candidates = [companies_house_company_name, *supplier_name_candidates]
+        supplier_name_candidates = list(dict.fromkeys(name for name in supplier_name_candidates if str(name or "").strip()))
     resolved_supplier_name = supplier_name_candidates[0] if supplier_name_candidates else extraction_supplier_name
 
     xero_match_payload = {
@@ -16978,6 +17134,8 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
         "needsConfirmation": False,
         "candidates": [],
         "supplierNameCandidates": supplier_name_candidates[:8],
+        "companiesHouseCompanyNumber": companies_house_company_number,
+        "companiesHouseCompanyName": companies_house_company_name,
     }
     if not contact_id:
         contacts = await _supplier_reconciliation_contact_options_for_connection(connection_row)
@@ -16996,6 +17154,8 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
             "needsConfirmation": bool(best_contact) and (best_score < 0.95),
             "candidates": candidates,
             "supplierNameCandidates": supplier_name_candidates[:8],
+            "companiesHouseCompanyNumber": companies_house_company_number,
+            "companiesHouseCompanyName": companies_house_company_name,
         }
         contact_id = str((best_contact or {}).get("xeroContactId") or "")
         if best_contact:
@@ -17017,6 +17177,8 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
                     "needsConfirmation": False,
                     "candidates": [],
                     "supplierNameCandidates": supplier_name_candidates[:8],
+                    "companiesHouseCompanyNumber": companies_house_company_number,
+                    "companiesHouseCompanyName": companies_house_company_name,
                 }
 
     bills = []
@@ -17228,6 +17390,8 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
         "tenantId": tenant_id,
         "contactId": contact_id,
         "supplierName": str(resolved_supplier_name or extracted.get("supplierName") or "").strip(),
+        "supplierCompanyNumber": companies_house_company_number,
+        "supplierCompaniesHouseName": companies_house_company_name,
         "clientName": str(extracted.get("clientName") or "").strip(),
         "emailAddress": str(extracted.get("emailAddress") or "").strip(),
         "supplierAddress": str(extracted.get("supplierAddress") or "").strip(),
@@ -17239,6 +17403,8 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
         "supplierBankSwiftBic": str(extracted.get("supplierBankSwiftBic") or "").strip(),
         "supplierProfile": {
             "name": str(resolved_supplier_name or extracted.get("supplierName") or "").strip(),
+            "companyNumber": companies_house_company_number,
+            "companiesHouseName": companies_house_company_name,
             "address": str(extracted.get("supplierAddress") or "").strip(),
             "email": str(extracted.get("emailAddress") or "").strip(),
             "phone": str(extracted.get("supplierPhone") or "").strip(),

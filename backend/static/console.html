@@ -29528,12 +29528,17 @@
                     const restLatency = Number(result.restDurationMs || latency);
                     const gatewayLatency = Number(result.gatewayDurationMs || 0);
                     const sampleCount = Number(result.sampleResultCount || 0);
+                    const gatewayState = result.gatewayAttempted
+                        ? (result.gatewayConnected ? "XML OK" : "XML failed")
+                        : "XML skipped";
+                    const summary = `${result.message || "Connection check completed."} (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount} · ${gatewayState}.`;
+                    const isConnected = result.connected !== false;
                     const checkedAt = new Date().toISOString();
                     xeroLockDateCHHealth = {
                         loading: false,
-                        ok: true,
+                        ok: isConnected,
                         checkedAt,
-                        message: `CH connected (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount}.`,
+                        message: summary,
                     };
                 } catch (error) {
                     xeroLockDateCHHealth = {
@@ -32852,6 +32857,8 @@
                     clientName: String(result?.clientName || "").trim(),
                     supplierProfile: {
                         name: String(result?.supplierProfile?.name || result?.supplierName || "").trim(),
+                        companyNumber: String(result?.supplierProfile?.companyNumber || result?.supplierCompanyNumber || "").trim(),
+                        companiesHouseName: String(result?.supplierProfile?.companiesHouseName || result?.supplierCompaniesHouseName || "").trim(),
                         address: String(result?.supplierProfile?.address || result?.supplierAddress || "").trim(),
                         email: String(result?.supplierProfile?.email || result?.emailAddress || "").trim(),
                         phone: String(result?.supplierProfile?.phone || result?.supplierPhone || "").trim(),
@@ -33825,7 +33832,7 @@
                         ${xeroMatch.proposedContactId ? `
                             <div class="supplier-recon-model-meta">
                                 <strong>Xero contact auto-match</strong>
-                                <span>Matched to ${escapeHTML(xeroMatch.proposedName || xeroMatch.proposedContactId)} (${Math.round(Number(xeroMatch.confidence || 0) * 100)}% confidence)${xeroMatch.matchedOn ? ` using "${escapeHTML(xeroMatch.matchedOn)}"` : ""}. ${xeroMatch.needsConfirmation ? "Confirm this match or pick a different contact." : "Match confidence is high."}</span>
+                                <span>Matched to ${escapeHTML(xeroMatch.proposedName || xeroMatch.proposedContactId)} (${Math.round(Number(xeroMatch.confidence || 0) * 100)}% confidence)${xeroMatch.matchedOn ? ` using "${escapeHTML(xeroMatch.matchedOn)}"` : ""}${xeroMatch.companiesHouseCompanyName ? ` · CH verified: ${escapeHTML(xeroMatch.companiesHouseCompanyName)}${xeroMatch.companiesHouseCompanyNumber ? ` (${escapeHTML(xeroMatch.companiesHouseCompanyNumber)})` : ""}` : ""}. ${xeroMatch.needsConfirmation ? "Confirm this match or pick a different contact." : "Match confidence is high."}</span>
                                 <div class="detail-actions">
                                     <button class="primary-button" type="button" data-supplier-recon-confirm-match="${escapeHTML(xeroMatch.proposedContactId)}">Confirm match</button>
                                     <button class="ghost-button" type="button" id="supplierReconciliationOpenMatchModalButton">Pick different contact</button>
@@ -33868,7 +33875,7 @@
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td><strong>${escapeHTML(profile.name || "Unknown supplier")}</strong></td>
+                                        <td><strong>${escapeHTML(profile.name || "Unknown supplier")}</strong><small>${profile.companiesHouseName ? `Companies House: ${escapeHTML(profile.companiesHouseName)}${profile.companyNumber ? ` (${escapeHTML(profile.companyNumber)})` : ""}` : (profile.companyNumber ? `Company no: ${escapeHTML(profile.companyNumber)}` : "No company number extracted")}</small></td>
                                         <td>${escapeHTML(profile.address || "No address extracted")}</td>
                                         <td><strong>${escapeHTML(profile.email || "No email")}</strong><small>${escapeHTML(profile.phone || "No phone extracted")}</small></td>
                                         <td><strong>${escapeHTML(profile.bankName || "No bank name")}</strong><small>${escapeHTML([profile.bankAccountNumber, profile.bankSortCode, profile.bankIban, profile.bankSwiftBic].filter(Boolean).join(" · ") || "No bank details extracted")}</small></td>
@@ -53087,11 +53094,18 @@
                     const restLatency = Number(result.restDurationMs || latency);
                     const gatewayLatency = Number(result.gatewayDurationMs || 0);
                     const sampleCount = Number(result.sampleResultCount || 0);
-                    setCompaniesHouseSettingsStatus(
-                        `Connection OK (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount}.`,
-                        "success"
+                    const gatewayState = result.gatewayAttempted
+                        ? (result.gatewayConnected ? "XML OK" : "XML failed")
+                        : "XML skipped";
+                    const summary = `${result.message || "Connection check completed."} (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount} · ${gatewayState}.`;
+                    const isConnected = result.connected !== false;
+                    setCompaniesHouseSettingsStatus(summary, isConnected ? "success" : "error");
+                    showToast(
+                        isConnected
+                            ? "Companies House connection test passed."
+                            : (result.message || "Companies House connection test failed."),
+                        isConnected ? "success" : "error"
                     );
-                    showToast("Companies House connection test passed.", "success");
                 } catch (error) {
                     console.error("Unable to test Companies House connection", error);
                     if (error instanceof AuthRequiredError) {
