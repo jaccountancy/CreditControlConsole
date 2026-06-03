@@ -101,6 +101,7 @@ LATE_PAYMENT_CHARGE_BASE_AMOUNTS = (Decimal("20.00"), Decimal("30.00"), Decimal(
 DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT = LATE_PAYMENT_CHARGE_BASE_AMOUNTS[0]
 LATE_PAYMENT_CHARGE_VAT_RATE = Decimal("0.20")
 OPENAI_INSIGHTS_TIMEOUT_SECONDS = 135
+OPENAI_ME_REPORT_TIMEOUT_SECONDS = 300
 RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
 XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
@@ -386,19 +387,40 @@ def _openai_error_detail(response: httpx.Response) -> tuple[str, str]:
     return str(payload)[:500], ""
 
 
-async def _post_openai_responses(request_body: dict, purpose: str, preferred_model: str | None = None) -> dict:
+async def _post_openai_responses(
+    request_body: dict,
+    purpose: str,
+    preferred_model: str | None = None,
+    timeout_seconds: float | None = None,
+) -> dict:
     settings = get_settings()
     attempted: list[str] = []
     last_message = ""
     requested_model = preferred_model if str(preferred_model or "").strip() else settings.openai_model
-    async with httpx.AsyncClient(timeout=OPENAI_INSIGHTS_TIMEOUT_SECONDS) as client:
+    timeout = float(timeout_seconds or OPENAI_INSIGHTS_TIMEOUT_SECONDS)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         for model_name in _openai_model_candidates(requested_model):
             attempted.append(model_name)
-            response = await client.post(
-                "https://api.openai.com/v1/responses",
-                headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
-                json={**request_body, "model": model_name},
-            )
+            try:
+                response = await client.post(
+                    "https://api.openai.com/v1/responses",
+                    headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+                    json={**request_body, "model": model_name},
+                )
+            except httpx.TimeoutException as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail=(
+                        f"OpenAI {purpose} timed out after {int(timeout)} seconds. "
+                        "This usually means the uploaded report is very large or complex. "
+                        "Retry will continue in staged mode for ME Report spreadsheets."
+                    ),
+                ) from exc
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"OpenAI {purpose} failed due to a network error: {exc}",
+                ) from exc
             if not response.is_error:
                 return response.json()
             message, code = _openai_error_detail(response)
@@ -8640,12 +8662,58 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
             request_body,
             "ME Report PDF extraction",
             preferred_model=settings.me_report_openai_model or settings.openai_model,
+            timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS,
         )
     )
     try:
         return json.loads(text) if text else {}
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned ME Report extraction that was not valid JSON.") from exc
+
+
+def _me_report_http_exception_detail(exc: Exception) -> str:
+    if not isinstance(exc, HTTPException):
+        return str(exc or "")
+    detail = exc.detail
+    if isinstance(detail, dict):
+        return str(detail.get("message") or detail)
+    return str(detail or "")
+
+
+def _is_me_report_timeout_exception(exc: Exception) -> bool:
+    detail_text = _me_report_http_exception_detail(exc).lower()
+    if isinstance(exc, HTTPException) and exc.status_code == status.HTTP_504_GATEWAY_TIMEOUT:
+        return True
+    return "timed out" in detail_text or "timeout" in detail_text
+
+
+def _me_report_spreadsheet_focus_text(spreadsheet_text: str, max_chars: int = 120000) -> str:
+    if not spreadsheet_text:
+        return ""
+    keywords = re.compile(
+        r"(profit|loss|balance sheet|trial balance|turnover|vat|fixed asset|depreciation|director loan|dla|dividend|transaction|invoice|bill|payment|bank|duplicate|mispost|nominal)",
+        re.IGNORECASE,
+    )
+    selected: list[str] = []
+    carry_lines = 0
+    for raw_line in spreadsheet_text.splitlines():
+        line = str(raw_line or "").strip()
+        if not line:
+            continue
+        if line.lower().startswith("sheet:"):
+            selected.append(line)
+            carry_lines = 2
+            continue
+        if carry_lines > 0:
+            selected.append(line)
+            carry_lines -= 1
+            continue
+        if keywords.search(line):
+            selected.append(line)
+    focused = "\n".join(selected).strip()
+    if len(focused) < 6000:
+        focused = spreadsheet_text
+    return focused[:max_chars]
 
 
 async def _extract_me_report_spreadsheet(file_bytes: bytes, filename: str, client: dict) -> dict:
@@ -8684,40 +8752,74 @@ async def _extract_me_report_spreadsheet(file_bytes: bytes, filename: str, clien
         "Review chart of accounts for likely spelling mistakes, odd labels, duplicates, or confusing names. "
         f"The client workspace is {client.get('client_name') or 'unknown'}."
     )
-    request_body = {
-        "input": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": prompt},
-                    {
-                        "type": "input_text",
-                        "text": (
-                            f"Workbook filename: {filename or 'overview.xlsx'}\n"
-                            "Workbook extracted rows (sheet by sheet):\n"
-                            f"{spreadsheet_text}"
-                        ),
-                    },
-                ],
-            }
-        ],
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "me_report_spreadsheet_extraction",
-                "schema": ME_REPORT_PDF_EXTRACTION_SCHEMA,
-                "strict": True,
-            }
-        },
-        "max_output_tokens": 12000,
-    }
-    text = _extract_response_text(
-        await _post_openai_responses(
-            request_body,
+    def extraction_request(stage_label: str, workbook_text: str) -> dict:
+        return {
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": f"{prompt}\n\nProcessing stage: {stage_label}"},
+                        {
+                            "type": "input_text",
+                            "text": (
+                                f"Workbook filename: {filename or 'overview.xlsx'}\n"
+                                "Workbook extracted rows (sheet by sheet):\n"
+                                f"{workbook_text}"
+                            ),
+                        },
+                    ],
+                }
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "me_report_spreadsheet_extraction",
+                    "schema": ME_REPORT_PDF_EXTRACTION_SCHEMA,
+                    "strict": True,
+                }
+            },
+            "max_output_tokens": 12000,
+        }
+
+    extraction_error: Exception | None = None
+    response_payload: dict | None = None
+    try:
+        response_payload = await _post_openai_responses(
+            extraction_request("Stage 1 of 2 (full workbook extraction)", spreadsheet_text),
             "ME Report spreadsheet extraction",
             preferred_model=settings.me_report_openai_model or settings.openai_model,
+            timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS,
         )
-    )
+    except Exception as exc:
+        extraction_error = exc
+        if _is_me_report_timeout_exception(exc):
+            focused_text = _me_report_spreadsheet_focus_text(spreadsheet_text)
+            try:
+                response_payload = await _post_openai_responses(
+                    extraction_request("Stage 2 of 2 (focused retry after timeout)", focused_text),
+                    "ME Report spreadsheet extraction (focused retry)",
+                    preferred_model=settings.me_report_openai_model or settings.openai_model,
+                    timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS,
+                )
+            except Exception as focused_exc:
+                if _is_me_report_timeout_exception(focused_exc):
+                    raise HTTPException(
+                        status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                        detail=(
+                            "JUK Overview spreadsheet processing timed out in both full and focused stages. "
+                            "This usually happens when year-to-date transaction volume is very high. "
+                            "Try splitting by period (for example quarterly) and upload in sequence."
+                        ),
+                    ) from focused_exc
+                raise
+        else:
+            raise
+
+    if not response_payload:
+        if extraction_error is not None:
+            raise extraction_error
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI did not return ME Report spreadsheet extraction output.")
+    text = _extract_response_text(response_payload)
     try:
         return json.loads(text) if text else {}
     except ValueError as exc:
