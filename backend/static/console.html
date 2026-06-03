@@ -13073,6 +13073,28 @@
             .ignition-renewals-modal-head > div:first-child {
                 min-width: min(420px, 100%);
             }
+            .ignition-renewals-start-head {
+                width: min(1520px, 100%);
+                margin: 0 auto;
+            }
+            .ignition-renewals-start-title-row {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            .ignition-renewals-start-actions {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            #ignitionRenewalStartModal .ignition-renewals-meta,
+            #ignitionRenewalStartModal .ignition-renewals-table-wrap {
+                width: min(1520px, 100%);
+                margin-left: auto;
+                margin-right: auto;
+            }
             .ignition-renewals-modal .ignition-renewals-table-wrap {
                 height: 100%;
                 max-height: none;
@@ -13194,7 +13216,7 @@
             .ignition-renewals-pricing-table th:nth-child(7),
             .ignition-renewals-pricing-table td:nth-child(7) { width: 8%; }
             .ignition-renewals-candidates-table {
-                min-width: 760px;
+                min-width: 700px;
             }
             .ignition-renewals-candidates-table th:first-child,
             .ignition-renewals-candidates-table td:first-child {
@@ -13210,13 +13232,13 @@
                 background: var(--surface-soft);
             }
             .ignition-renewals-candidates-table th:nth-child(2),
-            .ignition-renewals-candidates-table td:nth-child(2) { width: 40%; }
+            .ignition-renewals-candidates-table td:nth-child(2) { width: 38%; }
             .ignition-renewals-candidates-table th:nth-child(3),
-            .ignition-renewals-candidates-table td:nth-child(3) { width: 18%; }
+            .ignition-renewals-candidates-table td:nth-child(3) { width: 20%; }
             .ignition-renewals-candidates-table th:nth-child(4),
-            .ignition-renewals-candidates-table td:nth-child(4) { width: 19%; }
+            .ignition-renewals-candidates-table td:nth-child(4) { width: 20%; }
             .ignition-renewals-candidates-table th:nth-child(5),
-            .ignition-renewals-candidates-table td:nth-child(5) { width: 23%; }
+            .ignition-renewals-candidates-table td:nth-child(5) { width: 22%; }
             .ignition-renewals-batch-stage {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr);
@@ -20298,16 +20320,18 @@
                         <div class="ignition-renewals-modal" id="ignitionRenewalStartModal" hidden>
                             <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalStartTitle">
                                 <div class="ignition-renewals-modal-head">
-                                    <div>
+                                    <div class="ignition-renewals-start-head">
                                         <p class="eyebrow">Renewals process</p>
-                                        <h3 id="ignitionRenewalStartTitle">Step 1: Select clients</h3>
+                                        <div class="ignition-renewals-start-title-row">
+                                            <h3 id="ignitionRenewalStartTitle">Step 1: Select clients</h3>
+                                            <div class="detail-actions ignition-renewals-start-actions">
+                                                <button class="ghost-button" id="ignitionRenewalsDeselectAllCandidatesButton" type="button">Deselect all</button>
+                                                <button class="ghost-button danger-button" id="ignitionRenewalsMarkIneligibleCandidatesButton" type="button">Mark selected ineligible</button>
+                                                <button class="ghost-button" id="closeIgnitionRenewalStartButton" type="button">Close</button>
+                                                <button class="primary-button" id="confirmIgnitionRenewalStartButton" type="button">Include selected and continue</button>
+                                            </div>
+                                        </div>
                                         <p class="detail-meta" id="ignitionRenewalStartSummary">Select eligible clients to include in this renewal batch, then continue to Step 2 for fee review and approval.</p>
-                                    </div>
-                                    <div class="detail-actions">
-                                        <button class="ghost-button" id="ignitionRenewalsDeselectAllCandidatesButton" type="button">Deselect all</button>
-                                        <button class="ghost-button danger-button" id="ignitionRenewalsMarkIneligibleCandidatesButton" type="button">Mark selected ineligible</button>
-                                        <button class="ghost-button" id="closeIgnitionRenewalStartButton" type="button">Close</button>
-                                        <button class="primary-button" id="confirmIgnitionRenewalStartButton" type="button">Include selected and continue</button>
                                     </div>
                                 </div>
                                 <div class="ignition-renewals-meta" id="ignitionRenewalStartMeta"></div>
@@ -21652,12 +21676,20 @@
             let selectedInvoiceId = persistedUIState.selectedInvoiceId || state.selectedInvoice?.id || null;
             let selectedInvoiceIds = new Set();
             let selectedClientId = persistedUIState.selectedClientId || null;
-            let activeView = "ledger";
+            let activeView = typeof persistedUIState.activeView === "string" && persistedUIState.activeView.trim()
+                ? persistedUIState.activeView
+                : "ledger";
             let selectedSa100WorkspaceId = "";
             let sa100PrepStage = "workspace";
-            let activeNavSection = "home";
-            let activeClientSection = "invoices";
-            let activeSettingsSection = "data-import";
+            let activeNavSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
+                ? persistedUIState.activeNavSection
+                : "home";
+            let activeClientSection = typeof persistedUIState.activeClientSection === "string" && persistedUIState.activeClientSection.trim()
+                ? persistedUIState.activeClientSection
+                : "invoices";
+            let activeSettingsSection = typeof persistedUIState.activeSettingsSection === "string" && persistedUIState.activeSettingsSection.trim()
+                ? persistedUIState.activeSettingsSection
+                : "data-import";
             const sa100PrepWorkspaces = [
                 { id: "sa100-ws-1", clientName: "Atlas Electrical Ltd", utr: "12345 67890", taxYear: "2025/26", yearEnd: "05 Apr 2026", turnoverEstimate: 86400 },
                 { id: "sa100-ws-2", clientName: "Marlow Fitness Coaching", utr: "76109 77342", taxYear: "2025/26", yearEnd: "05 Apr 2026", turnoverEstimate: 52650 },
@@ -23395,6 +23427,10 @@
                 try {
                     localStorage.setItem(STORAGE_KEY, JSON.stringify({
                         version: 3,
+                        activeView,
+                        activeNavSection,
+                        activeClientSection,
+                        activeSettingsSection,
                         selectedInvoiceId,
                         selectedClientId,
                         selectedFilter,
@@ -39346,7 +39382,7 @@
             }
 
             function ensureIgnitionRenewalSelection() {
-                if (!ignitionRenewalSelection.size) seedIgnitionRenewalSelection();
+                if (!(ignitionRenewalSelection instanceof Set)) seedIgnitionRenewalSelection();
             }
 
             function ignitionRenewalSelectionList() {
@@ -39536,7 +39572,7 @@
                 if (summary) {
                     summary.textContent = ignitionRenewalStartLoading
                         ? "Syncing and preparing the eligible client list for this workflow window."
-                        : `${syncedCount.toLocaleString("en-GB")} proposal${syncedCount === 1 ? "" : "s"} synced. ${selfAssessmentExcludedCount.toLocaleString("en-GB")} excluded (Self Assessment / Annual Accounts & CT / Accountant Letter / LPC). ${availableCount.toLocaleString("en-GB")} eligible for Step 1 selection.`;
+                        : `${syncedCount.toLocaleString("en-GB")} proposal${syncedCount === 1 ? "" : "s"} synced. ${selfAssessmentExcludedCount.toLocaleString("en-GB")} excluded (Self Assessment / Employment Expenses Claim / Annual Accounts & CT / Accountant Letter / LPC / Company Formation / Hourly Rate). ${availableCount.toLocaleString("en-GB")} eligible for Step 1 selection.`;
                 }
                 if (meta) {
                     meta.innerHTML = ignitionRenewalStartLoading
@@ -39583,9 +39619,9 @@
                             <tr>
                                 <th><input type="checkbox" id="ignitionRenewalsSelectAllCandidates" ${selectedSet.size === candidates.length ? "checked" : ""} aria-label="Select all candidates"></th>
                                 <th>Client</th>
+                                <th>Proposal Start Date</th>
                                 <th>Proposal End Date</th>
                                 <th>Manager</th>
-                                <th>Current Net Monthly Fee</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -39596,9 +39632,9 @@
                                     <tr>
                                         <td><input type="checkbox" data-renewal-candidate-id="${escapeHTML(candidateId)}" ${checked ? "checked" : ""}></td>
                                         <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
+                                        <td>${escapeHTML(formatDate(item.proposalStartDate || ""))}</td>
                                         <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
                                         <td>${escapeHTML(item.clientManager || "Unassigned")}</td>
-                                        <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
                                     </tr>
                                 `;
                             }).join("")}
@@ -51576,6 +51612,7 @@
                 renderPracticePackScreen();
                 renderClientScreen();
                 enhanceConsoleButtons();
+                persistState();
             }
 
             function wireFilters() {
@@ -57975,12 +58012,18 @@
                 wireUserActivityLogging();
                 companySecretarialQueue = loadCompanySecretarialQueue();
                 const initialSection = appNavSectionFromHash();
+                const hasPersistedActiveView = Object.prototype.hasOwnProperty.call(persistedUIState, "activeView");
+                const persistedSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
+                    ? persistedUIState.activeNavSection
+                    : (hasPersistedActiveView ? activeNavForView() : "");
                 if (returnedFromIgnitionConnection) {
                     activeView = "ignition";
                 } else if (returnedFromXeroConnection && xeroConnectionReturn.targetSection && appNavHashes[xeroConnectionReturn.targetSection]) {
                     navigateApp(xeroConnectionReturn.targetSection);
                 } else if (initialSection) {
                     navigateApp(initialSection);
+                } else if (persistedSection && appNavHashes[persistedSection]) {
+                    navigateApp(persistedSection);
                 } else {
                     navigateApp("home");
                 }

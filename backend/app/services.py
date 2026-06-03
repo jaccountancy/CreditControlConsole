@@ -15453,6 +15453,11 @@ def _ignition_proposal_is_self_assessment(row: dict) -> bool:
         "self-assessment",
         "sa100",
         "personal tax return",
+        "employment expenses claim",
+        "company formation",
+        "company-formation",
+        "hourly rate",
+        "hourly-rate",
         "annual accounts & ct",
         "annual accounts and ct",
         "annual accounts + ct",
@@ -15723,6 +15728,28 @@ def _ignition_proposal_end_date(row: dict) -> date | None:
     return None
 
 
+def _ignition_proposal_start_date(row: dict) -> date | None:
+    start_candidates = (
+        row.get("proposal_start_date"),
+        row.get("proposalStartDate"),
+        row.get("start_date"),
+        row.get("startDate"),
+        row.get("commencement_date"),
+        row.get("commencementDate"),
+        row.get("signed_at"),
+        row.get("signedAt"),
+        row.get("accepted_at"),
+        row.get("acceptedAt"),
+        row.get("created_at"),
+        row.get("createdAt"),
+    )
+    for candidate in start_candidates:
+        start_date = _parse_ignition_renewal_date_value(candidate)
+        if start_date:
+            return start_date
+    return None
+
+
 def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -> tuple[Decimal, Decimal]:
     variance = _money(new_monthly - current_monthly)
     if new_monthly <= 0:
@@ -15732,6 +15759,7 @@ def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -
 
 def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     row = record.get("payload") or {}
+    proposal_start_date = _ignition_proposal_start_date(row)
     current_monthly = _money(_proposal_mrr(row))
     new_monthly = _money(current_monthly * Decimal("1.025"))
     variance, variance_percent = _ignition_renewal_variance(current_monthly, new_monthly)
@@ -15744,6 +15772,7 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
         "client_manager": _ignition_proposal_client_manager(row),
         "service_name": service_name,
         "plan_name": plan_name,
+        "proposal_start_date": proposal_start_date,
         "renewal_date": renewal_date,
         "current_monthly_fee": current_monthly,
         "new_monthly_fee": new_monthly,
@@ -16000,6 +16029,7 @@ def _serialize_ignition_renewal_candidate(item: dict) -> dict:
         "clientManager": str(item.get("client_manager") or ""),
         "serviceName": str(item.get("service_name") or ""),
         "planName": str(item.get("plan_name") or ""),
+        "proposalStartDate": _iso(item.get("proposal_start_date")) or "",
         "renewalDate": _iso(item.get("renewal_date")) or "",
         "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
         "newMonthlyFee": float(_money(item.get("new_monthly_fee"))),
