@@ -13490,22 +13490,113 @@
                 box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
                 background: rgba(242, 248, 255, 0.96);
             }
-            .renewals-ai-hint {
-                width: 18px;
-                height: 18px;
+            .renewals-ai-hint-button {
+                width: 22px;
+                height: 22px;
                 border-radius: 50%;
-                border: 1px solid rgba(29, 103, 242, 0.38);
-                background: rgba(29, 103, 242, 0.1);
-                color: var(--blue);
-                font-size: 0.72rem;
-                font-weight: 900;
-                line-height: 1;
+                border: 1px solid rgba(29, 103, 242, 0.34);
+                background: linear-gradient(145deg, rgba(29, 103, 242, 0.16), rgba(60, 134, 255, 0.08));
+                color: #1d67f2;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                cursor: help;
+                cursor: pointer;
                 user-select: none;
                 flex: 0 0 auto;
+                transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            }
+            .renewals-ai-hint-button:hover,
+            .renewals-ai-hint-button:focus-visible {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.52);
+                background: linear-gradient(145deg, rgba(29, 103, 242, 0.22), rgba(60, 134, 255, 0.14));
+                box-shadow: 0 10px 16px rgba(29, 103, 242, 0.18);
+                outline: none;
+            }
+            .renewals-ai-hint-button svg {
+                width: 12px;
+                height: 12px;
+                stroke: currentColor;
+                fill: none;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                stroke-width: 2;
+            }
+            .ignition-renewals-ai-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 820;
+                background: rgba(13, 20, 33, 0.4);
+                display: grid;
+                place-items: center;
+                padding: 18px;
+            }
+            .ignition-renewals-ai-modal[hidden] {
+                display: none;
+            }
+            .ignition-renewals-ai-modal-card {
+                width: min(560px, calc(100vw - 36px));
+                border-radius: 16px;
+                border: 1px solid rgba(61, 85, 130, 0.24);
+                background: #ffffff;
+                box-shadow: 0 28px 44px rgba(16, 37, 70, 0.26);
+                padding: 18px 18px 16px;
+                animation: renewals-ai-modal-enter 0.2s ease;
+            }
+            .ignition-renewals-ai-modal-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .ignition-renewals-ai-modal-head h4 {
+                margin: 0;
+                font-size: 1rem;
+                color: #1f3153;
+                line-height: 1.2;
+            }
+            .ignition-renewals-ai-modal-head p {
+                margin: 4px 0 0;
+                color: #6d7f9a;
+                font-size: 0.82rem;
+                font-weight: 700;
+            }
+            .ignition-renewals-ai-modal-close {
+                min-width: 28px;
+                height: 28px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                border-radius: 10px;
+                background: #fff;
+                color: #536a8d;
+                font-size: 1rem;
+                line-height: 1;
+                cursor: pointer;
+            }
+            .ignition-renewals-ai-modal-body {
+                margin-top: 12px;
+                display: grid;
+                gap: 10px;
+                color: #2b3f61;
+            }
+            .ignition-renewals-ai-modal-body p {
+                margin: 0;
+                font-size: 0.86rem;
+                line-height: 1.45;
+            }
+            .ignition-renewals-ai-modal-list {
+                margin: 0;
+                padding: 10px 12px;
+                border-radius: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                background: rgba(248, 251, 255, 0.9);
+                display: grid;
+                gap: 5px;
+                font-size: 0.8rem;
+                color: #445a7d;
+            }
+            @keyframes renewals-ai-modal-enter {
+                from { opacity: 0; transform: translateY(6px) scale(0.98); }
+                to { opacity: 1; transform: translateY(0) scale(1); }
             }
             .ignition-renewals-pricing-table input[data-renewal-field="clientManager"][readonly] {
                 background: rgba(238, 243, 255, 0.7);
@@ -22601,6 +22692,8 @@
             let ignitionRenewalAIAppliedRows = new Set();
             let ignitionRenewalAIPopulating = false;
             const ignitionRenewalAIMetadataByRowId = new Map();
+            let ignitionRenewalReasoningModalOpen = false;
+            let ignitionRenewalReasoningModalRowId = "";
             let ignitionRenewalBatchSearchTerm = "";
             let ignitionRenewalBatchSortMode = "created-desc";
             let ignitionRenewalBatchStatusFilter = "all";
@@ -40588,6 +40681,7 @@
                 if (finaliseButton) finaliseButton.textContent = run?.finalisedAt ? "Finalised" : "Finalise renewals";
                 if (ignitionRenewalStartModalOpen) renderIgnitionRenewalStartModal();
                 renderIgnitionRenewalsLaunch();
+                renderIgnitionRenewalReasoningModal();
             }
 
             function renderIgnitionRenewalsBatchWorkspace() {
@@ -40759,7 +40853,6 @@
                     const showValue = locked || isAiApplied;
                     const variance = showValue && hasManualValue ? proposed - current : 0;
                     const increasePercent = showValue && hasManualValue && current > 0 ? variance / current : 0;
-                    const aiTooltip = isAiApplied ? ignitionRenewalTooltipText(item, ignitionRenewalAIMetadataByRowId.get(rowId)) : "";
                     return `
                         <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
                             <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong>${proposalName ? `<span class="ignition-renewals-proposal-name">${escapeHTML(proposalName)}</span>` : ""}</td>
@@ -40768,7 +40861,7 @@
                             <td data-label="New Net Monthly Fee">
                                 <div class="renewals-ai-cell">
                                     <input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${showValue && hasManualValue ? proposed.toFixed(2) : ""}" ${locked ? "disabled" : ""}>
-                                    ${isAiApplied ? `<span class="renewals-ai-hint" title="${escapeHTML(aiTooltip)}" aria-label="AI reasoning">?</span>` : ""}
+                                    ${isAiApplied ? `<button class="renewals-ai-hint-button" type="button" data-renewal-ai-reasoning="${escapeHTML(rowId)}" aria-label="Open AI reasoning"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l1.2 3.5L17 8l-3 2.2 1 3.6L12 12l-3 1.8 1-3.6L7 8l3.8-1.5L12 3Z"></path><path d="M5 16l.8 2.3L8 19l-2 1.4.6 2.1L5 21.4l-1.6 1.1.6-2.1L2 19l2.2-.7L5 16Z"></path><path d="M19 14l.9 2.5L22 17l-1.7 1.3.6 2L19 19.2l-1.9 1.1.6-2L16 17l2.1-.5L19 14Z"></path></svg></button>` : ""}
                                 </div>
                             </td>
                             <td data-label="Variance" class="money-cell" data-renewal-variance>${showValue && hasManualValue ? formatCurrency(variance) : "-"}</td>
@@ -40812,35 +40905,201 @@
                 `;
             }
 
-            function ignitionRenewalTooltipText(item, metadata) {
+            function ignitionRenewalAmountNarrative(delta) {
+                if (!Number.isFinite(delta)) return "held fees flat";
+                if (Math.abs(delta) < 0.005) return "held fees flat";
+                if (delta > 0) return `increased fees by ${formatCurrency(delta)} per month plus VAT`;
+                return `reduced fees by ${formatCurrency(Math.abs(delta))} per month plus VAT`;
+            }
+
+            function ignitionRenewalOrdinalLabel(value) {
+                const number = Math.max(1, Number(value) || 1);
+                const mod100 = number % 100;
+                if (mod100 >= 11 && mod100 <= 13) return `${number}th`;
+                const mod10 = number % 10;
+                if (mod10 === 1) return `${number}st`;
+                if (mod10 === 2) return `${number}nd`;
+                if (mod10 === 3) return `${number}rd`;
+                return `${number}th`;
+            }
+
+            function ignitionRenewalClientTenureNarrative(startDateRaw = "") {
+                const startMs = Date.parse(String(startDateRaw || ""));
+                if (!Number.isFinite(startMs)) return "has been a valued client of Jaccountancy.";
+                const startDate = new Date(startMs);
+                const now = new Date();
+                let years = now.getUTCFullYear() - startDate.getUTCFullYear();
+                const anniversaryPassed = (
+                    now.getUTCMonth() > startDate.getUTCMonth()
+                    || (now.getUTCMonth() === startDate.getUTCMonth() && now.getUTCDate() >= startDate.getUTCDate())
+                );
+                if (!anniversaryPassed) years -= 1;
+                years = Math.max(0, years);
+                const monthYear = startDate.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+                const nextYearLabel = ignitionRenewalOrdinalLabel(years + 1);
+                return `joined us in ${monthYear} and has been a client for ${years} year${years === 1 ? "" : "s"}, about to start ${nextYearLabel} year as a client of Jaccountancy.`;
+            }
+
+            function ignitionRenewalReasoningData(item, metadata) {
                 const meta = metadata || {};
                 const context = meta.context && typeof meta.context === "object" ? meta.context : {};
-                const proposalPoints = Array.isArray(context.proposalPoints) ? context.proposalPoints : [];
-                const recentChanges = Array.isArray(context.recentChanges) ? context.recentChanges : [];
-                const historicalLines = proposalPoints.length
-                    ? proposalPoints
-                        .slice(-8)
-                        .map((point) => {
-                            const dateLabel = formatDate(point?.date || "") || point?.date || "Unknown date";
-                            const feeLabel = formatCurrency(Number(point?.mrr || 0));
-                            return `${dateLabel}: ${feeLabel}`;
-                        })
-                    : ["No historical proposal fee points available."];
-                const changeLines = recentChanges.length
-                    ? recentChanges
-                        .slice(-8)
-                        .map((change) => `${formatDate(change?.date || "") || change?.date || "Unknown date"}: ${ignitionRenewalPercent(Number(change?.percent || 0))}`)
-                    : ["No comparable prior increase percentages available."];
+                const proposalPoints = (Array.isArray(context.proposalPoints) ? context.proposalPoints : [])
+                    .map((point) => ({
+                        date: String(point?.date || ""),
+                        mrr: Number(point?.mrr),
+                    }))
+                    .filter((point) => point.date && Number.isFinite(point.mrr))
+                    .sort((a, b) => (Date.parse(a.date) || 0) - (Date.parse(b.date) || 0));
+                const pointChanges = proposalPoints.slice(1).map((point, index) => {
+                    const previous = proposalPoints[index];
+                    const delta = point.mrr - previous.mrr;
+                    const percent = previous.mrr > 0 ? delta / previous.mrr : 0;
+                    return {
+                        date: point.date,
+                        dateLabel: formatDate(point.date) || point.date,
+                        delta,
+                        percent,
+                    };
+                });
+                const startDate = proposalPoints[0]?.date || "";
+                const startYear = Number.isFinite(Date.parse(startDate))
+                    ? String(new Date(startDate).getUTCFullYear())
+                    : "";
+                const currentMonthly = Number(item?.currentMonthlyFee || 0);
+                const recommendedMonthly = Number(meta.recommendedMonthly || item?.newMonthlyFee || 0);
+                const recommendedDelta = Number.isFinite(recommendedMonthly) ? recommendedMonthly - currentMonthly : 0;
+                const recommendedPercent = currentMonthly > 0
+                    ? (recommendedDelta / currentMonthly)
+                    : Number(meta.recommendedIncreasePercent || 0);
+                const historicalPercents = pointChanges
+                    .map((change) => Number(change.percent))
+                    .filter((value) => Number.isFinite(value));
+                const averageHistoricalPercent = historicalPercents.length
+                    ? historicalPercents.reduce((sum, value) => sum + value, 0) / historicalPercents.length
+                    : recommendedPercent;
                 const reason = String(meta.reason || item?.recommendationReason || "Recommendation based on available historical changes.").trim();
-                return [
-                    `AI reasoning: ${reason}`,
-                    "",
-                    "Historical proposal monthly fees:",
-                    ...historicalLines,
-                    "",
-                    "Historical increase percentages:",
-                    ...changeLines,
-                ].join("\n");
+                return {
+                    proposalPoints,
+                    pointChanges,
+                    startYear,
+                    currentMonthly,
+                    recommendedMonthly,
+                    recommendedDelta,
+                    recommendedPercent,
+                    averageHistoricalPercent,
+                    reason,
+                };
+            }
+
+            function ignitionRenewalReasoningNarrative(item, metadata) {
+                const data = ignitionRenewalReasoningData(item, metadata);
+                const clientName = String(item?.clientName || metadata?.clientName || "This client");
+                const firstChange = data.pointChanges[0] || null;
+                const secondChange = data.pointChanges[1] || null;
+                const joinDateRaw = data.proposalPoints[0]?.date || "";
+                const openingSentence = `${clientName} ${ignitionRenewalClientTenureNarrative(joinDateRaw)}`;
+                const renewalSentences = [];
+                if (firstChange) {
+                    renewalSentences.push(`On the first renewal (${firstChange.dateLabel}) we ${ignitionRenewalAmountNarrative(firstChange.delta)} (${ignitionRenewalPercent(firstChange.percent)}).`);
+                }
+                if (secondChange) {
+                    renewalSentences.push(`On the second renewal (${secondChange.dateLabel}) we ${ignitionRenewalAmountNarrative(secondChange.delta)} (${ignitionRenewalPercent(secondChange.percent)}).`);
+                }
+                const suggestionSentence = `For this year's renewal, I suggest ${ignitionRenewalAmountNarrative(data.recommendedDelta)} (${ignitionRenewalPercent(data.recommendedPercent)}), taking the net monthly fee to ${formatCurrency(data.recommendedMonthly)}.`;
+                const trendSentence = `Across ${Math.max(1, data.pointChanges.length)} historical renewal${data.pointChanges.length === 1 ? "" : "s"}, the average uplift has been ${ignitionRenewalPercent(data.averageHistoricalPercent)}.`;
+                const reasonSentence = data.reason ? `Why this recommendation: ${data.reason}` : "";
+                return {
+                    summary: [openingSentence, ...renewalSentences, suggestionSentence, trendSentence, reasonSentence].filter(Boolean).join(" "),
+                    historyLines: data.proposalPoints.length
+                        ? data.proposalPoints.map((point) => `${formatDate(point.date) || point.date}: ${formatCurrency(point.mrr)}`)
+                        : ["No historical proposal fee points available."],
+                    changeLines: data.pointChanges.length
+                        ? data.pointChanges.map((change) => `${change.dateLabel}: ${ignitionRenewalPercent(change.percent)} (${ignitionRenewalAmountNarrative(change.delta)})`)
+                        : ["No comparable prior increase percentages available."],
+                };
+            }
+
+            function ensureIgnitionRenewalReasoningModal() {
+                let modal = document.getElementById("ignitionRenewalAiReasoningModal");
+                if (modal) return modal;
+                modal = document.createElement("div");
+                modal.id = "ignitionRenewalAiReasoningModal";
+                modal.className = "ignition-renewals-ai-modal";
+                modal.hidden = true;
+                modal.innerHTML = `
+                    <div class="ignition-renewals-ai-modal-card" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalAiReasoningTitle">
+                        <div class="ignition-renewals-ai-modal-head">
+                            <div>
+                                <h4 id="ignitionRenewalAiReasoningTitle">AI pricing reasoning</h4>
+                                <p id="ignitionRenewalAiReasoningClient"></p>
+                            </div>
+                            <button class="ignition-renewals-ai-modal-close" type="button" id="closeIgnitionRenewalAiReasoningModal" aria-label="Close AI reasoning">×</button>
+                        </div>
+                        <div class="ignition-renewals-ai-modal-body">
+                            <p id="ignitionRenewalAiReasoningSummary"></p>
+                            <div class="ignition-renewals-ai-modal-list" id="ignitionRenewalAiReasoningHistory"></div>
+                            <div class="ignition-renewals-ai-modal-list" id="ignitionRenewalAiReasoningChanges"></div>
+                        </div>
+                    </div>
+                `;
+                modal.addEventListener("click", (event) => {
+                    if (event.target?.id === "ignitionRenewalAiReasoningModal") closeIgnitionRenewalReasoningModal();
+                });
+                modal.querySelector("#closeIgnitionRenewalAiReasoningModal")?.addEventListener("click", closeIgnitionRenewalReasoningModal);
+                document.body.appendChild(modal);
+                return modal;
+            }
+
+            function closeIgnitionRenewalReasoningModal() {
+                ignitionRenewalReasoningModalOpen = false;
+                ignitionRenewalReasoningModalRowId = "";
+                renderIgnitionRenewalReasoningModal();
+            }
+
+            function openIgnitionRenewalReasoningModal(rowId = "") {
+                const safeRowId = String(rowId || "").trim();
+                if (!safeRowId) return;
+                ignitionRenewalReasoningModalOpen = true;
+                ignitionRenewalReasoningModalRowId = safeRowId;
+                renderIgnitionRenewalReasoningModal();
+            }
+
+            function renderIgnitionRenewalReasoningModal() {
+                const modal = ensureIgnitionRenewalReasoningModal();
+                if (!ignitionRenewalReasoningModalOpen) {
+                    modal.hidden = true;
+                    return;
+                }
+                const run = ignitionRenewalRun();
+                const item = (run?.items || []).find((entry) => String(entry?.id || "") === ignitionRenewalReasoningModalRowId) || null;
+                const metadata = ignitionRenewalAIMetadataByRowId.get(ignitionRenewalReasoningModalRowId);
+                if (!item || !metadata) {
+                    ignitionRenewalReasoningModalOpen = false;
+                    ignitionRenewalReasoningModalRowId = "";
+                    modal.hidden = true;
+                    return;
+                }
+                const narrative = ignitionRenewalReasoningNarrative(item, metadata);
+                const clientLabel = `${item.clientName || metadata.clientName || "Client"} · ${item.proposalName || item.planName || item.serviceName || "Proposal"}`;
+                const clientTarget = modal.querySelector("#ignitionRenewalAiReasoningClient");
+                const summaryTarget = modal.querySelector("#ignitionRenewalAiReasoningSummary");
+                const historyTarget = modal.querySelector("#ignitionRenewalAiReasoningHistory");
+                const changesTarget = modal.querySelector("#ignitionRenewalAiReasoningChanges");
+                if (clientTarget) clientTarget.textContent = clientLabel;
+                if (summaryTarget) summaryTarget.textContent = narrative.summary;
+                if (historyTarget) {
+                    historyTarget.innerHTML = [
+                        "<strong>Historical proposal monthly fees</strong>",
+                        ...narrative.historyLines.map((line) => `<span>${escapeHTML(line)}</span>`),
+                    ].join("");
+                }
+                if (changesTarget) {
+                    changesTarget.innerHTML = [
+                        "<strong>Historical uplift percentages</strong>",
+                        ...narrative.changeLines.map((line) => `<span>${escapeHTML(line)}</span>`),
+                    ].join("");
+                }
+                modal.hidden = false;
             }
 
             async function populateIgnitionRenewalsFromAI() {
@@ -40889,13 +41148,11 @@
                         if (runItem) runItem.newMonthlyFee = amount;
                         updateIgnitionRenewalVariance(row);
                         const aiCell = row.querySelector(".renewals-ai-cell");
-                        if (aiCell && !aiCell.querySelector(".renewals-ai-hint")) {
-                            aiCell.insertAdjacentHTML("beforeend", '<span class="renewals-ai-hint" aria-label="AI reasoning">?</span>');
-                        }
-                        const hint = aiCell?.querySelector(".renewals-ai-hint");
-                        if (hint) {
-                            hint.title = ignitionRenewalTooltipText(runItem || {}, metadata);
-                            hint.setAttribute("aria-label", "AI reasoning");
+                        if (aiCell && !aiCell.querySelector(".renewals-ai-hint-button")) {
+                            aiCell.insertAdjacentHTML(
+                                "beforeend",
+                                `<button class="renewals-ai-hint-button" type="button" data-renewal-ai-reasoning="${escapeHTML(rowId)}" aria-label="Open AI reasoning"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l1.2 3.5L17 8l-3 2.2 1 3.6L12 12l-3 1.8 1-3.6L7 8l3.8-1.5L12 3Z"></path><path d="M5 16l.8 2.3L8 19l-2 1.4.6 2.1L5 21.4l-1.6 1.1.6-2.1L2 19l2.2-.7L5 16Z"></path><path d="M19 14l.9 2.5L22 17l-1.7 1.3.6 2L19 19.2l-1.9 1.1.6-2L16 17l2.1-.5L19 14Z"></path></svg></button>`
+                            );
                         }
 
                         input.classList.add("is-ai-revealed");
@@ -55277,6 +55534,11 @@
                         populateIgnitionRenewalsFromAI();
                         return;
                     }
+                    const openAiReasoningButton = event.target.closest?.("[data-renewal-ai-reasoning]");
+                    if (openAiReasoningButton) {
+                        openIgnitionRenewalReasoningModal(openAiReasoningButton.dataset.renewalAiReasoning || "");
+                        return;
+                    }
                     const openStartWorkflow = event.target.closest?.("#openIgnitionRenewalsStartWorkflowButton");
                     if (openStartWorkflow) {
                         openIgnitionRenewalStartModalPrepared();
@@ -55354,6 +55616,7 @@
                 document.addEventListener("keydown", (event) => {
                     if (event.key === "Escape" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
                     if (event.key === "Escape" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
+                    if (event.key === "Escape" && ignitionRenewalReasoningModalOpen) closeIgnitionRenewalReasoningModal();
                 });
                 const addMeReportClientButton = document.getElementById("addMeReportClientButton");
                 if (addMeReportClientButton) addMeReportClientButton.addEventListener("click", () => {
