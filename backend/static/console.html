@@ -53613,6 +53613,7 @@
                 renderSettingsNavigation();
                 renderDatabaseMetrics();
                 renderPendingXeroActions();
+                renderSettingsUsage();
                 renderPostingSettings();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
@@ -55579,6 +55580,7 @@
                 }
                 if (activeSettingsSection === "ignition-connection") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
+                if (activeSettingsSection === "usage") loadSettingsUsage();
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
             }
@@ -56225,6 +56227,11 @@
                     renderSettingsNavigation();
                 });
                 document.getElementById("factoryOpenResetPageButton")?.addEventListener("click", () => openSettingsScreen("factory-reset", "factory"));
+                document.getElementById("settingsUsageRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
+                document.getElementById("settingsUsageDaysSelect")?.addEventListener("change", (event) => {
+                    settingsUsageDays = Number(event.target?.value || 30);
+                    loadSettingsUsage(true);
+                });
                 document.getElementById("postingSettingsForm")?.addEventListener("submit", savePostingSettings);
                 document.getElementById("reloadXeroAccountsButton")?.addEventListener("click", () => loadXeroPostingSettings(true));
                 const menuInsightsButton = document.getElementById("menuInsightsButton");
