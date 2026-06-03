@@ -88,10 +88,10 @@ CH_HEADER_NS = "http://xmlgw.companieshouse.gov.uk/Header"
 CH_FORMS_NS = "http://xmlgw.companieshouse.gov.uk"
 CH_GATEWAY_MAX_ATTEMPTS = 4
 CH_GATEWAY_BACKOFF_SECONDS = 1.5
-CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 10.0
-CH_GATEWAY_MAX_ELAPSED_SECONDS = 22.0
+CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 25.0
+CH_GATEWAY_MAX_ELAPSED_SECONDS = 90.0
 CH_XSD_VALIDATION_ENABLED = True
-CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd"
+CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd"
 
 logger = logging.getLogger(__name__)
 _CH_SYNC_LOCK = threading.Lock()
@@ -977,16 +977,21 @@ def _first_bool_from_sources(*sources: object) -> bool | None:
     return None
 
 
-def _build_cs01_payload(company_row: dict) -> dict:
+def _build_cs01_payload(company_row: dict, *, include_change_sections: bool = True) -> dict:
     share_capital = company_row.get("share_capital") if isinstance(company_row.get("share_capital"), dict) else {}
     statement_of_capital = share_capital.get("statementOfCapital") if isinstance(share_capital.get("statementOfCapital"), dict) else {}
     confirmation_statement = share_capital.get("confirmationStatement") if isinstance(share_capital.get("confirmationStatement"), dict) else {}
     cs_flags = share_capital.get("cs01Flags") if isinstance(share_capital.get("cs01Flags"), dict) else {}
-    payload = {
-        "sicCodes": company_row.get("sic_codes") if isinstance(company_row.get("sic_codes"), list) else [],
-        "statementOfCapital": statement_of_capital,
-        "shareholdings": _normalise_shareholdings(share_capital),
-    }
+    payload: dict = {}
+
+    if include_change_sections:
+        payload.update(
+            {
+                "sicCodes": company_row.get("sic_codes") if isinstance(company_row.get("sic_codes"), list) else [],
+                "statementOfCapital": statement_of_capital,
+                "shareholdings": _normalise_shareholdings(share_capital),
+            }
+        )
 
     for key in (
         "tradingOnMarket",
@@ -1103,7 +1108,13 @@ def _validate_ch_submission_xml_against_xsd(xml_payload: bytes) -> list[str]:
     return [str(error.message) for error in schema.error_log][:10]
 
 
-def _validate_cs01_payload(company_row: dict, review_date: date, cs_payload: dict | None = None) -> list[str]:
+def _validate_cs01_payload(
+    company_row: dict,
+    review_date: date,
+    cs_payload: dict | None = None,
+    *,
+    include_change_sections: bool = True,
+) -> list[str]:
     errors: list[str] = []
     company_number = normalise_company_number(company_row.get("company_number"))
     if not _is_valid_company_number(company_number):
@@ -1117,15 +1128,20 @@ def _validate_cs01_payload(company_row: dict, review_date: date, cs_payload: dic
     if isinstance(next_due, date) and review_date > next_due:
         errors.append("Review date cannot be after the recorded due date.")
     share_capital = company_row.get("share_capital") or {}
-    shareholdings = _normalise_shareholdings(share_capital if isinstance(share_capital, dict) else {})
-    if shareholdings:
-        for idx, item in enumerate(shareholdings, start=1):
-            if item.get("numberHeld") in (None, ""):
-                errors.append(f"Shareholding row {idx} is missing NumberHeld.")
-            if not item.get("shareholders"):
-                errors.append(f"Shareholding row {idx} must include at least one shareholder.")
+    if include_change_sections:
+        shareholdings = _normalise_shareholdings(share_capital if isinstance(share_capital, dict) else {})
+        if shareholdings:
+            for idx, item in enumerate(shareholdings, start=1):
+                if item.get("numberHeld") in (None, ""):
+                    errors.append(f"Shareholding row {idx} is missing NumberHeld.")
+                if not item.get("shareholders"):
+                    errors.append(f"Shareholding row {idx} must include at least one shareholder.")
     pscs = company_row.get("pscs") if isinstance(company_row.get("pscs"), list) else []
-    payload = cs_payload if isinstance(cs_payload, dict) else _build_cs01_payload(company_row)
+    payload = (
+        cs_payload
+        if isinstance(cs_payload, dict)
+        else _build_cs01_payload(company_row, include_change_sections=include_change_sections)
+    )
     errors.extend(_cs01_psc_market_errors(pscs, payload))
     return errors
 
@@ -1177,7 +1193,7 @@ def _build_ch_submission_xml(
             "xmlns": CH_HEADER_NS,
             "xmlns:bs": CH_FORMS_NS,
             "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
-            "xsi:schemaLocation": f"{CH_HEADER_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd",
+            "xsi:schemaLocation": f"{CH_HEADER_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd",
         },
     )
     form_header = ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}FormHeader")
@@ -1193,6 +1209,7 @@ def _build_ch_submission_xml(
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = _xml_text(package_reference, presenter_id)
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}Language").text = "EN"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = "ConfirmationStatement"
     ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}SubmissionNumber").text = submission_number
     ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}DateSigned").text = review_date.isoformat()
@@ -1359,9 +1376,13 @@ def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
                     time.sleep(sleep_seconds)
                 continue
             if response.is_error:
+                detail = f"Companies House gateway returned HTTP {response.status_code}."
+                response_excerpt = _xml_text(response.text)[:320]
+                if response_excerpt:
+                    detail = f"{detail} Response: {response_excerpt}"
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Companies House gateway returned HTTP {response.status_code}.",
+                    detail=detail,
                 )
             response_text = response.text or ""
             try:
@@ -3390,8 +3411,13 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     cs01_validation_errors: list[str] = []
     if isinstance(next_made_up_to, date):
         try:
-            cs_payload = _build_cs01_payload(row)
-            cs01_validation_errors = _validate_cs01_payload(row, next_made_up_to, cs_payload=cs_payload)
+            cs_payload = _build_cs01_payload(row, include_change_sections=False)
+            cs01_validation_errors = _validate_cs01_payload(
+                row,
+                next_made_up_to,
+                cs_payload=cs_payload,
+                include_change_sections=False,
+            )
         except Exception as exc:  # pragma: no cover - defensive
             cs01_validation_errors = [f"Unable to prepare CS01 payload: {str(exc) or exc.__class__.__name__}"]
     for message in cs01_validation_errors:
@@ -3583,6 +3609,16 @@ def _resolve_submission_candidates(company_ids: list[str]) -> list[dict]:
 def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    raw_workflow_actions = payload.get("workflowActions") if isinstance(payload.get("workflowActions"), dict) else {}
+    workflow_actions_by_company_id = {
+        str(company_id or "").strip(): (
+            "changes-required"
+            if str(action or "").strip().lower() == "changes-required"
+            else "no-changes"
+        )
+        for company_id, action in (raw_workflow_actions or {}).items()
+        if str(company_id or "").strip()
+    }
     if not company_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one company.")
     if len(company_ids) > 500:
@@ -3763,8 +3799,15 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         submission_reference = _ch_submission_number()
         transaction_id = _ch_txn_id()
         review_date = made_up_to
-        cs_payload = _build_cs01_payload(row)
-        validation_errors = _validate_cs01_payload(row, review_date, cs_payload=cs_payload)
+        workflow_action = workflow_actions_by_company_id.get(company_id, "no-changes")
+        include_change_sections = workflow_action == "changes-required"
+        cs_payload = _build_cs01_payload(row, include_change_sections=include_change_sections)
+        validation_errors = _validate_cs01_payload(
+            row,
+            review_date,
+            cs_payload=cs_payload,
+            include_change_sections=include_change_sections,
+        )
         if validation_errors:
             reason = " | ".join(validation_errors[:5])
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
@@ -3829,6 +3872,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                                 "source": "bulk_workflow",
                                 "mode": "live_gateway",
                                 "companyNumber": company_number,
+                                "workflowAction": workflow_action,
                             }
                         ),
                         user_id,
@@ -3880,6 +3924,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                                     "source": "bulk_workflow",
                                     "mode": "live_gateway",
                                     "companyNumber": company_number,
+                                    "workflowAction": workflow_action,
                                     "failureStage": failure_stage,
                                 }
                             ),
@@ -4001,6 +4046,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 "source": "bulk_workflow",
                 "mode": "live_gateway",
                 "companyNumber": company_number,
+                "workflowAction": workflow_action,
                 "gatewayStatusCode": parsed_submission.get("statusCode"),
                 "gatewayStatuses": parsed_submission.get("statuses") or [],
                 "gatewayErrors": parsed_submission.get("errors") or [],

@@ -21868,6 +21868,20 @@
                 if (!path.endsWith("/api/companies-house/submissions/bulk")) return null;
                 const code = Number(statusCode || 0);
                 if (code < 500) return null;
+                const detailMessage = (() => {
+                    if (typeof payload === "string") return payload;
+                    if (!payload || typeof payload !== "object") return "";
+                    if (typeof payload.detail === "string") return payload.detail;
+                    if (payload.detail && typeof payload.detail === "object") {
+                        if (typeof payload.detail.message === "string") return payload.detail.message;
+                        if (Array.isArray(payload.detail.errors)) return payload.detail.errors.join(" | ");
+                    }
+                    if (typeof payload.message === "string") return payload.message;
+                    return "";
+                })().trim();
+                const timeoutPattern = /(timed out|timeout|took too long|no confirmation that the filing was sent was returned)/i;
+                const looksLikeTimeout = code === 504 || code === 524 || timeoutPattern.test(detailMessage);
+                if (!looksLikeTimeout) return null;
                 const requestId = payload && typeof payload === "object" ? String(payload.request_id || payload.requestId || "").trim() : "";
                 return {
                     title: "Confirmation statement submission timed out",
@@ -21875,6 +21889,7 @@
                     message: [
                         "No confirmation that the filing was sent was returned.",
                         "Retry and the workflow will continue in smaller batches automatically.",
+                        detailMessage && !timeoutPattern.test(detailMessage) ? detailMessage : "",
                         requestId ? `Request ID: ${requestId}` : "",
                     ].filter(Boolean).join(" "),
                 };
@@ -50486,6 +50501,12 @@
                     const selectedCompanyIds = selected
                         .map((company) => String(company.id || ""))
                         .filter(Boolean);
+                    const workflowActionsByCompanyId = Object.fromEntries(
+                        selectedCompanyIds.map((companyId) => [
+                            companyId,
+                            changeRequiredIds.has(companyId) ? "changes-required" : "no-changes",
+                        ])
+                    );
                     const batches = chunkList(selectedCompanyIds, CH_SUBMISSION_BATCH_SIZE);
                     let submittedCount = 0;
                     let skippedCount = 0;
@@ -50510,9 +50531,12 @@
                         );
                         let payload;
                         try {
+                            const workflowActions = Object.fromEntries(
+                                batch.map((companyId) => [companyId, workflowActionsByCompanyId[companyId] || "no-changes"])
+                            );
                             payload = await requestJSON("/api/companies-house/submissions/bulk", {
                                 method: "POST",
-                                body: JSON.stringify({ companyIds: batch }),
+                                body: JSON.stringify({ companyIds: batch, workflowActions }),
                             });
                         } catch (error) {
                             const retryableFailure = Number(error?.statusCode || 0) >= 500 || error instanceof TypeError;
