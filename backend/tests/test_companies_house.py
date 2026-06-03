@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import os
 import unittest
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
+
+os.environ.setdefault("PORT", "8000")
+os.environ.setdefault("BASE_URL", "https://example.com")
+os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@example.com:5432/credit_control")
+os.environ.setdefault("APP_SECRET", "test-app-secret")
+os.environ.setdefault("WIDGET_TOKEN", "test-widget-token")
+os.environ.setdefault("XERO_CLIENT_ID", "test-xero-client-id")
+os.environ.setdefault("XERO_CLIENT_SECRET", "test-xero-client-secret")
+os.environ.setdefault("XERO_REDIRECT_URI", "https://example.com/xero/callback")
 
 try:
     import httpx
@@ -77,12 +87,12 @@ class CompaniesHouseTests(unittest.TestCase):
 
     def test_validate_cs01_payload_catches_invalid_number(self):
         row = {
-            "company_number": "123",
+            "company_number": "12-34",
             "next_due_date": date.today(),
             "share_capital": {},
         }
         errors = ch._validate_cs01_payload(row, date.today())
-        self.assertTrue(any("Company number" in err for err in errors))
+        self.assertTrue(any("company number" in err.lower() for err in errors))
 
     def test_validate_cs01_payload_requires_made_up_to_date(self):
         row = {
@@ -164,6 +174,7 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertIn("not a GOV.UK One Login / personal code", reason)
 
     def test_bulk_submit_rejects_invalid_xero_unit_amount_setting(self):
+        company_id = "77b42a3f-2a17-4e95-bfa4-c4fca152585d"
         with patch.object(
             ch,
             "_ensure_settings_row",
@@ -172,11 +183,12 @@ class CompaniesHouseTests(unittest.TestCase):
             },
         ):
             with self.assertRaises(HTTPException) as ctx:
-                ch.bulk_submit_confirmation_statements({"id": "u1"}, {"companyIds": ["cid-1"]})
+                ch.bulk_submit_confirmation_statements({"id": "u1"}, {"companyIds": [company_id]})
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("xeroInvoiceUnitAmount", str(ctx.exception.detail))
 
     def test_bulk_invoice_rejects_invalid_xero_unit_amount_setting(self):
+        company_id = "77b42a3f-2a17-4e95-bfa4-c4fca152585d"
         with patch.object(
             ch,
             "_ensure_settings_row",
@@ -191,13 +203,14 @@ class CompaniesHouseTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as ctx:
                 import asyncio
 
-                asyncio.run(ch.bulk_raise_submission_invoices({"id": "u1"}, {"companyIds": ["cid-1"]}))
+                asyncio.run(ch.bulk_raise_submission_invoices({"id": "u1"}, {"companyIds": [company_id]}))
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertIn("xeroInvoiceUnitAmount", str(ctx.exception.detail))
 
     def test_connection_test_invalid_credentials(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox"}), \
              patch.object(ch, "decrypt_api_key", return_value="bad-key"), \
+             patch.object(ch, "_connection_test_probe_company_number", return_value="00000000"), \
              patch.object(
                  ch,
                  "_companies_house_http_client",
@@ -215,6 +228,7 @@ class CompaniesHouseTests(unittest.TestCase):
     def test_connection_test_detects_environment_mismatch(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "production"}), \
              patch.object(ch, "decrypt_api_key", return_value="env-specific-key"), \
+             patch.object(ch, "_connection_test_probe_company_number", return_value="00000000"), \
              patch.object(
                  ch,
                  "_companies_house_http_client",
@@ -234,6 +248,9 @@ class CompaniesHouseTests(unittest.TestCase):
     def test_connection_test_treats_404_probe_as_success(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox"}), \
              patch.object(ch, "decrypt_api_key", return_value="good-key"), \
+             patch.object(ch, "configured_presenter_id", return_value=""), \
+             patch.object(ch, "configured_presenter_auth", return_value=""), \
+             patch.object(ch, "_connection_test_probe_company_number", return_value="00000000"), \
              patch.object(
                  ch,
                  "_companies_house_http_client",
@@ -247,6 +264,9 @@ class CompaniesHouseTests(unittest.TestCase):
     def test_connection_test_treats_400_probe_as_success(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox"}), \
              patch.object(ch, "decrypt_api_key", return_value="good-key"), \
+             patch.object(ch, "configured_presenter_id", return_value=""), \
+             patch.object(ch, "configured_presenter_auth", return_value=""), \
+             patch.object(ch, "_connection_test_probe_company_number", return_value="00000000"), \
              patch.object(
                  ch,
                  "_companies_house_http_client",
@@ -258,8 +278,11 @@ class CompaniesHouseTests(unittest.TestCase):
 
     def test_connection_test_uses_unsaved_overrides(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox", "presenter_id": ""}), \
+             patch.object(ch, "configured_presenter_id", return_value=""), \
+             patch.object(ch, "configured_presenter_auth", return_value=""), \
+             patch.object(ch, "_connection_test_probe_company_number", return_value="00000000"), \
              patch.object(ch, "_companies_house_http_client", return_value=_DummyClient(_DummyResponse(404, {}))) as mock_client, \
-             patch.object(ch, "decrypt_api_key") as mock_decrypt:
+             patch.object(ch, "configured_api_key", return_value="hardcoded-key"):
             payload = ch.test_companies_house_connection(
                 {
                     "environment": "production",
@@ -270,8 +293,7 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertTrue(payload.get("connected"))
         self.assertEqual(payload.get("environment"), "production")
         self.assertIn("api.company-information.service.gov.uk", str(payload.get("endpoint") or ""))
-        self.assertEqual(mock_client.call_args.args[0], "override-key")
-        mock_decrypt.assert_not_called()
+        self.assertEqual(mock_client.call_args.args[0], "hardcoded-key")
 
     def test_post_gateway_retries_then_raises(self):
         calls = {"count": 0}

@@ -1,4 +1,14 @@
+import os
 import unittest
+
+os.environ.setdefault("PORT", "8000")
+os.environ.setdefault("BASE_URL", "https://example.com")
+os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@example.com:5432/credit_control")
+os.environ.setdefault("APP_SECRET", "test-app-secret")
+os.environ.setdefault("WIDGET_TOKEN", "test-widget-token")
+os.environ.setdefault("XERO_CLIENT_ID", "test-xero-client-id")
+os.environ.setdefault("XERO_CLIENT_SECRET", "test-xero-client-secret")
+os.environ.setdefault("XERO_REDIRECT_URI", "https://example.com/xero/callback")
 
 try:
     from app import security
