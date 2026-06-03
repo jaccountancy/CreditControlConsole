@@ -49719,7 +49719,7 @@
                         { key: "companyName", label: "Company" },
                         { key: "companyNumber", label: "Number" },
                         { key: "readiness", label: "Readiness" },
-                        { key: "workflowAction", label: "Submission choice" },
+                        { key: "workflowAction", label: "Any changes?" },
                         { key: "details", label: "Check details" },
                     ],
                     rows: initialPreflight.rows,
@@ -49736,7 +49736,7 @@
                                             <th>Company</th>
                                             <th>Number</th>
                                             <th>Readiness</th>
-                                            <th>Submission choice</th>
+                                            <th>Any changes?</th>
                                             <th>Check details</th>
                                         </tr>
                                     </thead>
@@ -49747,7 +49747,7 @@
                                                 <td>${escapeHTML(row.companyNumber)}</td>
                                                 <td>${escapeHTML(row.readiness)}</td>
                                                 <td>
-                                                    <div class="ch-preflight-choice" role="group" aria-label="Submission choice">
+                                                    <div class="ch-preflight-choice" role="group" aria-label="Any changes?">
                                                         <button
                                                             type="button"
                                                             class="ch-preflight-choice-button is-no-changes is-selected"
@@ -49941,10 +49941,15 @@
                     const failedRows = [];
                     const acceptedCompanyIds = new Set();
 
-                    for (let index = 0; index < batches.length; index += 1) {
-                        const batch = batches[index];
+                    const pendingBatches = [...batches];
+                    let attemptedBatches = 0;
+                    while (pendingBatches.length) {
+                        const batch = pendingBatches.shift() || [];
+                        if (!batch.length) continue;
+                        attemptedBatches += 1;
+                        const totalBatchesHint = attemptedBatches + pendingBatches.length;
                         chSetWorkflowStatus(
-                            `Submitting batch ${(index + 1).toLocaleString("en-GB")} of ${batches.length.toLocaleString("en-GB")} (${batch.length.toLocaleString("en-GB")} compan${batch.length === 1 ? "y" : "ies"})…`,
+                            `Submitting batch ${attemptedBatches.toLocaleString("en-GB")} of ${totalBatchesHint.toLocaleString("en-GB")} (${batch.length.toLocaleString("en-GB")} compan${batch.length === 1 ? "y" : "ies"})…`,
                             "muted"
                         );
                         let payload;
@@ -49954,8 +49959,21 @@
                                 body: JSON.stringify({ companyIds: batch }),
                             });
                         } catch (error) {
-                            if (index > 0 && submittedCount > 0) {
-                                const partialMessage = `${error?.message || "Unable to submit selected companies."} Completed ${submittedCount.toLocaleString("en-GB")} submission${submittedCount === 1 ? "" : "s"} before batch ${(index + 1).toLocaleString("en-GB")} failed.`;
+                            const retryableFailure = Number(error?.statusCode || 0) >= 500 || error instanceof TypeError;
+                            if (retryableFailure && batch.length > 1) {
+                                const splitPoint = Math.ceil(batch.length / 2);
+                                const firstHalf = batch.slice(0, splitPoint);
+                                const secondHalf = batch.slice(splitPoint);
+                                if (secondHalf.length) pendingBatches.unshift(secondHalf);
+                                if (firstHalf.length) pendingBatches.unshift(firstHalf);
+                                chSetWorkflowStatus(
+                                    `Batch timed out, retrying in smaller batches (${firstHalf.length.toLocaleString("en-GB")} + ${secondHalf.length.toLocaleString("en-GB")}).`,
+                                    "muted"
+                                );
+                                continue;
+                            }
+                            if (attemptedBatches > 1 && submittedCount > 0) {
+                                const partialMessage = `${error?.message || "Unable to submit selected companies."} Completed ${submittedCount.toLocaleString("en-GB")} submission${submittedCount === 1 ? "" : "s"} before batch ${attemptedBatches.toLocaleString("en-GB")} failed.`;
                                 throw new APIRequestError(partialMessage, {
                                     statusCode: Number(error?.statusCode || 0) || null,
                                     details: error?.details || null,

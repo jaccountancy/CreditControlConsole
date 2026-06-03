@@ -3826,35 +3826,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             )
             continue
         submission_id = str(queued_row["id"])
-        try:
-            request_xml = _build_ch_submission_xml(
-                presenter_id=presenter_id,
-                presenter_auth=presenter_auth,
-                environment=environment,
-                company_number=company_number,
-                company_name=_xml_text(row.get("company_name"), row.get("client_name") or "UNKNOWN COMPANY"),
-                company_auth_code=company_auth_code,
-                review_date=review_date,
-                registered_email=_xml_text(row.get("contact_email")),
-                package_reference=presenter_id,
-                transaction_id=transaction_id,
-                submission_number=submission_reference,
-                cs_payload=cs_payload,
-            )
-            xml_validation_errors = _validate_ch_submission_xml_against_xsd(request_xml)
-            if xml_validation_errors:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Generated CS01 XML failed CH XSD validation: {' | '.join(xml_validation_errors[:3])}",
-                )
-            response_text, response_root = _post_ch_gateway(request_xml)
-            parsed_submission = _parse_ch_submission_response(
-                response_text=response_text,
-                response_root=response_root,
-                requested_submission_number=submission_reference,
-            )
-        except HTTPException as exc:
-            rejection_reason = str(exc.detail)
+        def _record_submission_failure(rejection_reason: str, failure_stage: str) -> None:
             with get_connection() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
@@ -3882,7 +3854,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                                     "source": "bulk_workflow",
                                     "mode": "live_gateway",
                                     "companyNumber": company_number,
-                                    "failureStage": "gateway_submission",
+                                    "failureStage": failure_stage,
                                 }
                             ),
                             now,
@@ -3913,7 +3885,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             _record_dead_letter(
                 company_id=company_id,
                 submission_id=submission_id,
-                stage="gateway_submission",
+                stage=failure_stage,
                 reason=rejection_reason,
                 payload={"companyNumber": company_number, "transactionId": transaction_id},
             )
@@ -3925,6 +3897,49 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                     "reason": rejection_reason,
                 }
             )
+
+        try:
+            request_xml = _build_ch_submission_xml(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                company_number=company_number,
+                company_name=_xml_text(row.get("company_name"), row.get("client_name") or "UNKNOWN COMPANY"),
+                company_auth_code=company_auth_code,
+                review_date=review_date,
+                registered_email=_xml_text(row.get("contact_email")),
+                package_reference=presenter_id,
+                transaction_id=transaction_id,
+                submission_number=submission_reference,
+                cs_payload=cs_payload,
+            )
+            xml_validation_errors = _validate_ch_submission_xml_against_xsd(request_xml)
+            if xml_validation_errors:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Generated CS01 XML failed CH XSD validation: {' | '.join(xml_validation_errors[:3])}",
+                )
+            response_text, response_root = _post_ch_gateway(request_xml)
+            parsed_submission = _parse_ch_submission_response(
+                response_text=response_text,
+                response_root=response_root,
+                requested_submission_number=submission_reference,
+            )
+        except HTTPException as exc:
+            rejection_reason = str(exc.detail)
+            _record_submission_failure(rejection_reason, "gateway_submission")
+            continue
+        except Exception as exc:  # pragma: no cover - defensive guard to avoid aborting full bulk run
+            rejection_reason = (
+                "Unexpected error while submitting to Companies House. "
+                f"{str(exc) or exc.__class__.__name__}"
+            )
+            logger.exception(
+                "Unexpected Companies House bulk submission failure for %s (%s)",
+                company_number,
+                company_id,
+            )
+            _record_submission_failure(rejection_reason, "gateway_submission_unexpected")
             continue
 
         status_value = _xml_text(parsed_submission.get("status"), "submitted")
