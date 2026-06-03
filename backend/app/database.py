@@ -666,6 +666,34 @@ ON bank_statement_clients (tenant_id, status, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS bank_statement_clients_unique_customer_idx
 ON bank_statement_clients (tenant_id, customer_id);
 
+CREATE TABLE IF NOT EXISTS supplier_reconciliation_clients (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id TEXT NOT NULL,
+    xero_contact_id TEXT NOT NULL,
+    contact_name TEXT NOT NULL DEFAULT '',
+    contact_email TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, xero_contact_id)
+);
+
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS xero_contact_id TEXT;
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS contact_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS contact_email TEXT NOT NULL DEFAULT '';
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE supplier_reconciliation_clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS supplier_reconciliation_clients_tenant_idx
+ON supplier_reconciliation_clients (tenant_id, status, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS supplier_reconciliation_clients_unique_contact_idx
+ON supplier_reconciliation_clients (tenant_id, xero_contact_id);
+
 CREATE TABLE IF NOT EXISTS bank_statement_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     extraction_client_id UUID NOT NULL REFERENCES bank_statement_clients(id) ON DELETE CASCADE,

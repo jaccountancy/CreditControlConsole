@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import threading
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -33,6 +34,7 @@ from .companies_house import (
     commit_clients_import,
     dashboard_summary as companies_house_dashboard_summary,
     delete_company,
+    export_companies_house_support_report,
     export_submission_attempts_csv,
     get_companies_house_settings,
     get_company_detail,
@@ -141,6 +143,11 @@ from .services import (
     serialize_ignition_sync_run,
     serialize_me_report_sync_run,
     serialize_operation_run,
+    add_supplier_reconciliation_client,
+    delete_supplier_reconciliation_client,
+    send_supplier_reconciliation_email,
+    supplier_reconciliation_extract,
+    supplier_reconciliation_payload,
     sync_customer_note_to_xero,
     sync_invoice_promise_to_xero,
     sync_invoice_note_to_xero,
@@ -1267,6 +1274,21 @@ def api_companies_house_submission_attempts_export(
     )
 
 
+@app.get("/api/companies-house/submissions/support-report.txt")
+def api_companies_house_support_report(
+    limit: int = Query(50, ge=1, le=500),
+    status_filter: str = Query("rejected", alias="status"),
+    user: dict = Depends(require_panel_user),
+):
+    content = export_companies_house_support_report(limit=limit, status_filter=status_filter)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="companies-house-support-report-{stamp}.txt"'},
+    )
+
+
 @app.get("/api/companies-house/dead-letters")
 def api_companies_house_dead_letters(
     limit: int = Query(200, ge=1, le=1000),
@@ -1859,6 +1881,45 @@ async def api_override_bank_statement_transaction(transaction_id: str, request: 
 async def api_categorise_bank_statement_transactions(account_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", "bankStatements": categorise_bank_statement_transactions(user, account_id, payload)}
+
+
+@app.get("/api/supplier-reconciliation")
+async def api_supplier_reconciliation(user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "supplierReconciliation": await supplier_reconciliation_payload(user)}
+
+
+@app.post("/api/supplier-reconciliation/clients")
+async def api_add_supplier_reconciliation_client(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "supplierReconciliation": await add_supplier_reconciliation_client(user, payload)}
+
+
+@app.delete("/api/supplier-reconciliation/clients/{client_id}")
+async def api_delete_supplier_reconciliation_client(client_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "supplierReconciliation": await delete_supplier_reconciliation_client(user, client_id)}
+
+
+@app.post("/api/supplier-reconciliation/extract")
+async def api_supplier_reconciliation_extract(
+    xeroContactId: str = Form(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    file_bytes = await file.read()
+    result = await supplier_reconciliation_extract(
+        user,
+        xeroContactId,
+        file.filename or "supplier-statement.pdf",
+        file.content_type or "application/pdf",
+        file_bytes,
+    )
+    return {"status": "ok", "supplierReconciliation": result}
+
+
+@app.post("/api/supplier-reconciliation/email")
+async def api_supplier_reconciliation_email(request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "supplierReconciliationEmail": send_supplier_reconciliation_email(user, payload)}
 
 
 @app.get("/api/customers/{customer_id}/xero-transactions")

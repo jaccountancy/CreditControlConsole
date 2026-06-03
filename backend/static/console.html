@@ -9612,6 +9612,98 @@
                 background: var(--orange-soft);
                 color: #a66b10;
             }
+            #supplierReconciliationScreen .supplier-recon-controls {
+                display: grid;
+                gap: 10px;
+                margin-bottom: 12px;
+            }
+            #supplierReconciliationScreen .supplier-recon-controls select {
+                width: 100%;
+            }
+            #supplierReconciliationScreen .supplier-recon-client-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.84rem;
+            }
+            #supplierReconciliationScreen .supplier-recon-client-table th,
+            #supplierReconciliationScreen .supplier-recon-client-table td {
+                text-align: left;
+                padding: 8px 6px;
+                border-bottom: 1px solid rgba(61, 85, 130, 0.12);
+            }
+            #supplierReconciliationScreen .supplier-recon-table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            #supplierReconciliationScreen .supplier-recon-table th,
+            #supplierReconciliationScreen .supplier-recon-table td {
+                text-align: left;
+                padding: 10px 8px;
+                border-bottom: 1px solid rgba(61, 85, 130, 0.12);
+                vertical-align: top;
+            }
+            #supplierReconciliationScreen .supplier-recon-row.is-red {
+                background: rgba(255, 83, 83, 0.1);
+            }
+            #supplierReconciliationScreen .supplier-recon-row.is-yellow {
+                background: rgba(255, 185, 46, 0.12);
+            }
+            #supplierReconciliationScreen .supplier-recon-row.is-green {
+                background: rgba(39, 176, 95, 0.11);
+            }
+            #supplierReconciliationScreen .supplier-recon-status {
+                display: inline-block;
+                border-radius: 999px;
+                padding: 3px 10px;
+                font-weight: 800;
+                font-size: 0.75rem;
+                line-height: 1.2;
+            }
+            #supplierReconciliationScreen .supplier-recon-status.is-red {
+                background: rgba(255, 83, 83, 0.18);
+                color: #a92e2e;
+            }
+            #supplierReconciliationScreen .supplier-recon-status.is-yellow {
+                background: rgba(255, 185, 46, 0.2);
+                color: #8a6100;
+            }
+            #supplierReconciliationScreen .supplier-recon-status.is-green {
+                background: rgba(39, 176, 95, 0.2);
+                color: #1f7d47;
+            }
+            .supplier-recon-email-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 280;
+                display: grid;
+                place-items: center;
+                background: rgba(19, 29, 48, 0.48);
+                padding: 20px;
+            }
+            .supplier-recon-email-panel {
+                width: min(760px, 100%);
+                max-height: min(88vh, 900px);
+                overflow: auto;
+                border-radius: 22px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: 0 16px 36px rgba(30, 47, 77, 0.18);
+                padding: 18px;
+                display: grid;
+                gap: 12px;
+            }
+            .supplier-recon-email-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+            .supplier-recon-email-grid .full {
+                grid-column: 1 / -1;
+            }
+            .supplier-recon-email-panel textarea,
+            .supplier-recon-email-panel input {
+                width: 100%;
+            }
             #meReportScreen .me-report-light-line {
                 margin-top: 6px;
                 color: var(--ink);
@@ -16445,6 +16537,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m3 9 9-5 9 5"></path><path d="M4 10h16"></path><path d="M6 10v8"></path><path d="M10 10v8"></path><path d="M14 10v8"></path><path d="M18 10v8"></path><path d="M4 20h16"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Bank Statements</strong><span>Extraction</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-supplier-reconciliation" data-app-nav="supplier-reconciliation">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6h16v12H4z"></path><path d="M7 10h10"></path><path d="M7 14h6"></path><path d="m15 18 2 2 3-3"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Supplier Reconciliation</strong><span>Statements</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Companies House</strong><span>CS, Secretarial, Lock Dates</span></span>
@@ -17571,6 +17667,10 @@
                                         <p class="ch-section-title">Rejected filings</p>
                                         <p class="ch-section-sub">Filings rejected by Companies House. Resolve the cause before resubmitting.</p>
                                     </div>
+                                    <div class="ch-settings-actions">
+                                        <button class="ghost-button" type="button" id="chRejectedSupportReportButton">Download CH support report</button>
+                                        <span class="ch-settings-status is-muted" id="chRejectedSupportReportStatus">Includes filing details, authority status, auth hints, and gateway responses for support.</span>
+                                    </div>
                                     <div class="ch-companies-table-wrap">
                                         <table class="ch-table">
                                             <thead>
@@ -18552,6 +18652,50 @@
                             <div class="bank-account-detail" id="bankAccountDetail"></div>
                         </section>
                     </section>
+
+                    <section class="late-charges-screen detail-card" id="supplierReconciliationScreen" hidden>
+                        <input id="supplierReconciliationFileInput" type="file" accept="application/pdf,.pdf" hidden>
+                        <section class="detail-panel bank-statement-workspace">
+                            <div class="bank-extraction-client-list" id="supplierReconciliationClientList"></div>
+                            <div class="bank-account-list" id="supplierReconciliationActionList"></div>
+                            <div class="bank-account-detail" id="supplierReconciliationDetail"></div>
+                        </section>
+                    </section>
+                    <div class="supplier-recon-email-modal" id="supplierReconciliationEmailModal" hidden>
+                        <section class="supplier-recon-email-panel" role="dialog" aria-modal="true" aria-labelledby="supplierReconciliationEmailTitle">
+                            <div class="jashflow-detail-head">
+                                <div>
+                                    <p class="eyebrow">Supplier email</p>
+                                    <h3 id="supplierReconciliationEmailTitle">Request missing invoices</h3>
+                                    <p class="detail-meta">Review and send the draft email for missing statement invoices.</p>
+                                </div>
+                            </div>
+                            <div class="supplier-recon-email-grid">
+                                <label>
+                                    To
+                                    <input id="supplierReconciliationEmailTo" type="email" autocomplete="off">
+                                </label>
+                                <label>
+                                    Client name
+                                    <input id="supplierReconciliationEmailClientName" type="text" autocomplete="off">
+                                </label>
+                                <label class="full">
+                                    Subject
+                                    <input id="supplierReconciliationEmailSubject" type="text" autocomplete="off">
+                                </label>
+                                <label class="full">
+                                    Message
+                                    <textarea id="supplierReconciliationEmailBody" rows="11"></textarea>
+                                </label>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="supplierReconciliationEmailCopyButton" type="button">Copy message</button>
+                                <button class="primary-button" id="supplierReconciliationEmailSendButton" type="button">Send now</button>
+                                <button class="ghost-button" id="supplierReconciliationEmailOpenButton" type="button">Open in email app</button>
+                                <button class="ghost-button" id="supplierReconciliationEmailCloseButton" type="button">Close</button>
+                            </div>
+                        </section>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="ignitionScreen" hidden>
                         <div class="detail-hero">
@@ -19994,6 +20138,7 @@
                 "xero-lock-date": "Xero Lock Date",
                 jashflow: "Jashflow",
                 "bank-statements": "Bank Statement Extraction",
+                "supplier-reconciliation": "Supplier Reconciliation",
                 ignition: "Ignition",
                 "ignition-clients": "Ignition Client Register",
                 "me-report": "ME Report",
@@ -20016,6 +20161,7 @@
                 "xero-lock-date": "Review lock dates across all connected Xero tenants and flag filed accounts that are still unlocked.",
                 jashflow: "Track Jashflow loans, repayments, fees, interest, and client funding activity.",
                 "bank-statements": "Upload bank statements, extract transactions, and match statement activity back to clients.",
+                "supplier-reconciliation": "Upload supplier statements, extract invoice rows with OpenAI, and reconcile each row back to Xero bills.",
                 ignition: "Sync and analyse Ignition clients, proposals, fees, payments, collections, and renewal data.",
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
                 "me-report": "Prepare month-end client snapshots, review reporting data, and manage ME Report emails.",
@@ -20352,6 +20498,17 @@
             let bankStatementUploadTimer = null;
             let bankStatementPollingTimer = null;
             const bankStatementMaxUploadBytes = 50 * 1024 * 1024;
+            let supplierReconciliationData = { xero: { connected: false, tenantName: "", tenantId: "", contacts: [] }, connectedClients: [], result: null };
+            let supplierReconciliationLoading = false;
+            let supplierReconciliationUploading = false;
+            let supplierReconciliationLoaded = false;
+            let selectedSupplierReconciliationContactId = "";
+            const supplierReconciliationMaxUploadBytes = 50 * 1024 * 1024;
+            let supplierReconciliationUploadStartedAt = 0;
+            let supplierReconciliationUploadTimer = null;
+            const supplierReconciliationUploadEstimatedSeconds = 120;
+            let supplierReconciliationEmailModalOpen = false;
+            let supplierReconciliationEmailSending = false;
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [], clients: [] }, renewals: { currentRun: null, recentRuns: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let ignitionRenewalsLoading = false;
@@ -20731,6 +20888,11 @@
                         bankStatementUploadRetry: config.endpoints?.bankStatementUploadRetry || "/api/bank-statements/uploads/:uploadId/retry",
                         bankStatementTransactionOverride: config.endpoints?.bankStatementTransactionOverride || "/api/bank-statements/transactions/:transactionId/override",
                         bankStatementTransactionCategorise: config.endpoints?.bankStatementTransactionCategorise || "/api/bank-statements/accounts/:accountId/transactions/categorise",
+                        supplierReconciliation: config.endpoints?.supplierReconciliation || "/api/supplier-reconciliation",
+                        supplierReconciliationClients: config.endpoints?.supplierReconciliationClients || "/api/supplier-reconciliation/clients",
+                        supplierReconciliationClient: config.endpoints?.supplierReconciliationClient || "/api/supplier-reconciliation/clients/:clientId",
+                        supplierReconciliationExtract: config.endpoints?.supplierReconciliationExtract || "/api/supplier-reconciliation/extract",
+                        supplierReconciliationEmail: config.endpoints?.supplierReconciliationEmail || "/api/supplier-reconciliation/email",
                         ignition: config.endpoints?.ignition || "/api/ignition",
                         ignitionSync: config.endpoints?.ignitionSync || "/api/ignition/sync",
                         ignitionSyncStatus: config.endpoints?.ignitionSyncStatus || "/api/ignition/sync/:syncId",
@@ -23325,6 +23487,7 @@
                 if (activeView === "xero-lock-date") return "xero-lock-date";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank-statements";
+                if (activeView === "supplier-reconciliation") return "supplier-reconciliation";
                 if (activeView === "ignition" || activeView === "ignition-clients") return "ignition";
                 if (activeView === "me-report") return "me-report";
                 if (activeView === "practice-packs") return "practice-packs";
@@ -23471,6 +23634,7 @@
                 if (activeView === "xero-lock-date") return "credit";
                 if (activeView === "jashflow") return "jashflow";
                 if (activeView === "bank-statements") return "bank";
+                if (activeView === "supplier-reconciliation") return "bank";
                 if (isIgnitionView()) return "ignition";
                 if (activeView === "me-report") return "me";
                 if (activeView === "practice-packs") return "practice";
@@ -23591,6 +23755,7 @@
                 setElementVisible(document.getElementById("xeroLockDateScreen"), activeView === "xero-lock-date");
                 setElementVisible(document.getElementById("jashflowScreen"), activeView === "jashflow");
                 setElementVisible(document.getElementById("bankStatementsScreen"), activeView === "bank-statements");
+                setElementVisible(document.getElementById("supplierReconciliationScreen"), activeView === "supplier-reconciliation");
                 setElementVisible(document.getElementById("ignitionScreen"), activeView === "ignition");
                 setElementVisible(document.getElementById("ignitionClientsScreen"), activeView === "ignition-clients");
                 setElementVisible(document.getElementById("meReportScreen"), activeView === "me-report");
@@ -23598,7 +23763,7 @@
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
                 if (ignitionRenewalsButton) ignitionRenewalsButton.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -23660,6 +23825,7 @@
                 if (section === "xero-lock-date") return openXeroLockDateScreen();
                 if (section === "jashflow") return openJashflowScreen();
                 if (section === "bank-statements") return openBankStatementsScreen();
+                if (section === "supplier-reconciliation") return openSupplierReconciliationScreen();
                 if (section === "ignition") return openIgnitionScreen();
                 if (section === "me-report") return openMeReportScreen();
                 if (section === "practice-packs") return openPracticePackScreen();
@@ -23801,6 +23967,7 @@
             const creditControlNavSections = new Set(["clients", "lpcs", "bad-debt"]);
             const practiceToolsNavSections = new Set([
                 "bank-statements",
+                "supplier-reconciliation",
                 "confirmation-statements",
                 "company-secretarial",
                 "company-secreterial",
@@ -23897,6 +24064,7 @@
                 "xero-lock-date": "credit-control-xero-lock-date",
                 jashflow: "credit-control-jashflow",
                 "bank-statements": "credit-control-bank-statements",
+                "supplier-reconciliation": "credit-control-supplier-reconciliation",
                 ignition: "credit-control-ignition",
                 "me-report": "credit-control-me-report",
                 "practice-packs": "credit-control-practice-packs",
@@ -25289,6 +25457,7 @@
                 const xeroLockDateScreen = document.getElementById("xeroLockDateScreen");
                 const jashflowScreen = document.getElementById("jashflowScreen");
                 const bankStatementsScreen = document.getElementById("bankStatementsScreen");
+                const supplierReconciliationScreen = document.getElementById("supplierReconciliationScreen");
                 const ignitionScreen = document.getElementById("ignitionScreen");
                 const ignitionClientsScreen = document.getElementById("ignitionClientsScreen");
                 const meReportScreen = document.getElementById("meReportScreen");
@@ -25309,6 +25478,7 @@
                 setElementVisible(xeroLockDateScreen, activeView === "xero-lock-date");
                 setElementVisible(jashflowScreen, activeView === "jashflow");
                 setElementVisible(bankStatementsScreen, activeView === "bank-statements");
+                setElementVisible(supplierReconciliationScreen, activeView === "supplier-reconciliation");
                 setElementVisible(ignitionScreen, activeView === "ignition");
                 setElementVisible(ignitionClientsScreen, activeView === "ignition-clients");
                 setElementVisible(meReportScreen, activeView === "me-report");
@@ -30765,6 +30935,485 @@
                 scrollConsoleToTop();
                 loadBankStatements();
                 ensureXeroAccountsForBankSuggestions();
+            }
+
+            function normaliseSupplierReconciliationPayload(payload) {
+                const raw = payload?.supplierReconciliation || payload || {};
+                const xero = raw.xero || {};
+                return {
+                    xero: {
+                        connected: Boolean(xero.connected),
+                        tenantName: String(xero.tenantName || ""),
+                        tenantId: String(xero.tenantId || ""),
+                        contacts: Array.isArray(xero.contacts)
+                            ? xero.contacts.map((contact) => ({
+                                xeroContactId: String(contact.xeroContactId || ""),
+                                name: String(contact.name || ""),
+                                email: String(contact.email || ""),
+                                supplier: Boolean(contact.supplier),
+                            })).filter((contact) => contact.xeroContactId)
+                            : [],
+                    },
+                    connectedClients: Array.isArray(raw.connectedClients)
+                        ? raw.connectedClients.map((client) => ({
+                            id: String(client.id || ""),
+                            xeroContactId: String(client.xeroContactId || ""),
+                            name: String(client.name || ""),
+                            email: String(client.email || ""),
+                            createdAt: String(client.createdAt || ""),
+                        })).filter((client) => client.id && client.xeroContactId)
+                        : [],
+                    result: raw.result || supplierReconciliationData?.result || null,
+                };
+            }
+
+            function supplierReconciliationContacts() {
+                return Array.isArray(supplierReconciliationData?.xero?.contacts) ? supplierReconciliationData.xero.contacts : [];
+            }
+
+            function supplierReconciliationConnectedClients() {
+                return Array.isArray(supplierReconciliationData?.connectedClients) ? supplierReconciliationData.connectedClients : [];
+            }
+
+            function selectedSupplierReconciliationContact() {
+                return supplierReconciliationContacts().find((contact) => contact.xeroContactId === selectedSupplierReconciliationContactId) || null;
+            }
+
+            function selectedSupplierReconciliationConnectedClient() {
+                return supplierReconciliationConnectedClients().find((client) => client.xeroContactId === selectedSupplierReconciliationContactId) || null;
+            }
+
+            function openSupplierReconciliationScreen() {
+                activeView = "supplier-reconciliation";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                scrollConsoleToTop();
+                loadSupplierReconciliation();
+            }
+
+            async function loadSupplierReconciliation(force = false) {
+                if (supplierReconciliationLoading && !force) return;
+                supplierReconciliationLoading = true;
+                renderSupplierReconciliationScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.supplierReconciliation);
+                    const nextState = normaliseSupplierReconciliationPayload(payload);
+                    supplierReconciliationData = { ...supplierReconciliationData, ...nextState };
+                    const contactIds = new Set(supplierReconciliationContacts().map((contact) => contact.xeroContactId));
+                    if (!selectedSupplierReconciliationContactId || !contactIds.has(selectedSupplierReconciliationContactId)) {
+                        selectedSupplierReconciliationContactId = supplierReconciliationConnectedClients()[0]?.xeroContactId || supplierReconciliationContacts()[0]?.xeroContactId || "";
+                    }
+                    supplierReconciliationLoaded = true;
+                } catch (error) {
+                    console.error("Unable to load supplier reconciliation data", error);
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to load supplier reconciliation", "error");
+                } finally {
+                    supplierReconciliationLoading = false;
+                    renderSupplierReconciliationScreen();
+                }
+            }
+
+            function syncSupplierReconciliationUiTimer() {
+                if (supplierReconciliationUploading && !supplierReconciliationUploadTimer) {
+                    supplierReconciliationUploadTimer = window.setInterval(() => {
+                        if (!supplierReconciliationUploading) {
+                            window.clearInterval(supplierReconciliationUploadTimer);
+                            supplierReconciliationUploadTimer = null;
+                            return;
+                        }
+                        if (activeView === "supplier-reconciliation") renderSupplierReconciliationScreen();
+                    }, 1000);
+                    return;
+                }
+                if (!supplierReconciliationUploading && supplierReconciliationUploadTimer) {
+                    window.clearInterval(supplierReconciliationUploadTimer);
+                    supplierReconciliationUploadTimer = null;
+                }
+            }
+
+            function supplierReconciliationMissingRows(result = supplierReconciliationData.result) {
+                const rows = Array.isArray(result?.rows) ? result.rows : [];
+                return rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "missing");
+            }
+
+            function supplierReconciliationEmailDraft(result = supplierReconciliationData.result) {
+                const selectedContact = selectedSupplierReconciliationContact();
+                const missingRows = supplierReconciliationMissingRows(result);
+                const to = String(result?.emailAddress || selectedContact?.email || "").trim();
+                const statementDate = result?.statementDate ? formatDate(result.statementDate) : "statement date";
+                const clientName = String(result?.clientName || selectedContact?.name || "").trim() || "your client";
+                const invoiceLines = missingRows.length
+                    ? missingRows.map((row) => {
+                        const reference = row?.invoiceNumber || row?.reference || "Unknown reference";
+                        const amountText = Number.isFinite(Number(row?.balance)) ? ` (${formatCurrency(row.balance)})` : "";
+                        return `- ${reference}${amountText}`;
+                    }).join("\n")
+                    : "- No missing invoices detected";
+                const subject = `Statement received (${statementDate}) - missing invoices for ${clientName}`;
+                const body = `Hi,\n\nWe have your statement dated ${statementDate}, but we are missing the following invoices for ${clientName}:\n\n${invoiceLines}\n\nPlease can you send these over.\n\nKind regards,\nJ Accountancy`;
+                return { to, clientName, subject, body };
+            }
+
+            function setSupplierReconciliationEmailModalOpen(isOpen) {
+                supplierReconciliationEmailModalOpen = Boolean(isOpen);
+                const modal = document.getElementById("supplierReconciliationEmailModal");
+                if (modal) modal.hidden = !supplierReconciliationEmailModalOpen;
+                if (!supplierReconciliationEmailModalOpen) return;
+                const draft = supplierReconciliationEmailDraft();
+                const toInput = document.getElementById("supplierReconciliationEmailTo");
+                const clientNameInput = document.getElementById("supplierReconciliationEmailClientName");
+                const subjectInput = document.getElementById("supplierReconciliationEmailSubject");
+                const bodyInput = document.getElementById("supplierReconciliationEmailBody");
+                if (toInput) toInput.value = draft.to;
+                if (clientNameInput) clientNameInput.value = draft.clientName;
+                if (subjectInput) subjectInput.value = draft.subject;
+                if (bodyInput) bodyInput.value = draft.body;
+                bodyInput?.focus();
+            }
+
+            function supplierReconciliationRowClass(row) {
+                const key = String(row?.statusColor || "").toLowerCase();
+                if (key === "green") return "is-green";
+                if (key === "yellow") return "is-yellow";
+                return "is-red";
+            }
+
+            async function uploadSupplierReconciliationStatement(file) {
+                const contact = selectedSupplierReconciliationContact();
+                const connectedClient = selectedSupplierReconciliationConnectedClient();
+                if (!contact?.xeroContactId) return showToast("Choose and connect a supplier first.", "error");
+                if (!connectedClient) return showToast("Connect this supplier before uploading a statement.", "error");
+                if (!file) return;
+                if (file.size > supplierReconciliationMaxUploadBytes) {
+                    return showToast("Supplier statement PDF must be under 50 MB.", "error");
+                }
+                supplierReconciliationUploading = true;
+                supplierReconciliationUploadStartedAt = Date.now();
+                syncSupplierReconciliationUiTimer();
+                renderSupplierReconciliationScreen();
+                try {
+                    const formData = new FormData();
+                    formData.append("xeroContactId", contact.xeroContactId);
+                    formData.append("file", file, file.name || "supplier-statement.pdf");
+                    const response = await requestFormData(api.endpoints.supplierReconciliationExtract, formData);
+                    supplierReconciliationData.result = response?.supplierReconciliation || null;
+                    const summary = supplierReconciliationData.result?.summary || {};
+                    showToast(
+                        `Matched ${Number(summary.matchedBillCount || 0).toLocaleString("en-GB")} bills · ${Number(summary.missingCount || 0).toLocaleString("en-GB")} missing`,
+                        "success"
+                    );
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to process supplier statement", "error");
+                } finally {
+                    supplierReconciliationUploading = false;
+                    supplierReconciliationUploadStartedAt = 0;
+                    syncSupplierReconciliationUiTimer();
+                    const input = document.getElementById("supplierReconciliationFileInput");
+                    if (input) input.value = "";
+                    renderSupplierReconciliationScreen();
+                }
+            }
+
+            function renderSupplierReconciliationScreen() {
+                const clientList = document.getElementById("supplierReconciliationClientList");
+                const actionList = document.getElementById("supplierReconciliationActionList");
+                const detail = document.getElementById("supplierReconciliationDetail");
+                if (!clientList || !actionList || !detail) return;
+                const contacts = supplierReconciliationContacts();
+                const selectedContact = selectedSupplierReconciliationContact();
+                const connectedContacts = supplierReconciliationConnectedClients();
+                const connectedByContactId = new Set(connectedContacts.map((client) => client.xeroContactId));
+                const connectedClient = selectedSupplierReconciliationConnectedClient();
+                const activeResult = supplierReconciliationData.result && supplierReconciliationData.result.contactId === selectedSupplierReconciliationContactId
+                    ? supplierReconciliationData.result
+                    : null;
+                const processingElapsed = supplierReconciliationUploadStartedAt
+                    ? Math.max(0, Math.floor((Date.now() - supplierReconciliationUploadStartedAt) / 1000))
+                    : 0;
+                const processingRemaining = supplierReconciliationUploadStartedAt
+                    ? Math.max(0, supplierReconciliationUploadEstimatedSeconds - processingElapsed)
+                    : 0;
+
+                if (supplierReconciliationLoading && !supplierReconciliationLoaded) {
+                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading supplier contacts</h4><p>Fetching connected Xero supplier contacts.</p></div>';
+                    actionList.innerHTML = "";
+                    detail.innerHTML = "";
+                    return;
+                }
+
+                if (!supplierReconciliationData.xero?.connected) {
+                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Xero required</p><h4>Connect Xero first</h4><p>Supplier reconciliation needs an active Xero connection.</p></div>';
+                    actionList.innerHTML = "";
+                    detail.innerHTML = "";
+                    return;
+                }
+
+                clientList.innerHTML = `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Supplier Reconciliation</p>
+                            <h3>Supplier connections</h3>
+                            <p class="detail-meta">Select a supplier contact, connect it to this workspace, then upload a statement.</p>
+                        </div>
+                    </div>
+                    <div class="supplier-recon-controls">
+                        <label>
+                            Supplier contact
+                            <select id="supplierReconciliationContactSelect">
+                                ${contacts.map((contact) => `<option value="${escapeHTML(contact.xeroContactId)}" ${contact.xeroContactId === selectedSupplierReconciliationContactId ? "selected" : ""}>${escapeHTML(contact.name || contact.xeroContactId)}${contact.email ? ` · ${escapeHTML(contact.email)}` : ""}${connectedByContactId.has(contact.xeroContactId) ? " · Connected" : ""}</option>`).join("")}
+                            </select>
+                        </label>
+                        <button class="primary-button" id="supplierReconciliationConnectButton" type="button" ${contacts.length ? "" : "disabled"}>Save supplier</button>
+                    </div>
+                    <table class="supplier-recon-client-table" aria-label="Connected supplier clients">
+                        <thead><tr><th>Supplier</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody>
+                            ${connectedContacts.length ? connectedContacts.map((contact) => `
+                                <tr>
+                                    <td><strong>${escapeHTML(contact.name || contact.xeroContactId)}</strong><br><small>${escapeHTML(contact.email || "No email")}</small></td>
+                                    <td><span class="supplier-recon-status is-green">Connected</span></td>
+                                    <td><button class="ghost-button" type="button" data-supplier-recon-open="${escapeHTML(contact.xeroContactId)}">Open</button> <button class="ghost-button danger-button" type="button" data-supplier-recon-remove="${escapeHTML(contact.id)}">Remove</button></td>
+                                </tr>
+                            `).join("") : '<tr><td colspan="3">No suppliers connected yet.</td></tr>'}
+                        </tbody>
+                    </table>
+                `;
+
+                actionList.innerHTML = `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Actions</p>
+                            <h3>${escapeHTML(selectedContact?.name || "No supplier selected")}</h3>
+                            <p class="detail-meta">${escapeHTML(supplierReconciliationData.xero?.tenantName || "Connected tenant")}</p>
+                        </div>
+                    </div>
+                    <div class="detail-actions">
+                        <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${selectedContact && connectedClient ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
+                        <button class="ghost-button" id="supplierReconciliationEmailButton" type="button" ${(supplierReconciliationMissingRows(activeResult).length > 0) ? "" : "disabled"}>Email missing invoices</button>
+                        <button class="ghost-button" id="supplierReconciliationDisconnectButton" type="button" ${connectedClient ? "" : "disabled"}>Disconnect</button>
+                        <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
+                    </div>
+                    <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Rows are highlighted red when missing in Xero, yellow when found but not fully paid, and green when paid."}</p>
+                `;
+
+                const result = activeResult;
+                if (!result || result.contactId !== selectedSupplierReconciliationContactId) {
+                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Awaiting upload</p><h4>Upload a supplier statement PDF</h4><p>We will extract every line, reconcile it to Xero bills, and show direct links to transactions.</p></div>';
+                } else {
+                    const rows = Array.isArray(result.rows) ? result.rows : [];
+                    const summary = result.summary || {};
+                    detail.innerHTML = `
+                        <div class="jashflow-detail-head">
+                            <div>
+                                <p class="eyebrow">Statement results</p>
+                                <h3>${escapeHTML(result.filename || "Supplier statement")}</h3>
+                                <p class="detail-meta">${escapeHTML(result.statementDate ? formatDate(result.statementDate) : "No statement date")} · ${escapeHTML(result.currencyCode || "GBP")} · ${Number(summary.totalLines || rows.length).toLocaleString("en-GB")} lines</p>
+                            </div>
+                        </div>
+                        <div class="ignition-summary-grid">
+                            <article><span>Missing</span><strong>${Number(summary.missingCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Outstanding / allocated</span><strong>${Number(summary.allocatedCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Paid</span><strong>${Number(summary.paidCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Matched bills</span><strong>${Number(summary.matchedBillCount || 0).toLocaleString("en-GB")}</strong></article>
+                        </div>
+                        <div class="me-report-report-table" role="table" aria-label="Supplier reconciliation rows">
+                            <table class="supplier-recon-table">
+                                <thead>
+                                    <tr>
+                                        <th>Invoice</th>
+                                        <th>Date</th>
+                                        <th>Amount</th>
+                                        <th>Balance</th>
+                                        <th>Status</th>
+                                        <th>Xero</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rows.length ? rows.map((row) => `
+                                        <tr class="supplier-recon-row ${supplierReconciliationRowClass(row)}">
+                                            <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><br><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
+                                            <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
+                                            <td>${formatCurrency(row.amount || 0)}</td>
+                                            <td>${formatCurrency(row.balance || 0)}</td>
+                                            <td><span class="supplier-recon-status ${supplierReconciliationRowClass(row)}">${escapeHTML(row.statusLabel || "Unknown")}</span></td>
+                                            <td>${row.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row.xeroUrl)}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
+                                        </tr>
+                                    `).join("") : '<tr><td colspan="6">No statement lines were extracted.</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                const contactSelect = document.getElementById("supplierReconciliationContactSelect");
+                if (contactSelect && contactSelect.value !== selectedSupplierReconciliationContactId) {
+                    contactSelect.value = selectedSupplierReconciliationContactId;
+                }
+                contactSelect?.addEventListener("change", (event) => {
+                    selectedSupplierReconciliationContactId = String(event.target.value || "");
+                    renderSupplierReconciliationScreen();
+                });
+
+                document.getElementById("supplierReconciliationConnectButton")?.addEventListener("click", async () => {
+                    if (!selectedSupplierReconciliationContactId) return;
+                    try {
+                        const response = await requestJSON(api.endpoints.supplierReconciliationClients, {
+                            method: "POST",
+                            body: JSON.stringify({ xeroContactId: selectedSupplierReconciliationContactId }),
+                        });
+                        const nextState = normaliseSupplierReconciliationPayload(response);
+                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
+                        showToast("Supplier saved to workspace", "success");
+                        renderSupplierReconciliationScreen();
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to save supplier", "error");
+                    }
+                });
+                document.querySelectorAll("[data-supplier-recon-open]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        selectedSupplierReconciliationContactId = button.dataset.supplierReconOpen || "";
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+                document.querySelectorAll("[data-supplier-recon-remove]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const supplierClientId = button.dataset.supplierReconRemove || "";
+                        if (!supplierClientId) return;
+                        try {
+                            const response = await requestJSON(
+                                api.endpoints.supplierReconciliationClient,
+                                { method: "DELETE" },
+                                { clientId: supplierClientId }
+                            );
+                            const nextState = normaliseSupplierReconciliationPayload(response);
+                            supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
+                            if (!supplierReconciliationConnectedClients().some((client) => client.xeroContactId === selectedSupplierReconciliationContactId)) {
+                                supplierReconciliationData.result = null;
+                            }
+                            showToast("Supplier removed from workspace", "success");
+                            renderSupplierReconciliationScreen();
+                        } catch (error) {
+                            if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                            else showToast(error.message || "Unable to remove supplier", "error");
+                        }
+                    });
+                });
+                document.getElementById("supplierReconciliationDisconnectButton")?.addEventListener("click", async () => {
+                    const activeClient = selectedSupplierReconciliationConnectedClient();
+                    if (!activeClient?.id) return;
+                    try {
+                        const response = await requestJSON(
+                            api.endpoints.supplierReconciliationClient,
+                            { method: "DELETE" },
+                            { clientId: activeClient.id }
+                        );
+                        const nextState = normaliseSupplierReconciliationPayload(response);
+                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: null };
+                        showToast("Supplier disconnected", "success");
+                        renderSupplierReconciliationScreen();
+                    } catch (error) {
+                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                        else showToast(error.message || "Unable to disconnect supplier", "error");
+                    }
+                });
+                document.getElementById("supplierReconciliationRefreshButton")?.addEventListener("click", () => loadSupplierReconciliation(true));
+                document.getElementById("supplierReconciliationUploadButton")?.addEventListener("click", () => {
+                    if (supplierReconciliationUploading) return;
+                    const fileInput = document.getElementById("supplierReconciliationFileInput");
+                    fileInput?.click();
+                });
+                document.getElementById("supplierReconciliationEmailButton")?.addEventListener("click", () => {
+                    const draft = supplierReconciliationEmailDraft(activeResult);
+                    const toInput = document.getElementById("supplierReconciliationEmailTo");
+                    const clientNameInput = document.getElementById("supplierReconciliationEmailClientName");
+                    const subjectInput = document.getElementById("supplierReconciliationEmailSubject");
+                    const bodyInput = document.getElementById("supplierReconciliationEmailBody");
+                    if (toInput) toInput.value = draft.to;
+                    if (clientNameInput) clientNameInput.value = draft.clientName;
+                    if (subjectInput) subjectInput.value = draft.subject;
+                    if (bodyInput) bodyInput.value = draft.body;
+                    setSupplierReconciliationEmailModalOpen(true);
+                });
+            }
+
+            function wireSupplierReconciliationUI() {
+                const input = document.getElementById("supplierReconciliationFileInput");
+                if (input && input.dataset.supplierReconWired !== "true") {
+                    input.dataset.supplierReconWired = "true";
+                    input.addEventListener("change", async (event) => {
+                        const file = event?.target?.files?.[0];
+                        if (!file) return;
+                        await uploadSupplierReconciliationStatement(file);
+                    });
+                }
+                const modal = document.getElementById("supplierReconciliationEmailModal");
+                if (modal && modal.dataset.supplierReconWired !== "true") {
+                    modal.dataset.supplierReconWired = "true";
+                    document.getElementById("supplierReconciliationEmailCloseButton")?.addEventListener("click", () => setSupplierReconciliationEmailModalOpen(false));
+                    document.getElementById("supplierReconciliationEmailCopyButton")?.addEventListener("click", async () => {
+                        const body = document.getElementById("supplierReconciliationEmailBody")?.value || "";
+                        try {
+                            await navigator.clipboard.writeText(body);
+                            showToast("Email message copied", "success");
+                        } catch {
+                            showToast("Unable to copy email message", "error");
+                        }
+                    });
+                    document.getElementById("supplierReconciliationEmailSendButton")?.addEventListener("click", async () => {
+                        if (supplierReconciliationEmailSending) return;
+                        const to = String(document.getElementById("supplierReconciliationEmailTo")?.value || "").trim();
+                        const subject = String(document.getElementById("supplierReconciliationEmailSubject")?.value || "").trim();
+                        const body = String(document.getElementById("supplierReconciliationEmailBody")?.value || "").trim();
+                        const clientName = String(document.getElementById("supplierReconciliationEmailClientName")?.value || "").trim();
+                        const statementDate = String(supplierReconciliationData?.result?.statementDate || "").trim();
+                        const supplierName = String(supplierReconciliationData?.result?.supplierName || "").trim();
+                        if (!to) return showToast("Recipient email is required", "error");
+                        if (!subject) return showToast("Email subject is required", "error");
+                        if (!body) return showToast("Email body is required", "error");
+                        supplierReconciliationEmailSending = true;
+                        const sendButton = document.getElementById("supplierReconciliationEmailSendButton");
+                        if (sendButton) {
+                            sendButton.textContent = "Sending...";
+                            sendButton.setAttribute("disabled", "disabled");
+                        }
+                        try {
+                            await requestJSON(api.endpoints.supplierReconciliationEmail, {
+                                method: "POST",
+                                body: JSON.stringify({ to, subject, body, clientName, statementDate, supplierName })
+                            });
+                            showToast(`Email sent to ${to}`, "success");
+                            setSupplierReconciliationEmailModalOpen(false);
+                        } catch (error) {
+                            if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                            else showToast(error.message || "Unable to send supplier email", "error");
+                        } finally {
+                            supplierReconciliationEmailSending = false;
+                            if (sendButton) {
+                                sendButton.textContent = "Send now";
+                                sendButton.removeAttribute("disabled");
+                            }
+                        }
+                    });
+                    document.getElementById("supplierReconciliationEmailOpenButton")?.addEventListener("click", () => {
+                        const toRaw = String(document.getElementById("supplierReconciliationEmailTo")?.value || "").trim();
+                        const subject = encodeURIComponent(document.getElementById("supplierReconciliationEmailSubject")?.value || "");
+                        const body = encodeURIComponent(document.getElementById("supplierReconciliationEmailBody")?.value || "");
+                        if (!toRaw) {
+                            showToast("No supplier email was extracted from this statement", "error");
+                            return;
+                        }
+                        const to = encodeURIComponent(toRaw);
+                        window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+                    });
+                    modal.addEventListener("click", (event) => {
+                        if (event.target === modal) setSupplierReconciliationEmailModalOpen(false);
+                    });
+                }
             }
 
             async function ensureXeroAccountsForBankSuggestions() {
@@ -42651,6 +43300,7 @@
                     "aml-verification": "AML Verification",
                     jashflow: "Jashflow",
                     "bank-statements": "Bank Statements",
+                    "supplier-reconciliation": "Supplier Reconciliation",
                     ignition: "Ignition",
                     "ignition-clients": "Ignition Client Register",
                     "me-report": "ME Report"
@@ -42666,6 +43316,10 @@
                     const client = selectedBankStatementClient();
                     const account = selectedBankAccount();
                     return [client?.customerName, account ? bankAccountDisplayName(account) : ""].filter(Boolean).join(" · ") || "Extraction workspace";
+                }
+                if (activeView === "supplier-reconciliation") {
+                    const contact = (supplierReconciliationData.xero?.contacts || []).find((item) => item.xeroContactId === selectedSupplierReconciliationContactId);
+                    return contact?.name || "Supplier statement matching";
                 }
                 if (activeView === "jashflow") {
                     const loan = selectedJashflowLoan();
@@ -42683,6 +43337,7 @@
                     activeView,
                     activeView === "client" ? selectedClientId || selectedInvoiceId || "" : "",
                     activeView === "bank-statements" ? `${selectedBankStatementClientId || ""}:${selectedBankAccountId || ""}` : "",
+                    activeView === "supplier-reconciliation" ? selectedSupplierReconciliationContactId || "" : "",
                     activeView === "jashflow" ? selectedJashflowLoanId || "" : "",
                     activeView === "settings" ? activeSettingsSection || "" : ""
                 ].join("|");
@@ -43310,6 +43965,7 @@
                 else if (activeView === "aml-verification") activeNavSection = "aml-verification";
                 else if (activeView === "xero-lock-date") activeNavSection = "xero-lock-date";
                 else if (activeView === "jashflow") activeNavSection = "jashflow";
+                else if (activeView === "supplier-reconciliation") activeNavSection = "supplier-reconciliation";
                 else if (isIgnitionView()) activeNavSection = "ignition";
                 else if (activeView === "settings") activeNavSection = "settings";
                 else if (activeView === "client") activeNavSection = "clients";
@@ -45953,6 +46609,7 @@
                 renderXeroLockDateScreen();
                 renderJashflowScreen();
                 renderBankStatementsScreen();
+                renderSupplierReconciliationScreen();
                 renderBankAccountPanel();
                 renderBankStatementUploadPanel();
                 renderBankSa100EntryPanel();
@@ -49734,6 +50391,55 @@
                 body.innerHTML = rows.map((row) => `<tr data-company-number="${escapeHTML(row.companyNumber || "")}"><td>${escapeHTML(row.companyName || "—")}</td><td>${escapeHTML(row.companyNumber || "—")}</td><td>${options.showReason ? `<span class="ch-pill is-bad">${escapeHTML(row.rejectionReason || "Rejected")}</span>` : `<span class="ch-pill ${row.status === "accepted" ? "is-good" : row.status === "rejected" ? "is-bad" : "is-info"}">${escapeHTML(row.status || "submitted")}</span>`}</td><td>${escapeHTML(chFormatDateTime(row.submittedAt))}</td></tr>`).join("");
             }
 
+            function setChRejectedSupportReportStatus(text, tone = "muted") {
+                const node = document.getElementById("chRejectedSupportReportStatus");
+                if (!node) return;
+                node.textContent = text || "";
+                node.classList.remove("is-muted", "is-success", "is-error");
+                node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            async function downloadCompaniesHouseSupportReport() {
+                const button = document.getElementById("chRejectedSupportReportButton");
+                if (button) button.disabled = true;
+                setChRejectedSupportReportStatus("Building support report…", "muted");
+                try {
+                    const response = await fetch(endpointURL("/api/companies-house/submissions/support-report.txt?status=rejected&limit=100"), {
+                        method: "GET",
+                        credentials: "include",
+                        headers: { ...api.headers, ...panelAuthHeaders() },
+                    });
+                    if (response.status === 401 || response.status === 403) {
+                        throw new AuthRequiredError("Your session has expired. Sign in again before downloading the support report.");
+                    }
+                    if (!response.ok) {
+                        const message = await response.text().catch(() => "");
+                        throw new Error(message || `Unable to download support report (${response.status})`);
+                    }
+                    const blob = await response.blob();
+                    const disposition = response.headers.get("Content-Disposition") || "";
+                    const filenameMatch = disposition.match(/filename=\"?([^\";]+)\"?/i);
+                    const filename = filenameMatch?.[1] || `companies-house-support-report-${new Date().toISOString().slice(0, 10)}.txt`;
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    setChRejectedSupportReportStatus("Support report downloaded.", "success");
+                    showToast("Companies House support report downloaded.", "success");
+                } catch (error) {
+                    console.error("Unable to download Companies House support report", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    }
+                    setChRejectedSupportReportStatus(error?.message || "Unable to download support report.", "error");
+                    showToast(error?.message || "Unable to download support report.", "error");
+                } finally {
+                    if (button) button.disabled = false;
+                }
+            }
+
             async function loadCompaniesHouseDashboard(force = false) {
                 if (companiesHouseState.tabLoaded.dashboard && !force) return;
                 try {
@@ -50349,6 +51055,39 @@
                     if (flags.pscExemptAsTradingOnRegulatedMarket === true) return "regulated";
                     return "none";
                 };
+                const compactAddress = (value) => String(value || "").split(/\n+/).map((line) => line.trim()).filter(Boolean).join(", ");
+                const summariseOfficers = (value) => {
+                    const rows = Array.isArray(value) ? value : [];
+                    if (!rows.length) return "No officer records loaded";
+                    return rows
+                        .slice(0, 6)
+                        .map((officer) => {
+                            if (!officer || typeof officer !== "object") return "";
+                            const name = String(officer.name || "").trim();
+                            const role = String(officer.role || "").trim();
+                            const appointed = String(officer.appointedOn || "").trim();
+                            const parts = [name || "Unknown officer", role ? `(${role})` : "", appointed ? `appointed ${appointed}` : ""].filter(Boolean);
+                            return parts.join(" ");
+                        })
+                        .filter(Boolean)
+                        .join(" | ");
+                };
+                const summarisePscs = (value) => {
+                    const rows = Array.isArray(value) ? value : [];
+                    if (!rows.length) return "No PSC records loaded";
+                    return rows
+                        .filter((psc) => psc && typeof psc === "object" && !String(psc.ceasedOn || "").trim())
+                        .slice(0, 6)
+                        .map((psc) => {
+                            const name = String(psc.name || "").trim();
+                            const kind = String(psc.kind || "").trim();
+                            const notifiedOn = String(psc.notifiedOn || "").trim();
+                            const parts = [name || "Unnamed PSC", kind ? `(${kind})` : "", notifiedOn ? `notified ${notifiedOn}` : ""].filter(Boolean);
+                            return parts.join(" ");
+                        })
+                        .filter(Boolean)
+                        .join(" | ") || "No active PSC records loaded";
+                };
                 const rows = companies.map((company) => {
                     const shareCapital = (company && typeof company.shareCapital === "object" && company.shareCapital) ? company.shareCapital : {};
                     const cs01FlagsSource = (shareCapital.cs01Flags && typeof shareCapital.cs01Flags === "object")
@@ -50369,18 +51108,32 @@
                     const activePscCount = (Array.isArray(company?.pscs) ? company.pscs : [])
                         .filter((psc) => psc && typeof psc === "object" && !String(psc.ceasedOn || "").trim())
                         .length;
+                    const shareholdings = Array.isArray(shareCapital.shareholdings) ? shareCapital.shareholdings : [];
+                    const shareholdingsSummary = shareholdings.length
+                        ? shareholdings.slice(0, 5).map((row) => {
+                            if (!row || typeof row !== "object") return "";
+                            const shareClass = String(row.shareClass || "").trim() || "Share class";
+                            const numberHeld = String(row.numberHeld || "").trim() || "0";
+                            return `${shareClass}: ${numberHeld}`;
+                        }).filter(Boolean).join(" | ")
+                        : "No shareholding rows loaded";
                     return {
                         companyId: String(company.id || ""),
                         companyName: String(company.companyName || "—"),
                         companyNumber: String(company.companyNumber || "—"),
+                        companyType: String(company.companyType || "—"),
                         issues: chSubmissionIneligibilityReasons(company),
                         filingAuthorityStatus: String(company.filingAuthorityStatus || "pending"),
                         filingAuthorityReference: String(company.filingAuthorityReference || ""),
                         contactEmail: String(company.contactEmail || ""),
+                        registeredOffice: compactAddress(company.registeredOffice),
+                        officersSummary: summariseOfficers(company.officers),
+                        pscSummary: summarisePscs(company.pscs),
                         sicCodes: toSicCodes(company.sicCodes || []),
                         cs01Flags,
                         pscExemptionRoute: exemptionRouteFromFlags(cs01Flags),
                         activePscCount,
+                        shareholdingsSummary,
                         statementOfCapital: {
                             totalNumberOfSharesIssued: String(statementOfCapital.totalNumberOfSharesIssued || ""),
                             totalAggregateNominalValue: String(statementOfCapital.totalAggregateNominalValue || ""),
@@ -50391,17 +51144,25 @@
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Full review for clients needing changes",
-                    subtitle: "Update filing details, CS01 flags, and statement data before bulk submission.",
+                    subtitle: "Step through each confirmation statement section before submission.",
                     confirmLabel: "Save changes",
                     cancelLabel: "Back",
                     summaryChips: [
                         `${rows.length.toLocaleString("en-GB")} need changes`,
-                        "Authority + CS01 sections",
-                        "SIC + statement of capital",
+                        "Guided CS01 walkthrough",
+                        "Authority, SIC, PSC, capital",
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
                     rows: [{ companyName: "Loading..." }],
                     onRender: ({ body }) => {
+                        const stepDefinitions = [
+                            { key: "company", label: "Company details" },
+                            { key: "people", label: "Officers + PSC" },
+                            { key: "address", label: "Address + email" },
+                            { key: "sic", label: "SIC + trading" },
+                            { key: "capital", label: "Share capital" },
+                            { key: "authority", label: "Authority" },
+                        ];
                         const options = Object.entries(CH_FILING_AUTHORITY_LABELS)
                             .map(([value, label]) => `<option value="${escapeHTML(value)}">${escapeHTML(label)}</option>`)
                             .join("");
@@ -50416,19 +51177,37 @@
                                                 <p class="ch-section-sub">${escapeHTML(row.issues.join(" | ") || "No blocking issues detected.")}</p>
                                             </div>
                                         </header>
-                                        <div class="ch-detail-edit">
-                                            <label>
-                                                Filing authority status
-                                                <select data-ch-review-field="filingAuthorityStatus">${options}</select>
+                                        <div class="ch-preflight-helper" style="margin-bottom: 10px;">
+                                            <strong>Confirmation statement walkthrough</strong>
+                                            <p>Use Next/Previous to walk through each section for this company before submission.</p>
+                                        </div>
+                                        <div class="ch-preflight-legend" data-ch-review-step-nav style="margin-bottom: 10px;">
+                                            ${stepDefinitions.map((step, index) => `
+                                                <button type="button" class="ch-preflight-choice-button is-no-changes ${index === 0 ? "is-selected" : ""}" data-ch-step-jump="${escapeHTML(step.key)}">${index + 1}. ${escapeHTML(step.label)}</button>
+                                            `).join("")}
+                                        </div>
+                                        <div class="ch-detail-edit" data-ch-step-panel="company">
+                                            <label><strong>Company name</strong><small class="operation-review-muted">${escapeHTML(row.companyName)}</small></label>
+                                            <label><strong>Company number</strong><small class="operation-review-muted">${escapeHTML(row.companyNumber)}</small></label>
+                                            <label><strong>Company type</strong><small class="operation-review-muted">${escapeHTML(row.companyType)}</small></label>
+                                            <label class="is-wide"><strong>Known issues</strong><small class="operation-review-muted">${escapeHTML(row.issues.join(" | ") || "No blocking issues detected.")}</small></label>
+                                        </div>
+                                        <div class="ch-detail-edit" data-ch-step-panel="people" hidden>
+                                            <label class="is-wide"><strong>Officers</strong><small class="operation-review-muted">${escapeHTML(row.officersSummary)}</small></label>
+                                            <label class="is-wide"><strong>People with Significant Control</strong><small class="operation-review-muted">${escapeHTML(row.pscSummary)}</small></label>
+                                            <label class="is-wide"><strong>PSC context</strong><small class="operation-review-muted">${escapeHTML(row.activePscCount ? `${row.activePscCount} active PSC record(s) currently on file.` : "No active PSC records currently on file.")}</small></label>
+                                        </div>
+                                        <div class="ch-detail-edit" data-ch-step-panel="address" hidden>
+                                            <label class="is-wide">
+                                                Registered office
+                                                <small class="operation-review-muted">${escapeHTML(row.registeredOffice || "Not set")}</small>
                                             </label>
-                                            <label>
-                                                Authentication code
-                                                <input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Enter CH authentication code">
-                                            </label>
-                                            <label>
+                                            <label class="is-wide">
                                                 Registered email
                                                 <input type="email" data-ch-review-field="contactEmail" value="${escapeHTML(row.contactEmail)}" placeholder="registered office email">
                                             </label>
+                                        </div>
+                                        <div class="ch-detail-edit" data-ch-step-panel="sic" hidden>
                                             <label class="is-wide">
                                                 SIC codes (comma-separated)
                                                 <input type="text" data-ch-review-field="sicCodes" value="${escapeHTML(row.sicCodes.join(", "))}" placeholder="e.g. 69201, 62020">
@@ -50458,6 +51237,12 @@
                                                     <option value="uk-regulated">Trading on UK regulated market</option>
                                                 </select>
                                             </label>
+                                        </div>
+                                        <div class="ch-detail-edit" data-ch-step-panel="capital" hidden>
+                                            <label class="is-wide">
+                                                Shareholdings snapshot
+                                                <small class="operation-review-muted">${escapeHTML(row.shareholdingsSummary)}</small>
+                                            </label>
                                             <label>
                                                 Total shares issued
                                                 <input type="text" data-ch-review-field="totalNumberOfSharesIssued" value="${escapeHTML(row.statementOfCapital.totalNumberOfSharesIssued)}" placeholder="e.g. 100">
@@ -50466,15 +51251,49 @@
                                                 Total aggregate nominal value
                                                 <input type="text" data-ch-review-field="totalAggregateNominalValue" value="${escapeHTML(row.statementOfCapital.totalAggregateNominalValue)}" placeholder="e.g. 100">
                                             </label>
-                                            <label class="is-wide">
-                                                CS01 context
-                                                <small class="operation-review-muted">${escapeHTML(row.activePscCount ? `${row.activePscCount} active PSC record(s) currently on file.` : "No active PSC records currently on file.")}</small>
+                                        </div>
+                                        <div class="ch-detail-edit" data-ch-step-panel="authority" hidden>
+                                            <label>
+                                                Filing authority status
+                                                <select data-ch-review-field="filingAuthorityStatus">${options}</select>
                                             </label>
+                                            <label>
+                                                Authentication code
+                                                <input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Enter CH authentication code">
+                                            </label>
+                                        </div>
+                                        <div class="ch-settings-actions" style="margin-top: 8px;">
+                                            <button type="button" class="ghost-button" data-ch-step-nav="prev">Previous section</button>
+                                            <button type="button" class="ghost-button" data-ch-step-nav="next">Next section</button>
+                                            <span class="ch-settings-status is-muted" data-ch-step-status>Step 1 of ${stepDefinitions.length}: Company details</span>
                                         </div>
                                     </article>
                                 `).join("")}
                             </div>
                         `;
+                        const setStep = (card, nextStepKey) => {
+                            if (!card) return;
+                            const stepKeys = stepDefinitions.map((step) => step.key);
+                            const resolvedStep = stepKeys.includes(nextStepKey) ? nextStepKey : stepKeys[0];
+                            card.setAttribute("data-ch-step-active", resolvedStep);
+                            stepDefinitions.forEach((step, index) => {
+                                const panel = card.querySelector(`[data-ch-step-panel="${step.key}"]`);
+                                if (panel) panel.hidden = step.key !== resolvedStep;
+                                const jumpButton = card.querySelector(`[data-ch-step-jump="${step.key}"]`);
+                                if (jumpButton) jumpButton.classList.toggle("is-selected", step.key === resolvedStep);
+                                const status = card.querySelector("[data-ch-step-status]");
+                                if (status && step.key === resolvedStep) {
+                                    status.textContent = `Step ${index + 1} of ${stepDefinitions.length}: ${step.label}`;
+                                }
+                            });
+                        };
+                        const moveStep = (card, direction) => {
+                            const stepKeys = stepDefinitions.map((step) => step.key);
+                            const currentKey = String(card?.getAttribute("data-ch-step-active") || stepKeys[0]);
+                            const currentIndex = Math.max(0, stepKeys.indexOf(currentKey));
+                            const nextIndex = Math.max(0, Math.min(stepKeys.length - 1, currentIndex + direction));
+                            setStep(card, stepKeys[nextIndex]);
+                        };
                         body.querySelectorAll("[data-ch-review-company-id]").forEach((card) => {
                             const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
                             const row = rowById.get(companyId);
@@ -50486,6 +51305,15 @@
                             if (dtr5Select && row) dtr5Select.value = boolToSelect(row.cs01Flags.dtr5Applies);
                             const pscRouteSelect = card.querySelector('[data-ch-review-field="pscExemptionRoute"]');
                             if (pscRouteSelect && row) pscRouteSelect.value = row.pscExemptionRoute || "none";
+                            setStep(card, "company");
+                            card.querySelector('[data-ch-step-nav="prev"]')?.addEventListener("click", () => moveStep(card, -1));
+                            card.querySelector('[data-ch-step-nav="next"]')?.addEventListener("click", () => moveStep(card, 1));
+                            card.querySelectorAll("[data-ch-step-jump]").forEach((jumpButton) => {
+                                jumpButton.addEventListener("click", () => {
+                                    const stepKey = String(jumpButton.getAttribute("data-ch-step-jump") || "company");
+                                    setStep(card, stepKey);
+                                });
+                            });
                         });
                     },
                     resultProvider: () => {
@@ -51771,6 +52599,7 @@
                 document.getElementById("chImportResetButton")?.addEventListener("click", resetCompaniesHouseImport);
                 document.getElementById("chSubmissionAttemptsRefreshButton")?.addEventListener("click", () => loadCompaniesHouseImports(true));
                 document.getElementById("chSubmissionReplaySelectedButton")?.addEventListener("click", replaySelectedDeadLetterSubmissions);
+                document.getElementById("chRejectedSupportReportButton")?.addEventListener("click", downloadCompaniesHouseSupportReport);
                 document.getElementById("chImportPrevPageButton")?.addEventListener("click", () => {
                     companiesHouseState.importPreviewPage = Math.max(1, Number(companiesHouseState.importPreviewPage || 1) - 1);
                     chRenderImportPreview(companiesHouseState.importPreview);
@@ -51837,6 +52666,7 @@
                     wireCompanySecretarialUI,
                     wireHmrc648UI,
                     wireCompaniesHouseUI,
+                    wireSupplierReconciliationUI,
                 ].forEach((wire) => {
                     try {
                         wire();
@@ -51858,6 +52688,9 @@
                 }
                 if (activeView === "me-report") {
                     loadMeReport();
+                }
+                if (activeView === "supplier-reconciliation") {
+                    loadSupplierReconciliation();
                 }
                 if (activeView === "confirmation-statements") {
                     activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");

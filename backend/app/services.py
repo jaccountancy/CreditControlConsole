@@ -53,6 +53,7 @@ from .xero import (
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
+ME_REPORT_SUBMISSION_STALE_AFTER = timedelta(hours=2)
 PANEL_PAYMENT_LIMIT = 1000
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
@@ -144,6 +145,7 @@ DATABASE_METRIC_TABLES = {
     "me_report_submissions": "ME report submissions",
     "me_report_sync_runs": "ME report sync runs",
     "gmail_connections": "Gmail connections",
+    "supplier_reconciliation_clients": "Supplier reconciliation clients",
 }
 _PREVIOUS_SIGTERM_HANDLER = None
 _SYNC_SIGNAL_HANDLERS_INSTALLED = False
@@ -333,6 +335,36 @@ OPENAI_RISK_ASSESSMENT_SCHEMA = {
                 "initialAssessmentDate": {"type": "string"},
                 "nextReviewDate": {"type": "string"},
                 "triggerEvents": {"type": "array", "items": {"type": "string"}, "maxItems": 20},
+            },
+        },
+    },
+}
+
+SUPPLIER_RECONCILIATION_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["statementDate", "supplierName", "clientName", "emailAddress", "currencyCode", "lines"],
+    "properties": {
+        "statementDate": {"type": ["string", "null"]},
+        "supplierName": {"type": ["string", "null"]},
+        "clientName": {"type": ["string", "null"]},
+        "emailAddress": {"type": ["string", "null"]},
+        "currencyCode": {"type": ["string", "null"]},
+        "lines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["invoiceNumber", "reference", "invoiceDate", "dueDate", "amount", "balance"],
+                "properties": {
+                    "invoiceNumber": {"type": ["string", "null"]},
+                    "reference": {"type": ["string", "null"]},
+                    "invoiceDate": {"type": ["string", "null"]},
+                    "dueDate": {"type": ["string", "null"]},
+                    "amount": {"type": ["number", "null"]},
+                    "balance": {"type": ["number", "null"]},
+                    "description": {"type": ["string", "null"]},
+                },
             },
         },
     },
@@ -7494,6 +7526,64 @@ def _serialize_me_report_submission(row: dict) -> dict:
     }
 
 
+def _mark_stale_me_report_submissions(user_id: str) -> None:
+    now = utcnow()
+    stale_before = now - ME_REPORT_SUBMISSION_STALE_AFTER
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT submissions.id,
+                       submissions.client_id,
+                       submissions.filename,
+                       submissions.created_at
+                FROM me_report_submissions AS submissions
+                JOIN me_report_clients AS clients
+                  ON clients.id = submissions.client_id
+                WHERE clients.user_id = %s
+                  AND submissions.status IN ('queued', 'processing', 'running', 'pending')
+                  AND submissions.completed_at IS NULL
+                  AND submissions.created_at < %s
+                """,
+                (user_id, stale_before),
+            )
+            stale_rows = cursor.fetchall()
+            if stale_rows:
+                cursor.execute(
+                    """
+                    UPDATE me_report_submissions
+                    SET status = 'failed',
+                        error_message = %s,
+                        completed_at = %s
+                    WHERE id = ANY(%s)
+                    """,
+                    (
+                        "Upload processing timed out in the background. Please upload the report again.",
+                        now,
+                        [row["id"] for row in stale_rows],
+                    ),
+                )
+        connection.commit()
+    for row in stale_rows or []:
+        try:
+            age_seconds = max(0, int((now - row["created_at"]).total_seconds())) if row.get("created_at") else None
+            record_audit_event(
+                "me_report_submission",
+                str(row["id"]),
+                "me_report.submission_timed_out",
+                {
+                    "client_id": str(row.get("client_id") or ""),
+                    "filename": row.get("filename") or "",
+                    "created_at": _iso(row.get("created_at")),
+                    "age_seconds": age_seconds,
+                    "stale_threshold_seconds": int(ME_REPORT_SUBMISSION_STALE_AFTER.total_seconds()),
+                },
+                user_id,
+            )
+        except Exception:
+            logger.exception("Unable to record stale ME Report submission audit event")
+
+
 def _me_report_is_vat_registration_exception(item: dict) -> bool:
     title = str(item.get("title") or "").lower()
     detail = str(item.get("detail") or "").lower()
@@ -7770,6 +7860,7 @@ def _me_report_client_row(user: dict, client_id: str) -> dict:
 
 
 def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dict | None]:
+    _mark_stale_me_report_submissions(user["id"])
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -16195,6 +16286,438 @@ def _xero_contact_where(contact_id: str) -> str:
 def _xero_transaction_contact_id(payload: dict) -> str:
     contact = payload.get("Contact") or {}
     return str(contact.get("ContactID") or payload.get("ContactID") or "").lower()
+
+
+def _supplier_statement_invoice_key(value) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", str(value or "").upper().strip())
+
+
+def _supplier_statement_text(file_bytes: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Supplier statement extraction requires PDF support in backend dependencies ({exc}).",
+        ) from exc
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        if getattr(reader, "is_encrypted", False):
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+        lines = []
+        for page in reader.pages:
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                page_text = ""
+            if page_text.strip():
+                lines.append(page_text)
+        text = "\n\n".join(lines).strip()
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unable to read supplier statement PDF: {exc}") from exc
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No readable text was found in the supplier statement PDF. Upload a text-based PDF export from Xero.",
+        )
+    return text[:160000]
+
+
+async def _extract_supplier_statement_lines(statement_text: str, filename: str) -> dict:
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Extract supplier statement invoice lines from the following statement text. "
+                            "Return JSON only. Do not hallucinate lines. "
+                            "Extract statement-level clientName (if shown), supplierName, and emailAddress where visible. "
+                            "For each line, capture invoiceNumber/reference where visible, dates in YYYY-MM-DD where possible, "
+                            "and numeric amount/balance values. Keep missing fields blank/null.\n\n"
+                            f"Statement filename: {filename}\n\n"
+                            f"Statement text:\n{statement_text}"
+                        ),
+                    }
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "supplier_reconciliation_extraction",
+                "schema": SUPPLIER_RECONCILIATION_EXTRACTION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 32000,
+    }
+    payload = await _post_openai_responses(request_body, "supplier statement extraction", timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS)
+    text = _extract_response_text(payload)
+    if not text:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned an empty supplier statement extraction.")
+    try:
+        return json.loads(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned invalid JSON for supplier statement extraction.") from exc
+
+
+def _xero_bill_deep_link(invoice_id: str) -> str:
+    clean_invoice_id = str(invoice_id or "").strip()
+    if not clean_invoice_id:
+        return ""
+    return f"https://go.xero.com/AccountsPayable/View.aspx?InvoiceID={clean_invoice_id}"
+
+
+async def _supplier_reconciliation_contact_options(user: dict) -> list[dict]:
+    connection_row = get_xero_connection_for_user(user["id"])
+    try:
+        contacts = await fetch_paginated_collection(connection_row, CONTACTS_URL, "Contacts", max_pages=10, params={"order": "Name ASC"})
+    except Exception:
+        contacts = []
+    options = []
+    for contact in contacts:
+        contact_id = _xero_contact_id(contact)
+        if not contact_id:
+            continue
+        status_value = str(contact.get("ContactStatus") or "").upper()
+        if status_value == "ARCHIVED":
+            continue
+        options.append(
+            {
+                "xeroContactId": contact_id,
+                "name": str(contact.get("Name") or "").strip(),
+                "email": str(contact.get("EmailAddress") or "").strip(),
+                "supplier": bool(contact.get("IsSupplier")) or bool(contact.get("Supplier")),
+            }
+        )
+    options.sort(key=lambda item: (item.get("name") or "").lower())
+    return options
+
+
+def _supplier_reconciliation_connected_rows(tenant_id: str) -> list[dict]:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_contact_id, contact_name, contact_email, created_at
+                FROM supplier_reconciliation_clients
+                WHERE tenant_id = %s
+                  AND status = 'active'
+                ORDER BY created_at DESC
+                """,
+                (tenant_id,),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+    return rows
+
+
+def _supplier_reconciliation_connected_contact_ids(tenant_id: str) -> set[str]:
+    rows = _supplier_reconciliation_connected_rows(tenant_id)
+    return {str(row.get("xero_contact_id") or "").strip() for row in rows if str(row.get("xero_contact_id") or "").strip()}
+
+
+async def supplier_reconciliation_payload(user: dict) -> dict:
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        return {"xero": {"connected": False, "tenantName": "", "tenantId": "", "contacts": []}, "connectedClients": []}
+    tenant_id = str(connection_row.get("tenant_id") or "")
+    contacts = await _supplier_reconciliation_contact_options(user)
+    contacts_by_id = {str(contact.get("xeroContactId") or ""): contact for contact in contacts}
+    connected_rows = _supplier_reconciliation_connected_rows(tenant_id)
+    connected_clients = []
+    for row in connected_rows:
+        contact_id = str(row.get("xero_contact_id") or "")
+        live_contact = contacts_by_id.get(contact_id) or {}
+        connected_clients.append(
+            {
+                "id": str(row["id"]),
+                "xeroContactId": contact_id,
+                "name": str(live_contact.get("name") or row.get("contact_name") or "").strip(),
+                "email": str(live_contact.get("email") or row.get("contact_email") or "").strip(),
+                "createdAt": _iso(row.get("created_at")) or "",
+            }
+        )
+    return {
+        "xero": {
+            "connected": True,
+            "tenantName": connection_row.get("tenant_name") or "",
+            "tenantId": connection_row.get("tenant_id") or "",
+            "contacts": contacts,
+        },
+        "connectedClients": connected_clients,
+    }
+
+
+async def add_supplier_reconciliation_client(user: dict, payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        payload = {}
+    xero_contact_id = str(payload.get("xeroContactId") or "").strip()
+    if not xero_contact_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a supplier contact before connecting.")
+    connection_row = get_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "")
+    contacts = await _supplier_reconciliation_contact_options(user)
+    contact = next((item for item in contacts if item.get("xeroContactId") == xero_contact_id), None)
+    if contact is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier contact was not found in this Xero tenant.")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO supplier_reconciliation_clients (
+                    tenant_id, xero_contact_id, contact_name, contact_email,
+                    status, created_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, 'active', %s, %s, %s)
+                ON CONFLICT (tenant_id, xero_contact_id) DO UPDATE
+                SET contact_name = EXCLUDED.contact_name,
+                    contact_email = EXCLUDED.contact_email,
+                    status = 'active',
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id
+                """,
+                (
+                    tenant_id,
+                    xero_contact_id,
+                    str(contact.get("name") or "").strip(),
+                    str(contact.get("email") or "").strip(),
+                    user["id"],
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    record_audit_event(
+        "supplier_reconciliation_client",
+        str((row or {}).get("id") or xero_contact_id),
+        "supplier_reconciliation.client_connected",
+        {"xero_contact_id": xero_contact_id, "name": contact.get("name") or ""},
+        user["id"],
+    )
+    return await supplier_reconciliation_payload(user)
+
+
+async def delete_supplier_reconciliation_client(user: dict, supplier_client_id: str) -> dict:
+    connection_row = get_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, xero_contact_id, contact_name
+                FROM supplier_reconciliation_clients
+                WHERE id = %s
+                  AND tenant_id = %s
+                  AND status = 'active'
+                """,
+                (supplier_client_id, tenant_id),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier reconciliation client not found.")
+            cursor.execute(
+                """
+                UPDATE supplier_reconciliation_clients
+                SET status = 'archived',
+                    updated_at = %s
+                WHERE id = %s
+                  AND tenant_id = %s
+                """,
+                (utcnow(), supplier_client_id, tenant_id),
+            )
+        connection.commit()
+    record_audit_event(
+        "supplier_reconciliation_client",
+        supplier_client_id,
+        "supplier_reconciliation.client_disconnected",
+        {"xero_contact_id": row.get("xero_contact_id") or "", "name": row.get("contact_name") or ""},
+        user["id"],
+    )
+    return await supplier_reconciliation_payload(user)
+
+
+async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading supplier statements.")
+    contact_id = str(xero_contact_id or "").strip()
+    if not contact_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a supplier contact before uploading a statement.")
+    if not file_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a supplier statement PDF.")
+    lower_name = str(filename or "").lower()
+    if "pdf" not in str(content_type or "").lower() and not lower_name.endswith(".pdf"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier reconciliation currently supports PDF statements only.")
+    connection_row = get_xero_connection_for_user(user["id"])
+    tenant_id = str(connection_row.get("tenant_id") or "")
+    connected_contact_ids = _supplier_reconciliation_connected_contact_ids(tenant_id)
+    if contact_id not in connected_contact_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect this supplier in Supplier Reconciliation before uploading statements.")
+
+    statement_text = _supplier_statement_text(file_bytes)
+    extracted = await _extract_supplier_statement_lines(statement_text, filename or "supplier-statement.pdf")
+    extracted_lines = [line for line in (extracted.get("lines") or []) if isinstance(line, dict)]
+
+    where = f'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"&&{_xero_contact_where(contact_id)}'
+    try:
+        bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"ContactIDs": contact_id, "where": 'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"', "order": "Date DESC"})
+    except HTTPException:
+        bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"where": where, "order": "Date DESC"})
+    contact_id_lower = contact_id.lower()
+    bills = [bill for bill in bills if _xero_transaction_contact_id(bill) == contact_id_lower]
+
+    bill_rows = []
+    invoice_lookup = {}
+    for bill in bills:
+        invoice_id = str(bill.get("InvoiceID") or bill.get("invoiceID") or "").strip()
+        invoice_number = str(bill.get("InvoiceNumber") or "").strip()
+        reference = str(bill.get("Reference") or "").strip()
+        amount_due = _money(bill.get("AmountDue"))
+        amount_paid = _money(bill.get("AmountPaid"))
+        total = _money(bill.get("Total"))
+        status = str(bill.get("Status") or "").upper()
+        paid = amount_due <= Decimal("0.01") and amount_paid > 0
+        row = {
+            "invoiceId": invoice_id,
+            "invoiceNumber": invoice_number,
+            "reference": reference,
+            "status": status,
+            "date": _xero_payload_date(bill.get("DateString") or bill.get("Date")),
+            "dueDate": _xero_payload_date(bill.get("DueDateString") or bill.get("DueDate")),
+            "total": float(total),
+            "amountPaid": float(amount_paid),
+            "amountDue": float(amount_due),
+            "isPaid": paid,
+            "xeroUrl": _xero_bill_deep_link(invoice_id),
+        }
+        bill_rows.append(row)
+        for candidate in {invoice_number, reference}:
+            key = _supplier_statement_invoice_key(candidate)
+            if key and key not in invoice_lookup:
+                invoice_lookup[key] = row
+
+    reconciliation_rows = []
+    for index, line in enumerate(extracted_lines):
+        line_invoice = str(line.get("invoiceNumber") or "").strip()
+        line_reference = str(line.get("reference") or "").strip()
+        matched = None
+        for candidate in (line_invoice, line_reference):
+            key = _supplier_statement_invoice_key(candidate)
+            if key and key in invoice_lookup:
+                matched = invoice_lookup[key]
+                break
+        if not matched:
+            status_key = "missing"
+            status_label = "Missing in Xero"
+            status_color = "red"
+        elif matched.get("isPaid"):
+            status_key = "paid"
+            status_label = "Paid in Xero"
+            status_color = "green"
+        else:
+            status_key = "allocated"
+            status_label = "Found in Xero (outstanding/allocated)"
+            status_color = "yellow"
+        reconciliation_rows.append(
+            {
+                "id": f"line-{index + 1}",
+                "invoiceNumber": line_invoice,
+                "reference": line_reference,
+                "invoiceDate": str(line.get("invoiceDate") or "").strip(),
+                "dueDate": str(line.get("dueDate") or "").strip(),
+                "description": str(line.get("description") or "").strip(),
+                "amount": float(_money(line.get("amount"))),
+                "balance": float(_money(line.get("balance"))),
+                "statusKey": status_key,
+                "statusLabel": status_label,
+                "statusColor": status_color,
+                "xeroInvoiceId": matched.get("invoiceId") if matched else "",
+                "xeroInvoiceNumber": matched.get("invoiceNumber") if matched else "",
+                "xeroInvoiceStatus": matched.get("status") if matched else "",
+                "xeroAmountDue": matched.get("amountDue") if matched else 0.0,
+                "xeroAmountPaid": matched.get("amountPaid") if matched else 0.0,
+                "xeroUrl": matched.get("xeroUrl") if matched else "",
+            }
+        )
+
+    return {
+        "contactId": contact_id,
+        "supplierName": str(extracted.get("supplierName") or "").strip(),
+        "clientName": str(extracted.get("clientName") or "").strip(),
+        "emailAddress": str(extracted.get("emailAddress") or "").strip(),
+        "statementDate": str(extracted.get("statementDate") or "").strip(),
+        "currencyCode": str(extracted.get("currencyCode") or "GBP").strip() or "GBP",
+        "filename": filename or "supplier-statement.pdf",
+        "rows": reconciliation_rows,
+        "summary": {
+            "totalLines": len(reconciliation_rows),
+            "missingCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "missing"),
+            "allocatedCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "allocated"),
+            "paidCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "paid"),
+            "matchedBillCount": len({row["xeroInvoiceId"] for row in reconciliation_rows if row.get("xeroInvoiceId")}),
+        },
+    }
+
+
+def send_supplier_reconciliation_email(user: dict, payload: dict | None = None) -> dict:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending supplier emails.")
+    payload = payload if isinstance(payload, dict) else {}
+    recipient = str(payload.get("to") or "").strip()
+    subject = str(payload.get("subject") or "").strip()
+    body = str(payload.get("body") or "").strip()
+    client_name = str(payload.get("clientName") or "").strip()
+    statement_date = str(payload.get("statementDate") or "").strip()
+    supplier_name = str(payload.get("supplierName") or "").strip()
+    if not recipient:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Recipient email is required.")
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email subject is required.")
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email body is required.")
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+    message["To"] = recipient
+    message.set_content(body)
+
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message, to_addrs=[recipient])
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+
+    record_audit_event(
+        "supplier_reconciliation_email",
+        recipient,
+        "supplier_reconciliation.email_sent",
+        {
+            "recipient": recipient,
+            "subject": subject,
+            "client_name": client_name,
+            "statement_date": statement_date,
+            "supplier_name": supplier_name,
+        },
+        user["id"],
+    )
+    return {"sent": True, "recipient": recipient}
 
 
 def _xero_line_items(line_items: list[dict] | None) -> list[dict]:
