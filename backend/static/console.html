@@ -19649,7 +19649,7 @@
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Developer log</p>
-                                        <h3>System and user activity</h3>
+                                        <h3>System activity</h3>
                                     </div>
                                     <div class="developer-log-actions">
                                         <button class="ghost-button" id="settingsCopyDeveloperLogButton" type="button">Copy logs</button>
@@ -19669,7 +19669,6 @@
                                     <div class="developer-log-mode" role="group" aria-label="Developer log type">
                                         <button type="button" data-developer-log-mode="all" aria-pressed="true">All</button>
                                         <button type="button" data-developer-log-mode="system" aria-pressed="false">System</button>
-                                        <button type="button" data-developer-log-mode="user" aria-pressed="false">User activity</button>
                                     </div>
                                     <div class="developer-log-mode" role="group" aria-label="Developer log severity">
                                         <button type="button" data-developer-log-severity="all" aria-pressed="true">All levels</button>
@@ -19678,7 +19677,7 @@
                                         <button type="button" data-developer-log-severity="info" aria-pressed="false">Info</button>
                                     </div>
                                 </div>
-                                <p class="settings-help" id="settingsDeveloperLogSummary">Backend sync events, API calls, browser errors and user actions will appear here.</p>
+                                <p class="settings-help" id="settingsDeveloperLogSummary">Backend sync events, API calls, and browser errors will appear here.</p>
                                 <div class="developer-log-list settings-developer-log-list" id="settingsDeveloperLogList">
                                     <div class="empty-state">Open Settings after a failed sync to see the exact backend response.</div>
                                 </div>
@@ -22236,8 +22235,8 @@
                     <div class="developer-log-card">
                         <div class="developer-log-head">
                             <div>
-                                <h3 id="developerLogTitle">System and user activity log</h3>
-                                <p id="developerLogSummary">Backend sync events, API calls, browser errors and user actions</p>
+                                <h3 id="developerLogTitle">System activity log</h3>
+                                <p id="developerLogSummary">Backend sync events, API calls, and browser errors</p>
                             </div>
                             <div class="developer-log-actions">
                                 <div class="developer-log-filter-bar">
@@ -22252,7 +22251,6 @@
                                     <div class="developer-log-mode" role="group" aria-label="Developer log type">
                                         <button type="button" data-developer-log-mode="all" aria-pressed="true">All</button>
                                         <button type="button" data-developer-log-mode="system" aria-pressed="false">System</button>
-                                        <button type="button" data-developer-log-mode="user" aria-pressed="false">User activity</button>
                                     </div>
                                     <div class="developer-log-mode" role="group" aria-label="Developer log severity">
                                         <button type="button" data-developer-log-severity="all" aria-pressed="true">All levels</button>
@@ -22644,7 +22642,7 @@
                 letters: "Create and edit reminder templates used from client pages.",
                 "me-report-email": "Control client snapshot emails, required BCC, and report send wording.",
                 "gmail-connection": "Connect or reconnect the Gmail inbox used for report email sending.",
-                "developer-log": "Inspect sync events, backend errors, API calls, and user activity.",
+                "developer-log": "Inspect sync events, backend errors, and API calls.",
                 "system-status": "Check stored record counts, database size, and backend health indicators.",
                 "factory-reset": "Protected destructive controls are isolated from day-to-day settings."
             };
@@ -26925,7 +26923,7 @@
                     if (developerLogModeButton) {
                         event.preventDefault();
                         event.stopPropagation();
-                        developerLogModeFilter = ["all", "system", "user"].includes(developerLogModeButton.dataset.developerLogMode)
+                        developerLogModeFilter = ["all", "system"].includes(developerLogModeButton.dataset.developerLogMode)
                             ? developerLogModeButton.dataset.developerLogMode
                             : "all";
                         renderDeveloperLogs();
@@ -53741,8 +53739,7 @@
             function combinedDeveloperLogEntries() {
                 return [
                     ...developerLogEntries,
-                    ...systemActivityDeveloperLogEntries(),
-                    ...userActivityEntries
+                    ...systemActivityDeveloperLogEntries()
                 ]
                     .filter((entry) => entry?.message || entry?.eventType)
                     .sort((left, right) => activityTimestamp({ at: right.createdAt }) - activityTimestamp({ at: left.createdAt }))
@@ -53750,9 +53747,7 @@
             }
 
             function developerLogEntryMatchesMode(entry) {
-                const isUserActivity = entry?.source === "user-activity" || String(entry?.eventType || "").startsWith("user.");
-                if (developerLogModeFilter === "user") return isUserActivity;
-                if (developerLogModeFilter === "system") return !isUserActivity;
+                if (developerLogModeFilter === "system") return entry?.source !== "user-activity";
                 return true;
             }
 
@@ -53854,8 +53849,7 @@
                     empty.className = "empty-state";
                     const selectedFilters = [];
                     if (developerLogDateFilter) selectedFilters.push("selected date");
-                    if (developerLogModeFilter === "user") selectedFilters.push("user activity");
-                    else if (developerLogModeFilter === "system") selectedFilters.push("system");
+                    if (developerLogModeFilter === "system") selectedFilters.push("system");
                     if (developerLogSeverityFilter !== "all") selectedFilters.push(`${developerLogSeverityFilter} level`);
                     empty.textContent = selectedFilters.length
                         ? `No log entries match the ${selectedFilters.join(", ")} filter${selectedFilters.length === 1 ? "" : "s"}.`
@@ -53931,14 +53925,13 @@
                 developerLogEntries = Array.isArray(logs) ? logs : [];
                 const visibleLogs = developerLogVisibleEntries();
                 const allLogs = combinedDeveloperLogEntries();
-                const userCount = allLogs.filter((entry) => entry.source === "user-activity").length;
-                const systemCount = Math.max(0, allLogs.length - userCount);
+                const systemCount = allLogs.length;
                 const errorCount = allLogs.filter((entry) => developerLogSeverity(entry) === "error").length;
                 const warningCount = allLogs.filter((entry) => developerLogSeverity(entry) === "warning").length;
                 const suffix = developerLogDateFilter ? ` for ${developerLogDateFilter}` : "";
-                const modeLabel = developerLogModeFilter === "user" ? " user activity" : developerLogModeFilter === "system" ? " system" : "";
+                const modeLabel = developerLogModeFilter === "system" ? " system" : "";
                 const severityLabel = developerLogSeverityFilter === "error" ? " error" : developerLogSeverityFilter === "warning" ? " warning" : developerLogSeverityFilter === "info" ? " info" : "";
-                const summaryText = `${visibleLogs.length} of ${allLogs.length} recent${modeLabel}${severityLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${userCount} user · ${errorCount} error · ${warningCount} warning`;
+                const summaryText = `${visibleLogs.length} of ${allLogs.length} recent${modeLabel}${severityLabel} log entr${allLogs.length === 1 ? "y" : "ies"}${suffix} · ${systemCount} system · ${errorCount} error · ${warningCount} warning`;
                 document.querySelectorAll("#developerLogSummary, #settingsDeveloperLogSummary").forEach((summary) => {
                     summary.textContent = summaryText;
                 });
@@ -55070,7 +55063,7 @@
                 "developer-log": {
                     eyebrow: "Developer log",
                     title: "Developer Log / Activity Audit",
-                    meta: "Inspect sync events, backend errors, API calls, and user activity."
+                    meta: "Inspect sync events, backend errors, and API calls."
                 },
                 "system-status": {
                     eyebrow: "System status",
@@ -55720,7 +55713,7 @@
                 });
                 document.querySelectorAll("[data-developer-log-mode]").forEach((button) => {
                     button.addEventListener("click", () => {
-                        developerLogModeFilter = ["all", "system", "user"].includes(button.dataset.developerLogMode)
+                        developerLogModeFilter = ["all", "system"].includes(button.dataset.developerLogMode)
                             ? button.dataset.developerLogMode
                             : "all";
                         renderDeveloperLogs();
