@@ -35,6 +35,7 @@ except Exception:  # pragma: no cover - optional dependency guard
 CH_API_KEY_LABEL = "ch:api_key"
 CH_PRESENTER_AUTH_LABEL = "ch:presenter_auth"
 CH_COMPANY_AUTH_LABEL = "ch:company_auth"
+HARDCODED_CH_API_KEY = "2296ea5f-5390-446f-9258-d9e7db322f8e"
 HARDCODED_CH_PRESENTER_ID = "00046248000"
 HARDCODED_CH_PRESENTER_AUTH = "PLCTL2F87WL"
 
@@ -155,6 +156,10 @@ def configured_presenter_auth() -> str:
     return HARDCODED_CH_PRESENTER_AUTH
 
 
+def configured_api_key() -> str:
+    return HARDCODED_CH_API_KEY
+
+
 def _load_settings_row() -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -198,9 +203,9 @@ def _serialise(row: dict) -> dict:
     return {
         "environment": environment,
         "apiBaseUrl": api_base,
-        "apiKey": decrypt_api_key(),
-        "apiKeyHint": row.get("api_key_hint") or "",
-        "apiKeyConfigured": bool(row.get("api_key_encrypted")),
+        "apiKey": configured_api_key(),
+        "apiKeyHint": "Hardcoded in backend",
+        "apiKeyConfigured": True,
         "presenterId": configured_presenter_id(),
         "presenterAuth": presenter_auth,
         "presenterAuthHint": "Hardcoded in backend",
@@ -257,11 +262,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
             detail="Environment must be 'sandbox' or 'production'.",
         )
 
-    api_key_override = overrides.get("apiKey")
-    if api_key_override is not None:
-        api_key = _validated_companies_house_api_key(str(api_key_override))
-    else:
-        api_key = _validated_companies_house_api_key(decrypt_api_key())
+    api_key = _validated_companies_house_api_key(configured_api_key())
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -458,18 +459,9 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
             detail="Environment must be 'sandbox' or 'production'.",
         )
 
-    new_api_key = payload.get("apiKey")
-    if new_api_key is None:
-        api_key_encrypted = existing.get("api_key_encrypted") or ""
-        api_key_hint = existing.get("api_key_hint") or ""
-    else:
-        api_key_value = _validated_companies_house_api_key(str(new_api_key))
-        if api_key_value:
-            api_key_encrypted = encrypt_secret(api_key_value, CH_API_KEY_LABEL)
-            api_key_hint = _mask(api_key_value)
-        else:
-            api_key_encrypted = ""
-            api_key_hint = ""
+    api_key_value = _validated_companies_house_api_key(configured_api_key())
+    api_key_encrypted = encrypt_secret(api_key_value, CH_API_KEY_LABEL)
+    api_key_hint = _mask(api_key_value)
 
     presenter_id = configured_presenter_id()
     presenter_auth_value = configured_presenter_auth()
@@ -540,7 +532,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
         user_id=user_id,
         payload={
             "environment": environment,
-            "apiKeyChanged": new_api_key is not None,
+            "apiKeyChanged": False,
             "presenterAuthChanged": False,
         },
     )
@@ -549,18 +541,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
 
 
 def decrypt_api_key() -> str:
-    row = _load_settings_row()
-    if row is None or not row.get("api_key_encrypted"):
-        settings = get_settings()
-        return (settings.companies_house_api_key or "").strip()
-    try:
-        return decrypt_secret(row["api_key_encrypted"], CH_API_KEY_LABEL)
-    except Exception as exc:
-        logger.exception("Failed to decrypt Companies House API key from settings row")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Saved Companies House API key could not be decrypted. Re-save the API key in Companies House settings and retry.",
-        ) from exc
+    return configured_api_key()
 
 
 def _validated_companies_house_api_key(value: str) -> str:

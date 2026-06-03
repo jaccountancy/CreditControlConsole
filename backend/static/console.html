@@ -18974,8 +18974,8 @@
                                     <p class="ch-section-heading">Read API (company profile, officers, PSCs)</p>
                                     <label>
                                         Public API key
-                                        <input id="chSettingsApiKey" name="apiKey" type="text" autocomplete="off" placeholder="Companies House API key">
-                                        <span class="ch-field-hint" id="chSettingsApiKeyHint">Use Companies House REST API key only (not Streaming key / Web Client ID / Web Client Secret).</span>
+                                        <input id="chSettingsApiKey" name="apiKey" type="text" autocomplete="off" placeholder="Hardcoded in backend" readonly>
+                                        <span class="ch-field-hint" id="chSettingsApiKeyHint">Hardcoded in backend (read-only).</span>
                                     </label>
                                     <label class="ch-checkbox">
                                         <input id="chSettingsAutoSync" name="autoSyncEnabled" type="checkbox" checked>
@@ -53478,8 +53478,8 @@
                 const apiKeyHint = document.getElementById("chSettingsApiKeyHint");
                 if (apiKeyHint) {
                     apiKeyHint.textContent = data.apiKeyConfigured
-                        ? "Loaded full API key from settings."
-                        : "Not configured. Use Companies House REST API key only (not Streaming key / Web Client ID / Web Client Secret).";
+                        ? "Hardcoded in backend (read-only)."
+                        : "Not configured.";
                 }
                 const presenterAuthHint = document.getElementById("chSettingsPresenterAuthHint");
                 if (presenterAuthHint) {
@@ -53547,7 +53547,6 @@
             async function saveCompaniesHouseSettingsHandler() {
                 if (companiesHouseSettings.saving || companiesHouseSettings.testing) return;
                 const value = (id) => (document.getElementById(id)?.value || "").trim();
-                const apiKey = document.getElementById("chSettingsApiKey")?.value || "";
                 const body = {
                     environment: document.getElementById("chSettingsEnvironment")?.value || "sandbox",
                     notifyEmail: value("chSettingsNotifyEmail"),
@@ -53559,7 +53558,6 @@
                     xeroInvoiceTaxType: value("chSettingsXeroTaxType") || "NONE",
                     autoSyncEnabled: !!document.getElementById("chSettingsAutoSync")?.checked,
                 };
-                if (apiKey.trim()) body.apiKey = apiKey.trim();
                 companiesHouseSettings.saving = true;
                 const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
                 if (saveButton) saveButton.disabled = true;
@@ -53587,7 +53585,6 @@
             async function testCompaniesHouseConnectionHandler() {
                 if (companiesHouseSettings.saving || companiesHouseSettings.testing) return;
                 companiesHouseSettings.testing = true;
-                const apiKey = document.getElementById("chSettingsApiKey")?.value || "";
                 const testButton = document.getElementById("testCompaniesHouseConnectionButton");
                 const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
                 const reloadButton = document.getElementById("reloadCompaniesHouseSettingsButton");
@@ -53599,7 +53596,6 @@
                     const body = {
                         environment: document.getElementById("chSettingsEnvironment")?.value || "sandbox",
                     };
-                    if (apiKey.trim()) body.apiKey = apiKey.trim();
                     const payload = await requestJSON("/api/companies-house/settings/test-connection", {
                         method: "POST",
                         body: JSON.stringify(body),
