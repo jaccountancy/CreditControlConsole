@@ -6,10 +6,12 @@ import hashlib
 import io
 import json
 import logging
+import os
 import re
 import signal
 import smtplib
 import threading
+import time
 import zipfile
 import xml.etree.ElementTree as ET
 from calendar import monthrange
@@ -155,6 +157,25 @@ _SYNC_SIGNAL_HANDLERS_INSTALLED = False
 DEVELOPER_LOG_CLEAR_EVENT_TYPE = "developer.logs.cleared"
 _PRACTICE_PACK_RETENTION_LOCK = threading.Lock()
 _PRACTICE_PACK_RETENTION_BY_USER: dict[str, list[dict]] = {}
+_PROCESS_BOOT_ID = str(uuid4())
+_PROCESS_STARTED_AT = utcnow()
+_PROCESS_STARTED_MONOTONIC = time.monotonic()
+_PROCESS_START_EVENT_RECORDED = False
+
+
+def runtime_diagnostics_payload() -> dict:
+    now = utcnow()
+    return {
+        "processBootId": _PROCESS_BOOT_ID,
+        "pid": os.getpid(),
+        "startedAt": _iso(_PROCESS_STARTED_AT),
+        "uptimeSeconds": max(0, int(time.monotonic() - _PROCESS_STARTED_MONOTONIC)),
+        "capturedAt": _iso(now),
+        "railwayDeploymentId": str(os.getenv("RAILWAY_DEPLOYMENT_ID") or ""),
+        "railwayEnvironmentId": str(os.getenv("RAILWAY_ENVIRONMENT_ID") or ""),
+        "railwayServiceId": str(os.getenv("RAILWAY_SERVICE_ID") or ""),
+        "railwayReplicaId": str(os.getenv("RAILWAY_REPLICA_ID") or ""),
+    }
 
 OPENAI_RISK_ASSESSMENT_SCHEMA = {
     "type": "object",
@@ -2638,6 +2659,7 @@ def record_interrupted_sync_runs(signal_name: str = "SIGTERM") -> int:
                     "invoices_total": int(row.get("invoices_total") or 0),
                     "fetched_count": int(row.get("fetched_count") or 0),
                     "processed_count": int(row.get("processed_count") or 0),
+                    "runtime": runtime_diagnostics_payload(),
                 },
                 str(user_id) if user_id else None,
             )
@@ -2652,6 +2674,26 @@ def _sigterm_name(signum: int) -> str:
         return signal.Signals(signum).name
     except Exception:
         return f"signal {signum}"
+
+
+def _record_process_start_event() -> None:
+    global _PROCESS_START_EVENT_RECORDED
+    if _PROCESS_START_EVENT_RECORDED:
+        return
+    try:
+        record_audit_event(
+            "sync_run",
+            _PROCESS_BOOT_ID,
+            "sync.process.started",
+            {
+                "message": "Backend process started and sync signal handlers are active.",
+                "runtime": runtime_diagnostics_payload(),
+            },
+            None,
+        )
+        _PROCESS_START_EVENT_RECORDED = True
+    except Exception:
+        logger.exception("Unable to record backend process start event")
 
 
 def _handle_sync_sigterm(signum, frame) -> None:
@@ -2680,6 +2722,7 @@ def install_sync_signal_handlers() -> None:
         _PREVIOUS_SIGTERM_HANDLER = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGTERM, _handle_sync_sigterm)
         _SYNC_SIGNAL_HANDLERS_INSTALLED = True
+        _record_process_start_event()
     except ValueError:
         logger.warning("Unable to install sync SIGTERM handler outside the main thread")
 

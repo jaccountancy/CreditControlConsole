@@ -111,6 +111,7 @@ from .services import (
     list_customers,
     clear_developer_logs,
     list_developer_logs,
+    runtime_diagnostics_payload,
     connect_me_report_client_to_current_xero,
     create_me_report_client,
     generate_me_report,
@@ -1074,7 +1075,7 @@ def api_panel_sync_status(sync_run_id: str, user: dict = Depends(require_panel_u
 
 @app.get("/api/developer/logs")
 def api_developer_logs(limit: int = Query(120, ge=1, le=300), user: dict = Depends(require_panel_user)):
-    return {"logs": list_developer_logs(user, limit)}
+    return {"logs": list_developer_logs(user, limit), "runtime": runtime_diagnostics_payload()}
 
 
 @app.post("/api/developer/logs/clear")
