@@ -16562,14 +16562,73 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
     }
 
 
+def _ignition_renewal_reference_label(reference_number: int) -> str:
+    return f"JUKRE-{max(1, int(reference_number or 0)):03d}"
+
+
+def _ensure_ignition_renewal_batch_reference_number(cursor, user_id: str, run_id: str) -> int:
+    cursor.execute(
+        """
+        SELECT batch_reference_number
+        FROM ignition_renewal_runs
+        WHERE id = %s AND user_id = %s
+        """,
+        (run_id, user_id),
+    )
+    existing = cursor.fetchone()
+    existing_number = int(existing.get("batch_reference_number") or 0) if existing else 0
+    if existing_number > 0:
+        return existing_number
+
+    cursor.execute(
+        """
+        SELECT COALESCE(MAX(batch_reference_number), 0) AS max_reference
+        FROM ignition_renewal_runs
+        WHERE user_id = %s
+        """,
+        (user_id,),
+    )
+    max_row = cursor.fetchone() or {}
+    next_number = int(max_row.get("max_reference") or 0) + 1
+    cursor.execute(
+        """
+        UPDATE ignition_renewal_runs
+        SET batch_reference_number = %s,
+            updated_at = NOW()
+        WHERE id = %s
+          AND user_id = %s
+          AND (batch_reference_number IS NULL OR batch_reference_number = 0)
+        RETURNING batch_reference_number
+        """,
+        (next_number, run_id, user_id),
+    )
+    updated = cursor.fetchone()
+    if updated:
+        return int(updated.get("batch_reference_number") or next_number)
+
+    cursor.execute(
+        """
+        SELECT batch_reference_number
+        FROM ignition_renewal_runs
+        WHERE id = %s AND user_id = %s
+        """,
+        (run_id, user_id),
+    )
+    final_row = cursor.fetchone() or {}
+    return int(final_row.get("batch_reference_number") or next_number)
+
+
 def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None = None) -> dict | None:
     if not row:
         return None
     total_current = _money(row.get("total_current_monthly"))
     total_new = _money(row.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    reference_number = int(row.get("batch_reference_number") or 0)
     return {
         "id": str(row.get("id") or ""),
+        "batchReferenceNumber": reference_number,
+        "batchReference": _ignition_renewal_reference_label(reference_number) if reference_number > 0 else "",
         "status": row.get("status") or "",
         "windowStart": _iso(row.get("window_start")) or "",
         "windowEnd": _iso(row.get("window_end")) or "",
@@ -16589,26 +16648,11 @@ def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None =
 
 
 def _ignition_renewal_batch_reference(user: dict, run_id: str) -> str:
-    reference_number = 0
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT sequence.reference_number
-                FROM (
-                    SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS reference_number
-                    FROM ignition_renewal_runs
-                    WHERE user_id = %s
-                ) AS sequence
-                WHERE sequence.id = %s
-                """,
-                (user["id"], run_id),
-            )
-            row = cursor.fetchone()
-            if row:
-                reference_number = int(row.get("reference_number") or 0)
+            reference_number = _ensure_ignition_renewal_batch_reference_number(cursor, user["id"], run_id)
         connection.commit()
-    return f"JUKRE-{max(1, reference_number):03d}"
+    return _ignition_renewal_reference_label(reference_number)
 
 
 def _serialize_ignition_renewal_candidate(item: dict) -> dict:
@@ -16968,7 +17012,7 @@ async def _ignition_renewal_ai_summary(run: dict, items: list[dict]) -> str:
         return fallback
 
 
-def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str = "") -> str:
+def _ignition_renewal_email_body(run: dict, items: list[dict], batch_reference: str, summary_text: str = "") -> str:
     total_current = _money(run.get("total_current_monthly"))
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
@@ -16978,7 +17022,7 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str
         "",
         "Please find the finalised renewals batch attached as PDF.",
         "",
-        f"Reference: {_ignition_renewal_batch_reference(run)}",
+        f"Reference: {batch_reference}",
         f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}",
         f"Renewals included: {len(items)}",
         f"Current monthly fees: £{total_current:,.2f}",
@@ -17447,6 +17491,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 (user["id"], "draft" if new_items else "empty", window_start, window_end, skipped_count, utcnow(), utcnow()),
             )
             run = cursor.fetchone()
+            _ensure_ignition_renewal_batch_reference_number(cursor, user["id"], str(run["id"]))
             inserted = []
             for item in new_items:
                 cursor.execute(
@@ -17715,7 +17760,7 @@ async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict
         body = custom_body
     else:
         summary = await _ignition_renewal_ai_summary(run, items)
-        body = _ignition_renewal_email_body(run, items, summary_text=summary)
+        body = _ignition_renewal_email_body(run, items, batch_reference=batch_reference, summary_text=summary)
     return {"recipientEmail": recipient, "subject": subject, "body": body, "batchReference": batch_reference}
 
 
@@ -17809,6 +17854,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
             current_run = cursor.fetchone()
             items = []
             if current_run:
+                current_run["batch_reference_number"] = _ensure_ignition_renewal_batch_reference_number(cursor, user["id"], str(current_run["id"]))
                 cursor.execute(
                     """
                     SELECT *
@@ -17823,7 +17869,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
             cursor.execute(
                 """
                 SELECT id, status, window_start, window_end, picked_count, skipped_count,
-                       total_current_monthly, total_new_monthly, email_sent_at,
+                       total_current_monthly, total_new_monthly, batch_reference_number, email_sent_at,
                        finalised_at, error_message, created_at, updated_at
                 FROM ignition_renewal_runs
                 WHERE user_id = %s
@@ -17832,6 +17878,8 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
                 (user["id"],),
             )
             recent_runs = cursor.fetchall()
+            for run in recent_runs:
+                run["batch_reference_number"] = _ensure_ignition_renewal_batch_reference_number(cursor, user["id"], str(run["id"]))
         connection.commit()
     return {
         "recipientEmail": get_settings().ignition_renewals_recipient_email or "",

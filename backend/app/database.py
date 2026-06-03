@@ -967,6 +967,7 @@ CREATE TABLE IF NOT EXISTS ignition_renewal_runs (
     window_end DATE NOT NULL,
     picked_count INTEGER NOT NULL DEFAULT 0,
     skipped_count INTEGER NOT NULL DEFAULT 0,
+    batch_reference_number INTEGER,
     total_current_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0,
     total_new_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0,
     email_sent_at TIMESTAMPTZ,
@@ -983,6 +984,7 @@ ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS window_start DATE NOT
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS window_end DATE NOT NULL DEFAULT CURRENT_DATE;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS picked_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS skipped_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS batch_reference_number INTEGER;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS total_current_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS total_new_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
@@ -994,6 +996,10 @@ ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPT
 
 CREATE INDEX IF NOT EXISTS ignition_renewal_runs_user_created_idx
 ON ignition_renewal_runs (user_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_renewal_runs_user_batch_reference_idx
+ON ignition_renewal_runs (user_id, batch_reference_number)
+WHERE batch_reference_number IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS ignition_renewal_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

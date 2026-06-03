@@ -40298,6 +40298,16 @@
                 return `JUKRE-${String(numeric).padStart(3, "0")}`;
             }
 
+            function ignitionRenewalBatchRefNumber(run = null) {
+                const direct = Number(run?.batchReferenceNumber || 0);
+                if (direct > 0) return direct;
+                const label = String(run?.batchReference || "").trim().toUpperCase();
+                const match = label.match(/^JUKRE-(\d+)$/);
+                if (match) return Number(match[1]) || 0;
+                const runId = String(run?.id || "").trim();
+                return Number(ignitionRenewalBatchRefs[runId] || 0);
+            }
+
             function ensureIgnitionRenewalBatchReferences(runs = []) {
                 const ordered = (Array.isArray(runs) ? runs : [])
                     .filter((run) => String(run?.id || "").trim())
@@ -40306,7 +40316,17 @@
                 let changed = false;
                 ordered.forEach((run) => {
                     const runId = String(run.id || "").trim();
-                    if (!runId || Number(ignitionRenewalBatchRefs[runId] || 0) > 0) return;
+                    if (!runId) return;
+                    const serverValue = ignitionRenewalBatchRefNumber(run);
+                    if (serverValue > 0) {
+                        if (Number(ignitionRenewalBatchRefs[runId] || 0) !== serverValue) {
+                            ignitionRenewalBatchRefs[runId] = serverValue;
+                            changed = true;
+                        }
+                        ignitionRenewalBatchRefCounter = Math.max(ignitionRenewalBatchRefCounter, serverValue);
+                        return;
+                    }
+                    if (Number(ignitionRenewalBatchRefs[runId] || 0) > 0) return;
                     ignitionRenewalBatchRefCounter += 1;
                     ignitionRenewalBatchRefs[runId] = ignitionRenewalBatchRefCounter;
                     changed = true;
@@ -40315,9 +40335,11 @@
             }
 
             function ignitionRenewalBatchReferenceForRun(run = null) {
+                const serverLabel = String(run?.batchReference || "").trim();
+                if (serverLabel) return serverLabel;
                 const runId = String(run?.id || "").trim();
                 if (!runId) return "JUKRE-000";
-                const value = Number(ignitionRenewalBatchRefs[runId] || 0);
+                const value = ignitionRenewalBatchRefNumber(run);
                 if (value > 0) return ignitionRenewalBatchRefLabel(value);
                 ignitionRenewalBatchRefCounter += 1;
                 ignitionRenewalBatchRefs[runId] = ignitionRenewalBatchRefCounter;
@@ -40387,7 +40409,7 @@
                     return true;
                 });
                 const byDate = (run) => Date.parse(run?.createdAt || run?.updatedAt || "") || 0;
-                const byRef = (run) => Number(ignitionRenewalBatchRefs[String(run?.id || "").trim()] || 0);
+                const byRef = (run) => ignitionRenewalBatchRefNumber(run);
                 const byClients = (run) => Number(run?.pickedCount || run?.itemCount || 0);
                 const byCurrentMrr = (run) => Number(run?.totalCurrentMonthly || 0);
                 filtered.sort((a, b) => {
@@ -41118,9 +41140,8 @@
                         <article class="ignition-renewals-stage-card">
                             <div class="ignition-renewals-stage-head">
                                 <div>
-                                    <p class="eyebrow">Renewals process</p>
                                     <h4>Please see below your JUK Renewal Batches</h4>
-                                    <p class="detail-meta">Press Start Workflow to begin.</p>
+                                    <p class="detail-meta">All figures are NET of VAT.</p>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" type="button" id="ignitionRenewalsSelectAllRunsButton" ${selectableRunIds.length ? "" : "disabled"}>Select all</button>
