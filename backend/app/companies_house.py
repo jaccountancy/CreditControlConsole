@@ -88,6 +88,8 @@ CH_HEADER_NS = "http://xmlgw.companieshouse.gov.uk/Header"
 CH_FORMS_NS = "http://xmlgw.companieshouse.gov.uk"
 CH_GATEWAY_MAX_ATTEMPTS = 3
 CH_GATEWAY_BACKOFF_SECONDS = 1.0
+CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 12.0
+CH_GATEWAY_MAX_ELAPSED_SECONDS = 28.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd"
 
@@ -1335,17 +1337,26 @@ def _build_ch_status_xml(
 
 def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
     last_error = ""
+    started_at = time.monotonic()
     for attempt in range(1, CH_GATEWAY_MAX_ATTEMPTS + 1):
+        elapsed = time.monotonic() - started_at
+        remaining = CH_GATEWAY_MAX_ELAPSED_SECONDS - elapsed
+        if remaining <= 0:
+            break
+        request_timeout = max(1.0, min(CH_GATEWAY_REQUEST_TIMEOUT_SECONDS, remaining))
         try:
             response = httpx.post(
                 COMPANIES_HOUSE_XML_GATEWAY_URL,
                 content=xml_payload,
                 headers={"Content-Type": "text/xml; charset=utf-8"},
-                timeout=40.0,
+                timeout=request_timeout,
             )
             if response.status_code >= 500 and attempt < CH_GATEWAY_MAX_ATTEMPTS:
                 last_error = f"HTTP {response.status_code}"
-                time.sleep(CH_GATEWAY_BACKOFF_SECONDS * attempt)
+                remaining_before_sleep = CH_GATEWAY_MAX_ELAPSED_SECONDS - (time.monotonic() - started_at)
+                sleep_seconds = min(CH_GATEWAY_BACKOFF_SECONDS * attempt, max(0.0, remaining_before_sleep - 0.1))
+                if sleep_seconds > 0:
+                    time.sleep(sleep_seconds)
                 continue
             if response.is_error:
                 raise HTTPException(
@@ -1361,6 +1372,20 @@ def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
                     detail="Companies House gateway returned invalid XML.",
                 ) from exc
             return response_text, root
+        except httpx.TimeoutException as exc:
+            last_error = f"Timed out after {int(round(request_timeout))}s"
+            if attempt >= CH_GATEWAY_MAX_ATTEMPTS:
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail=(
+                        "Companies House gateway timed out while waiting for a submission status response. "
+                        "No confirmation that the filing was sent was returned."
+                    ),
+                ) from exc
+            remaining_before_sleep = CH_GATEWAY_MAX_ELAPSED_SECONDS - (time.monotonic() - started_at)
+            sleep_seconds = min(CH_GATEWAY_BACKOFF_SECONDS * attempt, max(0.0, remaining_before_sleep - 0.1))
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
         except httpx.HTTPError as exc:
             last_error = str(exc) or exc.__class__.__name__
             if attempt >= CH_GATEWAY_MAX_ATTEMPTS:
@@ -1368,7 +1393,18 @@ def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"Companies House gateway request failed after retries: {last_error}",
                 ) from exc
-            time.sleep(CH_GATEWAY_BACKOFF_SECONDS * attempt)
+            remaining_before_sleep = CH_GATEWAY_MAX_ELAPSED_SECONDS - (time.monotonic() - started_at)
+            sleep_seconds = min(CH_GATEWAY_BACKOFF_SECONDS * attempt, max(0.0, remaining_before_sleep - 0.1))
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+    if "timed out" in last_error.lower():
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail=(
+                "Companies House gateway timed out while waiting for a submission status response. "
+                "No confirmation that the filing was sent was returned."
+            ),
+        )
     raise HTTPException(
         status_code=status.HTTP_502_BAD_GATEWAY,
         detail=f"Companies House gateway request failed after retries: {last_error or 'Unknown error'}",

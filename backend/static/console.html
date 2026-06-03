@@ -21468,7 +21468,7 @@
                     summary: "The server took too long to respond while submitting to Companies House.",
                     message: [
                         "No confirmation that the filing was sent was returned.",
-                        "Retry with 1 company selected first, then run the rest in smaller batches.",
+                        "Retry and the workflow will continue in smaller batches automatically.",
                         requestId ? `Request ID: ${requestId}` : "",
                     ].filter(Boolean).join(" "),
                 };
@@ -48927,6 +48927,17 @@
                 expired: "Expired",
                 revoked: "Revoked",
             };
+            const CH_SUBMISSION_BATCH_SIZE = 3;
+
+            function chunkList(values, chunkSize) {
+                const items = Array.isArray(values) ? values.filter(Boolean) : [];
+                const size = Math.max(1, Number(chunkSize || 1));
+                const chunks = [];
+                for (let index = 0; index < items.length; index += size) {
+                    chunks.push(items.slice(index, index + size));
+                }
+                return chunks;
+            }
 
             function chFormatDate(value) {
                 if (!value) return "—";
@@ -49755,16 +49766,45 @@
                 chUpdateWorkflowControls();
                 chSetWorkflowStatus("Submitting selected companies…", "muted");
                 try {
-                    const payload = await requestJSON("/api/companies-house/submissions/bulk", {
-                        method: "POST",
-                        body: JSON.stringify({ companyIds: selected.map((company) => String(company.id || "")) }),
-                    });
-                    const result = payload?.result || {};
-                    const submittedCount = Number(result.submittedCount || 0);
-                    const skippedCount = Number(result.skippedCount || 0);
-                    const failedCount = Number(result.failedCount || 0);
-                    const skippedRows = Array.isArray(result.skipped) ? result.skipped : [];
-                    const failedRows = Array.isArray(result.failed) ? result.failed : [];
+                    const selectedCompanyIds = selected
+                        .map((company) => String(company.id || ""))
+                        .filter(Boolean);
+                    const batches = chunkList(selectedCompanyIds, CH_SUBMISSION_BATCH_SIZE);
+                    let submittedCount = 0;
+                    let skippedCount = 0;
+                    let failedCount = 0;
+                    const skippedRows = [];
+                    const failedRows = [];
+
+                    for (let index = 0; index < batches.length; index += 1) {
+                        const batch = batches[index];
+                        chSetWorkflowStatus(
+                            `Submitting batch ${(index + 1).toLocaleString("en-GB")} of ${batches.length.toLocaleString("en-GB")} (${batch.length.toLocaleString("en-GB")} compan${batch.length === 1 ? "y" : "ies"})…`,
+                            "muted"
+                        );
+                        let payload;
+                        try {
+                            payload = await requestJSON("/api/companies-house/submissions/bulk", {
+                                method: "POST",
+                                body: JSON.stringify({ companyIds: batch }),
+                            });
+                        } catch (error) {
+                            if (index > 0 && submittedCount > 0) {
+                                const partialMessage = `${error?.message || "Unable to submit selected companies."} Completed ${submittedCount.toLocaleString("en-GB")} submission${submittedCount === 1 ? "" : "s"} before batch ${(index + 1).toLocaleString("en-GB")} failed.`;
+                                throw new APIRequestError(partialMessage, {
+                                    statusCode: Number(error?.statusCode || 0) || null,
+                                    details: error?.details || null,
+                                });
+                            }
+                            throw error;
+                        }
+                        const result = payload?.result || {};
+                        submittedCount += Number(result.submittedCount || 0);
+                        skippedCount += Number(result.skippedCount || 0);
+                        failedCount += Number(result.failedCount || 0);
+                        if (Array.isArray(result.skipped)) skippedRows.push(...result.skipped);
+                        if (Array.isArray(result.failed)) failedRows.push(...result.failed);
+                    }
                     const issueRows = [
                         ...skippedRows.map((row) => ({
                             companyName: String(row?.companyName || ""),
