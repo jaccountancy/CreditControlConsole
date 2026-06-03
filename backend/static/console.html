@@ -13725,6 +13725,61 @@
                 cursor: default;
                 box-shadow: none;
             }
+            .ch-review-step-nav {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 8px;
+            }
+            .ch-review-step-button {
+                appearance: none;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                min-height: 34px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: #fff;
+                color: #32425f;
+                font: inherit;
+                font-size: 0.9rem;
+                font-weight: 800;
+                line-height: 1.2;
+                padding: 8px 14px;
+                white-space: normal;
+                text-align: center;
+                cursor: pointer;
+                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+            }
+            .ch-review-step-button:hover,
+            .ch-review-step-button:focus-visible {
+                outline: none;
+                border-color: rgba(29, 103, 242, 0.4);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+            }
+            .ch-review-step-button.is-selected {
+                color: #fff;
+                border-color: var(--blue);
+                background: linear-gradient(135deg, #2c78ff, #1d67f2);
+                box-shadow: 0 8px 20px rgba(29, 103, 242, 0.24);
+            }
+            .ch-review-step-index {
+                display: inline-grid;
+                place-items: center;
+                width: 20px;
+                height: 20px;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 900;
+                line-height: 1;
+                color: currentColor;
+                background: rgba(50, 66, 95, 0.1);
+            }
+            .ch-review-step-button.is-selected .ch-review-step-index {
+                color: var(--blue);
+                background: rgba(255, 255, 255, 0.92);
+            }
             .operation-review-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -16436,6 +16491,11 @@
                 gap: 12px;
                 align-items: center;
                 flex-wrap: wrap;
+            }
+            .ch-settings-actions .ghost-button[disabled] {
+                opacity: 0.55;
+                cursor: not-allowed;
+                filter: saturate(0.65);
             }
             .ch-settings-status {
                 font-size: 13px;
@@ -21653,6 +21713,8 @@
             let meReportBulkQueuePollTimer = null;
             let meReportBulkQueuePollRemaining = 0;
             let meReportBulkManualMatchState = null;
+            let meReportContactRefreshInFlight = false;
+            let meReportContactRefreshAttempted = false;
             let meReportLossDialogState = null;
             let meReportDlaSetupDialogState = null;
             const meReportDlaSetupPromptedKeys = new Set();
@@ -29861,7 +29923,6 @@
                             row?.tenantName,
                         ].find((value) => String(value || "").trim());
                         const isSelected = selectedXeroLockDateTenantIds.has(tenantId);
-                        const fixInFlight = xeroLockDateFixInFlightTenantIds.has(tenantId);
                         return `
                             <tr>
                                 <td class="select-cell">
@@ -29901,9 +29962,6 @@
                                             : isFlagged
                                                 ? '<span class="ch-pill is-bad">Last filed accounts period is not locked in Xero</span>'
                                                 : '<span class="ch-pill is-good">Lock date covers latest filed accounts period</span>'}
-                                    ${isFlagged
-                                        ? `<button class="ghost-button xero-lock-fix-button" type="button" data-xero-lock-fix="${escapeHTML(tenantId)}" ${fixInFlight ? "disabled" : ""}>${fixInFlight ? "Fixing..." : "Fix For Me"}</button>`
-                                        : ""}
                                     ${row?.xeroError ? `<small>${escapeHTML(row.xeroError)}</small>` : ""}
                                 </td>
                             </tr>
@@ -29927,16 +29985,6 @@
                     button.addEventListener("click", () => {
                         const tenantId = button.dataset.xeroLockMapDelete || "";
                         deleteXeroLockDateTenant(tenantId, button);
-                    });
-                });
-                body.querySelectorAll("[data-xero-lock-fix]").forEach((button) => {
-                    if (button.dataset.xeroLockFixWired === "true") return;
-                    button.dataset.xeroLockFixWired = "true";
-                    button.addEventListener("click", (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const tenantId = button.dataset.xeroLockFix || "";
-                        fixXeroLockDateMismatch(tenantId, button);
                     });
                 });
                 body.querySelectorAll("[data-xero-lock-select]").forEach((checkbox) => {
@@ -39692,6 +39740,29 @@
                 return Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
             }
 
+            async function refreshMeReportContactOptionsFromXero() {
+                if (meReportContactRefreshInFlight || !meReportData.xero?.connected) return;
+                meReportContactRefreshInFlight = true;
+                try {
+                    const payload = await requestJSON("/api/supplier-reconciliation/contacts");
+                    const contacts = payload?.supplierReconciliation?.xero?.contacts;
+                    if (Array.isArray(contacts) && contacts.length) {
+                        meReportData = {
+                            ...meReportData,
+                            xero: {
+                                ...(meReportData.xero || {}),
+                                contacts
+                            }
+                        };
+                    }
+                } catch (error) {
+                    console.warn("Unable to refresh ME Report contact options from Xero", error);
+                } finally {
+                    meReportContactRefreshInFlight = false;
+                    renderMeReportScreen();
+                }
+            }
+
             function meReportContactOptionHTML(selectedId = "") {
                 const contacts = meReportContactOptions();
                 return [
@@ -44720,6 +44791,7 @@
                 const panel = document.getElementById("meReportBulkMatchPanel");
                 if (panel) panel.hidden = true;
                 meReportBulkManualMatchState = null;
+                meReportContactRefreshAttempted = false;
             }
 
             function renderMeReportBulkMatchPanel() {
@@ -44739,20 +44811,27 @@
                 if (saveButton) {
                     const readyCount = pending.filter((entry) => entry.status === "confirmed" && entry.contactId).length;
                     const blocked = pending.some((entry) => entry.status !== "delete" && (!entry.contactId || entry.status !== "confirmed"));
-                    saveButton.disabled = state.submitting || !pending.length || !contacts.length || blocked || !readyCount;
+                    const deleteCount = pending.filter((entry) => entry.status === "delete").length;
+                    const deleteOnly = deleteCount > 0 && deleteCount === pending.length;
+                    saveButton.disabled = state.submitting || !pending.length || (!deleteOnly && (blocked || !readyCount));
                     saveButton.textContent = state.submitting
                         ? "Starting background processing..."
-                        : `Confirm ${readyCount.toLocaleString("en-GB")} and process in background`;
-                }
-                if (!contacts.length) {
-                    list.innerHTML = `<div class="empty-state"><p class="eyebrow">No Xero contacts</p><h4>Sync Xero contacts before matching files</h4><p>The manual match list needs the ME Report Xero contact dropdown data.</p></div>`;
-                    return;
+                        : deleteOnly
+                            ? `Skip ${deleteCount.toLocaleString("en-GB")} and close`
+                            : `Confirm ${readyCount.toLocaleString("en-GB")} and process in background`;
                 }
                 if (!pending.length) {
                     list.innerHTML = `<div class="empty-state"><p class="eyebrow">No matches needed</p><h4>Every uploaded file has either processed or failed for another reason</h4></div>`;
                     return;
                 }
-                list.innerHTML = pending.map((entry, index) => {
+                if (!contacts.length && meReportData.xero?.connected && !meReportContactRefreshInFlight && !meReportContactRefreshAttempted) {
+                    meReportContactRefreshAttempted = true;
+                    refreshMeReportContactOptionsFromXero();
+                }
+                const noContactsBanner = !contacts.length
+                    ? `<div class="empty-state"><p class="eyebrow">No Xero contacts yet</p><h4>Sync has not loaded contact options</h4><p>We are refreshing contacts from Xero now. If this stays empty, resync Xero in the Ledger screen and reopen this modal.</p></div>`
+                    : "";
+                list.innerHTML = `${noContactsBanner}${pending.map((entry, index) => {
                     const item = entry.item || {};
                     const status = String(entry.status || "needs-review");
                     const rowClass = status === "confirmed"
@@ -44813,7 +44892,7 @@
                             </div>
                         </div>
                     `;
-                }).join("");
+                }).join("")}`;
                 list.querySelectorAll("[data-me-report-bulk-match-select]").forEach((select) => {
                     select.addEventListener("change", () => {
                         const index = Number(select.dataset.meReportBulkMatchSelect || -1);
@@ -44873,6 +44952,7 @@
                     entry.status = "confirmed";
                 });
                 meReportBulkManualMatchState = { pending, submitting: false };
+                meReportContactRefreshAttempted = false;
                 const panel = document.getElementById("meReportBulkMatchPanel");
                 if (panel) panel.hidden = false;
                 renderMeReportBulkMatchPanel();
@@ -44967,7 +45047,14 @@
                         ...entry,
                         contactId: String(entry.contactId || "")
                     }));
+                const skippedEntries = state.pending.filter((entry) => entry.status === "delete");
                 if (!selectedEntries.length) {
+                    if (skippedEntries.length) {
+                        closeMeReportBulkMatchPanel();
+                        showToast(`${skippedEntries.length.toLocaleString("en-GB")} unmatched file${skippedEntries.length === 1 ? "" : "s"} skipped.`, "info");
+                        renderMeReportScreen();
+                        return;
+                    }
                     showToast("At least one matched PDF must be confirmed before processing.", "error");
                     return;
                 }
@@ -54741,9 +54828,12 @@
                                             <strong>Confirmation statement walkthrough</strong>
                                             <p>Use Next/Previous to walk through each section for this company before submission.</p>
                                         </div>
-                                        <div class="ch-preflight-legend" data-ch-review-step-nav style="margin-bottom: 10px;">
+                                        <div class="ch-review-step-nav" data-ch-review-step-nav style="margin-bottom: 10px;" role="tablist" aria-label="Confirmation statement sections">
                                             ${stepDefinitions.map((step, index) => `
-                                                <button type="button" class="ch-preflight-choice-button is-no-changes ${index === 0 ? "is-selected" : ""}" data-ch-step-jump="${escapeHTML(step.key)}">${index + 1}. ${escapeHTML(step.label)}</button>
+                                                <button type="button" class="ch-review-step-button ${index === 0 ? "is-selected" : ""}" data-ch-step-jump="${escapeHTML(step.key)}" role="tab" aria-selected="${index === 0 ? "true" : "false"}">
+                                                    <span class="ch-review-step-index">${index + 1}</span>
+                                                    <span>${escapeHTML(step.label)}</span>
+                                                </button>
                                             `).join("")}
                                         </div>
                                         <div class="ch-detail-edit" data-ch-step-panel="company">
@@ -54840,12 +54930,21 @@
                                 const panel = card.querySelector(`[data-ch-step-panel="${step.key}"]`);
                                 if (panel) panel.hidden = step.key !== resolvedStep;
                                 const jumpButton = card.querySelector(`[data-ch-step-jump="${step.key}"]`);
-                                if (jumpButton) jumpButton.classList.toggle("is-selected", step.key === resolvedStep);
+                                if (jumpButton) {
+                                    const isActive = step.key === resolvedStep;
+                                    jumpButton.classList.toggle("is-selected", isActive);
+                                    jumpButton.setAttribute("aria-selected", isActive ? "true" : "false");
+                                }
                                 const status = card.querySelector("[data-ch-step-status]");
                                 if (status && step.key === resolvedStep) {
                                     status.textContent = `Step ${index + 1} of ${stepDefinitions.length}: ${step.label}`;
                                 }
                             });
+                            const resolvedIndex = Math.max(0, stepKeys.indexOf(resolvedStep));
+                            const prevButton = card.querySelector('[data-ch-step-nav="prev"]');
+                            const nextButton = card.querySelector('[data-ch-step-nav="next"]');
+                            if (prevButton) prevButton.disabled = resolvedIndex === 0;
+                            if (nextButton) nextButton.disabled = resolvedIndex === stepKeys.length - 1;
                         };
                         const moveStep = (card, direction) => {
                             const stepKeys = stepDefinitions.map((step) => step.key);
