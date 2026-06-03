@@ -25833,8 +25833,12 @@
                 Object.entries(sidebarNavGroups).forEach(([group, sections]) => {
                     const targetGroup = document.querySelector(`.app-nav-group[data-app-nav-group="${group}"]`);
                     if (!targetGroup) return;
-                    const keepOpen = targetGroup.dataset.userOpen === "true";
-                    const shouldOpen = keepOpen || (activeGroup ? group === activeGroup : false);
+                    const userPreference = targetGroup.dataset.userOpen;
+                    const shouldOpen = userPreference === "true"
+                        ? true
+                        : userPreference === "false"
+                        ? false
+                        : (activeGroup ? group === activeGroup : false);
                     setCreditControlGroupOpen(group, shouldOpen, false);
                 });
             }
