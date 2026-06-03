@@ -41343,21 +41343,29 @@
                 return `${number}th`;
             }
 
-            function ignitionRenewalClientTenureNarrative(startDateRaw = "") {
+            function ignitionRenewalClientTenureNarrative(startDateRaw = "", referenceDateRaw = "") {
                 const startMs = Date.parse(String(startDateRaw || ""));
                 if (!Number.isFinite(startMs)) return "has been a valued client of Jaccountancy.";
                 const startDate = new Date(startMs);
-                const now = new Date();
-                let years = now.getUTCFullYear() - startDate.getUTCFullYear();
-                const anniversaryPassed = (
-                    now.getUTCMonth() > startDate.getUTCMonth()
-                    || (now.getUTCMonth() === startDate.getUTCMonth() && now.getUTCDate() >= startDate.getUTCDate())
-                );
-                if (!anniversaryPassed) years -= 1;
-                years = Math.max(0, years);
+                const referenceMs = Date.parse(String(referenceDateRaw || ""));
+                const referenceDate = Number.isFinite(referenceMs) ? new Date(referenceMs) : new Date();
                 const monthYear = startDate.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-                const nextYearLabel = ignitionRenewalOrdinalLabel(years + 1);
-                return `joined us in ${monthYear} and has been a client for ${years} year${years === 1 ? "" : "s"}, about to start ${nextYearLabel} year as a client of Jaccountancy.`;
+                const monthDelta = ((referenceDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12)
+                    + (referenceDate.getUTCMonth() - startDate.getUTCMonth());
+
+                if (monthDelta <= 0) {
+                    return `joined us in ${monthYear} and is in their first year as a client of Jaccountancy.`;
+                }
+
+                const years = Math.floor(monthDelta / 12);
+                const months = monthDelta % 12;
+                if (years <= 0) {
+                    return `joined us in ${monthYear} and is in their first year as a client of Jaccountancy.`;
+                }
+
+                const tenureParts = [`${years} year${years === 1 ? "" : "s"}`];
+                if (months > 0) tenureParts.push(`${months} month${months === 1 ? "" : "s"}`);
+                return `joined us in ${monthYear} and has been a client for ${tenureParts.join(" and ")} with Jaccountancy.`;
             }
 
             function ignitionRenewalReasoningData(item, metadata) {
@@ -41426,7 +41434,7 @@
                 const firstChange = data.pointChanges[0] || null;
                 const secondChange = data.pointChanges[1] || null;
                 const joinDateRaw = data.proposalPoints[0]?.date || "";
-                const openingSentence = `${clientName} ${ignitionRenewalClientTenureNarrative(joinDateRaw)}`;
+                const openingSentence = `${clientName} ${ignitionRenewalClientTenureNarrative(joinDateRaw, firstChange?.date || "")}`;
                 const renewalSentences = [];
                 if (firstChange) {
                     renewalSentences.push(`On the first renewal (${firstChange.dateLabel}) we ${ignitionRenewalAmountNarrative(firstChange.delta)} (${ignitionRenewalPercent(firstChange.percent)}).`);
