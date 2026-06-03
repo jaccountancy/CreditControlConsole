@@ -203,15 +203,21 @@ def get_companies_house_settings() -> dict:
     return _serialise(_ensure_settings_row())
 
 
-def test_companies_house_connection() -> dict:
+def test_companies_house_connection(payload: dict | None = None) -> dict:
+    overrides = payload or {}
     settings_row = _ensure_settings_row()
-    environment = str(settings_row.get("environment") or "sandbox").strip().lower()
+    environment = str(overrides.get("environment") or settings_row.get("environment") or "sandbox").strip().lower()
     if environment not in VALID_ENVIRONMENTS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Environment must be 'sandbox' or 'production'.",
         )
-    api_key = _validated_companies_house_api_key(decrypt_api_key())
+
+    api_key_override = overrides.get("apiKey")
+    if api_key_override is not None:
+        api_key = _validated_companies_house_api_key(str(api_key_override))
+    else:
+        api_key = _validated_companies_house_api_key(decrypt_api_key())
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -252,8 +258,12 @@ def test_companies_house_connection() -> dict:
         items = payload.get("items")
         sample_count = len(items) if isinstance(items, list) else 0
 
-    presenter_id = _xml_text(settings_row.get("presenter_id"))
-    presenter_auth = decrypt_presenter_auth()
+    presenter_id = _xml_text(overrides.get("presenterId") or settings_row.get("presenter_id"))
+    presenter_auth_override = overrides.get("presenterAuth")
+    if presenter_auth_override is not None:
+        presenter_auth = str(presenter_auth_override).strip()
+    else:
+        presenter_auth = decrypt_presenter_auth()
     gateway_attempted = bool(presenter_id and presenter_auth)
     gateway_connected = False
     gateway_errors: list[str] = []

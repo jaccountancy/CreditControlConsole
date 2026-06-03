@@ -1172,8 +1172,12 @@ async def api_companies_house_settings_save(request: Request, user: dict = Depen
 
 
 @app.post("/api/companies-house/settings/test-connection")
-def api_companies_house_settings_test_connection(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", "result": test_companies_house_connection()}
+async def api_companies_house_settings_test_connection(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    return {"status": "ok", "result": test_companies_house_connection(payload)}
 
 
 @app.post("/api/companies-house/auth-code-register/upload")

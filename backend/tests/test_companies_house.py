@@ -214,6 +214,23 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertTrue(payload.get("connected"))
         self.assertEqual(payload.get("statusCode"), 400)
 
+    def test_connection_test_uses_unsaved_overrides(self):
+        with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox", "presenter_id": ""}), \
+             patch.object(ch, "_companies_house_http_client", return_value=_DummyClient(_DummyResponse(404, {}))) as mock_client, \
+             patch.object(ch, "decrypt_api_key") as mock_decrypt:
+            payload = ch.test_companies_house_connection(
+                {
+                    "environment": "production",
+                    "apiKey": "override-key",
+                }
+            )
+
+        self.assertTrue(payload.get("connected"))
+        self.assertEqual(payload.get("environment"), "production")
+        self.assertIn("api.company-information.service.gov.uk", str(payload.get("endpoint") or ""))
+        self.assertEqual(mock_client.call_args.args[0], "override-key")
+        mock_decrypt.assert_not_called()
+
     def test_post_gateway_retries_then_raises(self):
         calls = {"count": 0}
 
