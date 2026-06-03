@@ -39533,6 +39533,7 @@
                 const candidatePool = ignitionRenewalCandidatePool();
                 const candidates = ignitionRenewalCandidates();
                 const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                const latestDraftRun = recentRuns.find((run) => String(run?.status || "").toLowerCase() === "draft" && Number(run?.pickedCount || run?.itemCount || 0) > 0) || null;
                 ensureIgnitionRenewalSelection();
                 const selectedSet = new Set(ignitionRenewalSelectionList());
                 const runRows = recentRuns.length
@@ -39551,7 +39552,7 @@
                             </thead>
                             <tbody>
                                 ${recentRuns.map((run) => `
-                                    <tr>
+                                    <tr data-renewals-open-run-row="${escapeHTML(run.id || "")}">
                                         <td>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "Unknown")}</td>
                                         <td>${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
                                         <td>${escapeHTML(run.status || "draft")}</td>
@@ -39601,15 +39602,6 @@
                         <article class="ignition-renewals-stage-card">
                             <div class="ignition-renewals-stage-head">
                                 <div>
-                                    <p class="eyebrow">Renewal batch history</p>
-                                    <h4>Recent renewal batches</h4>
-                                </div>
-                            </div>
-                            <div class="ignition-renewals-table-wrap">${runRows}</div>
-                        </article>
-                        <article class="ignition-renewals-stage-card">
-                            <div class="ignition-renewals-stage-head">
-                                <div>
                                     <p class="eyebrow">Start new batch</p>
                                     <h4>Select clients for this renewal run</h4>
                                     <p class="detail-meta">${Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")} available in this window (${escapeHTML(candidatePool.windowStart || "")} to ${escapeHTML(candidatePool.windowEnd || "")}).</p>
@@ -39617,9 +39609,19 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" type="button" id="ignitionRenewalsClearSelectionButton">Clear selection</button>
                                     <button class="primary-button" type="button" id="startIgnitionRenewalsSelectedButton">Start selected batch (${selectedSet.size.toLocaleString("en-GB")})</button>
+                                    ${latestDraftRun ? `<button class="ghost-button" type="button" data-renewals-open-run="${escapeHTML(latestDraftRun.id || "")}">Open latest draft batch</button>` : ""}
                                 </div>
                             </div>
                             <div class="ignition-renewals-table-wrap">${candidateRows}</div>
+                        </article>
+                        <article class="ignition-renewals-stage-card">
+                            <div class="ignition-renewals-stage-head">
+                                <div>
+                                    <p class="eyebrow">Renewal batch history</p>
+                                    <h4>Recent renewal batches</h4>
+                                </div>
+                            </div>
+                            <div class="ignition-renewals-table-wrap">${runRows}</div>
                         </article>
                     </section>
                 `;
@@ -53675,6 +53677,12 @@
                     const openRunButton = event.target.closest?.("[data-renewals-open-run]");
                     if (openRunButton) {
                         const runId = String(openRunButton.dataset.renewalsOpenRun || "").trim();
+                        if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
+                        return;
+                    }
+                    const openRunRow = event.target.closest?.("[data-renewals-open-run-row]");
+                    if (openRunRow) {
+                        const runId = String(openRunRow.dataset.renewalsOpenRunRow || "").trim();
                         if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
                     }
                 });
