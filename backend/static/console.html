@@ -49900,10 +49900,13 @@
                                 : "Selected for submission because checks passed (auth code, authority, and due-date data)."
                         )
                         : (submissionIssues[0] || "Not currently eligible for submission.");
+                    const eligibilityDetailMarkup = isSubmissionEligible
+                        ? ""
+                        : `<br><small style="color: var(--muted)">${escapeHTML(eligibilityReason)}</small><br><small style="color: var(--muted)">CH No: ${escapeHTML(company.companyNumber || "—")}</small>`;
                     return `<tr data-company-id="${escapeHTML(companyId)}" class="${company.id === companiesHouseState.selectedCompanyId ? "is-selected" : ""}">
                         <td><input type="checkbox" data-ch-select-company value="${escapeHTML(companyId)}" ${isChecked ? "checked" : ""} aria-label="Select ${escapeHTML(company.companyName || "company")}"></td>
                         <td><strong>${escapeHTML(company.companyName || "—")}</strong><br><small style="color: var(--muted)">${escapeHTML(latestSubmissionLabel)}</small>${filedWithin12Months ? `<br><small style="color: var(--orange)">Recently filed (${escapeHTML(chFormatDate(company.lastFiledDate))}). Usually not due yet.</small>` : ""}</td>
-                        <td><span class="ch-pill ${eligibilityStatusClass}">${escapeHTML(eligibilityStatusLabel)}</span><br><small style="color: var(--muted)">${escapeHTML(eligibilityReason)}</small><br><small style="color: var(--muted)">CH No: ${escapeHTML(company.companyNumber || "—")}</small></td>
+                        <td><span class="ch-pill ${eligibilityStatusClass}">${escapeHTML(eligibilityStatusLabel)}</span>${eligibilityDetailMarkup}</td>
                         <td>${chCompanyStatusCell(company)}</td>
                         <td><span class="ch-pill">${escapeHTML(company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—")}</span></td>
                         <td>${chCompanyDueCell(company)}</td>
