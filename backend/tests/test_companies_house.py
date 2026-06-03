@@ -145,6 +145,19 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertEqual(key1, key2)
         self.assertNotEqual(key1, key3)
 
+    def test_authorisation_failure_reason_includes_uk_causes(self):
+        reason = ch._enhance_authorisation_failure_reason(
+            "ConfirmationStatement - 502 - Authorisation Failure",
+            environment="sandbox",
+            presenter_id="PRESENTER1234",
+            presenter_auth="ABCDEF12",
+            company_auth_code="A1B2C3",
+            company_number="13279119",
+        )
+        self.assertIn("Authorisation check: environment=sandbox", reason)
+        self.assertIn("Likely UK causes:", reason)
+        self.assertIn("not a GOV.UK One Login / personal code", reason)
+
     def test_bulk_submit_rejects_invalid_xero_unit_amount_setting(self):
         with patch.object(
             ch,

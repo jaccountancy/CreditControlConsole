@@ -1703,17 +1703,40 @@ def _enhance_authorisation_failure_reason(
     if "authorisation failure" not in lower and "authorization failure" not in lower and "authentication" not in lower:
         return text
     presenter_suffix = presenter_id[-4:] if presenter_id else ""
+    environment_text = _xml_text(environment, "sandbox").lower()
     context = (
-        f"Authorisation check: environment={_xml_text(environment, 'sandbox')}, "
+        f"Authorisation check: environment={environment_text}, "
         f"company={_xml_text(company_number)}, presenterIdSuffix={presenter_suffix or 'n/a'}, "
         f"presenterAuthHint={_mask(presenter_auth)}, companyAuthHint={_mask(company_auth_code)}. "
         "CH rejected credentials for this filing path."
     )
+    likely_causes = [
+        (
+            "Environment is sandbox (test mode). Live UK filings usually require production "
+            "presenter credentials and production filing authority."
+            if environment_text != "production"
+            else "Presenter ID/auth may not match a live Companies House XML Gateway software-filing profile."
+        ),
+        (
+            "Presenter authentication code may be wrong, rotated, or disabled on the Companies House "
+            "software filing account."
+        ),
+        (
+            "Company authentication code may be wrong for this company. Use the 6-character Companies House "
+            "company auth code (not a GOV.UK One Login / personal code)."
+        ),
+        "Presenter account may not be authorised for this company or filing route in Companies House.",
+    ]
+    likely_causes_text = "Likely UK causes: " + " ".join(
+        f"{index}. {message}" for index, message in enumerate(likely_causes, start=1)
+    )
     if context.lower() in lower:
         return text
+    if "likely uk causes:" in lower:
+        return text
     if text:
-        return f"{text} | {context}"
-    return context
+        return f"{text} | {context} | {likely_causes_text}"
+    return f"{context} | {likely_causes_text}"
 
 
 def _parse_ch_status_response(*, response_text: str, response_root: ET.Element) -> dict:
