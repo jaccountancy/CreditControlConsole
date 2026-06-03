@@ -16923,7 +16923,7 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str
 def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -16948,60 +16948,60 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
-        leftMargin=24,
-        rightMargin=24,
-        topMargin=22,
-        bottomMargin=28,
+        pagesize=landscape(A4),
+        leftMargin=20,
+        rightMargin=20,
+        topMargin=18,
+        bottomMargin=24,
     )
     styles = getSampleStyleSheet()
     body_style = ParagraphStyle(
         "IgnitionRenewalsBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=8,
-        leading=10,
+        fontSize=8.2,
+        leading=10.2,
         textColor=colors.HexColor("#17395A"),
     )
     title_style = ParagraphStyle(
         "IgnitionRenewalsTitle",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=23,
-        leading=26,
+        fontSize=24,
+        leading=27,
         textColor=colors.HexColor("#035581"),
-        spaceAfter=3,
+        spaceAfter=4,
     )
     subtitle_style = ParagraphStyle(
         "IgnitionRenewalsSubtitle",
         parent=body_style,
         fontName="Helvetica",
-        fontSize=9.2,
-        leading=11.8,
+        fontSize=9,
+        leading=11.4,
         textColor=colors.HexColor("#035581"),
     )
     metric_label_style = ParagraphStyle(
         "IgnitionRenewalsMetricLabel",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=7.4,
-        leading=9,
+        fontSize=8,
+        leading=9.6,
         textColor=colors.white,
     )
     metric_value_style = ParagraphStyle(
         "IgnitionRenewalsMetricValue",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=11.8,
-        leading=13.8,
+        fontSize=12.5,
+        leading=14.5,
         textColor=colors.white,
     )
     header_cell_style = ParagraphStyle(
         "IgnitionRenewalsHeaderCell",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=7.7,
-        leading=9.2,
+        fontSize=8.4,
+        leading=10.2,
         textColor=colors.white,
         alignment=TA_LEFT,
     )
@@ -17009,10 +17009,11 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         "IgnitionRenewalsCell",
         parent=body_style,
         fontName="Helvetica",
-        fontSize=8,
-        leading=10,
+        fontSize=7.8,
+        leading=9.5,
         textColor=colors.HexColor("#17395A"),
         alignment=TA_LEFT,
+        wordWrap="CJK",
     )
     money_cell_style = ParagraphStyle(
         "IgnitionRenewalsMoneyCell",
@@ -17024,8 +17025,8 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         "IgnitionRenewalsTotalRow",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=8.2,
-        leading=10,
+        fontSize=8.4,
+        leading=10.2,
         textColor=colors.HexColor("#035581"),
     )
 
@@ -17052,7 +17053,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         Paragraph("Renewals Proposal Round", title_style),
         Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", subtitle_style),
         Paragraph(f"Generated: {generated_at}", subtitle_style),
-        Spacer(1, 11),
+        Spacer(1, 10),
     ])
 
     metrics_col_width = document.width / 5
@@ -17076,13 +17077,13 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0075C9")),
         ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#035581")),
         ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#035581")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8.5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 6.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6.5),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    story.extend([metrics_table, Spacer(1, 10)])
+    story.extend([metrics_table, Spacer(1, 9)])
 
     def _pdf_plain_text(value: object) -> str:
         text = str(value or "")
@@ -17094,8 +17095,8 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         Paragraph("Client Name", header_cell_style),
         Paragraph("Manager", header_cell_style),
         Paragraph("Renewal Date", header_cell_style),
-        Paragraph("Current Monthly Fee", header_cell_style),
-        Paragraph("Proposed Monthly Fee", header_cell_style),
+        Paragraph("Current Monthly", header_cell_style),
+        Paragraph("Proposed Monthly", header_cell_style),
         Paragraph("Variance", header_cell_style),
         Paragraph("Variance %", header_cell_style),
         Paragraph("Comments", header_cell_style),
@@ -17128,14 +17129,14 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     ])
 
     col_widths = [
-        document.width * 0.16,
+        document.width * 0.19,
         document.width * 0.11,
         document.width * 0.10,
-        document.width * 0.13,
-        document.width * 0.14,
-        document.width * 0.10,
+        document.width * 0.11,
+        document.width * 0.11,
+        document.width * 0.09,
         document.width * 0.08,
-        document.width * 0.18,
+        document.width * 0.21,
     ]
     table = Table(
         table_rows,
@@ -17155,10 +17156,10 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#035581")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4.5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4.5),
-        ("TOPPADDING", (0, 0), (-1, -1), 4.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(table)
 
