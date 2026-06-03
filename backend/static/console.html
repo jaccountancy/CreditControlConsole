@@ -16534,6 +16534,16 @@
             .developer-log-entry.is-error .developer-log-highlights li {
                 background: rgba(255, 83, 83, 0.12);
             }
+            .developer-log-entry-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-top: 2px;
+            }
+            .developer-log-entry-actions .ghost-button {
+                padding: 8px 12px;
+                font-weight: 800;
+            }
             .settings-developer-log-list {
                 min-height: min(76vh, 980px);
                 max-height: min(90vh, 1280px);
@@ -53855,6 +53865,24 @@
                 return highlights;
             }
 
+            function developerLogEntrySupportsFreshIgnitionSync(entry) {
+                if (!entry || typeof entry !== "object") return false;
+                const payload = entry.payload && typeof entry.payload === "object" ? entry.payload : {};
+                const searchable = [
+                    entry.eventType,
+                    entry.message,
+                    payload.detail,
+                    payload.message,
+                    payload.error_message
+                ]
+                    .filter(Boolean)
+                    .join(" ")
+                    .toLowerCase();
+                if (String(entry.eventType || "").toLowerCase() === "ignition.sync.stalled") return true;
+                return searchable.includes("previous ignition sync stopped responding")
+                    || searchable.includes("start a fresh ignition sync");
+            }
+
             function renderDeveloperLogList(list, visibleLogs) {
                 list.innerHTML = "";
                 if (!visibleLogs.length) {
@@ -53894,6 +53922,21 @@
                     message.textContent = entry.message || "";
 
                     article.append(meta, title, message);
+
+                    if (developerLogEntrySupportsFreshIgnitionSync(entry)) {
+                        const actionRow = document.createElement("div");
+                        actionRow.className = "developer-log-entry-actions";
+                        const rerunButton = document.createElement("button");
+                        rerunButton.type = "button";
+                        rerunButton.className = "ghost-button";
+                        rerunButton.textContent = isIgnitionSyncing ? "Ignition sync running..." : "Start fresh Ignition sync";
+                        rerunButton.disabled = isIgnitionSyncing;
+                        rerunButton.addEventListener("click", () => {
+                            runIgnitionSync();
+                        });
+                        actionRow.appendChild(rerunButton);
+                        article.appendChild(actionRow);
+                    }
 
                     const highlights = developerLogHighlights(entry);
                     if (highlights.length) {
