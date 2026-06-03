@@ -89,6 +89,7 @@ from .services import (
     get_operation_run,
     get_ignition_sync_run,
     create_ignition_renewal_run,
+    delete_ignition_renewal_run,
     finalise_ignition_renewals,
     ignition_renewals_report_pdf,
     insights_payload,
@@ -1622,6 +1623,11 @@ def api_ignition_renewals(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "renewals": ignition_renewals_payload(user)}
 
 
+@app.get("/api/ignition/renewals/{run_id}")
+def api_ignition_renewal_run(run_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "renewals": ignition_renewals_payload(user, run_id)}
+
+
 @app.post("/api/ignition/renewals/run")
 async def api_create_ignition_renewal_run(request: Request, user: dict = Depends(require_panel_user)):
     try:
@@ -1635,6 +1641,11 @@ async def api_create_ignition_renewal_run(request: Request, user: dict = Depends
 async def api_update_ignition_renewal_run(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
     payload = await request.json()
     return {"status": "ok", **update_ignition_renewal_run(user, run_id, payload)}
+
+
+@app.delete("/api/ignition/renewals/{run_id}")
+def api_delete_ignition_renewal_run(run_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **delete_ignition_renewal_run(user, run_id)}
 
 
 @app.post("/api/ignition/renewals/{run_id}/email")

@@ -16426,6 +16426,22 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
     return {"renewals": ignition_renewals_payload(user, run_id)}
 
 
+def delete_ignition_renewal_run(user: dict, run_id: str) -> dict:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (run_id, user["id"]))
+            run = cursor.fetchone()
+            if run is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Renewal run not found.")
+            if run.get("finalised_at"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalised renewal runs cannot be deleted.")
+            cursor.execute("DELETE FROM ignition_renewal_items WHERE run_id = %s AND user_id = %s", (run_id, user["id"]))
+            cursor.execute("DELETE FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (run_id, user["id"]))
+        connection.commit()
+    record_audit_event("ignition_renewal_run", run_id, "ignition.renewals.deleted", {"status": run.get("status") or "draft"}, user["id"])
+    return {"renewals": ignition_renewals_payload(user)}
+
+
 async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
     settings = get_settings()
     recipient = str(settings.ignition_renewals_recipient_email or "").strip()

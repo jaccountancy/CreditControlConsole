@@ -20072,14 +20072,6 @@
                             </section>
                         </section>
                         <section class="ignition-tab-panel" data-ignition-panel="renewals" hidden>
-                            <section class="detail-panel ignition-renewals-launch-card">
-                                <div>
-                                    <p class="eyebrow">Renewals process</p>
-                                    <h3>Proposal workspace</h3>
-                                    <p class="detail-meta" id="ignitionRenewalsLaunchSummary">Review accepted proposals with period end dates in the upcoming 8 weeks for active clients only.</p>
-                                </div>
-                                <div class="ignition-renewals-launch-meta" id="ignitionRenewalsLaunchMeta"></div>
-                            </section>
                             <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel" aria-labelledby="ignitionRenewalsModalTitle">
                                 <div class="ignition-renewals-modal-head">
                                     <div>
@@ -20095,6 +20087,23 @@
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalsTableWrap"></div>
                             </section>
                         </section>
+                        <div class="ignition-renewals-modal" id="ignitionRenewalStartModal" hidden>
+                            <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalStartTitle">
+                                <div class="ignition-renewals-modal-head">
+                                    <div>
+                                        <p class="eyebrow">Renewals process</p>
+                                        <h3 id="ignitionRenewalStartTitle">Start workflow</h3>
+                                        <p class="detail-meta" id="ignitionRenewalStartSummary">Select eligible clients to include in this renewal batch before pricing edits.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="closeIgnitionRenewalStartButton" type="button">Close</button>
+                                        <button class="primary-button" id="confirmIgnitionRenewalStartButton" type="button">Include selected and continue</button>
+                                    </div>
+                                </div>
+                                <div class="ignition-renewals-meta" id="ignitionRenewalStartMeta"></div>
+                                <div class="ignition-renewals-table-wrap" id="ignitionRenewalStartCandidatesWrap"></div>
+                            </section>
+                        </div>
                         <div class="ignition-renewals-modal" id="ignitionRenewalHistoryModal" hidden>
                             <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalHistoryTitle">
                                 <div class="ignition-renewals-modal-head">
@@ -21949,6 +21958,7 @@
             let ignitionRenewalsModalOpen = true;
             let ignitionRenewalsWorkspaceStage = "batch";
             let ignitionRenewalSelection = new Set();
+            let ignitionRenewalStartModalOpen = false;
             let ignitionRenewalHistoryModalOpen = false;
             let ignitionRenewalHistoryLoading = false;
             let ignitionRenewalHistorySelectedRunId = "";
@@ -22345,6 +22355,7 @@
                         ignitionRenewals: config.endpoints?.ignitionRenewals || "/api/ignition/renewals",
                         ignitionRenewalsRun: config.endpoints?.ignitionRenewalsRun || "/api/ignition/renewals/run",
                         ignitionRenewalRun: config.endpoints?.ignitionRenewalRun || "/api/ignition/renewals/:runId",
+                        ignitionRenewalDelete: config.endpoints?.ignitionRenewalDelete || "/api/ignition/renewals/:runId",
                         ignitionRenewalEmail: config.endpoints?.ignitionRenewalEmail || "/api/ignition/renewals/:runId/email",
                         ignitionRenewalPdf: config.endpoints?.ignitionRenewalPdf || "/api/ignition/renewals/:runId/pdf",
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
@@ -25223,6 +25234,7 @@
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
                 if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = true;
+                if (activeView !== "ignition" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
                 if (activeView !== "ignition" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
                 const meReportTopbarActions = document.getElementById("meReportTopbarActions");
                 if (meReportTopbarActions) meReportTopbarActions.hidden = activeView !== "me-report";
@@ -39151,7 +39163,7 @@
                     ignitionRenewalsWorkspaceStage = "batch";
                     seedIgnitionRenewalSelection();
                     renderIgnitionRenewals();
-                    window.setTimeout(() => document.getElementById("startIgnitionRenewalsSelectedButton")?.focus(), 0);
+                    window.setTimeout(() => document.getElementById("openIgnitionRenewalsStartWorkflowButton")?.focus(), 0);
                 } else if (ignitionRenewalsWorkspaceStage === "pricing") {
                     ignitionRenewalsWorkspaceStage = "batch";
                     renderIgnitionRenewals();
@@ -39164,6 +39176,82 @@
 
             function closeIgnitionRenewalsModal() {
                 setIgnitionRenewalsModalOpen(false);
+            }
+
+            function renderIgnitionRenewalStartModal() {
+                const summary = document.getElementById("ignitionRenewalStartSummary");
+                const meta = document.getElementById("ignitionRenewalStartMeta");
+                const wrap = document.getElementById("ignitionRenewalStartCandidatesWrap");
+                const confirmButton = document.getElementById("confirmIgnitionRenewalStartButton");
+                const candidatePool = ignitionRenewalCandidatePool();
+                const candidates = ignitionRenewalCandidates();
+                ensureIgnitionRenewalSelection();
+                const selectedSet = new Set(ignitionRenewalSelectionList());
+
+                if (summary) {
+                    summary.textContent = `${Number(candidates.length || 0).toLocaleString("en-GB")} eligible client proposal${Number(candidates.length || 0) === 1 ? "" : "s"} are available for this workflow window.`;
+                }
+                if (meta) {
+                    meta.innerHTML = [
+                        ["Window", `${formatDate(candidatePool.windowStart || "")} to ${formatDate(candidatePool.windowEnd || "")}`],
+                        ["Eligible", Number(candidates.length || 0).toLocaleString("en-GB")],
+                        ["Selected", Number(selectedSet.size || 0).toLocaleString("en-GB")],
+                    ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+                }
+
+                if (confirmButton) confirmButton.disabled = !selectedSet.size;
+                if (!wrap) return;
+                if (!candidates.length) {
+                    wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No candidates</p><h4>No eligible clients in this window</h4><p>Run Ignition sync and check accepted active-client proposals in the next 8 weeks.</p></div>';
+                    return;
+                }
+
+                wrap.innerHTML = `
+                    <table class="ignition-renewals-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="ignitionRenewalsSelectAllCandidates" ${selectedSet.size === candidates.length ? "checked" : ""} aria-label="Select all candidates"></th>
+                                <th>Client</th>
+                                <th>Proposal End Date</th>
+                                <th>Manager</th>
+                                <th>Current Net Monthly Fee</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${candidates.map((item) => {
+                                const candidateId = String(item.proposalExternalId || "");
+                                const checked = selectedSet.has(candidateId);
+                                return `
+                                    <tr>
+                                        <td><input type="checkbox" data-renewal-candidate-id="${escapeHTML(candidateId)}" ${checked ? "checked" : ""}></td>
+                                        <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
+                                        <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
+                                        <td>${escapeHTML(item.clientManager || "Unassigned")}</td>
+                                        <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
+                                    </tr>
+                                `;
+                            }).join("")}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            function setIgnitionRenewalStartModalOpen(isOpen) {
+                ignitionRenewalStartModalOpen = Boolean(isOpen);
+                const modal = document.getElementById("ignitionRenewalStartModal");
+                if (modal) modal.hidden = !ignitionRenewalStartModalOpen;
+                if (ignitionRenewalStartModalOpen) {
+                    seedIgnitionRenewalSelection();
+                    renderIgnitionRenewalStartModal();
+                }
+            }
+
+            function openIgnitionRenewalStartModal() {
+                setIgnitionRenewalStartModalOpen(true);
+            }
+
+            function closeIgnitionRenewalStartModal() {
+                setIgnitionRenewalStartModalOpen(false);
             }
 
             function setIgnitionRenewalHistoryOpen(isOpen) {
@@ -39437,16 +39525,17 @@
                     const candidates = ignitionRenewalCandidates();
                     const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
                     ensureIgnitionRenewalSelection();
-                    if (title) title.textContent = "Renewal batches and history";
+                    if (title) title.textContent = "Renewal batches";
                     if (summary) {
-                        summary.textContent = `${Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")} selectable proposals in the next ${Number(candidatePool.windowWeeks || 8).toLocaleString("en-GB")} weeks. Choose clients to start a new renewal batch, or open a prior batch to review pricing.`;
+                        summary.textContent = `${Number(recentRuns.length || 0).toLocaleString("en-GB")} batches in status. Start a new batch from current eligible proposals, or open an existing draft to edit pricing.`;
                     }
                     if (meta) {
                         meta.innerHTML = [
+                            ["Rule", "Accepted + period end in next 8 weeks"],
+                            ["Clients", "Active only"],
                             ["Available", Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")],
                             ["Already picked", Number(candidatePool.alreadyPickedCount || 0).toLocaleString("en-GB")],
-                            ["Selected", Number(ignitionRenewalSelectionList().length || 0).toLocaleString("en-GB")],
-                            ["Runs", Number(recentRuns.length || 0).toLocaleString("en-GB")],
+                            ["Batches", Number(recentRuns.length || 0).toLocaleString("en-GB")],
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
                     if (wrap) wrap.innerHTML = renderIgnitionRenewalsBatchWorkspace();
@@ -39513,6 +39602,7 @@
                 if (exportPdfButton) exportPdfButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
                 if (finaliseButton) finaliseButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
                 if (finaliseButton) finaliseButton.textContent = run?.finalisedAt ? "ELs raised" : "Finalise and raise ELs";
+                if (ignitionRenewalStartModalOpen) renderIgnitionRenewalStartModal();
                 renderIgnitionRenewalsLaunch();
             }
 
@@ -39520,9 +39610,7 @@
                 const candidatePool = ignitionRenewalCandidatePool();
                 const candidates = ignitionRenewalCandidates();
                 const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
-                const latestDraftRun = recentRuns.find((run) => String(run?.status || "").toLowerCase() === "draft" && Number(run?.pickedCount || run?.itemCount || 0) > 0) || null;
-                ensureIgnitionRenewalSelection();
-                const selectedSet = new Set(ignitionRenewalSelectionList());
+                const availableCount = Number(candidatePool.availableCount || candidates.length || 0);
                 const runRows = recentRuns.length
                     ? `
                         <table class="ignition-renewals-table">
@@ -39534,78 +39622,43 @@
                                     <th>Clients</th>
                                     <th>Current MRR</th>
                                     <th>Proposed MRR</th>
-                                    <th>Open</th>
+                                    <th>Uplift secured</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${recentRuns.map((run) => `
-                                    <tr data-renewals-open-run-row="${escapeHTML(run.id || "")}">
+                                    <tr>
                                         <td>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "Unknown")}</td>
                                         <td>${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
                                         <td>${escapeHTML(run.status || "draft")}</td>
                                         <td>${Number(run.pickedCount || run.itemCount || 0).toLocaleString("en-GB")}</td>
                                         <td class="money-cell">${formatCurrency(run.totalCurrentMonthly || 0)}</td>
                                         <td class="money-cell">${formatCurrency(run.totalNewMonthly || 0)}</td>
-                                        <td><button class="ghost-button" type="button" data-renewals-open-run="${escapeHTML(run.id || "")}">Open pricing</button></td>
+                                        <td class="money-cell">${formatCurrency((run.finalisedAt || String(run.status || "").toLowerCase() === "finalised") ? Number(run.totalVariance || 0) : 0)}</td>
+                                        <td>
+                                            <button class="ghost-button" type="button" data-renewals-view-run="${escapeHTML(run.id || "")}">View</button>
+                                            <button class="ghost-button" type="button" data-renewals-edit-run="${escapeHTML(run.id || "")}" ${run.finalisedAt ? "disabled" : ""}>Edit</button>
+                                            <button class="ghost-button" type="button" data-renewals-delete-run="${escapeHTML(run.id || "")}" ${run.finalisedAt ? "disabled" : ""}>Delete</button>
+                                        </td>
                                     </tr>
                                 `).join("")}
                             </tbody>
                         </table>
                     `
-                    : '<div class="empty-state"><p class="eyebrow">No runs yet</p><h4>No renewal batches have been created</h4><p>Select clients below and start the first renewal batch.</p></div>';
-                const candidateRows = candidates.length
-                    ? `
-                        <table class="ignition-renewals-table">
-                            <thead>
-                                <tr>
-                                    <th><input type="checkbox" id="ignitionRenewalsSelectAllCandidates" ${selectedSet.size === candidates.length ? "checked" : ""} aria-label="Select all candidates"></th>
-                                    <th>Client</th>
-                                    <th>Proposal End Date</th>
-                                    <th>Manager</th>
-                                    <th>Current Net Monthly Fee</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${candidates.map((item) => {
-                                    const candidateId = String(item.proposalExternalId || "");
-                                    const checked = selectedSet.has(candidateId);
-                                    return `
-                                        <tr>
-                                            <td><input type="checkbox" data-renewal-candidate-id="${escapeHTML(candidateId)}" ${checked ? "checked" : ""}></td>
-                                            <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
-                                            <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
-                                            <td>${escapeHTML(item.clientManager || "Unassigned")}</td>
-                                            <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
-                                        </tr>
-                                    `;
-                                }).join("")}
-                            </tbody>
-                        </table>
-                    `
-                    : '<div class="empty-state"><p class="eyebrow">No candidates</p><h4>No selectable renewal candidates right now</h4><p>Run an Ignition sync and check accepted proposals in the next renewal window.</p></div>';
+                    : '<div class="empty-state"><p class="eyebrow">No runs yet</p><h4>No renewal batches have been created</h4><p>Start the first batch from currently eligible proposals.</p></div>';
 
                 return `
                     <section class="ignition-renewals-batch-stage">
                         <article class="ignition-renewals-stage-card">
                             <div class="ignition-renewals-stage-head">
                                 <div>
-                                    <p class="eyebrow">Start new batch</p>
-                                    <h4>Select clients for this renewal run</h4>
-                                    <p class="detail-meta">${Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")} available in this window (${escapeHTML(candidatePool.windowStart || "")} to ${escapeHTML(candidatePool.windowEnd || "")}).</p>
+                                    <p class="eyebrow">Renewals process</p>
+                                    <h4>Batch status table</h4>
+                                    <p class="detail-meta">${availableCount.toLocaleString("en-GB")} currently eligible proposal${availableCount === 1 ? "" : "s"} (${escapeHTML(candidatePool.windowStart || "")} to ${escapeHTML(candidatePool.windowEnd || "")}).</p>
                                 </div>
                                 <div class="detail-actions">
-                                    <button class="ghost-button" type="button" id="ignitionRenewalsClearSelectionButton">Clear selection</button>
-                                    <button class="primary-button" type="button" id="startIgnitionRenewalsSelectedButton">Start selected batch (${selectedSet.size.toLocaleString("en-GB")})</button>
-                                    ${latestDraftRun ? `<button class="ghost-button" type="button" data-renewals-open-run="${escapeHTML(latestDraftRun.id || "")}">Open latest draft batch</button>` : ""}
-                                </div>
-                            </div>
-                            <div class="ignition-renewals-table-wrap">${candidateRows}</div>
-                        </article>
-                        <article class="ignition-renewals-stage-card">
-                            <div class="ignition-renewals-stage-head">
-                                <div>
-                                    <p class="eyebrow">Renewal batch history</p>
-                                    <h4>Recent renewal batches</h4>
+                                    <button class="primary-button" type="button" id="openIgnitionRenewalsStartWorkflowButton" ${availableCount ? "" : "disabled"}>Start workflow</button>
                                 </div>
                             </div>
                             <div class="ignition-renewals-table-wrap">${runRows}</div>
@@ -39702,12 +39755,14 @@
 
             async function startIgnitionRenewals() {
                 if (!isIgnitionConnected()) return showToast("Connect Ignition before starting renewals.", "info", { label: "Connect Ignition", onClick: openIgnitionConnection });
-                openIgnitionRenewalsModal();
-                const selectedProposalExternalIds = ignitionRenewalSelectionList();
+                const selectedProposalExternalIds = ignitionRenewalSelectionList().length
+                    ? ignitionRenewalSelectionList()
+                    : ignitionRenewalCandidates().map((item) => String(item?.proposalExternalId || "")).filter(Boolean);
                 if (!selectedProposalExternalIds.length) {
                     showToast("Select at least one client before starting a renewal batch.", "info");
                     return;
                 }
+                closeIgnitionRenewalStartModal();
                 ignitionRenewalsWorkspaceStage = "pricing";
                 ignitionRenewalsLoading = true;
                 ignitionRenewalsStartedAt = Date.now();
@@ -39758,6 +39813,22 @@
                 } catch (error) {
                     console.error("Unable to save renewal edits", error);
                     showToast(error.message || "Unable to save renewal edits", "error");
+                }
+            }
+
+            async function deleteIgnitionRenewalsRun(runId) {
+                const safeRunId = String(runId || "").trim();
+                if (!safeRunId) return;
+                if (!window.confirm("Delete this renewal batch? Finalised batches cannot be deleted.")) return;
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewalDelete, { method: "DELETE" }, { runId: safeRunId });
+                    ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
+                    ignitionRenewalsWorkspaceStage = "batch";
+                    showToast("Renewal batch deleted", "success");
+                    renderIgnitionScreen();
+                } catch (error) {
+                    console.error("Unable to delete renewal batch", error);
+                    showToast(error.message || "Unable to delete renewal batch", "error");
                 }
             }
 
@@ -53685,6 +53756,14 @@
                 if (openIgnitionRenewalHistoryButton) openIgnitionRenewalHistoryButton.addEventListener("click", openIgnitionRenewalHistory);
                 const closeIgnitionRenewalHistoryButton = document.getElementById("closeIgnitionRenewalHistoryButton");
                 if (closeIgnitionRenewalHistoryButton) closeIgnitionRenewalHistoryButton.addEventListener("click", closeIgnitionRenewalHistory);
+                const closeIgnitionRenewalStartButton = document.getElementById("closeIgnitionRenewalStartButton");
+                if (closeIgnitionRenewalStartButton) closeIgnitionRenewalStartButton.addEventListener("click", closeIgnitionRenewalStartModal);
+                const confirmIgnitionRenewalStartButton = document.getElementById("confirmIgnitionRenewalStartButton");
+                if (confirmIgnitionRenewalStartButton) confirmIgnitionRenewalStartButton.addEventListener("click", startIgnitionRenewals);
+                const ignitionRenewalStartModal = document.getElementById("ignitionRenewalStartModal");
+                if (ignitionRenewalStartModal) ignitionRenewalStartModal.addEventListener("click", (event) => {
+                    if (event.target.id === "ignitionRenewalStartModal") closeIgnitionRenewalStartModal();
+                });
                 const ignitionRenewalHistoryModal = document.getElementById("ignitionRenewalHistoryModal");
                 if (ignitionRenewalHistoryModal) ignitionRenewalHistoryModal.addEventListener("click", (event) => {
                     if (event.target.id === "ignitionRenewalHistoryModal") closeIgnitionRenewalHistory();
@@ -53727,9 +53806,9 @@
                     renderIgnitionRenewals();
                 });
                 if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("click", (event) => {
-                    const startSelected = event.target.closest?.("#startIgnitionRenewalsSelectedButton");
-                    if (startSelected) {
-                        startIgnitionRenewals();
+                    const openStartWorkflow = event.target.closest?.("#openIgnitionRenewalsStartWorkflowButton");
+                    if (openStartWorkflow) {
+                        openIgnitionRenewalStartModal();
                         return;
                     }
                     const clearSelection = event.target.closest?.("#ignitionRenewalsClearSelectionButton");
@@ -53744,13 +53823,48 @@
                         if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
                         return;
                     }
+                    const viewRunButton = event.target.closest?.("[data-renewals-view-run]");
+                    if (viewRunButton) {
+                        const runId = String(viewRunButton.dataset.renewalsViewRun || "").trim();
+                        if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
+                        return;
+                    }
+                    const editRunButton = event.target.closest?.("[data-renewals-edit-run]");
+                    if (editRunButton) {
+                        const runId = String(editRunButton.dataset.renewalsEditRun || "").trim();
+                        if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
+                        return;
+                    }
+                    const deleteRunButton = event.target.closest?.("[data-renewals-delete-run]");
+                    if (deleteRunButton) {
+                        const runId = String(deleteRunButton.dataset.renewalsDeleteRun || "").trim();
+                        if (runId) deleteIgnitionRenewalsRun(runId);
+                        return;
+                    }
                     const openRunRow = event.target.closest?.("[data-renewals-open-run-row]");
                     if (openRunRow) {
                         const runId = String(openRunRow.dataset.renewalsOpenRunRow || "").trim();
                         if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
                     }
                 });
+                const ignitionRenewalStartCandidatesWrap = document.getElementById("ignitionRenewalStartCandidatesWrap");
+                if (ignitionRenewalStartCandidatesWrap) ignitionRenewalStartCandidatesWrap.addEventListener("change", (event) => {
+                    const selectAll = event.target?.id === "ignitionRenewalsSelectAllCandidates";
+                    if (selectAll) {
+                        const shouldSelect = !!event.target.checked;
+                        const allIds = ignitionRenewalCandidates().map((item) => String(item.proposalExternalId || "")).filter(Boolean);
+                        ignitionRenewalSelection = shouldSelect ? new Set(allIds) : new Set();
+                        renderIgnitionRenewalStartModal();
+                        return;
+                    }
+                    const candidateId = String(event.target?.dataset?.renewalCandidateId || "");
+                    if (!candidateId) return;
+                    if (event.target.checked) ignitionRenewalSelection.add(candidateId);
+                    else ignitionRenewalSelection.delete(candidateId);
+                    renderIgnitionRenewalStartModal();
+                });
                 document.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
                     if (event.key === "Escape" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
                 });
                 const addMeReportClientButton = document.getElementById("addMeReportClientButton");
