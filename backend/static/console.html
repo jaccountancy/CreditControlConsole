@@ -49562,14 +49562,20 @@
             function chBuildSubmissionFinalReviewRows(selectedCompanies = []) {
                 return selectedCompanies.map((company) => {
                     const modelWarnings = chCompanySubmissionWarnings(company);
-                    const warningText = modelWarnings.length ? modelWarnings.join(" | ") : "No warnings";
+                    const warningText = modelWarnings.length
+                        ? modelWarnings.map((warning) => {
+                            const text = String(warning || "").trim();
+                            if (!text) return "";
+                            const match = text.match(/^Recently filed on\s+([0-9-]{10})\./i);
+                            if (match?.[1]) return `Recently filed on ${match[1]} (normally not due yet).`;
+                            return text;
+                        }).filter(Boolean).join(" | ")
+                        : "No warnings";
                     return {
                         companyName: String(company.companyName || "—"),
                         companyNumber: String(company.companyNumber || "—"),
                         madeUpToDate: company.nextMadeUpToDate ? chFormatDate(company.nextMadeUpToDate) : "—",
                         dueDate: company.nextDueDate ? chFormatDate(company.nextDueDate) : "—",
-                        filingAuthority: CH_FILING_AUTHORITY_LABELS[String(company.filingAuthorityStatus || "pending").toLowerCase()] || String(company.filingAuthorityStatus || "Pending"),
-                        authCode: company.authCodeOnFile ? `On file (${company.authCodeHint || "stored"})` : "Missing",
                         warning: warningText,
                     };
                 });
@@ -49883,8 +49889,8 @@
                 const finalReviewConfirmed = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Final submission review",
-                    subtitle: "Confirm filing details, projected Companies House credit charge, and automatic Xero invoicing before sending.",
-                    confirmLabel: "Submit & raise Xero invoices",
+                    subtitle: "Confirm filing details and projected Companies House credit charge before sending.",
+                    confirmLabel: "Submit confirmation statements",
                     cancelLabel: "Back",
                     summaryChips: [
                         finalReadyChip,
@@ -49897,15 +49903,13 @@
                         { key: "companyNumber", label: "Number" },
                         { key: "madeUpToDate", label: "Made up to" },
                         { key: "dueDate", label: "Due date" },
-                        { key: "filingAuthority", label: "Filing authority" },
-                        { key: "authCode", label: "Authentication code" },
                         { key: "warning", label: "Warnings" },
                     ],
                     rows: finalRows,
                     onRender: ({ body }) => {
                         const note = document.createElement("div");
                         note.className = "operation-review-muted";
-                        note.textContent = "Only companies shown here will be submitted. Accepted submissions are charged to the Companies House credit account and then invoiced in Xero automatically.";
+                        note.textContent = "Only companies shown here will be submitted. Accepted submissions are charged to the Companies House credit account. You can then select successful rows and raise Xero invoices.";
                         body.prepend(note);
                     },
                 });
@@ -49922,8 +49926,10 @@
                     let skippedCount = 0;
                     let failedCount = 0;
                     let acceptedCount = 0;
+                    let processingCount = 0;
                     const skippedRows = [];
                     const failedRows = [];
+                    const submittedRows = [];
                     const acceptedCompanyIds = new Set();
 
                     const pendingBatches = [...batches];
@@ -49972,49 +49978,55 @@
                         failedCount += Number(result.failedCount || 0);
                         if (Array.isArray(result.submitted)) {
                             result.submitted.forEach((row) => {
-                                if (String(row?.status || "").toLowerCase() !== "accepted") return;
-                                acceptedCount += 1;
+                                const status = String(row?.status || "").toLowerCase();
                                 const companyId = String(row?.companyId || "").trim();
-                                if (companyId) acceptedCompanyIds.add(companyId);
+                                const companyName = String(row?.companyName || "");
+                                const companyNumber = String(row?.companyNumber || "");
+                                const submissionReference = String(row?.submissionReference || row?.transactionId || "—");
+                                const rejectionReason = String(row?.rejectionReason || "").trim();
+                                if (status === "accepted") {
+                                    acceptedCount += 1;
+                                } else if (status === "submitted") {
+                                    processingCount += 1;
+                                }
+                                submittedRows.push({
+                                    companyId,
+                                    companyName,
+                                    companyNumber,
+                                    submissionReference,
+                                    outcome: status === "accepted" ? "Accepted" : status === "submitted" ? "Processing" : status === "rejected" ? "Rejected" : "Submitted",
+                                    reason: rejectionReason || (status === "accepted"
+                                        ? "Ready for invoicing."
+                                        : status === "submitted"
+                                            ? "Submission sent. Waiting for Companies House final status."
+                                            : "Submission sent."),
+                                });
+                                if (status === "accepted" && companyId) acceptedCompanyIds.add(companyId);
                             });
                         }
                         if (Array.isArray(result.skipped)) skippedRows.push(...result.skipped);
                         if (Array.isArray(result.failed)) failedRows.push(...result.failed);
                     }
                     const creditChargeApplied = acceptedCount * workflowUnitAmount;
-                    let invoiceCreatedCount = 0;
-                    let invoiceSkippedCount = 0;
-                    let invoiceFailedCount = 0;
-                    let invoiceErrorMessage = "";
-                    if (acceptedCompanyIds.size) {
-                        chSetWorkflowStatus(
-                            `Submitting complete. Raising Xero invoices for ${acceptedCompanyIds.size.toLocaleString("en-GB")} accepted submission${acceptedCompanyIds.size === 1 ? "" : "s"}…`,
-                            "muted"
-                        );
-                        try {
-                            const invoicePayload = await requestJSON("/api/companies-house/submissions/invoices/bulk", {
-                                method: "POST",
-                                body: JSON.stringify({ companyIds: Array.from(acceptedCompanyIds) }),
-                            });
-                            const invoiceResult = invoicePayload?.result || {};
-                            invoiceCreatedCount = Number(invoiceResult.createdCount || 0);
-                            invoiceSkippedCount = Number(invoiceResult.skippedCount || 0);
-                            invoiceFailedCount = Number(invoiceResult.failedCount || 0);
-                        } catch (error) {
-                            invoiceErrorMessage = error?.message || "Unable to raise Xero invoices for accepted submissions.";
-                            console.error("Unable to auto-raise Xero invoices after submission", error);
-                        }
-                    }
                     const issueRows = [
+                        ...submittedRows.filter((row) => row.outcome !== "Accepted").map((row) => ({
+                            companyName: String(row?.companyName || ""),
+                            companyNumber: String(row?.companyNumber || ""),
+                            submissionReference: String(row?.submissionReference || "—"),
+                            outcome: String(row?.outcome || "Submitted"),
+                            reason: String(row?.reason || "Submission in progress"),
+                        })),
                         ...skippedRows.map((row) => ({
                             companyName: String(row?.companyName || ""),
                             companyNumber: String(row?.companyNumber || ""),
+                            submissionReference: "—",
                             outcome: "Skipped",
                             reason: String(row?.reason || "Skipped with no reason provided"),
                         })),
                         ...failedRows.map((row) => ({
                             companyName: String(row?.companyName || ""),
                             companyNumber: String(row?.companyNumber || ""),
+                            submissionReference: "—",
                             outcome: "Failed",
                             reason: String(row?.reason || row?.error || "Submission failed"),
                         })),
@@ -50024,41 +50036,124 @@
                         .filter(Boolean)
                         .slice(0, 2)
                         .join(" | ");
-                    const hasProblems = skippedCount > 0 || failedCount > 0 || invoiceFailedCount > 0 || Boolean(invoiceErrorMessage);
-                    const invoiceSummary = acceptedCompanyIds.size
-                        ? ` Xero invoices: ${invoiceCreatedCount.toLocaleString("en-GB")} created · ${invoiceSkippedCount.toLocaleString("en-GB")} skipped · ${invoiceFailedCount.toLocaleString("en-GB")} failed.`
-                        : " No accepted submissions yet, so no Xero invoices were raised in this run.";
+                    const hasProblems = skippedCount > 0 || failedCount > 0;
                     chSetWorkflowStatus(
-                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed. Accepted ${acceptedCount.toLocaleString("en-GB")} · CH charge applied ${formatCurrency(creditChargeApplied)}.${invoiceSummary}${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}${invoiceErrorMessage ? ` Invoice error: ${invoiceErrorMessage}` : ""}`,
+                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed · ${processingCount.toLocaleString("en-GB")} processing. Accepted ${acceptedCount.toLocaleString("en-GB")} · CH charge applied ${formatCurrency(creditChargeApplied)}.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
                         hasProblems ? "error" : "success"
                     );
                     companiesHouseState.tabLoaded.dashboard = false;
                     companiesHouseState.tabLoaded.companies = false;
                     await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
+                    const acceptedEligibleForInvoicing = new Set(
+                        (companiesHouseState.companies || [])
+                            .filter((company) => acceptedCompanyIds.has(String(company.id || "")) && company.eligibleForInvoicing)
+                            .map((company) => String(company.id || ""))
+                            .filter(Boolean)
+                    );
+                    if (acceptedEligibleForInvoicing.size) {
+                        companiesHouseState.selectedCompanyIds = acceptedEligibleForInvoicing;
+                        renderCompaniesHouseCompaniesTable();
+                    }
                     showToast(
-                        `Companies House workflow complete: ${submittedCount} submitted, ${acceptedCount} accepted, charge ${formatCurrency(creditChargeApplied)}.${acceptedCompanyIds.size ? ` Xero invoices ${invoiceCreatedCount} created${invoiceFailedCount ? `, ${invoiceFailedCount} failed` : ""}.` : " No invoices raised yet."}${invoiceErrorMessage ? ` ${invoiceErrorMessage}` : ""}${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
+                        `Companies House workflow complete: ${submittedCount} submitted, ${acceptedCount} accepted, ${processingCount} processing, charge ${formatCurrency(creditChargeApplied)}.${acceptedEligibleForInvoicing.size ? ` ${acceptedEligibleForInvoicing.size} accepted row${acceptedEligibleForInvoicing.size === 1 ? "" : "s"} selected for invoicing.` : " No invoice-ready accepted rows yet."}${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
                         hasProblems ? "info" : "success"
                     );
-                    if (issueRows.length) {
-                        await showOperationReviewDialog({
+                    const processingRows = issueRows.length
+                        ? issueRows
+                        : submittedRows.map((row) => ({
+                            companyName: String(row?.companyName || ""),
+                            companyNumber: String(row?.companyNumber || ""),
+                            submissionReference: String(row?.submissionReference || "—"),
+                            outcome: String(row?.outcome || "Submitted"),
+                            reason: String(row?.reason || "Submission complete"),
+                        }));
+                    await showOperationReviewDialog({
+                        eyebrow: "Confirmation statements",
+                        title: "Submission processing results",
+                        subtitle: acceptedEligibleForInvoicing.size
+                            ? "Review successful and unsuccessful rows. Continue to raise invoices for accepted submissions."
+                            : "Review status for each row. Accepted rows can be invoiced once available.",
+                        confirmLabel: "Done",
+                        cancelLabel: "Close",
+                        summaryChips: [
+                            `${submittedCount.toLocaleString("en-GB")} submitted`,
+                            `${acceptedCount.toLocaleString("en-GB")} accepted`,
+                            `${processingCount.toLocaleString("en-GB")} processing`,
+                            `${skippedCount.toLocaleString("en-GB")} skipped`,
+                            `${failedCount.toLocaleString("en-GB")} failed`,
+                        ],
+                        columns: [
+                            { key: "companyName", label: "Company" },
+                            { key: "companyNumber", label: "Number" },
+                            { key: "submissionReference", label: "Submission" },
+                            { key: "outcome", label: "Status" },
+                            { key: "reason", label: "Details" },
+                        ],
+                        rows: processingRows,
+                    });
+
+                    if (acceptedEligibleForInvoicing.size) {
+                        const invoiceReviewRows = (companiesHouseState.companies || [])
+                            .filter((company) => acceptedEligibleForInvoicing.has(String(company.id || "")))
+                            .map((company) => ({
+                                companyName: String(company.companyName || "—"),
+                                companyNumber: String(company.companyNumber || "—"),
+                                submissionStatus: String(company.latestSubmissionStatus || "accepted"),
+                                chargeAmount: formatCurrency(workflowUnitAmount),
+                            }));
+                        const proceedToInvoice = await showOperationReviewDialog({
                             eyebrow: "Confirmation statements",
-                            title: "Submission results",
-                            subtitle: "Some companies were skipped or failed. Review the exact reason for each company below.",
-                            confirmLabel: "Done",
-                            cancelLabel: "Close",
+                            title: "Raise invoices for successful submissions",
+                            subtitle: "Only accepted confirmation statements are included below.",
+                            confirmLabel: "Raise Xero invoices",
+                            cancelLabel: "Later",
                             summaryChips: [
-                                `${submittedCount.toLocaleString("en-GB")} submitted`,
-                                `${skippedCount.toLocaleString("en-GB")} skipped`,
-                                `${failedCount.toLocaleString("en-GB")} failed`,
+                                `${acceptedEligibleForInvoicing.size.toLocaleString("en-GB")} accepted`,
+                                `Unit fee ${formatCurrency(workflowUnitAmount)} each`,
+                                `Projected invoices ${formatCurrency(workflowUnitAmount * acceptedEligibleForInvoicing.size)}`,
                             ],
                             columns: [
                                 { key: "companyName", label: "Company" },
                                 { key: "companyNumber", label: "Number" },
-                                { key: "outcome", label: "Outcome" },
-                                { key: "reason", label: "Reason" },
+                                { key: "submissionStatus", label: "Status" },
+                                { key: "chargeAmount", label: "Invoice amount" },
                             ],
-                            rows: issueRows,
+                            rows: invoiceReviewRows,
                         });
+                        if (proceedToInvoice) {
+                            chSetWorkflowStatus(
+                                `Raising Xero invoices for ${acceptedEligibleForInvoicing.size.toLocaleString("en-GB")} accepted submission${acceptedEligibleForInvoicing.size === 1 ? "" : "s"}…`,
+                                "muted"
+                            );
+                            try {
+                                const invoicePayload = await requestJSON("/api/companies-house/submissions/invoices/bulk", {
+                                    method: "POST",
+                                    body: JSON.stringify({ companyIds: Array.from(acceptedEligibleForInvoicing) }),
+                                });
+                                const invoiceResult = invoicePayload?.result || {};
+                                const invoiceCreatedCount = Number(invoiceResult.createdCount || 0);
+                                const invoiceSkippedCount = Number(invoiceResult.skippedCount || 0);
+                                const invoiceFailedCount = Number(invoiceResult.failedCount || 0);
+                                const invoiceHasProblems = invoiceSkippedCount > 0 || invoiceFailedCount > 0;
+                                chSetWorkflowStatus(
+                                    `Invoices raised ${invoiceCreatedCount.toLocaleString("en-GB")} · ${invoiceSkippedCount.toLocaleString("en-GB")} skipped · ${invoiceFailedCount.toLocaleString("en-GB")} failed.`,
+                                    invoiceHasProblems ? "error" : "success"
+                                );
+                                showToast(
+                                    `Xero invoice run complete: ${invoiceCreatedCount} created, ${invoiceSkippedCount} skipped, ${invoiceFailedCount} failed.`,
+                                    invoiceHasProblems ? "info" : "success"
+                                );
+                                companiesHouseState.tabLoaded.companies = false;
+                                await loadCompaniesHouseCompanies(true);
+                            } catch (error) {
+                                console.error("Unable to raise Xero invoices for accepted submissions", error);
+                                if (error instanceof AuthRequiredError) {
+                                    markAuthenticationRequired(error.message);
+                                }
+                                chSetWorkflowStatus(error?.message || "Unable to raise Xero invoices.", "error");
+                                showToast(error?.message || "Unable to raise Xero invoices.", "error");
+                            }
+                        }
                     }
                 } catch (error) {
                     console.error("Unable to submit selected companies", error);
