@@ -3068,6 +3068,7 @@ def _upsert_auth_code_register_row(
     *,
     company_number: str,
     display_name: str,
+    client_manager: str,
     normalised_name: str,
     auth_code: str,
     filename: str,
@@ -3083,6 +3084,7 @@ def _upsert_auth_code_register_row(
             UPDATE ch_auth_code_register
             SET client_name = %s,
                 company_name = %s,
+                client_manager = %s,
                 normalised_name = %s,
                 code_encrypted = %s,
                 code_hint = %s,
@@ -3096,6 +3098,7 @@ def _upsert_auth_code_register_row(
             (
                 display_name,
                 display_name,
+                client_manager,
                 normalised_name,
                 encrypted,
                 hint,
@@ -3111,6 +3114,7 @@ def _upsert_auth_code_register_row(
             UPDATE ch_auth_code_register
             SET client_name = %s,
                 company_name = %s,
+                client_manager = %s,
                 code_encrypted = %s,
                 code_hint = %s,
                 source_filename = %s,
@@ -3124,6 +3128,7 @@ def _upsert_auth_code_register_row(
             (
                 display_name,
                 display_name,
+                client_manager,
                 encrypted,
                 hint,
                 filename,
@@ -3140,6 +3145,7 @@ def _upsert_auth_code_register_row(
             company_number,
             client_name,
             company_name,
+            client_manager,
             normalised_name,
             code_encrypted,
             code_hint,
@@ -3155,6 +3161,7 @@ def _upsert_auth_code_register_row(
             company_number,
             display_name,
             display_name,
+            client_manager,
             normalised_name,
             encrypted,
             hint,
@@ -3205,6 +3212,7 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "lineNumber": idx,
                 "companyNumber": company_number,
                 "displayName": display_name,
+                "clientManager": _coerce_text(row_payload.get("manager_reference") or row_payload.get("assigned_staff"), 120),
                 "normalisedName": normalised_name,
                 "authCode": auth_code,
             }
@@ -3229,6 +3237,7 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
                     cursor,
                     company_number=row["companyNumber"],
                     display_name=row["displayName"],
+                    client_manager=row.get("clientManager") or "",
                     normalised_name=row["normalisedName"],
                     auth_code=row["authCode"],
                     filename=_coerce_text(filename, 250),
@@ -3276,6 +3285,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 SELECT id,
                        company_number,
                        COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
+                       client_manager,
                        code_hint,
                        source_filename,
                        uploaded_at
@@ -3296,6 +3306,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 "id": str(row.get("id") or ""),
                 "companyNumber": row.get("company_number") or "",
                 "displayName": row.get("display_name") or "",
+                "clientManager": row.get("client_manager") or "",
                 "authCodeHint": row.get("code_hint") or "",
                 "sourceFilename": row.get("source_filename") or "",
                 "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
