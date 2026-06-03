@@ -15438,6 +15438,25 @@ def _ignition_proposal_service_name(row: dict) -> str:
     return ", ".join(names)
 
 
+def _ignition_proposal_is_self_assessment(row: dict) -> bool:
+    text = " ".join(
+        str(value or "")
+        for value in (
+            row.get("name"),
+            row.get("reference_number"),
+            row.get("description"),
+            " ".join(_service_names_from_proposal(row)),
+        )
+    ).lower()
+    markers = (
+        "self assessment",
+        "self-assessment",
+        "sa100",
+        "personal tax return",
+    )
+    return any(marker in text for marker in markers)
+
+
 def _ignition_record_client_name(row: dict) -> str:
     return (
         _first_mapping_text(row, ("client_name", "clientName", "customer_name", "customerName", "business_name", "company_name", "name", "display_name"))
@@ -15739,6 +15758,8 @@ def _ignition_upcoming_renewal_proposals(records: list[dict], window_start: date
         if not _is_accepted_ignition_proposal(proposal_payload):
             continue
         if not _ignition_proposal_client_is_active(proposal_payload):
+            continue
+        if _ignition_proposal_is_self_assessment(proposal_payload):
             continue
         candidates.append(_ignition_renewal_item_seed(record, renewal_date))
     return sorted(
@@ -16572,7 +16593,6 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
                 FROM ignition_renewal_runs
                 WHERE user_id = %s
                 ORDER BY created_at DESC
-                LIMIT 6
                 """,
                 (user["id"],),
             )

@@ -20150,7 +20150,20 @@
                     </div>
 
                     <section class="late-charges-screen detail-card" id="ignitionScreen" hidden>
-                        <div class="detail-hero"></div>
+                        <div class="detail-hero ignition-renewals-hero">
+                            <div class="ignition-renewals-modal-head ignition-renewals-hero-head">
+                                <div>
+                                    <p class="eyebrow">Renewals process</p>
+                                    <h3 id="ignitionRenewalsModalTitle">Proposal workspace</h3>
+                                    <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
+                                    <button class="ghost-button" id="ignitionRenewalsBackToBatchesButton" type="button" hidden>Back to batches</button>
+                                </div>
+                            </div>
+                            <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
+                        </div>
                         <section class="ignition-tab-panel" data-ignition-panel="overview">
                             <section class="detail-panel ignition-panel">
                                 <div class="ignition-summary-grid" aria-label="Ignition management metrics">
@@ -20210,18 +20223,6 @@
                         </section>
                         <section class="ignition-tab-panel" data-ignition-panel="renewals" hidden>
                             <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel" aria-labelledby="ignitionRenewalsModalTitle">
-                                <div class="ignition-renewals-modal-head">
-                                    <div>
-                                        <p class="eyebrow">Renewals process</p>
-                                        <h3 id="ignitionRenewalsModalTitle">Proposal workspace</h3>
-                                        <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.</p>
-                                    </div>
-                                    <div class="detail-actions">
-                                        <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
-                                        <button class="ghost-button" id="ignitionRenewalsBackToBatchesButton" type="button" hidden>Back to batches</button>
-                                    </div>
-                                </div>
-                                <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalsTableWrap"></div>
                             </section>
                         </section>
@@ -22092,6 +22093,7 @@
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [], clients: [] }, renewals: { currentRun: null, recentRuns: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let ignitionRenewalsLoading = false;
+            let ignitionRenewalStartLoading = false;
             let ignitionRenewalsStartedAt = 0;
             let ignitionRenewalsProgressTimer = null;
             let ignitionRenewalsModalOpen = true;
@@ -39405,18 +39407,37 @@
                 const selectedSet = new Set(ignitionRenewalSelectionList());
 
                 if (summary) {
-                    summary.textContent = `${Number(candidates.length || 0).toLocaleString("en-GB")} eligible client proposal${Number(candidates.length || 0) === 1 ? "" : "s"} are available for this workflow window.`;
+                    summary.textContent = ignitionRenewalStartLoading
+                        ? "Syncing and preparing the eligible client list for this workflow window."
+                        : `${Number(candidates.length || 0).toLocaleString("en-GB")} eligible client proposal${Number(candidates.length || 0) === 1 ? "" : "s"} are available for this workflow window.`;
                 }
                 if (meta) {
-                    meta.innerHTML = [
-                        ["Window", `${formatDate(candidatePool.windowStart || "")} to ${formatDate(candidatePool.windowEnd || "")}`],
-                        ["Eligible", Number(candidates.length || 0).toLocaleString("en-GB")],
-                        ["Selected", Number(selectedSet.size || 0).toLocaleString("en-GB")],
-                    ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+                    meta.innerHTML = ignitionRenewalStartLoading
+                        ? [
+                            ["Status", "Preparing"],
+                            ["Window", `${formatDate(candidatePool.windowStart || "")} to ${formatDate(candidatePool.windowEnd || "")}`],
+                        ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("")
+                        : [
+                            ["Window", `${formatDate(candidatePool.windowStart || "")} to ${formatDate(candidatePool.windowEnd || "")}`],
+                            ["Eligible", Number(candidates.length || 0).toLocaleString("en-GB")],
+                            ["Selected", Number(selectedSet.size || 0).toLocaleString("en-GB")],
+                        ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                 }
 
-                if (confirmButton) confirmButton.disabled = !selectedSet.size;
+                if (confirmButton) confirmButton.disabled = ignitionRenewalStartLoading || !selectedSet.size;
                 if (!wrap) return;
+                if (ignitionRenewalStartLoading) {
+                    wrap.innerHTML = `
+                        <div class="ignition-renewals-progress" role="status" aria-live="polite">
+                            <p class="eyebrow">Preparing</p>
+                            <strong>Building eligible client list</strong>
+                            <p>Refreshing accepted active-client proposals with period end dates in the next 8 weeks.</p>
+                            <div class="sync-progress-track" aria-hidden="true"><span class="sync-progress-bar" style="width: 58%"></span></div>
+                            <p>Please wait while the latest list is prepared.</p>
+                        </div>
+                    `;
+                    return;
+                }
                 if (!candidates.length) {
                     wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No candidates</p><h4>No eligible clients in this window</h4><p>Run Ignition sync and check accepted active-client proposals in the next 8 weeks.</p></div>';
                     return;
@@ -39464,6 +39485,25 @@
 
             function openIgnitionRenewalStartModal() {
                 setIgnitionRenewalStartModalOpen(true);
+            }
+
+            async function openIgnitionRenewalStartModalPrepared() {
+                if (ignitionRenewalStartLoading) return;
+                setIgnitionRenewalStartModalOpen(true);
+                ignitionRenewalStartLoading = true;
+                renderIgnitionRenewalStartModal();
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewals);
+                    ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    seedIgnitionRenewalSelection();
+                } catch (error) {
+                    console.error("Unable to prepare renewal candidates", error);
+                    showToast(error.message || "Unable to prepare eligible client list", "error");
+                } finally {
+                    ignitionRenewalStartLoading = false;
+                    renderIgnitionRenewalStartModal();
+                    renderIgnitionRenewals();
+                }
             }
 
             function closeIgnitionRenewalStartModal() {
@@ -54125,7 +54165,7 @@
                 if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("click", (event) => {
                     const openStartWorkflow = event.target.closest?.("#openIgnitionRenewalsStartWorkflowButton");
                     if (openStartWorkflow) {
-                        openIgnitionRenewalStartModal();
+                        openIgnitionRenewalStartModalPrepared();
                         return;
                     }
                     const clearSelection = event.target.closest?.("#ignitionRenewalsClearSelectionButton");
