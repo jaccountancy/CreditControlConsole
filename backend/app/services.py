@@ -16374,8 +16374,7 @@ def _xero_bill_deep_link(invoice_id: str) -> str:
     return f"https://go.xero.com/AccountsPayable/View.aspx?InvoiceID={clean_invoice_id}"
 
 
-async def _supplier_reconciliation_contact_options(user: dict) -> list[dict]:
-    connection_row = get_xero_connection_for_user(user["id"])
+async def _supplier_reconciliation_contact_options_for_connection(connection_row: dict) -> list[dict]:
     try:
         contacts = await fetch_paginated_collection(connection_row, CONTACTS_URL, "Contacts", max_pages=10, params={"order": "Name ASC"})
     except Exception:
@@ -16398,6 +16397,23 @@ async def _supplier_reconciliation_contact_options(user: dict) -> list[dict]:
         )
     options.sort(key=lambda item: (item.get("name") or "").lower())
     return options
+
+
+def _supplier_reconciliation_xero_connections(user: dict) -> list[dict]:
+    rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    sorted_rows = sorted(rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name), reverse=True)
+    return [
+        {
+            "tenantId": str(row.get("tenant_id") or ""),
+            "tenantName": str(row.get("tenant_name") or ""),
+            "tenantType": str(row.get("tenant_type") or ""),
+            "updatedAt": _iso(row.get("updated_at")) or "",
+            "createdAt": _iso(row.get("created_at")) or "",
+        }
+        for row in sorted_rows
+        if str(row.get("tenant_id") or "").strip()
+    ]
 
 
 def _supplier_reconciliation_connected_rows(tenant_id: str) -> list[dict]:
@@ -16424,35 +16440,61 @@ def _supplier_reconciliation_connected_contact_ids(tenant_id: str) -> set[str]:
 
 
 async def supplier_reconciliation_payload(user: dict) -> dict:
-    try:
-        connection_row = get_xero_connection_for_user(user["id"])
-    except HTTPException:
-        return {"xero": {"connected": False, "tenantName": "", "tenantId": "", "contacts": []}, "connectedClients": []}
-    tenant_id = str(connection_row.get("tenant_id") or "")
-    contacts = await _supplier_reconciliation_contact_options(user)
-    contacts_by_id = {str(contact.get("xeroContactId") or ""): contact for contact in contacts}
+    connection_rows = _supplier_reconciliation_xero_connections(user)
+    if not connection_rows:
+        return {"xero": {"connected": False, "tenantName": "", "tenantId": "", "contacts": [], "connections": []}, "connectedClients": []}
+    active_connection = connection_rows[0]
+    tenant_id = str(active_connection.get("tenantId") or "")
     connected_rows = _supplier_reconciliation_connected_rows(tenant_id)
     connected_clients = []
     for row in connected_rows:
         contact_id = str(row.get("xero_contact_id") or "")
-        live_contact = contacts_by_id.get(contact_id) or {}
         connected_clients.append(
             {
                 "id": str(row["id"]),
                 "xeroContactId": contact_id,
-                "name": str(live_contact.get("name") or row.get("contact_name") or "").strip(),
-                "email": str(live_contact.get("email") or row.get("contact_email") or "").strip(),
+                "name": str(row.get("contact_name") or "").strip(),
+                "email": str(row.get("contact_email") or "").strip(),
                 "createdAt": _iso(row.get("created_at")) or "",
             }
         )
     return {
         "xero": {
             "connected": True,
-            "tenantName": connection_row.get("tenant_name") or "",
-            "tenantId": connection_row.get("tenant_id") or "",
-            "contacts": contacts,
+            "tenantName": active_connection.get("tenantName") or "",
+            "tenantId": tenant_id,
+            "contacts": [],
+            "connections": connection_rows,
         },
         "connectedClients": connected_clients,
+    }
+
+
+async def supplier_reconciliation_contact_options_payload(user: dict, tenant_id: str | None = None) -> dict:
+    connection_rows = _supplier_reconciliation_xero_connections(user)
+    if not connection_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
+    requested_tenant_id = str(tenant_id or "").strip()
+    connection_row = (
+        next((row for row in connection_rows if str(row.get("tenantId") or "") == requested_tenant_id), None)
+        if requested_tenant_id
+        else connection_rows[0]
+    )
+    if connection_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xero tenant not found for this account.")
+    source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    source_row = next((row for row in source_rows if str(row.get("tenant_id") or "") == str(connection_row.get("tenantId") or "")), None)
+    if source_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xero tenant credentials are unavailable.")
+    contacts = await _supplier_reconciliation_contact_options_for_connection(source_row)
+    return {
+        "xero": {
+            "connected": True,
+            "tenantName": connection_row.get("tenantName") or "",
+            "tenantId": connection_row.get("tenantId") or "",
+            "contacts": contacts,
+            "connections": connection_rows,
+        }
     }
 
 
@@ -16462,9 +16504,15 @@ async def add_supplier_reconciliation_client(user: dict, payload: dict) -> dict:
     xero_contact_id = str(payload.get("xeroContactId") or "").strip()
     if not xero_contact_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a supplier contact before connecting.")
-    connection_row = get_xero_connection_for_user(user["id"])
+    requested_tenant_id = str(payload.get("tenantId") or "").strip()
+    source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    if not source_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
+    connection_row = next((row for row in source_rows if str(row.get("tenant_id") or "") == requested_tenant_id), None) if requested_tenant_id else None
+    if connection_row is None:
+        connection_row = max(source_rows, key=lambda row: _xero_connection_sort_key(row, get_settings().xero_primary_tenant_name))
     tenant_id = str(connection_row.get("tenant_id") or "")
-    contacts = await _supplier_reconciliation_contact_options(user)
+    contacts = await _supplier_reconciliation_contact_options_for_connection(connection_row)
     contact = next((item for item in contacts if item.get("xeroContactId") == xero_contact_id), None)
     if contact is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier contact was not found in this Xero tenant.")

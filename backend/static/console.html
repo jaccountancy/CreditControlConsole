@@ -17738,7 +17738,10 @@
                                     <h3>Confirmation statement submissions</h3>
                                     <p class="detail-meta">Manage company records, refresh live Companies House data, submit filings, and raise linked Xero invoices from one workflow.</p>
                                 </div>
-                                <span class="companies-house-mark is-logo" aria-hidden="true"><img src="/static/companies-house-logo.png" alt=""></span>
+                                <div class="confirmation-statements-actions">
+                                    <button class="primary-button" type="button" id="chQuickFileConfirmationButton">File Confirmation statement</button>
+                                    <span class="companies-house-mark is-logo" aria-hidden="true"><img src="/static/companies-house-logo.png" alt=""></span>
+                                </div>
                             </div>
                             <section class="ch-onboarding-card" id="chOnboardingCard" hidden>
                                 <div class="ch-onboarding-head">
@@ -20627,8 +20630,9 @@
             let bankStatementUploadTimer = null;
             let bankStatementPollingTimer = null;
             const bankStatementMaxUploadBytes = 50 * 1024 * 1024;
-            let supplierReconciliationData = { xero: { connected: false, tenantName: "", tenantId: "", contacts: [] }, connectedClients: [], result: null };
+            let supplierReconciliationData = { xero: { connected: false, tenantName: "", tenantId: "", contacts: [], connections: [] }, connectedClients: [], result: null };
             let supplierReconciliationLoading = false;
+            let supplierReconciliationContactsLoading = false;
             let supplierReconciliationUploading = false;
             let supplierReconciliationLoaded = false;
             let selectedSupplierReconciliationContactId = "";
@@ -21024,6 +21028,7 @@
                         bankStatementTransactionCategorise: config.endpoints?.bankStatementTransactionCategorise || "/api/bank-statements/accounts/:accountId/transactions/categorise",
                         supplierReconciliation: config.endpoints?.supplierReconciliation || "/api/supplier-reconciliation",
                         supplierReconciliationClients: config.endpoints?.supplierReconciliationClients || "/api/supplier-reconciliation/clients",
+                        supplierReconciliationContacts: config.endpoints?.supplierReconciliationContacts || "/api/supplier-reconciliation/contacts",
                         supplierReconciliationClient: config.endpoints?.supplierReconciliationClient || "/api/supplier-reconciliation/clients/:clientId",
                         supplierReconciliationExtract: config.endpoints?.supplierReconciliationExtract || "/api/supplier-reconciliation/extract",
                         supplierReconciliationEmail: config.endpoints?.supplierReconciliationEmail || "/api/supplier-reconciliation/email",
@@ -31079,6 +31084,15 @@
                         connected: Boolean(xero.connected),
                         tenantName: String(xero.tenantName || ""),
                         tenantId: String(xero.tenantId || ""),
+                        connections: Array.isArray(xero.connections)
+                            ? xero.connections.map((connection) => ({
+                                tenantId: String(connection.tenantId || ""),
+                                tenantName: String(connection.tenantName || ""),
+                                tenantType: String(connection.tenantType || ""),
+                                updatedAt: String(connection.updatedAt || ""),
+                                createdAt: String(connection.createdAt || ""),
+                            })).filter((connection) => connection.tenantId)
+                            : (supplierReconciliationData?.xero?.connections || []),
                         contacts: Array.isArray(xero.contacts)
                             ? xero.contacts.map((contact) => ({
                                 xeroContactId: String(contact.xeroContactId || ""),
@@ -31107,6 +31121,10 @@
 
             function supplierReconciliationConnectedClients() {
                 return Array.isArray(supplierReconciliationData?.connectedClients) ? supplierReconciliationData.connectedClients : [];
+            }
+
+            function supplierReconciliationXeroConnections() {
+                return Array.isArray(supplierReconciliationData?.xero?.connections) ? supplierReconciliationData.xero.connections : [];
             }
 
             function selectedSupplierReconciliationContact() {
@@ -31197,8 +31215,9 @@
                     const nextState = normaliseSupplierReconciliationPayload(payload);
                     supplierReconciliationData = { ...supplierReconciliationData, ...nextState };
                     const contactIds = new Set(supplierReconciliationContacts().map((contact) => contact.xeroContactId));
-                    if (!selectedSupplierReconciliationContactId || !contactIds.has(selectedSupplierReconciliationContactId)) {
-                        selectedSupplierReconciliationContactId = supplierReconciliationConnectedClients()[0]?.xeroContactId || supplierReconciliationContacts()[0]?.xeroContactId || "";
+                    const connectedContactIds = new Set(supplierReconciliationConnectedClients().map((client) => client.xeroContactId));
+                    if (!selectedSupplierReconciliationContactId || (!connectedContactIds.has(selectedSupplierReconciliationContactId) && !contactIds.has(selectedSupplierReconciliationContactId))) {
+                        selectedSupplierReconciliationContactId = supplierReconciliationConnectedClients()[0]?.xeroContactId || "";
                     }
                     supplierReconciliationLoaded = true;
                 } catch (error) {
@@ -31207,6 +31226,31 @@
                     else showToast(error.message || "Unable to load supplier reconciliation", "error");
                 } finally {
                     supplierReconciliationLoading = false;
+                    renderSupplierReconciliationScreen();
+                }
+            }
+
+            async function loadSupplierReconciliationContacts(force = false) {
+                if (supplierReconciliationContactsLoading && !force) return;
+                if (!supplierReconciliationData.xero?.connected) return;
+                supplierReconciliationContactsLoading = true;
+                renderSupplierReconciliationScreen();
+                try {
+                    const endpoint = api.endpoints.supplierReconciliationContacts;
+                    const query = supplierReconciliationData.xero?.tenantId
+                        ? `?tenantId=${encodeURIComponent(supplierReconciliationData.xero.tenantId)}`
+                        : "";
+                    const payload = await requestJSON(`${endpoint}${query}`);
+                    const nextState = normaliseSupplierReconciliationPayload(payload);
+                    supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
+                    if (!selectedSupplierReconciliationContactId) {
+                        selectedSupplierReconciliationContactId = supplierReconciliationContacts()[0]?.xeroContactId || supplierReconciliationConnectedClients()[0]?.xeroContactId || "";
+                    }
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to load Xero supplier contacts", "error");
+                } finally {
+                    supplierReconciliationContactsLoading = false;
                     renderSupplierReconciliationScreen();
                 }
             }
@@ -31437,7 +31481,8 @@
             async function uploadSupplierReconciliationStatement(file) {
                 const contact = selectedSupplierReconciliationContact();
                 const connectedClient = selectedSupplierReconciliationConnectedClient();
-                if (!contact?.xeroContactId) return showToast("Choose and connect a supplier first.", "error");
+                const selectedClient = contact || connectedClient;
+                if (!selectedClient?.xeroContactId) return showToast("Choose and connect a supplier first.", "error");
                 if (!connectedClient) return showToast("Connect this supplier before uploading a statement.", "error");
                 if (!file) return;
                 if (file.size > supplierReconciliationMaxUploadBytes) {
@@ -31448,8 +31493,8 @@
                 supplierReconciliationSubmissionHistory = [
                     {
                         id: submissionId,
-                        supplierContactId: String(contact.xeroContactId || ""),
-                        supplierName: String(contact.name || connectedClient?.name || ""),
+                        supplierContactId: String(selectedClient.xeroContactId || ""),
+                        supplierName: String(selectedClient.name || connectedClient?.name || ""),
                         filename: String(file.name || "supplier-statement.pdf"),
                         submittedAt: new Date().toISOString(),
                         completedAt: "",
@@ -31468,7 +31513,7 @@
                 renderSupplierReconciliationScreen();
                 try {
                     const formData = new FormData();
-                    formData.append("xeroContactId", contact.xeroContactId);
+                    formData.append("xeroContactId", selectedClient.xeroContactId);
                     formData.append("file", file, file.name || "supplier-statement.pdf");
                     const response = await requestFormData(api.endpoints.supplierReconciliationExtract, formData);
                     supplierReconciliationData.result = response?.supplierReconciliation || null;
@@ -31553,7 +31598,7 @@
                 detail.hidden = !supplierReconciliationWorkspaceOpen;
 
                 if (supplierReconciliationLoading && !supplierReconciliationLoaded) {
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading supplier contacts</h4><p>Fetching connected Xero supplier contacts.</p></div>';
+                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading supplier workspace</h4><p>Fetching active Xero connections and saved supplier workspaces.</p></div>';
                     actionList.innerHTML = "";
                     detail.innerHTML = "";
                     return;
@@ -31579,7 +31624,10 @@
                     try {
                         const response = await requestJSON(api.endpoints.supplierReconciliationClients, {
                             method: "POST",
-                            body: JSON.stringify({ xeroContactId: selectedSupplierReconciliationContactId }),
+                            body: JSON.stringify({
+                                xeroContactId: selectedSupplierReconciliationContactId,
+                                tenantId: supplierReconciliationData.xero?.tenantId || "",
+                            }),
                         });
                         const nextState = normaliseSupplierReconciliationPayload(response);
                         supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
@@ -31615,17 +31663,40 @@
                 };
 
                 if (!supplierReconciliationWorkspaceOpen) {
+                    const xeroConnections = supplierReconciliationXeroConnections();
                     clientList.innerHTML = `
                         <div class="jashflow-detail-head">
                             <div>
                                 <p class="eyebrow">Supplier Reconciliation</p>
                                 <h3>Saved supplier workspaces</h3>
-                                <p class="detail-meta">Connect suppliers once, then access their workspace to upload statements and review missing invoices quickly.</p>
+                                <p class="detail-meta">Use active Xero connections first, then pull supplier contacts only when you need to connect a new supplier.</p>
                             </div>
                             <div class="detail-actions">
                                 <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
                                 <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
                             </div>
+                        </div>
+                        <div class="supplier-recon-client-table-wrap">
+                            <table class="supplier-recon-client-table" aria-label="Active Xero connections">
+                                <thead>
+                                    <tr>
+                                        <th>Tenant</th>
+                                        <th>Type</th>
+                                        <th>Last updated</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${xeroConnections.length
+                                        ? xeroConnections.map((connection) => `
+                                            <tr>
+                                                <td><strong>${escapeHTML(connection.tenantName || connection.tenantId)}</strong><small>${escapeHTML(connection.tenantId || "")}</small></td>
+                                                <td>${escapeHTML(connection.tenantType || "Organisation")}</td>
+                                                <td>${escapeHTML(connection.updatedAt ? formatDate(connection.updatedAt) : "Recently")}</td>
+                                            </tr>
+                                        `).join("")
+                                        : '<tr><td colspan="3">No active Xero connections available.</td></tr>'}
+                                </tbody>
+                            </table>
                         </div>
                         <div class="supplier-recon-controls">
                             <label>
@@ -31633,10 +31704,11 @@
                                 <select id="supplierReconciliationContactSelect">
                                     ${contacts.length
                                         ? contacts.map((contact) => `<option value="${escapeHTML(contact.xeroContactId)}" ${contact.xeroContactId === selectedSupplierReconciliationContactId ? "selected" : ""}>${escapeHTML(contact.name || contact.xeroContactId)}${contact.email ? ` · ${escapeHTML(contact.email)}` : ""}${connectedByContactId.has(contact.xeroContactId) ? " · Connected" : ""}</option>`).join("")
-                                        : '<option value="">No Xero supplier contacts available</option>'}
+                                        : `<option value="">${supplierReconciliationContactsLoading ? "Loading Xero supplier contacts..." : "Load contacts when needed"}</option>`}
                                 </select>
                             </label>
                             <div class="supplier-recon-controls-actions">
+                                <button class="ghost-button" id="supplierReconciliationLoadContactsButton" type="button" ${supplierReconciliationContactsLoading ? "disabled" : ""}>${supplierReconciliationContactsLoading ? "Loading contacts..." : "Load contacts"}</button>
                                 <button class="primary-button" id="supplierReconciliationConnectButton" type="button" ${contacts.length ? "" : "disabled"}>Connect supplier</button>
                             </div>
                         </div>
@@ -31680,6 +31752,7 @@
                     contactSelect?.addEventListener("change", (event) => {
                         selectedSupplierReconciliationContactId = String(event.target.value || "");
                     });
+                    document.getElementById("supplierReconciliationLoadContactsButton")?.addEventListener("click", () => loadSupplierReconciliationContacts(true));
                     document.getElementById("supplierReconciliationConnectButton")?.addEventListener("click", renderConnectSupplier);
                     document.getElementById("supplierReconciliationReconnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
                     document.getElementById("supplierReconciliationRefreshButton")?.addEventListener("click", () => loadSupplierReconciliation(true));
@@ -31702,7 +31775,7 @@
                     <div class="jashflow-detail-head">
                         <div>
                             <p class="eyebrow">Supplier workspace</p>
-                            <h3>${escapeHTML(selectedContact?.name || "Supplier")}</h3>
+                            <h3>${escapeHTML(selectedContact?.name || connectedClient?.name || "Supplier")}</h3>
                             <p class="detail-meta">${escapeHTML(supplierReconciliationData.xero?.tenantName || "Connected tenant")}</p>
                         </div>
                         <div class="detail-actions">
@@ -31717,7 +31790,7 @@
                     <div class="jashflow-detail-head">
                         <div>
                             <p class="eyebrow">Workspace</p>
-                            <h3>${escapeHTML(selectedContact?.name || "No supplier selected")}</h3>
+                            <h3>${escapeHTML(selectedContact?.name || connectedClient?.name || "No supplier selected")}</h3>
                             <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Manage statement submissions, then move to Report Output to review reconciliation results."}</p>
                         </div>
                     </div>
@@ -31726,7 +31799,7 @@
                         <button type="button" data-supplier-recon-tab="report-output" class="${supplierReconciliationWorkspaceTab === "report-output" ? "is-active" : ""}">Report Output</button>
                     </div>
                     <div class="detail-actions">
-                        <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${selectedContact && connectedClient ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
+                        <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${(selectedContact || connectedClient) && connectedClient ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
                         <button class="ghost-button" id="supplierReconciliationReportButton" type="button" ${activeResult ? "" : "disabled"}>Download supplier report</button>
                         <button class="ghost-button" id="supplierReconciliationEmailButton" type="button" ${(supplierReconciliationMissingRows(activeResult).length > 0) ? "" : "disabled"}>Email missing invoices</button>
                         <button class="ghost-button" id="supplierReconciliationExportModelButton" type="button" ${activeResult ? "" : "disabled"}>Export extracted model</button>
@@ -43867,7 +43940,8 @@
                 }
                 if (activeView === "supplier-reconciliation") {
                     const contact = (supplierReconciliationData.xero?.contacts || []).find((item) => item.xeroContactId === selectedSupplierReconciliationContactId);
-                    return contact?.name || "Supplier statement matching";
+                    const connected = (supplierReconciliationData.connectedClients || []).find((item) => item.xeroContactId === selectedSupplierReconciliationContactId);
+                    return contact?.name || connected?.name || "Supplier statement matching";
                 }
                 if (activeView === "jashflow") {
                     const loan = selectedJashflowLoan();
@@ -51294,6 +51368,14 @@
                 selectEligibleCompaniesForWorkflow();
             }
 
+            function launchCompaniesHouseWorkflowShortcut() {
+                activateCompaniesHouseTab("companies");
+                startCompaniesHouseWorkflow();
+                window.setTimeout(() => {
+                    document.getElementById("chWorkflowCard")?.scrollIntoView({ block: "start", behavior: "smooth" });
+                }, 60);
+            }
+
             function chBuildSubmissionPreflightSummary(selectedCompanies = []) {
                 const rows = [];
                 const changeRequired = [];
@@ -53140,6 +53222,7 @@
                 document.getElementById("chWorkflowSubmitSelectedButton")?.addEventListener("click", submitSelectedCompaniesWorkflow);
                 document.getElementById("chWorkflowInvoiceSelectedButton")?.addEventListener("click", raiseSelectedWorkflowInvoices);
                 document.getElementById("chWorkflowStartButton")?.addEventListener("click", startCompaniesHouseWorkflow);
+                document.getElementById("chQuickFileConfirmationButton")?.addEventListener("click", launchCompaniesHouseWorkflowShortcut);
                 document.getElementById("chWorkflowHideButton")?.addEventListener("click", () => {
                     companiesHouseState.workflowOpen = false;
                     chRenderWorkflowVisibility();

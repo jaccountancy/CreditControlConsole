@@ -146,6 +146,7 @@ from .services import (
     add_supplier_reconciliation_client,
     delete_supplier_reconciliation_client,
     send_supplier_reconciliation_email,
+    supplier_reconciliation_contact_options_payload,
     supplier_reconciliation_extract,
     supplier_reconciliation_payload,
     sync_customer_note_to_xero,
@@ -1886,6 +1887,11 @@ async def api_categorise_bank_statement_transactions(account_id: str, request: R
 @app.get("/api/supplier-reconciliation")
 async def api_supplier_reconciliation(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "supplierReconciliation": await supplier_reconciliation_payload(user)}
+
+
+@app.get("/api/supplier-reconciliation/contacts")
+async def api_supplier_reconciliation_contacts(tenantId: str = Query(default=""), user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "supplierReconciliation": await supplier_reconciliation_contact_options_payload(user, tenantId or None)}
 
 
 @app.post("/api/supplier-reconciliation/clients")
