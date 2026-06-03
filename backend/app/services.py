@@ -379,7 +379,7 @@ SUPPLIER_RECONCILIATION_EXTRACTION_SCHEMA = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["invoiceNumber", "reference", "invoiceDate", "dueDate", "amount", "balance"],
+                "required": ["invoiceNumber", "reference", "invoiceDate", "dueDate", "amount", "balance", "description"],
                 "properties": {
                     "invoiceNumber": {"type": ["string", "null"]},
                     "reference": {"type": ["string", "null"]},
