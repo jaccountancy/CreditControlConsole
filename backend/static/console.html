@@ -18214,13 +18214,11 @@
                             <span>Refresh Data</span>
                         </button>
                         <div class="ignition-renewals-topbar-button" id="ignitionRenewalsTopbarActions" hidden>
-                            <button class="primary-button" id="openIgnitionRenewalsModalButton" type="button">Open proposal workspace</button>
                             <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
                             <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
                             <button class="ghost-button" id="exportIgnitionRenewalsPdfButton" type="button">Export PDF</button>
                             <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise and raise ELs</button>
                             <button class="ghost-button" id="openIgnitionRenewalHistoryButton" type="button">Renewal history</button>
-                            <button class="ghost-button" id="closeIgnitionRenewalsModalButton" type="button" hidden>Close workspace</button>
                         </div>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
                             <span class="global-activity-count" id="globalActivityCount">0</span>
@@ -20082,9 +20080,7 @@
                                 </div>
                                 <div class="ignition-renewals-launch-meta" id="ignitionRenewalsLaunchMeta"></div>
                             </section>
-                        </section>
-                        <div class="ignition-renewals-modal" id="ignitionRenewalsModal" hidden>
-                            <section class="ignition-renewals-modal-panel ignition-renewals-panel" id="ignitionRenewalsPanel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalsModalTitle">
+                            <section class="detail-panel ignition-renewals-panel" id="ignitionRenewalsPanel" aria-labelledby="ignitionRenewalsModalTitle">
                                 <div class="ignition-renewals-modal-head">
                                     <div>
                                         <p class="eyebrow">Renewals process</p>
@@ -20098,7 +20094,7 @@
                                 <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalsTableWrap"></div>
                             </section>
-                        </div>
+                        </section>
                         <div class="ignition-renewals-modal" id="ignitionRenewalHistoryModal" hidden>
                             <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalHistoryTitle">
                                 <div class="ignition-renewals-modal-head">
@@ -21946,7 +21942,7 @@
             let ignitionRenewalsLoading = false;
             let ignitionRenewalsStartedAt = 0;
             let ignitionRenewalsProgressTimer = null;
-            let ignitionRenewalsModalOpen = false;
+            let ignitionRenewalsModalOpen = true;
             let ignitionRenewalsWorkspaceStage = "batch";
             let ignitionRenewalSelection = new Set();
             let ignitionRenewalHistoryModalOpen = false;
@@ -38591,7 +38587,6 @@
             function activateIgnitionTab(tab) {
                 if (!ignitionTabKeys.has(tab)) return;
                 activeIgnitionTab = tab;
-                if (tab !== "renewals" && ignitionRenewalsModalOpen) closeIgnitionRenewalsModal();
                 renderIgnitionScreen();
             }
 
@@ -38622,7 +38617,6 @@
             function renderIgnitionScreen() {
                 const screen = document.getElementById("ignitionScreen");
                 if (!screen) return;
-                if (activeView !== "ignition" && ignitionRenewalsModalOpen) closeIgnitionRenewalsModal();
                 const connection = ignitionData.connection || {};
                 const connected = isIgnitionConnected();
                 const oauthConfigured = connection.oauthConfigured !== false;
@@ -38672,17 +38666,6 @@
                 }
                 const refreshClientsButton = document.getElementById("refreshIgnitionClientsButton");
                 if (refreshClientsButton) refreshClientsButton.disabled = ignitionLoading || isIgnitionSyncing;
-                const openRenewalsModalButton = document.getElementById("openIgnitionRenewalsModalButton");
-                if (openRenewalsModalButton) {
-                    openRenewalsModalButton.disabled = !connected || ignitionLoading;
-                    openRenewalsModalButton.textContent = ignitionRenewalsLoading ? "Preparing..." : "Open proposal workspace";
-                    openRenewalsModalButton.title = connected ? "Open the dedicated renewals proposal workspace" : "Connect Ignition before reviewing renewals";
-                }
-                const closeRenewalsModalButton = document.getElementById("closeIgnitionRenewalsModalButton");
-                if (closeRenewalsModalButton) {
-                    closeRenewalsModalButton.hidden = !ignitionRenewalsModalOpen;
-                    closeRenewalsModalButton.disabled = !ignitionRenewalsModalOpen;
-                }
                 const historyButton = document.getElementById("openIgnitionRenewalHistoryButton");
                 if (historyButton) {
                     const hasHistory = Boolean((ignitionData.renewals?.recentRuns || []).length || ignitionRenewalRun()?.id);
@@ -39159,15 +39142,14 @@
 
             function setIgnitionRenewalsModalOpen(isOpen) {
                 ignitionRenewalsModalOpen = Boolean(isOpen);
-                const modal = document.getElementById("ignitionRenewalsModal");
-                if (modal) modal.hidden = !ignitionRenewalsModalOpen;
-                const closeButton = document.getElementById("closeIgnitionRenewalsModalButton");
-                if (closeButton) closeButton.hidden = !ignitionRenewalsModalOpen;
                 if (ignitionRenewalsModalOpen) {
                     ignitionRenewalsWorkspaceStage = "batch";
                     seedIgnitionRenewalSelection();
                     renderIgnitionRenewals();
                     window.setTimeout(() => document.getElementById("startIgnitionRenewalsSelectedButton")?.focus(), 0);
+                } else if (ignitionRenewalsWorkspaceStage === "pricing") {
+                    ignitionRenewalsWorkspaceStage = "batch";
+                    renderIgnitionRenewals();
                 }
             }
 
@@ -39715,7 +39697,7 @@
 
             async function startIgnitionRenewals() {
                 if (!isIgnitionConnected()) return showToast("Connect Ignition before starting renewals.", "info", { label: "Connect Ignition", onClick: openIgnitionConnection });
-                if (!ignitionRenewalsModalOpen) openIgnitionRenewalsModal();
+                openIgnitionRenewalsModal();
                 const selectedProposalExternalIds = ignitionRenewalSelectionList();
                 if (!selectedProposalExternalIds.length) {
                     showToast("Select at least one client before starting a renewal batch.", "info");
@@ -53607,16 +53589,8 @@
                     ignitionClientFilter = event.target.value || "all";
                     renderIgnitionClients();
                 });
-                const openIgnitionRenewalsModalButton = document.getElementById("openIgnitionRenewalsModalButton");
-                if (openIgnitionRenewalsModalButton) openIgnitionRenewalsModalButton.addEventListener("click", openIgnitionRenewalsModal);
-                const closeIgnitionRenewalsModalButton = document.getElementById("closeIgnitionRenewalsModalButton");
-                if (closeIgnitionRenewalsModalButton) closeIgnitionRenewalsModalButton.addEventListener("click", closeIgnitionRenewalsModal);
                 const ignitionRenewalsBackToBatchesButton = document.getElementById("ignitionRenewalsBackToBatchesButton");
                 if (ignitionRenewalsBackToBatchesButton) ignitionRenewalsBackToBatchesButton.addEventListener("click", openIgnitionRenewalsBatchStage);
-                const ignitionRenewalsModal = document.getElementById("ignitionRenewalsModal");
-                if (ignitionRenewalsModal) ignitionRenewalsModal.addEventListener("click", (event) => {
-                    if (event.target.id === "ignitionRenewalsModal") closeIgnitionRenewalsModal();
-                });
                 const openIgnitionRenewalHistoryButton = document.getElementById("openIgnitionRenewalHistoryButton");
                 if (openIgnitionRenewalHistoryButton) openIgnitionRenewalHistoryButton.addEventListener("click", openIgnitionRenewalHistory);
                 const closeIgnitionRenewalHistoryButton = document.getElementById("closeIgnitionRenewalHistoryButton");
@@ -53687,7 +53661,7 @@
                     }
                 });
                 document.addEventListener("keydown", (event) => {
-                    if (event.key === "Escape" && ignitionRenewalsModalOpen) closeIgnitionRenewalsModal();
+                    if (event.key === "Escape" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
                 });
                 const addMeReportClientButton = document.getElementById("addMeReportClientButton");
                 if (addMeReportClientButton) addMeReportClientButton.addEventListener("click", () => {
