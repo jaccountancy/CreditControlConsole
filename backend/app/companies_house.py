@@ -184,12 +184,26 @@ def _serialise(row: dict) -> dict:
         if environment == "production"
         else settings.companies_house_sandbox_api_base
     )
+    presenter_auth = ""
+    presenter_auth_encrypted = row.get("presenter_auth_encrypted")
+    if presenter_auth_encrypted:
+        try:
+            presenter_auth = decrypt_secret(presenter_auth_encrypted, CH_PRESENTER_AUTH_LABEL)
+        except Exception as exc:
+            logger.exception("Failed to decrypt Companies House presenter auth while loading settings")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Saved Presenter authentication code could not be decrypted. Re-save the presenter auth code in Companies House settings and retry.",
+            ) from exc
+    else:
+        presenter_auth = (settings.companies_house_presenter_auth or "").strip()
     return {
         "environment": environment,
         "apiBaseUrl": api_base,
         "apiKeyHint": row.get("api_key_hint") or "",
         "apiKeyConfigured": bool(row.get("api_key_encrypted")),
         "presenterId": row.get("presenter_id") or "",
+        "presenterAuth": presenter_auth,
         "presenterAuthHint": row.get("presenter_auth_hint") or "",
         "presenterAuthConfigured": bool(row.get("presenter_auth_encrypted")),
         "creditAccountNumber": row.get("credit_account_number") or "",

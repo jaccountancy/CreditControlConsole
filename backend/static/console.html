@@ -18988,7 +18988,7 @@
                                     </label>
                                     <label>
                                         Presenter authentication code
-                                        <input id="chSettingsPresenterAuth" name="presenterAuth" type="password" autocomplete="new-password" placeholder="Enter a new value to replace">
+                                        <input id="chSettingsPresenterAuth" name="presenterAuth" type="text" autocomplete="off" placeholder="Presenter authentication code">
                                         <span class="ch-field-hint" id="chSettingsPresenterAuthHint">Not configured.</span>
                                     </label>
                                     <label class="is-wide">
@@ -44830,10 +44830,7 @@
                     meReportContactRefreshAttempted = true;
                     refreshMeReportContactOptionsFromXero();
                 }
-                const noContactsBanner = !contacts.length
-                    ? `<div class="empty-state"><p class="eyebrow">No Xero contacts yet</p><h4>Sync has not loaded contact options</h4><p>We are refreshing contacts from Xero now. If this stays empty, resync Xero in the Ledger screen and reopen this modal.</p></div>`
-                    : "";
-                list.innerHTML = `${noContactsBanner}${pending.map((entry, index) => {
+                list.innerHTML = `${pending.map((entry, index) => {
                     const item = entry.item || {};
                     const status = String(entry.status || "needs-review");
                     const rowClass = status === "confirmed"
@@ -53468,6 +53465,7 @@
                 };
                 setValue("chSettingsNotifyEmail", data.notifyEmail);
                 setValue("chSettingsPresenterId", data.presenterId);
+                setValue("chSettingsPresenterAuth", data.presenterAuth);
                 setValue("chSettingsCreditAccount", data.creditAccountNumber);
                 setValue("chSettingsXeroAccountCode", data.xeroInvoiceAccountCode);
                 setValue("chSettingsXeroItemCode", data.xeroInvoiceItemCode);
@@ -53485,13 +53483,11 @@
                 const presenterAuthHint = document.getElementById("chSettingsPresenterAuthHint");
                 if (presenterAuthHint) {
                     presenterAuthHint.textContent = data.presenterAuthConfigured
-                        ? `Stored value: ${data.presenterAuthHint || "configured"}. Leave blank to keep.`
+                        ? "Loaded full presenter authentication code from settings."
                         : "Not configured.";
                 }
                 const apiKeyInput = document.getElementById("chSettingsApiKey");
                 if (apiKeyInput) apiKeyInput.value = "";
-                const presenterAuthInput = document.getElementById("chSettingsPresenterAuth");
-                if (presenterAuthInput) presenterAuthInput.value = "";
             }
 
             async function loadCompaniesHouseSettings(force = false) {
