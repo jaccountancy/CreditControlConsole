@@ -13127,14 +13127,115 @@
             }
             .ignition-renewals-progress {
                 display: grid;
-                gap: 10px;
+                gap: 12px;
                 padding: 18px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 16px;
+                background:
+                    radial-gradient(120% 180% at 0% 0%, rgba(29, 103, 242, 0.08) 0%, rgba(29, 103, 242, 0) 52%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 251, 255, 0.94) 100%);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+                overflow: hidden;
             }
             .ignition-renewals-progress .sync-progress-track {
                 width: min(520px, 100%);
             }
             .ignition-renewals-progress strong {
                 color: var(--ink);
+            }
+            .ignition-renewals-progress .eyebrow {
+                margin: 0;
+            }
+            .ignition-renewals-progress-stage-label {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 850;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .ignition-renewals-progress-copy {
+                display: grid;
+                gap: 7px;
+                animation: renewals-loading-copy-enter 340ms ease;
+            }
+            .ignition-renewals-progress-headline {
+                margin: 0;
+                font-size: clamp(1rem, 1.4vw, 1.2rem);
+                font-weight: 900;
+                letter-spacing: -0.01em;
+            }
+            .ignition-renewals-progress-detail {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.95rem;
+                font-weight: 760;
+                line-height: 1.45;
+            }
+            .ignition-renewals-progress-steps {
+                list-style: none;
+                margin: 4px 0 0;
+                padding: 0;
+                display: grid;
+                gap: 8px;
+                grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            }
+            .ignition-renewals-progress-step {
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                margin: 0;
+                padding: 8px 10px;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 11px;
+                background: rgba(255, 255, 255, 0.82);
+                color: #74839d;
+                font-size: 0.78rem;
+                font-weight: 800;
+                transition: all 220ms ease;
+            }
+            .ignition-renewals-progress-step::before {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-radius: 999px;
+                background: rgba(117, 136, 172, 0.38);
+                flex: 0 0 auto;
+                transition: all 220ms ease;
+            }
+            .ignition-renewals-progress-step.is-complete {
+                border-color: rgba(22, 154, 108, 0.27);
+                background: rgba(229, 246, 239, 0.78);
+                color: #2f7d64;
+            }
+            .ignition-renewals-progress-step.is-complete::before {
+                background: #23a57a;
+            }
+            .ignition-renewals-progress-step.is-active {
+                border-color: rgba(29, 103, 242, 0.3);
+                background: rgba(231, 240, 255, 0.88);
+                color: #1d55bf;
+                box-shadow: 0 10px 24px rgba(29, 103, 242, 0.16);
+                transform: translateY(-1px);
+            }
+            .ignition-renewals-progress-step.is-active::before {
+                background: #1d67f2;
+                box-shadow: 0 0 0 8px rgba(29, 103, 242, 0.16);
+                animation: renewals-loading-active-dot 1.5s ease-in-out infinite;
+            }
+            .ignition-renewals-progress-meta {
+                margin: 0;
+                color: var(--ink);
+                font-size: 0.9rem;
+                font-weight: 820;
+            }
+            @keyframes renewals-loading-copy-enter {
+                from { opacity: 0; transform: translateY(5px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes renewals-loading-active-dot {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.28); }
+                50% { box-shadow: 0 0 0 7px rgba(29, 103, 242, 0.08); }
             }
             .ignition-renewals-table-wrap {
                 overflow: auto;
@@ -22374,6 +22475,24 @@
             let ignitionRenewalHistorySelectedRunId = "";
             const ignitionRenewalHistoryByRunId = new Map();
             const ignitionRenewalsEstimatedSeconds = 90;
+            const IGNITION_RENEWALS_LOADING_STEPS = [
+                {
+                    short: "Pulling together prices from Ignition",
+                    detail: "Pulling together prices from Ignition and shaping the first renewal shortlist."
+                },
+                {
+                    short: "Now taking a look at older proposals",
+                    detail: "Now taking a look at older proposals so we can benchmark this batch against prior pricing."
+                },
+                {
+                    short: "Just checking who the client manager is",
+                    detail: "Just checking who the client manager is so each proposal routes to the right owner."
+                },
+                {
+                    short: "Filtering out non-renewal work",
+                    detail: "Filtering out things like Self Assessment, Year End Accounts, and Confirmation Statements."
+                }
+            ];
             let isIgnitionSyncing = false;
             let activeIgnitionSyncRunId = null;
             let latestIgnitionSyncRun = null;
@@ -40099,10 +40218,30 @@
                 return `Still checking Ignition proposals · elapsed ${formatSyncDuration(elapsed)}`;
             }
 
+            function ignitionRenewalsLoadingStep() {
+                const elapsed = ignitionRenewalsElapsedSeconds();
+                const steps = IGNITION_RENEWALS_LOADING_STEPS;
+                const cadenceSeconds = 6;
+                const index = Math.floor(elapsed / cadenceSeconds) % steps.length;
+                return {
+                    ...steps[index],
+                    index,
+                    total: steps.length
+                };
+            }
+
+            function renderIgnitionRenewalsLoadingSteps(activeIndex) {
+                return IGNITION_RENEWALS_LOADING_STEPS.map((step, index) => {
+                    const stateClass = index < activeIndex ? "is-complete" : (index === activeIndex ? "is-active" : "");
+                    return `<li class="ignition-renewals-progress-step ${stateClass}">${escapeHTML(step.short)}</li>`;
+                }).join("");
+            }
+
             function updateIgnitionRenewalsTopbarProgress() {
                 const inlineBanner = document.getElementById("syncInlineBanner");
                 if (!inlineBanner || !ignitionRenewalsLoading) return;
                 const elapsed = ignitionRenewalsElapsedSeconds();
+                const loadingStep = ignitionRenewalsLoadingStep();
                 const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
                 inlineBanner.hidden = false;
                 inlineBanner.classList.remove("is-error", "is-success", "is-warning");
@@ -40110,7 +40249,7 @@
                 const inlineTitle = document.getElementById("syncInlineTitle");
                 if (inlineTitle) inlineTitle.textContent = "Preparing proposal list";
                 const inlineDetail = document.getElementById("syncInlineDetail");
-                if (inlineDetail) inlineDetail.textContent = "Checking accepted proposals expiring in the coming 8 weeks.";
+                if (inlineDetail) inlineDetail.textContent = loadingStep.detail;
                 const inlineProgressFill = document.getElementById("syncInlineProgressFill");
                 if (inlineProgressFill) inlineProgressFill.style.width = `${progress}%`;
                 const inlineEta = document.getElementById("syncInlineEta");
@@ -40184,12 +40323,14 @@
                 } else if (ignitionRenewalsLoading) {
                     updateIgnitionRenewalsTopbarProgress();
                     const elapsed = ignitionRenewalsElapsedSeconds();
+                    const loadingStep = ignitionRenewalsLoadingStep();
                     const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
                     if (title) title.textContent = "Preparing proposal list";
-                    if (summary) summary.textContent = `Checking accepted proposals for active clients with period end dates in the coming 8 weeks. ${ignitionRenewalsEtaText()}.`;
+                    if (summary) summary.textContent = `${loadingStep.detail} ${ignitionRenewalsEtaText()}.`;
                     if (meta) {
                         meta.innerHTML = [
                             ["Status", "Preparing"],
+                            ["Step", `${loadingStep.index + 1} of ${loadingStep.total}`],
                             ["Elapsed", formatSyncDuration(elapsed)],
                             ["Estimate", ignitionRenewalsEtaText()]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
@@ -40197,10 +40338,14 @@
                     if (wrap) wrap.innerHTML = `
                         <div class="ignition-renewals-progress" role="status" aria-live="polite">
                             <p class="eyebrow">Loading</p>
-                            <strong>Building the next 8 weeks proposal list</strong>
-                            <p>Checking active-client accepted proposals, validating period end dates, and skipping proposals already reserved in earlier rounds.</p>
+                            <p class="ignition-renewals-progress-stage-label">Stage ${loadingStep.index + 1} of ${loadingStep.total}</p>
+                            <div class="ignition-renewals-progress-copy">
+                                <strong class="ignition-renewals-progress-headline">${escapeHTML(loadingStep.short)}</strong>
+                                <p class="ignition-renewals-progress-detail">${escapeHTML(loadingStep.detail)}</p>
+                            </div>
+                            <ol class="ignition-renewals-progress-steps">${renderIgnitionRenewalsLoadingSteps(loadingStep.index)}</ol>
                             <div class="sync-progress-track" aria-hidden="true"><span class="sync-progress-bar" style="width: ${progress}%"></span></div>
-                            <p>${escapeHTML(ignitionRenewalsEtaText())}</p>
+                            <p class="ignition-renewals-progress-meta">${escapeHTML(ignitionRenewalsEtaText())}</p>
                         </div>
                     `;
                 } else if (run) {
@@ -40409,7 +40554,7 @@
                         clientName: String(item.clientName || ""),
                         proposalName: String(item.proposalName || item.planName || item.serviceName || ""),
                     });
-                    const hasManualValue = locked ? Number.isFinite(proposed) : false;
+                    const hasManualValue = Number.isFinite(proposed) && proposed > 0;
                     const variance = hasManualValue ? proposed - current : 0;
                     const increasePercent = hasManualValue && current > 0 ? variance / current : 0;
                     const proposalName = String(item.proposalName || item.planName || item.serviceName || "")
@@ -40493,6 +40638,7 @@
                     showToast("No pricing rows are available to populate.", "info");
                     return;
                 }
+                const run = ignitionRenewalRun();
                 let populatedCount = 0;
                 rows.forEach((row) => {
                     const rowId = String(row.dataset.renewalId || "");
@@ -40503,14 +40649,24 @@
                     if (!Number.isFinite(amount) || amount <= 0) return;
                     input.value = amount.toFixed(2);
                     ignitionRenewalAIAppliedRows.add(rowId);
+                    const runItem = (run?.items || []).find((item) => String(item?.id || "") === rowId);
+                    if (runItem) runItem.newMonthlyFee = amount;
                     updateIgnitionRenewalVariance(row);
+                    const aiCell = row.querySelector(".renewals-ai-cell");
+                    if (aiCell && !aiCell.querySelector(".renewals-ai-hint")) {
+                        aiCell.insertAdjacentHTML("beforeend", '<span class="renewals-ai-hint" aria-label="AI reasoning">?</span>');
+                    }
+                    const hint = aiCell?.querySelector(".renewals-ai-hint");
+                    if (hint) {
+                        hint.title = ignitionRenewalTooltipText(runItem || {}, metadata);
+                        hint.setAttribute("aria-label", "AI reasoning");
+                    }
                     populatedCount += 1;
                 });
                 if (!populatedCount) {
                     showToast("No AI pricing suggestions were available for this batch.", "info");
                     return;
                 }
-                renderIgnitionRenewals();
                 showToast(`AI populated ${populatedCount.toLocaleString("en-GB")} fee suggestion${populatedCount === 1 ? "" : "s"}.`, "success");
             }
 
@@ -48938,11 +49094,12 @@
                 }
                 if (ignitionRenewalsLoading) {
                     const elapsed = ignitionRenewalsElapsedSeconds();
+                    const loadingStep = ignitionRenewalsLoadingStep();
                     const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
                     return {
                         kicker: "Processing",
                         title: "Preparing proposal list",
-                        detail: "Checking accepted proposals expiring in the coming 8 weeks.",
+                        detail: loadingStep.short,
                         meta: ignitionRenewalsEtaText(),
                         progress
                     };
