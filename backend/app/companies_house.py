@@ -338,6 +338,8 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
     gateway_errors: list[str] = []
     gateway_error_message = ""
     gateway_request_debug = ""
+    gateway_request_xml = ""
+    gateway_response_xml = ""
     gateway_response_bytes = 0
     gateway_duration_ms = 0
     if gateway_attempted:
@@ -369,7 +371,9 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                     f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_xml_text(presenter_auth)}, "
                     f"gatewayTest={_ch_gateway_test_flag(environment)}, class=GetSubmissionStatus, submissionNumber=ZZZZZZ."
                 )
+            gateway_request_xml = gateway_request.decode("utf-8", errors="replace")
             gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
+            gateway_response_xml = gateway_response_text
             gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
             gateway_response_bytes = len(gateway_response_text.encode("utf-8"))
             gateway_errors = _ch_gateway_errors(gateway_response_root)
@@ -423,6 +427,8 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         "gatewayErrors": gateway_errors[:10],
         "gatewayResponseBytes": gateway_response_bytes,
         "gatewayRequestDebug": gateway_request_debug,
+        "gatewayRequestXml": gateway_request_xml,
+        "gatewayResponseXml": gateway_response_xml,
         "gatewayError": gateway_error_message,
         "message": message,
     }

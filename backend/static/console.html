@@ -19020,6 +19020,7 @@
                                 <div class="ch-settings-actions">
                                     <button class="primary-button" type="button" id="saveCompaniesHouseSettingsButton">Save settings</button>
                                     <button class="ghost-button" type="button" id="testCompaniesHouseConnectionButton">Test CH connection</button>
+                                    <button class="ghost-button" type="button" id="exportCompaniesHouseRawXmlButton" disabled>Export raw XML</button>
                                     <button class="ghost-button" type="button" id="reloadCompaniesHouseSettingsButton">Reload</button>
                                     <span class="ch-settings-status is-muted" id="companiesHouseSettingsStatus">Loading settings…</span>
                                 </div>
@@ -53395,6 +53396,7 @@
                 loading: false,
                 saving: false,
                 testing: false,
+                lastTestResult: null,
                 data: {},
                 authRegisterLoading: false,
                 authRegisterUploading: false,
@@ -53418,6 +53420,54 @@
                 node.textContent = message || "";
                 node.classList.remove("is-success", "is-error", "is-muted");
                 node.classList.add(tone === "success" ? "is-success" : tone === "error" ? "is-error" : "is-muted");
+            }
+
+            function updateCompaniesHouseRawXmlExportButtonState() {
+                const button = document.getElementById("exportCompaniesHouseRawXmlButton");
+                if (!button) return;
+                const result = companiesHouseSettings.lastTestResult || {};
+                const hasRawXml = String(result.gatewayRequestXml || "").trim() || String(result.gatewayResponseXml || "").trim();
+                button.disabled = companiesHouseSettings.testing || !hasRawXml;
+            }
+
+            function exportCompaniesHouseRawXmlHandler() {
+                const result = companiesHouseSettings.lastTestResult || {};
+                const requestXml = String(result.gatewayRequestXml || "");
+                const responseXml = String(result.gatewayResponseXml || "");
+                if (!requestXml && !responseXml) {
+                    showToast("Run Test CH connection first to capture XML.", "error");
+                    return;
+                }
+                const capturedAt = new Date().toISOString();
+                const lines = [
+                    "Companies House XML Gateway raw capture",
+                    `CapturedAtUTC: ${capturedAt}`,
+                    `Environment: ${String(result.environment || "")}`,
+                    `Connected: ${result.connected === false ? "false" : "true"}`,
+                    `GatewayConnected: ${result.gatewayConnected === true ? "true" : "false"}`,
+                    `GatewayError: ${String(result.gatewayError || "")}`,
+                    "",
+                    "----- RAW XML REQUEST START -----",
+                    requestXml || "(empty)",
+                    "----- RAW XML REQUEST END -----",
+                    "",
+                    "----- RAW XML RESPONSE START -----",
+                    responseXml || "(empty)",
+                    "----- RAW XML RESPONSE END -----",
+                    "",
+                ];
+                const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+                const link = document.createElement("a");
+                const safeTimestamp = capturedAt.replace(/[:.]/g, "-");
+                link.href = URL.createObjectURL(blob);
+                link.download = `companies-house-xml-raw-${safeTimestamp}.txt`;
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(() => {
+                    URL.revokeObjectURL(link.href);
+                    link.remove();
+                }, 0);
+                showToast("Raw XML exported.", "success");
             }
 
             function renderAuthCodeRegisterDirectory(rows, totalCount = 0) {
@@ -53493,6 +53543,8 @@
                 if (companiesHouseSettings.loading) return;
                 if (companiesHouseSettings.loaded && !force) return;
                 companiesHouseSettings.loading = true;
+                companiesHouseSettings.lastTestResult = null;
+                updateCompaniesHouseRawXmlExportButtonState();
                 setCompaniesHouseSettingsStatus("Loading settings…", "muted");
                 try {
                     const payload = await requestJSON("/api/companies-house/settings");
@@ -53587,9 +53639,11 @@
                 companiesHouseSettings.testing = true;
                 const testButton = document.getElementById("testCompaniesHouseConnectionButton");
                 const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
+                const exportButton = document.getElementById("exportCompaniesHouseRawXmlButton");
                 const reloadButton = document.getElementById("reloadCompaniesHouseSettingsButton");
                 if (testButton) testButton.disabled = true;
                 if (saveButton) saveButton.disabled = true;
+                if (exportButton) exportButton.disabled = true;
                 if (reloadButton) reloadButton.disabled = true;
                 setCompaniesHouseSettingsStatus("Testing Companies House connection…", "muted");
                 try {
@@ -53601,6 +53655,7 @@
                         body: JSON.stringify(body),
                     });
                     const result = payload?.result || {};
+                    companiesHouseSettings.lastTestResult = result;
                     const envLabel = result.environment === "production" ? "production" : "sandbox";
                     const latency = Number(result.durationMs || 0);
                     const restLatency = Number(result.restDurationMs || latency);
@@ -53622,6 +53677,7 @@
                     );
                 } catch (error) {
                     console.error("Unable to test Companies House connection", error);
+                    companiesHouseSettings.lastTestResult = null;
                     if (error instanceof AuthRequiredError) {
                         markAuthenticationRequired(error.message);
                     }
@@ -53635,6 +53691,7 @@
                     if (testButton) testButton.disabled = false;
                     if (saveButton) saveButton.disabled = false;
                     if (reloadButton) reloadButton.disabled = false;
+                    updateCompaniesHouseRawXmlExportButtonState();
                 }
             }
 
@@ -53732,6 +53789,7 @@
             function wireCompaniesHouseSettings() {
                 document.getElementById("saveCompaniesHouseSettingsButton")?.addEventListener("click", saveCompaniesHouseSettingsHandler);
                 document.getElementById("testCompaniesHouseConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
+                document.getElementById("exportCompaniesHouseRawXmlButton")?.addEventListener("click", exportCompaniesHouseRawXmlHandler);
                 document.getElementById("reloadCompaniesHouseSettingsButton")?.addEventListener("click", () => loadCompaniesHouseSettings(true));
                 document.getElementById("companiesHouseSettingsForm")?.addEventListener("submit", (event) => {
                     event.preventDefault();
