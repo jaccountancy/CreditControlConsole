@@ -15829,7 +15829,7 @@ def _ignition_proposal_client_created_date(row: dict) -> date | None:
 def _ignition_client_lookup_keys(row: dict) -> list[str]:
     client = row.get("client")
     customer = row.get("customer")
-    return [
+    keys = [
         _ignition_text_key(row.get("client_id") or row.get("clientId") or row.get("client_external_id") or row.get("clientExternalId")),
         _ignition_text_key(_first_mapping_text(client, ("id", "external_id", "externalId", "uuid"))),
         _ignition_text_key(_first_mapping_text(customer, ("id", "external_id", "externalId", "uuid"))),
@@ -15837,6 +15837,20 @@ def _ignition_client_lookup_keys(row: dict) -> list[str]:
         _ignition_text_key(_first_mapping_text(client, ("name", "business_name", "company_name", "display_name"))),
         _ignition_text_key(_first_mapping_text(customer, ("name", "business_name", "company_name", "display_name"))),
     ]
+    for raw_name in (
+        _ignition_proposal_client_name(row),
+        _first_mapping_text(client, ("name", "business_name", "company_name", "display_name")),
+        _first_mapping_text(customer, ("name", "business_name", "company_name", "display_name")),
+    ):
+        keys.extend(_ignition_name_match_keys(raw_name or ""))
+    unique_keys: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique_keys.append(key)
+    return unique_keys
 
 
 def _ignition_client_created_lookup(client_records: list[dict]) -> dict[str, date]:
@@ -15861,6 +15875,28 @@ def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -
 
 def _ignition_text_key(value: str) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+
+
+def _ignition_relaxed_text_key(value: str) -> str:
+    text = str(value or "").strip().casefold()
+    if not text:
+        return ""
+    text = text.replace("&", " and ")
+    text = text.replace("+", " and ")
+    text = re.sub(r"[’']", "", text)
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _ignition_name_match_keys(value: str) -> list[str]:
+    strict = _ignition_text_key(value)
+    relaxed = _ignition_relaxed_text_key(value)
+    keys: list[str] = []
+    if strict:
+        keys.append(strict)
+    if relaxed and relaxed != strict:
+        keys.append(relaxed)
+    return keys
 
 
 def _ignition_proposal_effective_date(row: dict) -> date | None:
@@ -16245,9 +16281,9 @@ def _ignition_client_register_id_lookup(user_id: str) -> dict[str, str]:
         if not client_id:
             continue
         for raw_name in (row.get("client_name"), row.get("company_name")):
-            key = _ignition_text_key(raw_name or "")
-            if key and key not in lookup:
-                lookup[key] = client_id
+            for key in _ignition_name_match_keys(raw_name or ""):
+                if key and key not in lookup:
+                    lookup[key] = client_id
     return lookup
 
 
@@ -16276,20 +16312,19 @@ def _ignition_client_register_manager_overrides(user_id: str) -> dict[str, str]:
         if not manager:
             continue
         for raw_name in (row.get("client_name"), row.get("company_name")):
-            key = _ignition_text_key(raw_name or "")
-            if key and key not in overrides:
-                overrides[key] = manager
+            for key in _ignition_name_match_keys(raw_name or ""):
+                if key and key not in overrides:
+                    overrides[key] = manager
     return overrides
 
 
 def _ignition_manager_override_for_proposal(row: dict, overrides: dict[str, str]) -> str:
     if not overrides:
         return ""
-    keys = [
-        _ignition_text_key(_ignition_proposal_client_name(row)),
-        _ignition_text_key(_first_mapping_text(row.get("client"), ("name", "business_name", "company_name", "display_name"))),
-        _ignition_text_key(_first_mapping_text(row.get("customer"), ("name", "business_name", "company_name", "display_name"))),
-    ]
+    keys: list[str] = []
+    keys.extend(_ignition_name_match_keys(_ignition_proposal_client_name(row)))
+    keys.extend(_ignition_name_match_keys(_first_mapping_text(row.get("client"), ("name", "business_name", "company_name", "display_name"))))
+    keys.extend(_ignition_name_match_keys(_first_mapping_text(row.get("customer"), ("name", "business_name", "company_name", "display_name"))))
     for key in keys:
         if key and key in overrides:
             return overrides[key]
