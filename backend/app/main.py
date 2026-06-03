@@ -1268,7 +1268,20 @@ async def api_companies_house_submit_bulk(
     request: Request, user: dict = Depends(require_panel_user)
 ):
     payload = await request.json()
-    return {"status": "ok", "result": bulk_submit_confirmation_statements(user, payload)}
+    try:
+        return {"status": "ok", "result": bulk_submit_confirmation_statements(user, payload)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unexpected Companies House bulk submission route failure")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "Unexpected server error while processing Companies House bulk submission.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+            },
+        ) from exc
 
 
 @app.post("/api/companies-house/submissions/invoices/bulk")

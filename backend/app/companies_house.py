@@ -15,7 +15,7 @@ from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
 from email.utils import formataddr
 from functools import lru_cache
-from uuid import uuid4
+from uuid import UUID, uuid4
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -3600,7 +3600,23 @@ def list_companies(filters: dict | None = None) -> list[dict]:
 
 def _chunk_company_ids(company_ids: list[str]) -> list[str]:
     normalised = [str(company_id or "").strip() for company_id in company_ids]
-    return [company_id for company_id in normalised if company_id]
+    cleaned = [company_id for company_id in normalised if company_id]
+    if not cleaned:
+        return []
+    invalid_ids: list[str] = []
+    valid_ids: list[str] = []
+    for company_id in cleaned:
+        try:
+            valid_ids.append(str(UUID(company_id)))
+        except (ValueError, TypeError, AttributeError):
+            invalid_ids.append(company_id)
+    if invalid_ids:
+        invalid_preview = ", ".join(invalid_ids[:3])
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid companyIds supplied. Use UUID values only. Invalid values: {invalid_preview}",
+        )
+    return valid_ids
 
 
 def _submission_idempotency_key(company_id: str, review_date: date) -> str:
