@@ -16197,6 +16197,7 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     return {
         "proposal_external_id": str(record.get("external_id") or ""),
         "proposal_name": row.get("name") or row.get("reference_number") or "Ignition proposal",
+        "proposal_number": str(row.get("reference_number") or row.get("proposal_number") or row.get("referenceNumber") or row.get("proposalNumber") or "").strip(),
         "client_id": "",
         "client_name": _ignition_proposal_client_name(row),
         "client_manager": _ignition_proposal_client_manager(row),
@@ -16537,11 +16538,22 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
     recommendation_context = row.get("recommendation_context")
     if not isinstance(recommendation_context, dict):
         recommendation_context = {}
+    proposal_payload = row.get("proposal_payload")
+    if not isinstance(proposal_payload, dict):
+        proposal_payload = {}
     return {
         "id": str(row.get("id") or ""),
         "runId": str(row.get("run_id") or ""),
         "proposalExternalId": row.get("proposal_external_id") or "",
         "proposalName": row.get("proposal_name") or "",
+        "proposalNumber": str(
+            row.get("proposal_number")
+            or proposal_payload.get("reference_number")
+            or proposal_payload.get("proposal_number")
+            or proposal_payload.get("referenceNumber")
+            or proposal_payload.get("proposalNumber")
+            or ""
+        ).strip(),
         "clientId": str(row.get("client_id") or ""),
         "clientName": row.get("client_name") or "",
         "clientManager": row.get("client_manager") or "",
@@ -16686,6 +16698,7 @@ def _serialize_ignition_renewal_candidate(item: dict) -> dict:
     return {
         "proposalExternalId": str(item.get("proposal_external_id") or ""),
         "proposalName": str(item.get("proposal_name") or ""),
+        "proposalNumber": str(item.get("proposal_number") or ""),
         "clientId": str(item.get("client_id") or ""),
         "clientName": str(item.get("client_name") or ""),
         "clientManager": str(item.get("client_manager") or ""),
@@ -17320,46 +17333,60 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
 
     table_rows = [[
         Paragraph("Client Name", header_cell_style),
+        Paragraph("Client ID", header_cell_style),
+        Paragraph("Proposal Number", header_cell_style),
+        Paragraph("Proposal Name", header_cell_style),
         Paragraph("Manager", header_cell_style),
         Paragraph("Renewal Date", header_cell_style),
         Paragraph("Current Monthly", header_cell_style),
         Paragraph("Proposed Monthly", header_cell_style),
         Paragraph("Variance", header_cell_style),
-        Paragraph("Variance %", header_cell_style),
     ]]
     for item in items:
         current = _money(item.get("current_monthly_fee"))
         proposed = _money(item.get("new_monthly_fee"))
         variance = _money(proposed - current)
-        increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
+        proposal_payload = item.get("proposal_payload")
+        if not isinstance(proposal_payload, dict):
+            proposal_payload = {}
+        proposal_number = (
+            str(item.get("proposal_number") or "").strip()
+            or str(proposal_payload.get("reference_number") or proposal_payload.get("proposal_number") or proposal_payload.get("referenceNumber") or proposal_payload.get("proposalNumber") or "").strip()
+        )
         table_rows.append([
             Paragraph(_pdf_plain_text(item.get("client_name")) or "-", cell_style),
+            Paragraph(_pdf_plain_text(item.get("client_id")) or "-", cell_style),
+            Paragraph(_pdf_plain_text(proposal_number) or "-", cell_style),
+            Paragraph(_pdf_plain_text(item.get("proposal_name")) or "-", cell_style),
             Paragraph(_pdf_plain_text(item.get("client_manager")) or "-", cell_style),
             Paragraph(_iso(item.get("renewal_date")) or "-", cell_style),
             Paragraph(f"£{current:,.2f}", money_cell_style),
             Paragraph(f"£{proposed:,.2f}", money_cell_style),
             Paragraph(f"£{variance:,.2f}", money_cell_style),
-            Paragraph(f"{increase_percent:.1f}%", money_cell_style),
         ])
 
     table_rows.append([
         Paragraph("TOTAL", total_row_style),
         Paragraph("", total_row_style),
         Paragraph("", total_row_style),
+        Paragraph("", total_row_style),
+        Paragraph("", total_row_style),
+        Paragraph("", total_row_style),
         Paragraph(f"£{total_current:,.2f}", total_row_style),
         Paragraph(f"£{total_new:,.2f}", total_row_style),
         Paragraph(f"£{variance:,.2f}", total_row_style),
-        Paragraph(f"{variance_percent * Decimal('100'):.1f}%", total_row_style),
     ])
 
     col_widths = [
-        document.width * 0.24,
-        document.width * 0.13,
-        document.width * 0.12,
-        document.width * 0.14,
-        document.width * 0.14,
+        document.width * 0.20,
+        document.width * 0.08,
+        document.width * 0.10,
+        document.width * 0.16,
         document.width * 0.11,
+        document.width * 0.10,
         document.width * 0.12,
+        document.width * 0.12,
+        document.width * 0.11,
     ]
     table = Table(
         table_rows,
