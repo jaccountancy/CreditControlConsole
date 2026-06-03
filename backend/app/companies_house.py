@@ -3922,14 +3922,14 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                             fee_amount = %s,
                             payment_reference = %s,
                             status = 'queued',
-                            rejection_reason = NULL,
+                            rejection_reason = '',
                             response_payload = %s::jsonb,
                             submitted_by_user_id = %s,
                             submitted_at = %s,
                             updated_at = %s,
                             completed_at = NULL,
                             dead_letter = FALSE,
-                            dead_letter_reason = NULL
+                            dead_letter_reason = ''
                         WHERE idempotency_key = %s
                           AND status = 'rejected'
                         RETURNING id
