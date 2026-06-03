@@ -2,6 +2,7 @@ import base64
 import hashlib
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
+from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import HTTPException, status
@@ -280,6 +281,18 @@ def _ignition_modified_since_param(value: datetime) -> str:
 
 async def fetch_ignition_collection(connection_row: dict, endpoint: str, modified_since: datetime | None = None) -> tuple[list[dict], dict]:
     rows: list[dict] = []
+    last_meta: dict = {}
+    async for batch, meta in iter_ignition_collection(connection_row, endpoint, modified_since=modified_since):
+        rows.extend(batch)
+        last_meta = meta or {}
+    return rows, last_meta
+
+
+async def iter_ignition_collection(
+    connection_row: dict,
+    endpoint: str,
+    modified_since: datetime | None = None,
+) -> AsyncIterator[tuple[list[dict], dict]]:
     cursor = None
     last_meta: dict = {}
     page_limit = IGNITION_PAGE_LIMIT
@@ -310,9 +323,9 @@ async def fetch_ignition_collection(connection_row: dict, endpoint: str, modifie
         batch = payload.get("data") or []
         if not isinstance(batch, list):
             batch = []
-        rows.extend(batch)
-        empty_page_streak = empty_page_streak + 1 if not batch else 0
         last_meta = payload.get("meta") or {}
+        yield batch, last_meta
+        empty_page_streak = empty_page_streak + 1 if not batch else 0
         pagination = last_meta.get("pagination") or {}
         has_more = bool(pagination.get("has_more"))
         if not has_more:
@@ -326,4 +339,3 @@ async def fetch_ignition_collection(connection_row: dict, endpoint: str, modifie
             break
         seen_cursors.add(next_cursor)
         cursor = next_cursor
-    return rows, last_meta

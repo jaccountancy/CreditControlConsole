@@ -31,7 +31,13 @@ from psycopg import errors as pg_errors
 
 from .config import get_settings
 from .database import get_connection, utcnow
-from .ignition import IGNITION_DATASETS, fetch_ignition_collection, get_ignition_connection_for_user, ignition_oauth_configured
+from .ignition import (
+    IGNITION_DATASETS,
+    fetch_ignition_collection,
+    get_ignition_connection_for_user,
+    ignition_oauth_configured,
+    iter_ignition_collection,
+)
 from .xero import (
     ACCOUNTS_URL,
     CONTACTS_URL,
@@ -18110,6 +18116,20 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         heartbeat_at=run_started_at,
     )
     practice = {"id": connection.get("practice_id") or "", "name": connection.get("practice_name") or ""}
+
+    async def _ingest_dataset(endpoint_path: str, modified_since_value: datetime | None = None) -> tuple[int, int, dict]:
+        dataset_fetched = 0
+        dataset_processed = 0
+        dataset_meta: dict = {}
+        async for batch, meta in iter_ignition_collection(connection, endpoint_path, modified_since=modified_since_value):
+            dataset_meta = meta or {}
+            if not batch:
+                continue
+            processed_batch = _upsert_ignition_records(user, practice.get("id") or "", dataset, batch)
+            dataset_fetched += len(batch)
+            dataset_processed += processed_batch
+        return dataset_fetched, dataset_processed, dataset_meta
+
     for dataset, endpoint in IGNITION_DATASETS:
         dataset_label = dataset.replace("_", " ")
         fetch_modified_since = modified_since if is_incremental_sync else None
@@ -18127,7 +18147,7 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
             processed_count=total_processed,
         )
         try:
-            rows, meta = await fetch_ignition_collection(connection, endpoint, modified_since=fetch_modified_since)
+            dataset_fetched, processed, meta = await _ingest_dataset(endpoint, fetch_modified_since)
         except HTTPException as exc:
             provider_status = _ignition_provider_status(exc)
             if fetch_modified_since and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
@@ -18182,7 +18202,7 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
                         fetched_count=total_fetched,
                         processed_count=total_processed,
                     )
-                    rows, meta = await fetch_ignition_collection(connection, endpoint)
+                    dataset_fetched, processed, meta = await _ingest_dataset(endpoint, None)
                     fetch_modified_since = None
                 elif dataset in OPTIONAL_IGNITION_DATASETS:
                     dataset_counts[dataset] = 0
@@ -18228,9 +18248,8 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
         practice_meta = (meta or {}).get("practice") or {}
         if practice_meta.get("id") or practice_meta.get("name"):
             practice = {"id": str(practice_meta.get("id") or practice.get("id") or ""), "name": practice_meta.get("name") or practice.get("name") or ""}
-        processed = _upsert_ignition_records(user, practice.get("id") or "", dataset, rows)
         dataset_counts[dataset] = processed
-        total_fetched += len(rows)
+        total_fetched += dataset_fetched
         total_processed += processed
         record_audit_event("ignition_sync_run", str(sync_run_id), f"ignition.{dataset}.synced", {"dataset": dataset, "records": processed}, user["id"])
     if is_incremental_sync:
