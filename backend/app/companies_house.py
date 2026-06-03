@@ -3069,6 +3069,7 @@ def _upsert_auth_code_register_row(
     company_number: str,
     display_name: str,
     client_manager: str,
+    client_id: str,
     normalised_name: str,
     auth_code: str,
     filename: str,
@@ -3084,7 +3085,8 @@ def _upsert_auth_code_register_row(
             UPDATE ch_auth_code_register
             SET client_name = %s,
                 company_name = %s,
-                client_manager = %s,
+                client_manager = COALESCE(NULLIF(%s, ''), client_manager),
+                client_id = COALESCE(NULLIF(%s, ''), client_id),
                 normalised_name = %s,
                 code_encrypted = %s,
                 code_hint = %s,
@@ -3099,6 +3101,7 @@ def _upsert_auth_code_register_row(
                 display_name,
                 display_name,
                 client_manager,
+                client_id,
                 normalised_name,
                 encrypted,
                 hint,
@@ -3114,7 +3117,8 @@ def _upsert_auth_code_register_row(
             UPDATE ch_auth_code_register
             SET client_name = %s,
                 company_name = %s,
-                client_manager = %s,
+                client_manager = COALESCE(NULLIF(%s, ''), client_manager),
+                client_id = COALESCE(NULLIF(%s, ''), client_id),
                 code_encrypted = %s,
                 code_hint = %s,
                 source_filename = %s,
@@ -3129,6 +3133,7 @@ def _upsert_auth_code_register_row(
                 display_name,
                 display_name,
                 client_manager,
+                client_id,
                 encrypted,
                 hint,
                 filename,
@@ -3146,6 +3151,7 @@ def _upsert_auth_code_register_row(
             client_name,
             company_name,
             client_manager,
+            client_id,
             normalised_name,
             code_encrypted,
             code_hint,
@@ -3154,7 +3160,7 @@ def _upsert_auth_code_register_row(
             uploaded_at,
             updated_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
         RETURNING id
         """,
         (
@@ -3162,6 +3168,7 @@ def _upsert_auth_code_register_row(
             display_name,
             display_name,
             client_manager,
+            client_id,
             normalised_name,
             encrypted,
             hint,
@@ -3213,6 +3220,7 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
                 "companyNumber": company_number,
                 "displayName": display_name,
                 "clientManager": _coerce_text(row_payload.get("manager_reference") or row_payload.get("assigned_staff"), 120),
+                "clientId": _coerce_text(row_payload.get("client_id"), 80),
                 "normalisedName": normalised_name,
                 "authCode": auth_code,
             }
@@ -3238,6 +3246,7 @@ def upload_auth_code_register_csv(user: dict, content: bytes, filename: str) -> 
                     company_number=row["companyNumber"],
                     display_name=row["displayName"],
                     client_manager=row.get("clientManager") or "",
+                    client_id=row.get("clientId") or "",
                     normalised_name=row["normalisedName"],
                     auth_code=row["authCode"],
                     filename=_coerce_text(filename, 250),
@@ -3286,6 +3295,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                        company_number,
                        COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
                        client_manager,
+                       client_id,
                        code_hint,
                        source_filename,
                        uploaded_at
@@ -3307,6 +3317,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
                 "companyNumber": row.get("company_number") or "",
                 "displayName": row.get("display_name") or "",
                 "clientManager": row.get("client_manager") or "",
+                "clientId": row.get("client_id") or "",
                 "authCodeHint": row.get("code_hint") or "",
                 "sourceFilename": row.get("source_filename") or "",
                 "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else None,
@@ -3328,6 +3339,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                 cursor.execute(
                     """
                     SELECT c.id, c.company_number, c.company_name, c.client_name,
+                           c.client_id, c.assigned_staff_name,
                            (a.id IS NOT NULL) AS auth_code_on_file
                     FROM ch_companies c
                     LEFT JOIN ch_auth_codes a ON a.company_id = c.id
@@ -3340,6 +3352,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                 cursor.execute(
                     """
                     SELECT c.id, c.company_number, c.company_name, c.client_name,
+                           c.client_id, c.assigned_staff_name,
                            (a.id IS NOT NULL) AS auth_code_on_file
                     FROM ch_companies c
                     LEFT JOIN ch_auth_codes a ON a.company_id = c.id
@@ -3351,6 +3364,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                 cursor.execute(
                     """
                     SELECT c.id, c.company_number, c.company_name, c.client_name,
+                           c.client_id, c.assigned_staff_name,
                            (a.id IS NOT NULL) AS auth_code_on_file
                     FROM ch_companies c
                     LEFT JOIN ch_auth_codes a ON a.company_id = c.id
@@ -3362,7 +3376,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
             companies = cursor.fetchall() or []
             cursor.execute(
                 """
-                SELECT id, company_number, normalised_name, code_encrypted, uploaded_at
+                SELECT id, company_number, normalised_name, code_encrypted, client_manager, client_id, uploaded_at
                 FROM ch_auth_code_register
                 ORDER BY uploaded_at DESC
                 """
@@ -3402,13 +3416,30 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
         encrypted = _coerce_text(matched.get("code_encrypted"), 2000)
         register_number = normalise_company_number(matched.get("company_number"))
         register_name = _coerce_text(matched.get("normalised_name"), 250)
+        register_client_manager = _coerce_text(matched.get("client_manager"), 200)
+        register_client_id = _coerce_text(matched.get("client_id"), 80)
+        existing_client_manager = _coerce_text(company.get("assigned_staff_name"), 200)
+        existing_client_id = _coerce_text(company.get("client_id"), 80)
         auth_code = _decrypt_register_auth_code(encrypted, register_id, register_number, register_name)
         if not auth_code:
             skipped.append({"companyId": company_id, "companyNumber": company_number, "companyName": company_name, "reason": "Matched register entry could not be decrypted."})
             continue
+        next_client_manager = register_client_manager if register_client_manager and (force_overwrite or not existing_client_manager) else existing_client_manager
+        next_client_id = register_client_id if register_client_id and (force_overwrite or not existing_client_id) else existing_client_id
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 _save_company_auth_code(cursor, company_id, auth_code, user_id)
+                if next_client_manager != existing_client_manager or next_client_id != existing_client_id:
+                    cursor.execute(
+                        """
+                        UPDATE ch_companies
+                        SET assigned_staff_name = %s,
+                            client_id = %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (next_client_manager, next_client_id, company_id),
+                    )
                 cursor.execute(
                     """
                     INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
@@ -3429,6 +3460,8 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                 "companyNumber": company_number,
                 "companyName": company_name,
                 "matchType": match_type,
+                "clientManager": next_client_manager,
+                "clientId": next_client_id,
                 "authCode": auth_code if include_auth_code else "",
             }
         )

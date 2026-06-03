@@ -1436,6 +1436,7 @@ CREATE INDEX IF NOT EXISTS ch_auth_code_register_company_number_idx
 ON ch_auth_code_register (company_number);
 
 ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_manager TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_code_register ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS ch_auth_code_register_name_idx
 ON ch_auth_code_register (normalised_name);
