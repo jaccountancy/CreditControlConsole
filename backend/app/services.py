@@ -17294,7 +17294,7 @@ def _ignition_renewals_email_html_body(run: dict, items: list[dict], plain_body:
 def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: str = "") -> bytes:
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -17319,7 +17319,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
+        pagesize=landscape(A4),
         leftMargin=18,
         rightMargin=18,
         topMargin=16,
@@ -17956,13 +17956,6 @@ def _ignition_renewals_email_subject(batch_reference: str) -> str:
     return f"Renewals to action: {reference}"
 
 
-def _clean_ignition_renewal_batch_reference(value: object) -> str:
-    text = str(value or "").strip().upper()
-    if re.fullmatch(r"JUKRE-\d{1,6}", text):
-        return text
-    return ""
-
-
 async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict | None = None) -> dict:
     settings = get_settings()
     safe_payload = payload if isinstance(payload, dict) else {}
@@ -17976,7 +17969,7 @@ async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict
     )
     if not recipient:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_RECIPIENT_EMAIL or provide a recipient email.")
-    batch_reference = _clean_ignition_renewal_batch_reference(safe_payload.get("batchReference")) or _ignition_renewal_batch_reference(user, run_id)
+    batch_reference = _ignition_renewal_batch_reference(user, run_id)
     subject = str(safe_payload.get("subject") or "").strip() or _ignition_renewals_email_subject(batch_reference)
     custom_body = str(safe_payload.get("body") or "").strip()
     if custom_body:

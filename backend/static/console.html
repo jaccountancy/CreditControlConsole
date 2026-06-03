@@ -42152,8 +42152,8 @@
                     const emailBatchReference = String(email.batchReference || batchReference || "").trim();
                     const previewSubject = String(email.subject || `Renewals to action: ${emailBatchReference}`);
                     const previewBody = String(email.body || "");
-                    const resolvedSubject = batchReference ? previewSubject.replace(/JUKRE-\d+/gi, batchReference) : previewSubject;
-                    const resolvedBody = batchReference ? previewBody.replace(/JUKRE-\d+/gi, batchReference) : previewBody;
+                    const resolvedSubject = previewSubject;
+                    const resolvedBody = previewBody;
                     if (toInput) toInput.value = String(email.recipientEmail || ignitionData.renewals?.recipientEmail || "");
                     if (subjectInput) subjectInput.value = resolvedSubject;
                     if (bodyInput) bodyInput.value = resolvedBody;
@@ -42180,8 +42180,6 @@
                 const recipientEmail = String(toInput?.value || "").trim();
                 const subject = String(subjectInput?.value || "").trim();
                 const body = String(bodyInput?.value || "").trim();
-                const run = ignitionRenewalRunById(targetRunId) || null;
-                const batchReference = ignitionRenewalBatchReferenceForRun(run);
                 if (!recipientEmail) {
                     showToast("Enter a recipient email before sending.", "error");
                     return;
@@ -42197,7 +42195,7 @@
                 try {
                     const payload = await requestJSON(
                         api.endpoints.ignitionRenewalEmail,
-                        { method: "POST", body: JSON.stringify({ recipientEmail, subject, body, batchReference }) },
+                        { method: "POST", body: JSON.stringify({ recipientEmail, subject, body }) },
                         { runId: targetRunId }
                     );
                     ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
