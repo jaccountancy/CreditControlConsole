@@ -10185,6 +10185,13 @@
                 flex-wrap: wrap;
                 margin-bottom: 8px;
             }
+            #supplierReconciliationScreen .supplier-recon-header-actions {
+                align-items: center;
+                gap: 8px;
+            }
+            #supplierReconciliationScreen .supplier-recon-header-actions .supplier-recon-tabs {
+                margin: 0;
+            }
             #supplierReconciliationScreen .supplier-recon-workspace-summary {
                 margin: 0 0 10px;
             }
@@ -32806,6 +32813,9 @@
                         supplierProfile: statementModel.supplierProfile,
                         currencyCode: statementModel.currencyCode || "GBP"
                     });
+                    if (supplierReconciliationData.result && typeof supplierReconciliationData.result === "object") {
+                        supplierReconciliationData.result.submissionId = submissionId;
+                    }
                     supplierReconciliationSubmissionHistory = (supplierReconciliationSubmissionHistory || []).map((item) => {
                         if (item.id !== submissionId) return item;
                         return {
@@ -32976,7 +32986,8 @@
                     }
                 };
 
-                const removeSupplierWorkspace = async (supplierClientId) => {
+                const removeSupplierWorkspace = async (supplierClientId, options = {}) => {
+                    const { silent = false, skipRender = false } = options || {};
                     if (!supplierClientId) return;
                     try {
                         const response = await requestJSON(
@@ -32990,12 +33001,103 @@
                             supplierReconciliationData.result = null;
                             supplierReconciliationWorkspaceOpen = false;
                         }
-                        showToast("Supplier removed from workspace", "success");
-                        renderSupplierReconciliationScreen();
+                        if (!silent) showToast("Supplier removed from workspace", "success");
+                        if (!skipRender) renderSupplierReconciliationScreen();
                     } catch (error) {
                         if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                        else showToast(error.message || "Unable to remove supplier", "error");
+                        else if (!silent) showToast(error.message || "Unable to remove supplier", "error");
+                        throw error;
                     }
+                };
+
+                const deleteSupplierReconciliationStatementRecord = (statementId) => {
+                    const targetId = String(statementId || "").trim();
+                    if (!targetId) return;
+                    const target = (supplierReconciliationStatements || []).find((item) => item.id === targetId) || null;
+                    const label = target?.filename || "this statement";
+                    if (!window.confirm(`Delete ${label}? This removes the statement and submission history from this workspace.`)) return;
+                    supplierReconciliationStatements = (supplierReconciliationStatements || []).filter((item) => item.id !== targetId);
+                    persistSupplierReconciliationStatements();
+                    supplierReconciliationSubmissionHistory = (supplierReconciliationSubmissionHistory || []).filter((item) => item.id !== targetId);
+                    persistSupplierReconciliationSubmissionHistory();
+                    if (supplierReconciliationSelectedStatementId === targetId) supplierReconciliationSelectedStatementId = "";
+                    if (String(supplierReconciliationData?.result?.submissionId || "") === targetId) supplierReconciliationData.result = null;
+                    showToast("Statement deleted", "success");
+                    renderSupplierReconciliationScreen();
+                };
+
+                const deleteSupplierReconciliationSupplierRecord = async (supplierId) => {
+                    const targetId = String(supplierId || "").trim();
+                    if (!targetId) return;
+                    const target = supplierReconciliationWorkspaceSuppliers().find((item) => item.id === targetId) || null;
+                    if (!target) return;
+                    const relatedStatements = (supplierReconciliationStatements || []).filter((item) => item.supplierId === targetId);
+                    const statementIds = new Set(relatedStatements.map((item) => item.id));
+                    const supplierName = target.name || "this supplier";
+                    const statementCount = statementIds.size;
+                    const confirmCopy = statementCount
+                        ? `Delete ${supplierName} and ${statementCount.toLocaleString("en-GB")} saved statement${statementCount === 1 ? "" : "s"}?`
+                        : `Delete ${supplierName}?`;
+                    if (!window.confirm(confirmCopy)) return;
+                    const activeClient = supplierReconciliationConnectedClients().find((client) => (
+                        String(client.tenantId || "") === String(target.tenantId || "")
+                        && String(client.xeroContactId || "") === String(target.supplierContactId || "")
+                    )) || null;
+                    if (activeClient?.id) await removeSupplierWorkspace(activeClient.id, { silent: true, skipRender: true });
+                    supplierReconciliationSuppliers = (supplierReconciliationSuppliers || []).filter((item) => item.id !== targetId);
+                    persistSupplierReconciliationSuppliers();
+                    supplierReconciliationStatements = (supplierReconciliationStatements || []).filter((item) => item.supplierId !== targetId);
+                    persistSupplierReconciliationStatements();
+                    supplierReconciliationSubmissionHistory = (supplierReconciliationSubmissionHistory || []).filter((item) => {
+                        if (statementIds.has(item.id)) return false;
+                        const sameTenant = String(item.tenantId || "") === String(target.tenantId || "");
+                        const sameContact = String(item.supplierContactId || "") && String(item.supplierContactId || "") === String(target.supplierContactId || "");
+                        return !(sameTenant && sameContact);
+                    });
+                    persistSupplierReconciliationSubmissionHistory();
+                    if (supplierReconciliationSelectedSupplierId === targetId) supplierReconciliationSelectedSupplierId = "";
+                    if (relatedStatements.some((row) => row.id === supplierReconciliationSelectedStatementId)) supplierReconciliationSelectedStatementId = "";
+                    if (
+                        String(supplierReconciliationData?.result?.supplierProfile?.id || "") === targetId
+                        || String(supplierReconciliationData?.result?.contactId || "") === String(target.supplierContactId || "")
+                    ) {
+                        supplierReconciliationData.result = null;
+                    }
+                    supplierReconciliationSupplierScreenOpen = false;
+                    showToast("Supplier deleted", "success");
+                    renderSupplierReconciliationScreen();
+                };
+
+                const deleteSupplierReconciliationWorkspace = async () => {
+                    const tenantId = String(supplierReconciliationWorkspaceTenantId || "").trim();
+                    if (!tenantId) return;
+                    const workspaceName = supplierReconciliationWorkspaceTenantName || tenantId;
+                    const workspaceStatementCount = (supplierReconciliationStatements || []).filter((item) => String(item.tenantId || "") === tenantId).length;
+                    const workspaceSupplierCount = (supplierReconciliationSuppliers || []).filter((item) => String(item.tenantId || "") === tenantId).length;
+                    const confirmation = `Delete workspace ${workspaceName}? This removes ${workspaceSupplierCount.toLocaleString("en-GB")} supplier record${workspaceSupplierCount === 1 ? "" : "s"} and ${workspaceStatementCount.toLocaleString("en-GB")} statement${workspaceStatementCount === 1 ? "" : "s"}.`;
+                    if (!window.confirm(confirmation)) return;
+                    const connectedWorkspaceClients = supplierReconciliationConnectedClients().filter((client) => String(client.tenantId || "") === tenantId);
+                    for (const client of connectedWorkspaceClients) {
+                        if (!client?.id) continue;
+                        await removeSupplierWorkspace(client.id, { silent: true, skipRender: true });
+                    }
+                    supplierReconciliationSuppliers = (supplierReconciliationSuppliers || []).filter((item) => String(item.tenantId || "") !== tenantId);
+                    persistSupplierReconciliationSuppliers();
+                    supplierReconciliationStatements = (supplierReconciliationStatements || []).filter((item) => String(item.tenantId || "") !== tenantId);
+                    persistSupplierReconciliationStatements();
+                    supplierReconciliationSubmissionHistory = (supplierReconciliationSubmissionHistory || []).filter((item) => String(item.tenantId || "") !== tenantId);
+                    persistSupplierReconciliationSubmissionHistory();
+                    if (String(supplierReconciliationData?.result?.tenantId || "") === tenantId) supplierReconciliationData.result = null;
+                    supplierReconciliationWorkspaceOpen = false;
+                    supplierReconciliationWorkspaceTenantId = "";
+                    supplierReconciliationWorkspaceTenantName = "";
+                    supplierReconciliationSupplierScreenOpen = false;
+                    supplierReconciliationSelectedSupplierId = "";
+                    supplierReconciliationSelectedStatementId = "";
+                    supplierReconciliationActiveSubmissionId = "";
+                    selectedSupplierReconciliationContactId = "";
+                    showToast("Workspace deleted", "success");
+                    renderSupplierReconciliationScreen();
                 };
 
                 if (!supplierReconciliationWorkspaceOpen) {
@@ -33118,18 +33220,15 @@
                             <h3>${escapeHTML(supplierReconciliationWorkspaceTenantName || "Client workspace")}</h3>
                             <p class="detail-meta">${escapeHTML(supplierReconciliationWorkspaceTenantId || "Connected tenant")}</p>
                         </div>
-                        <div class="detail-actions">
+                        <div class="detail-actions supplier-recon-header-actions">
                             <button class="ghost-button" id="supplierReconciliationBackToListButton" type="button">Back to client workspaces</button>
+                            <button class="ghost-button danger-button" id="supplierReconciliationDeleteWorkspaceButton" type="button">Delete workspace</button>
                             <button class="ghost-button" id="supplierReconciliationReconnectXeroButton" type="button">Reconnect Xero</button>
                             <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
-                        </div>
-                    </div>
-                    <div class="supplier-recon-top-controls">
-                        <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
-                            <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
-                            <button type="button" data-supplier-recon-tab="report-output" class="${supplierReconciliationWorkspaceTab === "report-output" ? "is-active" : ""}">Report Output</button>
-                        </div>
-                        <div class="detail-actions">
+                            <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
+                                <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
+                                <button type="button" data-supplier-recon-tab="report-output" class="${supplierReconciliationWorkspaceTab === "report-output" ? "is-active" : ""}">Report Output</button>
+                            </div>
                             <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${supplierReconciliationWorkspaceTenantId ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
                             <button class="ghost-button" id="supplierReconciliationReportButton" type="button" ${activeResult ? "" : "disabled"}>Download supplier report</button>
                             <button class="ghost-button" id="supplierReconciliationEmailButton" type="button" ${(supplierReconciliationMissingRows(activeResult).length > 0) ? "" : "disabled"}>Email missing invoices</button>
@@ -33238,6 +33337,7 @@
                         if (activeStatement) {
                             supplierReconciliationData.result = {
                                 ...(supplierReconciliationData.result || {}),
+                                submissionId: activeStatement.id,
                                 tenantId: activeStatement.tenantId,
                                 supplierName: activeStatement.supplierName || activeSupplier.name,
                                 filename: activeStatement.filename,
@@ -33274,6 +33374,7 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="supplierReconciliationBackToSupplierListButton" type="button">Back to supplier list</button>
+                                    <button class="ghost-button danger-button" type="button" data-supplier-recon-delete-supplier="${escapeHTML(activeSupplier.id)}">Delete supplier</button>
                                 </div>
                             </div>
                             <div class="supplier-recon-history-table-wrap">
@@ -33286,6 +33387,7 @@
                                             <th>Missing</th>
                                             <th>Awaiting payment</th>
                                             <th>Paid</th>
+                                            <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -33297,8 +33399,9 @@
                                                 <td>${Number(row?.summary?.missingCount || 0).toLocaleString("en-GB")}</td>
                                                 <td>${Number(row?.summary?.allocatedCount || 0).toLocaleString("en-GB")}</td>
                                                 <td>${Number(row?.summary?.paidCount || 0).toLocaleString("en-GB")}</td>
+                                                <td><button class="ghost-button danger-button" type="button" data-supplier-recon-delete-statement="${escapeHTML(row.id)}">Delete</button></td>
                                             </tr>
-                                        `).join("") : '<tr><td colspan="6">No submitted supplier statements for this supplier yet.</td></tr>'}
+                                        `).join("") : '<tr><td colspan="7">No submitted supplier statements for this supplier yet.</td></tr>'}
                                     </tbody>
                                 </table>
                             </div>
@@ -33353,6 +33456,7 @@
                                             <th>Contact</th>
                                             <th>Bank details</th>
                                             <th>Latest statement</th>
+                                            <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -33362,8 +33466,9 @@
                                                 <td><strong>${escapeHTML(row.email || "No email")}</strong><small>${escapeHTML(row.phone || "No telephone")}</small></td>
                                                 <td><strong>${escapeHTML(row.bankName || "No bank name")}</strong><small>${escapeHTML([row.bankAccountNumber, row.bankSortCode, row.bankIban, row.bankSwiftBic].filter(Boolean).join(" · ") || "No bank details extracted")}</small></td>
                                                 <td>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "—")}<small>Open supplier</small></td>
+                                                <td><button class="ghost-button danger-button" type="button" data-supplier-recon-delete-supplier="${escapeHTML(row.id)}">Delete supplier</button></td>
                                             </tr>
-                                        `).join("") : '<tr><td colspan="4">No supplier records extracted yet for this workspace.</td></tr>'}
+                                        `).join("") : '<tr><td colspan="5">No supplier records extracted yet for this workspace.</td></tr>'}
                                     </tbody>
                                 </table>
                             </div>
@@ -33394,6 +33499,7 @@
                                         <th>Missing</th>
                                         <th>Awaiting payment</th>
                                         <th>Paid</th>
+                                        <th>Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -33406,8 +33512,9 @@
                                             <td>${Number(row.missingCount || 0).toLocaleString("en-GB")}</td>
                                             <td>${Number(row.allocatedCount || 0).toLocaleString("en-GB")}</td>
                                             <td>${Number(row.paidCount || 0).toLocaleString("en-GB")}</td>
+                                            <td><button class="ghost-button danger-button" type="button" data-supplier-recon-delete-statement="${escapeHTML(row.id)}">Delete</button></td>
                                         </tr>
-                                    `).join("") : '<tr><td colspan="7">No submitted supplier statements yet.</td></tr>'}
+                                    `).join("") : '<tr><td colspan="8">No submitted supplier statements yet.</td></tr>'}
                                 </tbody>
                             </table>
                         </div>
@@ -33557,6 +33664,9 @@
                     supplierReconciliationSelectedStatementId = "";
                     renderSupplierReconciliationScreen();
                 });
+                document.getElementById("supplierReconciliationDeleteWorkspaceButton")?.addEventListener("click", async () => {
+                    await deleteSupplierReconciliationWorkspace();
+                });
                 document.getElementById("supplierReconciliationReconnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
                 document.getElementById("supplierReconciliationRefreshButton")?.addEventListener("click", () => loadSupplierReconciliation(true));
                 document.getElementById("supplierReconciliationUploadButton")?.addEventListener("click", () => {
@@ -33619,6 +33729,14 @@
                         renderSupplierReconciliationScreen();
                     });
                 });
+                document.querySelectorAll("[data-supplier-recon-delete-supplier]").forEach((button) => {
+                    button.addEventListener("click", async (event) => {
+                        event.stopPropagation();
+                        const supplierId = String(button.dataset.supplierReconDeleteSupplier || "").trim();
+                        if (!supplierId) return;
+                        await deleteSupplierReconciliationSupplierRecord(supplierId);
+                    });
+                });
                 document.querySelectorAll("[data-supplier-recon-history-supplier]").forEach((row) => {
                     row.addEventListener("click", () => {
                         const supplierId = String(row.getAttribute("data-supplier-recon-history-supplier") || "").trim();
@@ -33628,6 +33746,14 @@
                         supplierReconciliationSelectedSupplierId = supplierId;
                         supplierReconciliationSelectedStatementId = "";
                         renderSupplierReconciliationScreen();
+                    });
+                });
+                document.querySelectorAll("[data-supplier-recon-delete-statement]").forEach((button) => {
+                    button.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        const statementId = String(button.dataset.supplierReconDeleteStatement || "").trim();
+                        if (!statementId) return;
+                        deleteSupplierReconciliationStatementRecord(statementId);
                     });
                 });
                 document.querySelectorAll("[data-supplier-recon-open-statement]").forEach((row) => {
