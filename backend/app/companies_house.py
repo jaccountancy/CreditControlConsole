@@ -3135,6 +3135,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
     force_overwrite = bool(payload.get("force"))
+    include_auth_code = bool(payload.get("includeAuthCode"))
     user_id = user.get("id") if isinstance(user, dict) else None
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -3243,6 +3244,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                 "companyNumber": company_number,
                 "companyName": company_name,
                 "matchType": match_type,
+                "authCode": auth_code if include_auth_code else "",
             }
         )
     return {

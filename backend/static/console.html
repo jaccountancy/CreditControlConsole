@@ -50207,7 +50207,7 @@
                             try {
                                 const payload = await requestJSON("/api/companies-house/auth-code-register/populate", {
                                     method: "POST",
-                                    body: JSON.stringify({ companyIds: [companyId], force: true }),
+                                    body: JSON.stringify({ companyIds: [companyId], force: true, includeAuthCode: true }),
                                 });
                                 const result = payload?.result || {};
                                 const populated = Array.isArray(result?.populated)
@@ -50219,7 +50219,7 @@
                                 if (populated) {
                                     row.setAttribute("data-ch-authfix-on-file", "true");
                                     const input = row.querySelector("[data-ch-authfix-input]");
-                                    if (input) input.value = "";
+                                    if (input) input.value = String(populated?.authCode || "");
                                     if (status) status.textContent = `Applied from register (${populated.matchType || "match"})`;
                                 } else if (String(skipped?.reason || "").toLowerCase().includes("already on file")) {
                                     row.setAttribute("data-ch-authfix-on-file", "true");
