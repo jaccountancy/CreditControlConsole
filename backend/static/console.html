@@ -41781,6 +41781,39 @@
                 }
             }
 
+            function syncIgnitionRenewalRowDraft(row) {
+                const rowId = String(row?.dataset?.renewalId || "");
+                if (!rowId) return;
+                const run = ignitionRenewalRun();
+                const runItem = (run?.items || []).find((item) => String(item?.id || "") === rowId);
+                if (!runItem) return;
+                const newFeeInput = row.querySelector('[data-renewal-field="newMonthlyFee"]');
+                const rawValue = String(newFeeInput?.value || "").trim();
+                if (!rawValue.length) {
+                    row.dataset.newMonthly = "";
+                    runItem.newMonthlyFee = 0;
+                    return;
+                }
+                const proposed = Number(rawValue);
+                if (!Number.isFinite(proposed) || proposed < 0) return;
+                const rounded = Number(proposed.toFixed(2));
+                row.dataset.newMonthly = rounded.toFixed(2);
+                runItem.newMonthlyFee = rounded;
+                if (ignitionRenewalAIAppliedRows.has(rowId)) {
+                    const metadata = ignitionRenewalAIMetadataByRowId.get(rowId) || {};
+                    const context = runItem.recommendationContext && typeof runItem.recommendationContext === "object"
+                        ? { ...runItem.recommendationContext }
+                        : (metadata.context && typeof metadata.context === "object" ? { ...metadata.context } : {});
+                    const aiSuggested = Number(metadata.recommendedMonthly ?? context.aiSuggestedMonthly ?? 0);
+                    if (Number.isFinite(aiSuggested) && aiSuggested > 0) context.aiSuggestedMonthly = Number(aiSuggested.toFixed(2));
+                    context.finalMonthlyChosen = rounded;
+                    context.wasManuallyAdjustedAfterAi = Number.isFinite(aiSuggested) && aiSuggested > 0
+                        ? Math.abs(rounded - aiSuggested) > 0.004
+                        : false;
+                    runItem.recommendationContext = context;
+                }
+            }
+
             function updateIgnitionRenewalFromPercent(row) {
                 const current = Number(row.dataset.currentMonthly || 0);
                 const increasePercent = Number(row.querySelector('[data-renewal-field="increasePercent"]')?.value || 0);
@@ -41788,6 +41821,7 @@
                 if (!newFeeInput) return;
                 const proposed = current + ((current * increasePercent) / 100);
                 newFeeInput.value = Number.isFinite(proposed) ? proposed.toFixed(2) : "0.00";
+                syncIgnitionRenewalRowDraft(row);
                 updateIgnitionRenewalVariance(row);
             }
 
@@ -41799,6 +41833,7 @@
                     const increasePercent = current > 0 ? ((proposed - current) / current) * 100 : 0;
                     percentInput.value = Number.isFinite(increasePercent) ? increasePercent.toFixed(1) : "0.0";
                 }
+                syncIgnitionRenewalRowDraft(row);
                 updateIgnitionRenewalVariance(row);
             }
 
@@ -56246,6 +56281,13 @@
                         return;
                     }
                     updateIgnitionRenewalVariance(row);
+                });
+                if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("focusin", (event) => {
+                    if (!event.target?.matches?.('[data-renewal-field="newMonthlyFee"]')) return;
+                    const input = event.target;
+                    window.setTimeout(() => {
+                        if (document.activeElement === input) input.select();
+                    }, 0);
                 });
                 if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("change", (event) => {
                     const selectAll = event.target?.id === "ignitionRenewalsSelectAllCandidates";
