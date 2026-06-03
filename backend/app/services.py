@@ -16482,7 +16482,6 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
         "recommendationEngine": str(row.get("recommendation_engine") or "").strip(),
         "recommendationHistorySampleSize": int(row.get("recommendation_history_sample_size") or 0),
         "recommendationContext": _safe_json(recommendation_context),
-        "zapierSentAt": _iso(row.get("zapier_sent_at")) or "",
         "createdAt": _iso(row.get("created_at")) or "",
         "updatedAt": _iso(row.get("updated_at")) or "",
     }
@@ -16760,6 +16759,7 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
     total_current = _money(run.get("total_current_monthly"))
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    annualised_uplift = variance * Decimal("12")
     by_plan: dict[str, int] = defaultdict(int)
     for item in items:
         by_plan[item.get("plan_name") or "Other"] += 1
@@ -16771,9 +16771,10 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
         f"Renewals included: {len(items)}\n"
         f"Current monthly fees: £{total_current:,.2f}\n"
         f"Proposed monthly fees: £{total_new:,.2f}\n"
-        f"Monthly uplift: £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)\n"
+        f"Extra generated from this batch (monthly): £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)\n"
+        f"Extra generated from this batch (annualised): £{annualised_uplift:,.2f}\n"
         f"Plans: {plan_summary}\n\n"
-        "The attached workbook contains the client list, renewal dates, current fees, proposed fees, variances, and AT comments.\n"
+        "The attached PDF report contains the client list, renewal dates, current fees, proposed fees, variances, and comments.\n"
     )
 
 
@@ -17195,8 +17196,8 @@ async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to email.")
     if not run.get("finalised_at"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before emailing Amie.")
-    workbook = _build_ignition_renewals_workbook(items)
-    filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.xlsx"
+    report_pdf = _build_ignition_renewals_pdf(run, items)
+    filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
     subject = f"Ignition renewals to action: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
     message = EmailMessage()
     message["Subject"] = subject
@@ -17204,9 +17205,9 @@ async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
     message["To"] = recipient
     message.set_content(_ignition_renewal_email_body(run, items))
     message.add_attachment(
-        workbook,
+        report_pdf,
         maintype="application",
-        subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        subtype="pdf",
         filename=filename,
     )
     try:
@@ -17239,25 +17240,12 @@ async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
 
 
 async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
-    settings = get_settings()
-    webhook_url = str(settings.ignition_renewals_zapier_webhook_url or "").strip()
-    if not webhook_url:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_ZAPIER_WEBHOOK_URL before finalising renewal rounds.")
     run, items = _ignition_renewal_run_with_items(user, run_id)
     if not items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to finalise.")
     if run.get("finalised_at"):
         return {"renewals": ignition_renewals_payload(user, run_id), "alreadyFinalised": True}
-    payload = {
-        "event": "ignition_renewals_finalised",
-        "run": _serialize_ignition_renewal_run(run),
-        "items": [_serialize_ignition_renewal_item(item) for item in items],
-    }
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(webhook_url, json=payload)
-    response_payload = {"status_code": response.status_code, "body": response.text[:1000]}
-    if response.is_error:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Zapier webhook failed with status {response.status_code}: {response.text[:500]}")
+    now = utcnow()
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -17265,23 +17253,13 @@ async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
                 UPDATE ignition_renewal_runs
                 SET status = 'finalised',
                     finalised_at = %s,
-                    zapier_response = %s::jsonb,
                     updated_at = %s
                 WHERE id = %s AND user_id = %s
                 """,
-                (utcnow(), json.dumps(response_payload), utcnow(), run_id, user["id"]),
-            )
-            cursor.execute(
-                """
-                UPDATE ignition_renewal_items
-                SET zapier_sent_at = COALESCE(zapier_sent_at, %s),
-                    updated_at = %s
-                WHERE run_id = %s AND user_id = %s
-                """,
-                (utcnow(), utcnow(), run_id, user["id"]),
+                (now, now, run_id, user["id"]),
             )
         connection.commit()
-    record_audit_event("ignition_renewal_run", run_id, "ignition.renewals.finalised", {"items": len(items), "zapier_status": response.status_code}, user["id"])
+    record_audit_event("ignition_renewal_run", run_id, "ignition.renewals.finalised", {"items": len(items)}, user["id"])
     return {"renewals": ignition_renewals_payload(user, run_id)}
 
 
@@ -17321,7 +17299,6 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
         connection.commit()
     return {
         "recipientEmail": get_settings().ignition_renewals_recipient_email or "",
-        "zapierConfigured": bool(str(get_settings().ignition_renewals_zapier_webhook_url or "").strip()),
         "currentRun": _serialize_ignition_renewal_run(current_run, items),
         "recentRuns": [_serialize_ignition_renewal_run(row) for row in recent_runs],
         "candidatePool": _ignition_renewal_candidates_for_user(user),

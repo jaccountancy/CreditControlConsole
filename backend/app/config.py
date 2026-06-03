@@ -37,7 +37,6 @@ class Settings(BaseSettings):
     ignition_token_url: str = "https://developers.ignitionapp.com/oauth2/token"
     ignition_api_base_url: str = "https://developers.ignitionapp.com/external/api/v1"
     ignition_renewals_recipient_email: str = "amie@jaccountancy.co.uk"
-    ignition_renewals_zapier_webhook_url: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

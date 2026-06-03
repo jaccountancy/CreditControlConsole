@@ -18521,7 +18521,7 @@
                             <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
                             <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
                             <button class="ghost-button" id="exportIgnitionRenewalsPdfButton" type="button">Export PDF</button>
-                            <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise and raise ELs</button>
+                            <button class="primary-button" id="finaliseIgnitionRenewalsButton" type="button">Finalise renewals</button>
                             <button class="ghost-button" id="openIgnitionRenewalHistoryButton" type="button">Renewal history</button>
                         </div>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
@@ -40102,8 +40102,7 @@
                             ["Current MRR", formatCurrency(run.totalCurrentMonthly || 0)],
                             ["Proposed MRR", formatCurrency(run.totalNewMonthly || 0)],
                             ["Uplift", `${formatCurrency(run.totalVariance || 0)} · ${ignitionRenewalPercent(run.totalVariancePercent || 0)}`],
-                            ["Email", run.emailSentAt ? formatDateTime(run.emailSentAt) : `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`],
-                            ["Zapier", ignitionData.renewals?.zapierConfigured ? "Configured" : "Not configured"]
+                            ["Email", run.emailSentAt ? formatDateTime(run.emailSentAt) : `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
                     if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, Boolean(run.finalisedAt));
@@ -40114,8 +40113,7 @@
                         meta.innerHTML = [
                             ["Status", "No open batch"],
                             ["Action", "Go back to Batches"],
-                            ["Email", `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`],
-                            ["Zapier", ignitionData.renewals?.zapierConfigured ? "Configured" : "Not configured"]
+                            ["Email", `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
                     if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active batch</p><h4>Start from renewal batches</h4><p>Open the batches stage, select clients, then continue to pricing.</p></div>';
@@ -40123,12 +40121,14 @@
 
                 const finalised = Boolean(run?.finalisedAt);
                 const pricingStage = ignitionRenewalsWorkspaceStage === "pricing";
+                const syncButton = document.getElementById("runIgnitionSyncButton");
                 if (backToBatchesButton) backToBatchesButton.hidden = !pricingStage;
+                if (syncButton) syncButton.hidden = pricingStage;
                 if (saveButton) saveButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
                 if (emailButton) emailButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
                 if (exportPdfButton) exportPdfButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
                 if (finaliseButton) finaliseButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
-                if (finaliseButton) finaliseButton.textContent = run?.finalisedAt ? "ELs raised" : "Finalise and raise ELs";
+                if (finaliseButton) finaliseButton.textContent = run?.finalisedAt ? "Finalised" : "Finalise renewals";
                 if (ignitionRenewalStartModalOpen) renderIgnitionRenewalStartModal();
                 renderIgnitionRenewalsLaunch();
             }
@@ -40278,7 +40278,6 @@
                     const hasManualValue = locked ? Number.isFinite(proposed) : false;
                     const variance = hasManualValue ? proposed - current : 0;
                     const increasePercent = hasManualValue && current > 0 ? variance / current : 0;
-                    const proposalEndDate = formatDate(item.renewalDate || "");
                     const proposalName = String(item.proposalName || item.planName || item.serviceName || "")
                         .replace(/<[^>]*>/g, " ")
                         .replace(/\s+/g, " ")
@@ -40288,7 +40287,6 @@
                     return `
                         <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
                             <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong>${proposalName ? `<span class="ignition-renewals-proposal-name">${escapeHTML(proposalName)}</span>` : ""}</td>
-                            <td data-label="Proposal End Date">${escapeHTML(proposalEndDate || "-")}</td>
                             <td data-label="Client Manager"><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" readonly disabled></td>
                             <td data-label="Net Monthly Fee" class="money-cell">${formatCurrency(current)}</td>
                             <td data-label="New Net Monthly Fee">
@@ -40307,7 +40305,6 @@
                         <thead>
                             <tr>
                                 <th>Client Name</th>
-                                <th>Proposal End Date</th>
                                 <th>Client Manager</th>
                                 <th>Net Monthly Fee</th>
                                 <th>
@@ -40668,11 +40665,11 @@
                 const run = ignitionRenewalRun();
                 if (!run?.id) return;
                 if (!ensureIgnitionRenewalsNewFeesEntered("finalising")) return;
-                if (!window.confirm("Finalise this renewals round and send it to Zapier to raise ELs? After finalising you can email Amie and export the PDF report.")) return;
+                if (!window.confirm("Finalise this renewals round? After finalising you can export the PDF report for Amie to create the renewals in Ignition.")) return;
                 try {
                     const payload = await requestJSON(api.endpoints.ignitionRenewalFinalise, { method: "POST", body: JSON.stringify({}) }, { runId: run.id });
                     ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
-                    showToast(payload.alreadyFinalised ? "Renewals were already finalised" : "Renewals finalised and sent to Zapier", "success");
+                    showToast(payload.alreadyFinalised ? "Renewals were already finalised" : "Renewals finalised", "success");
                     renderIgnitionScreen();
                 } catch (error) {
                     console.error("Unable to finalise renewals", error);
