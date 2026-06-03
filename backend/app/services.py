@@ -12502,7 +12502,11 @@ def _extract_me_report_bulk_file_lines(
     except HTTPException:
         return []
     if upload_kind == "spreadsheet":
-        return _extract_me_report_bulk_spreadsheet_lines(file_bytes)
+        lines = _extract_me_report_bulk_spreadsheet_lines(file_bytes)
+        second_row_client = _extract_me_report_spreadsheet_second_row_client_name(file_bytes)
+        if second_row_client:
+            return [f"Client name: {second_row_client}", *lines]
+        return lines
     return _extract_me_report_bulk_pdf_lines(file_bytes, max_pages=max_pages)
 
 
@@ -20545,6 +20549,32 @@ def _extract_me_report_bulk_spreadsheet_lines(
     except Exception:
         return []
     return lines
+
+
+def _extract_me_report_spreadsheet_second_row_client_name(file_bytes: bytes) -> str:
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as workbook:
+            shared_strings = _xlsx_shared_strings(workbook)
+            sheets = _xlsx_sheet_targets(workbook)
+            if not sheets:
+                return ""
+            _sheet_name, target = sheets[0]
+            sheet_root = ET.fromstring(workbook.read(target))
+            namespace = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+            row_two = None
+            for row in sheet_root.findall("x:sheetData/x:row", namespace):
+                if str(row.attrib.get("r") or "").strip() == "2":
+                    row_two = row
+                    break
+            if row_two is None:
+                return ""
+            for cell in row_two.findall("x:c", namespace):
+                value = _xlsx_cell_text(cell, shared_strings, namespace).strip()
+                if len(value) >= 3 and re.search(r"[a-z]", value, re.IGNORECASE):
+                    return value
+            return ""
+    except Exception:
+        return ""
 
 
 def _me_report_spreadsheet_text(file_bytes: bytes, filename: str) -> str:
