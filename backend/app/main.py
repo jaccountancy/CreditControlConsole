@@ -1630,10 +1630,7 @@ def api_ignition_sync(user: dict = Depends(require_panel_user)):
 @app.get("/api/ignition/sync/{sync_run_id}")
 def api_ignition_sync_status(sync_run_id: str, user: dict = Depends(require_panel_user)):
     sync_run = get_ignition_sync_run(user, sync_run_id)
-    payload = {"status": sync_run["status"], "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
-    if sync_run["status"] == "completed":
-        payload["ignition"] = ignition_payload(user, include_dashboard=False)
-    return payload
+    return {"status": sync_run["status"], "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
 
 
 @app.get("/api/ignition/renewals")
