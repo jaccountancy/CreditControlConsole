@@ -33834,18 +33834,32 @@
                         const paidRows = rows.filter((row) => String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase() === "paid");
                         const unpaidRows = rows.filter((row) => String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase() === "allocated");
                         const missingRows = rows.filter((row) => String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase() === "missing");
-                        const renderStatementRows = (groupRows, emptyCopy) => (
-                            groupRows.length
-                                ? groupRows.map((row) => `
-                                    <tr class="supplier-recon-row ${supplierReconciliationRowClass(row.reconciliation || row)}">
-                                        <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
-                                        <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
-                                        <td>${formatCurrency(row.amount || 0)}</td>
-                                        <td>${formatCurrency(row.balance || 0)}</td>
-                                        <td>${row?.reconciliation?.xeroUrl || row?.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row?.reconciliation?.xeroUrl || row?.xeroUrl || "")}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
-                                    </tr>
-                                `).join("")
-                                : `<tr><td colspan="5">${escapeHTML(emptyCopy)}</td></tr>`
+                        const statusMeta = (row) => {
+                            const key = String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase();
+                            if (key === "paid") return { label: "Paid", className: "is-green" };
+                            if (key === "allocated") return { label: "Awaiting payment", className: "is-yellow" };
+                            if (key === "missing") return { label: "Missing", className: "is-red" };
+                            return { label: "Review", className: "" };
+                        };
+                        const combinedRows = [...paidRows, ...unpaidRows, ...missingRows]
+                            .slice()
+                            .sort((left, right) => dateSortValue(left?.invoiceDate) - dateSortValue(right?.invoiceDate));
+                        const renderStatementRows = () => (
+                            combinedRows.length
+                                ? combinedRows.map((row) => {
+                                    const status = statusMeta(row);
+                                    return `
+                                        <tr class="supplier-recon-row ${supplierReconciliationRowClass(row.reconciliation || row)}">
+                                            <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
+                                            <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
+                                            <td>${formatCurrency(row.amount || 0)}</td>
+                                            <td>${formatCurrency(row.balance || 0)}</td>
+                                            <td><span class="supplier-recon-status ${status.className}">${escapeHTML(status.label)}</span></td>
+                                            <td>${row?.reconciliation?.xeroUrl || row?.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row?.reconciliation?.xeroUrl || row?.xeroUrl || "")}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
+                                        </tr>
+                                    `;
+                                }).join("")
+                                : '<tr><td colspan="6">No reconciliation lines extracted for this statement.</td></tr>'
                         );
                         detail.innerHTML = `
                             <div class="jashflow-detail-head">
@@ -33858,34 +33872,6 @@
                                     <button class="ghost-button" id="supplierReconciliationBackToSupplierListButton" type="button">Back to supplier list</button>
                                     <button class="ghost-button danger-button" type="button" data-supplier-recon-delete-supplier="${escapeHTML(activeSupplier.id)}">Delete supplier</button>
                                 </div>
-                            </div>
-                            <div class="supplier-recon-history-table-wrap">
-                                <table class="supplier-recon-history-table" aria-label="Submitted statements for selected supplier">
-                                    <thead>
-                                        <tr>
-                                            <th>Submitted</th>
-                                            <th>Statement</th>
-                                            <th>Status</th>
-                                            <th>Missing</th>
-                                            <th>Awaiting payment</th>
-                                            <th>Paid</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${supplierStatements.length ? supplierStatements.map((row) => `
-                                            <tr data-supplier-recon-open-statement="${escapeHTML(row.id)}" class="${row.id === (activeStatement?.id || "") ? "is-selected" : ""}">
-                                                <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "In progress")}</small></td>
-                                                <td><strong>${escapeHTML(row.filename || "Statement")}</strong><small>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "No statement date")}</small></td>
-                                                <td><span class="supplier-recon-status ${supplierReconciliationSubmissionStatusClass(row.status)}">${escapeHTML(supplierReconciliationSubmissionStatusLabel(row.status))}</span></td>
-                                                <td>${Number(row?.summary?.missingCount || 0).toLocaleString("en-GB")}</td>
-                                                <td>${Number(row?.summary?.allocatedCount || 0).toLocaleString("en-GB")}</td>
-                                                <td>${Number(row?.summary?.paidCount || 0).toLocaleString("en-GB")}</td>
-                                                <td><button class="ghost-button danger-button" type="button" data-supplier-recon-delete-statement="${escapeHTML(row.id)}">Delete</button></td>
-                                            </tr>
-                                        `).join("") : '<tr><td colspan="7">No submitted supplier statements for this supplier yet.</td></tr>'}
-                                    </tbody>
-                                </table>
                             </div>
                             ${activeStatement ? `
                                 <div class="jashflow-detail-head">
@@ -33901,22 +33887,19 @@
                                     <article><span>Paid</span><strong>${Number(activeStatement?.summary?.paidCount || 0).toLocaleString("en-GB")}</strong></article>
                                     <article><span>Total lines</span><strong>${Number(activeStatement?.summary?.totalLines || rows.length).toLocaleString("en-GB")}</strong></article>
                                 </div>
-                                <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices paid in Xero">
+                                <div class="supplier-recon-results-wrap" role="table" aria-label="Supplier reconciliation rows">
                                     <table class="supplier-recon-table">
-                                        <thead><tr><th colspan="5">Invoices We Have (Paid)</th></tr></thead>
-                                        <tbody>${renderStatementRows(paidRows, "No paid invoices found from this statement.")}</tbody>
-                                    </table>
-                                </div>
-                                <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices awaiting payment in Xero">
-                                    <table class="supplier-recon-table">
-                                        <thead><tr><th colspan="5">Invoices We Have (Unpaid / Awaiting Payment)</th></tr></thead>
-                                        <tbody>${renderStatementRows(unpaidRows, "No unpaid invoices found from this statement.")}</tbody>
-                                    </table>
-                                </div>
-                                <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices missing in Xero">
-                                    <table class="supplier-recon-table">
-                                        <thead><tr><th colspan="5">Invoices We Do Not Have (Missing In Xero)</th></tr></thead>
-                                        <tbody>${renderStatementRows(missingRows, "No missing invoices identified from this statement.")}</tbody>
+                                        <thead>
+                                            <tr>
+                                                <th>Reference</th>
+                                                <th>Date</th>
+                                                <th>Amount</th>
+                                                <th>Balance</th>
+                                                <th>Status</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>${renderStatementRows()}</tbody>
                                     </table>
                                 </div>
                             ` : '<div class="empty-state"><p class="eyebrow">Statement detail</p><h4>No statement selected</h4><p>Select a statement above to view line-by-line reconciliation.</p></div>'}
@@ -33957,11 +33940,61 @@
                         `;
                     }
                 } else if (supplierReconciliationWorkspaceTab === "submitted-statements") {
-                    const historyRows = (supplierReconciliationSubmissionHistory || [])
-                        .filter((row) => !supplierReconciliationWorkspaceTenantId || String(row.tenantId || "") === String(supplierReconciliationWorkspaceTenantId || ""))
-                        .slice()
-                        .sort((left, right) => String(right.submittedAt || "").localeCompare(String(left.submittedAt || "")))
-                        .slice(0, 100);
+                    const tenantId = String(supplierReconciliationWorkspaceTenantId || "").trim();
+                    const workspaceHistoryRows = (supplierReconciliationSubmissionHistory || [])
+                        .filter((row) => !tenantId || String(row.tenantId || "") === tenantId);
+                    const workspaceStatementRows = supplierReconciliationWorkspaceStatements()
+                        .map((statement) => ({
+                            id: String(statement.id || "").trim(),
+                            tenantId: String(statement.tenantId || "").trim(),
+                            supplierContactId: String(statement.supplierContactId || "").trim(),
+                            supplierName: String(statement.supplierName || "").trim(),
+                            filename: String(statement.filename || "").trim(),
+                            submittedAt: String(statement.submittedAt || "").trim(),
+                            completedAt: String(statement.completedAt || "").trim(),
+                            status: String(statement.status || "processed").trim().toLowerCase(),
+                            missingCount: Number(statement?.summary?.missingCount || 0),
+                            allocatedCount: Number(statement?.summary?.allocatedCount || 0),
+                            paidCount: Number(statement?.summary?.paidCount || 0),
+                            errorMessage: ""
+                        }));
+                    const mergedHistoryById = new Map();
+                    [...workspaceStatementRows, ...workspaceHistoryRows].forEach((row) => {
+                        const id = String(row?.id || "").trim();
+                        if (!id) return;
+                        const existing = mergedHistoryById.get(id) || {};
+                        mergedHistoryById.set(id, {
+                            ...existing,
+                            ...row,
+                            id,
+                            tenantId: String(row?.tenantId || existing?.tenantId || "").trim(),
+                            supplierContactId: String(row?.supplierContactId || existing?.supplierContactId || "").trim(),
+                            supplierName: String(row?.supplierName || existing?.supplierName || "").trim(),
+                            filename: String(row?.filename || existing?.filename || "").trim(),
+                            submittedAt: String(row?.submittedAt || existing?.submittedAt || "").trim(),
+                            completedAt: String(row?.completedAt || existing?.completedAt || "").trim(),
+                            status: String(row?.status || existing?.status || "processing").trim().toLowerCase(),
+                            missingCount: Number(row?.missingCount ?? existing?.missingCount ?? 0),
+                            allocatedCount: Number(row?.allocatedCount ?? existing?.allocatedCount ?? 0),
+                            paidCount: Number(row?.paidCount ?? existing?.paidCount ?? 0),
+                            errorMessage: String(row?.errorMessage || existing?.errorMessage || "").trim()
+                        });
+                    });
+                    const workspaceSuppliersByContact = new Map(
+                        supplierReconciliationWorkspaceSuppliers()
+                            .filter((item) => String(item?.supplierContactId || "").trim())
+                            .map((item) => [String(item.supplierContactId || "").trim(), item])
+                    );
+                    const historyRows = Array.from(mergedHistoryById.values())
+                        .map((row) => {
+                            const supplierRecord = workspaceSuppliersByContact.get(String(row.supplierContactId || "").trim()) || null;
+                            return {
+                                ...row,
+                                supplierDisplayName: String(row.supplierName || supplierRecord?.name || row.supplierContactId || "Unknown supplier").trim()
+                            };
+                        })
+                        .sort((left, right) => String(right.submittedAt || right.completedAt || "").localeCompare(String(left.submittedAt || left.completedAt || "")))
+                        .slice(0, 200);
                     detail.innerHTML = `
                         <div class="supplier-recon-submitted-shell">
                         <div class="jashflow-detail-head">
@@ -33988,8 +34021,8 @@
                                 <tbody>
                                     ${historyRows.length ? historyRows.map((row) => `
                                         <tr>
-                                            <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "In progress")}</small></td>
-                                            <td><strong>${escapeHTML(row.supplierName || row.supplierContactId || "Unknown supplier")}</strong><small>${escapeHTML(row.supplierContactId || "")}</small><small><button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Open supplier</button></small></td>
+                                            <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>Submitted</small><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "Processing")}</small></td>
+                                            <td><strong>${escapeHTML(row.supplierDisplayName || "Unknown supplier")}</strong><small>${escapeHTML(row.supplierContactId || "")}</small>${resolveSupplierIdForSubmission(row) ? `<small><button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Open supplier</button></small>` : ""}</td>
                                             <td>${String(row.status || "").toLowerCase() === "processed"
                                                 ? `<button class="ghost-button" type="button" data-supplier-recon-open-statement-page="${escapeHTML(row.id)}">${escapeHTML(row.filename || "Statement")}</button><small>Open Statement Page</small>`
                                                 : `${escapeHTML(row.filename || "Statement")}<small>Available after processing</small>`}</td>
@@ -34326,18 +34359,33 @@
                 const xeroFlagRows = [...xeroOnlyRows, ...xeroCreditRows, ...xeroCashRows];
                 const model = supplierReconciliationStatementModel(result);
                 const profile = model.supplierProfile || {};
-                const renderRows = (groupRows, emptyCopy) => (
-                    groupRows.length
-                        ? groupRows.map((row) => `
-                            <tr class="supplier-recon-row ${supplierReconciliationRowClass(row)}">
-                                <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
-                                <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
-                                <td>${formatCurrency(row.amount || 0)}</td>
-                                <td>${formatCurrency(row.balance || 0)}</td>
-                                <td>${row.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row.xeroUrl)}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
-                            </tr>
-                        `).join("")
-                        : `<tr><td colspan="5">${escapeHTML(emptyCopy)}</td></tr>`
+                const statusMeta = (row) => {
+                    const key = String(row?.statusKey || "").toLowerCase();
+                    if (key === "paid") return { label: "Paid", className: "is-green" };
+                    if (key === "allocated") return { label: "Awaiting payment", className: "is-yellow" };
+                    if (key === "missing") return { label: "Missing", className: "is-red" };
+                    if (["xero_only", "xero_credit_unallocated", "xero_cash_unallocated"].includes(key)) return { label: "Not on statement", className: "is-orange" };
+                    return { label: "Review", className: "" };
+                };
+                const combinedRows = [...paidRows, ...unpaidRows, ...missingRows, ...xeroFlagRows]
+                    .slice()
+                    .sort((left, right) => dateSortValue(left?.invoiceDate) - dateSortValue(right?.invoiceDate));
+                const renderCombinedRows = () => (
+                    combinedRows.length
+                        ? combinedRows.map((row) => {
+                            const status = statusMeta(row);
+                            return `
+                                <tr class="supplier-recon-row ${supplierReconciliationRowClass(row)}">
+                                    <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
+                                    <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
+                                    <td>${formatCurrency(row.amount || 0)}</td>
+                                    <td>${formatCurrency(row.balance || 0)}</td>
+                                    <td><span class="supplier-recon-status ${status.className}">${escapeHTML(status.label)}</span></td>
+                                    <td>${row.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row.xeroUrl)}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
+                                </tr>
+                            `;
+                        }).join("")
+                        : '<tr><td colspan="6">No reconciliation lines were extracted from this statement.</td></tr>'
                 );
 
                 detail.innerHTML = `
@@ -34389,26 +34437,17 @@
                     </div>
                     <div class="supplier-recon-results-wrap" role="table" aria-label="Supplier reconciliation rows">
                         <table class="supplier-recon-table">
-                            <thead><tr><th colspan="5">Invoices We Have (Paid)</th></tr></thead>
-                            <tbody>${renderRows(paidRows, "No paid invoices found from this statement.")}</tbody>
-                        </table>
-                    </div>
-                    <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices awaiting payment">
-                        <table class="supplier-recon-table">
-                            <thead><tr><th colspan="5">Invoices We Have (Unpaid / Awaiting Payment)</th></tr></thead>
-                            <tbody>${renderRows(unpaidRows, "No unpaid invoices found from this statement.")}</tbody>
-                        </table>
-                    </div>
-                    <div class="supplier-recon-results-wrap" role="table" aria-label="Missing invoices">
-                        <table class="supplier-recon-table">
-                            <thead><tr><th colspan="5">Invoices We Do Not Have (Missing In Xero)</th></tr></thead>
-                            <tbody>${renderRows(missingRows, "No missing invoices identified from this statement.")}</tbody>
-                        </table>
-                    </div>
-                    <div class="supplier-recon-results-wrap" role="table" aria-label="Xero items not present on statement">
-                        <table class="supplier-recon-table">
-                            <thead><tr><th colspan="5">Items On Xero Not On Statement (Invoices / Credits / Cash)</th></tr></thead>
-                            <tbody>${renderRows(xeroFlagRows, "No Xero-only invoice, credit, or cash flags for this supplier.")}</tbody>
+                            <thead>
+                                <tr>
+                                    <th>Reference</th>
+                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Balance</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>${renderCombinedRows()}</tbody>
                         </table>
                     </div>
                 `;
