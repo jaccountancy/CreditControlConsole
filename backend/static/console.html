@@ -49873,21 +49873,6 @@
                     chSetWorkflowStatus(`${unresolvedChanges.toLocaleString("en-GB")} selected client${unresolvedChanges === 1 ? "" : "s"} still need required updates before submission. Open full review and save changes first.`, "error");
                     return;
                 }
-                if (finalPreflight.warningOnly.length) {
-                    const listed = finalPreflight.warningOnly
-                        .slice(0, 4)
-                        .map((company) => {
-                            const warning = chCompanySubmissionWarnings(company)[0]
-                                || `Recently filed on ${chFormatDate(company.lastFiledDate)}.`;
-                            return `${company.companyName || company.companyNumber || "Company"}: ${warning}`;
-                        })
-                        .join("\n- ");
-                    const more = finalPreflight.warningOnly.length > 4
-                        ? `\n- Plus ${finalPreflight.warningOnly.length - 4} more`
-                        : "";
-                    const warningPrompt = `Heads up: ${finalPreflight.warningOnly.length} selected compan${finalPreflight.warningOnly.length === 1 ? "y has" : "ies have"} a recent filing warning.\n\n- ${listed}${more}\n\nContinue with early submission?`;
-                    if (!window.confirm(warningPrompt)) return;
-                }
                 const finalRows = chBuildSubmissionFinalReviewRows(selected);
                 const workflowUnitAmount = chWorkflowConfiguredUnitAmount();
                 const creditAccountNumber = chWorkflowCreditAccountNumber();
