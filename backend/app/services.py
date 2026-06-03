@@ -16459,6 +16459,9 @@ def _ignition_records_for_user(user: dict) -> dict[str, list[dict]]:
 
 
 def _serialize_ignition_renewal_item(row: dict) -> dict:
+    recommendation_context = row.get("recommendation_context")
+    if not isinstance(recommendation_context, dict):
+        recommendation_context = {}
     return {
         "id": str(row.get("id") or ""),
         "runId": str(row.get("run_id") or ""),
@@ -16474,6 +16477,11 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
         "variance": float(_money(row.get("variance"))),
         "variancePercent": float(Decimal(str(row.get("variance_percent") or 0))),
         "comments": row.get("comments") or "",
+        "recommendedIncreasePercent": float(Decimal(str(row.get("recommended_increase_percent") or 0))),
+        "recommendationReason": str(row.get("recommendation_reason") or "").strip(),
+        "recommendationEngine": str(row.get("recommendation_engine") or "").strip(),
+        "recommendationHistorySampleSize": int(row.get("recommendation_history_sample_size") or 0),
+        "recommendationContext": _safe_json(recommendation_context),
         "zapierSentAt": _iso(row.get("zapier_sent_at")) or "",
         "createdAt": _iso(row.get("created_at")) or "",
         "updatedAt": _iso(row.get("updated_at")) or "",
@@ -16520,6 +16528,65 @@ def _serialize_ignition_renewal_candidate(item: dict) -> dict:
         "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
         "newMonthlyFee": float(_money(item.get("new_monthly_fee"))),
     }
+
+
+def _enrich_ignition_renewal_items_with_recommendations(user: dict, items: list[dict], cursor) -> None:
+    if not items:
+        return
+    cursor.execute(
+        """
+        SELECT external_id, payload
+        FROM ignition_reporting_records
+        WHERE user_id = %s
+          AND dataset = 'proposals'
+        """,
+        (user["id"],),
+    )
+    proposal_records = cursor.fetchall() or []
+    cursor.execute(
+        """
+        SELECT proposal_external_id, client_name, plan_name, service_name, renewal_date,
+               current_monthly_fee, new_monthly_fee
+        FROM ignition_renewal_items
+        WHERE user_id = %s
+        """,
+        (user["id"],),
+    )
+    previous_items = cursor.fetchall() or []
+    cursor.execute(
+        """
+        SELECT client_key, plan_key, history_hash, recommended_increase_percent, reason, engine, history_sample_size
+        FROM ignition_renewal_price_recommendations
+        WHERE user_id = %s
+        """,
+        (user["id"],),
+    )
+    cached_rows = cursor.fetchall() or []
+    cached_by_key = {
+        (
+            str(row.get("client_key") or ""),
+            str(row.get("plan_key") or ""),
+            str(row.get("history_hash") or ""),
+        ): row
+        for row in cached_rows
+    }
+    for item in items:
+        context = _ignition_recommendation_context(item, proposal_records, previous_items)
+        cached = cached_by_key.get((context["client_key"], context["plan_key"], context["history_hash"]))
+        if cached:
+            increase_percent = _clamp_uplift_percent(Decimal(str(cached.get("recommended_increase_percent") or 0)))
+            reason = str(cached.get("reason") or "").strip() or "Cached historical recommendation reused."
+            engine = str(cached.get("engine") or "cache")
+            history_sample_size = int(cached.get("history_sample_size") or len(context["recent_changes"]))
+        else:
+            increase_percent, reason = _ignition_rule_uplift_recommendation(context)
+            engine = "rule"
+            history_sample_size = len(context["recent_changes"])
+        item["recommended_increase_percent"] = increase_percent
+        item["recommendation_reason"] = reason
+        item["recommendation_engine"] = engine
+        item["recommendation_history_sample_size"] = history_sample_size
+        item["recommendation_context"] = context.get("context_payload") or {}
 
 
 def _ignition_renewal_candidates_for_user(user: dict) -> dict:
@@ -17238,6 +17305,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
                     (current_run["id"], user["id"]),
                 )
                 items = cursor.fetchall()
+                _enrich_ignition_renewal_items_with_recommendations(user, items, cursor)
             cursor.execute(
                 """
                 SELECT id, status, window_start, window_end, picked_count, skipped_count,
