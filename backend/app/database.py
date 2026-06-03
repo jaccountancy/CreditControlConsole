@@ -1353,6 +1353,13 @@ CREATE TABLE IF NOT EXISTS ch_auth_codes (
     last_used_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE ch_auth_codes ADD COLUMN IF NOT EXISTS code_hint TEXT NOT NULL DEFAULT '';
+ALTER TABLE ch_auth_codes ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+ALTER TABLE ch_auth_codes ADD COLUMN IF NOT EXISTS uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE ch_auth_codes ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ch_auth_codes ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+ALTER TABLE ch_auth_codes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+CREATE UNIQUE INDEX IF NOT EXISTS ch_auth_codes_company_unique_idx ON ch_auth_codes (company_id);
 
 CREATE TABLE IF NOT EXISTS ch_auth_code_register (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
