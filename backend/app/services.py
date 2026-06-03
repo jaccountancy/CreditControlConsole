@@ -14987,6 +14987,7 @@ IGNITION_RENEWAL_END_DATE_KEYS = {
     "service_end_date",
 }
 IGNITION_RENEWAL_END_DATE_KEYS_NORMALISED = {key.replace("_", "").replace("-", "") for key in IGNITION_RENEWAL_END_DATE_KEYS}
+IGNITION_RENEWAL_END_DATE_SCAN_LIMIT = 2000
 IGNITION_RENEWAL_WORKBOOK_HEADERS = [
     "Client Name",
     "Client Manager",
@@ -15821,29 +15822,37 @@ def _ignition_proposal_contract_months(row: dict) -> int | None:
 
 
 def _ignition_proposal_end_date(row: dict) -> date | None:
-    def walk(value) -> date | None:
-        if isinstance(value, dict):
-            for key, item in value.items():
+    for key, item in row.items():
+        key_text = str(key or "").strip().lower()
+        key_normalised = key_text.replace("_", "").replace("-", "")
+        if key_text in IGNITION_RENEWAL_END_DATE_KEYS or key_normalised in IGNITION_RENEWAL_END_DATE_KEYS_NORMALISED:
+            parsed = _parse_ignition_renewal_date_value(item)
+            if parsed:
+                return parsed
+
+    stack: list[dict | list] = [row]
+    scanned_nodes = 0
+    while stack and scanned_nodes < IGNITION_RENEWAL_END_DATE_SCAN_LIMIT:
+        current = stack.pop()
+        scanned_nodes += 1
+        if isinstance(current, dict):
+            for key, item in current.items():
                 key_text = str(key or "").strip().lower()
                 key_normalised = key_text.replace("_", "").replace("-", "")
                 if key_text in IGNITION_RENEWAL_END_DATE_KEYS or key_normalised in IGNITION_RENEWAL_END_DATE_KEYS_NORMALISED:
                     parsed = _parse_ignition_renewal_date_value(item)
                     if parsed:
                         return parsed
-            for item in value.values():
-                parsed = walk(item)
-                if parsed:
-                    return parsed
-        elif isinstance(value, list):
-            for item in value:
-                parsed = walk(item)
-                if parsed:
-                    return parsed
-        return None
+                if isinstance(item, (dict, list)):
+                    stack.append(item)
+        else:
+            for item in current:
+                if isinstance(item, (dict, list)):
+                    stack.append(item)
 
-    parsed_end = walk(row)
-    if parsed_end:
-        return parsed_end
+    if scanned_nodes >= IGNITION_RENEWAL_END_DATE_SCAN_LIMIT:
+        logger.debug("Ignition proposal end-date scan reached node limit (%s).", IGNITION_RENEWAL_END_DATE_SCAN_LIMIT)
+
     contract_months = _ignition_proposal_contract_months(row)
     if contract_months is None:
         return None
@@ -16415,13 +16424,14 @@ def _ignition_client_register_manager_overrides(user_id: str) -> dict[str, str]:
     return overrides
 
 
-def _ignition_manager_override_for_proposal(row: dict, overrides: dict[str, str]) -> str:
+def _ignition_manager_override_for_proposal(
+    row: dict,
+    overrides: dict[str, str],
+    lookup_keys: list[str] | None = None,
+) -> str:
     if not overrides:
         return ""
-    keys: list[str] = []
-    keys.extend(_ignition_name_match_keys(_ignition_proposal_client_name(row)))
-    keys.extend(_ignition_name_match_keys(_first_mapping_text(row.get("client"), ("name", "business_name", "company_name", "display_name"))))
-    keys.extend(_ignition_name_match_keys(_first_mapping_text(row.get("customer"), ("name", "business_name", "company_name", "display_name"))))
+    keys = lookup_keys if lookup_keys is not None else _ignition_client_lookup_keys(row)
     for key in keys:
         if key and key in overrides:
             return overrides[key]
@@ -16451,16 +16461,21 @@ def _ignition_upcoming_renewal_proposals(
         if not _ignition_proposal_client_is_active(proposal_payload):
             continue
         item = _ignition_renewal_item_seed(record, renewal_date)
+        lookup_keys = _ignition_client_lookup_keys(proposal_payload)
         if not item.get("client_created_date"):
-            for key in _ignition_client_lookup_keys(proposal_payload):
+            for key in lookup_keys:
                 fallback_created_date = client_created_lookup.get(key)
                 if fallback_created_date:
                     item["client_created_date"] = fallback_created_date
                     break
-        manager_override = _ignition_manager_override_for_proposal(proposal_payload, manager_overrides)
+        manager_override = _ignition_manager_override_for_proposal(
+            proposal_payload,
+            manager_overrides,
+            lookup_keys=lookup_keys,
+        )
         if manager_override:
             item["client_manager"] = manager_override
-        for key in _ignition_client_lookup_keys(proposal_payload):
+        for key in lookup_keys:
             client_id = client_id_lookup.get(key)
             if client_id:
                 item["client_id"] = client_id
@@ -18106,11 +18121,31 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
             for run in recent_runs:
                 run["batch_reference_number"] = _ensure_ignition_renewal_batch_reference_number(cursor, user["id"], str(run["id"]))
         connection.commit()
+    candidate_pool: dict = {}
+    try:
+        candidate_pool = _ignition_renewal_candidates_for_user(user)
+    except Exception:
+        logger.exception("Unable to build Ignition renewal candidate pool for user %s", user.get("id"))
+        today = utcnow().date()
+        candidate_pool = {
+            "windowStart": today.isoformat(),
+            "windowEnd": (today + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)).isoformat(),
+            "windowWeeks": IGNITION_RENEWAL_WINDOW_WEEKS,
+            "syncedCount": 0,
+            "candidateCount": 0,
+            "nameExcludedCount": 0,
+            "selfAssessmentExcludedCount": 0,
+            "manuallyIneligibleCount": 0,
+            "availableCount": 0,
+            "alreadyPickedCount": 0,
+            "candidates": [],
+            "error": "Unable to build renewal candidates from cached Ignition data.",
+        }
     return {
         "recipientEmail": get_settings().ignition_renewals_recipient_email or "",
         "currentRun": _serialize_ignition_renewal_run(current_run, items),
         "recentRuns": [_serialize_ignition_renewal_run(row) for row in recent_runs],
-        "candidatePool": _ignition_renewal_candidates_for_user(user),
+        "candidatePool": candidate_pool,
     }
 
 
