@@ -3116,10 +3116,10 @@
                 flex: 1 1 100%;
                 display: flex;
                 align-items: center;
-                justify-content: flex-end;
+                justify-content: flex-start;
                 gap: 8px;
                 flex-wrap: wrap;
-                margin-left: auto;
+                margin-left: 0;
             }
             .ignition-renewals-topbar-button[hidden] {
                 display: none;
@@ -13229,6 +13229,69 @@
                 font-size: 0.9rem;
                 font-weight: 820;
             }
+            .ignition-renewals-progress.is-start-loading {
+                position: relative;
+                background:
+                    radial-gradient(130% 190% at 2% 2%, rgba(29, 103, 242, 0.14) 0%, rgba(29, 103, 242, 0) 58%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 246, 255, 0.96) 100%);
+                border-color: rgba(29, 103, 242, 0.2);
+            }
+            .ignition-renewals-start-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }
+            .ignition-renewals-start-ai-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border-radius: 999px;
+                border: 1px solid rgba(29, 103, 242, 0.26);
+                background: rgba(236, 243, 255, 0.92);
+                color: #1b57c6;
+                font-size: 0.76rem;
+                font-weight: 900;
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+            .ignition-renewals-start-ai-chip::before {
+                content: "";
+                width: 8px;
+                height: 8px;
+                border-radius: 999px;
+                background: #1d67f2;
+                box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.26);
+                animation: renewals-start-ai-dot 1.35s ease-in-out infinite;
+            }
+            .ignition-renewals-start-message {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.95rem;
+                font-weight: 780;
+                line-height: 1.45;
+                animation: renewals-loading-copy-enter 280ms ease;
+            }
+            .ignition-renewals-progress.is-start-loading .sync-progress-track {
+                position: relative;
+                overflow: hidden;
+            }
+            .ignition-renewals-progress.is-start-loading .sync-progress-track::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(110deg, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0.7) 46%, rgba(255, 255, 255, 0) 74%);
+                transform: translateX(-120%);
+                animation: renewals-start-track-sheen 2.1s ease-in-out infinite;
+                pointer-events: none;
+            }
+            .ignition-renewals-start-caption {
+                margin: 0;
+                color: var(--ink);
+                font-size: 0.9rem;
+                font-weight: 830;
+            }
             @keyframes renewals-loading-copy-enter {
                 from { opacity: 0; transform: translateY(5px); }
                 to { opacity: 1; transform: translateY(0); }
@@ -13236,6 +13299,14 @@
             @keyframes renewals-loading-active-dot {
                 0%, 100% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.28); }
                 50% { box-shadow: 0 0 0 7px rgba(29, 103, 242, 0.08); }
+            }
+            @keyframes renewals-start-track-sheen {
+                from { transform: translateX(-120%); }
+                to { transform: translateX(120%); }
+            }
+            @keyframes renewals-start-ai-dot {
+                0%, 100% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.24); }
+                55% { box-shadow: 0 0 0 8px rgba(29, 103, 242, 0.07); }
             }
             .ignition-renewals-table-wrap {
                 overflow: auto;
@@ -22482,6 +22553,8 @@
             let ignitionRenewalBatchSearchTerm = "";
             let ignitionRenewalBatchSortMode = "created-desc";
             let ignitionRenewalBatchStatusFilter = "all";
+            let ignitionRenewalStartLoadingStartedAt = 0;
+            let ignitionRenewalStartLoadingTimer = null;
             let ignitionRenewalBatchRefs = loadIgnitionRenewalBatchRefs();
             let ignitionRenewalBatchRefCounter = Math.max(0, ...Object.values(ignitionRenewalBatchRefs).map((value) => Number(value) || 0));
             let ignitionRenewalStartModalOpen = false;
@@ -22490,6 +22563,7 @@
             let ignitionRenewalHistorySelectedRunId = "";
             const ignitionRenewalHistoryByRunId = new Map();
             const ignitionRenewalsEstimatedSeconds = 90;
+            const IGNITION_RENEWALS_STAGE_MIN_SECONDS = 2;
             const IGNITION_RENEWALS_LOADING_STEPS = [
                 {
                     short: "Pulling together prices from Ignition",
@@ -22507,6 +22581,12 @@
                     short: "Filtering out non-renewal work",
                     detail: "Filtering out things like Self Assessment, Year End Accounts, and Confirmation Statements."
                 }
+            ];
+            const IGNITION_RENEWAL_START_LOADING_STEPS = [
+                "Jenius AI reviewing potential clients in Ignition coming up for renewal.",
+                "Checking accepted proposals and active client status for this renewal window.",
+                "Now comparing older proposals to benchmark fee changes before selection.",
+                "Matching client manager ownership and filtering out non-renewal work."
             ];
             let isIgnitionSyncing = false;
             let activeIgnitionSyncRunId = null;
@@ -39953,13 +40033,19 @@
                 if (markIneligibleButton) markIneligibleButton.disabled = ignitionRenewalStartLoading || !selectedSet.size;
                 if (!wrap) return;
                 if (ignitionRenewalStartLoading) {
+                    const loadingState = ignitionRenewalStartLoadingState();
                     wrap.innerHTML = `
-                        <div class="ignition-renewals-progress" role="status" aria-live="polite">
-                            <p class="eyebrow">Preparing</p>
-                            <strong>Building eligible client list</strong>
-                            <p>Refreshing accepted active-client proposals with period end dates in the next 8 weeks.</p>
-                            <div class="sync-progress-track" aria-hidden="true"><span class="sync-progress-bar" style="width: 58%"></span></div>
-                            <p>Please wait while the latest list is prepared.</p>
+                        <div class="ignition-renewals-progress is-start-loading" role="status" aria-live="polite">
+                            <div class="ignition-renewals-start-head">
+                                <p class="eyebrow">Preparing</p>
+                                <span class="ignition-renewals-start-ai-chip">Jenius AI live review</span>
+                            </div>
+                            <p class="ignition-renewals-progress-stage-label">Stage ${loadingState.index + 1} of ${loadingState.total}</p>
+                            <strong class="ignition-renewals-progress-headline">Building eligible client list</strong>
+                            <p class="ignition-renewals-start-message">${escapeHTML(loadingState.message)}</p>
+                            <ol class="ignition-renewals-progress-steps">${renderIgnitionRenewalsLoadingSteps(loadingState.index)}</ol>
+                            <div class="sync-progress-track" aria-hidden="true"><span class="sync-progress-bar" style="width: ${loadingState.progress}%"></span></div>
+                            <p class="ignition-renewals-start-caption">Jenius AI is reviewing potential clients in Ignition coming up for renewal.</p>
                         </div>
                     `;
                     return;
@@ -40244,8 +40330,7 @@
             function ignitionRenewalsLoadingStep() {
                 const elapsed = ignitionRenewalsElapsedSeconds();
                 const steps = IGNITION_RENEWALS_LOADING_STEPS;
-                const cadenceSeconds = 6;
-                const index = Math.floor(elapsed / cadenceSeconds) % steps.length;
+                const index = Math.min(steps.length - 1, Math.floor(elapsed / IGNITION_RENEWALS_STAGE_MIN_SECONDS));
                 return {
                     ...steps[index],
                     index,
@@ -40258,6 +40343,42 @@
                     const stateClass = index < activeIndex ? "is-complete" : (index === activeIndex ? "is-active" : "");
                     return `<li class="ignition-renewals-progress-step ${stateClass}">${escapeHTML(step.short)}</li>`;
                 }).join("");
+            }
+
+            function ignitionRenewalStartLoadingElapsedSeconds() {
+                return ignitionRenewalStartLoadingStartedAt
+                    ? Math.max(0, Math.floor((Date.now() - ignitionRenewalStartLoadingStartedAt) / 1000))
+                    : 0;
+            }
+
+            function ignitionRenewalStartLoadingState() {
+                const elapsed = ignitionRenewalStartLoadingElapsedSeconds();
+                const steps = IGNITION_RENEWAL_START_LOADING_STEPS;
+                const stageSeconds = 2;
+                const index = Math.floor(elapsed / stageSeconds) % steps.length;
+                const progress = Math.min(92, Math.max(12, 12 + (elapsed * 10)));
+                return {
+                    message: steps[index] || steps[0],
+                    index,
+                    total: steps.length,
+                    progress,
+                };
+            }
+
+            function startIgnitionRenewalStartLoadingTimer() {
+                window.clearInterval(ignitionRenewalStartLoadingTimer);
+                ignitionRenewalStartLoadingTimer = window.setInterval(() => {
+                    if (!ignitionRenewalStartLoading || !ignitionRenewalStartModalOpen) {
+                        stopIgnitionRenewalStartLoadingTimer();
+                        return;
+                    }
+                    renderIgnitionRenewalStartModal();
+                }, 900);
+            }
+
+            function stopIgnitionRenewalStartLoadingTimer() {
+                window.clearInterval(ignitionRenewalStartLoadingTimer);
+                ignitionRenewalStartLoadingTimer = null;
             }
 
             function updateIgnitionRenewalsTopbarProgress() {
@@ -40821,6 +40942,8 @@
                 ignitionRenewalsStartedAt = Date.now();
                 const renewalsController = new AbortController();
                 const renewalsTimeout = window.setTimeout(() => renewalsController.abort(), 120000);
+                const loadingSequenceMinimumMs = IGNITION_RENEWALS_LOADING_STEPS.length * IGNITION_RENEWALS_STAGE_MIN_SECONDS * 1000;
+                let holdLoadingUntilSequenceCompletes = true;
                 startIgnitionRenewalsProgressTimer();
                 updateIgnitionRenewalsTopbarProgress();
                 renderIgnitionScreen();
@@ -40839,12 +40962,19 @@
                         openIgnitionRenewalsBatchStage();
                     }
                 } catch (error) {
+                    holdLoadingUntilSequenceCompletes = false;
                     console.error("Unable to create Ignition renewal run", error);
                     const message = error?.name === "AbortError"
                         ? "Preparing proposal list timed out after 2 minutes. Please retry after running an Ignition sync."
                         : (error.message || "Unable to create proposal list");
                     showToast(message, "error");
                 } finally {
+                    if (holdLoadingUntilSequenceCompletes) {
+                        const elapsedMs = Math.max(0, Date.now() - ignitionRenewalsStartedAt);
+                        if (elapsedMs < loadingSequenceMinimumMs) {
+                            await delay(loadingSequenceMinimumMs - elapsedMs);
+                        }
+                    }
                     window.clearTimeout(renewalsTimeout);
                     ignitionRenewalsLoading = false;
                     ignitionRenewalsStartedAt = 0;
