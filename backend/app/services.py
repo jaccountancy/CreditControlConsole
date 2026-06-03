@@ -16539,6 +16539,29 @@ def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None =
     }
 
 
+def _ignition_renewal_batch_reference(user: dict, run_id: str) -> str:
+    reference_number = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT sequence.reference_number
+                FROM (
+                    SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS reference_number
+                    FROM ignition_renewal_runs
+                    WHERE user_id = %s
+                ) AS sequence
+                WHERE sequence.id = %s
+                """,
+                (user["id"], run_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                reference_number = int(row.get("reference_number") or 0)
+        connection.commit()
+    return f"JUKRE-{max(1, reference_number):03d}"
+
+
 def _serialize_ignition_renewal_candidate(item: dict) -> dict:
     return {
         "proposalExternalId": str(item.get("proposal_external_id") or ""),
@@ -16896,6 +16919,11 @@ async def _ignition_renewal_ai_summary(run: dict, items: list[dict]) -> str:
 
 
 def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str = "") -> str:
+    def _email_plain_text(value: object) -> str:
+        text = str(value or "")
+        text = re.sub(r"<[^>]*>", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
     total_current = _money(run.get("total_current_monthly"))
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
@@ -16905,22 +16933,59 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str
         by_plan[item.get("plan_name") or "Other"] += 1
     plan_summary = ", ".join(f"{plan}: {count}" for plan, count in sorted(by_plan.items())) or "No plan data"
     summary = str(summary_text or "").strip() or _ignition_renewal_default_summary(run, items)
-    return (
-        "Hi,\n\n"
-        f"{summary}\n\n"
-        "The latest Ignition renewals round has been finalised and is ready to action.\n\n"
-        f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}\n"
-        f"Renewals included: {len(items)}\n"
-        f"Current monthly fees: £{total_current:,.2f}\n"
-        f"Proposed monthly fees: £{total_new:,.2f}\n"
-        f"Extra generated from this batch (monthly): £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)\n"
-        f"Extra generated from this batch (annualised): £{annualised_uplift:,.2f}\n"
-        f"Plans: {plan_summary}\n\n"
-        "The attached PDF report contains the client list, renewal dates, current fees, proposed fees, variances, and comments.\n"
+    lines = [
+        "Hi,",
+        "",
+        summary,
+        "",
+        "The latest Ignition renewals round has been finalised and is ready to action.",
+        "",
+        f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}",
+        f"Renewals included: {len(items)}",
+        f"Current monthly fees: £{total_current:,.2f}",
+        f"Proposed monthly fees: £{total_new:,.2f}",
+        f"Extra generated from this batch (monthly): £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)",
+        f"Extra generated from this batch (annualised): £{annualised_uplift:,.2f}",
+        f"Plans: {plan_summary}",
+        "",
+        "Renewal details:",
+    ]
+
+    sorted_items = sorted(
+        items,
+        key=lambda item: (
+            _iso(item.get("renewal_date")) or "9999-12-31",
+            _email_plain_text(item.get("client_name")).lower(),
+        ),
     )
+    for index, item in enumerate(sorted_items, start=1):
+        current = _money(item.get("current_monthly_fee"))
+        proposed = _money(item.get("new_monthly_fee"))
+        item_variance = _money(proposed - current)
+        item_variance_percent = ((item_variance / current) * Decimal("100")) if current > 0 else Decimal("0")
+        lines.extend([
+            "",
+            (
+                f"{index}. {_email_plain_text(item.get('client_name')) or 'Client'}"
+                f" | Manager: {_email_plain_text(item.get('client_manager')) or '-'}"
+                f" | Renewal date: {_iso(item.get('renewal_date')) or '-'}"
+            ),
+            (
+                f"   Current: £{current:,.2f} | Proposed: £{proposed:,.2f}"
+                f" | Variance: £{item_variance:,.2f} ({item_variance_percent:.1f}%)"
+            ),
+            f"   Plan/service: {_email_plain_text(item.get('plan_name') or item.get('service_name')) or '-'}",
+            f"   Comments: {_email_plain_text(item.get('comments')) or '-'}",
+        ])
+
+    lines.extend([
+        "",
+        "A PDF copy of this renewal batch is also attached.",
+    ])
+    return "\n".join(lines).strip() + "\n"
 
 
-def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
+def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: str = "") -> bytes:
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
@@ -17048,9 +17113,10 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     annualised_uplift = variance * Decimal("12")
     generated_at = _iso(utcnow())
+    report_title = f"Renewals : {batch_reference}" if str(batch_reference or "").strip() else "Renewals Proposal Round"
 
     story.extend([
-        Paragraph("Renewals Proposal Round", title_style),
+        Paragraph(report_title, title_style),
         Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", subtitle_style),
         Paragraph(f"Generated: {generated_at}", subtitle_style),
         Spacer(1, 10),
@@ -17099,7 +17165,6 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         Paragraph("Proposed Monthly", header_cell_style),
         Paragraph("Variance", header_cell_style),
         Paragraph("Variance %", header_cell_style),
-        Paragraph("Comments", header_cell_style),
     ]]
     for item in items:
         current = _money(item.get("current_monthly_fee"))
@@ -17114,7 +17179,6 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
             Paragraph(f"£{proposed:,.2f}", money_cell_style),
             Paragraph(f"£{variance:,.2f}", money_cell_style),
             Paragraph(f"{increase_percent:.1f}%", money_cell_style),
-            Paragraph(_pdf_plain_text(item.get("comments")) or "-", cell_style),
         ])
 
     table_rows.append([
@@ -17125,18 +17189,16 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         Paragraph(f"£{total_new:,.2f}", total_row_style),
         Paragraph(f"£{variance:,.2f}", total_row_style),
         Paragraph(f"{variance_percent * Decimal('100'):.1f}%", total_row_style),
-        Paragraph("", total_row_style),
     ])
 
     col_widths = [
-        document.width * 0.19,
+        document.width * 0.24,
+        document.width * 0.13,
+        document.width * 0.12,
+        document.width * 0.14,
+        document.width * 0.14,
         document.width * 0.11,
-        document.width * 0.10,
-        document.width * 0.11,
-        document.width * 0.11,
-        document.width * 0.09,
-        document.width * 0.08,
-        document.width * 0.21,
+        document.width * 0.12,
     ]
     table = Table(
         table_rows,
@@ -17170,7 +17232,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         canvas.line(doc.leftMargin, 18, doc.pagesize[0] - doc.rightMargin, 18)
         canvas.setFillColor(colors.HexColor("#6D839C"))
         canvas.setFont("Helvetica", 7.2)
-        canvas.drawString(doc.leftMargin, 10, "Jaccountancy | Renewals Proposal Round")
+        canvas.drawString(doc.leftMargin, 10, f"Jaccountancy | {report_title}")
         canvas.drawRightString(doc.pagesize[0] - doc.rightMargin, 10, f"Page {canvas.getPageNumber()}")
         canvas.restoreState()
 
@@ -17184,8 +17246,9 @@ def ignition_renewals_report_pdf(user: dict, run_id: str) -> tuple[bytes, str]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to export.")
     if not run.get("finalised_at"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before exporting the PDF report.")
+    batch_reference = _ignition_renewal_batch_reference(user, run_id)
     filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
-    return _build_ignition_renewals_pdf(run, items), filename
+    return _build_ignition_renewals_pdf(run, items, batch_reference=batch_reference), filename
 
 
 async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -> dict:
@@ -17559,7 +17622,8 @@ async def send_ignition_renewals_email(user: dict, run_id: str, payload: dict | 
     subject = email_preview["subject"]
     body = email_preview["body"]
     run, items = _ignition_renewal_run_with_items(user, run_id)
-    report_pdf = _build_ignition_renewals_pdf(run, items)
+    batch_reference = _ignition_renewal_batch_reference(user, run_id)
+    report_pdf = _build_ignition_renewals_pdf(run, items, batch_reference=batch_reference)
     filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
     message = EmailMessage()
     message["Subject"] = subject
