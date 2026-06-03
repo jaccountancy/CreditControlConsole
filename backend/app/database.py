@@ -1318,6 +1318,7 @@ CREATE TABLE IF NOT EXISTS ch_companies (
     next_due_date DATE,
     last_filed_date DATE,
     filing_history JSONB NOT NULL DEFAULT '[]'::jsonb,
+    workflow_review JSONB NOT NULL DEFAULT '{}'::jsonb,
     internal_status TEXT NOT NULL DEFAULT 'active',
     filing_authority_status TEXT NOT NULL DEFAULT 'authorised',
     filing_authority_reference TEXT NOT NULL DEFAULT '',
@@ -1338,6 +1339,7 @@ ALTER TABLE ch_companies ALTER COLUMN filing_authority_status SET DEFAULT 'autho
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_reference TEXT NOT NULL DEFAULT '';
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_received_at TIMESTAMPTZ;
 ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS filing_authority_expires_at TIMESTAMPTZ;
+ALTER TABLE ch_companies ADD COLUMN IF NOT EXISTS workflow_review JSONB NOT NULL DEFAULT '{}'::jsonb;
 CREATE INDEX IF NOT EXISTS ch_companies_filing_authority_idx ON ch_companies (filing_authority_status, filing_authority_expires_at);
 
 CREATE TABLE IF NOT EXISTS ch_auth_codes (

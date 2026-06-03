@@ -48,6 +48,14 @@ VALID_INTERNAL_STATUSES = {
     "ready_to_file",
 }
 VALID_FILING_AUTHORITY_STATUSES = {"pending", "authorised", "expired", "revoked"}
+CH_WORKFLOW_REVIEW_SECTIONS = (
+    "company",
+    "people",
+    "address",
+    "sic",
+    "capital",
+    "authority",
+)
 
 CLIENT_IMPORT_HEADER_ALIASES = {
     "client_name": {"client name", "client", "customer", "customer name"},
@@ -3468,6 +3476,38 @@ def _date_or_none(value):
         return None
 
 
+def _normalise_workflow_review(value: object, *, user_id: str | None = None) -> dict:
+    source = value if isinstance(value, dict) else {}
+    raw_sections = source.get("sections") if isinstance(source.get("sections"), dict) else {}
+    sections = {
+        key: bool(raw_sections.get(key))
+        for key in CH_WORKFLOW_REVIEW_SECTIONS
+    }
+    complete = all(sections.values())
+    notes = _coerce_text(source.get("notes"), 2000) if "notes" in source else _coerce_text("", 2000)
+    if source.get("completedAt"):
+        completed_at = _xml_text(source.get("completedAt"))
+    else:
+        completed_at = utcnow().isoformat() if complete else None
+    return {
+        "sections": sections,
+        "isComplete": complete,
+        "completedAt": completed_at,
+        "updatedAt": utcnow().isoformat(),
+        "updatedByUserId": user_id or "",
+        "notes": notes,
+    }
+
+
+def _workflow_review_complete(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    sections = value.get("sections") if isinstance(value.get("sections"), dict) else {}
+    if not sections:
+        return False
+    return all(bool(sections.get(key)) for key in CH_WORKFLOW_REVIEW_SECTIONS)
+
+
 def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     today = date.today()
     next_due = row.get("next_due_date")
@@ -3495,6 +3535,8 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
     if blocked_internal:
         submission_issues.append(f"Blocked by internal status ({internal_status.replace('_', ' ')}).")
     filing_authority_status = str(row.get("filing_authority_status") or "pending")
+    workflow_review = row.get("workflow_review") if isinstance(row.get("workflow_review"), dict) else {}
+    workflow_review_complete = _workflow_review_complete(workflow_review)
     if filing_authority_status != "authorised" and not has_auth:
         submission_issues.append("Filing authority is not authorised.")
     authority_expires_at = row.get("filing_authority_expires_at")
@@ -3560,6 +3602,8 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "officers": row.get("officers") or [],
         "pscs": row.get("pscs") or [],
         "shareCapital": row.get("share_capital") or {},
+        "workflowReview": workflow_review,
+        "workflowReviewComplete": workflow_review_complete,
         "nextMadeUpToDate": _date_or_none(row.get("next_made_up_to_date")),
         "nextDueDate": _date_or_none(row.get("next_due_date")),
         "lastFiledDate": _date_or_none(row.get("last_filed_date")),
@@ -3931,6 +3975,21 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         review_date = made_up_to
         workflow_action = workflow_actions_by_company_id.get(company_id, "no-changes")
         include_change_sections = workflow_action == "changes-required"
+        if include_change_sections and not _workflow_review_complete(row.get("workflow_review")):
+            reason = (
+                "Changes required selected but full confirmation statement walkthrough is not complete. "
+                "Open workflow review and complete all sections first."
+            )
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
+            skipped.append(
+                {
+                    "companyId": company_id,
+                    "companyNumber": company_number,
+                    "companyName": company_name,
+                    "reason": reason,
+                }
+            )
+            continue
         cs_payload = _build_cs01_payload(row, include_change_sections=include_change_sections)
         validation_errors = _validate_cs01_payload(
             row,
@@ -4997,6 +5056,11 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
         merged_share_capital = {**current_share_capital, **share_capital_patch}
         updates["share_capital"] = json.dumps(merged_share_capital)
         json_columns.add("share_capital")
+
+    if "workflowReview" in payload:
+        normalised_review = _normalise_workflow_review(payload.get("workflowReview"), user_id=user_id)
+        updates["workflow_review"] = json.dumps(normalised_review)
+        json_columns.add("workflow_review")
 
     if not updates and not auth_code_value:
         return get_company_detail(company_id)

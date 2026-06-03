@@ -51324,6 +51324,14 @@
                             return null;
                         };
                         const updates = [];
+                        const completedSections = {
+                            company: true,
+                            people: true,
+                            address: true,
+                            sic: true,
+                            capital: true,
+                            authority: true,
+                        };
                         const cardNodes = document.querySelectorAll("#operationReviewBody [data-ch-review-company-id]");
                         cardNodes.forEach((card) => {
                             const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
@@ -51376,6 +51384,11 @@
                             if (JSON.stringify(nextSicCodes) !== JSON.stringify(original.sicCodes)) body.sicCodes = nextSicCodes;
                             if (JSON.stringify(nextFlags) !== JSON.stringify(original.cs01Flags || {})) body.cs01Flags = nextFlags;
                             if (JSON.stringify(nextStatement) !== JSON.stringify(original.statementOfCapital || {})) body.statementOfCapital = nextStatement;
+                            body.workflowReview = {
+                                sections: completedSections,
+                                completedAt: new Date().toISOString(),
+                                notes: "Completed via confirmation statement workflow walkthrough.",
+                            };
                             if (Object.keys(body).length) updates.push({ companyId, body });
                         });
                         return updates;
@@ -51384,7 +51397,7 @@
                 if (!reviewResult) return false;
                 const updates = Array.isArray(reviewResult) ? reviewResult : [];
                 if (!updates.length) {
-                    showToast("No changes entered. Re-run when updates are required.", "info");
+                    showToast("No walkthrough updates recorded.", "info");
                     return true;
                 }
                 let successCount = 0;
