@@ -104,6 +104,7 @@ CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 25.0
 CH_GATEWAY_MAX_ELAPSED_SECONDS = 90.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd"
+CH_COMPANY_SNAPSHOT_CACHE_TTL = timedelta(hours=12)
 
 logger = logging.getLogger(__name__)
 _CH_SYNC_LOCK = threading.Lock()
@@ -703,10 +704,55 @@ def _first_filing_date(filing_history: list[dict]) -> date | None:
     return None
 
 
-def _fetch_ch_company_snapshot(company_number: str) -> dict:
+def _cached_ch_company_snapshot(company_number: str, max_age: timedelta = CH_COMPANY_SNAPSHOT_CACHE_TTL) -> dict | None:
+    cutoff = utcnow() - max_age
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT company_number, company_name, company_status, incorporation_date, registered_office,
+                       sic_codes, officers, pscs, next_made_up_to_date, next_due_date, last_filed_date, filing_history
+                FROM ch_companies
+                WHERE company_number = %s
+                  AND last_synced_at IS NOT NULL
+                  AND last_synced_at >= %s
+                LIMIT 1
+                """,
+                (company_number, cutoff),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    if not row:
+        return None
+    return {
+        "companyNumber": company_number,
+        "companyName": str(row.get("company_name") or "").strip(),
+        "companyStatus": str(row.get("company_status") or "").strip(),
+        "incorporationDate": row.get("incorporation_date"),
+        "registeredOffice": str(row.get("registered_office") or "").strip(),
+        "sicCodes": row.get("sic_codes") if isinstance(row.get("sic_codes"), list) else [],
+        "officers": row.get("officers") if isinstance(row.get("officers"), list) else [],
+        "pscs": row.get("pscs") if isinstance(row.get("pscs"), list) else [],
+        "nextMadeUpToDate": row.get("next_made_up_to_date"),
+        "nextDueDate": row.get("next_due_date"),
+        "lastFiledDate": row.get("last_filed_date"),
+        "filingHistory": row.get("filing_history") if isinstance(row.get("filing_history"), list) else [],
+    }
+
+
+def _fetch_ch_company_snapshot(
+    company_number: str,
+    *,
+    prefer_cache: bool = True,
+    max_cache_age: timedelta = CH_COMPANY_SNAPSHOT_CACHE_TTL,
+) -> dict:
     company_number = normalise_company_number(company_number)
     if not _is_valid_company_number(company_number):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid company number.")
+    if prefer_cache:
+        cached_snapshot = _cached_ch_company_snapshot(company_number, max_cache_age)
+        if cached_snapshot:
+            return cached_snapshot
     settings_row = _ensure_settings_row()
     environment = str(settings_row.get("environment") or "sandbox").strip().lower()
     api_key = _validated_companies_house_api_key(decrypt_api_key())

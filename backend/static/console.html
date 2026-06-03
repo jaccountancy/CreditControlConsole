@@ -54797,13 +54797,19 @@
                     const bankStatements = health.bankStatements || {};
                     const meReport = health.meReport || {};
                     const jashflow = health.jashflow || {};
+                    const companiesHouse = health.companiesHouse || {};
+                    const gmail = health.gmail || {};
                     const openAiReady = Boolean(health.openAiConfigured);
                     const ignitionStatus = ignition.latestSyncStatus || ignition.status || "not_connected";
                     const xeroStatus = xero.latestSyncStatus || (xero.connected ? "connected" : "disconnected");
+                    const chStatus = companiesHouse.latestSubmissionStatus || companiesHouse.status || "not_configured";
+                    const gmailStatus = gmail.status || (gmail.connected ? "connected" : "not_connected");
                     healthGrid.innerHTML = [
                         healthCard("Environment", statusLabel(health.environment, "Unknown"), openAiReady ? `OpenAI ${health.openAiModel || "configured"}` : "OpenAI not configured", openAiReady ? "is-live" : "is-warning"),
                         healthCard("Xero", statusLabel(xeroStatus), xero.tenantName || xero.latestSyncSummary || "No connected organisation", statusClass(xeroStatus, xero.connected ? "is-live" : "is-error")),
                         healthCard("Ignition", statusLabel(ignitionStatus), ignition.practiceName || ignition.latestSyncSummary || "No active Ignition connection", statusClass(ignitionStatus)),
+                        healthCard("Companies House", statusLabel(chStatus, "not configured"), `${formatInteger(companiesHouse.companiesTracked)} tracked · ${formatInteger(companiesHouse.dueSoonCount)} due soon`, statusClass(chStatus, companiesHouse.apiConfigured ? "is-live" : "is-warning")),
+                        healthCard("Gmail", statusLabel(gmailStatus, "not configured"), gmail.email || (gmail.configured ? "OAuth configured, no mailbox connected" : "OAuth not configured"), statusClass(gmailStatus, gmail.connected ? "is-live" : "is-warning")),
                         healthCard("Bank extraction", `${formatInteger(bankStatements.activeUploads)} active`, `${formatInteger(bankStatements.failedUploads)} failed · ${formatInteger(bankStatements.completedUploads)} completed`, Number(bankStatements.failedUploads || 0) ? "is-error" : Number(bankStatements.activeUploads || 0) ? "is-warning" : "is-live"),
                         healthCard("ME Report", `${formatInteger(meReport.activeSyncs)} active`, `${formatInteger(meReport.failedSyncs)} failed syncs`, Number(meReport.failedSyncs || 0) ? "is-error" : Number(meReport.activeSyncs || 0) ? "is-warning" : "is-live"),
                         healthCard("Jashflow", `${formatInteger(jashflow.activeLoans)} active`, `${formatInteger(jashflow.totalLoans)} total loans`, "is-live"),
@@ -54812,6 +54818,8 @@
                 if (healthDetails) {
                     const xero = health.xero || {};
                     const ignition = health.ignition || {};
+                    const companiesHouse = health.companiesHouse || {};
+                    const gmail = health.gmail || {};
                     const bankStatements = health.bankStatements || {};
                     const meReport = health.meReport || {};
                     const sessions = health.sessions || {};
@@ -54838,6 +54846,24 @@
                             ["Counts", `${formatInteger(ignition.processedCount)} processed · ${formatInteger(ignition.failedCount)} failed`],
                             ["Datasets", ignitionDatasetSummary],
                         ], statusClass(ignition.latestSyncStatus || ignition.status)),
+                        detailCard("Companies House", [
+                            ["Environment", statusLabel(companiesHouse.environment, "sandbox")],
+                            ["API key", companiesHouse.apiConfigured ? "Configured" : "Missing"],
+                            ["XML gateway", companiesHouse.gatewayConfigured ? "Configured" : "Missing"],
+                            ["Auto sync", companiesHouse.autoSyncEnabled ? "Enabled" : "Disabled"],
+                            ["Companies", `${formatInteger(companiesHouse.companiesTracked)} tracked · ${formatInteger(companiesHouse.dueSoonCount)} due soon`],
+                            ["Last synced", companiesHouse.latestSyncAt ? formatDeveloperLogStamp(companiesHouse.latestSyncAt) : "--"],
+                            ["Latest submission", `${statusLabel(companiesHouse.latestSubmissionStatus, "No submissions yet")}${companiesHouse.latestSubmissionAt ? ` · ${formatDeveloperLogStamp(companiesHouse.latestSubmissionAt)}` : ""}`],
+                            ["Submission queues", `${formatInteger(companiesHouse.activeSubmissions)} active · ${formatInteger(companiesHouse.failedSubmissions)} failed · ${formatInteger(companiesHouse.completedSubmissions)} completed`],
+                        ], statusClass(companiesHouse.latestSubmissionStatus || companiesHouse.status, companiesHouse.apiConfigured ? "is-live" : "is-warning")),
+                        detailCard("Gmail", [
+                            ["OAuth", gmail.configured ? "Configured" : "Not configured"],
+                            ["Connection", statusLabel(gmail.status, "not connected")],
+                            ["Mailbox", gmail.email || "--"],
+                            ["Token expiry", gmail.tokenExpiresAt ? formatDeveloperLogStamp(gmail.tokenExpiresAt) : "--"],
+                            ["Connection updated", gmail.lastConnectionUpdate ? formatDeveloperLogStamp(gmail.lastConnectionUpdate) : "--"],
+                            ["ME Report provider", statusLabel(gmail.meReportProvider, "smtp")],
+                        ], statusClass(gmail.status, gmail.connected ? "is-live" : "is-warning")),
                         detailCard("Operational Queues", [
                             ["Xero outbox", `${formatInteger(ledger.pendingActions)} pending · ${formatInteger(ledger.processingActions)} processing · ${formatInteger(ledger.failedActions)} failed`],
                             ["Bank PDFs", `${formatInteger(bankStatements.activeUploads)} active · ${formatInteger(bankStatements.failedUploads)} failed`],

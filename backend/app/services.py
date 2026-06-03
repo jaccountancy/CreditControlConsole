@@ -5503,6 +5503,64 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
     jashflow_summary = cursor.fetchone() or {}
     cursor.execute(
         """
+        SELECT status, gmail_email, token_expires_at, updated_at, created_at
+        FROM gmail_connections
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (user_id, user_id),
+    )
+    gmail_connection = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT email_provider, updated_at
+        FROM me_report_settings
+        WHERE (%s::uuid IS NULL OR user_id = %s::uuid)
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (user_id, user_id),
+    )
+    me_report_settings = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT environment, auto_sync_enabled, api_key_encrypted, presenter_id, presenter_auth_encrypted, updated_at
+        FROM ch_settings
+        WHERE singleton_id = 1
+        LIMIT 1
+        """
+    )
+    ch_settings = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS companies_tracked,
+               COUNT(*) FILTER (WHERE next_due_date IS NOT NULL AND next_due_date <= CURRENT_DATE + INTERVAL '30 days') AS due_soon_count,
+               MAX(last_synced_at) AS latest_sync_at
+        FROM ch_companies
+        """
+    )
+    ch_company_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT COUNT(*) FILTER (WHERE status IN ('submitted', 'pending', 'processing', 'in_progress')) AS active_submissions,
+               COUNT(*) FILTER (WHERE status IN ('rejected', 'failed', 'error')) AS failed_submissions,
+               COUNT(*) FILTER (WHERE status IN ('accepted', 'completed', 'filed')) AS completed_submissions
+        FROM ch_submissions
+        """
+    )
+    ch_submission_summary = cursor.fetchone() or {}
+    cursor.execute(
+        """
+        SELECT status, rejection_reason, submitted_at, completed_at, created_at
+        FROM ch_submissions
+        ORDER BY COALESCE(submitted_at, created_at) DESC
+        LIMIT 1
+        """
+    )
+    ch_latest_submission = cursor.fetchone() or {}
+    cursor.execute(
+        """
         SELECT COUNT(*) FILTER (WHERE expires_at > NOW()) AS active_sessions,
                MAX(last_seen_at) AS latest_seen_at
         FROM sessions
@@ -5521,6 +5579,20 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
     )
     audit_summary = cursor.fetchone() or {}
     settings = get_settings()
+    gmail_configured = gmail_oauth_configured()
+    gmail_connected = bool(gmail_connection)
+    gmail_status = "connected" if gmail_connected else ("not_connected" if gmail_configured else "not_configured")
+    ch_api_configured = bool(str(ch_settings.get("api_key_encrypted") or "").strip())
+    ch_gateway_configured = bool(str(ch_settings.get("presenter_id") or "").strip() and str(ch_settings.get("presenter_auth_encrypted") or "").strip())
+    ch_latest_status = str(ch_latest_submission.get("status") or "").strip().lower()
+    if ch_latest_status in {"submitted", "pending", "processing", "in_progress"}:
+        ch_connection_status = "running"
+    elif ch_latest_status in {"rejected", "failed", "error"}:
+        ch_connection_status = "failed"
+    elif ch_latest_status in {"accepted", "completed", "filed"}:
+        ch_connection_status = "completed"
+    else:
+        ch_connection_status = "connected" if ch_api_configured else "not_configured"
     return {
         "generatedAt": _iso(utcnow()),
         "databaseName": database_row.get("database_name") or "",
@@ -5624,6 +5696,36 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                 "activeLoans": _metric_int(jashflow_summary.get("active_loans")),
                 "totalLoans": _metric_int(jashflow_summary.get("total_loans")),
                 "latestLoanUpdate": _iso(jashflow_summary.get("latest_loan_update")) or "",
+            },
+            "companiesHouse": {
+                "status": ch_connection_status,
+                "environment": str(ch_settings.get("environment") or "sandbox").strip().lower(),
+                "autoSyncEnabled": bool(ch_settings.get("auto_sync_enabled")),
+                "apiConfigured": ch_api_configured,
+                "gatewayConfigured": ch_gateway_configured,
+                "settingsUpdatedAt": _iso(ch_settings.get("updated_at")) or "",
+                "companiesTracked": _metric_int(ch_company_summary.get("companies_tracked")),
+                "dueSoonCount": _metric_int(ch_company_summary.get("due_soon_count")),
+                "latestSyncAt": _iso(ch_company_summary.get("latest_sync_at")) or "",
+                "latestSubmissionStatus": ch_latest_submission.get("status") or "",
+                "latestSubmissionReason": ch_latest_submission.get("rejection_reason") or "",
+                "latestSubmissionAt": _iso(
+                    ch_latest_submission.get("submitted_at")
+                    or ch_latest_submission.get("completed_at")
+                    or ch_latest_submission.get("created_at")
+                ) or "",
+                "activeSubmissions": _metric_int(ch_submission_summary.get("active_submissions")),
+                "failedSubmissions": _metric_int(ch_submission_summary.get("failed_submissions")),
+                "completedSubmissions": _metric_int(ch_submission_summary.get("completed_submissions")),
+            },
+            "gmail": {
+                "status": gmail_status,
+                "configured": gmail_configured,
+                "connected": gmail_connected,
+                "email": gmail_connection.get("gmail_email") or "",
+                "tokenExpiresAt": _iso(gmail_connection.get("token_expires_at")) or "",
+                "lastConnectionUpdate": _iso(gmail_connection.get("updated_at") or gmail_connection.get("created_at")) or "",
+                "meReportProvider": me_report_settings.get("email_provider") or "smtp",
             },
             "sessions": {
                 "activeSessions": _metric_int(session_summary.get("active_sessions")),
