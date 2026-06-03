@@ -14921,6 +14921,7 @@ IGNITION_RENEWAL_MIN_UPLIFT = Decimal("0.0000")
 IGNITION_RENEWAL_MAX_UPLIFT = Decimal("0.1000")
 IGNITION_RENEWAL_HISTORY_LIMIT = 8
 IGNITION_RENEWAL_EDITABLE_STATUSES = {"draft", "awaiting_review", "review_needed", "failed"}
+IGNITION_RENEWAL_EXCLUDED_PROPOSAL_NAMES = {"ges 2024 accounts"}
 
 IGNITION_RENEWAL_RECOMMENDATION_SCHEMA = {
     "type": "object",
@@ -16664,6 +16665,16 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
         user["id"],
         client_records=client_records,
     )
+    named_excluded_candidates = [
+        item
+        for item in synced_candidates
+        if str(item.get("proposal_name") or "").strip().casefold() in IGNITION_RENEWAL_EXCLUDED_PROPOSAL_NAMES
+    ]
+    synced_candidates = [
+        item
+        for item in synced_candidates
+        if str(item.get("proposal_name") or "").strip().casefold() not in IGNITION_RENEWAL_EXCLUDED_PROPOSAL_NAMES
+    ]
     self_assessment_excluded = [
         item for item in synced_candidates if _ignition_proposal_is_self_assessment(item.get("proposal_payload") or {})
     ]
@@ -16694,6 +16705,7 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
         "windowWeeks": IGNITION_RENEWAL_WINDOW_WEEKS,
         "syncedCount": len(synced_candidates),
         "candidateCount": len(available),
+        "nameExcludedCount": len(named_excluded_candidates),
         "selfAssessmentExcludedCount": len(self_assessment_excluded),
         "manuallyIneligibleCount": manually_ineligible_count,
         "availableCount": len(available),
