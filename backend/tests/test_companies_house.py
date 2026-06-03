@@ -145,6 +145,38 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertEqual(key1, key2)
         self.assertNotEqual(key1, key3)
 
+    def test_bulk_submit_rejects_invalid_xero_unit_amount_setting(self):
+        with patch.object(
+            ch,
+            "_ensure_settings_row",
+            return_value={
+                "xero_invoice_unit_amount": "not-a-number",
+            },
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                ch.bulk_submit_confirmation_statements({"id": "u1"}, {"companyIds": ["cid-1"]})
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("xeroInvoiceUnitAmount", str(ctx.exception.detail))
+
+    def test_bulk_invoice_rejects_invalid_xero_unit_amount_setting(self):
+        with patch.object(
+            ch,
+            "_ensure_settings_row",
+            return_value={
+                "xero_invoice_account_code": "200",
+                "xero_invoice_item_code": "",
+                "xero_invoice_description": "Companies House confirmation statement filing",
+                "xero_invoice_tax_type": "NONE",
+                "xero_invoice_unit_amount": "not-a-number",
+            },
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                import asyncio
+
+                asyncio.run(ch.bulk_raise_submission_invoices({"id": "u1"}, {"companyIds": ["cid-1"]}))
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("xeroInvoiceUnitAmount", str(ctx.exception.detail))
+
     def test_connection_test_invalid_credentials(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox"}), \
              patch.object(ch, "decrypt_api_key", return_value="bad-key"), \

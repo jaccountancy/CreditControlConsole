@@ -7470,8 +7470,15 @@ def _serialize_me_report_sync_run(row: dict | None) -> dict | None:
 
 
 def _serialize_me_report_submission(row: dict) -> dict:
-    extracted_payload = row.get("extracted_payload") if isinstance(row.get("extracted_payload"), dict) else {}
-    calculation = extracted_payload.get("calculationSummary") if isinstance(extracted_payload.get("calculationSummary"), dict) else {}
+    calculation_summary = row.get("calculation_summary")
+    if isinstance(calculation_summary, str):
+        try:
+            calculation_summary = json.loads(calculation_summary)
+        except ValueError:
+            calculation_summary = {}
+    if not isinstance(calculation_summary, dict):
+        extracted_payload = row.get("extracted_payload") if isinstance(row.get("extracted_payload"), dict) else {}
+        calculation_summary = extracted_payload.get("calculationSummary") if isinstance(extracted_payload.get("calculationSummary"), dict) else {}
     return {
         "id": str(row["id"]),
         "filename": row.get("filename") or "",
@@ -7481,7 +7488,7 @@ def _serialize_me_report_submission(row: dict) -> dict:
         "summary": row.get("summary") or "",
         "estimatedCorporationTax": float(row.get("estimated_corporation_tax") or 0),
         "dividendCapacity": float(row.get("dividend_capacity") or 0),
-        "calculation": calculation,
+        "calculation": calculation_summary,
         "createdAt": _iso(row.get("created_at")) or "",
         "completedAt": _iso(row.get("completed_at")) or "",
     }
@@ -7828,7 +7835,19 @@ def _me_report_client_payloads(user: dict) -> tuple[list[dict], dict | None, dic
                     reports_by_client[row["client_id"]].append(row)
                 cursor.execute(
                     """
-                    SELECT *
+                    SELECT
+                        id,
+                        client_id,
+                        filename,
+                        content_type,
+                        status,
+                        error_message,
+                        summary,
+                        estimated_corporation_tax,
+                        dividend_capacity,
+                        created_at,
+                        completed_at,
+                        extracted_payload -> 'calculationSummary' AS calculation_summary
                     FROM me_report_submissions
                     WHERE client_id = ANY(%s)
                     ORDER BY created_at DESC

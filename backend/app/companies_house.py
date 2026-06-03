@@ -120,6 +120,18 @@ def _coerce_decimal(value, field: str) -> Decimal:
         ) from exc
 
 
+def _coerce_settings_amount(value, field: str) -> Decimal:
+    try:
+        return _coerce_decimal(value, field).quantize(Decimal("0.01"))
+    except HTTPException:
+        raise
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"'{field}' in Companies House settings must be a number.",
+        ) from exc
+
+
 def _load_settings_row() -> dict | None:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -3628,7 +3640,10 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
     presenter_id = _xml_text(settings_row.get("presenter_id"))
     presenter_auth = decrypt_presenter_auth()
     credit_account_number = _xml_text(settings_row.get("credit_account_number"))
-    configured_fee_amount = Decimal(str(settings_row.get("xero_invoice_unit_amount") or 0)).quantize(Decimal("0.01"))
+    configured_fee_amount = _coerce_settings_amount(
+        settings_row.get("xero_invoice_unit_amount"),
+        "xeroInvoiceUnitAmount",
+    )
     if configured_fee_amount <= Decimal("0.00"):
         configured_fee_amount = Decimal("13.00")
     preflight_errors: list[str] = []
@@ -4359,7 +4374,10 @@ async def bulk_raise_submission_invoices(user: dict, payload: dict | None = None
     item_code = str(settings_row.get("xero_invoice_item_code") or "").strip()
     description = str(settings_row.get("xero_invoice_description") or "Companies House confirmation statement filing").strip()
     tax_type = str(settings_row.get("xero_invoice_tax_type") or "NONE").strip() or "NONE"
-    configured_unit_amount = Decimal(str(settings_row.get("xero_invoice_unit_amount") or 0)).quantize(Decimal("0.01"))
+    configured_unit_amount = _coerce_settings_amount(
+        settings_row.get("xero_invoice_unit_amount"),
+        "xeroInvoiceUnitAmount",
+    )
     preflight_errors: list[str] = []
     if not account_code:
         preflight_errors.append("Set a Xero sales account code in Companies House settings before raising invoices.")
