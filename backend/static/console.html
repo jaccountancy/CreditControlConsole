@@ -13419,6 +13419,18 @@
                 text-transform: uppercase;
                 letter-spacing: 0.06em;
             }
+            .ignition-renewals-variance-summary {
+                display: none;
+                margin-top: 3px;
+                color: #6a7f9f;
+                font-size: 0.69rem;
+                font-weight: 780;
+                line-height: 1.3;
+                white-space: normal;
+            }
+            .ignition-renewals-variance-summary.is-visible {
+                display: block;
+            }
             .renewals-ai-populate-wrap {
                 display: flex;
                 justify-content: flex-start;
@@ -40788,7 +40800,11 @@
                                 <td></td>
                                 <td class="money-cell" data-renewal-total-current>${formatCurrency(items.reduce((sum, item) => sum + Number(item.currentMonthlyFee || 0), 0))}</td>
                                 <td class="money-cell" data-renewal-total-new>-</td>
-                                <td class="money-cell" data-renewal-total-variance>-</td>
+                                <td class="money-cell" data-renewal-total-variance>
+                                    <span data-renewal-total-variance-value>-</span>
+                                    <small class="ignition-renewals-variance-summary" data-renewal-total-variance-monthly></small>
+                                    <small class="ignition-renewals-variance-summary" data-renewal-total-variance-annual></small>
+                                </td>
                                 <td class="percent-cell"></td>
                             </tr>
                         </tfoot>
@@ -40961,6 +40977,9 @@
                 const currentTarget = document.querySelector("[data-renewal-total-current]");
                 const newTarget = document.querySelector("[data-renewal-total-new]");
                 const varianceTarget = document.querySelector("[data-renewal-total-variance]");
+                const varianceValueTarget = document.querySelector("[data-renewal-total-variance-value]");
+                const varianceMonthlySummary = document.querySelector("[data-renewal-total-variance-monthly]");
+                const varianceAnnualSummary = document.querySelector("[data-renewal-total-variance-annual]");
                 if (!rows.length || !currentTarget || !newTarget || !varianceTarget) return;
                 let currentTotal = 0;
                 let newTotal = 0;
@@ -40979,7 +40998,20 @@
                 });
                 currentTarget.textContent = formatCurrency(currentTotal);
                 newTarget.textContent = hasNewFees ? formatCurrency(newTotal) : "-";
-                varianceTarget.textContent = hasNewFees ? formatCurrency(varianceTotal) : "-";
+                const showGeneratedSummary = hasNewFees && varianceTotal > 0;
+                if (varianceValueTarget) {
+                    varianceValueTarget.textContent = hasNewFees ? formatCurrency(varianceTotal) : "-";
+                } else {
+                    varianceTarget.textContent = hasNewFees ? formatCurrency(varianceTotal) : "-";
+                }
+                if (varianceMonthlySummary) {
+                    varianceMonthlySummary.textContent = `${formatCurrency(varianceTotal)} plus VAT per month generated extra`;
+                    varianceMonthlySummary.classList.toggle("is-visible", showGeneratedSummary);
+                }
+                if (varianceAnnualSummary) {
+                    varianceAnnualSummary.textContent = `${formatCurrency(varianceTotal * 12)} plus VAT per year generated extra`;
+                    varianceAnnualSummary.classList.toggle("is-visible", showGeneratedSummary);
+                }
             }
 
             function updateIgnitionRenewalFromPercent(row) {
