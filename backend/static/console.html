@@ -48767,6 +48767,89 @@
                     .join("");
                 renderSidebarSupportBubble();
             }
+            function renderSa100PrepScreen() {
+                const workspaceList = document.getElementById("sa100WorkspaceList");
+                const stageList = document.getElementById("sa100StageList");
+                const detail = document.getElementById("sa100PrepDetail");
+                if (!workspaceList || !stageList || !detail) return;
+
+                const selectedWorkspace = sa100PrepWorkspaces.find((workspace) => workspace.id === selectedSa100WorkspaceId) || sa100PrepWorkspaces[0] || null;
+                if (!selectedWorkspace) {
+                    workspaceList.innerHTML = '<div class="empty-state"><p class="eyebrow">No workspaces</p><h4>No SA100 prep workspaces available</h4><p>Create a workspace to start a preparation run.</p></div>';
+                    stageList.innerHTML = "";
+                    detail.innerHTML = '<div class="empty-state"><p class="eyebrow">SA100 Prep</p><h4>Select a workspace</h4><p>Workspace detail appears here once a client workspace is selected.</p></div>';
+                    return;
+                }
+                selectedSa100WorkspaceId = selectedWorkspace.id;
+                if (!sa100PrepStages.some((stage) => stage.id === sa100PrepStage)) sa100PrepStage = "workspace";
+                const selectedStage = sa100PrepStages.find((stage) => stage.id === sa100PrepStage) || sa100PrepStages[0];
+
+                workspaceList.innerHTML = sa100PrepWorkspaces.map((workspace) => `
+                    <button type="button" class="client-invoice-row${workspace.id === selectedSa100WorkspaceId ? " is-selected" : ""}" data-sa100-workspace="${escapeHTML(workspace.id)}">
+                        <span>
+                            <span class="client-name">${escapeHTML(workspace.clientName)}</span>
+                            <span class="invoice-subline">UTR ${escapeHTML(workspace.utr)} · ${escapeHTML(workspace.taxYear)}</span>
+                        </span>
+                        <strong>${formatCurrency(workspace.turnoverEstimate || 0)}</strong>
+                    </button>
+                `).join("");
+                workspaceList.querySelectorAll("[data-sa100-workspace]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        selectedSa100WorkspaceId = button.dataset.sa100Workspace || "";
+                        renderSa100PrepScreen();
+                    });
+                });
+
+                stageList.innerHTML = sa100PrepStages.map((stage) => `
+                    <button type="button" class="client-invoice-row${stage.id === sa100PrepStage ? " is-selected" : ""}" data-sa100-stage="${escapeHTML(stage.id)}">
+                        <span>
+                            <span class="client-name">${escapeHTML(stage.title)}</span>
+                            <span class="invoice-subline">${escapeHTML(stage.subtitle)}</span>
+                        </span>
+                    </button>
+                `).join("");
+                stageList.querySelectorAll("[data-sa100-stage]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        sa100PrepStage = button.dataset.sa100Stage || "workspace";
+                        renderSa100PrepScreen();
+                    });
+                });
+
+                const stageDetail = {
+                    workspace: "Select the client tax year workspace and check the preparation checklist before continuing.",
+                    bank: "Review bank statement categorisation, apply disallowances, and carry forward SA100-ready totals.",
+                    receipts: "Add additional receipts and invoices that were not available in bank feed extraction.",
+                    mileage: "Capture business mileage journeys and apply HMRC mileage rates to the draft computation.",
+                    poa: "Record payments on account already made so draft liabilities are reduced correctly.",
+                    context: "Upload prior return context and supporting notes for any one-off adjustments.",
+                    summary: "Review draft SA100 box values and sign off before submission."
+                };
+                const workspaceState = sa100WorkspacePrepState[selectedWorkspace.id] || {};
+                const completion = Number(workspaceState.completion || 0);
+                detail.innerHTML = `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">SA100 Prep</p>
+                            <h3>${escapeHTML(selectedWorkspace.clientName)}</h3>
+                            <p class="detail-meta">UTR ${escapeHTML(selectedWorkspace.utr)} · ${escapeHTML(selectedWorkspace.taxYear)} · Year end ${escapeHTML(selectedWorkspace.yearEnd)}</p>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="ghost-button" id="sa100OpenBankStatementsButton" type="button">Open Bank Statements</button>
+                        </div>
+                    </div>
+                    <div class="detail-grid">
+                        <article class="detail-stat"><span>Turnover estimate</span><strong>${formatCurrency(selectedWorkspace.turnoverEstimate || 0)}</strong></article>
+                        <article class="detail-stat"><span>Active stage</span><strong>${escapeHTML(selectedStage.title)}</strong></article>
+                        <article class="detail-stat"><span>Completion</span><strong>${Math.max(0, Math.min(100, completion)).toFixed(0)}%</strong></article>
+                    </div>
+                    <div class="empty-state" style="margin-top: 12px;">
+                        <p class="eyebrow">${escapeHTML(selectedStage.title)}</p>
+                        <h4>${escapeHTML(selectedStage.subtitle)}</h4>
+                        <p>${escapeHTML(stageDetail[selectedStage.id] || "Continue through each SA100 preparation stage for this workspace.")}</p>
+                    </div>
+                `;
+                document.getElementById("sa100OpenBankStatementsButton")?.addEventListener("click", openBankStatementsScreen);
+            }
             function renderPracticePackScreen() {
                 initialisePracticePackMonth();
                 practicePackHistory = loadPracticePackHistory();
