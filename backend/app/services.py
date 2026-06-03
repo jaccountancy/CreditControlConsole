@@ -15788,13 +15788,26 @@ def _ignition_proposal_client_created_date(row: dict) -> date | None:
         client_candidates = (
             client.get("created_at"),
             client.get("createdAt"),
+            client.get("created"),
+            client.get("created_on"),
+            client.get("createdOn"),
+            client.get("created_date"),
+            client.get("createdDate"),
+            client.get("created_date_utc"),
+            client.get("createdDateUtc"),
             client.get("started_at"),
+            client.get("startedAt"),
             client.get("start_date"),
+            client.get("startDate"),
         )
     created_candidates = (
         *client_candidates,
         row.get("client_created_at"),
         row.get("clientCreatedAt"),
+        row.get("client_created"),
+        row.get("clientCreated"),
+        row.get("client_created_date"),
+        row.get("clientCreatedDate"),
         row.get("client_start_date"),
         row.get("clientStartDate"),
     )
@@ -15803,6 +15816,32 @@ def _ignition_proposal_client_created_date(row: dict) -> date | None:
         if created_date:
             return created_date
     return None
+
+
+def _ignition_client_lookup_keys(row: dict) -> list[str]:
+    client = row.get("client")
+    customer = row.get("customer")
+    return [
+        _ignition_text_key(row.get("client_id") or row.get("clientId") or row.get("client_external_id") or row.get("clientExternalId")),
+        _ignition_text_key(_first_mapping_text(client, ("id", "external_id", "externalId", "uuid"))),
+        _ignition_text_key(_first_mapping_text(customer, ("id", "external_id", "externalId", "uuid"))),
+        _ignition_text_key(_ignition_proposal_client_name(row)),
+        _ignition_text_key(_first_mapping_text(client, ("name", "business_name", "company_name", "display_name"))),
+        _ignition_text_key(_first_mapping_text(customer, ("name", "business_name", "company_name", "display_name"))),
+    ]
+
+
+def _ignition_client_created_lookup(client_records: list[dict]) -> dict[str, date]:
+    lookup: dict[str, date] = {}
+    for record in client_records or []:
+        payload = record.get("payload") or {}
+        created_date = _ignition_proposal_client_created_date(payload)
+        if not created_date:
+            continue
+        for key in _ignition_client_lookup_keys(payload):
+            if key and key not in lookup:
+                lookup[key] = created_date
+    return lookup
 
 
 def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -> tuple[Decimal, Decimal]:
@@ -16216,8 +16255,10 @@ def _ignition_upcoming_renewal_proposals(
     window_start: date,
     window_end: date,
     user_id: str | None = None,
+    client_records: list[dict] | None = None,
 ) -> list[dict]:
     manager_overrides = _ignition_client_register_manager_overrides(str(user_id or "").strip())
+    client_created_lookup = _ignition_client_created_lookup(client_records or [])
     candidates = []
     for record in records:
         proposal_payload = record.get("payload") or {}
@@ -16231,6 +16272,12 @@ def _ignition_upcoming_renewal_proposals(
         if not _ignition_proposal_client_is_active(proposal_payload):
             continue
         item = _ignition_renewal_item_seed(record, renewal_date)
+        if not item.get("client_created_date"):
+            for key in _ignition_client_lookup_keys(proposal_payload):
+                fallback_created_date = client_created_lookup.get(key)
+                if fallback_created_date:
+                    item["client_created_date"] = fallback_created_date
+                    break
         manager_override = _ignition_manager_override_for_proposal(proposal_payload, manager_overrides)
         if manager_override:
             item["client_manager"] = manager_override
@@ -16492,6 +16539,16 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
             records = cursor.fetchall() or []
             cursor.execute(
                 """
+                SELECT external_id, payload
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'clients'
+                """,
+                (user["id"],),
+            )
+            client_records = cursor.fetchall() or []
+            cursor.execute(
+                """
                 SELECT proposal_external_id
                 FROM ignition_renewal_items
                 WHERE user_id = %s
@@ -16509,7 +16566,13 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
             )
             manually_ineligible = {str(row.get("proposal_external_id") or "") for row in (cursor.fetchall() or [])}
         connection.commit()
-    synced_candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end, user["id"])
+    synced_candidates = _ignition_upcoming_renewal_proposals(
+        records,
+        window_start,
+        window_end,
+        user["id"],
+        client_records=client_records,
+    )
     self_assessment_excluded = [
         item for item in synced_candidates if _ignition_proposal_is_self_assessment(item.get("proposal_payload") or {})
     ]
@@ -16766,6 +16829,16 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 (user["id"],),
             )
             records = cursor.fetchall()
+            cursor.execute(
+                """
+                SELECT external_id, payload
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'clients'
+                """,
+                (user["id"],),
+            )
+            client_records = cursor.fetchall() or []
             if refresh_requested or not records:
                 try:
                     proposals, _meta = await asyncio.wait_for(
@@ -16803,7 +16876,13 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 if refresh_error_message:
                     message = f"{message} Provider response: {refresh_error_message}"
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
-            candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end, user["id"])
+            candidates = _ignition_upcoming_renewal_proposals(
+                records,
+                window_start,
+                window_end,
+                user["id"],
+                client_records=client_records,
+            )
 
             cursor.execute(
                 """
