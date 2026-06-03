@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 from datetime import date
+from unittest.mock import patch
 
 os.environ.setdefault("PORT", "8000")
 os.environ.setdefault("BASE_URL", "https://example.com")
@@ -106,6 +107,26 @@ class IgnitionRenewalsTests(unittest.TestCase):
         context = services._ignition_recommendation_context(item, proposal_records, [])
         self.assertTrue(context["history_hash"])
         self.assertGreaterEqual(len(context["recent_changes"]), 1)
+
+    def test_risk_assessment_tenure_uses_at_least_one_year_for_prior_calendar_year(self):
+        class FakeDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2026, 1, 10)
+
+        with patch.object(services, "date", FakeDate):
+            _, summary = services._risk_assessment_tenure_summary("2025-12-30")
+        self.assertIn("1 year", summary)
+
+    def test_risk_assessment_tenure_keeps_months_for_same_calendar_year(self):
+        class FakeDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2026, 6, 3)
+
+        with patch.object(services, "date", FakeDate):
+            _, summary = services._risk_assessment_tenure_summary("2026-01-15")
+        self.assertIn("month", summary.lower())
 
 
 if __name__ == "__main__":

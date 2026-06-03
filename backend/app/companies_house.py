@@ -3201,10 +3201,14 @@ def _parse_auth_code_register_csv(content: bytes) -> tuple[list[dict], list[dict
         )
     output_rows: list[dict] = []
     errors: list[dict] = []
+    # BM export fallback: client ID is expected in column 5 (1-based) for some files.
+    bm_client_id_column_index = 4
     for idx, raw_row in enumerate(rows, start=2):
         row_payload: dict[str, str] = {}
         for canonical, column_index in mapping.items():
             row_payload[canonical] = _coerce_text(raw_row[column_index] if column_index < len(raw_row) else "", 250)
+        if not _coerce_text(row_payload.get("client_id"), 80) and bm_client_id_column_index < len(raw_row):
+            row_payload["client_id"] = _coerce_text(raw_row[bm_client_id_column_index], 80)
         auth_code = _coerce_text(row_payload.get("auth_code"), 80)
         company_number = normalise_company_number(row_payload.get("company_number"))
         display_name = _auth_register_name(row_payload)

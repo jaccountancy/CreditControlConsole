@@ -16923,9 +16923,9 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str
 def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except Exception:
         lines = [
             "Ignition renewals round",
@@ -16947,26 +16947,119 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
         buffer,
-        pagesize=landscape(A4),
-        leftMargin=24,
-        rightMargin=24,
-        topMargin=24,
-        bottomMargin=24,
+        pagesize=A4,
+        leftMargin=28,
+        rightMargin=28,
+        topMargin=28,
+        bottomMargin=28,
     )
     styles = getSampleStyleSheet()
-    story = [
-        Paragraph("Ignition Renewals Proposal Round", styles["Title"]),
-        Spacer(1, 6),
-        Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", styles["Normal"]),
-        Paragraph(f"Generated: {_iso(utcnow())}", styles["Normal"]),
+    title_style = ParagraphStyle(
+        "IgnitionRenewalsTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=21,
+        leading=25,
+        textColor=colors.HexColor("#035581"),
+        spaceAfter=4,
+    )
+    subtitle_style = ParagraphStyle(
+        "IgnitionRenewalsSubtitle",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#035581"),
+    )
+    metric_label_style = ParagraphStyle(
+        "IgnitionRenewalsMetricLabel",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.white,
+    )
+    metric_value_style = ParagraphStyle(
+        "IgnitionRenewalsMetricValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=14,
+        textColor=colors.white,
+    )
+    total_row_style = ParagraphStyle(
+        "IgnitionRenewalsTotalRow",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#035581"),
+    )
+
+    logo_path = os.path.join(os.path.dirname(__file__), "..", "static", "jACCOUNTANCYBLUEHORIZONTLE.PNG")
+    logo_added = False
+    story = []
+    if os.path.exists(logo_path):
+        story.append(Image(logo_path, width=190, height=40))
+        logo_added = True
+    elif os.path.exists(os.path.join(os.path.dirname(__file__), "..", "static", "JaccountancyBlueStacked.png")):
+        stacked_path = os.path.join(os.path.dirname(__file__), "..", "static", "JaccountancyBlueStacked.png")
+        story.append(Image(stacked_path, width=120, height=72))
+        logo_added = True
+    if logo_added:
+        story.append(Spacer(1, 8))
+
+    total_current = _money(run.get("total_current_monthly"))
+    total_new = _money(run.get("total_new_monthly"))
+    variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    annualised_uplift = variance * Decimal("12")
+
+    story.extend([
+        Paragraph("Renewals Proposal Round", title_style),
+        Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", subtitle_style),
+        Paragraph(f"Generated: {_iso(utcnow())}", subtitle_style),
         Spacer(1, 10),
-    ]
+    ])
+
+    metrics_table = Table([
+        [
+            Paragraph("Renewals", metric_label_style),
+            Paragraph("Current Monthly Total", metric_label_style),
+            Paragraph("New Monthly Total", metric_label_style),
+            Paragraph("Monthly Uplift", metric_label_style),
+            Paragraph("Annualised Uplift", metric_label_style),
+        ],
+        [
+            Paragraph(str(len(items)), metric_value_style),
+            Paragraph(f"£{total_current:,.2f}", metric_value_style),
+            Paragraph(f"£{total_new:,.2f}", metric_value_style),
+            Paragraph(f"£{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)", metric_value_style),
+            Paragraph(f"£{annualised_uplift:,.2f}", metric_value_style),
+        ],
+    ], colWidths=[75, 98, 98, 118, 118])
+    metrics_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0075C9")),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#035581")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    story.extend([metrics_table, Spacer(1, 12)])
+
+    def _pdf_plain_text(value: object) -> str:
+        text = str(value or "")
+        text = re.sub(r"<[^>]*>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+
     table_rows = [[
         "Client Name",
         "Manager",
         "Renewal Date",
-        "Net Monthly Fee",
-        "New Net Monthly Fee",
+        "Current Monthly Fee",
+        "Proposed Monthly Fee",
         "Variance",
         "Variance %",
         "Comments",
@@ -16977,32 +17070,47 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         variance = _money(proposed - current)
         increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
         table_rows.append([
-            str(item.get("client_name") or ""),
-            str(item.get("client_manager") or ""),
+            _pdf_plain_text(item.get("client_name")),
+            _pdf_plain_text(item.get("client_manager")),
             _iso(item.get("renewal_date")) or "",
             f"£{current:,.2f}",
             f"£{proposed:,.2f}",
             f"£{variance:,.2f}",
             f"{increase_percent:.1f}%",
-            str(item.get("comments") or ""),
+            _pdf_plain_text(item.get("comments")),
         ])
+
+    table_rows.append([
+        Paragraph("TOTAL", total_row_style),
+        "",
+        "",
+        Paragraph(f"£{total_current:,.2f}", total_row_style),
+        Paragraph(f"£{total_new:,.2f}", total_row_style),
+        Paragraph(f"£{variance:,.2f}", total_row_style),
+        Paragraph(f"{variance_percent * Decimal('100'):.1f}%", total_row_style),
+        "",
+    ])
+
     table = Table(
         table_rows,
         repeatRows=1,
-        colWidths=[160, 95, 86, 92, 106, 72, 72, 190],
+        colWidths=[122, 76, 66, 76, 80, 58, 52, 132],
     )
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d67f2")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0075C9")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c7d0de")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f9ff")]),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.6),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7C4D4")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F1F2F2")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#DCEEFE")),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#0075C9")),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(table)
     document.build(story)
@@ -21591,6 +21699,10 @@ def _risk_assessment_tenure_summary(created_at: str) -> tuple[str, str]:
     months = max(0, (today.year - parsed.year) * 12 + (today.month - parsed.month) - (1 if today.day < parsed.day else 0))
     years = months // 12
     remainder_months = months % 12
+    # If the client joined in a prior calendar year, avoid showing "0 years" in tenure messaging.
+    if years == 0 and today.year > parsed.year:
+        years = 1
+        remainder_months = 0
     if years and remainder_months:
         tenure_text = f"{years} year{'s' if years != 1 else ''}, {remainder_months} month{'s' if remainder_months != 1 else ''}"
     elif years:
