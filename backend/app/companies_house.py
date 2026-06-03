@@ -232,9 +232,37 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
     rest_duration_ms = int((utcnow() - rest_started).total_seconds() * 1000)
 
     if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+        # If credentials fail in the selected environment, probe the opposite environment once.
+        # This gives the user a concrete hint when a live key is tested in sandbox (or vice versa).
+        alternate_environment = "production" if environment == "sandbox" else "sandbox"
+        alternate_base_url = _companies_house_api_base(alternate_environment)
+        alternate_endpoint = f"{alternate_base_url}/company/00000000"
+        alternate_status_code: int | None = None
+        with _companies_house_http_client(api_key) as alternate_client:
+            try:
+                alternate_response = alternate_client.get(alternate_endpoint)
+                alternate_status_code = alternate_response.status_code
+            except Exception:
+                alternate_status_code = None
+        if alternate_status_code is not None and alternate_status_code not in {
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Companies House credentials were rejected in {environment}, "
+                    f"but accepted in {alternate_environment}. Switch environment to "
+                    f"'{alternate_environment}' and retry."
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Companies House rejected the API credentials. Check environment and API key.",
+            detail=(
+                "Companies House rejected the API credentials. Use the REST API key only "
+                "(not Streaming key, Client ID, or Client Secret), then confirm the selected "
+                "environment matches where that key was created."
+            ),
         )
     if response.is_error and response.status_code not in {
         status.HTTP_400_BAD_REQUEST,

@@ -1242,7 +1242,21 @@ async def api_companies_house_company_update(
     company_id: str, request: Request, user: dict = Depends(require_panel_user)
 ):
     payload = await request.json()
-    return {"status": "ok", "company": update_company(company_id, payload, user)}
+    try:
+        return {"status": "ok", "company": update_company(company_id, payload, user)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Unable to update Companies House company %s", company_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "message": "Unable to save Companies House company changes.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+                "companyId": company_id,
+            },
+        ) from exc
 
 
 @app.delete("/api/companies-house/companies/{company_id}")

@@ -18975,7 +18975,7 @@
                                     <label>
                                         Public API key
                                         <input id="chSettingsApiKey" name="apiKey" type="password" autocomplete="new-password" placeholder="Enter a new key to replace">
-                                        <span class="ch-field-hint" id="chSettingsApiKeyHint">Not configured.</span>
+                                        <span class="ch-field-hint" id="chSettingsApiKeyHint">Use Companies House REST API key only (not Streaming key / Web Client ID / Web Client Secret).</span>
                                     </label>
                                     <label class="ch-checkbox">
                                         <input id="chSettingsAutoSync" name="autoSyncEnabled" type="checkbox" checked>
@@ -22944,7 +22944,9 @@
 
             function endpointURL(template, params = {}) {
                 const path = Object.entries(params).reduce((accumulator, [key, value]) => accumulator.replace(`:${key}`, encodeURIComponent(value)), template);
-                return `${api.baseUrl}${path}`;
+                if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path) || String(path).startsWith("//")) return String(path);
+                if (String(path).startsWith("/")) return `${api.baseUrl}${path}`;
+                return `${api.baseUrl}/${path}`;
             }
 
             function loginURL() {
@@ -50149,7 +50151,11 @@
                 renderBankSa100EntryPanel();
                 renderIgnitionScreen();
                 renderMeReportScreen();
-                renderSa100PrepScreen();
+                if (typeof renderSa100PrepScreen === "function") {
+                    renderSa100PrepScreen();
+                } else {
+                    console.warn("SA100 prep renderer is unavailable in this build.");
+                }
                 renderPracticePackScreen();
                 renderClientScreen();
                 enhanceConsoleButtons();
@@ -51728,6 +51734,11 @@
                 return error instanceof TypeError || [500, 502, 503, 504].includes(Number(error?.statusCode || 0));
             }
 
+            function isSigtermInterruptedSyncError(error) {
+                const message = String(error?.message || "").toLowerCase();
+                return message.includes("sigterm") && message.includes("xero sync");
+            }
+
             async function waitForSyncRun(syncRunId) {
                 let transientPollFailures = 0;
                 while (activeSyncRunId === syncRunId) {
@@ -52118,7 +52129,7 @@
                 }
             }
 
-            async function runXeroSync({ automatic = false, allowBackendConnectionCheck = false } = {}) {
+            async function runXeroSync({ automatic = false, allowBackendConnectionCheck = false, sigtermRetryCount = 0 } = {}) {
                 if (isSyncing) {
                     renderChrome();
                     return;
@@ -52141,6 +52152,7 @@
                     return;
                 }
                 let keepFailureBanner = false;
+                let retryAfterSigtermInterruption = false;
                 if (automatic) hasAutoStartedInitialSync = true;
                 startSyncFeedback();
                 showToast(automatic ? "Xero syncing" : "Starting Xero sync", "info");
@@ -52212,23 +52224,38 @@
                             });
                             return;
                         }
-                        keepFailureBanner = true;
-                        showSyncFailure(message);
-                        showToast(message, "error", {
-                            label: "Developer log",
-                            onClick: openDeveloperLog
-                        });
+                        if (isSigtermInterruptedSyncError(error) && sigtermRetryCount < 1) {
+                            retryAfterSigtermInterruption = true;
+                            keepFailureBanner = false;
+                            showToast("Xero sync was interrupted by a backend restart. Retrying automatically.", "info");
+                        } else {
+                            keepFailureBanner = true;
+                            showSyncFailure(message);
+                            showToast(message, "error", {
+                                label: "Developer log",
+                                onClick: openDeveloperLog
+                            });
+                        }
                     }
                 } finally {
                     stopSyncFeedback({ keepInlineBanner: keepFailureBanner });
                 }
+                if (retryAfterSigtermInterruption) {
+                    await delay(1200);
+                    return runXeroSync({
+                        automatic,
+                        allowBackendConnectionCheck: true,
+                        sigtermRetryCount: sigtermRetryCount + 1,
+                    });
+                }
             }
 
-            async function monitorQueuedXeroSync(syncRunId, { started = false, syncRun = null } = {}) {
+            async function monitorQueuedXeroSync(syncRunId, { started = false, syncRun = null, sigtermRetryCount = 0 } = {}) {
                 if (!syncRunId || (isSyncing && activeSyncRunId === syncRunId)) return;
                 if (isSyncing) return;
                 hasAutoStartedInitialSync = true;
                 let keepFailureBanner = false;
+                let retryAfterSigtermInterruption = false;
                 const initialStatus = syncRun?.status || (started ? "running" : "queued");
                 startSyncFeedback(syncRun || {
                     id: syncRunId,
@@ -52267,14 +52294,28 @@
                         return;
                     }
                     storeBrowserSyncFailure(error, message);
-                    keepFailureBanner = true;
-                    showSyncFailure(message);
-                    showToast(message, "error", {
-                        label: "Developer log",
-                        onClick: openDeveloperLog
-                    });
+                    if (isSigtermInterruptedSyncError(error) && sigtermRetryCount < 1) {
+                        retryAfterSigtermInterruption = true;
+                        keepFailureBanner = false;
+                        showToast("Queued sync was interrupted by a backend restart. Retrying automatically.", "info");
+                    } else {
+                        keepFailureBanner = true;
+                        showSyncFailure(message);
+                        showToast(message, "error", {
+                            label: "Developer log",
+                            onClick: openDeveloperLog
+                        });
+                    }
                 } finally {
                     stopSyncFeedback({ keepInlineBanner: keepFailureBanner });
+                }
+                if (retryAfterSigtermInterruption) {
+                    await delay(1200);
+                    return runXeroSync({
+                        automatic: true,
+                        allowBackendConnectionCheck: true,
+                        sigtermRetryCount: sigtermRetryCount + 1,
+                    });
                 }
             }
 
@@ -53439,7 +53480,7 @@
                 if (apiKeyHint) {
                     apiKeyHint.textContent = data.apiKeyConfigured
                         ? `Stored value: ${data.apiKeyHint || "configured"}. Leave blank to keep.`
-                        : "Not configured.";
+                        : "Not configured. Use Companies House REST API key only (not Streaming key / Web Client ID / Web Client Secret).";
                 }
                 const presenterAuthHint = document.getElementById("chSettingsPresenterAuthHint");
                 if (presenterAuthHint) {

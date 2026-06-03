@@ -29,8 +29,11 @@ class _DummyResponse:
 
 
 class _DummyClient:
-    def __init__(self, response: _DummyResponse):
-        self._response = response
+    def __init__(self, response: _DummyResponse | list[_DummyResponse]):
+        if isinstance(response, list):
+            self._responses = list(response)
+        else:
+            self._responses = [response]
 
     def __enter__(self):
         return self
@@ -39,7 +42,9 @@ class _DummyClient:
         return False
 
     def get(self, url: str):
-        return self._response
+        if len(self._responses) > 1:
+            return self._responses.pop(0)
+        return self._responses[0]
 
 
 @unittest.skipIf(ch is None, f"Companies House tests skipped: {_CH_TEST_IMPORT_ERROR}")
@@ -196,11 +201,35 @@ class CompaniesHouseTests(unittest.TestCase):
              patch.object(
                  ch,
                  "_companies_house_http_client",
-                 return_value=_DummyClient(_DummyResponse(401, {})),
+                 return_value=_DummyClient(
+                     [
+                         _DummyResponse(401, {}),
+                         _DummyResponse(401, {}),
+                     ]
+                 ),
              ):
             with self.assertRaises(HTTPException) as ctx:
                 ch.test_companies_house_connection()
         self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_connection_test_detects_environment_mismatch(self):
+        with patch.object(ch, "_ensure_settings_row", return_value={"environment": "production"}), \
+             patch.object(ch, "decrypt_api_key", return_value="env-specific-key"), \
+             patch.object(
+                 ch,
+                 "_companies_house_http_client",
+                 return_value=_DummyClient(
+                     [
+                         _DummyResponse(401, {}),
+                         _DummyResponse(404, {}),
+                     ]
+                 ),
+             ):
+            with self.assertRaises(HTTPException) as ctx:
+                ch.test_companies_house_connection()
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("rejected in production", str(ctx.exception.detail))
+        self.assertIn("accepted in sandbox", str(ctx.exception.detail))
 
     def test_connection_test_treats_404_probe_as_success(self):
         with patch.object(ch, "_ensure_settings_row", return_value={"environment": "sandbox"}), \
