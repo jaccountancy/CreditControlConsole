@@ -13154,6 +13154,72 @@ def _me_report_client_id_for_contact(user: dict, contact: dict, tenant_id: str |
     return client_id
 
 
+def _me_report_client_id_for_name(user: dict, client_name: str, tenant_id: str | None = None) -> str:
+    clean_name = re.sub(r"\s+", " ", str(client_name or "").strip())
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client name is required to set up a new ME Report client.")
+    requested_tenant_id = str(tenant_id or "").strip()
+    connection_row = {}
+    try:
+        if requested_tenant_id:
+            source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+            connection_row = next((row for row in source_rows if str(row.get("tenant_id") or "").strip() == requested_tenant_id), None) or {}
+        else:
+            connection_row = get_xero_connection_for_user(user["id"])
+    except HTTPException:
+        connection_row = {}
+    active_tenant_id = str(connection_row.get("tenant_id") or requested_tenant_id or "")
+    active_tenant_name = str(connection_row.get("tenant_name") or "")
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id
+                FROM me_report_clients
+                WHERE user_id = %s
+                  AND LOWER(client_name) = LOWER(%s)
+                  AND COALESCE(xero_contact_id, '') = ''
+                  AND (
+                    COALESCE(NULLIF(xero_tenant_id, ''), %s) = %s
+                    OR xero_tenant_id IS NULL
+                    OR xero_tenant_id = ''
+                  )
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (user["id"], clean_name, active_tenant_id, active_tenant_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                client_id = str(row["id"])
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO me_report_clients (
+                        user_id, client_name, bookkeeping_frequency,
+                        report_recipient_email, year_end_month,
+                        xero_connection_id, xero_tenant_id, xero_tenant_name,
+                        xero_connection_status, created_at, updated_at
+                    )
+                    VALUES (%s, %s, 'Monthly', '', 3, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        user["id"],
+                        clean_name,
+                        connection_row.get("id"),
+                        active_tenant_id,
+                        active_tenant_name,
+                        "connected" if connection_row else "not_connected",
+                        utcnow(),
+                        utcnow(),
+                    ),
+                )
+                client_id = str(cursor.fetchone()["id"])
+        connection.commit()
+    return client_id
+
+
 def _run_me_report_bulk_submission_job(user: dict, client_id: str, filename: str, content_type: str, content: bytes) -> None:
     async def _worker() -> None:
         submission_id, _ = await upload_me_report_submission_pdf(
@@ -13208,6 +13274,7 @@ async def bulk_upload_me_report_submission_pdfs(
             )
             detected_name = spreadsheet_row_two_name or (candidate_names[0] if candidate_names else "")
             manual_xero_contact_id = str(file_item.get("manual_xero_contact_id") or "").strip()
+            manual_client_name = str(file_item.get("manual_client_name") or "").strip()
             manual_contact = next((contact for contact in contacts if contact.get("xeroContactId") == manual_xero_contact_id), None) if manual_xero_contact_id else None
             if manual_xero_contact_id and not manual_contact:
                 return {
@@ -13218,7 +13285,12 @@ async def bulk_upload_me_report_submission_pdfs(
                     "candidateNames": candidate_names[:8],
                     "message": "The selected Xero contact could not be found. Refresh ME Report data and choose the contact again.",
                 }
-            if manual_contact:
+            if manual_client_name:
+                detected_name = manual_client_name
+                contact = None
+                matched_name = manual_client_name
+                client_id = _me_report_client_id_for_name(user, manual_client_name, tenant_id)
+            elif manual_contact:
                 contact, matched_name = manual_contact, manual_contact.get("name") or ""
             elif upload_kind == "spreadsheet" and spreadsheet_row_two_name:
                 contact = _me_report_contact_match_for_authoritative_name_from_options(contacts, spreadsheet_row_two_name)
@@ -13236,7 +13308,7 @@ async def bulk_upload_me_report_submission_pdfs(
                 contact, matched_name = _me_report_contact_match_for_bulk_candidates(contacts, candidate_names, lines, filename)
             if matched_name:
                 detected_name = matched_name
-            if not contact:
+            if not manual_client_name and not contact:
                 return {
                     "index": file_index,
                     "filename": filename,
@@ -13245,7 +13317,8 @@ async def bulk_upload_me_report_submission_pdfs(
                     "candidateNames": candidate_names[:8],
                     "message": "No matching Xero contact found from the first page client lines or filename.",
                 }
-            client_id = _me_report_client_id_for_contact(user, contact, tenant_id)
+            if not manual_client_name:
+                client_id = _me_report_client_id_for_contact(user, contact, tenant_id)
             try:
                 if process_in_background:
                     _queue_me_report_bulk_submission_job(user, client_id, filename, content_type, content)
@@ -13255,10 +13328,10 @@ async def bulk_upload_me_report_submission_pdfs(
                         "status": "queued",
                         "detectedClientName": detected_name,
                         "clientId": client_id,
-                        "xeroContactId": contact.get("xeroContactId") or "",
-                        "clientName": contact.get("name") or detected_name,
+                        "xeroContactId": contact.get("xeroContactId") if contact else "",
+                        "clientName": (contact.get("name") if contact else "") or detected_name,
                         "candidateNames": candidate_names[:8],
-                        "recipientEmail": contact.get("email") or "",
+                        "recipientEmail": contact.get("email") if contact else "",
                         "message": "Queued for background extraction and report build.",
                     }
                 submission_id, _ = await upload_me_report_submission_pdf(
@@ -13276,15 +13349,15 @@ async def bulk_upload_me_report_submission_pdfs(
                     "detectedClientName": detected_name,
                     "clientId": client_id,
                     "submissionId": submission_id,
-                    "xeroContactId": contact.get("xeroContactId") or "",
+                    "xeroContactId": contact.get("xeroContactId") if contact else "",
                     "reportId": (report_result.get("report") or {}).get("id") or "",
-                    "clientName": contact.get("name") or detected_name,
+                    "clientName": (contact.get("name") if contact else "") or detected_name,
                     "candidateNames": candidate_names[:8],
-                    "recipientEmail": contact.get("email") or "",
+                    "recipientEmail": contact.get("email") if contact else "",
                 }
             except Exception as exc:
                 logger.exception("Bulk ME Report upload failed for %s", filename)
-                return {"index": file_index, "filename": filename, "status": "failed", "detectedClientName": detected_name, "clientName": contact.get("name") or "", "message": str(getattr(exc, "detail", exc))[:1000]}
+                return {"index": file_index, "filename": filename, "status": "failed", "detectedClientName": detected_name, "clientName": (contact.get("name") if contact else manual_client_name), "message": str(getattr(exc, "detail", exc))[:1000]}
 
     results = await asyncio.gather(*(process_file(file_item) for file_item in files))
     record_audit_event(
@@ -17221,7 +17294,7 @@ def _ignition_renewals_email_html_body(run: dict, items: list[dict], plain_body:
 def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: str = "") -> bytes:
     try:
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -17246,10 +17319,10 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
     buffer = io.BytesIO()
     document = SimpleDocTemplate(
         buffer,
-        pagesize=landscape(A4),
-        leftMargin=20,
-        rightMargin=20,
-        topMargin=18,
+        pagesize=A4,
+        leftMargin=18,
+        rightMargin=18,
+        topMargin=16,
         bottomMargin=24,
     )
     styles = getSampleStyleSheet()
@@ -17257,16 +17330,16 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         "IgnitionRenewalsBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=8.2,
-        leading=10.2,
+        fontSize=7.8,
+        leading=9.2,
         textColor=colors.HexColor("#17395A"),
     )
     title_style = ParagraphStyle(
         "IgnitionRenewalsTitle",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=24,
-        leading=27,
+        fontSize=18,
+        leading=21,
         textColor=colors.HexColor("#035581"),
         spaceAfter=4,
     )
@@ -17274,32 +17347,32 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         "IgnitionRenewalsSubtitle",
         parent=body_style,
         fontName="Helvetica",
-        fontSize=9,
-        leading=11.4,
+        fontSize=8.2,
+        leading=10.2,
         textColor=colors.HexColor("#035581"),
     )
     metric_label_style = ParagraphStyle(
         "IgnitionRenewalsMetricLabel",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=8,
-        leading=9.6,
+        fontSize=7.0,
+        leading=8.4,
         textColor=colors.white,
     )
     metric_value_style = ParagraphStyle(
         "IgnitionRenewalsMetricValue",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=12.5,
-        leading=14.5,
+        fontSize=10.2,
+        leading=11.8,
         textColor=colors.white,
     )
     header_cell_style = ParagraphStyle(
         "IgnitionRenewalsHeaderCell",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=8.4,
-        leading=10.2,
+        fontSize=7.2,
+        leading=8.8,
         textColor=colors.white,
         alignment=TA_LEFT,
     )
@@ -17307,8 +17380,8 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         "IgnitionRenewalsCell",
         parent=body_style,
         fontName="Helvetica",
-        fontSize=7.8,
-        leading=9.5,
+        fontSize=6.9,
+        leading=8.3,
         textColor=colors.HexColor("#17395A"),
         alignment=TA_LEFT,
         wordWrap="CJK",
@@ -17323,8 +17396,8 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         "IgnitionRenewalsTotalRow",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=8.4,
-        leading=10.2,
+        fontSize=7.3,
+        leading=8.8,
         textColor=colors.HexColor("#035581"),
     )
 
@@ -17355,31 +17428,38 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         Spacer(1, 10),
     ])
 
-    metrics_col_width = document.width / 5
+    metrics_col_width = document.width / 3
     metrics_table = Table([
         [
             Paragraph("Renewals", metric_label_style),
             Paragraph("Current Monthly Total", metric_label_style),
             Paragraph("New Monthly Total", metric_label_style),
-            Paragraph("Monthly Uplift", metric_label_style),
-            Paragraph("Annualised Uplift", metric_label_style),
         ],
         [
             Paragraph(str(len(items)), metric_value_style),
             Paragraph(f"£{total_current:,.2f}", metric_value_style),
             Paragraph(f"£{total_new:,.2f}", metric_value_style),
-            Paragraph(f"£{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)", metric_value_style),
-            Paragraph(f"£{annualised_uplift:,.2f}", metric_value_style),
         ],
-    ], colWidths=[metrics_col_width] * 5)
+        [
+            Paragraph("Monthly Uplift", metric_label_style),
+            Paragraph("Annualised Uplift", metric_label_style),
+            Paragraph("Increase %", metric_label_style),
+        ],
+        [
+            Paragraph(f"£{variance:,.2f}", metric_value_style),
+            Paragraph(f"£{annualised_uplift:,.2f}", metric_value_style),
+            Paragraph(f"{variance_percent * Decimal('100'):.1f}%", metric_value_style),
+        ],
+    ], colWidths=[metrics_col_width] * 3)
     metrics_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0075C9")),
         ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#035581")),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#035581")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8.5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8.5),
-        ("TOPPADDING", (0, 0), (-1, -1), 6.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6.5),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.55, colors.HexColor("#035581")),
+        ("LINEBELOW", (0, 2), (-1, 2), 0.55, colors.HexColor("#035581")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
     story.extend([metrics_table, Spacer(1, 9)])

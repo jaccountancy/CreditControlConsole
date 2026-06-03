@@ -40965,6 +40965,7 @@
                 const panel = document.getElementById("ignitionRenewalsPanel");
                 if (!panel) return;
                 const run = ignitionRenewalRun();
+                const batchReference = run ? ignitionRenewalBatchReferenceForRun(run) : "";
                 const finaliseCelebrating = Date.now() < ignitionRenewalFinaliseCelebrationUntil;
                 panel.classList.toggle("is-finalised-celebration", finaliseCelebrating);
 
@@ -41002,7 +41003,7 @@
                     const elapsed = ignitionRenewalsElapsedSeconds();
                     const loadingStep = ignitionRenewalsLoadingStep();
                     const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
-                    if (title) title.textContent = "Preparing proposal list";
+                    if (title) title.textContent = batchReference || "Preparing proposal list";
                     if (summary) summary.textContent = `${loadingStep.detail} ${ignitionRenewalsEtaText()}.`;
                     if (meta) {
                         meta.innerHTML = [
@@ -41028,7 +41029,11 @@
                 } else if (run) {
                     const items = Array.isArray(run.items) ? run.items : [];
                     const finalised = Boolean(run.finalisedAt);
-                    if (title) title.textContent = "Step 2: review monthly fees and finalise";
+                    if (title) {
+                        title.textContent = batchReference
+                            ? `${batchReference} · Step 2: review monthly fees and finalise`
+                            : "Step 2: review monthly fees and finalise";
+                    }
                     if (summary) {
                         summary.textContent = items.length
                             ? `${items.length.toLocaleString("en-GB")} selected client proposal${items.length === 1 ? "" : "s"} ready for fee approval. Edit New Net Monthly Fee, save, finalise, then export the renewal batch report.`
@@ -42951,6 +42956,7 @@
                 const contacts = meReportContactOptions(tenantId || meReportActiveTenantId());
                 return [
                     '<option value="">Choose Xero contact...</option>',
+                    `<option value="__create_new_client__"${selectedId === "__create_new_client__" ? " selected" : ""}>Set up new client from detected name</option>`,
                     ...contacts.map((contact) => {
                         const contactId = contact.xeroContactId || "";
                         const label = [contact.name || "Unnamed Xero contact", contact.email || ""].filter(Boolean).join(" - ");
@@ -43007,6 +43013,16 @@
                     contactName: best.name || "",
                     score: bestScore,
                 };
+            }
+
+            function meReportSuggestedClientNameForReviewItem(item = {}) {
+                const candidates = [
+                    item.clientName,
+                    item.detectedClientName,
+                    ...(Array.isArray(item.candidateNames) ? item.candidateNames : []),
+                    item.filename ? String(item.filename).replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ") : "",
+                ].map((value) => String(value || "").trim()).filter(Boolean);
+                return candidates[0] || "Unmatched ME Report client";
             }
 
             function selectedMeReportFormContact() {
@@ -48016,8 +48032,8 @@
                 }
                 const saveButton = document.getElementById("saveMeReportBulkMatchButton");
                 if (saveButton) {
-                    const readyCount = pending.filter((entry) => entry.status === "confirmed" && entry.contactId).length;
-                    const blocked = pending.some((entry) => entry.status !== "delete" && (!entry.contactId || entry.status !== "confirmed"));
+                    const readyCount = pending.filter((entry) => entry.status === "confirmed" && (entry.contactId || entry.createClient)).length;
+                    const blocked = pending.some((entry) => entry.status !== "delete" && (!(entry.contactId || entry.createClient) || entry.status !== "confirmed"));
                     const deleteCount = pending.filter((entry) => entry.status === "delete").length;
                     const deleteOnly = deleteCount > 0 && deleteCount === pending.length;
                     saveButton.disabled = state.submitting || !pending.length || (!deleteOnly && (blocked || !readyCount));
@@ -48076,14 +48092,14 @@
                             <div class="me-report-bulk-match-right">
                                 <div class="me-report-bulk-match-meta">
                                     <span class="me-report-bulk-match-status ${statusClass}">${escapeHTML(statusLabel)}</span>
-                                    <strong>${escapeHTML(selectedContact?.name || entry.suggestedContactName || "No confirmed contact")}</strong>
+                                    <strong>${escapeHTML((entry.createClient ? (entry.newClientName || entry.suggestedContactName || "New client") : "") || selectedContact?.name || entry.suggestedContactName || "No confirmed contact")}</strong>
                                     ${selectedContact?.email ? `<small>${escapeHTML(selectedContact.email)}</small>` : ""}
                                 </div>
                                 ${(status === "rematch" || status === "needs-review") ? `
                                     <label>
                                         Xero contact
                                         <select data-me-report-bulk-match-select="${index}" ${state.submitting ? "disabled" : ""}>
-                                            ${meReportContactOptionHTML(entry.contactId || "", activeTenantId)}
+                                            ${meReportContactOptionHTML(entry.createClient ? "__create_new_client__" : (entry.contactId || ""), activeTenantId)}
                                         </select>
                                     </label>
                                 ` : ""}
@@ -48102,8 +48118,17 @@
                         const index = Number(select.dataset.meReportBulkMatchSelect || -1);
                         const next = meReportBulkManualMatchState?.pending?.[index];
                         if (!next) return;
-                        next.contactId = String(select.value || "");
-                        if (next.contactId) next.status = "confirmed";
+                        const selectedValue = String(select.value || "");
+                        if (selectedValue === "__create_new_client__") {
+                            next.createClient = true;
+                            next.contactId = "";
+                            next.suggestedContactName = next.newClientName || next.item?.detectedClientName || "New client";
+                            next.status = "confirmed";
+                        } else {
+                            next.createClient = false;
+                            next.contactId = selectedValue;
+                            if (next.contactId) next.status = "confirmed";
+                        }
                         renderMeReportBulkMatchPanel();
                     });
                 });
@@ -48114,18 +48139,19 @@
                         const next = meReportBulkManualMatchState?.pending?.[index];
                         if (!next) return;
                         if (action === "confirm") {
-                            if (!next.contactId) {
+                            if (!next.contactId && !next.createClient) {
                                 next.status = "rematch";
-                                showToast("Choose a Xero contact before confirming this match.", "info");
+                                showToast("Choose a Xero contact or set up a new client before confirming this match.", "info");
                             } else {
                                 next.status = "confirmed";
                             }
                         } else if (action === "reject") {
+                            next.createClient = false;
                             next.status = "rematch";
                         } else if (action === "delete") {
                             next.status = "delete";
                         } else if (action === "undo") {
-                            next.status = next.contactId ? "confirmed" : "rematch";
+                            next.status = (next.contactId || next.createClient) ? "confirmed" : "rematch";
                         }
                         renderMeReportBulkMatchPanel();
                     });
@@ -48157,7 +48183,9 @@
                     item,
                     file: meReportBulkReviewFileForItem(item, sourceFiles),
                     contactId: "",
+                    createClient: false,
                     suggestedContactName: "",
+                    newClientName: meReportSuggestedClientNameForReviewItem(item),
                     status: "needs-review",
                 })).filter((entry) => entry.file);
                 if (!pending.length) {
@@ -48272,7 +48300,9 @@
                     .filter((entry) => entry.status !== "delete")
                     .map((entry) => ({
                         ...entry,
-                        contactId: String(entry.contactId || "")
+                        contactId: String(entry.contactId || ""),
+                        createClient: Boolean(entry.createClient),
+                        newClientName: String(entry.newClientName || "")
                     }));
                 const skippedEntries = state.pending.filter((entry) => entry.status === "delete");
                 if (!selectedEntries.length) {
@@ -48285,13 +48315,18 @@
                     showToast("At least one matched PDF must be confirmed before processing.", "error");
                     return;
                 }
-                const missing = selectedEntries.filter((entry) => !entry.contactId);
+                const missing = selectedEntries.filter((entry) => !entry.contactId && !entry.createClient);
                 if (missing.length) return showToast("Confirm every OpenAI match (or skip it) before processing.", "error");
                 const formData = new FormData();
                 const manualMatches = {};
                 selectedEntries.forEach((entry, index) => {
                     formData.append("files", entry.file, entry.file.name || entry.item?.filename || "overview-report");
-                    manualMatches[String(index)] = entry.contactId;
+                    manualMatches[String(index)] = entry.createClient
+                        ? {
+                            mode: "create_client",
+                            clientName: entry.newClientName || entry.item?.detectedClientName || entry.item?.clientName || "Unmatched ME Report client",
+                        }
+                        : entry.contactId;
                 });
                 formData.append("manualMatches", JSON.stringify(manualMatches));
                 const tenantId = meReportActiveTenantId();

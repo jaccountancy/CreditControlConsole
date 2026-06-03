@@ -1743,11 +1743,27 @@ async def api_bulk_upload_me_report_submissions(
     file_payloads = []
     for index, file in enumerate(files):
         filename = file.filename or "overview-report"
-        manual_xero_contact_id = str(
-            parsed_manual_matches.get(str(index))
-            or parsed_manual_matches.get(filename)
-            or ""
-        ).strip()
+        manual_match_value = parsed_manual_matches.get(str(index))
+        if manual_match_value in (None, ""):
+            manual_match_value = parsed_manual_matches.get(filename)
+        manual_xero_contact_id = ""
+        manual_client_name = ""
+        if isinstance(manual_match_value, dict):
+            mode = str(manual_match_value.get("mode") or "").strip().lower()
+            if mode == "create_client" or bool(manual_match_value.get("createClient")):
+                manual_client_name = str(
+                    manual_match_value.get("clientName")
+                    or manual_match_value.get("name")
+                    or ""
+                ).strip()
+            else:
+                manual_xero_contact_id = str(
+                    manual_match_value.get("xeroContactId")
+                    or manual_match_value.get("contactId")
+                    or ""
+                ).strip()
+        else:
+            manual_xero_contact_id = str(manual_match_value or "").strip()
         file_payloads.append(
             {
                 "index": index,
@@ -1755,6 +1771,7 @@ async def api_bulk_upload_me_report_submissions(
                 "content_type": file.content_type or "application/octet-stream",
                 "content": await file.read(),
                 "manual_xero_contact_id": manual_xero_contact_id,
+                "manual_client_name": manual_client_name,
             }
         )
     return {
