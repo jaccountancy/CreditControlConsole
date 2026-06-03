@@ -13490,6 +13490,63 @@
                 box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
                 background: rgba(242, 248, 255, 0.96);
             }
+            .renewals-locked-fee {
+                display: inline-block;
+                font-weight: 920;
+                color: #1f3153;
+                letter-spacing: 0.01em;
+            }
+            .renewals-locked-fee-empty {
+                color: #9aa9c2;
+            }
+            .ignition-renewals-panel.is-finalised-celebration .renewals-locked-fee {
+                animation: renewals-lock-value-in 0.56s cubic-bezier(.22, .61, .36, 1);
+            }
+            .ignition-renewals-finalised-banner {
+                margin-bottom: 10px;
+                border: 1px solid rgba(31, 143, 110, 0.26);
+                border-radius: 14px;
+                background: linear-gradient(135deg, rgba(235, 252, 244, 0.94), rgba(240, 248, 255, 0.9));
+                color: #1f4d3e;
+                padding: 10px 12px;
+                font-size: 0.82rem;
+                font-weight: 820;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .ignition-renewals-finalised-banner::before {
+                content: "✓";
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(31, 143, 110, 0.16);
+                color: #1f8f6e;
+                font-size: 0.75rem;
+                font-weight: 900;
+                flex: 0 0 auto;
+            }
+            .ignition-renewals-panel.is-finalised-celebration .ignition-renewals-finalised-banner {
+                animation: renewals-finalised-banner-pop 0.62s ease;
+            }
+            .ignition-renewals-panel .renewals-ai-cell.is-locking {
+                position: relative;
+            }
+            .ignition-renewals-panel .renewals-ai-cell.is-locking::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                border-radius: 8px;
+                background: linear-gradient(115deg, rgba(29, 103, 242, 0.12), rgba(31, 143, 110, 0.12));
+                animation: renewals-lock-overlay 0.45s ease;
+                pointer-events: none;
+            }
+            .ignition-renewals-panel .renewals-locking-input {
+                animation: renewals-lock-input-out 0.45s ease forwards;
+            }
             .renewals-ai-hint-button {
                 width: 22px;
                 height: 22px;
@@ -13597,6 +13654,22 @@
             @keyframes renewals-ai-modal-enter {
                 from { opacity: 0; transform: translateY(6px) scale(0.98); }
                 to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            @keyframes renewals-lock-input-out {
+                0% { opacity: 1; transform: translateY(0) scale(1); }
+                100% { opacity: 0; transform: translateY(-6px) scale(0.95); }
+            }
+            @keyframes renewals-lock-overlay {
+                0% { opacity: 0; }
+                100% { opacity: 1; }
+            }
+            @keyframes renewals-lock-value-in {
+                0% { opacity: 0; transform: translateY(8px) scale(0.95); filter: blur(2px); }
+                100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+            }
+            @keyframes renewals-finalised-banner-pop {
+                0% { opacity: 0; transform: translateY(8px); }
+                100% { opacity: 1; transform: translateY(0); }
             }
             .ignition-renewals-pricing-table input[data-renewal-field="clientManager"][readonly] {
                 background: rgba(238, 243, 255, 0.7);
@@ -22694,6 +22767,7 @@
             const ignitionRenewalAIMetadataByRowId = new Map();
             let ignitionRenewalReasoningModalOpen = false;
             let ignitionRenewalReasoningModalRowId = "";
+            let ignitionRenewalFinaliseCelebrationUntil = 0;
             let ignitionRenewalBatchSearchTerm = "";
             let ignitionRenewalBatchSortMode = "created-desc";
             let ignitionRenewalBatchStatusFilter = "all";
@@ -40578,6 +40652,8 @@
                 const panel = document.getElementById("ignitionRenewalsPanel");
                 if (!panel) return;
                 const run = ignitionRenewalRun();
+                const finaliseCelebrating = Date.now() < ignitionRenewalFinaliseCelebrationUntil;
+                panel.classList.toggle("is-finalised-celebration", finaliseCelebrating);
 
                 const title = document.getElementById("ignitionRenewalsModalTitle");
                 const summary = document.getElementById("ignitionRenewalsSummary");
@@ -40638,6 +40714,7 @@
                     `;
                 } else if (run) {
                     const items = Array.isArray(run.items) ? run.items : [];
+                    const finalised = Boolean(run.finalisedAt);
                     if (title) title.textContent = "Step 2: review monthly fees and finalise";
                     if (summary) {
                         summary.textContent = items.length
@@ -40654,7 +40731,12 @@
                             ["Email", run.emailSentAt ? formatDateTime(run.emailSentAt) : `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
-                    if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, Boolean(run.finalisedAt));
+                    if (wrap) {
+                        const finalisedBanner = finalised
+                            ? '<div class="ignition-renewals-finalised-banner">Renewal batch finalised. Pricing is now locked and ready for export/email.</div>'
+                            : "";
+                        wrap.innerHTML = `${finalisedBanner}${renderIgnitionRenewalsTable(items, finalised)}`;
+                    }
                     updateIgnitionRenewalTotalsFromTable();
                 } else {
                     if (title) title.textContent = "Proposals ending in the coming 8 weeks";
@@ -40853,14 +40935,20 @@
                     const showValue = locked || isAiApplied;
                     const variance = showValue && hasManualValue ? proposed - current : 0;
                     const increasePercent = showValue && hasManualValue && current > 0 ? variance / current : 0;
+                    const lockedNewFeeMarkup = showValue && hasManualValue
+                        ? `<span class="renewals-locked-fee">${formatCurrency(proposed)}</span>`
+                        : '<span class="renewals-locked-fee renewals-locked-fee-empty">-</span>';
                     return `
-                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
+                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-new-monthly="${showValue && hasManualValue ? proposed.toFixed(2) : ""}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
                             <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong>${proposalName ? `<span class="ignition-renewals-proposal-name">${escapeHTML(proposalName)}</span>` : ""}</td>
                             <td data-label="Client Manager"><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" readonly disabled></td>
                             <td data-label="Net Monthly Fee" class="money-cell">${formatCurrency(current)}</td>
                             <td data-label="New Net Monthly Fee">
                                 <div class="renewals-ai-cell">
-                                    <input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${showValue && hasManualValue ? proposed.toFixed(2) : ""}" ${locked ? "disabled" : ""}>
+                                    ${locked
+                                        ? lockedNewFeeMarkup
+                                        : `<input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${showValue && hasManualValue ? proposed.toFixed(2) : ""}" ${locked ? "disabled" : ""}>`
+                                    }
                                     ${isAiApplied ? `<button class="renewals-ai-hint-button" type="button" data-renewal-ai-reasoning="${escapeHTML(rowId)}" aria-label="Open AI reasoning"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l1.2 3.5L17 8l-3 2.2 1 3.6L12 12l-3 1.8 1-3.6L7 8l3.8-1.5L12 3Z"></path><path d="M5 16l.8 2.3L8 19l-2 1.4.6 2.1L5 21.4l-1.6 1.1.6-2.1L2 19l2.2-.7L5 16Z"></path><path d="M19 14l.9 2.5L22 17l-1.7 1.3.6 2L19 19.2l-1.9 1.1.6-2L16 17l2.1-.5L19 14Z"></path></svg></button>` : ""}
                                 </div>
                             </td>
@@ -41181,14 +41269,21 @@
                     serviceName: row.dataset.serviceName || "",
                     planName: row.dataset.planName || "",
                     currentMonthlyFee: Number(row.dataset.currentMonthly || 0),
-                    newMonthlyFee: Number(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || 0),
+                    newMonthlyFee: Number(
+                        String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim()
+                        || String(row.dataset.newMonthly || "").trim()
+                        || 0
+                    ),
                     comments: row.querySelector('[data-renewal-field="comments"]')?.value || row.dataset.comments || ""
                 }));
             }
 
             function ignitionRenewalsMissingNewFeeCount() {
                 return [...document.querySelectorAll("[data-renewal-row]")]
-                    .map((row) => String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim())
+                    .map((row) => {
+                        const inputValue = String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim();
+                        return inputValue.length ? inputValue : String(row.dataset.newMonthly || "").trim();
+                    })
                     .filter((value) => !value.length)
                     .length;
             }
@@ -41244,7 +41339,8 @@
                 let hasNewFees = false;
                 rows.forEach((row) => {
                     const current = Number(row.dataset.currentMonthly || 0);
-                    const rawNewFee = String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim();
+                    const inputValue = String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim();
+                    const rawNewFee = inputValue.length ? inputValue : String(row.dataset.newMonthly || "").trim();
                     currentTotal += Number.isFinite(current) ? current : 0;
                     if (!rawNewFee.length) return;
                     const proposed = Number(rawNewFee);
@@ -41290,6 +41386,19 @@
                     percentInput.value = Number.isFinite(increasePercent) ? increasePercent.toFixed(1) : "0.0";
                 }
                 updateIgnitionRenewalVariance(row);
+            }
+
+            async function playIgnitionRenewalFinaliseAnimation() {
+                const panel = document.getElementById("ignitionRenewalsPanel");
+                const aiCells = [...document.querySelectorAll(".renewals-ai-cell")];
+                const inputs = [...document.querySelectorAll('[data-renewal-field="newMonthlyFee"]')];
+                if (!aiCells.length || !inputs.length) return;
+                panel?.classList.add("is-finalising-lock");
+                aiCells.forEach((cell) => cell.classList.add("is-locking"));
+                inputs.forEach((input) => input.classList.add("renewals-locking-input"));
+                await delay(520);
+                panel?.classList.remove("is-finalising-lock");
+                aiCells.forEach((cell) => cell.classList.remove("is-locking"));
             }
 
             async function startIgnitionRenewals() {
@@ -41560,10 +41669,18 @@
                 if (!ensureIgnitionRenewalsNewFeesEntered("finalising")) return;
                 if (!window.confirm("Finalise this renewals round? After finalising you can export the PDF report for Amie to create the renewals in Ignition.")) return;
                 try {
+                    const wasAlreadyFinalised = Boolean(run.finalisedAt);
                     const payload = await requestJSON(api.endpoints.ignitionRenewalFinalise, { method: "POST", body: JSON.stringify({}) }, { runId: run.id });
+                    if (!payload.alreadyFinalised && !wasAlreadyFinalised) {
+                        await playIgnitionRenewalFinaliseAnimation();
+                        ignitionRenewalFinaliseCelebrationUntil = Date.now() + 2600;
+                    }
                     ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
                     showToast(payload.alreadyFinalised ? "Renewals were already finalised" : "Renewals finalised", "success");
                     renderIgnitionScreen();
+                    if (!payload.alreadyFinalised && !wasAlreadyFinalised) {
+                        window.setTimeout(() => renderIgnitionScreen(), 2700);
+                    }
                 } catch (error) {
                     console.error("Unable to finalise renewals", error);
                     showToast(error.message || "Unable to finalise renewals", "error");
