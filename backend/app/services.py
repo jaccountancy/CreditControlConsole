@@ -16166,7 +16166,58 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     }
 
 
-def _ignition_upcoming_renewal_proposals(records: list[dict], window_start: date, window_end: date) -> list[dict]:
+def _ignition_client_register_manager_overrides(user_id: str) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    if not user_id:
+        return overrides
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT client_name, company_name, client_manager
+                    FROM ch_auth_code_register
+                    WHERE COALESCE(TRIM(client_manager), '') <> ''
+                    ORDER BY updated_at DESC
+                    """
+                )
+                rows = cursor.fetchall() or []
+            connection.commit()
+    except Exception:
+        logger.exception("Unable to load client-manager overrides from client register")
+        return overrides
+    for row in rows:
+        manager = str(row.get("client_manager") or "").strip()
+        if not manager:
+            continue
+        for raw_name in (row.get("client_name"), row.get("company_name")):
+            key = _ignition_text_key(raw_name or "")
+            if key and key not in overrides:
+                overrides[key] = manager
+    return overrides
+
+
+def _ignition_manager_override_for_proposal(row: dict, overrides: dict[str, str]) -> str:
+    if not overrides:
+        return ""
+    keys = [
+        _ignition_text_key(_ignition_proposal_client_name(row)),
+        _ignition_text_key(_first_mapping_text(row.get("client"), ("name", "business_name", "company_name", "display_name"))),
+        _ignition_text_key(_first_mapping_text(row.get("customer"), ("name", "business_name", "company_name", "display_name"))),
+    ]
+    for key in keys:
+        if key and key in overrides:
+            return overrides[key]
+    return ""
+
+
+def _ignition_upcoming_renewal_proposals(
+    records: list[dict],
+    window_start: date,
+    window_end: date,
+    user_id: str | None = None,
+) -> list[dict]:
+    manager_overrides = _ignition_client_register_manager_overrides(str(user_id or "").strip())
     candidates = []
     for record in records:
         proposal_payload = record.get("payload") or {}
@@ -16179,7 +16230,11 @@ def _ignition_upcoming_renewal_proposals(records: list[dict], window_start: date
             continue
         if not _ignition_proposal_client_is_active(proposal_payload):
             continue
-        candidates.append(_ignition_renewal_item_seed(record, renewal_date))
+        item = _ignition_renewal_item_seed(record, renewal_date)
+        manager_override = _ignition_manager_override_for_proposal(proposal_payload, manager_overrides)
+        if manager_override:
+            item["client_manager"] = manager_override
+        candidates.append(item)
     return sorted(
         candidates,
         key=lambda item: (item["renewal_date"], str(item.get("client_name") or "").casefold(), str(item.get("proposal_name") or "").casefold()),
@@ -16454,7 +16509,7 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
             )
             manually_ineligible = {str(row.get("proposal_external_id") or "") for row in (cursor.fetchall() or [])}
         connection.commit()
-    synced_candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
+    synced_candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end, user["id"])
     self_assessment_excluded = [
         item for item in synced_candidates if _ignition_proposal_is_self_assessment(item.get("proposal_payload") or {})
     ]
@@ -16748,7 +16803,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 if refresh_error_message:
                     message = f"{message} Provider response: {refresh_error_message}"
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
-            candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
+            candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end, user["id"])
 
             cursor.execute(
                 """
