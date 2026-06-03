@@ -9008,6 +9008,109 @@
             #meReportScreen #meReportClientList > .empty-state {
                 grid-column: 1 / -1;
             }
+            #meReportScreen .me-report-processing-banner {
+                grid-column: 1 / -1;
+                display: grid;
+                gap: 10px;
+                padding: 14px 16px;
+                border: 1px solid rgba(29, 103, 242, 0.24);
+                border-radius: 16px;
+                background:
+                    radial-gradient(160% 140% at 0% 0%, rgba(86, 150, 255, 0.16), rgba(255, 255, 255, 0) 60%),
+                    linear-gradient(130deg, rgba(241, 247, 255, 0.96), rgba(255, 255, 255, 0.94));
+                box-shadow: 0 14px 28px rgba(38, 63, 112, 0.08);
+                position: relative;
+                overflow: hidden;
+                animation: me-report-processing-panel-breathe 2.6s ease-in-out infinite;
+            }
+            #meReportScreen .me-report-processing-banner::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(110deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0));
+                transform: translateX(-120%);
+                animation: me-report-processing-sheen 2.8s ease-in-out infinite;
+                pointer-events: none;
+            }
+            #meReportScreen .me-report-processing-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            #meReportScreen .me-report-processing-head strong {
+                color: var(--ink);
+                font-size: 0.94rem;
+            }
+            #meReportScreen .me-report-processing-head small {
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 800;
+            }
+            #meReportScreen .me-report-processing-dot {
+                display: inline-block;
+                width: 11px;
+                height: 11px;
+                border-radius: 50%;
+                background: var(--blue);
+                box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.42);
+                animation: me-report-processing-dot-pulse 1.6s ease-out infinite;
+                flex: 0 0 auto;
+                margin-right: 8px;
+                vertical-align: -1px;
+            }
+            #meReportScreen .me-report-processing-track {
+                width: 100%;
+                height: 8px;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.16);
+                overflow: hidden;
+                position: relative;
+            }
+            #meReportScreen .me-report-processing-fill {
+                display: block;
+                height: 100%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #2b9bf1);
+                transition: width 0.35s ease;
+                position: relative;
+            }
+            #meReportScreen .me-report-processing-fill::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0));
+                animation: me-report-processing-fill-shimmer 1.8s linear infinite;
+            }
+            #meReportScreen .me-report-processing-meta {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            #meReportScreen .me-report-processing-meta span {
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 850;
+            }
+            @keyframes me-report-processing-panel-breathe {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-1px); }
+            }
+            @keyframes me-report-processing-sheen {
+                0% { transform: translateX(-120%); }
+                65%, 100% { transform: translateX(120%); }
+            }
+            @keyframes me-report-processing-dot-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.4); }
+                100% { box-shadow: 0 0 0 10px rgba(29, 103, 242, 0); }
+            }
+            @keyframes me-report-processing-fill-shimmer {
+                0% { transform: translateX(-120%); }
+                100% { transform: translateX(120%); }
+            }
             #meReportScreen .me-report-client-filterbar {
                 grid-column: 1 / -1;
                 display: flex;
@@ -19841,6 +19944,10 @@
             let meReportUploadProcessing = false;
             let meReportEmailSending = false;
             let meReportBulkUploading = false;
+            let meReportUploadStartedAt = 0;
+            let meReportBulkUploadStartedAt = 0;
+            let meReportBulkUploadExpectedCount = 0;
+            let meReportProcessingUiTimer = null;
             let meReportBulkManualMatchState = null;
             let meReportLossDialogState = null;
             let meReportDlaSetupDialogState = null;
@@ -35394,6 +35501,99 @@
                 }
             }
 
+            function meReportHasActiveProcessing() {
+                const meRun = meReportRunForDisplay?.() || null;
+                return Boolean(meReportUploadProcessing || meReportBulkUploading || isMeReportProcessing || syncRunIsActive(meRun));
+            }
+
+            function syncMeReportProcessingUiTimer() {
+                const shouldRun = activeView === "me-report" && meReportHasActiveProcessing();
+                if (shouldRun && !meReportProcessingUiTimer) {
+                    meReportProcessingUiTimer = window.setInterval(() => {
+                        if (activeView !== "me-report" || !meReportHasActiveProcessing()) {
+                            window.clearInterval(meReportProcessingUiTimer);
+                            meReportProcessingUiTimer = null;
+                            return;
+                        }
+                        renderMeReportScreen();
+                    }, 1000);
+                } else if (!shouldRun && meReportProcessingUiTimer) {
+                    window.clearInterval(meReportProcessingUiTimer);
+                    meReportProcessingUiTimer = null;
+                }
+            }
+
+            function meReportProcessingUiState() {
+                const run = meReportRunForDisplay?.() || null;
+                const runActive = isMeReportProcessing || syncRunIsActive(run);
+                if (runActive) {
+                    const startedAt = meReportSyncStartedAt || syncRunTimestamp(run) || Date.now();
+                    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                    const runProgress = Math.max(0, Math.min(100, Number(run?.progress || 0)));
+                    const estimatedSeconds = 150;
+                    const fallbackProgress = Math.min(96, Math.max(10, Math.round((elapsed / estimatedSeconds) * 100)));
+                    const progress = runProgress || fallbackProgress;
+                    const remaining = Math.max(0, estimatedSeconds - elapsed);
+                    return {
+                        title: progress >= 60 ? "ME Report calculating" : "ME Report processing",
+                        detail: run?.summary || run?.currentStep || "Processing source report data and calculating month-end review.",
+                        eta: remaining > 0 ? `Estimated ready in ${formatSyncDuration(remaining)}` : "Final checks in progress",
+                        elapsed: `Elapsed ${formatSyncDuration(elapsed)}`,
+                        progress
+                    };
+                }
+                if (meReportBulkUploading) {
+                    const startedAt = meReportBulkUploadStartedAt || Date.now();
+                    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                    const expectedFiles = Math.max(1, Number(meReportBulkUploadExpectedCount || 1));
+                    const estimatedSeconds = Math.max(90, expectedFiles * 38);
+                    const progress = Math.min(92, Math.max(8, Math.round((elapsed / estimatedSeconds) * 100)));
+                    const remaining = Math.max(0, estimatedSeconds - elapsed);
+                    return {
+                        title: "Uploading JUK Overview reports",
+                        detail: `Uploading and extracting ${expectedFiles.toLocaleString("en-GB")} file${expectedFiles === 1 ? "" : "s"} for month-end review workspaces.`,
+                        eta: remaining > 0 ? `Estimated ready in ${formatSyncDuration(remaining)}` : "Wrapping up upload",
+                        elapsed: `Elapsed ${formatSyncDuration(elapsed)}`,
+                        progress
+                    };
+                }
+                if (meReportUploadProcessing) {
+                    const startedAt = meReportUploadStartedAt || Date.now();
+                    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+                    const estimatedSeconds = 80;
+                    const progress = Math.min(94, Math.max(12, Math.round((elapsed / estimatedSeconds) * 100)));
+                    const remaining = Math.max(0, estimatedSeconds - elapsed);
+                    return {
+                        title: "Extracting JUK Overview report",
+                        detail: "Jenius AI is reading the uploaded source file and preparing month-end outputs.",
+                        eta: remaining > 0 ? `Estimated ready in ${formatSyncDuration(remaining)}` : "Final checks in progress",
+                        elapsed: `Elapsed ${formatSyncDuration(elapsed)}`,
+                        progress
+                    };
+                }
+                return null;
+            }
+
+            function renderMeReportProcessingBanner() {
+                const state = meReportProcessingUiState();
+                if (!state) return "";
+                return `
+                    <section class="me-report-processing-banner" role="status" aria-live="polite">
+                        <div class="me-report-processing-head">
+                            <strong><span class="me-report-processing-dot" aria-hidden="true"></span> ${escapeHTML(state.title || "Processing")}</strong>
+                            <small>${escapeHTML(state.eta || "Working with Jenius AI")}</small>
+                        </div>
+                        <div class="me-report-processing-track" aria-hidden="true">
+                            <span class="me-report-processing-fill" style="width: ${Math.max(0, Math.min(100, Number(state.progress || 0)))}%"></span>
+                        </div>
+                        <div class="me-report-processing-meta">
+                            <span>${escapeHTML(state.detail || "")}</span>
+                            <span>${escapeHTML(state.elapsed || "")}</span>
+                        </div>
+                    </section>
+                `;
+            }
+
             function renderMeReportScreen() {
                 const screen = document.getElementById("meReportScreen");
                 if (!screen) return;
@@ -35405,6 +35605,7 @@
                 renderMeReportTopbarSummary();
                 renderTopbarIdentity();
                 renderSidebarSupportBubble();
+                syncMeReportProcessingUiTimer();
 
                 setMeReportText("meReportClientCount", Number(summary.clientCount || 0).toLocaleString("en-GB"));
                 setMeReportText("meReportGreenCount", Number(summary.green || 0).toLocaleString("en-GB"));
@@ -35459,6 +35660,7 @@
                 const actionList = document.getElementById("meReportActionList");
                 const detail = document.getElementById("meReportDetail");
                 if (!clientList || !actionList || !detail) return;
+                const processingBannerMarkup = renderMeReportProcessingBanner();
                 const reportTableMode = meReportWorkspaceOpen && activeMeReportTab === "submission-history";
                 const reportInsightMode = meReportWorkspaceOpen && activeMeReportTab === "report-insights";
                 const workspace = clientList.closest(".bank-statement-workspace");
@@ -35477,14 +35679,14 @@
 
                 if (meReportLoading) {
                     clientList.hidden = false;
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading ME Report clients</h4><p>Reading saved month-end register records from the backend.</p></div>';
+                    clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading ME Report clients</h4><p>Reading saved month-end register records from the backend.</p></div>`;
                     return;
                 }
                 if (!allClients.length) {
                     clientList.hidden = false;
                     actionList.hidden = true;
                     detail.hidden = true;
-                    clientList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No ME Report clients saved</h4><p>Add a client, then upload the first overview report to build CT, dividend and DLA calculations.</p></div>';
+                    clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">No clients</p><h4>No ME Report clients saved</h4><p>Add a client, then upload the first overview report to build CT, dividend and DLA calculations.</p></div>`;
                     return;
                 }
 
@@ -35528,10 +35730,10 @@
                         });
                     });
                     try {
-                        detail.innerHTML = renderMeReportTab(client, activeMeReportTab);
+                        detail.innerHTML = `${processingBannerMarkup || ""}${renderMeReportTab(client, activeMeReportTab)}`;
                     } catch (error) {
                         console.error("Unable to render ME Report workspace", error);
-                        detail.innerHTML = '<div class="empty-state"><p class="eyebrow">ME Report workspace</p><h4>Unable to render this uploaded report</h4><p>Refresh the page, or delete the latest submission from this workspace and upload it again.</p></div>';
+                        detail.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">ME Report workspace</p><h4>Unable to render this uploaded report</h4><p>Refresh the page, or delete the latest submission from this workspace and upload it again.</p></div>`;
                         return;
                     }
                     try {
@@ -35553,6 +35755,12 @@
                 filterbar.innerHTML = filterOptions.map(([value, label]) => `
                     <button class="${meReportClientStatusFilter === value ? "is-active" : ""}" type="button" data-me-report-client-filter="${value}">${escapeHTML(label)}</button>
                 `).join("");
+                if (processingBannerMarkup) {
+                    const processingState = document.createElement("div");
+                    processingState.innerHTML = processingBannerMarkup;
+                    const processingElement = processingState.firstElementChild;
+                    if (processingElement) clientList.appendChild(processingElement);
+                }
                 clientList.appendChild(filterbar);
                 filterbar.querySelectorAll("[data-me-report-client-filter]").forEach((button) => {
                     button.addEventListener("click", () => {
@@ -40099,6 +40307,7 @@
                 const formData = new FormData();
                 formData.append("file", file);
                 meReportUploadProcessing = true;
+                meReportUploadStartedAt = Date.now();
                 setAiLoading(true, "Jenius AI is extracting the JUK Overview report.");
                 renderMeReportScreen();
                 try {
@@ -40115,6 +40324,7 @@
                     else showToast(error.message || "Unable to process ME Report upload", "error");
                 } finally {
                     meReportUploadProcessing = false;
+                    meReportUploadStartedAt = 0;
                     setAiLoading(false);
                     renderMeReportScreen();
                 }
@@ -40335,6 +40545,8 @@
                 const formData = new FormData();
                 selectedFiles.forEach((file) => formData.append("files", file));
                 meReportBulkUploading = true;
+                meReportBulkUploadStartedAt = Date.now();
+                meReportBulkUploadExpectedCount = selectedFiles.length;
                 setAiLoading(true, `Jenius AI is processing ${selectedFiles.length} JUK Overview file${selectedFiles.length === 1 ? "" : "s"}.`);
                 renderMeReportScreen();
                 try {
@@ -40345,6 +40557,8 @@
                     else showToast(error.message || "Unable to bulk upload ME Report files", "error");
                 } finally {
                     meReportBulkUploading = false;
+                    meReportBulkUploadStartedAt = 0;
+                    meReportBulkUploadExpectedCount = 0;
                     setAiLoading(false);
                     const input = document.getElementById("meReportBulkSubmissionFiles");
                     if (input) input.value = "";
@@ -40377,6 +40591,8 @@
                 formData.append("manualMatches", JSON.stringify(manualMatches));
                 state.submitting = true;
                 meReportBulkUploading = true;
+                meReportBulkUploadStartedAt = Date.now();
+                meReportBulkUploadExpectedCount = selectedEntries.length;
                 closeMeReportBulkMatchPanel();
                 setAiLoading(true, `OpenAI client matches confirmed. Processing ${selectedEntries.length} overview file${selectedEntries.length === 1 ? "" : "s"} in the background.`);
                 renderMeReportScreen();
@@ -40391,6 +40607,8 @@
                     })
                     .finally(() => {
                         meReportBulkUploading = false;
+                        meReportBulkUploadStartedAt = 0;
+                        meReportBulkUploadExpectedCount = 0;
                         setAiLoading(false);
                         renderMeReportScreen();
                     });
