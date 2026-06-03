@@ -15171,6 +15171,24 @@ def _ignition_incremental_modified_since(user_id: str) -> datetime | None:
     return cutoff.astimezone(timezone.utc) - INCREMENTAL_SYNC_OVERLAP
 
 
+def _ignition_dataset_has_cache(user_id: str, dataset: str) -> bool:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = %s
+                LIMIT 1
+                """,
+                (user_id, dataset),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return bool(row)
+
+
 def request_ignition_sync_run(user: dict) -> tuple[dict, bool]:
     try:
         get_ignition_connection_for_user(user["id"])
@@ -18130,6 +18148,30 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
                     user["id"],
                 )
                 if dataset == "proposals":
+                    if _ignition_dataset_has_cache(user["id"], dataset):
+                        dataset_counts[dataset] = 0
+                        record_audit_event(
+                            "ignition_sync_run",
+                            str(sync_run_id),
+                            "ignition.proposals.cached",
+                            {
+                                "dataset": dataset,
+                                "provider_status": provider_status,
+                                "modified_since": modified_since.isoformat(),
+                                "message": "Incremental proposal filtering rejected; reused cached proposals already stored in the database.",
+                            },
+                            user["id"],
+                        )
+                        _update_ignition_sync_run(
+                            sync_run_id,
+                            current_step="Using cached proposals",
+                            summary="Ignition rejected changed-only proposal filtering; using cached proposals already stored in the database to avoid a full proposals resync.",
+                            heartbeat_at=utcnow(),
+                            datasets_synced=dataset_counts,
+                            fetched_count=total_fetched,
+                            processed_count=total_processed,
+                        )
+                        continue
                     full_refresh_datasets.add(dataset)
                     _update_ignition_sync_run(
                         sync_run_id,
