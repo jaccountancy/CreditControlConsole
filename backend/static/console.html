@@ -146,6 +146,9 @@
                 border-radius: 22px;
                 overflow: hidden;
             }
+            .settings-sidebar-card > .settings-sidebar-back {
+                margin-bottom: 4px;
+            }
             .settings-sidebar-card .app-nav {
                 flex: 1 1 auto;
                 min-height: 0;
@@ -13208,6 +13211,62 @@
                 gap: 12px;
                 flex-wrap: wrap;
             }
+            .ignition-renewals-batch-table {
+                min-width: 1020px;
+            }
+            .ignition-renewals-batch-table th,
+            .ignition-renewals-batch-table td {
+                padding: 8px 9px;
+                vertical-align: middle;
+            }
+            .ignition-renewals-batch-table .renewals-run-select-col,
+            .ignition-renewals-batch-table td[data-label="Select"] {
+                width: 46px;
+                min-width: 46px;
+                text-align: center;
+            }
+            .ignition-renewals-batch-table tbody tr.is-run-locked {
+                opacity: 0.72;
+                background: rgba(30, 47, 77, 0.03);
+            }
+            .ignition-renewals-batch-table tbody tr:hover {
+                background: rgba(29, 103, 242, 0.05);
+            }
+            .ignition-renewals-batch-table td:last-child {
+                min-width: 120px;
+            }
+            .renewals-run-actions {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .renewals-action-icon-button {
+                min-width: 34px;
+                min-height: 34px;
+                width: 34px;
+                height: 34px;
+                border-radius: 10px;
+                padding: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .renewals-action-icon {
+                width: 16px;
+                height: 16px;
+                display: inline-grid;
+                place-items: center;
+                color: currentColor;
+            }
+            .renewals-action-icon svg {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
             @media (max-width: 1100px) {
                 .ignition-renewals-table {
                     min-width: 760px;
@@ -17899,13 +17958,11 @@
                     </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-main" aria-label="Settings navigation">
-                    <div class="settings-sidebar-top">
+                    <div class="settings-sidebar-card">
                         <button class="settings-sidebar-back" id="settingsBackToMainSidebarButton" type="button">
                             <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
                             <span class="settings-sidebar-copy"><strong>Main sidebar</strong><span>Return to app nav</span></span>
                         </button>
-                    </div>
-                    <div class="settings-sidebar-card">
                         <div class="settings-sidebar-title">
                             <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
                             <span class="settings-sidebar-title-copy"><strong>Settings</strong><span>Focused controls</span></span>
@@ -17971,13 +18028,11 @@
                     </div>
                 </aside>
                 <aside class="settings-mode-sidebar settings-sidebar-factory" aria-label="Factory reset navigation">
-                    <div class="settings-sidebar-top">
+                    <div class="settings-sidebar-card">
                         <button class="settings-sidebar-back" id="factoryBackToSettingsSidebarButton" type="button">
                             <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M19 12H5"></path><path d="m12 5-7 7 7 7"></path></svg></span>
                             <span class="settings-sidebar-copy"><strong>Settings</strong><span>Back to controls</span></span>
                         </button>
-                    </div>
-                    <div class="settings-sidebar-card">
                         <div class="settings-sidebar-title">
                             <span class="settings-sidebar-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
                             <span class="settings-sidebar-title-copy"><strong>Factory Reset</strong><span>Protected reset area</span></span>
@@ -21402,6 +21457,7 @@
             const SYNC_STALE_HEARTBEAT_SECONDS = 120;
             const SESSION_TOKEN_KEY = `${STORAGE_KEY}:panel-session`;
             const SYNC_SETTINGS_KEY = `${STORAGE_KEY}:sync-settings`;
+            const IGNITION_RENEWAL_BATCH_REFS_KEY = `${STORAGE_KEY}:ignition-renewal-batch-refs`;
             const LETTER_TEMPLATES_KEY = `${STORAGE_KEY}:letter-templates`;
             const CONFIRMATION_STATEMENTS_ONBOARDING_KEY = `${STORAGE_KEY}:confirmation-statements-onboarding-dismissed`;
             const ACTIVITY_KEY = `${STORAGE_KEY}:system-activity`;
@@ -22036,6 +22092,9 @@
             let ignitionRenewalsModalOpen = true;
             let ignitionRenewalsWorkspaceStage = "batch";
             let ignitionRenewalSelection = new Set();
+            let ignitionRenewalBatchSelection = new Set();
+            let ignitionRenewalBatchRefs = loadIgnitionRenewalBatchRefs();
+            let ignitionRenewalBatchRefCounter = Math.max(0, ...Object.values(ignitionRenewalBatchRefs).map((value) => Number(value) || 0));
             let ignitionRenewalStartModalOpen = false;
             let ignitionRenewalHistoryModalOpen = false;
             let ignitionRenewalHistoryLoading = false;
@@ -39213,6 +39272,78 @@
                 return Array.from(ignitionRenewalSelection).filter(Boolean);
             }
 
+            function loadIgnitionRenewalBatchRefs() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(IGNITION_RENEWAL_BATCH_REFS_KEY) || "{}");
+                    if (!stored || typeof stored !== "object") return {};
+                    const entries = Object.entries(stored)
+                        .filter(([runId, value]) => String(runId || "").trim() && Number(value) > 0)
+                        .map(([runId, value]) => [String(runId), Number(value)]);
+                    return Object.fromEntries(entries);
+                } catch {
+                    return {};
+                }
+            }
+
+            function persistIgnitionRenewalBatchRefs() {
+                try {
+                    localStorage.setItem(IGNITION_RENEWAL_BATCH_REFS_KEY, JSON.stringify(ignitionRenewalBatchRefs || {}));
+                } catch {
+                    /* ignore */
+                }
+            }
+
+            function ignitionRenewalBatchRefLabel(value) {
+                const numeric = Math.max(1, Number(value) || 1);
+                return `JUKRE-${String(numeric).padStart(3, "0")}`;
+            }
+
+            function ensureIgnitionRenewalBatchReferences(runs = []) {
+                const ordered = (Array.isArray(runs) ? runs : [])
+                    .filter((run) => String(run?.id || "").trim())
+                    .slice()
+                    .sort((left, right) => dateSortValue(left?.createdAt || left?.created_at || "") - dateSortValue(right?.createdAt || right?.created_at || ""));
+                let changed = false;
+                ordered.forEach((run) => {
+                    const runId = String(run.id || "").trim();
+                    if (!runId || Number(ignitionRenewalBatchRefs[runId] || 0) > 0) return;
+                    ignitionRenewalBatchRefCounter += 1;
+                    ignitionRenewalBatchRefs[runId] = ignitionRenewalBatchRefCounter;
+                    changed = true;
+                });
+                if (changed) persistIgnitionRenewalBatchRefs();
+            }
+
+            function ignitionRenewalBatchReferenceForRun(run = null) {
+                const runId = String(run?.id || "").trim();
+                if (!runId) return "JUKRE-000";
+                const value = Number(ignitionRenewalBatchRefs[runId] || 0);
+                if (value > 0) return ignitionRenewalBatchRefLabel(value);
+                ignitionRenewalBatchRefCounter += 1;
+                ignitionRenewalBatchRefs[runId] = ignitionRenewalBatchRefCounter;
+                persistIgnitionRenewalBatchRefs();
+                return ignitionRenewalBatchRefLabel(ignitionRenewalBatchRefCounter);
+            }
+
+            function ignitionRenewalRunIsLocked(run = null) {
+                if (!run || typeof run !== "object") return false;
+                const status = String(run.status || "").trim().toLowerCase();
+                return Boolean(run.finalisedAt || run.completedAt || run.finishedAt || ["finalised", "completed", "finished"].includes(status));
+            }
+
+            function ignitionRenewalBatchSelectableRunIds(runs = []) {
+                return (Array.isArray(runs) ? runs : [])
+                    .filter((run) => run?.id && !ignitionRenewalRunIsLocked(run))
+                    .map((run) => String(run.id));
+            }
+
+            function syncIgnitionRenewalBatchSelection(runs = []) {
+                const selectableIds = new Set(ignitionRenewalBatchSelectableRunIds(runs));
+                ignitionRenewalBatchSelection = new Set(
+                    Array.from(ignitionRenewalBatchSelection || []).filter((runId) => selectableIds.has(String(runId || "")))
+                );
+            }
+
             function openIgnitionRenewalsPricingStage() {
                 ignitionRenewalsWorkspaceStage = "pricing";
                 renderIgnitionRenewals();
@@ -39690,13 +39821,20 @@
                 const candidatePool = ignitionRenewalCandidatePool();
                 const candidates = ignitionRenewalCandidates();
                 const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                ensureIgnitionRenewalBatchReferences(recentRuns);
                 const availableCount = Number(candidatePool.availableCount || candidates.length || 0);
+                syncIgnitionRenewalBatchSelection(recentRuns);
+                const selectableRunIds = ignitionRenewalBatchSelectableRunIds(recentRuns);
+                const selectedBatchCount = ignitionRenewalBatchSelection.size;
+                const allSelectableChecked = selectableRunIds.length > 0 && selectedBatchCount === selectableRunIds.length;
+                const hasSelectedBatches = selectedBatchCount > 0;
                 const runRows = recentRuns.length
                     ? `
-                        <table class="ignition-renewals-table">
+                        <table class="ignition-renewals-table ignition-renewals-batch-table">
                             <thead>
                                 <tr>
-                                    <th>Batch created</th>
+                                    <th class="renewals-run-select-col"><input type="checkbox" id="ignitionRenewalsSelectAllRuns" ${allSelectableChecked ? "checked" : ""} aria-label="Select all deletable renewal batches"></th>
+                                    <th>Renewal Batch Ref</th>
                                     <th>Window</th>
                                     <th>Status</th>
                                     <th>Clients</th>
@@ -39708,18 +39846,35 @@
                             </thead>
                             <tbody>
                                 ${recentRuns.map((run) => `
-                                    <tr>
-                                        <td>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "Unknown")}</td>
-                                        <td>${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
-                                        <td>${escapeHTML(run.status || "draft")}</td>
-                                        <td>${Number(run.pickedCount || run.itemCount || 0).toLocaleString("en-GB")}</td>
-                                        <td class="money-cell">${formatCurrency(run.totalCurrentMonthly || 0)}</td>
-                                        <td class="money-cell">${formatCurrency(run.totalNewMonthly || 0)}</td>
-                                        <td class="money-cell">${formatCurrency((run.finalisedAt || String(run.status || "").toLowerCase() === "finalised") ? Number(run.totalVariance || 0) : 0)}</td>
-                                        <td>
-                                            <button class="ghost-button" type="button" data-renewals-view-run="${escapeHTML(run.id || "")}">View</button>
-                                            <button class="ghost-button" type="button" data-renewals-edit-run="${escapeHTML(run.id || "")}" ${run.finalisedAt ? "disabled" : ""}>Edit</button>
-                                            <button class="ghost-button" type="button" data-renewals-delete-run="${escapeHTML(run.id || "")}" ${run.finalisedAt ? "disabled" : ""}>Delete</button>
+                                    <tr class="${ignitionRenewalRunIsLocked(run) ? "is-run-locked" : ""}">
+                                        <td data-label="Select">
+                                            <input
+                                                type="checkbox"
+                                                data-renewals-select-run="${escapeHTML(run.id || "")}"
+                                                ${ignitionRenewalBatchSelection.has(String(run.id || "")) ? "checked" : ""}
+                                                ${ignitionRenewalRunIsLocked(run) ? "disabled" : ""}
+                                                aria-label="Select renewal batch ${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : (run.id || "unknown"))}"
+                                            >
+                                        </td>
+                                        <td data-label="Renewal Batch Ref"><strong>${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}</strong></td>
+                                        <td data-label="Window">${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
+                                        <td data-label="Status">${escapeHTML(run.status || "draft")}</td>
+                                        <td data-label="Clients">${Number(run.pickedCount || run.itemCount || 0).toLocaleString("en-GB")}</td>
+                                        <td data-label="Current MRR" class="money-cell">${formatCurrency(run.totalCurrentMonthly || 0)}</td>
+                                        <td data-label="Proposed MRR" class="money-cell">${formatCurrency(run.totalNewMonthly || 0)}</td>
+                                        <td data-label="Uplift secured" class="money-cell">${formatCurrency((run.finalisedAt || String(run.status || "").toLowerCase() === "finalised") ? Number(run.totalVariance || 0) : 0)}</td>
+                                        <td data-label="Actions">
+                                            <div class="renewals-run-actions">
+                                                <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-view-run="${escapeHTML(run.id || "")}" title="View batch" aria-label="View batch">
+                                                    <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+                                                </button>
+                                                <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-edit-run="${escapeHTML(run.id || "")}" ${ignitionRenewalRunIsLocked(run) ? "disabled" : ""} title="Edit batch" aria-label="Edit batch">
+                                                    <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"></path></svg></span>
+                                                </button>
+                                                <button class="ghost-button renewals-action-icon-button danger-button" type="button" data-renewals-delete-run="${escapeHTML(run.id || "")}" ${ignitionRenewalRunIsLocked(run) ? "disabled" : ""} title="${ignitionRenewalRunIsLocked(run) ? "Completed/finished batches cannot be deleted" : "Delete batch"}" aria-label="Delete batch">
+                                                    <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 `).join("")}
@@ -39738,6 +39893,9 @@
                                     <p class="detail-meta">${availableCount.toLocaleString("en-GB")} currently eligible proposal${availableCount === 1 ? "" : "s"} (${escapeHTML(candidatePool.windowStart || "")} to ${escapeHTML(candidatePool.windowEnd || "")}).</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" type="button" id="ignitionRenewalsSelectAllRunsButton" ${selectableRunIds.length ? "" : "disabled"}>Select all</button>
+                                    <button class="ghost-button" type="button" id="ignitionRenewalsDeselectAllRunsButton" ${hasSelectedBatches ? "" : "disabled"}>Deselect all</button>
+                                    <button class="ghost-button danger-button" type="button" id="ignitionRenewalsDeleteSelectedRunsButton" ${hasSelectedBatches ? "" : "disabled"}>Delete selected${hasSelectedBatches ? ` (${selectedBatchCount.toLocaleString("en-GB")})` : ""}</button>
                                     <button class="primary-button" type="button" id="openIgnitionRenewalsStartWorkflowButton" ${availableCount ? "" : "disabled"}>Start workflow</button>
                                 </div>
                             </div>
@@ -39896,19 +40054,75 @@
                 }
             }
 
-            async function deleteIgnitionRenewalsRun(runId) {
+            async function deleteIgnitionRenewalsRun(runId, { skipConfirm = false } = {}) {
                 const safeRunId = String(runId || "").trim();
                 if (!safeRunId) return;
-                if (!window.confirm("Delete this renewal batch? Finalised batches cannot be deleted.")) return;
+                const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                const run = recentRuns.find((item) => String(item?.id || "") === safeRunId) || null;
+                if (ignitionRenewalRunIsLocked(run)) {
+                    showToast("Completed/finished renewal batches cannot be deleted.", "info");
+                    return;
+                }
+                if (!skipConfirm && !window.confirm("Delete this renewal batch? Finalised or completed batches cannot be deleted.")) return;
                 try {
                     const payload = await requestJSON(api.endpoints.ignitionRenewalDelete, { method: "DELETE" }, { runId: safeRunId });
                     ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
+                    ignitionRenewalBatchSelection.delete(safeRunId);
                     ignitionRenewalsWorkspaceStage = "batch";
                     showToast("Renewal batch deleted", "success");
                     renderIgnitionScreen();
                 } catch (error) {
                     console.error("Unable to delete renewal batch", error);
                     showToast(error.message || "Unable to delete renewal batch", "error");
+                }
+            }
+
+            async function deleteSelectedIgnitionRenewalsRuns() {
+                const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                const selectedRuns = recentRuns.filter((run) => ignitionRenewalBatchSelection.has(String(run?.id || "")));
+                if (!selectedRuns.length) {
+                    showToast("Select at least one batch to delete.", "info");
+                    return;
+                }
+                const lockedRuns = selectedRuns.filter((run) => ignitionRenewalRunIsLocked(run));
+                const deletableRuns = selectedRuns.filter((run) => !ignitionRenewalRunIsLocked(run));
+                if (!deletableRuns.length) {
+                    showToast("Selected batches are completed/finished and cannot be deleted.", "info");
+                    return;
+                }
+                const warning = lockedRuns.length
+                    ? `\n\n${lockedRuns.length.toLocaleString("en-GB")} selected batch${lockedRuns.length === 1 ? " is" : "es are"} completed/finished and will be skipped.`
+                    : "";
+                if (!window.confirm(`Delete ${deletableRuns.length.toLocaleString("en-GB")} selected renewal batch${deletableRuns.length === 1 ? "" : "es"}?${warning}`)) return;
+
+                ignitionRenewalsLoading = true;
+                renderIgnitionScreen();
+                let deletedCount = 0;
+                let failedCount = 0;
+                try {
+                    for (const run of deletableRuns) {
+                        const runId = String(run?.id || "").trim();
+                        if (!runId) continue;
+                        try {
+                            const payload = await requestJSON(api.endpoints.ignitionRenewalDelete, { method: "DELETE" }, { runId });
+                            ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                            ignitionRenewalBatchSelection.delete(runId);
+                            deletedCount += 1;
+                        } catch (error) {
+                            failedCount += 1;
+                            console.error("Unable to delete renewal batch", error);
+                        }
+                    }
+                } finally {
+                    ignitionRenewalsLoading = false;
+                    ignitionRenewalsWorkspaceStage = "batch";
+                    renderIgnitionScreen();
+                }
+                if (deletedCount) {
+                    showToast(`Deleted ${deletedCount.toLocaleString("en-GB")} renewal batch${deletedCount === 1 ? "" : "es"}.`, "success");
+                }
+                if (failedCount) {
+                    showToast(`${failedCount.toLocaleString("en-GB")} batch deletion${failedCount === 1 ? " failed" : "s failed"}.`, "error");
                 }
             }
 
@@ -53044,6 +53258,7 @@
             function clearLocalConsoleState(panel = null) {
                 localStorage.removeItem(STORAGE_KEY);
                 localStorage.removeItem(SYNC_SETTINGS_KEY);
+                localStorage.removeItem(IGNITION_RENEWAL_BATCH_REFS_KEY);
                 localStorage.removeItem(LETTER_TEMPLATES_KEY);
                 localStorage.removeItem(PRACTICE_PACK_ASSIGNMENTS_KEY);
                 localStorage.removeItem(PRACTICE_PACK_HISTORY_KEY);
@@ -53878,10 +54093,26 @@
                         renderIgnitionRenewals();
                         return;
                     }
+                    const selectAllRuns = event.target?.id === "ignitionRenewalsSelectAllRuns";
+                    if (selectAllRuns) {
+                        const shouldSelect = !!event.target.checked;
+                        const runs = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                        const selectableIds = ignitionRenewalBatchSelectableRunIds(runs);
+                        ignitionRenewalBatchSelection = shouldSelect ? new Set(selectableIds) : new Set();
+                        renderIgnitionRenewals();
+                        return;
+                    }
                     const candidateId = String(event.target?.dataset?.renewalCandidateId || "");
-                    if (!candidateId) return;
-                    if (event.target.checked) ignitionRenewalSelection.add(candidateId);
-                    else ignitionRenewalSelection.delete(candidateId);
+                    if (candidateId) {
+                        if (event.target.checked) ignitionRenewalSelection.add(candidateId);
+                        else ignitionRenewalSelection.delete(candidateId);
+                        renderIgnitionRenewals();
+                        return;
+                    }
+                    const runId = String(event.target?.dataset?.renewalsSelectRun || "");
+                    if (!runId) return;
+                    if (event.target.checked) ignitionRenewalBatchSelection.add(runId);
+                    else ignitionRenewalBatchSelection.delete(runId);
                     renderIgnitionRenewals();
                 });
                 if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("click", (event) => {
@@ -53894,6 +54125,24 @@
                     if (clearSelection) {
                         ignitionRenewalSelection = new Set();
                         renderIgnitionRenewals();
+                        return;
+                    }
+                    const selectAllRunsButton = event.target.closest?.("#ignitionRenewalsSelectAllRunsButton");
+                    if (selectAllRunsButton) {
+                        const runs = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                        ignitionRenewalBatchSelection = new Set(ignitionRenewalBatchSelectableRunIds(runs));
+                        renderIgnitionRenewals();
+                        return;
+                    }
+                    const deselectAllRunsButton = event.target.closest?.("#ignitionRenewalsDeselectAllRunsButton");
+                    if (deselectAllRunsButton) {
+                        ignitionRenewalBatchSelection = new Set();
+                        renderIgnitionRenewals();
+                        return;
+                    }
+                    const deleteSelectedRunsButton = event.target.closest?.("#ignitionRenewalsDeleteSelectedRunsButton");
+                    if (deleteSelectedRunsButton) {
+                        deleteSelectedIgnitionRenewalsRuns();
                         return;
                     }
                     const openRunButton = event.target.closest?.("[data-renewals-open-run]");
