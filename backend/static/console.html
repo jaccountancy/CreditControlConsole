@@ -39759,11 +39759,16 @@
                 renderIgnitionScreen();
                 try {
                     const includeDashboard = activeIgnitionTab !== "renewals";
-                    const endpoint = includeDashboard
-                        ? api.endpoints.ignition
-                        : `${api.endpoints.ignition}?include_dashboard=false`;
-                    const payload = await requestJSON(endpoint);
-                    ignitionData = normaliseIgnitionPayload(payload);
+                    if (includeDashboard) {
+                        const payload = await requestJSON(api.endpoints.ignition);
+                        ignitionData = normaliseIgnitionPayload(payload);
+                    } else {
+                        const payload = await requestJSON(api.endpoints.ignitionRenewals);
+                        ignitionData = {
+                            ...ignitionData,
+                            renewals: payload?.renewals || ignitionData.renewals || { currentRun: null, recentRuns: [] },
+                        };
+                    }
                     ignitionLoadedAt = Date.now();
                     const activeRun = ignitionData.activeSyncRun;
                     if (syncRunIsActive(activeRun) && !isIgnitionSyncing) {
