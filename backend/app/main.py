@@ -1623,8 +1623,12 @@ def api_ignition_renewals(user: dict = Depends(require_panel_user)):
 
 
 @app.post("/api/ignition/renewals/run")
-async def api_create_ignition_renewal_run(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", **await create_ignition_renewal_run(user)}
+async def api_create_ignition_renewal_run(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await create_ignition_renewal_run(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/ignition/renewals/{run_id}")

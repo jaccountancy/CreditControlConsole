@@ -96,6 +96,7 @@ def _serialise_request(row: dict) -> dict:
         "id": str(row.get("id") or ""),
         "clientId": row.get("client_id") or "",
         "clientName": row.get("client_name") or "",
+        "clientManager": row.get("client_manager") or "",
         "clientContactName": row.get("client_contact_name") or "",
         "clientContactEmail": row.get("client_contact_email") or "",
         "clientContactPhone": row.get("client_contact_phone") or "",
@@ -190,6 +191,7 @@ def hmrc_64_8_export_csv(user: dict) -> str:
             "request_id",
             "client_id",
             "client_name",
+            "client_manager",
             "services",
             "status",
             "submission_channel",
@@ -210,6 +212,7 @@ def hmrc_64_8_export_csv(user: dict) -> str:
                 row.get("id") or "",
                 row.get("clientId") or "",
                 row.get("clientName") or "",
+                row.get("clientManager") or "",
                 ",".join(row.get("services") or []),
                 row.get("status") or "",
                 row.get("submissionChannel") or "",
@@ -313,6 +316,7 @@ def create_hmrc_64_8_request(user: dict, payload: dict) -> dict:
                     created_by_user_id,
                     client_id,
                     client_name,
+                    client_manager,
                     client_contact_name,
                     client_contact_email,
                     client_contact_phone,
@@ -343,6 +347,7 @@ def create_hmrc_64_8_request(user: dict, payload: dict) -> dict:
                     user["id"],
                     _text(payload.get("clientId"), 120),
                     client_name,
+                    _text(payload.get("clientManager"), 160),
                     _text(payload.get("clientContactName"), 160),
                     _text(payload.get("clientContactEmail"), 180),
                     _text(payload.get("clientContactPhone"), 80),
@@ -423,6 +428,7 @@ def update_hmrc_64_8_request(user: dict, request_id: str, payload: dict) -> dict
                 UPDATE hmrc_64_8_requests
                 SET client_id = %s,
                     client_name = %s,
+                    client_manager = %s,
                     client_contact_name = %s,
                     client_contact_email = %s,
                     client_contact_phone = %s,
@@ -454,6 +460,9 @@ def update_hmrc_64_8_request(user: dict, request_id: str, payload: dict) -> dict
                 (
                     _text(payload.get("clientId"), 120) if "clientId" in payload else existing.get("client_id"),
                     _text(payload.get("clientName"), 250) if "clientName" in payload else existing.get("client_name"),
+                    _text(payload.get("clientManager"), 160)
+                    if "clientManager" in payload
+                    else existing.get("client_manager"),
                     _text(payload.get("clientContactName"), 160)
                     if "clientContactName" in payload
                     else existing.get("client_contact_name"),

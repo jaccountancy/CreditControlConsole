@@ -14859,7 +14859,6 @@ IGNITION_RENEWAL_WORKBOOK_HEADERS = [
     "Client Name",
     "Client Manager",
     "Renewal Date",
-    "Service Name",
     "Net Monthly Fee",
     "New Net Monthly Fee",
     "Variance",
@@ -15916,6 +15915,58 @@ def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None =
     }
 
 
+def _serialize_ignition_renewal_candidate(item: dict) -> dict:
+    return {
+        "proposalExternalId": str(item.get("proposal_external_id") or ""),
+        "proposalName": str(item.get("proposal_name") or ""),
+        "clientName": str(item.get("client_name") or ""),
+        "clientManager": str(item.get("client_manager") or ""),
+        "serviceName": str(item.get("service_name") or ""),
+        "planName": str(item.get("plan_name") or ""),
+        "renewalDate": _iso(item.get("renewal_date")) or "",
+        "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
+        "newMonthlyFee": float(_money(item.get("new_monthly_fee"))),
+    }
+
+
+def _ignition_renewal_candidates_for_user(user: dict) -> dict:
+    window_start = utcnow().date()
+    window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT external_id, payload
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset = 'proposals'
+                """,
+                (user["id"],),
+            )
+            records = cursor.fetchall() or []
+            cursor.execute(
+                """
+                SELECT proposal_external_id
+                FROM ignition_renewal_items
+                WHERE user_id = %s
+                """,
+                (user["id"],),
+            )
+            already_picked = {str(row.get("proposal_external_id") or "") for row in (cursor.fetchall() or [])}
+        connection.commit()
+    candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
+    available = [item for item in candidates if str(item.get("proposal_external_id") or "") not in already_picked]
+    return {
+        "windowStart": window_start.isoformat(),
+        "windowEnd": window_end.isoformat(),
+        "windowWeeks": IGNITION_RENEWAL_WINDOW_WEEKS,
+        "candidateCount": len(candidates),
+        "availableCount": len(available),
+        "alreadyPickedCount": len(candidates) - len(available),
+        "candidates": [_serialize_ignition_renewal_candidate(item) for item in available],
+    }
+
+
 def _ignition_renewal_run_with_items(user: dict, run_id: str) -> tuple[dict, list[dict]]:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -15982,7 +16033,6 @@ def _build_ignition_renewals_workbook(items: list[dict]) -> bytes:
                 item.get("client_name") or "",
                 item.get("client_manager") or "",
                 _iso(item.get("renewal_date")) or "",
-                item.get("service_name") or item.get("plan_name") or "",
                 float(_money(item.get("current_monthly_fee"))),
                 float(_money(item.get("new_monthly_fee"))),
                 float(_money(item.get("variance"))),
@@ -16012,7 +16062,7 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
         f"Proposed monthly fees: £{total_new:,.2f}\n"
         f"Monthly uplift: £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)\n"
         f"Plans: {plan_summary}\n\n"
-        "The attached workbook contains the client list, renewal dates, service names, current fees, proposed fees, variances, and comments.\n"
+        "The attached workbook contains the client list, renewal dates, current fees, proposed fees, variances, and AT comments.\n"
     )
 
 
@@ -16032,10 +16082,11 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         for item in items[:120]:
             current = _money(item.get("current_monthly_fee"))
             proposed = _money(item.get("new_monthly_fee"))
+            variance = _money(proposed - current)
             increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
             lines.append(
-                f"{item.get('client_name') or 'Client'} | {item.get('plan_name') or 'Other'} | "
-                f"Current £{current:,.2f} | Proposed £{proposed:,.2f} | Increase {increase_percent:.1f}%"
+                f"{item.get('client_name') or 'Client'} | {item.get('client_manager') or 'Manager'} | "
+                f"Current £{current:,.2f} | Proposed £{proposed:,.2f} | Variance £{variance:,.2f} | Increase {increase_percent:.1f}%"
             )
         return _minimal_me_report_pdf(lines)
 
@@ -16057,31 +16108,34 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         Spacer(1, 10),
     ]
     table_rows = [[
-        "Client",
-        "Plan",
-        "Current Net Monthly",
-        "Proposed Net Monthly",
-        "Increase %",
+        "Client Name",
         "Manager",
+        "Renewal Date",
+        "Net Monthly Fee",
+        "New Net Monthly Fee",
+        "Variance",
+        "Variance %",
         "Comments",
     ]]
     for item in items:
         current = _money(item.get("current_monthly_fee"))
         proposed = _money(item.get("new_monthly_fee"))
+        variance = _money(proposed - current)
         increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
         table_rows.append([
             str(item.get("client_name") or ""),
-            str(item.get("plan_name") or "Other"),
+            str(item.get("client_manager") or ""),
+            _iso(item.get("renewal_date")) or "",
             f"£{current:,.2f}",
             f"£{proposed:,.2f}",
+            f"£{variance:,.2f}",
             f"{increase_percent:.1f}%",
-            str(item.get("client_manager") or ""),
             str(item.get("comments") or ""),
         ])
     table = Table(
         table_rows,
         repeatRows=1,
-        colWidths=[150, 70, 105, 105, 70, 100, 220],
+        colWidths=[160, 95, 86, 92, 106, 72, 72, 190],
     )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d67f2")),
@@ -16111,7 +16165,8 @@ def ignition_renewals_report_pdf(user: dict, run_id: str) -> tuple[bytes, str]:
     return _build_ignition_renewals_pdf(run, items), filename
 
 
-async def create_ignition_renewal_run(user: dict) -> dict:
+async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
     connection = get_ignition_connection_for_user(user["id"])
     proposals_source = "cached"
     refresh_error_message = ""
@@ -16179,8 +16234,19 @@ async def create_ignition_renewal_run(user: dict) -> dict:
                 (user["id"],),
             )
             already_picked = {row["proposal_external_id"] for row in cursor.fetchall()}
-            new_items = [item for item in candidates if item["proposal_external_id"] not in already_picked]
+            available_items = [item for item in candidates if item["proposal_external_id"] not in already_picked]
+            selected_proposal_ids = {
+                str(value or "").strip()
+                for value in (payload.get("proposalExternalIds") or [])
+                if str(value or "").strip()
+            }
+            if selected_proposal_ids:
+                new_items = [item for item in available_items if str(item.get("proposal_external_id") or "") in selected_proposal_ids]
+            else:
+                new_items = available_items
             skipped_count = len(candidates) - len(new_items)
+            skipped_previously_picked = len(candidates) - len(available_items)
+            skipped_not_selected = len(available_items) - len(new_items)
 
             cursor.execute(
                 """
@@ -16240,9 +16306,11 @@ async def create_ignition_renewal_run(user: dict) -> dict:
             "window_end": window_end.isoformat(),
             "window_weeks": IGNITION_RENEWAL_WINDOW_WEEKS,
             "picked": len(inserted),
-            "skipped_previously_picked": skipped_count,
+            "skipped_previously_picked": skipped_previously_picked,
+            "skipped_not_selected": skipped_not_selected,
             "proposal_source": proposals_source,
             "refresh_error": refresh_error_message,
+            "selection_requested_count": len(selected_proposal_ids),
         },
         user["id"],
     )
@@ -16449,6 +16517,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
         "zapierConfigured": bool(str(get_settings().ignition_renewals_zapier_webhook_url or "").strip()),
         "currentRun": _serialize_ignition_renewal_run(current_run, items),
         "recentRuns": [_serialize_ignition_renewal_run(row) for row in recent_runs],
+        "candidatePool": _ignition_renewal_candidates_for_user(user),
     }
 
 

@@ -13097,15 +13097,16 @@
             }
             .ignition-renewals-table-wrap {
                 overflow: auto;
+                -webkit-overflow-scrolling: touch;
                 border: 1px solid var(--line);
                 border-radius: 14px;
                 background: #ffffff;
             }
             .ignition-renewals-table {
                 width: 100%;
-                min-width: 980px;
+                min-width: 860px;
                 border-collapse: collapse;
-                table-layout: fixed;
+                table-layout: auto;
             }
             .ignition-renewals-table th,
             .ignition-renewals-table td {
@@ -13124,6 +13125,17 @@
                 font-size: 0.72rem;
                 font-weight: 900;
                 text-transform: uppercase;
+            }
+            .ignition-renewals-table th:first-child,
+            .ignition-renewals-table td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 2;
+                background: #ffffff;
+            }
+            .ignition-renewals-table thead th:first-child {
+                z-index: 3;
+                background: var(--surface-soft);
             }
             .ignition-renewals-table input,
             .ignition-renewals-table textarea {
@@ -13146,19 +13158,101 @@
                 font-weight: 900;
             }
             .ignition-renewals-table th:nth-child(1),
-            .ignition-renewals-table td:nth-child(1) { width: 28%; }
+            .ignition-renewals-table td:nth-child(1) { width: 20%; }
             .ignition-renewals-table th:nth-child(2),
             .ignition-renewals-table td:nth-child(2) { width: 11%; }
             .ignition-renewals-table th:nth-child(3),
-            .ignition-renewals-table td:nth-child(3) { width: 13%; }
+            .ignition-renewals-table td:nth-child(3) { width: 10%; }
             .ignition-renewals-table th:nth-child(4),
-            .ignition-renewals-table td:nth-child(4) { width: 13%; }
+            .ignition-renewals-table td:nth-child(4) { width: 10%; }
             .ignition-renewals-table th:nth-child(5),
-            .ignition-renewals-table td:nth-child(5) { width: 11%; }
+            .ignition-renewals-table td:nth-child(5) { width: 12%; }
             .ignition-renewals-table th:nth-child(6),
-            .ignition-renewals-table td:nth-child(6) { width: 11%; }
+            .ignition-renewals-table td:nth-child(6) { width: 8%; }
             .ignition-renewals-table th:nth-child(7),
-            .ignition-renewals-table td:nth-child(7) { width: 13%; }
+            .ignition-renewals-table td:nth-child(7) { width: 8%; }
+            .ignition-renewals-table th:nth-child(8),
+            .ignition-renewals-table td:nth-child(8) { width: 21%; min-width: 210px; }
+            .ignition-renewals-table td[data-label="AT Comments"] textarea,
+            .ignition-renewals-table td[data-label="AT Comments"] input {
+                min-height: 64px;
+                resize: vertical;
+            }
+            .ignition-renewals-batch-stage {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                gap: 12px;
+                height: 100%;
+            }
+            .ignition-renewals-stage-card {
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr);
+                gap: 10px;
+                min-height: 0;
+            }
+            .ignition-renewals-stage-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+            @media (max-width: 1100px) {
+                .ignition-renewals-table {
+                    min-width: 760px;
+                }
+                .ignition-renewals-table th,
+                .ignition-renewals-table td {
+                    padding: 9px 8px;
+                }
+            }
+            @media (max-width: 760px) {
+                .ignition-renewals-table {
+                    min-width: 0;
+                    border-collapse: separate;
+                    border-spacing: 0 8px;
+                }
+                .ignition-renewals-table thead {
+                    display: none;
+                }
+                .ignition-renewals-table tbody tr {
+                    display: grid;
+                    gap: 0;
+                    border: 1px solid var(--line);
+                    border-radius: 12px;
+                    background: #ffffff;
+                    overflow: hidden;
+                }
+                .ignition-renewals-table th:first-child,
+                .ignition-renewals-table td:first-child {
+                    position: static;
+                    left: auto;
+                    background: transparent;
+                }
+                .ignition-renewals-table td {
+                    display: grid;
+                    grid-template-columns: minmax(96px, 42%) 1fr;
+                    gap: 8px;
+                    align-items: center;
+                    border-bottom: 1px solid rgba(61, 85, 130, 0.08);
+                    padding: 8px 10px;
+                }
+                .ignition-renewals-table td:last-child {
+                    border-bottom: 0;
+                }
+                .ignition-renewals-table td::before {
+                    content: attr(data-label);
+                    color: var(--muted);
+                    font-size: 0.7rem;
+                    font-weight: 900;
+                    text-transform: uppercase;
+                    letter-spacing: 0.04em;
+                }
+                .ignition-renewals-table td strong,
+                .ignition-renewals-table td span {
+                    display: block;
+                }
+            }
             .ignition-renewal-history-wrap {
                 display: grid;
                 grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
@@ -17695,6 +17789,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path><path d="m15 17 2 2 3-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>HMRC 64-8s</strong><span>Agent authority</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Client Auth Register</strong><span>CH auth code directory</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-ignition" data-app-nav="ignition">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Renewals</strong><span>Proposal workspace</span></span>
@@ -17750,6 +17848,10 @@
                             <button class="settings-sidebar-button" type="button" data-settings-nav="ignition-connection">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Ignition Link</strong><span>Connection</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="confirmation-settings">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Confirmation Settings</strong><span>Companies House + Xero</span></span>
                             </button>
                             <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
@@ -18113,7 +18215,6 @@
                         </button>
                         <div class="ignition-renewals-topbar-button" id="ignitionRenewalsTopbarActions" hidden>
                             <button class="primary-button" id="openIgnitionRenewalsModalButton" type="button">Open proposal workspace</button>
-                            <button class="ghost-button" id="startIgnitionRenewalsButton" type="button">Create proposal list</button>
                             <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
                             <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email Amie</button>
                             <button class="ghost-button" id="exportIgnitionRenewalsPdfButton" type="button">Export PDF</button>
@@ -18409,6 +18510,84 @@
                                     </div>
                                     <p class="settings-help">Reconnect only when Ignition authorisation changes or the Reporting API token needs refreshing.</p>
                                 </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="confirmation-settings">
+                            <section class="ch-settings-card" id="companiesHouseSettingsCard">
+                                <div class="ch-settings-head">
+                                    <div>
+                                        <p class="eyebrow">Companies House settings</p>
+                                        <h3>Credentials, environment and Xero invoice posting</h3>
+                                        <p class="detail-meta">Secrets are encrypted at rest and never returned to the browser. Switch to Production only once sandbox filings have been verified end-to-end.</p>
+                                    </div>
+                                    <span class="ch-settings-env-pill" id="companiesHouseEnvPill" aria-live="polite">Sandbox</span>
+                                </div>
+                                <form class="ch-settings-form" id="companiesHouseSettingsForm" autocomplete="off">
+                                    <label>
+                                        Environment
+                                        <select id="chSettingsEnvironment" name="environment">
+                                            <option value="sandbox">Sandbox (testing)</option>
+                                            <option value="production">Production (live filings)</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Notification email
+                                        <input id="chSettingsNotifyEmail" name="notifyEmail" type="email" placeholder="someone@jaccountancy.co.uk">
+                                    </label>
+                                    <p class="ch-section-heading">Read API (company profile, officers, PSCs)</p>
+                                    <label>
+                                        Public API key
+                                        <input id="chSettingsApiKey" name="apiKey" type="text" autocomplete="off" placeholder="Hardcoded in backend" readonly>
+                                        <span class="ch-field-hint" id="chSettingsApiKeyHint">Hardcoded in backend (read-only).</span>
+                                    </label>
+                                    <label class="ch-checkbox">
+                                        <input id="chSettingsAutoSync" name="autoSyncEnabled" type="checkbox" checked>
+                                        <span>Auto-sync nightly (refresh all companies once per day)</span>
+                                    </label>
+                                    <p class="ch-section-heading">Filing credentials (Presenter)</p>
+                                    <label>
+                                        Presenter ID
+                                        <input id="chSettingsPresenterId" name="presenterId" type="text" placeholder="Hardcoded in backend" readonly>
+                                    </label>
+                                    <label>
+                                        Presenter authentication code
+                                        <input id="chSettingsPresenterAuth" name="presenterAuth" type="text" autocomplete="off" placeholder="Hardcoded in backend" readonly>
+                                        <span class="ch-field-hint" id="chSettingsPresenterAuthHint">Hardcoded in backend (read-only).</span>
+                                    </label>
+                                    <label class="is-wide">
+                                        Companies House credit account number
+                                        <input id="chSettingsCreditAccount" name="creditAccountNumber" type="text" placeholder="Used as the payment route for filing fees">
+                                    </label>
+                                    <p class="ch-section-heading">Xero invoice raised on each successful filing</p>
+                                    <label>
+                                        Sales account code
+                                        <input id="chSettingsXeroAccountCode" name="xeroInvoiceAccountCode" type="text" placeholder="e.g. 200">
+                                    </label>
+                                    <label>
+                                        Item code (optional)
+                                        <input id="chSettingsXeroItemCode" name="xeroInvoiceItemCode" type="text" placeholder="Xero inventory item code">
+                                    </label>
+                                    <label class="is-wide">
+                                        Line description
+                                        <input id="chSettingsXeroDescription" name="xeroInvoiceDescription" type="text" placeholder="Companies House confirmation statement filing">
+                                    </label>
+                                    <label>
+                                        Unit amount (£)
+                                        <input id="chSettingsXeroUnitAmount" name="xeroInvoiceUnitAmount" type="number" min="0" step="0.01" placeholder="0.00">
+                                    </label>
+                                    <label>
+                                        Tax type
+                                        <input id="chSettingsXeroTaxType" name="xeroInvoiceTaxType" type="text" placeholder="NONE">
+                                    </label>
+                                </form>
+                                <div class="ch-settings-actions">
+                                    <button class="primary-button" type="button" id="saveCompaniesHouseSettingsButton">Save settings</button>
+                                    <button class="ghost-button" type="button" id="testCompaniesHouseConnectionButton">Test CH connection</button>
+                                    <button class="ghost-button" type="button" id="exportCompaniesHouseRawXmlButton" disabled>Export raw XML</button>
+                                    <button class="ghost-button" type="button" id="reloadCompaniesHouseSettingsButton">Reload</button>
+                                    <span class="ch-settings-status is-muted" id="companiesHouseSettingsStatus">Loading settings…</span>
+                                </div>
+                            </section>
                             </section>
 
                             <section class="detail-panel settings-panel" data-settings-section="mapping">
@@ -18786,7 +18965,6 @@
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="companies" role="tab" aria-selected="false">Companies</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="import" role="tab" aria-selected="false">Import</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="audit" role="tab" aria-selected="false">Audit</button>
-                                <button class="ch-subnav-tab" type="button" data-ch-tab="settings" role="tab" aria-selected="false">Settings</button>
                             </nav>
                             <section class="ch-tab-panel" data-ch-panel="dashboard">
                                 <div class="ch-tile-grid" id="chDashboardTileGrid" hidden></div>
@@ -19080,116 +19258,6 @@
                                         </table>
                                     </div>
                                 </article>
-                            </section>
-                            <section class="ch-tab-panel" data-ch-panel="settings" hidden>
-                            <section class="ch-settings-card" id="companiesHouseSettingsCard">
-                                <div class="ch-settings-head">
-                                    <div>
-                                        <p class="eyebrow">Companies House settings</p>
-                                        <h3>Credentials, environment and Xero invoice posting</h3>
-                                        <p class="detail-meta">Secrets are encrypted at rest and never returned to the browser. Switch to Production only once sandbox filings have been verified end-to-end.</p>
-                                    </div>
-                                    <span class="ch-settings-env-pill" id="companiesHouseEnvPill" aria-live="polite">Sandbox</span>
-                                </div>
-                                <form class="ch-settings-form" id="companiesHouseSettingsForm" autocomplete="off">
-                                    <label>
-                                        Environment
-                                        <select id="chSettingsEnvironment" name="environment">
-                                            <option value="sandbox">Sandbox (testing)</option>
-                                            <option value="production">Production (live filings)</option>
-                                        </select>
-                                    </label>
-                                    <label>
-                                        Notification email
-                                        <input id="chSettingsNotifyEmail" name="notifyEmail" type="email" placeholder="someone@jaccountancy.co.uk">
-                                    </label>
-                                    <p class="ch-section-heading">Read API (company profile, officers, PSCs)</p>
-                                    <label>
-                                        Public API key
-                                        <input id="chSettingsApiKey" name="apiKey" type="text" autocomplete="off" placeholder="Hardcoded in backend" readonly>
-                                        <span class="ch-field-hint" id="chSettingsApiKeyHint">Hardcoded in backend (read-only).</span>
-                                    </label>
-                                    <label class="ch-checkbox">
-                                        <input id="chSettingsAutoSync" name="autoSyncEnabled" type="checkbox" checked>
-                                        <span>Auto-sync nightly (refresh all companies once per day)</span>
-                                    </label>
-                                    <p class="ch-section-heading">Filing credentials (Presenter)</p>
-                                    <label>
-                                        Presenter ID
-                                        <input id="chSettingsPresenterId" name="presenterId" type="text" placeholder="Hardcoded in backend" readonly>
-                                    </label>
-                                    <label>
-                                        Presenter authentication code
-                                        <input id="chSettingsPresenterAuth" name="presenterAuth" type="text" autocomplete="off" placeholder="Hardcoded in backend" readonly>
-                                        <span class="ch-field-hint" id="chSettingsPresenterAuthHint">Hardcoded in backend (read-only).</span>
-                                    </label>
-                                    <label class="is-wide">
-                                        Companies House credit account number
-                                        <input id="chSettingsCreditAccount" name="creditAccountNumber" type="text" placeholder="Used as the payment route for filing fees">
-                                    </label>
-                                    <p class="ch-section-heading">Xero invoice raised on each successful filing</p>
-                                    <label>
-                                        Sales account code
-                                        <input id="chSettingsXeroAccountCode" name="xeroInvoiceAccountCode" type="text" placeholder="e.g. 200">
-                                    </label>
-                                    <label>
-                                        Item code (optional)
-                                        <input id="chSettingsXeroItemCode" name="xeroInvoiceItemCode" type="text" placeholder="Xero inventory item code">
-                                    </label>
-                                    <label class="is-wide">
-                                        Line description
-                                        <input id="chSettingsXeroDescription" name="xeroInvoiceDescription" type="text" placeholder="Companies House confirmation statement filing">
-                                    </label>
-                                    <label>
-                                        Unit amount (£)
-                                        <input id="chSettingsXeroUnitAmount" name="xeroInvoiceUnitAmount" type="number" min="0" step="0.01" placeholder="0.00">
-                                    </label>
-                                    <label>
-                                        Tax type
-                                        <input id="chSettingsXeroTaxType" name="xeroInvoiceTaxType" type="text" placeholder="NONE">
-                                    </label>
-                                </form>
-                                <div class="ch-settings-actions">
-                                    <button class="primary-button" type="button" id="saveCompaniesHouseSettingsButton">Save settings</button>
-                                    <button class="ghost-button" type="button" id="testCompaniesHouseConnectionButton">Test CH connection</button>
-                                    <button class="ghost-button" type="button" id="exportCompaniesHouseRawXmlButton" disabled>Export raw XML</button>
-                                    <button class="ghost-button" type="button" id="reloadCompaniesHouseSettingsButton">Reload</button>
-                                    <span class="ch-settings-status is-muted" id="companiesHouseSettingsStatus">Loading settings…</span>
-                                </div>
-                            </section>
-                            <section class="ch-settings-card" id="companiesHouseAuthCodeRegisterCard">
-                                <div class="ch-settings-head">
-                                    <div>
-                                        <p class="eyebrow">Client auth code directory</p>
-                                        <h3>Upload and manage auth code register</h3>
-                                        <p class="detail-meta">Upload a CSV register of client/company auth codes, then backfill missing company auth codes from the directory.</p>
-                                    </div>
-                                </div>
-                                <div class="ch-import-dropzone">
-                                    Upload auth code CSV
-                                    <input id="chAuthCodeRegisterFile" type="file" accept=".csv,text/csv">
-                                </div>
-                                <div class="ch-settings-actions">
-                                    <button class="primary-button" type="button" id="chAuthCodeRegisterUploadButton" disabled>Upload directory file</button>
-                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterPopulateButton">Populate missing company auth codes</button>
-                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterReloadButton">Reload directory</button>
-                                    <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Choose a CSV file to upload.</span>
-                                </div>
-                                <div class="ch-companies-table-wrap">
-                                    <table class="ch-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Company</th>
-                                                <th>Number</th>
-                                                <th>Auth code</th>
-                                                <th>Source file</th>
-                                                <th>Uploaded</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="chAuthCodeRegisterTableBody"></tbody>
-                                    </table>
-                                </div>
-                            </section>
                             </section>
                             <div id="confirmationStatementLegacyDemo" hidden aria-hidden="true">
                             <div class="late-charge-bulk-toolbar">
@@ -19491,6 +19559,52 @@
                                     </table>
                                 </div>
                             </article>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="clientAuthRegisterScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Companies House directory</p>
+                                    <h3>Client Auth Register</h3>
+                                    <p class="detail-meta">Upload and maintain the auth-code register, then backfill missing client/company auth codes in your filing workflow.</p>
+                                </div>
+                            </div>
+                            <section class="ch-settings-card" id="companiesHouseAuthCodeRegisterCard">
+                                <div class="ch-settings-head">
+                                    <div>
+                                        <p class="eyebrow">Client auth code directory</p>
+                                        <h3>Upload and manage auth code register</h3>
+                                        <p class="detail-meta">Upload a CSV register of client/company auth codes, then backfill missing company auth codes from the directory.</p>
+                                    </div>
+                                </div>
+                                <div class="ch-import-dropzone">
+                                    Upload auth code CSV
+                                    <input id="chAuthCodeRegisterFile" type="file" accept=".csv,text/csv">
+                                </div>
+                                <div class="ch-settings-actions">
+                                    <button class="primary-button" type="button" id="chAuthCodeRegisterUploadButton" disabled>Upload directory file</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterPopulateButton">Populate missing company auth codes</button>
+                                    <button class="ghost-button" type="button" id="chAuthCodeRegisterReloadButton">Reload directory</button>
+                                    <span class="ch-settings-status is-muted" id="chAuthCodeRegisterStatus">Choose a CSV file to upload.</span>
+                                </div>
+                                <div class="ch-companies-table-wrap">
+                                    <table class="ch-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Company</th>
+                                                <th>Number</th>
+                                                <th>Auth code</th>
+                                                <th>Manager</th>
+                                                <th>Source file</th>
+                                                <th>Uploaded</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="chAuthCodeRegisterTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </section>
                         </section>
                     </section>
 
@@ -19976,6 +20090,9 @@
                                         <p class="eyebrow">Renewals process</p>
                                         <h3 id="ignitionRenewalsModalTitle">Proposal workspace</h3>
                                         <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="ignitionRenewalsBackToBatchesButton" type="button" hidden>Back to batches</button>
                                     </div>
                                 </div>
                                 <div class="ignition-renewals-meta" id="ignitionRenewalsMeta"></div>
@@ -21830,6 +21947,8 @@
             let ignitionRenewalsStartedAt = 0;
             let ignitionRenewalsProgressTimer = null;
             let ignitionRenewalsModalOpen = false;
+            let ignitionRenewalsWorkspaceStage = "batch";
+            let ignitionRenewalSelection = new Set();
             let ignitionRenewalHistoryModalOpen = false;
             let ignitionRenewalHistoryLoading = false;
             let ignitionRenewalHistorySelectedRunId = "";
@@ -38553,12 +38672,6 @@
                 }
                 const refreshClientsButton = document.getElementById("refreshIgnitionClientsButton");
                 if (refreshClientsButton) refreshClientsButton.disabled = ignitionLoading || isIgnitionSyncing;
-                const renewalsButton = document.getElementById("startIgnitionRenewalsButton");
-                if (renewalsButton) {
-                    renewalsButton.disabled = !connected || ignitionLoading || ignitionRenewalsLoading;
-                    renewalsButton.textContent = ignitionRenewalsLoading ? "Preparing..." : "Create proposal list";
-                    renewalsButton.title = connected ? "Create a list of unpicked accepted Ignition proposals expiring in the coming 8 weeks" : "Connect Ignition before starting renewals";
-                }
                 const openRenewalsModalButton = document.getElementById("openIgnitionRenewalsModalButton");
                 if (openRenewalsModalButton) {
                     openRenewalsModalButton.disabled = !connected || ignitionLoading;
@@ -38994,6 +39107,56 @@
                 `;
             }
 
+            function ignitionRenewalCandidatePool() {
+                return ignitionData.renewals?.candidatePool || {};
+            }
+
+            function ignitionRenewalCandidates() {
+                const rows = ignitionRenewalCandidatePool().candidates;
+                return Array.isArray(rows) ? rows : [];
+            }
+
+            function seedIgnitionRenewalSelection() {
+                ignitionRenewalSelection = new Set(
+                    ignitionRenewalCandidates()
+                        .map((item) => String(item?.proposalExternalId || ""))
+                        .filter(Boolean)
+                );
+            }
+
+            function ensureIgnitionRenewalSelection() {
+                if (!ignitionRenewalSelection.size) seedIgnitionRenewalSelection();
+            }
+
+            function ignitionRenewalSelectionList() {
+                ensureIgnitionRenewalSelection();
+                return Array.from(ignitionRenewalSelection).filter(Boolean);
+            }
+
+            function openIgnitionRenewalsPricingStage() {
+                ignitionRenewalsWorkspaceStage = "pricing";
+                renderIgnitionRenewals();
+            }
+
+            function openIgnitionRenewalsBatchStage() {
+                ignitionRenewalsWorkspaceStage = "batch";
+                ensureIgnitionRenewalSelection();
+                renderIgnitionRenewals();
+            }
+
+            async function loadIgnitionRenewalRunIntoWorkspace(runId = "") {
+                const targetRunId = String(runId || "").trim();
+                if (!targetRunId) return;
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewalRun, {}, { runId: targetRunId });
+                    ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    openIgnitionRenewalsPricingStage();
+                } catch (error) {
+                    console.error("Unable to load renewal run", error);
+                    showToast(error.message || "Unable to open renewal batch", "error");
+                }
+            }
+
             function setIgnitionRenewalsModalOpen(isOpen) {
                 ignitionRenewalsModalOpen = Boolean(isOpen);
                 const modal = document.getElementById("ignitionRenewalsModal");
@@ -39001,8 +39164,10 @@
                 const closeButton = document.getElementById("closeIgnitionRenewalsModalButton");
                 if (closeButton) closeButton.hidden = !ignitionRenewalsModalOpen;
                 if (ignitionRenewalsModalOpen) {
+                    ignitionRenewalsWorkspaceStage = "batch";
+                    seedIgnitionRenewalSelection();
                     renderIgnitionRenewals();
-                    window.setTimeout(() => document.getElementById("startIgnitionRenewalsButton")?.focus(), 0);
+                    window.setTimeout(() => document.getElementById("startIgnitionRenewalsSelectedButton")?.focus(), 0);
                 }
             }
 
@@ -39278,8 +39443,27 @@
                 const emailButton = document.getElementById("emailIgnitionRenewalsButton");
                 const exportPdfButton = document.getElementById("exportIgnitionRenewalsPdfButton");
                 const finaliseButton = document.getElementById("finaliseIgnitionRenewalsButton");
+                const backToBatchesButton = document.getElementById("ignitionRenewalsBackToBatchesButton");
 
-                if (ignitionRenewalsLoading) {
+                if (ignitionRenewalsWorkspaceStage === "batch") {
+                    const candidatePool = ignitionRenewalCandidatePool();
+                    const candidates = ignitionRenewalCandidates();
+                    const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                    ensureIgnitionRenewalSelection();
+                    if (title) title.textContent = "Renewal batches and history";
+                    if (summary) {
+                        summary.textContent = `${Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")} selectable proposals in the next ${Number(candidatePool.windowWeeks || 8).toLocaleString("en-GB")} weeks. Choose clients to start a new renewal batch, or open a prior batch to review pricing.`;
+                    }
+                    if (meta) {
+                        meta.innerHTML = [
+                            ["Available", Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")],
+                            ["Already picked", Number(candidatePool.alreadyPickedCount || 0).toLocaleString("en-GB")],
+                            ["Selected", Number(ignitionRenewalSelectionList().length || 0).toLocaleString("en-GB")],
+                            ["Runs", Number(recentRuns.length || 0).toLocaleString("en-GB")],
+                        ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+                    }
+                    if (wrap) wrap.innerHTML = renderIgnitionRenewalsBatchWorkspace();
+                } else if (ignitionRenewalsLoading) {
                     updateIgnitionRenewalsTopbarProgress();
                     const elapsed = ignitionRenewalsElapsedSeconds();
                     const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
@@ -39322,25 +39506,123 @@
                     if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, Boolean(run.finalisedAt));
                 } else {
                     if (title) title.textContent = "Proposals ending in the coming 8 weeks";
-                    if (summary) summary.textContent = "Create a proposal list from accepted proposals for active clients with period end dates in the next 8 weeks.";
+                    if (summary) summary.textContent = "No renewal batch is open. Return to Batches to select clients and start a renewal run.";
                     if (meta) {
                         meta.innerHTML = [
-                            ["Status", "Ready"],
-                            ["Scope", "Next 8 weeks"],
+                            ["Status", "No open batch"],
+                            ["Action", "Go back to Batches"],
                             ["Email", `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`],
                             ["Zapier", ignitionData.renewals?.zapierConfigured ? "Configured" : "Not configured"]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
-                    if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active list</p><h4>Create the upcoming proposal list when you are ready</h4><p>Ignition will pick accepted proposals for active clients with period end dates in the next 8 weeks and skip anything already reserved in an earlier round.</p></div>';
+                    if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active batch</p><h4>Start from renewal batches</h4><p>Open the batches stage, select clients, then continue to pricing.</p></div>';
                 }
 
                 const finalised = Boolean(run?.finalisedAt);
-                if (saveButton) saveButton.disabled = ignitionRenewalsLoading || !run || finalised || !run.items?.length;
-                if (emailButton) emailButton.disabled = ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
-                if (exportPdfButton) exportPdfButton.disabled = ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
-                if (finaliseButton) finaliseButton.disabled = ignitionRenewalsLoading || !run || finalised || !run.items?.length;
+                const pricingStage = ignitionRenewalsWorkspaceStage === "pricing";
+                if (backToBatchesButton) backToBatchesButton.hidden = !pricingStage;
+                if (saveButton) saveButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
+                if (emailButton) emailButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
+                if (exportPdfButton) exportPdfButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
+                if (finaliseButton) finaliseButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
                 if (finaliseButton) finaliseButton.textContent = run?.finalisedAt ? "ELs raised" : "Finalise and raise ELs";
                 renderIgnitionRenewalsLaunch();
+            }
+
+            function renderIgnitionRenewalsBatchWorkspace() {
+                const candidatePool = ignitionRenewalCandidatePool();
+                const candidates = ignitionRenewalCandidates();
+                const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                ensureIgnitionRenewalSelection();
+                const selectedSet = new Set(ignitionRenewalSelectionList());
+                const runRows = recentRuns.length
+                    ? `
+                        <table class="ignition-renewals-table">
+                            <thead>
+                                <tr>
+                                    <th>Batch created</th>
+                                    <th>Window</th>
+                                    <th>Status</th>
+                                    <th>Clients</th>
+                                    <th>Current MRR</th>
+                                    <th>Proposed MRR</th>
+                                    <th>Open</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recentRuns.map((run) => `
+                                    <tr>
+                                        <td>${escapeHTML(run.createdAt ? formatDateTime(run.createdAt) : "Unknown")}</td>
+                                        <td>${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
+                                        <td>${escapeHTML(run.status || "draft")}</td>
+                                        <td>${Number(run.pickedCount || run.itemCount || 0).toLocaleString("en-GB")}</td>
+                                        <td class="money-cell">${formatCurrency(run.totalCurrentMonthly || 0)}</td>
+                                        <td class="money-cell">${formatCurrency(run.totalNewMonthly || 0)}</td>
+                                        <td><button class="ghost-button" type="button" data-renewals-open-run="${escapeHTML(run.id || "")}">Open pricing</button></td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    `
+                    : '<div class="empty-state"><p class="eyebrow">No runs yet</p><h4>No renewal batches have been created</h4><p>Select clients below and start the first renewal batch.</p></div>';
+                const candidateRows = candidates.length
+                    ? `
+                        <table class="ignition-renewals-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="ignitionRenewalsSelectAllCandidates" ${selectedSet.size === candidates.length ? "checked" : ""} aria-label="Select all candidates"></th>
+                                    <th>Client</th>
+                                    <th>Proposal End Date</th>
+                                    <th>Manager</th>
+                                    <th>Current Net Monthly Fee</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${candidates.map((item) => {
+                                    const candidateId = String(item.proposalExternalId || "");
+                                    const checked = selectedSet.has(candidateId);
+                                    return `
+                                        <tr>
+                                            <td><input type="checkbox" data-renewal-candidate-id="${escapeHTML(candidateId)}" ${checked ? "checked" : ""}></td>
+                                            <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
+                                            <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
+                                            <td>${escapeHTML(item.clientManager || "Unassigned")}</td>
+                                            <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
+                                        </tr>
+                                    `;
+                                }).join("")}
+                            </tbody>
+                        </table>
+                    `
+                    : '<div class="empty-state"><p class="eyebrow">No candidates</p><h4>No selectable renewal candidates right now</h4><p>Run an Ignition sync and check accepted proposals in the next renewal window.</p></div>';
+
+                return `
+                    <section class="ignition-renewals-batch-stage">
+                        <article class="ignition-renewals-stage-card">
+                            <div class="ignition-renewals-stage-head">
+                                <div>
+                                    <p class="eyebrow">Renewal batch history</p>
+                                    <h4>Recent renewal batches</h4>
+                                </div>
+                            </div>
+                            <div class="ignition-renewals-table-wrap">${runRows}</div>
+                        </article>
+                        <article class="ignition-renewals-stage-card">
+                            <div class="ignition-renewals-stage-head">
+                                <div>
+                                    <p class="eyebrow">Start new batch</p>
+                                    <h4>Select clients for this renewal run</h4>
+                                    <p class="detail-meta">${Number(candidatePool.availableCount || candidates.length || 0).toLocaleString("en-GB")} available in this window (${escapeHTML(candidatePool.windowStart || "")} to ${escapeHTML(candidatePool.windowEnd || "")}).</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" type="button" id="ignitionRenewalsClearSelectionButton">Clear selection</button>
+                                    <button class="primary-button" type="button" id="startIgnitionRenewalsSelectedButton">Start selected batch (${selectedSet.size.toLocaleString("en-GB")})</button>
+                                </div>
+                            </div>
+                            <div class="ignition-renewals-table-wrap">${candidateRows}</div>
+                        </article>
+                    </section>
+                `;
             }
 
             function renderIgnitionRenewalsTable(items, locked = false) {
@@ -39354,14 +39636,15 @@
                     const increasePercent = current > 0 ? variance / current : 0;
                     const proposalEndDate = formatDate(item.renewalDate || "");
                     return `
-                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || "")}">
-                            <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><span>${escapeHTML(item.proposalName || "")}</span></td>
-                            <td>${escapeHTML(proposalEndDate || "-")}</td>
-                            <td><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" ${locked ? "disabled" : ""}></td>
-                            <td class="money-cell">${formatCurrency(current)}</td>
-                            <td><input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${proposed.toFixed(2)}" ${locked ? "disabled" : ""}></td>
-                            <td class="money-cell" data-renewal-variance>${formatCurrency(variance)}</td>
-                            <td class="percent-cell" data-renewal-variance-percent>${ignitionRenewalPercent(increasePercent)}</td>
+                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}">
+                            <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong></td>
+                            <td data-label="Proposal End Date">${escapeHTML(proposalEndDate || "-")}</td>
+                            <td data-label="Client Manager"><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" ${locked ? "disabled" : ""}></td>
+                            <td data-label="Net Monthly Fee" class="money-cell">${formatCurrency(current)}</td>
+                            <td data-label="New Net Monthly Fee"><input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${proposed.toFixed(2)}" ${locked ? "disabled" : ""}></td>
+                            <td data-label="Variance" class="money-cell" data-renewal-variance>${formatCurrency(variance)}</td>
+                            <td data-label="Uplift %" class="percent-cell" data-renewal-variance-percent>${ignitionRenewalPercent(increasePercent)}</td>
+                            <td data-label="AT Comments"><textarea data-renewal-field="comments" rows="3" ${locked ? "disabled" : ""}>${escapeHTML(item.comments || item.planName || item.serviceName || "")}</textarea></td>
                         </tr>
                     `;
                 }).join("");
@@ -39376,6 +39659,7 @@
                                 <th>New Net Monthly Fee</th>
                                 <th>Variance</th>
                                 <th>Uplift %</th>
+                                <th>AT Comments</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
@@ -39391,7 +39675,7 @@
                     planName: row.dataset.planName || "",
                     currentMonthlyFee: Number(row.dataset.currentMonthly || 0),
                     newMonthlyFee: Number(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || 0),
-                    comments: row.dataset.comments || ""
+                    comments: row.querySelector('[data-renewal-field="comments"]')?.value || ""
                 }));
             }
 
@@ -39430,6 +39714,12 @@
             async function startIgnitionRenewals() {
                 if (!isIgnitionConnected()) return showToast("Connect Ignition before starting renewals.", "info", { label: "Connect Ignition", onClick: openIgnitionConnection });
                 if (!ignitionRenewalsModalOpen) openIgnitionRenewalsModal();
+                const selectedProposalExternalIds = ignitionRenewalSelectionList();
+                if (!selectedProposalExternalIds.length) {
+                    showToast("Select at least one client before starting a renewal batch.", "info");
+                    return;
+                }
+                ignitionRenewalsWorkspaceStage = "pricing";
                 ignitionRenewalsLoading = true;
                 ignitionRenewalsStartedAt = Date.now();
                 const renewalsController = new AbortController();
@@ -39440,11 +39730,17 @@
                 try {
                     const payload = await requestJSON(
                         api.endpoints.ignitionRenewalsRun,
-                        { method: "POST", body: JSON.stringify({}), signal: renewalsController.signal }
+                        { method: "POST", body: JSON.stringify({ proposalExternalIds: selectedProposalExternalIds }), signal: renewalsController.signal }
                     );
                     ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
                     const run = ignitionRenewalRun();
-                    showToast(run?.pickedCount ? `Proposal list created with ${run.pickedCount} expiring proposal${run.pickedCount === 1 ? "" : "s"}.` : "No new unpicked expiring proposals found.", run?.pickedCount ? "success" : "info");
+                    if (run?.pickedCount) {
+                        showToast(`Renewal batch created with ${run.pickedCount} client${run.pickedCount === 1 ? "" : "s"}.`, "success");
+                        openIgnitionRenewalsPricingStage();
+                    } else {
+                        showToast("No new unpicked expiring proposals were created from the selected clients.", "info");
+                        openIgnitionRenewalsBatchStage();
+                    }
                 } catch (error) {
                     console.error("Unable to create Ignition renewal run", error);
                     const message = error?.name === "AbortError"
@@ -39457,6 +39753,7 @@
                     ignitionRenewalsStartedAt = 0;
                     stopIgnitionRenewalsProgressTimer();
                     clearIgnitionRenewalsTopbarProgress();
+                    renderIgnitionRenewals();
                     renderIgnitionScreen();
                 }
             }
@@ -53308,12 +53605,12 @@
                     ignitionClientFilter = event.target.value || "all";
                     renderIgnitionClients();
                 });
-                const startIgnitionRenewalsButton = document.getElementById("startIgnitionRenewalsButton");
-                if (startIgnitionRenewalsButton) startIgnitionRenewalsButton.addEventListener("click", startIgnitionRenewals);
                 const openIgnitionRenewalsModalButton = document.getElementById("openIgnitionRenewalsModalButton");
                 if (openIgnitionRenewalsModalButton) openIgnitionRenewalsModalButton.addEventListener("click", openIgnitionRenewalsModal);
                 const closeIgnitionRenewalsModalButton = document.getElementById("closeIgnitionRenewalsModalButton");
                 if (closeIgnitionRenewalsModalButton) closeIgnitionRenewalsModalButton.addEventListener("click", closeIgnitionRenewalsModal);
+                const ignitionRenewalsBackToBatchesButton = document.getElementById("ignitionRenewalsBackToBatchesButton");
+                if (ignitionRenewalsBackToBatchesButton) ignitionRenewalsBackToBatchesButton.addEventListener("click", openIgnitionRenewalsBatchStage);
                 const ignitionRenewalsModal = document.getElementById("ignitionRenewalsModal");
                 if (ignitionRenewalsModal) ignitionRenewalsModal.addEventListener("click", (event) => {
                     if (event.target.id === "ignitionRenewalsModal") closeIgnitionRenewalsModal();
@@ -53347,6 +53644,39 @@
                         return;
                     }
                     updateIgnitionRenewalVariance(row);
+                });
+                if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("change", (event) => {
+                    const selectAll = event.target?.id === "ignitionRenewalsSelectAllCandidates";
+                    if (selectAll) {
+                        const shouldSelect = !!event.target.checked;
+                        const allIds = ignitionRenewalCandidates().map((item) => String(item.proposalExternalId || "")).filter(Boolean);
+                        ignitionRenewalSelection = shouldSelect ? new Set(allIds) : new Set();
+                        renderIgnitionRenewals();
+                        return;
+                    }
+                    const candidateId = String(event.target?.dataset?.renewalCandidateId || "");
+                    if (!candidateId) return;
+                    if (event.target.checked) ignitionRenewalSelection.add(candidateId);
+                    else ignitionRenewalSelection.delete(candidateId);
+                    renderIgnitionRenewals();
+                });
+                if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("click", (event) => {
+                    const startSelected = event.target.closest?.("#startIgnitionRenewalsSelectedButton");
+                    if (startSelected) {
+                        startIgnitionRenewals();
+                        return;
+                    }
+                    const clearSelection = event.target.closest?.("#ignitionRenewalsClearSelectionButton");
+                    if (clearSelection) {
+                        ignitionRenewalSelection = new Set();
+                        renderIgnitionRenewals();
+                        return;
+                    }
+                    const openRunButton = event.target.closest?.("[data-renewals-open-run]");
+                    if (openRunButton) {
+                        const runId = String(openRunButton.dataset.renewalsOpenRun || "").trim();
+                        if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
+                    }
                 });
                 document.addEventListener("keydown", (event) => {
                     if (event.key === "Escape" && ignitionRenewalsModalOpen) closeIgnitionRenewalsModal();

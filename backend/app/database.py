@@ -1476,6 +1476,7 @@ CREATE TABLE IF NOT EXISTS hmrc_64_8_requests (
     created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     client_id TEXT NOT NULL DEFAULT '',
     client_name TEXT NOT NULL DEFAULT '',
+    client_manager TEXT NOT NULL DEFAULT '',
     client_contact_name TEXT NOT NULL DEFAULT '',
     client_contact_email TEXT NOT NULL DEFAULT '',
     client_contact_phone TEXT NOT NULL DEFAULT '',
@@ -1506,6 +1507,7 @@ CREATE TABLE IF NOT EXISTS hmrc_64_8_requests (
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_manager TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_email TEXT NOT NULL DEFAULT '';
 ALTER TABLE hmrc_64_8_requests ADD COLUMN IF NOT EXISTS client_contact_phone TEXT NOT NULL DEFAULT '';
