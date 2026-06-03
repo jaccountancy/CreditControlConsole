@@ -88,8 +88,8 @@ CH_HEADER_NS = "http://xmlgw.companieshouse.gov.uk/Header"
 CH_FORMS_NS = "http://xmlgw.companieshouse.gov.uk"
 CH_GATEWAY_MAX_ATTEMPTS = 4
 CH_GATEWAY_BACKOFF_SECONDS = 1.5
-CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 20.0
-CH_GATEWAY_MAX_ELAPSED_SECONDS = 75.0
+CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 10.0
+CH_GATEWAY_MAX_ELAPSED_SECONDS = 22.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd"
 
