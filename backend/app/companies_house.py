@@ -3134,6 +3134,7 @@ def list_auth_code_register(limit: int = 300) -> dict:
 def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
+    force_overwrite = bool(payload.get("force"))
     user_id = user.get("id") if isinstance(user, dict) else None
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -3148,6 +3149,17 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                     ORDER BY c.company_name ASC
                     """,
                     (company_ids,),
+                )
+            elif force_overwrite:
+                cursor.execute(
+                    """
+                    SELECT c.id, c.company_number, c.company_name, c.client_name,
+                           (a.id IS NOT NULL) AS auth_code_on_file
+                    FROM ch_companies c
+                    LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+                    ORDER BY c.company_name ASC
+                    LIMIT 1000
+                    """
                 )
             else:
                 cursor.execute(
@@ -3182,11 +3194,13 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
             by_name[name] = row
     populated: list[dict] = []
     skipped: list[dict] = []
+    overwritten_count = 0
     for company in companies:
         company_id = str(company.get("id") or "")
         company_number = normalise_company_number(company.get("company_number"))
         company_name = _coerce_text(company.get("company_name") or company.get("client_name"), 250)
-        if company.get("auth_code_on_file"):
+        had_existing_auth = bool(company.get("auth_code_on_file"))
+        if had_existing_auth and not force_overwrite:
             skipped.append({"companyId": company_id, "companyNumber": company_number, "companyName": company_name, "reason": "Auth code already on file."})
             continue
         matched = by_number.get(company_number) if company_number else None
@@ -3221,6 +3235,8 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
                     ),
                 )
             connection.commit()
+        if had_existing_auth:
+            overwritten_count += 1
         populated.append(
             {
                 "companyId": company_id,
@@ -3232,6 +3248,7 @@ def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -
     return {
         "targetCount": len(companies),
         "populatedCount": len(populated),
+        "overwrittenCount": overwritten_count,
         "skippedCount": len(skipped),
         "populated": populated,
         "skipped": skipped,

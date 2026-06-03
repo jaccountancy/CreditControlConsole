@@ -50107,28 +50107,31 @@
                         .map((company) => String(company?.id || ""))
                         .filter(Boolean)
                 );
-                const missingAuthRows = selectedCompanies
-                    .filter((company) => !company?.authCodeOnFile)
+                const authAttentionRows = selectedCompanies
+                    .filter((company) => !company?.authCodeOnFile || String(company?.latestSubmissionStatus || "").toLowerCase() === "rejected")
                     .map((company) => ({
                         companyId: String(company?.id || ""),
                         companyName: String(company?.companyName || "—"),
                         companyNumber: String(company?.companyNumber || ""),
-                        registerMatchAvailable: companiesHouseSettings.authRegisterLookupByNumber.has(normaliseCompanyNumberInput(company?.companyNumber || "")),
+                        authCodeOnFile: Boolean(company?.authCodeOnFile),
+                        latestSubmissionStatus: String(company?.latestSubmissionStatus || ""),
                     }));
-                if (!missingAuthRows.length) return true;
+                if (!authAttentionRows.length) return true;
+                const missingRequiredCount = authAttentionRows.filter((row) => !row.authCodeOnFile).length;
 
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
-                    title: "Resolve missing auth codes",
-                    subtitle: "Enter missing Companies House auth codes, or search your uploaded auth code register before submission.",
+                    title: "Auth code check",
+                    subtitle: "Replace outdated auth codes and add any missing ones before submission.",
                     confirmLabel: "Save and continue",
                     cancelLabel: "Back",
                     summaryChips: [
-                        `${missingAuthRows.length.toLocaleString("en-GB")} missing auth code`,
+                        `${authAttentionRows.length.toLocaleString("en-GB")} need auth-code check`,
+                        `${missingRequiredCount.toLocaleString("en-GB")} missing`,
                         `${companiesHouseSettings.authRegisterRows.length.toLocaleString("en-GB")} register rows loaded`,
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
-                    rows: missingAuthRows,
+                    rows: authAttentionRows,
                     onRender: ({ body, summary }) => {
                         const tools = body.querySelector(".operation-review-tools");
                         if (tools) tools.remove();
@@ -50157,24 +50160,26 @@
                                     <tr>
                                         <th>Company</th>
                                         <th>Number</th>
+                                        <th>Current</th>
                                         <th>Enter auth code</th>
                                         <th>Search register</th>
                                         <th>Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${missingAuthRows.map((row) => `
-                                        <tr data-ch-authfix-company-id="${escapeHTML(row.companyId)}" data-ch-authfix-on-file="false">
+                                    ${authAttentionRows.map((row) => `
+                                        <tr data-ch-authfix-company-id="${escapeHTML(row.companyId)}" data-ch-authfix-on-file="${row.authCodeOnFile ? "true" : "false"}">
                                             <td>${escapeHTML(row.companyName)}</td>
                                             <td>${escapeHTML(row.companyNumber || "—")}</td>
+                                            <td>${row.authCodeOnFile ? "On file" : "Missing"}</td>
                                             <td><input type="text" data-ch-authfix-input maxlength="12" placeholder="e.g. A1B2C3"></td>
-                                            <td><button class="ghost-button" type="button" data-ch-authfix-search ${row.registerMatchAvailable ? "" : "disabled"}>${row.registerMatchAvailable ? "Search register" : "No match loaded"}</button></td>
-                                            <td data-ch-authfix-status>${row.registerMatchAvailable ? "Missing" : "Missing · no loaded register match"}</td>
+                                            <td><button class="ghost-button" type="button" data-ch-authfix-search>Search register</button></td>
+                                            <td data-ch-authfix-status>${row.authCodeOnFile ? "Review if rejected with authorisation failure" : "Missing"}</td>
                                         </tr>
                                     `).join("")}
                                 </tbody>
                             </table>
-                            <p class="operation-review-muted">Auth codes are six alphanumeric characters. Search uses your uploaded register and saves any match to the company record.</p>
+                            <p class="operation-review-muted">Auth codes are six alphanumeric characters. Search uses your uploaded register and can replace an existing stored code for the selected company.</p>
                         `;
                         tableWrap.addEventListener("input", (event) => {
                             const input = event.target?.closest?.("[data-ch-authfix-input]");
@@ -50202,7 +50207,7 @@
                             try {
                                 const payload = await requestJSON("/api/companies-house/auth-code-register/populate", {
                                     method: "POST",
-                                    body: JSON.stringify({ companyIds: [companyId] }),
+                                    body: JSON.stringify({ companyIds: [companyId], force: true }),
                                 });
                                 const result = payload?.result || {};
                                 const populated = Array.isArray(result?.populated)
@@ -50215,7 +50220,7 @@
                                     row.setAttribute("data-ch-authfix-on-file", "true");
                                     const input = row.querySelector("[data-ch-authfix-input]");
                                     if (input) input.value = "";
-                                    if (status) status.textContent = `Found in register (${populated.matchType || "match"})`;
+                                    if (status) status.textContent = `Applied from register (${populated.matchType || "match"})`;
                                 } else if (String(skipped?.reason || "").toLowerCase().includes("already on file")) {
                                     row.setAttribute("data-ch-authfix-on-file", "true");
                                     if (status) status.textContent = "Already on file";
