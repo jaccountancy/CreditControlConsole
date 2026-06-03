@@ -9759,6 +9759,11 @@
             #supplierReconciliationScreen .supplier-recon-workspace-summary {
                 margin: 0 0 10px;
             }
+            #supplierReconciliationScreen .supplier-recon-top-controls {
+                display: grid;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
             #supplierReconciliationScreen .supplier-recon-tabs button {
                 min-height: 34px;
                 padding: 6px 12px;
@@ -20661,7 +20666,7 @@
             let supplierReconciliationWorkspaceTenantId = "";
             let supplierReconciliationWorkspaceTenantName = "";
             let supplierReconciliationStatusFilter = "all";
-            let supplierReconciliationWorkspaceTab = "workspace";
+            let supplierReconciliationWorkspaceTab = "submitted-statements";
             let supplierReconciliationActiveSubmissionId = "";
             let supplierReconciliationSubmissionHistory = loadSupplierReconciliationSubmissionHistory();
             let supplierReconciliationSuppliers = loadSupplierReconciliationSuppliers();
@@ -31433,7 +31438,7 @@
                 supplierReconciliationWorkspaceTenantId = "";
                 supplierReconciliationWorkspaceTenantName = "";
                 supplierReconciliationStatusFilter = "all";
-                supplierReconciliationWorkspaceTab = "workspace";
+                supplierReconciliationWorkspaceTab = "submitted-statements";
                 supplierReconciliationSupplierScreenOpen = false;
                 supplierReconciliationSelectedSupplierId = "";
                 supplierReconciliationSelectedStatementId = "";
@@ -31965,7 +31970,7 @@
                     supplierReconciliationWorkspaceTenantId = tenantId;
                     supplierReconciliationWorkspaceTenantName = String(tenant?.tenantName || "").trim();
                     supplierReconciliationWorkspaceOpen = true;
-                    supplierReconciliationWorkspaceTab = "workspace";
+                    supplierReconciliationWorkspaceTab = "submitted-statements";
                     supplierReconciliationStatusFilter = "all";
                     supplierReconciliationSupplierScreenOpen = false;
                     supplierReconciliationSelectedSupplierId = "";
@@ -32146,6 +32151,19 @@
                             <button class="ghost-button" id="supplierReconciliationRefreshButton" type="button">Refresh</button>
                         </div>
                     </div>
+                    <div class="supplier-recon-top-controls">
+                        <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
+                            <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
+                            <button type="button" data-supplier-recon-tab="report-output" class="${supplierReconciliationWorkspaceTab === "report-output" ? "is-active" : ""}">Report Output</button>
+                        </div>
+                        <div class="detail-actions">
+                            <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${supplierReconciliationWorkspaceTenantId ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
+                            <button class="ghost-button" id="supplierReconciliationReportButton" type="button" ${activeResult ? "" : "disabled"}>Download supplier report</button>
+                            <button class="ghost-button" id="supplierReconciliationEmailButton" type="button" ${(supplierReconciliationMissingRows(activeResult).length > 0) ? "" : "disabled"}>Email missing invoices</button>
+                            <button class="ghost-button" id="supplierReconciliationExportModelButton" type="button" ${activeResult ? "" : "disabled"}>Export extracted model</button>
+                            <button class="ghost-button danger-button" id="supplierReconciliationDisconnectButton" type="button" ${connectedClient ? "" : "disabled"}>Disconnect supplier</button>
+                        </div>
+                    </div>
                     <div class="supplier-recon-client-table-wrap">
                         <div class="detail-actions" style="padding:10px 12px;border-bottom:1px solid var(--line);">
                             <input id="supplierReconciliationSupplierSearchInput" type="search" placeholder="Search suppliers in this workspace..." value="${escapeHTML(supplierReconciliationSupplierSearchTerm)}">
@@ -32205,19 +32223,6 @@
                             <article><span>Current tenant</span><strong>${escapeHTML(supplierReconciliationWorkspaceTenantName || "Workspace")}</strong></article>
                         </div>
                     ` : ""}
-                    <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
-                        <button type="button" data-supplier-recon-tab="supplier-workspace" class="${supplierReconciliationWorkspaceTab === "supplier-workspace" ? "is-active" : ""}">Supplier Workspace</button>
-                        <button type="button" data-supplier-recon-tab="workspace" class="${supplierReconciliationWorkspaceTab === "workspace" ? "is-active" : ""}">Workspace</button>
-                        <button type="button" data-supplier-recon-tab="submitted-statements" class="${supplierReconciliationWorkspaceTab === "submitted-statements" ? "is-active" : ""}">Submitted Statements</button>
-                        <button type="button" data-supplier-recon-tab="report-output" class="${supplierReconciliationWorkspaceTab === "report-output" ? "is-active" : ""}">Report Output</button>
-                    </div>
-                    <div class="detail-actions">
-                        <button class="primary-button" id="supplierReconciliationUploadButton" type="button" ${supplierReconciliationWorkspaceTenantId ? "" : "disabled"}>${supplierReconciliationUploading ? "Uploading..." : "Upload supplier statement"}</button>
-                        <button class="ghost-button" id="supplierReconciliationReportButton" type="button" ${activeResult ? "" : "disabled"}>Download supplier report</button>
-                        <button class="ghost-button" id="supplierReconciliationEmailButton" type="button" ${(supplierReconciliationMissingRows(activeResult).length > 0) ? "" : "disabled"}>Email missing invoices</button>
-                        <button class="ghost-button" id="supplierReconciliationExportModelButton" type="button" ${activeResult ? "" : "disabled"}>Export extracted model</button>
-                        <button class="ghost-button danger-button" id="supplierReconciliationDisconnectButton" type="button" ${connectedClient ? "" : "disabled"}>Disconnect supplier</button>
-                    </div>
                 `;
 
                 const result = activeResult;
@@ -32621,7 +32626,7 @@
                 document.querySelectorAll("[data-supplier-recon-use-contact]").forEach((button) => {
                     button.addEventListener("click", () => {
                         selectedSupplierReconciliationContactId = String(button.dataset.supplierReconUseContact || "");
-                        supplierReconciliationWorkspaceTab = "workspace";
+                        supplierReconciliationWorkspaceTab = "submitted-statements";
                         renderSupplierReconciliationScreen();
                     });
                 });
@@ -32694,17 +32699,6 @@
                 document.getElementById("supplierReconciliationSupplierSortMode")?.addEventListener("change", (event) => {
                     supplierReconciliationSupplierSortMode = String(event.target.value || "name-asc");
                     renderSupplierReconciliationScreen();
-                });
-                document.getElementById("supplierReconciliationAddClientXerosButton")?.addEventListener("click", async () => {
-                    if (!supplierReconciliationWorkspaceTenantId) return;
-                    await loadSupplierReconciliationContacts(true);
-                    const contactsForWorkspace = supplierReconciliationContacts().filter((item) => !workspaceClientIds.has(item.xeroContactId));
-                    if (!contactsForWorkspace.length) {
-                        showToast("No additional supplier contacts found to connect in this client workspace.", "info");
-                        return;
-                    }
-                    selectedSupplierReconciliationContactId = contactsForWorkspace[0].xeroContactId;
-                    await renderConnectSupplier();
                 });
             }
 
