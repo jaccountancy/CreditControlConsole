@@ -18974,7 +18974,7 @@
                                     <p class="ch-section-heading">Read API (company profile, officers, PSCs)</p>
                                     <label>
                                         Public API key
-                                        <input id="chSettingsApiKey" name="apiKey" type="password" autocomplete="new-password" placeholder="Enter a new key to replace">
+                                        <input id="chSettingsApiKey" name="apiKey" type="text" autocomplete="off" placeholder="Companies House API key">
                                         <span class="ch-field-hint" id="chSettingsApiKeyHint">Use Companies House REST API key only (not Streaming key / Web Client ID / Web Client Secret).</span>
                                     </label>
                                     <label class="ch-checkbox">
@@ -53466,6 +53466,7 @@
                 setValue("chSettingsNotifyEmail", data.notifyEmail);
                 setValue("chSettingsPresenterId", data.presenterId);
                 setValue("chSettingsPresenterAuth", data.presenterAuth);
+                setValue("chSettingsApiKey", data.apiKey);
                 setValue("chSettingsCreditAccount", data.creditAccountNumber);
                 setValue("chSettingsXeroAccountCode", data.xeroInvoiceAccountCode);
                 setValue("chSettingsXeroItemCode", data.xeroInvoiceItemCode);
@@ -53477,7 +53478,7 @@
                 const apiKeyHint = document.getElementById("chSettingsApiKeyHint");
                 if (apiKeyHint) {
                     apiKeyHint.textContent = data.apiKeyConfigured
-                        ? `Stored value: ${data.apiKeyHint || "configured"}. Leave blank to keep.`
+                        ? "Loaded full API key from settings."
                         : "Not configured. Use Companies House REST API key only (not Streaming key / Web Client ID / Web Client Secret).";
                 }
                 const presenterAuthHint = document.getElementById("chSettingsPresenterAuthHint");
@@ -53486,8 +53487,6 @@
                         ? "Loaded full presenter authentication code from settings."
                         : "Not configured.";
                 }
-                const apiKeyInput = document.getElementById("chSettingsApiKey");
-                if (apiKeyInput) apiKeyInput.value = "";
             }
 
             async function loadCompaniesHouseSettings(force = false) {

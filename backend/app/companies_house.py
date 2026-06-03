@@ -200,6 +200,7 @@ def _serialise(row: dict) -> dict:
     return {
         "environment": environment,
         "apiBaseUrl": api_base,
+        "apiKey": decrypt_api_key(),
         "apiKeyHint": row.get("api_key_hint") or "",
         "apiKeyConfigured": bool(row.get("api_key_encrypted")),
         "presenterId": row.get("presenter_id") or "",
