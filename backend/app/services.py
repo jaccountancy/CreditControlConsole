@@ -15412,16 +15412,20 @@ def _ignition_proposal_client_is_active(row: dict) -> bool:
     statuses = [str(value).strip().lower() for value in values if str(value or "").strip()]
     if not statuses:
         return True
+    # Inactive states take precedence (e.g. "inactive client" must not pass because it contains "active").
+    for status_text in statuses:
+        compact = status_text.replace("_", "").replace("-", "").strip()
+        if compact in {"inactive", "archived", "deleted", "cancelled", "canceled", "closed", "churned"}:
+            return False
+        if any(marker in status_text for marker in IGNITION_INACTIVE_CLIENT_STATUS_MARKERS):
+            return False
     for status_text in statuses:
         compact = status_text.replace("_", "").replace("-", "").strip()
         if (
             status_text in IGNITION_ACTIVE_CLIENT_STATUSES
             or compact in {"active", "current", "live", "activeclient", "client", "customer", "subscribed"}
-            or "active" in compact
         ):
             return True
-        if any(marker in status_text for marker in IGNITION_INACTIVE_CLIENT_STATUS_MARKERS):
-            return False
     # Default to active unless there is an explicit inactive marker.
     return True
 
