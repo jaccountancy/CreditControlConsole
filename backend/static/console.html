@@ -48632,6 +48632,7 @@
                 loading: false,
                 saving: false,
                 testing: false,
+                data: {},
                 authRegisterLoading: false,
                 authRegisterUploading: false,
                 authRegisterPopulating: false,
@@ -48681,6 +48682,10 @@
 
             function applyCompaniesHouseSettings(settings) {
                 const data = settings || {};
+                companiesHouseSettings.data = {
+                    creditAccountNumber: String(data.creditAccountNumber || "").trim(),
+                    xeroInvoiceUnitAmount: Number(data.xeroInvoiceUnitAmount || 0),
+                };
                 const env = data.environment === "production" ? "production" : "sandbox";
                 const envSelect = document.getElementById("chSettingsEnvironment");
                 if (envSelect) envSelect.value = env;
@@ -49310,6 +49315,18 @@
                 return (companiesHouseState.companies || []).filter((company) => selected.has(String(company.id || "")));
             }
 
+            function chWorkflowConfiguredUnitAmount() {
+                const configured = Number(companiesHouseSettings.data?.xeroInvoiceUnitAmount || 0);
+                if (configured > 0) return configured;
+                return 13;
+            }
+
+            function chWorkflowCreditAccountNumber() {
+                const configured = String(companiesHouseSettings.data?.creditAccountNumber || "").trim();
+                if (configured) return configured;
+                return String(document.getElementById("chSettingsCreditAccount")?.value || "").trim();
+            }
+
             function chCompanySubmissionIssues(company) {
                 if (Array.isArray(company?.submissionIssues) && company.submissionIssues.length) {
                     return company.submissionIssues
@@ -49872,17 +49889,23 @@
                     if (!window.confirm(warningPrompt)) return;
                 }
                 const finalRows = chBuildSubmissionFinalReviewRows(selected);
+                const workflowUnitAmount = chWorkflowConfiguredUnitAmount();
+                const creditAccountNumber = chWorkflowCreditAccountNumber();
+                const projectedTotalCharge = workflowUnitAmount * selected.length;
                 const finalReadyChip = finalPreflight.warningOnly.length
                     ? `${selected.length.toLocaleString("en-GB")} ready to submit (${finalPreflight.warningOnly.length.toLocaleString("en-GB")} with warning${finalPreflight.warningOnly.length === 1 ? "" : "s"})`
                     : `${selected.length.toLocaleString("en-GB")} ready to submit`;
                 const finalReviewConfirmed = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Final submission review",
-                    subtitle: "Confirm the filing information below before sending to Companies House.",
-                    confirmLabel: "Submit to Companies House",
+                    subtitle: "Confirm filing details, projected Companies House credit charge, and automatic Xero invoicing before sending.",
+                    confirmLabel: "Submit & raise Xero invoices",
                     cancelLabel: "Back",
                     summaryChips: [
                         finalReadyChip,
+                        `Projected CH charge ${formatCurrency(projectedTotalCharge)}`,
+                        `Unit fee ${formatCurrency(workflowUnitAmount)} each`,
+                        `Credit account ${creditAccountNumber || "Not set"}`,
                     ],
                     columns: [
                         { key: "companyName", label: "Company" },
@@ -49897,7 +49920,7 @@
                     onRender: ({ body }) => {
                         const note = document.createElement("div");
                         note.className = "operation-review-muted";
-                        note.textContent = "Only companies shown here will be submitted. Edit company details first if anything is incorrect.";
+                        note.textContent = "Only companies shown here will be submitted. Accepted submissions are charged to the Companies House credit account and then invoiced in Xero automatically.";
                         body.prepend(note);
                     },
                 });
@@ -49913,8 +49936,10 @@
                     let submittedCount = 0;
                     let skippedCount = 0;
                     let failedCount = 0;
+                    let acceptedCount = 0;
                     const skippedRows = [];
                     const failedRows = [];
+                    const acceptedCompanyIds = new Set();
 
                     for (let index = 0; index < batches.length; index += 1) {
                         const batch = batches[index];
@@ -49942,8 +49967,40 @@
                         submittedCount += Number(result.submittedCount || 0);
                         skippedCount += Number(result.skippedCount || 0);
                         failedCount += Number(result.failedCount || 0);
+                        if (Array.isArray(result.submitted)) {
+                            result.submitted.forEach((row) => {
+                                if (String(row?.status || "").toLowerCase() !== "accepted") return;
+                                acceptedCount += 1;
+                                const companyId = String(row?.companyId || "").trim();
+                                if (companyId) acceptedCompanyIds.add(companyId);
+                            });
+                        }
                         if (Array.isArray(result.skipped)) skippedRows.push(...result.skipped);
                         if (Array.isArray(result.failed)) failedRows.push(...result.failed);
+                    }
+                    const creditChargeApplied = acceptedCount * workflowUnitAmount;
+                    let invoiceCreatedCount = 0;
+                    let invoiceSkippedCount = 0;
+                    let invoiceFailedCount = 0;
+                    let invoiceErrorMessage = "";
+                    if (acceptedCompanyIds.size) {
+                        chSetWorkflowStatus(
+                            `Submitting complete. Raising Xero invoices for ${acceptedCompanyIds.size.toLocaleString("en-GB")} accepted submission${acceptedCompanyIds.size === 1 ? "" : "s"}…`,
+                            "muted"
+                        );
+                        try {
+                            const invoicePayload = await requestJSON("/api/companies-house/submissions/invoices/bulk", {
+                                method: "POST",
+                                body: JSON.stringify({ companyIds: Array.from(acceptedCompanyIds) }),
+                            });
+                            const invoiceResult = invoicePayload?.result || {};
+                            invoiceCreatedCount = Number(invoiceResult.createdCount || 0);
+                            invoiceSkippedCount = Number(invoiceResult.skippedCount || 0);
+                            invoiceFailedCount = Number(invoiceResult.failedCount || 0);
+                        } catch (error) {
+                            invoiceErrorMessage = error?.message || "Unable to raise Xero invoices for accepted submissions.";
+                            console.error("Unable to auto-raise Xero invoices after submission", error);
+                        }
                     }
                     const issueRows = [
                         ...skippedRows.map((row) => ({
@@ -49964,16 +50021,19 @@
                         .filter(Boolean)
                         .slice(0, 2)
                         .join(" | ");
-                    const hasProblems = skippedCount > 0 || failedCount > 0;
+                    const hasProblems = skippedCount > 0 || failedCount > 0 || invoiceFailedCount > 0 || Boolean(invoiceErrorMessage);
+                    const invoiceSummary = acceptedCompanyIds.size
+                        ? ` Xero invoices: ${invoiceCreatedCount.toLocaleString("en-GB")} created · ${invoiceSkippedCount.toLocaleString("en-GB")} skipped · ${invoiceFailedCount.toLocaleString("en-GB")} failed.`
+                        : " No accepted submissions yet, so no Xero invoices were raised in this run.";
                     chSetWorkflowStatus(
-                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
+                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed. Accepted ${acceptedCount.toLocaleString("en-GB")} · CH charge applied ${formatCurrency(creditChargeApplied)}.${invoiceSummary}${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}${invoiceErrorMessage ? ` Invoice error: ${invoiceErrorMessage}` : ""}`,
                         hasProblems ? "error" : "success"
                     );
                     companiesHouseState.tabLoaded.dashboard = false;
                     companiesHouseState.tabLoaded.companies = false;
                     await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
                     showToast(
-                        `Companies House workflow submission complete: ${submittedCount} submitted, ${skippedCount} skipped, ${failedCount} failed.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
+                        `Companies House workflow complete: ${submittedCount} submitted, ${acceptedCount} accepted, charge ${formatCurrency(creditChargeApplied)}.${acceptedCompanyIds.size ? ` Xero invoices ${invoiceCreatedCount} created${invoiceFailedCount ? `, ${invoiceFailedCount} failed` : ""}.` : " No invoices raised yet."}${invoiceErrorMessage ? ` ${invoiceErrorMessage}` : ""}${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
                         hasProblems ? "info" : "success"
                     );
                     if (issueRows.length) {
