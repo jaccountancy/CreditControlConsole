@@ -3,6 +3,7 @@ import base64
 import csv
 import difflib
 import hashlib
+import html
 import io
 import json
 import logging
@@ -16933,8 +16934,9 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str
         by_plan[item.get("plan_name") or "Other"] += 1
     plan_summary = ", ".join(f"{plan}: {count}" for plan, count in sorted(by_plan.items())) or "No plan data"
     summary = str(summary_text or "").strip() or _ignition_renewal_default_summary(run, items)
+    summary = re.sub(r"^\s*(?:hi|hello|dear)\b[^\n]*\n+", "", summary, flags=re.IGNORECASE).strip() or summary
     lines = [
-        "Hi,",
+        "Dear Amie,",
         "",
         summary,
         "",
@@ -16983,6 +16985,48 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str
         "A PDF copy of this renewal batch is also attached.",
     ])
     return "\n".join(lines).strip() + "\n"
+
+
+def _ignition_renewals_email_html_body(run: dict, items: list[dict], plain_body: str, batch_reference: str) -> str:
+    total_current = _money(run.get("total_current_monthly"))
+    total_new = _money(run.get("total_new_monthly"))
+    variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    annualised_uplift = variance * Decimal("12")
+    window_label = f"{_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
+    item_count = len(items)
+    paragraphs = [segment.strip() for segment in str(plain_body or "").split("\n\n") if segment.strip()]
+    body_html = "".join(
+        f"<p style=\"margin:0 0 14px;\">{html.escape(paragraph).replace(chr(10), '<br>')}</p>"
+        for paragraph in paragraphs
+    )
+    summary_rows = [
+        ("Jaccountancy Renewal Reference Number", batch_reference),
+        ("Window", window_label),
+        ("Selected clients", f"{item_count:,}"),
+        ("Current monthly total", f"£{total_current:,.2f}"),
+        ("Proposed monthly total", f"£{total_new:,.2f}"),
+        ("Monthly uplift", f"£{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)"),
+        ("Annualised uplift", f"£{annualised_uplift:,.2f}"),
+    ]
+    summary_table_html = "".join(
+        "<tr>"
+        f"<th style=\"text-align:left;padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;font-weight:700;\">{html.escape(label)}</th>"
+        f"<td style=\"padding:8px 10px;border:1px solid #d5e2f1;\">{html.escape(value)}</td>"
+        "</tr>"
+        for label, value in summary_rows
+    )
+    return (
+        "<!doctype html>"
+        "<html><body style=\"margin:0;padding:20px;color:#17395A;font-family:Arial,sans-serif;font-size:15px;line-height:1.45;\">"
+        f"{body_html}"
+        "<div style=\"margin-top:16px;\">"
+        "<h3 style=\"margin:0 0 10px;color:#0b4f86;font-size:17px;\">Renewal batch summary</h3>"
+        "<table style=\"width:100%;border-collapse:collapse;font-size:14px;\">"
+        f"{summary_table_html}"
+        "</table>"
+        "</div>"
+        "</body></html>"
+    )
 
 
 def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: str = "") -> bytes:
@@ -17586,8 +17630,9 @@ def _clean_ignition_renewal_email(value: object) -> str:
     return email
 
 
-def _ignition_renewals_email_subject(run: dict) -> str:
-    return f"Ignition renewals to action: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
+def _ignition_renewals_email_subject(batch_reference: str) -> str:
+    reference = str(batch_reference or "").strip() or "JUKRE-000"
+    return f"Renewals to action: {reference}"
 
 
 async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict | None = None) -> dict:
@@ -17603,14 +17648,15 @@ async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict
     )
     if not recipient:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_RECIPIENT_EMAIL or provide a recipient email.")
-    subject = str(safe_payload.get("subject") or "").strip() or _ignition_renewals_email_subject(run)
+    batch_reference = _ignition_renewal_batch_reference(user, run_id)
+    subject = str(safe_payload.get("subject") or "").strip() or _ignition_renewals_email_subject(batch_reference)
     custom_body = str(safe_payload.get("body") or "").strip()
     if custom_body:
         body = custom_body
     else:
         summary = await _ignition_renewal_ai_summary(run, items)
         body = _ignition_renewal_email_body(run, items, summary_text=summary)
-    return {"recipientEmail": recipient, "subject": subject, "body": body}
+    return {"recipientEmail": recipient, "subject": subject, "body": body, "batchReference": batch_reference}
 
 
 async def send_ignition_renewals_email(user: dict, run_id: str, payload: dict | None = None) -> dict:
@@ -17630,6 +17676,10 @@ async def send_ignition_renewals_email(user: dict, run_id: str, payload: dict | 
     message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
     message["To"] = recipient
     message.set_content(body)
+    message.add_alternative(
+        _ignition_renewals_email_html_body(run, items, body, batch_reference=batch_reference),
+        subtype="html",
+    )
     message.add_attachment(
         report_pdf,
         maintype="application",

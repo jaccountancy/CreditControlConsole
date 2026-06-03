@@ -21088,7 +21088,7 @@
                             <section class="ignition-renewals-modal-panel ignition-renewals-email-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalEmailTitle">
                                 <header class="ignition-renewals-email-head">
                                     <div class="ignition-renewals-email-brand">
-                                        <img src="jACCOUNTANCYBLUEHORIZONTLE.PNG" alt="Jaccountancy">
+                                        <img src="JaccountancyBlueIcon.png" alt="Jaccountancy">
                                         <div>
                                             <p class="eyebrow">Renewals email</p>
                                             <h3 id="ignitionRenewalEmailTitle">Send finalised renewals PDF</h3>
@@ -21105,7 +21105,7 @@
                                         <p class="eyebrow">Batch snapshot</p>
                                         <div class="ignition-renewals-email-kpis" id="ignitionRenewalEmailMeta">
                                             <article>
-                                                <span>Window</span>
+                                                <span>Jaccountancy Renewal Reference Number</span>
                                                 <strong>--</strong>
                                             </article>
                                             <article>
@@ -41910,17 +41910,15 @@
                 const container = document.getElementById("ignitionRenewalEmailMeta");
                 if (!container) return;
                 const run = ignitionRenewalRunById(runId) || {};
+                const batchReference = ignitionRenewalBatchReferenceForRun(run);
                 const itemCount = Number(run.itemCount || run.items?.length || 0);
                 const currentTotal = Number(run.totalCurrentMonthly || 0);
                 const newTotal = Number(run.totalNewMonthly || 0);
                 const variance = newTotal - currentTotal;
                 const variancePercent = currentTotal > 0 ? (variance / currentTotal) : 0;
-                const windowLabel = run.windowStart
-                    ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}`
-                    : "--";
                 const upliftLabel = `${formatCurrency(variance)} · ${ignitionRenewalPercent(variancePercent)}`;
                 container.innerHTML = [
-                    ["Window", windowLabel],
+                    ["Jaccountancy Renewal Reference Number", batchReference],
                     ["Selected clients", itemCount.toLocaleString("en-GB")],
                     ["Current monthly total", formatCurrency(currentTotal)],
                     ["Proposed monthly total", formatCurrency(newTotal)],
@@ -41942,6 +41940,8 @@
                 const bodyInput = document.getElementById("ignitionRenewalEmailBody");
                 const sendButton = document.getElementById("sendIgnitionRenewalEmailButton");
                 const modal = document.getElementById("ignitionRenewalEmailModal");
+                const run = ignitionRenewalRunById(targetRunId) || null;
+                const batchReference = ignitionRenewalBatchReferenceForRun(run);
                 ignitionRenewalEmailModalOpen = true;
                 ignitionRenewalEmailSending = false;
                 ignitionRenewalEmailRunId = targetRunId;
@@ -41961,8 +41961,9 @@
                 try {
                     const payload = await requestJSON(api.endpoints.ignitionRenewalEmailPreview, {}, { runId: targetRunId });
                     const email = payload?.email || {};
+                    const emailBatchReference = String(email.batchReference || batchReference || "").trim();
                     if (toInput) toInput.value = String(email.recipientEmail || ignitionData.renewals?.recipientEmail || "");
-                    if (subjectInput) subjectInput.value = String(email.subject || "");
+                    if (subjectInput) subjectInput.value = String(email.subject || `Renewals to action: ${emailBatchReference}`);
                     if (bodyInput) bodyInput.value = String(email.body || "");
                     if (summary) summary.textContent = "Review recipient and AI summary before sending.";
                     if (sendButton) sendButton.disabled = false;
