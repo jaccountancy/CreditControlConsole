@@ -18174,6 +18174,7 @@
                                     <button class="primary-button" id="riskAssessmentsCreateButton" type="button">Create risk assessments</button>
                                     <button class="ghost-button" id="riskAssessmentsDeleteSelectedButton" type="button">Delete selected</button>
                                     <button class="ghost-button" id="riskAssessmentsDownloadZipButton" type="button">Download PDF ZIP</button>
+                                    <button class="ghost-button" id="riskAssessmentsSendToXeroButton" type="button">Send to Xero</button>
                                 </div>
                             </div>
                             <section class="ch-import-card" id="riskAssessmentsBuilder" hidden>
@@ -20944,6 +20945,7 @@
             let riskAssessmentLastCsvFileName = "";
             let riskAssessmentClientSearchQuery = "";
             let riskAssessmentClientFilter = "all";
+            let riskAssessmentSendingToXero = false;
             let confirmationStatementsOnboardingDismissed = loadConfirmationStatementsOnboardingDismissed();
             let topbarContactDetailsOpen = false;
             let latePaymentChargeBaseAmounts = new Map();
@@ -21660,6 +21662,8 @@
                         practicePackRunDownload: config.endpoints?.practicePackRunDownload || "/api/practice-packs/runs/:runId/download",
                         riskAssessmentsGenerate: config.endpoints?.riskAssessmentsGenerate || "/api/risk-assessments/generate",
                         riskAssessmentsExportZip: config.endpoints?.riskAssessmentsExportZip || "/api/risk-assessments/export-zip",
+                        riskAssessmentsXeroPreview: config.endpoints?.riskAssessmentsXeroPreview || "/api/risk-assessments/xero-preview",
+                        riskAssessmentsXeroSend: config.endpoints?.riskAssessmentsXeroSend || "/api/risk-assessments/xero-send",
                         companySecretarialFilings: config.endpoints?.companySecretarialFilings || "/api/company-secretarial/filings",
                         companySecretarialFiling: config.endpoints?.companySecretarialFiling || "/api/company-secretarial/filings/:filingId",
                         companySecretarialValidate: config.endpoints?.companySecretarialValidate || "/api/company-secretarial/filings/:filingId/validate",
@@ -26460,12 +26464,6 @@
                             ${rows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
                         </div>
                     </article>
-                    ${renderMeReportTransactionDrilldown(
-                        summary,
-                        "profit-loss",
-                        "Profit and Loss transaction drill-down",
-                        "All extracted YTD transaction rows linked to Profit and Loss nominals are listed below for figure drill-down."
-                    )}
                 `;
             }
 
@@ -29028,7 +29026,11 @@
                 xeroLockMismatchSelectedTenantIds = new Set(
                     [...xeroLockMismatchSelectedTenantIds].filter((tenantId) => tenantIds.includes(tenantId))
                 );
-                const rowStatus = (tenantId) => xeroLockMismatchFixState?.[tenantId]?.status || "open";
+                const rowStatus = (tenantId) => {
+                    const status = xeroLockMismatchFixState?.[tenantId]?.status || "open";
+                    if (status === "queued" || status === "fixing") return "open";
+                    return status;
+                };
                 const query = String(xeroLockMismatchSearchTerm || "").trim().toLowerCase();
                 const filteredRows = rows.filter((row) => {
                     const tenantId = String(row?.tenantId || "");
@@ -44609,6 +44611,7 @@
                 const deleteButton = document.getElementById("riskAssessmentsDeleteSelectedButton");
                 const selectAllHistory = document.getElementById("riskAssessmentsSelectAllHistory");
                 const zipButton = document.getElementById("riskAssessmentsDownloadZipButton");
+                const sendToXeroButton = document.getElementById("riskAssessmentsSendToXeroButton");
                 const builder = document.getElementById("riskAssessmentsBuilder");
                 const status = document.getElementById("riskAssessmentsCsvStatus");
                 const generateButton = document.getElementById("riskAssessmentsGenerateButton");
@@ -44636,6 +44639,10 @@
                         : "Delete selected";
                 }
                 if (zipButton) zipButton.disabled = !riskAssessments.length || riskAssessmentGenerating;
+                if (sendToXeroButton) {
+                    sendToXeroButton.disabled = !riskAssessments.length || riskAssessmentGenerating || riskAssessmentSendingToXero;
+                    sendToXeroButton.textContent = riskAssessmentSendingToXero ? "Sending..." : "Send to Xero";
+                }
                 if (generateButton) {
                     generateButton.disabled = riskAssessmentGenerating || !selectedCount;
                     generateButton.textContent = riskAssessmentGenerating
@@ -44914,6 +44921,180 @@
                     } else {
                         showToast(error.message || "Unable to download risk assessment ZIP.", "error");
                     }
+                }
+            }
+
+            function selectedRiskAssessmentRowsForXero() {
+                const selectedIds = new Set(Array.from(riskAssessmentSelectedRecordIds || []).filter(Boolean));
+                if (!selectedIds.size) return [...riskAssessments];
+                return riskAssessments.filter((record) => selectedIds.has(String(record?.id || "")));
+            }
+
+            async function openRiskAssessmentsXeroWizard() {
+                const selected = selectedRiskAssessmentRowsForXero();
+                if (!selected.length) {
+                    showToast("Create risk assessments before sending to Xero.", "info");
+                    return;
+                }
+                riskAssessmentSendingToXero = true;
+                renderRiskAssessmentsScreen();
+                try {
+                    const previewPayload = await requestJSON(api.endpoints.riskAssessmentsXeroPreview, {
+                        method: "POST",
+                        body: JSON.stringify({ assessments: selected })
+                    });
+                    const rows = Array.isArray(previewPayload?.rows) ? previewPayload.rows : [];
+                    if (!rows.length) {
+                        showToast("No risk assessments were available for the Xero wizard.", "info");
+                        return;
+                    }
+
+                    const excludedIds = new Set(
+                        rows
+                            .filter((row) => !row?.eligible)
+                            .map((row) => String(row?.assessmentId || ""))
+                            .filter(Boolean)
+                    );
+                    const reviewResult = await showOperationReviewDialog({
+                        eyebrow: "Risk assessments",
+                        title: "Send risk assessments to Xero files",
+                        subtitle: "Review which clients are linked to Xero and choose the assessments to upload.",
+                        confirmLabel: "Send selected to Xero",
+                        summaryChips: [],
+                        columns: [],
+                        rows: [{}],
+                        onRender: ({ summary, body, confirmButton }) => {
+                            const renderWizard = () => {
+                                const selectedRows = rows.filter((row) => row?.eligible && !excludedIds.has(String(row?.assessmentId || "")));
+                                const eligibleRows = rows.filter((row) => row?.eligible);
+                                const ineligibleRows = rows.filter((row) => !row?.eligible);
+                                summary.innerHTML = [
+                                    `${rows.length.toLocaleString("en-GB")} total`,
+                                    `${eligibleRows.length.toLocaleString("en-GB")} eligible`,
+                                    `${ineligibleRows.length.toLocaleString("en-GB")} unavailable`,
+                                    `${selectedRows.length.toLocaleString("en-GB")} selected for upload`,
+                                ].map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`).join("");
+                                if (!rows.length) {
+                                    body.innerHTML = `<div class="empty-state"><p class="eyebrow">No rows</p><h4>No risk assessments were supplied</h4><p>Create or select risk assessments and retry.</p></div>`;
+                                    if (confirmButton) confirmButton.disabled = true;
+                                    return;
+                                }
+                                body.innerHTML = `
+                                    <div class="operation-review-tools">
+                                        <button class="ghost-button" type="button" data-risk-xero-select-all>Select all eligible</button>
+                                        <button class="ghost-button" type="button" data-risk-xero-clear-all>Clear selection</button>
+                                    </div>
+                                    <div class="operation-review-table-wrap">
+                                        <table class="operation-review-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Send</th>
+                                                    <th>Client</th>
+                                                    <th>Risk</th>
+                                                    <th>Status</th>
+                                                    <th>Xero contact</th>
+                                                    <th>Detail</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${rows.map((row) => {
+                                                    const id = String(row?.assessmentId || "");
+                                                    const enabled = !!row?.eligible;
+                                                    const checked = enabled && !excludedIds.has(id);
+                                                    const statusPill = enabled
+                                                        ? `<span class="ch-pill is-good">Ready</span>`
+                                                        : `<span class="ch-pill is-warn">Not linked</span>`;
+                                                    const detail = enabled
+                                                        ? `Matched on ${row?.matchedOn || row?.clientName || "client name"}`
+                                                        : (row?.reason || "No linked Xero contact was found");
+                                                    return `
+                                                        <tr>
+                                                            <td><input type="checkbox" data-risk-xero-assessment-id="${escapeHTML(id)}" ${checked ? "checked" : ""} ${enabled ? "" : "disabled"}></td>
+                                                            <td>${escapeHTML(row?.clientName || "Client")}</td>
+                                                            <td>${riskAssessmentRiskPill(row?.riskLevel || "Moderate")} ${Number(row?.riskScore || 0).toLocaleString("en-GB")}/100</td>
+                                                            <td>${statusPill}</td>
+                                                            <td>${escapeHTML(row?.xeroContactName || "—")}</td>
+                                                            <td>${escapeHTML(detail)}</td>
+                                                        </tr>
+                                                    `;
+                                                }).join("")}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                `;
+                                body.querySelectorAll("[data-risk-xero-assessment-id]").forEach((checkbox) => {
+                                    checkbox.addEventListener("change", (event) => {
+                                        const id = String(event.target?.dataset?.riskXeroAssessmentId || "");
+                                        if (!id) return;
+                                        if (event.target.checked) excludedIds.delete(id);
+                                        else excludedIds.add(id);
+                                        renderWizard();
+                                    });
+                                });
+                                body.querySelector("[data-risk-xero-select-all]")?.addEventListener("click", () => {
+                                    rows.forEach((row) => {
+                                        if (row?.eligible) excludedIds.delete(String(row?.assessmentId || ""));
+                                    });
+                                    renderWizard();
+                                });
+                                body.querySelector("[data-risk-xero-clear-all]")?.addEventListener("click", () => {
+                                    rows.forEach((row) => {
+                                        if (row?.eligible) excludedIds.add(String(row?.assessmentId || ""));
+                                    });
+                                    renderWizard();
+                                });
+                                if (confirmButton) confirmButton.disabled = selectedRows.length === 0;
+                            };
+                            renderWizard();
+                        },
+                        resultProvider: () => rows
+                            .filter((row) => row?.eligible && !excludedIds.has(String(row?.assessmentId || "")))
+                            .map((row) => String(row?.assessmentId || ""))
+                            .filter(Boolean)
+                    });
+
+                    if (!Array.isArray(reviewResult) || !reviewResult.length) {
+                        showToast("No risk assessments were selected for upload.", "info");
+                        return;
+                    }
+
+                    const sendPayload = await requestJSON(api.endpoints.riskAssessmentsXeroSend, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            assessments: selected,
+                            assessmentIds: reviewResult
+                        })
+                    });
+                    const summary = sendPayload?.summary || {};
+                    const sent = Number(summary?.sent || 0);
+                    const failed = Number(summary?.failed || 0);
+                    const skipped = Number(summary?.skipped || 0);
+                    if (sent > 0 && failed === 0) {
+                        showTopbarNotice(
+                            "Risk assessments sent to Xero",
+                            `${sent.toLocaleString("en-GB")} file${sent === 1 ? "" : "s"} uploaded to Xero contact files.`,
+                            "success"
+                        );
+                        showToast(`${sent.toLocaleString("en-GB")} risk assessment${sent === 1 ? "" : "s"} sent to Xero`, "success");
+                    } else if (sent > 0) {
+                        showTopbarNotice(
+                            "Risk assessment upload completed with warnings",
+                            `${sent.toLocaleString("en-GB")} sent · ${failed.toLocaleString("en-GB")} failed · ${skipped.toLocaleString("en-GB")} skipped.`,
+                            "info"
+                        );
+                        showToast(`${sent.toLocaleString("en-GB")} sent, ${failed.toLocaleString("en-GB")} failed, ${skipped.toLocaleString("en-GB")} skipped`, "error");
+                    } else {
+                        showToast("No files were uploaded to Xero. Check client links and try again.", "error");
+                    }
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        showToast(error.message || "Unable to send risk assessments to Xero.", "error");
+                    }
+                } finally {
+                    riskAssessmentSendingToXero = false;
+                    renderRiskAssessmentsScreen();
                 }
             }
 
@@ -48753,6 +48934,11 @@
                     zipButton.dataset.riskWired = "true";
                     zipButton.addEventListener("click", downloadRiskAssessmentsZip);
                 }
+                const sendToXeroButton = document.getElementById("riskAssessmentsSendToXeroButton");
+                if (sendToXeroButton && sendToXeroButton.dataset.riskWired !== "true") {
+                    sendToXeroButton.dataset.riskWired = "true";
+                    sendToXeroButton.addEventListener("click", openRiskAssessmentsXeroWizard);
+                }
                 const csvInput = document.getElementById("riskAssessmentsBmCsvInput");
                 if (csvInput && csvInput.dataset.riskWired !== "true") {
                     csvInput.dataset.riskWired = "true";
@@ -51294,7 +51480,10 @@
                     xeroLockMismatchSelectFlaggedButton.dataset.lockDateWired = "true";
                     xeroLockMismatchSelectFlaggedButton.addEventListener("click", () => {
                         xeroLockMismatchVisibleTenantIds
-                            .filter((tenantId) => (xeroLockMismatchFixState?.[tenantId]?.status || "open") === "open")
+                            .filter((tenantId) => {
+                                const status = xeroLockMismatchFixState?.[tenantId]?.status || "open";
+                                return status === "open" || status === "queued" || status === "fixing";
+                            })
                             .forEach((tenantId) => xeroLockMismatchSelectedTenantIds.add(tenantId));
                         renderXeroLockMismatchModal();
                     });

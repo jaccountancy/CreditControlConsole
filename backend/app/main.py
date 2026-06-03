@@ -95,6 +95,8 @@ from .services import (
     ignition_renewals_payload,
     generate_risk_assessments_payload,
     build_risk_assessments_zip_payload,
+    preview_risk_assessments_xero_payload,
+    send_risk_assessments_to_xero_payload,
     invoice_detail,
     install_sync_signal_handlers,
     add_jashflow_charge,
@@ -991,6 +993,27 @@ async def api_risk_assessments_export_zip(request: Request, user: dict = Depends
     payload = build_risk_assessments_zip_payload(user, assessments)
     headers = {"Content-Disposition": f'attachment; filename="{payload["filename"]}"'}
     return Response(content=payload["bytes"], media_type=payload["contentType"], headers=headers)
+
+
+@app.post("/api/risk-assessments/xero-preview")
+async def api_risk_assessments_xero_preview(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    assessments = (body or {}).get("assessments") or []
+    return preview_risk_assessments_xero_payload(user, assessments)
+
+
+@app.post("/api/risk-assessments/xero-send")
+async def api_risk_assessments_xero_send(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    assessments = (body or {}).get("assessments") or []
+    assessment_ids = (body or {}).get("assessmentIds") or []
+    return await send_risk_assessments_to_xero_payload(user, assessments, assessment_ids)
 
 
 @app.post("/api/panel/sync")

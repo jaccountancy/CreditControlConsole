@@ -39,6 +39,7 @@ from .xero import (
     XERO_RATE_LIMIT_RETRIES,
     allocate_credit_note,
     allocate_overpayment,
+    attach_file_to_contact,
     attach_file_to_invoice,
     create_credit_note,
     create_history_record,
@@ -20485,6 +20486,311 @@ def _risk_assessment_pdf_bytes(assessment: dict) -> bytes:
         ]
     )
     return _minimal_me_report_pdf(lines)
+
+
+def _risk_assessment_xero_candidate_names(assessment: dict) -> list[str]:
+    info = assessment.get("clientInformation") if isinstance(assessment.get("clientInformation"), dict) else {}
+    names = [
+        str(assessment.get("clientName") or "").strip(),
+        str(info.get("companyName") or "").strip(),
+    ]
+    unique: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        key = _normalise_contact_match_name(name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(name)
+    return unique
+
+
+def _risk_assessment_xero_filename(assessment: dict) -> str:
+    client_name = str(assessment.get("clientName") or "").strip() or "client"
+    date_part = str(assessment.get("generatedAt") or "").strip()[:10] or date.today().isoformat()
+    return f"{_risk_assessment_filename_part(client_name)}-risk-assessment-{date_part}.pdf"
+
+
+def _normalise_risk_assessment_rows_for_xero(assessments: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    seen_ids: set[str] = set()
+    for index, row in enumerate(assessments):
+        if not isinstance(row, dict):
+            continue
+        fallback_name = str(row.get("clientName") or row.get("name") or "").strip()
+        if not fallback_name:
+            continue
+        normalised = _normalise_risk_assessment_payload(
+            row,
+            fallback_name,
+            str(row.get("lastAssessmentAt") or ""),
+        )
+        row_id = str(row.get("id") or "").strip() or f"risk-assessment-{index + 1}"
+        if row_id in seen_ids:
+            row_id = f"{row_id}-{index + 1}"
+        seen_ids.add(row_id)
+        rows.append(
+            {
+                **normalised,
+                "id": row_id,
+                "generatedAt": str(row.get("generatedAt") or _iso(utcnow())),
+            }
+        )
+    return rows
+
+
+def _risk_assessment_xero_contact_lookup(user: dict) -> tuple[dict | None, dict[str, list[dict]]]:
+    try:
+        connection_row = get_xero_connection_for_user(user["id"])
+    except Exception:
+        return None, {}
+
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    if not tenant_id:
+        return None, {}
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name, xero_contact_id
+                FROM customers
+                WHERE tenant_id = %s
+                  AND xero_contact_id IS NOT NULL
+                  AND xero_contact_id <> ''
+                ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+                """,
+                (tenant_id,),
+            )
+            customer_rows = cursor.fetchall()
+        connection.commit()
+
+    lookup: dict[str, list[dict]] = defaultdict(list)
+    for customer in customer_rows:
+        key = _normalise_contact_match_name(customer.get("name") or "")
+        if not key:
+            continue
+        lookup[key].append(customer)
+    return connection_row, lookup
+
+
+def preview_risk_assessments_xero_payload(user: dict, assessments: list[dict]) -> dict:
+    if not isinstance(assessments, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="`assessments` must be an array.")
+    normalised_rows = _normalise_risk_assessment_rows_for_xero(assessments)
+    if not normalised_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid risk assessments were supplied.")
+
+    connection_row, customer_lookup = _risk_assessment_xero_contact_lookup(user)
+    xero_connected = connection_row is not None
+    preview_rows: list[dict] = []
+    eligible_count = 0
+    for assessment in normalised_rows:
+        match = None
+        matched_name = ""
+        for name in _risk_assessment_xero_candidate_names(assessment):
+            key = _normalise_contact_match_name(name)
+            rows = customer_lookup.get(key) or []
+            if rows:
+                match = rows[0]
+                matched_name = name
+                break
+        eligible = xero_connected and bool(match)
+        if eligible:
+            eligible_count += 1
+        preview_rows.append(
+            {
+                "assessmentId": str(assessment.get("id") or ""),
+                "clientName": str(assessment.get("clientName") or ""),
+                "companyName": str(((assessment.get("clientInformation") or {}).get("companyName") if isinstance(assessment.get("clientInformation"), dict) else "") or ""),
+                "riskLevel": str(assessment.get("riskLevel") or ""),
+                "riskScore": int(assessment.get("riskScore") or 0),
+                "eligible": eligible,
+                "reason": (
+                    ""
+                    if eligible
+                    else ("Xero is not connected." if not xero_connected else "No linked Xero contact found for this client name.")
+                ),
+                "matchedOn": matched_name,
+                "xeroContactId": str((match or {}).get("xero_contact_id") or ""),
+                "xeroContactName": str((match or {}).get("name") or ""),
+                "customerId": str((match or {}).get("id") or ""),
+            }
+        )
+    return {
+        "status": "ok",
+        "xeroConnected": xero_connected,
+        "generatedAt": _iso(utcnow()),
+        "summary": {
+            "total": len(preview_rows),
+            "eligible": eligible_count,
+            "ineligible": len(preview_rows) - eligible_count,
+        },
+        "rows": preview_rows,
+    }
+
+
+async def send_risk_assessments_to_xero_payload(user: dict, assessments: list[dict], assessment_ids: list[str] | None = None) -> dict:
+    if not isinstance(assessments, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="`assessments` must be an array.")
+    normalised_rows = _normalise_risk_assessment_rows_for_xero(assessments)
+    if not normalised_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No valid risk assessments were supplied.")
+
+    requested_ids = {str(item or "").strip() for item in (assessment_ids or []) if str(item or "").strip()}
+    rows_by_id = {str(row.get("id") or ""): row for row in normalised_rows}
+    target_rows = [row for row in normalised_rows if not requested_ids or str(row.get("id") or "") in requested_ids]
+    if not target_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No selected risk assessments were supplied.")
+
+    connection_row, customer_lookup = _risk_assessment_xero_contact_lookup(user)
+    if connection_row is None:
+        return {
+            "status": "ok",
+            "xeroConnected": False,
+            "results": [],
+            "summary": {
+                "requested": len(target_rows),
+                "eligible": 0,
+                "sent": 0,
+                "failed": 0,
+                "skipped": len(target_rows),
+            },
+            "message": "Xero is not connected.",
+        }
+
+    results: list[dict] = []
+    eligible_count = 0
+    sent_count = 0
+    failed_count = 0
+    skipped_count = 0
+
+    for assessment in target_rows:
+        matched_customer = None
+        matched_name = ""
+        for name in _risk_assessment_xero_candidate_names(assessment):
+            rows = customer_lookup.get(_normalise_contact_match_name(name)) or []
+            if rows:
+                matched_customer = rows[0]
+                matched_name = name
+                break
+
+        assessment_id = str(assessment.get("id") or "")
+        client_name = str(assessment.get("clientName") or "")
+
+        if not matched_customer:
+            skipped_count += 1
+            results.append(
+                {
+                    "assessmentId": assessment_id,
+                    "clientName": client_name,
+                    "status": "skipped",
+                    "error": "No linked Xero contact found for this client name.",
+                    "xeroContactId": "",
+                    "xeroContactName": "",
+                }
+            )
+            continue
+
+        eligible_count += 1
+        xero_contact_id = str(matched_customer.get("xero_contact_id") or "")
+        xero_contact_name = str(matched_customer.get("name") or "")
+        file_name = _risk_assessment_xero_filename(assessment)
+        file_bytes = _risk_assessment_pdf_bytes(assessment)
+        try:
+            await attach_file_to_contact(
+                connection_row,
+                xero_contact_id,
+                file_name,
+                file_bytes,
+                "application/pdf",
+            )
+            sent_count += 1
+            record_audit_event(
+                "customer",
+                str(matched_customer.get("id") or xero_contact_id),
+                "xero.risk_assessment_file.synced",
+                {
+                    "assessment_id": assessment_id,
+                    "client_name": client_name,
+                    "matched_on": matched_name,
+                    "xero_contact_id": xero_contact_id,
+                    "xero_contact_name": xero_contact_name,
+                    "filename": file_name,
+                },
+                user["id"],
+            )
+            results.append(
+                {
+                    "assessmentId": assessment_id,
+                    "clientName": client_name,
+                    "status": "sent",
+                    "error": "",
+                    "xeroContactId": xero_contact_id,
+                    "xeroContactName": xero_contact_name,
+                    "filename": file_name,
+                }
+            )
+        except Exception as exc:
+            failed_count += 1
+            error = _sync_error_message(exc)
+            logger.exception("Unable to upload risk assessment %s to Xero contact %s", assessment_id, xero_contact_id)
+            record_audit_event(
+                "customer",
+                str(matched_customer.get("id") or xero_contact_id),
+                "xero.risk_assessment_file.failed",
+                {
+                    "assessment_id": assessment_id,
+                    "client_name": client_name,
+                    "matched_on": matched_name,
+                    "xero_contact_id": xero_contact_id,
+                    "xero_contact_name": xero_contact_name,
+                    "filename": file_name,
+                    "error": error,
+                    "detail": _sync_error_payload(exc),
+                },
+                user["id"],
+            )
+            results.append(
+                {
+                    "assessmentId": assessment_id,
+                    "clientName": client_name,
+                    "status": "failed",
+                    "error": error,
+                    "xeroContactId": xero_contact_id,
+                    "xeroContactName": xero_contact_name,
+                    "filename": file_name,
+                }
+            )
+
+    missing_selected_ids = requested_ids.difference(rows_by_id.keys())
+    if missing_selected_ids:
+        skipped_count += len(missing_selected_ids)
+        for missing_id in sorted(missing_selected_ids):
+            results.append(
+                {
+                    "assessmentId": missing_id,
+                    "clientName": "",
+                    "status": "skipped",
+                    "error": "Assessment was not found in the supplied payload.",
+                    "xeroContactId": "",
+                    "xeroContactName": "",
+                }
+            )
+
+    return {
+        "status": "ok",
+        "xeroConnected": True,
+        "generatedAt": _iso(utcnow()),
+        "results": results,
+        "summary": {
+            "requested": len(target_rows),
+            "eligible": eligible_count,
+            "sent": sent_count,
+            "failed": failed_count,
+            "skipped": skipped_count,
+        },
+    }
 
 
 def build_risk_assessments_zip_payload(user: dict, assessments: list[dict]) -> dict:

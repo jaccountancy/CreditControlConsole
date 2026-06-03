@@ -771,6 +771,35 @@ async def attach_file_to_invoice(
         return response.json()
 
 
+async def attach_file_to_contact(
+    connection_row: dict,
+    contact_id: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.put(
+                f"{CONTACTS_URL}/{contact_id}/Attachments/{filename}",
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": content_type,
+                },
+                content=content,
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "contact attachment upload")
+        if response.is_error:
+            _raise_xero_http_error(response, "contact attachment upload")
+        if not response.content:
+            return {}
+        return response.json()
+
+
 async def create_credit_note(connection_row: dict, credit_note_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
