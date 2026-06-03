@@ -1907,14 +1907,16 @@ async def api_delete_supplier_reconciliation_client(client_id: str, user: dict =
 
 @app.post("/api/supplier-reconciliation/extract")
 async def api_supplier_reconciliation_extract(
-    xeroContactId: str = Form(...),
+    xeroContactId: str | None = Form(default=None),
+    tenantId: str | None = Form(default=None),
     file: UploadFile = File(...),
     user: dict = Depends(require_panel_user),
 ):
     file_bytes = await file.read()
     result = await supplier_reconciliation_extract(
         user,
-        xeroContactId,
+        xeroContactId or "",
+        tenantId or "",
         file.filename or "supplier-statement.pdf",
         file.content_type or "application/pdf",
         file_bytes,

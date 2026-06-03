@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import csv
+import difflib
 import hashlib
 import io
 import json
@@ -343,12 +344,33 @@ OPENAI_RISK_ASSESSMENT_SCHEMA = {
 SUPPLIER_RECONCILIATION_EXTRACTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["statementDate", "supplierName", "clientName", "emailAddress", "currencyCode", "lines"],
+    "required": [
+        "statementDate",
+        "supplierName",
+        "clientName",
+        "emailAddress",
+        "supplierAddress",
+        "supplierPhone",
+        "supplierBankName",
+        "supplierBankAccountNumber",
+        "supplierBankSortCode",
+        "supplierBankIban",
+        "supplierBankSwiftBic",
+        "currencyCode",
+        "lines",
+    ],
     "properties": {
         "statementDate": {"type": ["string", "null"]},
         "supplierName": {"type": ["string", "null"]},
         "clientName": {"type": ["string", "null"]},
         "emailAddress": {"type": ["string", "null"]},
+        "supplierAddress": {"type": ["string", "null"]},
+        "supplierPhone": {"type": ["string", "null"]},
+        "supplierBankName": {"type": ["string", "null"]},
+        "supplierBankAccountNumber": {"type": ["string", "null"]},
+        "supplierBankSortCode": {"type": ["string", "null"]},
+        "supplierBankIban": {"type": ["string", "null"]},
+        "supplierBankSwiftBic": {"type": ["string", "null"]},
         "currencyCode": {"type": ["string", "null"]},
         "lines": {
             "type": "array",
@@ -16337,7 +16359,8 @@ async def _extract_supplier_statement_lines(statement_text: str, filename: str) 
                         "text": (
                             "Extract supplier statement invoice lines from the following statement text. "
                             "Return JSON only. Do not hallucinate lines. "
-                            "Extract statement-level clientName (if shown), supplierName, and emailAddress where visible. "
+                            "Extract statement-level clientName (if shown), supplierName, supplierAddress, emailAddress, "
+                            "supplierPhone, supplierBankName, supplierBankAccountNumber, supplierBankSortCode, supplierBankIban, and supplierBankSwiftBic where visible. "
                             "For each line, capture invoiceNumber/reference where visible, dates in YYYY-MM-DD where possible, "
                             "and numeric amount/balance values. Keep missing fields blank/null.\n\n"
                             f"Statement filename: {filename}\n\n"
@@ -16421,7 +16444,7 @@ def _supplier_reconciliation_connected_rows(tenant_id: str) -> list[dict]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, xero_contact_id, contact_name, contact_email, created_at
+                SELECT id, tenant_id, xero_contact_id, contact_name, contact_email, created_at
                 FROM supplier_reconciliation_clients
                 WHERE tenant_id = %s
                   AND status = 'active'
@@ -16452,6 +16475,7 @@ async def supplier_reconciliation_payload(user: dict) -> dict:
         connected_clients.append(
             {
                 "id": str(row["id"]),
+                "tenantId": str(row.get("tenant_id") or tenant_id),
                 "xeroContactId": contact_id,
                 "name": str(row.get("contact_name") or "").strip(),
                 "email": str(row.get("contact_email") or "").strip(),
@@ -16555,23 +16579,26 @@ async def add_supplier_reconciliation_client(user: dict, payload: dict) -> dict:
 
 
 async def delete_supplier_reconciliation_client(user: dict, supplier_client_id: str) -> dict:
-    connection_row = get_xero_connection_for_user(user["id"])
-    tenant_id = str(connection_row.get("tenant_id") or "")
+    connection_rows = _supplier_reconciliation_xero_connections(user)
+    tenant_ids = [str(row.get("tenantId") or "").strip() for row in connection_rows if str(row.get("tenantId") or "").strip()]
+    if not tenant_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, xero_contact_id, contact_name
+                SELECT id, tenant_id, xero_contact_id, contact_name
                 FROM supplier_reconciliation_clients
                 WHERE id = %s
-                  AND tenant_id = %s
+                  AND tenant_id = ANY(%s)
                   AND status = 'active'
                 """,
-                (supplier_client_id, tenant_id),
+                (supplier_client_id, tenant_ids),
             )
             row = cursor.fetchone()
             if row is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier reconciliation client not found.")
+            tenant_id = str(row.get("tenant_id") or "")
             cursor.execute(
                 """
                 UPDATE supplier_reconciliation_clients
@@ -16593,35 +16620,161 @@ async def delete_supplier_reconciliation_client(user: dict, supplier_client_id: 
     return await supplier_reconciliation_payload(user)
 
 
-async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
+def _normalise_supplier_match_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _supplier_reconciliation_best_contact_match(contacts: list[dict], supplier_name: str, supplier_email: str) -> tuple[dict | None, float, str, list[dict]]:
+    supplier_name_norm = _normalise_supplier_match_text(supplier_name)
+    supplier_email_norm = str(supplier_email or "").strip().lower()
+    candidates: list[dict] = []
+    best: dict | None = None
+    best_score = 0.0
+    best_method = ""
+    for contact in contacts:
+        contact_name = str(contact.get("name") or "").strip()
+        contact_email = str(contact.get("email") or "").strip().lower()
+        if not contact_name:
+            continue
+        name_norm = _normalise_supplier_match_text(contact_name)
+        score = 0.0
+        method = "name_similarity"
+        if supplier_email_norm and contact_email and supplier_email_norm == contact_email:
+            score = 1.0
+            method = "email_exact"
+        elif supplier_name_norm and name_norm and supplier_name_norm == name_norm:
+            score = 0.98
+            method = "name_exact"
+        elif supplier_name_norm and name_norm and (supplier_name_norm in name_norm or name_norm in supplier_name_norm):
+            score = 0.9
+            method = "name_contains"
+        elif supplier_name_norm and name_norm:
+            score = difflib.SequenceMatcher(a=supplier_name_norm, b=name_norm).ratio()
+        candidate = {
+            "xeroContactId": str(contact.get("xeroContactId") or ""),
+            "name": contact_name,
+            "email": contact_email,
+            "score": float(round(score, 4)),
+            "method": method,
+        }
+        candidates.append(candidate)
+        if score > best_score:
+            best = contact
+            best_score = score
+            best_method = method
+    candidates.sort(key=lambda row: row.get("score", 0), reverse=True)
+    return best, best_score, best_method, candidates[:8]
+
+
+def _ensure_supplier_reconciliation_client_connected(tenant_id: str, contact: dict, user_id: str) -> None:
+    contact_id = str(contact.get("xeroContactId") or "").strip()
+    if not tenant_id or not contact_id:
+        return
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO supplier_reconciliation_clients (
+                    tenant_id, xero_contact_id, contact_name, contact_email,
+                    status, created_by_user_id, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, 'active', %s, %s, %s)
+                ON CONFLICT (tenant_id, xero_contact_id) DO UPDATE
+                SET contact_name = EXCLUDED.contact_name,
+                    contact_email = EXCLUDED.contact_email,
+                    status = 'active',
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    tenant_id,
+                    contact_id,
+                    str(contact.get("name") or "").strip(),
+                    str(contact.get("email") or "").strip(),
+                    user_id,
+                    now,
+                    now,
+                ),
+            )
+        connection.commit()
+
+
+async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tenant_id: str, filename: str, content_type: str, file_bytes: bytes) -> dict:
     settings = get_settings()
     if not settings.openai_api_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OpenAI extraction is not configured. Add OPENAI_API_KEY before uploading supplier statements.")
     contact_id = str(xero_contact_id or "").strip()
-    if not contact_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a supplier contact before uploading a statement.")
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Upload a supplier statement PDF.")
     lower_name = str(filename or "").lower()
     if "pdf" not in str(content_type or "").lower() and not lower_name.endswith(".pdf"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Supplier reconciliation currently supports PDF statements only.")
-    connection_row = get_xero_connection_for_user(user["id"])
+
+    source_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    if not source_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
+    requested_tenant_id = str(tenant_id or "").strip()
+    connection_row = next((row for row in source_rows if str(row.get("tenant_id") or "") == requested_tenant_id), None) if requested_tenant_id else None
+    if connection_row is None:
+        connection_row = max(source_rows, key=lambda row: _xero_connection_sort_key(row, get_settings().xero_primary_tenant_name))
     tenant_id = str(connection_row.get("tenant_id") or "")
-    connected_contact_ids = _supplier_reconciliation_connected_contact_ids(tenant_id)
-    if contact_id not in connected_contact_ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect this supplier in Supplier Reconciliation before uploading statements.")
 
     statement_text = _supplier_statement_text(file_bytes)
     extracted = await _extract_supplier_statement_lines(statement_text, filename or "supplier-statement.pdf")
     extracted_lines = [line for line in (extracted.get("lines") or []) if isinstance(line, dict)]
+    extraction_supplier_name = str(extracted.get("supplierName") or "").strip()
+    extraction_email = str(extracted.get("emailAddress") or "").strip()
 
-    where = f'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"&&{_xero_contact_where(contact_id)}'
-    try:
-        bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"ContactIDs": contact_id, "where": 'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"', "order": "Date DESC"})
-    except HTTPException:
-        bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"where": where, "order": "Date DESC"})
-    contact_id_lower = contact_id.lower()
-    bills = [bill for bill in bills if _xero_transaction_contact_id(bill) == contact_id_lower]
+    xero_match_payload = {
+        "proposedContactId": "",
+        "proposedName": "",
+        "proposedEmail": "",
+        "confidence": 0.0,
+        "method": "",
+        "needsConfirmation": False,
+        "candidates": [],
+    }
+    if not contact_id:
+        contacts = await _supplier_reconciliation_contact_options_for_connection(connection_row)
+        best_contact, best_score, best_method, candidates = _supplier_reconciliation_best_contact_match(contacts, extraction_supplier_name, extraction_email)
+        xero_match_payload = {
+            "proposedContactId": str((best_contact or {}).get("xeroContactId") or ""),
+            "proposedName": str((best_contact or {}).get("name") or ""),
+            "proposedEmail": str((best_contact or {}).get("email") or ""),
+            "confidence": float(round(best_score or 0.0, 4)),
+            "method": best_method,
+            "needsConfirmation": bool(best_contact) and (best_score < 0.97),
+            "candidates": candidates,
+        }
+        contact_id = str((best_contact or {}).get("xeroContactId") or "")
+        if best_contact:
+            _ensure_supplier_reconciliation_client_connected(tenant_id, best_contact, user["id"])
+
+    if contact_id:
+        contacts = await _supplier_reconciliation_contact_options_for_connection(connection_row)
+        confirmed_contact = next((item for item in contacts if str(item.get("xeroContactId") or "") == contact_id), None)
+        if confirmed_contact:
+            _ensure_supplier_reconciliation_client_connected(tenant_id, confirmed_contact, user["id"])
+            if not xero_match_payload.get("proposedContactId"):
+                xero_match_payload = {
+                    "proposedContactId": str(confirmed_contact.get("xeroContactId") or ""),
+                    "proposedName": str(confirmed_contact.get("name") or ""),
+                    "proposedEmail": str(confirmed_contact.get("email") or ""),
+                    "confidence": 1.0,
+                    "method": "user_selected",
+                    "needsConfirmation": False,
+                    "candidates": [],
+                }
+
+    bills = []
+    if contact_id:
+        where = f'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"&&{_xero_contact_where(contact_id)}'
+        try:
+            bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"ContactIDs": contact_id, "where": 'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"', "order": "Date DESC"})
+        except HTTPException:
+            bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"where": where, "order": "Date DESC"})
+        contact_id_lower = contact_id.lower()
+        bills = [bill for bill in bills if _xero_transaction_contact_id(bill) == contact_id_lower]
 
     bill_rows = []
     invoice_lookup = {}
@@ -16698,10 +16851,29 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, file
         )
 
     return {
+        "tenantId": tenant_id,
         "contactId": contact_id,
         "supplierName": str(extracted.get("supplierName") or "").strip(),
         "clientName": str(extracted.get("clientName") or "").strip(),
         "emailAddress": str(extracted.get("emailAddress") or "").strip(),
+        "supplierAddress": str(extracted.get("supplierAddress") or "").strip(),
+        "supplierPhone": str(extracted.get("supplierPhone") or "").strip(),
+        "supplierBankName": str(extracted.get("supplierBankName") or "").strip(),
+        "supplierBankAccountNumber": str(extracted.get("supplierBankAccountNumber") or "").strip(),
+        "supplierBankSortCode": str(extracted.get("supplierBankSortCode") or "").strip(),
+        "supplierBankIban": str(extracted.get("supplierBankIban") or "").strip(),
+        "supplierBankSwiftBic": str(extracted.get("supplierBankSwiftBic") or "").strip(),
+        "supplierProfile": {
+            "name": str(extracted.get("supplierName") or "").strip(),
+            "address": str(extracted.get("supplierAddress") or "").strip(),
+            "email": str(extracted.get("emailAddress") or "").strip(),
+            "phone": str(extracted.get("supplierPhone") or "").strip(),
+            "bankName": str(extracted.get("supplierBankName") or "").strip(),
+            "bankAccountNumber": str(extracted.get("supplierBankAccountNumber") or "").strip(),
+            "bankSortCode": str(extracted.get("supplierBankSortCode") or "").strip(),
+            "bankIban": str(extracted.get("supplierBankIban") or "").strip(),
+            "bankSwiftBic": str(extracted.get("supplierBankSwiftBic") or "").strip(),
+        },
         "statementDate": str(extracted.get("statementDate") or "").strip(),
         "currencyCode": str(extracted.get("currencyCode") or "GBP").strip() or "GBP",
         "filename": filename or "supplier-statement.pdf",
@@ -16713,6 +16885,7 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, file
             "paidCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "paid"),
             "matchedBillCount": len({row["xeroInvoiceId"] for row in reconciliation_rows if row.get("xeroInvoiceId")}),
         },
+        "xeroMatch": xero_match_payload,
     }
 
 
