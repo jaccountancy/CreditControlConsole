@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 from datetime import date, datetime, timedelta
+from uuid import uuid4
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
@@ -307,6 +308,17 @@ class CompaniesHouseTests(unittest.TestCase):
                 ch._post_ch_gateway(b"<xml/>")
         self.assertEqual(ctx.exception.status_code, 502)
         self.assertEqual(calls["count"], ch.CH_GATEWAY_MAX_ATTEMPTS)
+
+    def test_normalise_workflow_review_stringifies_uuid_user_id(self):
+        user_id = uuid4()
+        review = ch._normalise_workflow_review(
+            {
+                "sections": {key: True for key in ch.CH_WORKFLOW_REVIEW_SECTIONS},
+                "notes": "All complete",
+            },
+            user_id=user_id,
+        )
+        self.assertEqual(review.get("updatedByUserId"), str(user_id))
 
 
 if __name__ == "__main__":

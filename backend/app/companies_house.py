@@ -3594,7 +3594,7 @@ def _date_or_none(value):
         return None
 
 
-def _normalise_workflow_review(value: object, *, user_id: str | None = None) -> dict:
+def _normalise_workflow_review(value: object, *, user_id: object | None = None) -> dict:
     source = value if isinstance(value, dict) else {}
     raw_sections = source.get("sections") if isinstance(source.get("sections"), dict) else {}
     sections = {
@@ -3612,7 +3612,7 @@ def _normalise_workflow_review(value: object, *, user_id: str | None = None) -> 
         "isComplete": complete,
         "completedAt": completed_at,
         "updatedAt": utcnow().isoformat(),
-        "updatedByUserId": user_id or "",
+        "updatedByUserId": str(user_id) if user_id is not None else "",
         "notes": notes,
     }
 
