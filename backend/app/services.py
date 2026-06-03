@@ -17615,7 +17615,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                         comments, proposal_payload,
                         created_at, updated_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s)
                     ON CONFLICT (user_id, proposal_external_id) DO NOTHING
                     RETURNING *
                     """,
