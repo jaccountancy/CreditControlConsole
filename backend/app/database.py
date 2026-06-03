@@ -932,6 +932,32 @@ ON ignition_reporting_records (user_id, dataset, external_id);
 CREATE INDEX IF NOT EXISTS ignition_reporting_records_dataset_idx
 ON ignition_reporting_records (user_id, dataset, synced_at DESC);
 
+CREATE TABLE IF NOT EXISTS ignition_view_cache (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    cache_key TEXT NOT NULL,
+    source_signature TEXT NOT NULL DEFAULT '',
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, cache_key)
+);
+
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS cache_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS source_signature TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_view_cache ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_view_cache_user_key_idx
+ON ignition_view_cache (user_id, cache_key);
+
+CREATE INDEX IF NOT EXISTS ignition_view_cache_user_updated_idx
+ON ignition_view_cache (user_id, updated_at DESC);
+
 CREATE OR REPLACE VIEW ignition_reporting_clients AS
 SELECT * FROM ignition_reporting_records WHERE dataset = 'clients';
 
@@ -1349,6 +1375,64 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS audit_events_entity_idx
 ON audit_events (entity_type, entity_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS usage_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    provider TEXT NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    feature TEXT NOT NULL DEFAULT '',
+    page TEXT NOT NULL DEFAULT '',
+    operation TEXT NOT NULL DEFAULT '',
+    endpoint TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    request_units INTEGER NOT NULL DEFAULT 1,
+    request_bytes BIGINT NOT NULL DEFAULT 0,
+    response_bytes BIGINT NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd NUMERIC(14, 6) NOT NULL DEFAULT 0,
+    status_code INTEGER,
+    success BOOLEAN NOT NULL DEFAULT FALSE,
+    error_code TEXT NOT NULL DEFAULT '',
+    error_message TEXT NOT NULL DEFAULT '',
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS feature TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS page TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS operation TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS endpoint TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS model TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS request_units INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS request_bytes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS response_bytes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS input_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS output_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS total_tokens INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(14, 6) NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS status_code INTEGER;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS success BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS error_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS duration_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE usage_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS usage_events_created_idx
+ON usage_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS usage_events_provider_created_idx
+ON usage_events (provider, created_at DESC);
+CREATE INDEX IF NOT EXISTS usage_events_user_created_idx
+ON usage_events (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS usage_events_provider_feature_idx
+ON usage_events (provider, feature, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS ch_settings (
     singleton_id INTEGER PRIMARY KEY DEFAULT 1 CHECK (singleton_id = 1),

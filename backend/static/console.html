@@ -5653,6 +5653,20 @@
                 gap: 8px;
                 margin-top: 14px;
             }
+            .settings-inline-select {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 0.82rem;
+                font-weight: 800;
+                color: var(--muted);
+            }
+            .settings-inline-select select {
+                min-width: 124px;
+            }
+            .settings-usage-list .database-metrics-row {
+                grid-template-columns: minmax(0, 1fr) minmax(80px, auto) minmax(84px, auto);
+            }
             .database-metrics-heading,
             .database-metrics-row {
                 display: grid;
@@ -18777,6 +18791,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
                                 </button>
+                                <button class="app-nav-button" type="button" data-settings-nav="usage">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 16V9"></path><path d="M12 16V5"></path><path d="M17 16v-3"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Usage</strong><span>API volume & cost</span></span>
+                                </button>
                                 <button class="app-nav-button" type="button" data-settings-nav="developer-log">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
@@ -18862,6 +18880,10 @@
                             <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="usage">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 16V9"></path><path d="M12 16V5"></path><path d="M17 16v-3"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Usage</strong><span>API volume & cost</span></span>
                             </button>
                             <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
@@ -19201,6 +19223,7 @@
                             <button class="ghost-button" id="saveIgnitionRenewalsButton" type="button">Save edits</button>
                             <button class="ghost-button" id="emailIgnitionRenewalsButton" type="button">Email renewals</button>
                             <button class="ghost-button" id="exportIgnitionRenewalsPdfButton" type="button">Export PDF</button>
+                            <button class="ghost-button" id="openIgnitionRenewalAuditHistoryButton" type="button" hidden>Audit and history</button>
                             <button class="ghost-button" id="openIgnitionRenewalHistoryButton" type="button">Renewal history</button>
                         </div>
                         <button class="global-activity-toggle" id="globalActivityToggle" type="button" aria-label="Show recent system activity" aria-expanded="false" aria-controls="globalActivityPanel">
@@ -19753,6 +19776,34 @@
                                         <button class="ghost-button" id="reloadMeReportEmailSettingsButton" type="button">Reload from backend</button>
                                     </div>
                                 </form>
+                            </section>
+
+                            <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="usage">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">API usage</p>
+                                        <h3>OpenAI and Xero volume</h3>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <label class="settings-inline-select" for="settingsUsageDaysSelect">
+                                            <span>Range</span>
+                                            <select id="settingsUsageDaysSelect">
+                                                <option value="7">Last 7 days</option>
+                                                <option value="30" selected>Last 30 days</option>
+                                                <option value="90">Last 90 days</option>
+                                            </select>
+                                        </label>
+                                        <button class="ghost-button" id="settingsUsageRefreshButton" type="button">Refresh</button>
+                                    </div>
+                                </div>
+                                <p class="settings-help" id="settingsUsageSummary">Loading usage data…</p>
+                                <div class="database-metrics-grid" id="settingsUsageProviderCards">
+                                    <article class="database-metric-card"><span>OpenAI</span><strong>--</strong><small>Waiting for usage data</small></article>
+                                    <article class="database-metric-card"><span>Xero</span><strong>--</strong><small>Waiting for usage data</small></article>
+                                </div>
+                                <div class="database-metrics-list settings-usage-list" id="settingsUsageTopFeatures"></div>
+                                <div class="database-metrics-list settings-usage-list" id="settingsUsageTopEndpoints"></div>
+                                <div class="database-metrics-list settings-usage-list" id="settingsUsageDailyTrend"></div>
                             </section>
 
                             <section class="detail-panel settings-panel danger-panel factory-reset-panel" data-settings-section="factory-reset">
@@ -21105,6 +21156,22 @@
                                 </div>
                                 <div class="ignition-renewals-meta" id="ignitionRenewalHistoryMeta"></div>
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalHistoryTableWrap"></div>
+                            </section>
+                        </div>
+                        <div class="ignition-renewals-modal" id="ignitionRenewalAuditHistoryModal" hidden>
+                            <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalAuditHistoryTitle">
+                                <div class="ignition-renewals-modal-head">
+                                    <div>
+                                        <p class="eyebrow">Audit and history</p>
+                                        <h3 id="ignitionRenewalAuditHistoryTitle">Renewal batch timeline</h3>
+                                        <p class="detail-meta" id="ignitionRenewalAuditHistorySummary">Step-by-step events for this finalised renewal batch.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="closeIgnitionRenewalAuditHistoryButton" type="button">Close</button>
+                                    </div>
+                                </div>
+                                <div class="ignition-renewals-meta" id="ignitionRenewalAuditHistoryMeta"></div>
+                                <div class="ignition-renewals-table-wrap" id="ignitionRenewalAuditHistoryTableWrap"></div>
                             </section>
                         </div>
                         <div class="ignition-renewals-modal" id="ignitionRenewalEmailModal" hidden>
@@ -22652,6 +22719,7 @@
                 letters: "Create and edit reminder templates used from client pages.",
                 "me-report-email": "Control client snapshot emails, required BCC, and report send wording.",
                 "gmail-connection": "Connect or reconnect the Gmail inbox used for report email sending.",
+                usage: "Track OpenAI and Xero volume, estimated spend, and highest-traffic features.",
                 "developer-log": "Inspect sync events, backend errors, and API calls.",
                 "system-status": "Check stored record counts, database size, and backend health indicators.",
                 "factory-reset": "Protected destructive controls are isolated from day-to-day settings."
@@ -22722,6 +22790,9 @@
             let pendingXeroActionsData = { summary: {}, actions: [] };
             let pendingXeroActionsLoading = false;
             let pendingXeroActionsSyncing = false;
+            let settingsUsageData = { summary: { providers: [] }, trends: [], topFeatures: [], topEndpoints: [], range: { days: 30 } };
+            let settingsUsageLoading = false;
+            let settingsUsageDays = 30;
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
@@ -23043,12 +23114,16 @@
             let ignitionRenewalBatchRefCounter = Math.max(0, ...Object.values(ignitionRenewalBatchRefs).map((value) => Number(value) || 0));
             let ignitionRenewalStartModalOpen = false;
             let ignitionRenewalHistoryModalOpen = false;
+            let ignitionRenewalAuditHistoryModalOpen = false;
             let ignitionRenewalEmailModalOpen = false;
             let ignitionRenewalEmailSending = false;
             let ignitionRenewalEmailRunId = "";
             let ignitionRenewalHistoryLoading = false;
             let ignitionRenewalHistorySelectedRunId = "";
             const ignitionRenewalHistoryByRunId = new Map();
+            let ignitionRenewalAuditHistoryLoading = false;
+            let ignitionRenewalAuditHistoryRunId = "";
+            const ignitionRenewalAuditHistoryByRunId = new Map();
             const ignitionRenewalsEstimatedSeconds = 90;
             const IGNITION_RENEWALS_STAGE_MIN_SECONDS = 2;
             const IGNITION_RENEWALS_LOADING_STEPS = [
@@ -23413,6 +23488,7 @@
                         operationStatus: config.endpoints?.operationStatus || "/api/operations/:operationId",
                         developerLogs: config.endpoints?.developerLogs || "/api/developer/logs",
                         developerLogsClear: config.endpoints?.developerLogsClear || "/api/developer/logs/clear",
+                        settingsUsage: config.endpoints?.settingsUsage || "/api/settings/usage",
                         note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
@@ -23466,6 +23542,7 @@
                         ignitionRenewals: config.endpoints?.ignitionRenewals || "/api/ignition/renewals",
                         ignitionRenewalsRun: config.endpoints?.ignitionRenewalsRun || "/api/ignition/renewals/run",
                         ignitionRenewalRun: config.endpoints?.ignitionRenewalRun || "/api/ignition/renewals/:runId",
+                        ignitionRenewalAuditHistory: config.endpoints?.ignitionRenewalAuditHistory || "/api/ignition/renewals/:runId/audit-history",
                         ignitionRenewalIneligible: config.endpoints?.ignitionRenewalIneligible || "/api/ignition/renewals/ineligible",
                         ignitionRenewalDelete: config.endpoints?.ignitionRenewalDelete || "/api/ignition/renewals/:runId",
                         ignitionRenewalEmail: config.endpoints?.ignitionRenewalEmail || "/api/ignition/renewals/:runId/email",
@@ -26371,6 +26448,7 @@
                 if (ignitionTopbarTabs) ignitionTopbarTabs.hidden = true;
                 if (activeView !== "ignition" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
                 if (activeView !== "ignition" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
+                if (activeView !== "ignition" && ignitionRenewalAuditHistoryModalOpen) closeIgnitionRenewalAuditHistory();
                 const meReportTopbarActions = document.getElementById("meReportTopbarActions");
                 if (meReportTopbarActions) meReportTopbarActions.hidden = activeView !== "me-report";
                 const supplierReconciliationTopbarActions = document.getElementById("supplierReconciliationTopbarActions");
@@ -40705,6 +40783,97 @@
                 setIgnitionRenewalHistoryOpen(false);
             }
 
+            function setIgnitionRenewalAuditHistoryOpen(isOpen) {
+                ignitionRenewalAuditHistoryModalOpen = Boolean(isOpen);
+                const modal = document.getElementById("ignitionRenewalAuditHistoryModal");
+                if (modal) modal.hidden = !ignitionRenewalAuditHistoryModalOpen;
+                if (ignitionRenewalAuditHistoryModalOpen) renderIgnitionRenewalAuditHistory();
+            }
+
+            function closeIgnitionRenewalAuditHistory() {
+                setIgnitionRenewalAuditHistoryOpen(false);
+            }
+
+            async function loadIgnitionRenewalAuditHistory(runId, force = false) {
+                const safeRunId = String(runId || "").trim();
+                if (!safeRunId) return;
+                if (!force && ignitionRenewalAuditHistoryByRunId.has(safeRunId)) return;
+                ignitionRenewalAuditHistoryLoading = true;
+                renderIgnitionRenewalAuditHistory();
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewalAuditHistory, {}, { runId: safeRunId });
+                    const history = payload?.auditHistory || null;
+                    if (history?.runId) ignitionRenewalAuditHistoryByRunId.set(String(history.runId), history);
+                } catch (error) {
+                    console.error("Unable to load renewal audit history", error);
+                    showToast(error.message || "Unable to load renewal audit history", "error");
+                } finally {
+                    ignitionRenewalAuditHistoryLoading = false;
+                    renderIgnitionRenewalAuditHistory();
+                }
+            }
+
+            function renderIgnitionRenewalAuditHistory() {
+                const meta = document.getElementById("ignitionRenewalAuditHistoryMeta");
+                const wrap = document.getElementById("ignitionRenewalAuditHistoryTableWrap");
+                if (!meta || !wrap) return;
+                const runId = String(ignitionRenewalAuditHistoryRunId || "").trim();
+                const history = ignitionRenewalAuditHistoryByRunId.get(runId) || null;
+                const timeline = Array.isArray(history?.timeline) ? history.timeline : [];
+                if (!history) {
+                    meta.innerHTML = '<span>Status: Loading timeline</span>';
+                    wrap.innerHTML = ignitionRenewalAuditHistoryLoading
+                        ? '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading audit trail</h4><p>Reading step-by-step renewal process events.</p></div>'
+                        : '<div class="empty-state"><p class="eyebrow">No audit data</p><h4>No audit events found for this batch</h4><p>Try refreshing the batch and opening audit history again.</p></div>';
+                    return;
+                }
+                meta.innerHTML = [
+                    ["Batch", history.batchReference || "--"],
+                    ["Status", history.status || "--"],
+                    ["Items", Number(history.itemCount || 0).toLocaleString("en-GB")],
+                    ["Created", history.createdAt ? formatDateTime(history.createdAt) : "--"],
+                    ["Finalised", history.finalisedAt ? formatDateTime(history.finalisedAt) : "--"],
+                    ["Emailed", history.emailSentAt ? formatDateTime(history.emailSentAt) : "--"],
+                ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+                if (ignitionRenewalAuditHistoryLoading) {
+                    wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Refreshing audit trail</h4><p>Fetching latest process events for this renewal batch.</p></div>';
+                    return;
+                }
+                if (!timeline.length) {
+                    wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No timeline</p><h4>No process entries are stored</h4><p>This batch has no audit timeline entries yet.</p></div>';
+                    return;
+                }
+                wrap.innerHTML = `
+                    <div class="mini-timeline">
+                        ${timeline.map((entry) => `
+                            <article>
+                                <div class="note-head">
+                                    <strong>${escapeHTML(entry.title || "Event")}</strong>
+                                    <span>${escapeHTML(entry.createdAt ? formatDateTime(entry.createdAt) : "--")}</span>
+                                </div>
+                                ${entry.detail ? `<p>${escapeHTML(entry.detail)}</p>` : ""}
+                            </article>
+                        `).join("")}
+                    </div>
+                `;
+            }
+
+            async function openIgnitionRenewalAuditHistory(runId = "") {
+                const safeRunId = String(runId || ignitionRenewalRun()?.id || "").trim();
+                if (!safeRunId) {
+                    showToast("Open a renewal batch first.", "info");
+                    return;
+                }
+                const run = ignitionRenewalRunById(safeRunId) || {};
+                if (!run?.finalisedAt) {
+                    showToast("Audit and history appears after the batch is finalised.", "info");
+                    return;
+                }
+                ignitionRenewalAuditHistoryRunId = safeRunId;
+                setIgnitionRenewalAuditHistoryOpen(true);
+                await loadIgnitionRenewalAuditHistory(safeRunId);
+            }
+
             function renderIgnitionRenewalHistory() {
                 const meta = document.getElementById("ignitionRenewalHistoryMeta");
                 const wrap = document.getElementById("ignitionRenewalHistoryTableWrap");
@@ -40990,6 +41159,7 @@
                 const saveButton = document.getElementById("saveIgnitionRenewalsButton");
                 const emailButton = document.getElementById("emailIgnitionRenewalsButton");
                 const exportPdfButton = document.getElementById("exportIgnitionRenewalsPdfButton");
+                const auditHistoryButton = document.getElementById("openIgnitionRenewalAuditHistoryButton");
                 const finaliseButton = document.getElementById("finaliseIgnitionRenewalsButton");
                 const backToBatchesButton = document.getElementById("ignitionRenewalsBackToBatchesButton");
 
@@ -41094,6 +41264,11 @@
                 if (saveButton) saveButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
                 if (emailButton) emailButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
                 if (exportPdfButton) exportPdfButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || !finalised || !run.items?.length;
+                if (auditHistoryButton) {
+                    const showAuditHistory = Boolean(pricingStage && run?.id && finalised);
+                    auditHistoryButton.hidden = !showAuditHistory;
+                    auditHistoryButton.disabled = !showAuditHistory || ignitionRenewalsLoading;
+                }
                 if (finaliseButton) finaliseButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
                 if (finaliseButton) finaliseButton.textContent = run?.finalisedAt ? "Finalised" : "Finalise renewals";
                 if (ignitionRenewalStartModalOpen) renderIgnitionRenewalStartModal();
@@ -54728,6 +54903,140 @@
                 }
             }
 
+            function formatUsageUsd(amount) {
+                const value = Number(amount || 0);
+                if (!Number.isFinite(value)) return "$0.00";
+                return new Intl.NumberFormat("en-GB", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+            }
+
+            function renderSettingsUsage() {
+                const summaryTarget = document.getElementById("settingsUsageSummary");
+                const providerCards = document.getElementById("settingsUsageProviderCards");
+                const featuresTarget = document.getElementById("settingsUsageTopFeatures");
+                const endpointsTarget = document.getElementById("settingsUsageTopEndpoints");
+                const trendTarget = document.getElementById("settingsUsageDailyTrend");
+                const refreshButton = document.getElementById("settingsUsageRefreshButton");
+                const rangeSelect = document.getElementById("settingsUsageDaysSelect");
+                const rangeDays = Number(settingsUsageData?.range?.days || settingsUsageDays || 30);
+
+                if (rangeSelect) {
+                    rangeSelect.value = String(rangeDays);
+                    rangeSelect.disabled = settingsUsageLoading;
+                }
+                if (refreshButton) {
+                    refreshButton.disabled = settingsUsageLoading;
+                    refreshButton.textContent = settingsUsageLoading ? "Refreshing..." : "Refresh";
+                }
+
+                const providers = Array.isArray(settingsUsageData?.summary?.providers) ? settingsUsageData.summary.providers : [];
+                const openai = providers.find((item) => item.provider === "openai") || {};
+                const xero = providers.find((item) => item.provider === "xero") || {};
+                const totalEvents = Number(settingsUsageData?.summary?.totalEvents || 0);
+                const latestEventAt = settingsUsageData?.summary?.latestEventAt;
+
+                if (summaryTarget) {
+                    summaryTarget.textContent = settingsUsageLoading
+                        ? "Loading OpenAI and Xero usage analytics..."
+                        : totalEvents
+                        ? `Showing ${totalEvents.toLocaleString("en-GB")} API event${totalEvents === 1 ? "" : "s"} over the last ${rangeDays} days${latestEventAt ? ` · last event ${formatDate(latestEventAt)}` : ""}.`
+                        : `No API usage events recorded in the last ${rangeDays} days.`;
+                }
+
+                if (providerCards) {
+                    providerCards.innerHTML = [
+                        {
+                            title: "OpenAI",
+                            requests: Number(openai.requests || 0),
+                            detailA: `${Number(openai.totalTokens || 0).toLocaleString("en-GB")} tokens`,
+                            detailB: `Est. total ${formatUsageUsd(openai.estimatedCostUsd || 0)} · avg ${formatUsageUsd(openai.avgCostPerRequestUsd || 0)}`,
+                            className: Number(openai.errors || 0) > 0 ? "is-warning" : Number(openai.requests || 0) > 0 ? "is-live" : "",
+                        },
+                        {
+                            title: "Xero",
+                            requests: Number(xero.requests || 0),
+                            detailA: `${Number(xero.success || 0).toLocaleString("en-GB")} ok · ${Number(xero.errors || 0).toLocaleString("en-GB")} errors`,
+                            detailB: `Avg latency ${Math.round(Number(xero.avgLatencyMs || 0)).toLocaleString("en-GB")}ms`,
+                            className: Number(xero.errors || 0) > 0 ? "is-warning" : Number(xero.requests || 0) > 0 ? "is-live" : "",
+                        },
+                    ].map((card) => `
+                        <article class="database-metric-card ${card.className}">
+                            <span>${escapeHTML(card.title)}</span>
+                            <strong>${card.requests.toLocaleString("en-GB")} calls</strong>
+                            <small>${escapeHTML(card.detailA)}</small>
+                            <small>${escapeHTML(card.detailB)}</small>
+                        </article>
+                    `).join("");
+                }
+
+                const topFeatures = Array.isArray(settingsUsageData?.topFeatures) ? settingsUsageData.topFeatures : [];
+                if (featuresTarget) {
+                    featuresTarget.innerHTML = topFeatures.length
+                        ? `
+                            <div class="database-metrics-heading"><span>Top Features / Pages</span><span>Calls</span><span>Cost</span></div>
+                            ${topFeatures.map((row) => `
+                                <div class="database-metrics-row">
+                                    <strong>${escapeHTML(`${String(row.provider || "").toUpperCase()} · ${row.feature || "unclassified"} · ${row.page || "unknown"}`)}</strong>
+                                    <b>${Number(row.requests || 0).toLocaleString("en-GB")}</b>
+                                    <b>${formatUsageUsd(row.estimatedCostUsd || 0)}</b>
+                                </div>
+                            `).join("")}
+                        `
+                        : '<div class="empty-state"><p class="eyebrow">No feature usage yet</p><h4>Waiting for API traffic</h4><p>OpenAI and Xero feature usage will appear after requests run through the backend.</p></div>';
+                }
+
+                const topEndpoints = Array.isArray(settingsUsageData?.topEndpoints) ? settingsUsageData.topEndpoints : [];
+                if (endpointsTarget) {
+                    endpointsTarget.innerHTML = topEndpoints.length
+                        ? `
+                            <div class="database-metrics-heading"><span>Top Endpoints</span><span>Calls</span><span>Avg ms</span></div>
+                            ${topEndpoints.map((row) => `
+                                <div class="database-metrics-row">
+                                    <strong>${escapeHTML(`${String(row.provider || "").toUpperCase()} · ${row.endpoint || "unclassified"}`)}</strong>
+                                    <b>${Number(row.requests || 0).toLocaleString("en-GB")}</b>
+                                    <b>${Math.round(Number(row.avgLatencyMs || 0)).toLocaleString("en-GB")}</b>
+                                </div>
+                            `).join("")}
+                        `
+                        : '<div class="empty-state"><p class="eyebrow">No endpoint usage yet</p><h4>No endpoint-level data recorded</h4><p>Endpoint traffic will appear as soon as events are logged.</p></div>';
+                }
+
+                const trends = Array.isArray(settingsUsageData?.trends) ? settingsUsageData.trends : [];
+                if (trendTarget) {
+                    trendTarget.innerHTML = trends.length
+                        ? `
+                            <div class="database-metrics-heading"><span>Daily Trend</span><span>Calls</span><span>Cost</span></div>
+                            ${trends.slice(0, 20).map((row) => `
+                                <div class="database-metrics-row">
+                                    <strong>${escapeHTML(row.day || "")}</strong>
+                                    <b>${Number(row.requests || 0).toLocaleString("en-GB")}</b>
+                                    <b>${formatUsageUsd(row.estimatedCostUsd || 0)}</b>
+                                </div>
+                            `).join("")}
+                        `
+                        : '<div class="empty-state"><p class="eyebrow">No trend data</p><h4>Daily usage trend is empty</h4><p>As requests are logged, daily usage and cost trend lines will populate here.</p></div>';
+                }
+            }
+
+            async function loadSettingsUsage(force = false) {
+                if (settingsUsageLoading && !force) return;
+                settingsUsageLoading = true;
+                renderSettingsUsage();
+                try {
+                    const payload = await requestJSON(`${api.endpoints.settingsUsage}?days=${encodeURIComponent(settingsUsageDays)}`);
+                    settingsUsageData = payload || settingsUsageData;
+                } catch (error) {
+                    console.error("Unable to load settings usage", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                    } else {
+                        showToast(error.message || "Unable to load API usage analytics", "error");
+                    }
+                } finally {
+                    settingsUsageLoading = false;
+                    renderSettingsUsage();
+                }
+            }
+
             function updateSyncProgress() {
                 const remoteStartedAt = syncRunTimestamp(latestSyncRun);
                 if (remoteStartedAt && (!syncStartedAt || remoteStartedAt < syncStartedAt)) syncStartedAt = remoteStartedAt;
@@ -55200,6 +55509,11 @@
                     eyebrow: "Gmail account",
                     title: "Gmail Account",
                     meta: "Connect or reconnect the Gmail inbox used for report email sending."
+                },
+                usage: {
+                    eyebrow: "API usage",
+                    title: "Usage and Cost Analytics",
+                    meta: "Track OpenAI and Xero volume, estimated spend, and highest-traffic features."
                 },
                 "developer-log": {
                     eyebrow: "Developer log",
@@ -56224,8 +56538,12 @@
                 if (ignitionRenewalsBackToBatchesButton) ignitionRenewalsBackToBatchesButton.addEventListener("click", openIgnitionRenewalsBatchStage);
                 const openIgnitionRenewalHistoryButton = document.getElementById("openIgnitionRenewalHistoryButton");
                 if (openIgnitionRenewalHistoryButton) openIgnitionRenewalHistoryButton.addEventListener("click", openIgnitionRenewalHistory);
+                const openIgnitionRenewalAuditHistoryButton = document.getElementById("openIgnitionRenewalAuditHistoryButton");
+                if (openIgnitionRenewalAuditHistoryButton) openIgnitionRenewalAuditHistoryButton.addEventListener("click", () => openIgnitionRenewalAuditHistory());
                 const closeIgnitionRenewalHistoryButton = document.getElementById("closeIgnitionRenewalHistoryButton");
                 if (closeIgnitionRenewalHistoryButton) closeIgnitionRenewalHistoryButton.addEventListener("click", closeIgnitionRenewalHistory);
+                const closeIgnitionRenewalAuditHistoryButton = document.getElementById("closeIgnitionRenewalAuditHistoryButton");
+                if (closeIgnitionRenewalAuditHistoryButton) closeIgnitionRenewalAuditHistoryButton.addEventListener("click", closeIgnitionRenewalAuditHistory);
                 const closeIgnitionRenewalStartButton = document.getElementById("closeIgnitionRenewalStartButton");
                 if (closeIgnitionRenewalStartButton) closeIgnitionRenewalStartButton.addEventListener("click", closeIgnitionRenewalStartModal);
                 const ignitionRenewalsDeselectAllCandidatesButton = document.getElementById("ignitionRenewalsDeselectAllCandidatesButton");
@@ -56244,6 +56562,10 @@
                 const ignitionRenewalHistoryModal = document.getElementById("ignitionRenewalHistoryModal");
                 if (ignitionRenewalHistoryModal) ignitionRenewalHistoryModal.addEventListener("click", (event) => {
                     if (event.target.id === "ignitionRenewalHistoryModal") closeIgnitionRenewalHistory();
+                });
+                const ignitionRenewalAuditHistoryModal = document.getElementById("ignitionRenewalAuditHistoryModal");
+                if (ignitionRenewalAuditHistoryModal) ignitionRenewalAuditHistoryModal.addEventListener("click", (event) => {
+                    if (event.target.id === "ignitionRenewalAuditHistoryModal") closeIgnitionRenewalAuditHistory();
                 });
                 const saveIgnitionRenewalsButton = document.getElementById("saveIgnitionRenewalsButton");
                 if (saveIgnitionRenewalsButton) saveIgnitionRenewalsButton.addEventListener("click", saveIgnitionRenewals);
@@ -56432,6 +56754,7 @@
                 document.addEventListener("keydown", (event) => {
                     if (event.key === "Escape" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
                     if (event.key === "Escape" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
+                    if (event.key === "Escape" && ignitionRenewalAuditHistoryModalOpen) closeIgnitionRenewalAuditHistory();
                     if (event.key === "Escape" && ignitionRenewalEmailModalOpen) closeIgnitionRenewalEmailModal();
                     if (event.key === "Escape" && ignitionRenewalReasoningModalOpen) closeIgnitionRenewalReasoningModal();
                 });

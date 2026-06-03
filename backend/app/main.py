@@ -91,6 +91,7 @@ from .services import (
     create_ignition_renewal_run,
     delete_ignition_renewal_run,
     finalise_ignition_renewals,
+    ignition_renewals_audit_history,
     ignition_renewals_email_preview,
     ignition_renewals_report_pdf,
     mark_ignition_renewal_proposals_ineligible,
@@ -193,6 +194,7 @@ from .services import (
     upload_me_report_submission_pdf,
     _process_bank_statement_upload,
 )
+from .usage_metrics import usage_overview_payload
 from .ignition import (
     IgnitionConfigurationError,
     create_pkce_verifier,
@@ -1100,6 +1102,11 @@ def api_developer_logs_clear(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **clear_developer_logs(user)}
 
 
+@app.get("/api/settings/usage")
+def api_settings_usage(days: int = Query(30, ge=1, le=180), user: dict = Depends(require_panel_user)):
+    return usage_overview_payload(user, days=days)
+
+
 @app.post("/api/xero/disconnect")
 async def api_xero_disconnect(request: Request, user: dict = Depends(require_panel_user)):
     payload = {}
@@ -1641,6 +1648,11 @@ def api_ignition_renewals(user: dict = Depends(require_panel_user)):
 @app.get("/api/ignition/renewals/{run_id}")
 def api_ignition_renewal_run(run_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", "renewals": ignition_renewals_payload(user, run_id)}
+
+
+@app.get("/api/ignition/renewals/{run_id}/audit-history")
+def api_ignition_renewal_audit_history(run_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "auditHistory": ignition_renewals_audit_history(user, run_id)}
 
 
 @app.post("/api/ignition/renewals/run")

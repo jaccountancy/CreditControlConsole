@@ -38,6 +38,12 @@ from .ignition import (
     ignition_oauth_configured,
     iter_ignition_collection,
 )
+from .usage_metrics import (
+    estimate_openai_cost_usd,
+    infer_openai_feature_page,
+    parse_openai_usage_tokens,
+    record_usage_event,
+)
 from .xero import (
     ACCOUNTS_URL,
     CONTACTS_URL,
@@ -66,6 +72,8 @@ from .xero import (
 logger = logging.getLogger(__name__)
 ACTIVE_SYNC_STATUSES = ("queued", "running")
 SYNC_STALE_AFTER = timedelta(minutes=15)
+IGNITION_SYNC_STALE_AFTER = timedelta(minutes=45)
+IGNITION_SYNC_HEARTBEAT_INTERVAL_SECONDS = 20
 ME_REPORT_SUBMISSION_STALE_AFTER = timedelta(hours=2)
 PANEL_PAYMENT_LIMIT = 1000
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
@@ -141,6 +149,7 @@ DATABASE_METRIC_TABLES = {
     "xero_posting_settings": "Xero posting settings",
     "xero_pending_actions": "Xero outbox",
     "audit_events": "Audit events",
+    "usage_events": "API usage events",
     "jashflow_loans": "Jashflow loans",
     "jashflow_transactions": "Jashflow transactions",
     "bank_statement_clients": "Bank statement clients",
@@ -478,15 +487,23 @@ async def _post_openai_responses(
     purpose: str,
     preferred_model: str | None = None,
     timeout_seconds: float | None = None,
+    user_id: str | None = None,
+    feature: str | None = None,
+    page: str | None = None,
 ) -> dict:
     settings = get_settings()
     attempted: list[str] = []
     last_message = ""
     requested_model = preferred_model if str(preferred_model or "").strip() else settings.openai_model
     timeout = float(timeout_seconds or OPENAI_INSIGHTS_TIMEOUT_SECONDS)
+    inferred_feature, inferred_page = infer_openai_feature_page(purpose)
+    feature_name = str(feature or inferred_feature or "openai-core")
+    page_name = str(page or inferred_page or "settings")
+    request_bytes = len(json.dumps(request_body, default=_json_default))
     async with httpx.AsyncClient(timeout=timeout) as client:
         for model_name in _openai_model_candidates(requested_model):
             attempted.append(model_name)
+            started = time.monotonic()
             try:
                 response = await client.post(
                     "https://api.openai.com/v1/responses",
@@ -494,6 +511,23 @@ async def _post_openai_responses(
                     json={**request_body, "model": model_name},
                 )
             except httpx.TimeoutException as exc:
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                record_usage_event(
+                    provider="openai",
+                    user_id=user_id,
+                    feature=feature_name,
+                    page=page_name,
+                    operation=purpose,
+                    endpoint="/v1/responses",
+                    model=model_name,
+                    request_bytes=request_bytes,
+                    response_bytes=0,
+                    status_code=504,
+                    success=False,
+                    error_code="timeout",
+                    error_message=str(exc),
+                    duration_ms=elapsed_ms,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                     detail=(
@@ -503,14 +537,70 @@ async def _post_openai_responses(
                     ),
                 ) from exc
             except httpx.HTTPError as exc:
+                elapsed_ms = int((time.monotonic() - started) * 1000)
+                record_usage_event(
+                    provider="openai",
+                    user_id=user_id,
+                    feature=feature_name,
+                    page=page_name,
+                    operation=purpose,
+                    endpoint="/v1/responses",
+                    model=model_name,
+                    request_bytes=request_bytes,
+                    response_bytes=0,
+                    status_code=502,
+                    success=False,
+                    error_code="network_error",
+                    error_message=str(exc),
+                    duration_ms=elapsed_ms,
+                )
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
                     detail=f"OpenAI {purpose} failed due to a network error: {exc}",
                 ) from exc
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            response_bytes = len(response.content or b"")
             if not response.is_error:
-                return response.json()
+                payload = response.json()
+                input_tokens, output_tokens, total_tokens = parse_openai_usage_tokens(payload)
+                estimated_cost = estimate_openai_cost_usd(model_name, input_tokens, output_tokens)
+                record_usage_event(
+                    provider="openai",
+                    user_id=user_id,
+                    feature=feature_name,
+                    page=page_name,
+                    operation=purpose,
+                    endpoint="/v1/responses",
+                    model=model_name,
+                    request_bytes=request_bytes,
+                    response_bytes=response_bytes,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    estimated_cost_usd=estimated_cost,
+                    status_code=response.status_code,
+                    success=True,
+                    duration_ms=elapsed_ms,
+                )
+                return payload
             message, code = _openai_error_detail(response)
             last_message = message
+            record_usage_event(
+                provider="openai",
+                user_id=user_id,
+                feature=feature_name,
+                page=page_name,
+                operation=purpose,
+                endpoint="/v1/responses",
+                model=model_name,
+                request_bytes=request_bytes,
+                response_bytes=response_bytes,
+                status_code=response.status_code,
+                success=False,
+                error_code=code or "api_error",
+                error_message=message,
+                duration_ms=elapsed_ms,
+            )
             lowered = message.lower()
             missing_model = code == "model_not_found" or "model" in lowered and "does not exist" in lowered
             if missing_model:
@@ -8895,7 +8985,15 @@ async def extract_me_report_ct_comps_loss(user: dict, client_id: str, filename: 
         },
         "max_output_tokens": 2500,
     }
-    text = _extract_response_text(await _post_openai_responses(request_body, "CT comps trading loss extraction"))
+    text = _extract_response_text(
+        await _post_openai_responses(
+            request_body,
+            "CT comps trading loss extraction",
+            user_id=user["id"],
+            feature="me-report",
+            page="me-report",
+        )
+    )
     try:
         extracted = json.loads(text) if text else {}
     except ValueError as exc:
@@ -15004,6 +15102,7 @@ IGNITION_RENEWAL_MAX_UPLIFT = Decimal("0.1000")
 IGNITION_RENEWAL_HISTORY_LIMIT = 8
 IGNITION_RENEWAL_EDITABLE_STATUSES = {"draft", "awaiting_review", "review_needed", "failed"}
 IGNITION_RENEWAL_EXCLUDED_PROPOSAL_NAMES = {"ges 2024 accounts"}
+IGNITION_RENEWAL_CANDIDATE_CACHE_KEY = "renewals:candidate_pool:v1"
 
 IGNITION_RENEWAL_RECOMMENDATION_SCHEMA = {
     "type": "object",
@@ -15037,7 +15136,7 @@ def _ignition_provider_status(exc: HTTPException) -> int:
 
 def _mark_stale_ignition_sync_runs(user_id: str) -> None:
     now = utcnow()
-    stale_before = now - SYNC_STALE_AFTER
+    stale_before = now - IGNITION_SYNC_STALE_AFTER
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -15081,7 +15180,7 @@ def _mark_stale_ignition_sync_runs(user_id: str) -> None:
                     "last_summary": row.get("summary") or "",
                     "last_heartbeat_at": _iso(last_heartbeat),
                     "elapsed_seconds_since_heartbeat": elapsed_seconds,
-                    "stale_threshold_seconds": int(SYNC_STALE_AFTER.total_seconds()),
+                    "stale_threshold_seconds": int(IGNITION_SYNC_STALE_AFTER.total_seconds()),
                     "fetched_count": int(row.get("fetched_count") or 0),
                     "processed_count": int(row.get("processed_count") or 0),
                 },
@@ -16148,7 +16247,7 @@ def _ignition_rule_uplift_recommendation(context: dict) -> tuple[Decimal, str]:
     return uplift, reason
 
 
-async def _ignition_openai_uplift_recommendations(contexts: list[dict]) -> dict[str, dict]:
+async def _ignition_openai_uplift_recommendations(contexts: list[dict], user_id: str | None = None) -> dict[str, dict]:
     settings = get_settings()
     if not contexts or not settings.openai_api_key:
         return {}
@@ -16196,7 +16295,15 @@ async def _ignition_openai_uplift_recommendations(contexts: list[dict]) -> dict[
         "max_output_tokens": min(12000, max(1800, len(compact) * 220)),
     }
     try:
-        text = _extract_response_text(await _post_openai_responses(request_body, "ignition renewal price recommendations"))
+        text = _extract_response_text(
+            await _post_openai_responses(
+                request_body,
+                "ignition renewal price recommendations",
+                user_id=user_id,
+                feature="ignition",
+                page="ignition",
+            )
+        )
         payload = json.loads(text) if text else {}
     except Exception:
         logger.exception("OpenAI uplift recommendations failed")
@@ -16274,7 +16381,7 @@ async def _apply_ignition_renewal_price_recommendations(
             }
         )
 
-    ai_recommendations = await _ignition_openai_uplift_recommendations(ai_inputs)
+    ai_recommendations = await _ignition_openai_uplift_recommendations(ai_inputs, user_id=user["id"])
     for item in items:
         proposal_external_id = str(item.get("proposal_external_id") or "")
         if proposal_external_id in ai_recommendations:
@@ -16833,6 +16940,127 @@ def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None =
     }
 
 
+def _ignition_renewal_audit_event_title(event_type: str) -> str:
+    mapping = {
+        "ignition.renewals.created": "Batch created",
+        "ignition.renewals.status_updated": "Status updated",
+        "ignition.renewals.pricing_updated": "Pricing edits saved",
+        "ignition.renewals.finalised": "Batch finalised",
+        "ignition.renewals.emailed": "Email sent",
+        "ignition.renewals.deleted": "Batch deleted",
+    }
+    return mapping.get(event_type, event_type.replace(".", " ").replace("_", " ").title())
+
+
+def _ignition_renewal_audit_event_detail(event_type: str, payload: dict) -> str:
+    if event_type == "ignition.renewals.created":
+        picked = int(payload.get("picked") or 0)
+        source = str(payload.get("proposal_source") or "cached")
+        return f"{picked} client proposal{'s' if picked != 1 else ''} added. Source: {source}."
+    if event_type == "ignition.renewals.status_updated":
+        previous = str(payload.get("from_status") or "draft").replace("_", " ")
+        new = str(payload.get("to_status") or "draft").replace("_", " ")
+        return f"Status changed from {previous} to {new}."
+    if event_type == "ignition.renewals.pricing_updated":
+        updates = int(payload.get("updated_items") or 0)
+        return f"Saved pricing changes for {updates} item{'s' if updates != 1 else ''}."
+    if event_type == "ignition.renewals.finalised":
+        items = int(payload.get("items") or 0)
+        return f"Finalised with {items} item{'s' if items != 1 else ''}."
+    if event_type == "ignition.renewals.emailed":
+        recipient = str(payload.get("recipient") or "").strip()
+        return f"Report emailed to {recipient}." if recipient else "Report emailed."
+    if event_type == "ignition.renewals.deleted":
+        return "Batch deleted."
+    return ""
+
+
+def ignition_renewals_audit_history(user: dict, run_id: str) -> dict:
+    run, items = _ignition_renewal_run_with_items(user, run_id)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT event_type, payload, created_at
+                FROM audit_events
+                WHERE entity_type = 'ignition_renewal_run'
+                  AND entity_id = %s
+                  AND user_id = %s
+                ORDER BY created_at ASC
+                """,
+                (run_id, user["id"]),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+
+    timeline = []
+    seen = set()
+
+    def append_entry(code: str, title: str, detail: str, created_at, payload: dict | None = None, source: str = "audit") -> None:
+        stamp = _iso(created_at) or ""
+        dedupe_key = f"{code}:{stamp}:{detail}"
+        if dedupe_key in seen:
+            return
+        seen.add(dedupe_key)
+        timeline.append(
+            {
+                "code": code,
+                "title": title,
+                "detail": detail,
+                "createdAt": stamp,
+                "source": source,
+                "payload": _safe_json(payload or {}),
+            }
+        )
+
+    append_entry(
+        "ignition.renewals.run_recorded",
+        "Run recorded",
+        "Renewal batch created in the database.",
+        run.get("created_at"),
+        source="run",
+    )
+    for row in rows:
+        event_type = str(row.get("event_type") or "")
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        append_entry(
+            event_type,
+            _ignition_renewal_audit_event_title(event_type),
+            _ignition_renewal_audit_event_detail(event_type, payload),
+            row.get("created_at"),
+            payload=payload,
+            source="audit",
+        )
+    if run.get("finalised_at"):
+        append_entry(
+            "ignition.renewals.finalised_at",
+            "Finalised timestamp",
+            "Batch marked finalised.",
+            run.get("finalised_at"),
+            source="run",
+        )
+    if run.get("email_sent_at"):
+        append_entry(
+            "ignition.renewals.email_sent_at",
+            "Email timestamp",
+            "Renewal report email recorded as sent.",
+            run.get("email_sent_at"),
+            source="run",
+        )
+
+    timeline.sort(key=lambda entry: entry.get("createdAt") or "")
+    return {
+        "runId": str(run.get("id") or run_id),
+        "batchReference": _ignition_renewal_batch_reference(user, run_id),
+        "status": str(run.get("status") or ""),
+        "itemCount": len(items),
+        "createdAt": _iso(run.get("created_at")) or "",
+        "finalisedAt": _iso(run.get("finalised_at")) or "",
+        "emailSentAt": _iso(run.get("email_sent_at")) or "",
+        "timeline": timeline,
+    }
+
+
 def _ignition_renewal_batch_reference(user: dict, run_id: str) -> str:
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -16857,6 +17085,105 @@ def _serialize_ignition_renewal_candidate(item: dict) -> dict:
         "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
         "newMonthlyFee": float(_money(item.get("new_monthly_fee"))),
     }
+
+
+def _ignition_renewal_candidate_source_signature(user_id: str, window_start: date, window_end: date) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE dataset = 'proposals') AS proposals_count,
+                    COUNT(*) FILTER (WHERE dataset = 'clients') AS clients_count,
+                    MAX(updated_at) FILTER (WHERE dataset = 'proposals') AS proposals_updated_at,
+                    MAX(updated_at) FILTER (WHERE dataset = 'clients') AS clients_updated_at
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                  AND dataset IN ('proposals', 'clients')
+                """,
+                (user_id,),
+            )
+            record_stats = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS picked_count, MAX(updated_at) AS picked_updated_at
+                FROM ignition_renewal_items
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            picked_stats = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS ineligible_count, MAX(updated_at) AS ineligible_updated_at
+                FROM ignition_renewal_ineligible_proposals
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            ineligible_stats = cursor.fetchone() or {}
+        connection.commit()
+    signature_payload = {
+        "windowStart": window_start.isoformat(),
+        "windowEnd": window_end.isoformat(),
+        "proposalsCount": int(record_stats.get("proposals_count") or 0),
+        "clientsCount": int(record_stats.get("clients_count") or 0),
+        "proposalsUpdatedAt": _iso(record_stats.get("proposals_updated_at")) or "",
+        "clientsUpdatedAt": _iso(record_stats.get("clients_updated_at")) or "",
+        "pickedCount": int(picked_stats.get("picked_count") or 0),
+        "pickedUpdatedAt": _iso(picked_stats.get("picked_updated_at")) or "",
+        "ineligibleCount": int(ineligible_stats.get("ineligible_count") or 0),
+        "ineligibleUpdatedAt": _iso(ineligible_stats.get("ineligible_updated_at")) or "",
+    }
+    return hashlib.sha256(
+        json.dumps(signature_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _load_ignition_view_cache(user_id: str, cache_key: str) -> dict | None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT source_signature, payload, generated_at
+                FROM ignition_view_cache
+                WHERE user_id = %s
+                  AND cache_key = %s
+                LIMIT 1
+                """,
+                (user_id, cache_key),
+            )
+            row = cursor.fetchone()
+        connection.commit()
+    return row or None
+
+
+def _store_ignition_view_cache(user_id: str, cache_key: str, source_signature: str, payload: dict) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ignition_view_cache (
+                    user_id, cache_key, source_signature, payload, generated_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                ON CONFLICT (user_id, cache_key)
+                DO UPDATE SET
+                    source_signature = EXCLUDED.source_signature,
+                    payload = EXCLUDED.payload,
+                    generated_at = EXCLUDED.generated_at,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    user_id,
+                    cache_key,
+                    source_signature,
+                    json.dumps(payload, default=_json_default),
+                    utcnow(),
+                    utcnow(),
+                ),
+            )
+        connection.commit()
 
 
 def _enrich_ignition_renewal_items_with_recommendations(user: dict, items: list[dict], cursor) -> None:
@@ -16918,9 +17245,13 @@ def _enrich_ignition_renewal_items_with_recommendations(user: dict, items: list[
         item["recommendation_context"] = context.get("context_payload") or {}
 
 
-def _ignition_renewal_candidates_for_user(user: dict) -> dict:
-    window_start = utcnow().date()
-    window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
+def _ignition_renewal_candidates_for_user(
+    user: dict,
+    window_start: date | None = None,
+    window_end: date | None = None,
+) -> dict:
+    window_start = window_start or utcnow().date()
+    window_end = window_end or (window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS))
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -17016,6 +17347,20 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
         "alreadyPickedCount": already_picked_count,
         "candidates": [_serialize_ignition_renewal_candidate(item) for item in available],
     }
+
+
+def _ignition_renewal_candidates_for_user_cached(user: dict) -> dict:
+    window_start = utcnow().date()
+    window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
+    source_signature = _ignition_renewal_candidate_source_signature(user["id"], window_start, window_end)
+    cached = _load_ignition_view_cache(user["id"], IGNITION_RENEWAL_CANDIDATE_CACHE_KEY)
+    if cached and str(cached.get("source_signature") or "") == source_signature:
+        payload = cached.get("payload")
+        if isinstance(payload, dict):
+            return payload
+    payload = _ignition_renewal_candidates_for_user(user, window_start=window_start, window_end=window_end)
+    _store_ignition_view_cache(user["id"], IGNITION_RENEWAL_CANDIDATE_CACHE_KEY, source_signature, payload)
+    return payload
 
 
 def _ignition_renewal_run_with_items(user: dict, run_id: str) -> tuple[dict, list[dict]]:
@@ -17128,7 +17473,7 @@ def _ignition_renewal_default_summary(run: dict, items: list[dict]) -> str:
     )
 
 
-async def _ignition_renewal_ai_summary(run: dict, items: list[dict]) -> str:
+async def _ignition_renewal_ai_summary(run: dict, items: list[dict], user_id: str | None = None) -> str:
     fallback = _ignition_renewal_default_summary(run, items)
     settings = get_settings()
     if not settings.openai_api_key:
@@ -17191,7 +17536,13 @@ async def _ignition_renewal_ai_summary(run: dict, items: list[dict]) -> str:
         "max_output_tokens": 420,
     }
     try:
-        payload = await _post_openai_responses(request_body, "ignition renewals email summary")
+        payload = await _post_openai_responses(
+            request_body,
+            "ignition renewals email summary",
+            user_id=user_id,
+            feature="ignition",
+            page="ignition",
+        )
         text = _extract_response_text(payload).strip()
         return text or fallback
     except Exception as exc:
@@ -17597,10 +17948,18 @@ def ignition_renewals_report_pdf(user: dict, run_id: str) -> tuple[bytes, str]:
 
 async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -> dict:
     payload = payload if isinstance(payload, dict) else {}
-    connection = get_ignition_connection_for_user(user["id"])
+    connection = None
     proposals_source = "cached"
     refresh_error_message = ""
     refresh_requested = bool(payload.get("refreshProposals"))
+    if refresh_requested:
+        try:
+            connection = get_ignition_connection_for_user(user["id"])
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Connect Ignition before requesting a live proposals refresh.",
+            ) from exc
     window_start = utcnow().date()
     window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
     with get_connection() as db:
@@ -17625,7 +17984,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 (user["id"],),
             )
             client_records = cursor.fetchall() or []
-            if refresh_requested or not records:
+            if refresh_requested:
                 try:
                     proposals, _meta = await asyncio.wait_for(
                         fetch_ignition_collection(connection, "/reporting/proposals"),
@@ -17811,10 +18170,12 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
             run = cursor.fetchone()
             if run is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Renewal run not found.")
+            previous_status = str(run.get("status") or "draft")
             if run.get("finalised_at"):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalised renewal runs cannot be edited.")
             if run.get("email_sent_at"):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Renewal runs cannot be edited after the workbook has been emailed.")
+            updated_item_count = 0
             if requested_status:
                 cursor.execute(
                     """
@@ -17892,8 +18253,25 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
                         user["id"],
                     ),
                 )
+                updated_item_count += int(cursor.rowcount or 0)
             _recalculate_ignition_renewal_run(cursor, run_id)
         connection.commit()
+    if requested_status and requested_status != previous_status:
+        record_audit_event(
+            "ignition_renewal_run",
+            run_id,
+            "ignition.renewals.status_updated",
+            {"from_status": previous_status, "to_status": requested_status},
+            user["id"],
+        )
+    if updated_item_count > 0:
+        record_audit_event(
+            "ignition_renewal_run",
+            run_id,
+            "ignition.renewals.pricing_updated",
+            {"updated_items": updated_item_count},
+            user["id"],
+        )
     return {"renewals": ignition_renewals_payload(user, run_id)}
 
 
@@ -17990,7 +18368,7 @@ async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict
     if custom_body:
         body = custom_body
     else:
-        summary = await _ignition_renewal_ai_summary(run, items)
+        summary = await _ignition_renewal_ai_summary(run, items, user_id=user["id"])
         body = _ignition_renewal_email_body(run, items, batch_reference=batch_reference, summary_text=summary)
     return {"recipientEmail": recipient, "subject": subject, "body": body, "batchReference": batch_reference}
 
@@ -18123,7 +18501,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
         connection.commit()
     candidate_pool: dict = {}
     try:
-        candidate_pool = _ignition_renewal_candidates_for_user(user)
+        candidate_pool = _ignition_renewal_candidates_for_user_cached(user)
     except Exception:
         logger.exception("Unable to build Ignition renewal candidate pool for user %s", user.get("id"))
         today = utcnow().date()
@@ -18236,15 +18614,40 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
     )
     practice = {"id": connection.get("practice_id") or "", "name": connection.get("practice_name") or ""}
 
-    async def _ingest_dataset(endpoint_path: str, modified_since_value: datetime | None = None) -> tuple[int, int, dict]:
+    last_heartbeat_at = run_started_at
+
+    async def _ingest_dataset(
+        dataset_key: str,
+        dataset_label: str,
+        endpoint_path: str,
+        modified_since_value: datetime | None = None,
+    ) -> tuple[int, int, dict]:
+        nonlocal last_heartbeat_at
         dataset_fetched = 0
         dataset_processed = 0
         dataset_meta: dict = {}
         async for batch, meta in iter_ignition_collection(connection, endpoint_path, modified_since=modified_since_value):
             dataset_meta = meta or {}
+            heartbeat_now = utcnow()
+            heartbeat_due = (heartbeat_now - last_heartbeat_at).total_seconds() >= IGNITION_SYNC_HEARTBEAT_INTERVAL_SECONDS
+            if heartbeat_due:
+                _update_ignition_sync_run(
+                    sync_run_id,
+                    current_step=f"Importing {dataset_label}",
+                    summary=(
+                        f"Fetching changed {dataset_label} from Ignition Reporting API."
+                        if modified_since_value
+                        else f"Fetching {dataset_label} from Ignition Reporting API."
+                    ),
+                    heartbeat_at=heartbeat_now,
+                    datasets_synced=dataset_counts,
+                    fetched_count=total_fetched + dataset_fetched,
+                    processed_count=total_processed + dataset_processed,
+                )
+                last_heartbeat_at = heartbeat_now
             if not batch:
                 continue
-            processed_batch = _upsert_ignition_records(user, practice.get("id") or "", dataset, batch)
+            processed_batch = _upsert_ignition_records(user, practice.get("id") or "", dataset_key, batch)
             dataset_fetched += len(batch)
             dataset_processed += processed_batch
         return dataset_fetched, dataset_processed, dataset_meta
@@ -18266,7 +18669,7 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
             processed_count=total_processed,
         )
         try:
-            dataset_fetched, processed, meta = await _ingest_dataset(endpoint, fetch_modified_since)
+            dataset_fetched, processed, meta = await _ingest_dataset(dataset, dataset_label, endpoint, fetch_modified_since)
         except HTTPException as exc:
             provider_status = _ignition_provider_status(exc)
             if fetch_modified_since and provider_status in (status.HTTP_400_BAD_REQUEST, status.HTTP_422_UNPROCESSABLE_ENTITY):
@@ -18321,7 +18724,7 @@ async def run_ignition_sync(user: dict, sync_run_id: str) -> dict:
                         fetched_count=total_fetched,
                         processed_count=total_processed,
                     )
-                    dataset_fetched, processed, meta = await _ingest_dataset(endpoint, None)
+                    dataset_fetched, processed, meta = await _ingest_dataset(dataset, dataset_label, endpoint, None)
                     fetch_modified_since = None
                 elif dataset in OPTIONAL_IGNITION_DATASETS:
                     dataset_counts[dataset] = 0
@@ -18473,7 +18876,7 @@ def _supplier_statement_text(file_bytes: bytes) -> str:
     return text[:160000]
 
 
-async def _extract_supplier_statement_lines(statement_text: str, filename: str) -> dict:
+async def _extract_supplier_statement_lines(statement_text: str, filename: str, user_id: str | None = None) -> dict:
     request_body = {
         "input": [
             {
@@ -18505,7 +18908,14 @@ async def _extract_supplier_statement_lines(statement_text: str, filename: str) 
         },
         "max_output_tokens": 32000,
     }
-    payload = await _post_openai_responses(request_body, "supplier statement extraction", timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS)
+    payload = await _post_openai_responses(
+        request_body,
+        "supplier statement extraction",
+        timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS,
+        user_id=user_id,
+        feature="supplier-reconciliation",
+        page="supplier-reconciliation",
+    )
     text = _extract_response_text(payload)
     if not text:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned an empty supplier statement extraction.")
@@ -19119,7 +19529,11 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
     tenant_id = str(connection_row.get("tenant_id") or "")
 
     statement_text = _supplier_statement_text(file_bytes)
-    extracted = await _extract_supplier_statement_lines(statement_text, filename or "supplier-statement.pdf")
+    extracted = await _extract_supplier_statement_lines(
+        statement_text,
+        filename or "supplier-statement.pdf",
+        user_id=user["id"],
+    )
     extracted_lines = [line for line in (extracted.get("lines") or []) if isinstance(line, dict)]
     extraction_supplier_name = str(extracted.get("supplierName") or "").strip()
     extraction_client_name = str(extracted.get("clientName") or "").strip()
@@ -22537,7 +22951,12 @@ def _risk_assessment_fallback(client_name: str, last_assessment_at: str) -> dict
     }
 
 
-async def _generate_openai_risk_assessment(client_name: str, last_assessment_at: str = "", client_context: dict | None = None) -> dict:
+async def _generate_openai_risk_assessment(
+    client_name: str,
+    last_assessment_at: str = "",
+    client_context: dict | None = None,
+    user_id: str | None = None,
+) -> dict:
     compact_payload = {
         "clientName": client_name,
         "lastAssessmentAt": last_assessment_at,
@@ -22577,7 +22996,15 @@ async def _generate_openai_risk_assessment(client_name: str, last_assessment_at:
         },
         "max_output_tokens": 2000,
     }
-    text = _extract_response_text(await _post_openai_responses(request_body, "risk assessment generation"))
+    text = _extract_response_text(
+        await _post_openai_responses(
+            request_body,
+            "risk assessment generation",
+            user_id=user_id,
+            feature="risk-assessments",
+            page="risk-assessments",
+        )
+    )
     parsed = json.loads(text) if text else {}
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI risk assessment returned an invalid payload.")
@@ -22757,7 +23184,7 @@ async def generate_risk_assessments_payload(user: dict, clients: list[dict] | li
             try:
                 payload = {
                     **client_context,
-                    **(await _generate_openai_risk_assessment(client_name, last_assessment_at, client_context)),
+                    **(await _generate_openai_risk_assessment(client_name, last_assessment_at, client_context, user["id"])),
                 }
                 engine = "openai"
             except Exception as exc:
@@ -23289,7 +23716,7 @@ def build_risk_assessments_zip_payload(user: dict, assessments: list[dict]) -> d
     }
 
 
-async def _generate_openai_insights(analytics: dict) -> dict:
+async def _generate_openai_insights(analytics: dict, user_id: str | None = None) -> dict:
     settings = get_settings()
     if not settings.openai_api_key:
         return _fallback_ai_insights(analytics, "disabled")
@@ -23335,7 +23762,15 @@ async def _generate_openai_insights(analytics: dict) -> dict:
         "max_output_tokens": 1800,
     }
     try:
-        text = _extract_response_text(await _post_openai_responses(request_body, "insights generation"))
+        text = _extract_response_text(
+            await _post_openai_responses(
+                request_body,
+                "insights generation",
+                user_id=user_id,
+                feature="insights",
+                page="insights",
+            )
+        )
         parsed = json.loads(text) if text else {}
         if not isinstance(parsed.get("priorityActions"), list):
             parsed["priorityActions"] = [
@@ -23358,7 +23793,7 @@ async def _generate_openai_insights(analytics: dict) -> dict:
 
 async def insights_payload(user: dict) -> dict:
     analytics = _build_insights_analytics(user)
-    ai = await _generate_openai_insights(analytics)
+    ai = await _generate_openai_insights(analytics, user_id=user["id"])
     return {"status": "ok", "analytics": analytics, "ai": ai}
 
 

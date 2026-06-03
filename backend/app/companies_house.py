@@ -25,6 +25,7 @@ from .config import get_settings
 from .database import get_connection, utcnow
 from .security import decrypt_secret, encrypt_secret
 from .services import get_xero_connection_for_user, gmail_connection_for_user, refresh_gmail_connection
+from .usage_metrics import estimate_openai_cost_usd, infer_openai_feature_page, parse_openai_usage_tokens, record_usage_event
 from .xero import create_sales_invoice, fetch_invoice_pdf
 
 try:
@@ -2543,6 +2544,7 @@ def _ai_resolve_header_map(headers: list[str], current_map: dict[str, int]) -> d
     if not unresolved:
         return current_map
     try:
+        started = time.monotonic()
         request_body = {
             "model": settings.openai_model or "gpt-4.1-mini",
             "input": [
@@ -2596,9 +2598,47 @@ def _ai_resolve_header_map(headers: list[str], current_map: dict[str, int]) -> d
                 },
                 json=request_body,
             )
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        feature, page = infer_openai_feature_page("companies house header mapping")
+        request_bytes = len(json.dumps(request_body))
+        response_bytes = len(response.content or b"")
         if response.is_error:
+            record_usage_event(
+                provider="openai",
+                user_id=None,
+                feature=feature,
+                page=page,
+                operation="companies house header mapping",
+                endpoint="/v1/responses",
+                model=str(request_body.get("model") or settings.openai_model or ""),
+                request_bytes=request_bytes,
+                response_bytes=response_bytes,
+                status_code=response.status_code,
+                success=False,
+                error_message=str(response.text or "")[:500],
+                duration_ms=elapsed_ms,
+            )
             return current_map
         payload = response.json()
+        input_tokens, output_tokens, total_tokens = parse_openai_usage_tokens(payload)
+        record_usage_event(
+            provider="openai",
+            user_id=None,
+            feature=feature,
+            page=page,
+            operation="companies house header mapping",
+            endpoint="/v1/responses",
+            model=str(request_body.get("model") or settings.openai_model or ""),
+            request_bytes=request_bytes,
+            response_bytes=response_bytes,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            estimated_cost_usd=estimate_openai_cost_usd(str(request_body.get("model") or settings.openai_model or ""), input_tokens, output_tokens),
+            status_code=response.status_code,
+            success=True,
+            duration_ms=elapsed_ms,
+        )
         output_text = ""
         for item in payload.get("output") or []:
             for content in item.get("content") or []:

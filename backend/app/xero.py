@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 
 from .config import get_settings
 from .database import get_connection, utcnow
+from .usage_metrics import infer_xero_feature_page, record_usage_event
 
 TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
@@ -167,6 +168,39 @@ def _raise_xero_request_error(exc: httpx.RequestError, action: str) -> None:
             "error": str(exc),
         },
     ) from exc
+
+
+def _record_xero_usage(
+    connection_row: dict,
+    endpoint: str,
+    operation: str,
+    *,
+    status_code: int | None = None,
+    success: bool = False,
+    duration_ms: int = 0,
+    request_bytes: int = 0,
+    response_bytes: int = 0,
+    error_message: str = "",
+    metadata: dict | None = None,
+) -> None:
+    feature, page = infer_xero_feature_page(endpoint, operation)
+    record_usage_event(
+        provider="xero",
+        user_id=str(connection_row.get("user_id") or "").strip() or None,
+        tenant_id=str(connection_row.get("tenant_id") or "").strip(),
+        feature=feature,
+        page=page,
+        operation=operation,
+        endpoint=endpoint,
+        request_bytes=max(int(request_bytes or 0), 0),
+        response_bytes=max(int(response_bytes or 0), 0),
+        status_code=status_code,
+        success=success,
+        error_code="xero_api_error" if not success else "",
+        error_message=error_message,
+        duration_ms=max(int(duration_ms or 0), 0),
+        metadata=metadata or {},
+    )
 
 
 def _signed_history_note(details: str, limit: int = 4000) -> str:
@@ -561,6 +595,17 @@ async def xero_api_get(
             )
         except httpx.RequestError as exc:
             elapsed_ms = int((time.monotonic() - started) * 1000)
+            _record_xero_usage(
+                connection_row,
+                url,
+                "GET",
+                status_code=None,
+                success=False,
+                duration_ms=elapsed_ms,
+                request_bytes=len(str(params or "")),
+                response_bytes=0,
+                error_message=str(exc),
+            )
             if on_response is not None:
                 on_response({
                     "status_code": None,
@@ -572,6 +617,18 @@ async def xero_api_get(
             _raise_xero_request_error(exc, "API request")
         elapsed_ms = int((time.monotonic() - started) * 1000)
         rate_limit_headers = _xero_rate_limit_headers(response)
+        _record_xero_usage(
+            connection_row,
+            url,
+            "GET",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=elapsed_ms,
+            request_bytes=len(str(params or "")),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+            metadata={"rateLimitHeaders": rate_limit_headers},
+        )
         if on_response is not None:
             on_response({
                 "status_code": response.status_code,
@@ -598,6 +655,8 @@ async def xero_api_get(
 async def update_organisation_period_lock_date(connection_row: dict, lock_date: date) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
     lock_date_text = lock_date.isoformat()
+    started = time.monotonic()
+    request_payload = {"Organisations": [{"PeriodLockDate": lock_date_text}]}
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
@@ -609,10 +668,31 @@ async def update_organisation_period_lock_date(connection_row: dict, lock_date: 
                     "Content-Type": "application/json",
                     "Idempotency-Key": str(uuid4()),
                 },
-                json={"Organisations": [{"PeriodLockDate": lock_date_text}]},
+                json=request_payload,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                ORGANISATION_URL,
+                "PUT organisation lock date",
+                status_code=None,
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "lock date update")
+        _record_xero_usage(
+            connection_row,
+            ORGANISATION_URL,
+            "PUT organisation lock date",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "lock date update")
         if not response.content:
@@ -645,10 +725,13 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
 
     connection_row = await refresh_connection(connection_row["id"])
     note_body = _signed_history_note(details)
+    endpoint = f"{base_url}/{resource_id}/History"
+    started = time.monotonic()
+    request_payload = {"HistoryRecords": [{"Details": note_body}]}
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
-                f"{base_url}/{resource_id}/History",
+                endpoint,
                 headers={
                     "Authorization": f'Bearer {connection_row["access_token"]}',
                     "xero-tenant-id": connection_row["tenant_id"],
@@ -656,10 +739,30 @@ async def create_history_record(connection_row: dict, resource: str, resource_id
                     "Content-Type": "application/json",
                     "Idempotency-Key": str(uuid4()),
                 },
-                json={"HistoryRecords": [{"Details": note_body}]},
+                json=request_payload,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                endpoint,
+                "PUT history record",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "history note creation")
+        _record_xero_usage(
+            connection_row,
+            endpoint,
+            "PUT history record",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "history note creation")
         if not response.content:
@@ -693,6 +796,8 @@ async def merge_contacts(connection_row: dict, keep_contact_id: str, merge_conta
 
 async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idempotency_key: str | None = None) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    started = time.monotonic()
+    request_payload = {"Invoices": [invoice_payload]}
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
@@ -704,10 +809,30 @@ async def create_sales_invoice(connection_row: dict, invoice_payload: dict, idem
                     "Content-Type": "application/json",
                     "Idempotency-Key": idempotency_key or str(uuid4()),
                 },
-                json={"Invoices": [invoice_payload]},
+                json=request_payload,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                INVOICES_URL,
+                "POST invoice",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "invoice creation")
+        _record_xero_usage(
+            connection_row,
+            INVOICES_URL,
+            "POST invoice",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "invoice creation")
         if not response.content:
@@ -750,10 +875,12 @@ async def attach_file_to_invoice(
     content_type: str,
 ) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    endpoint = f"{INVOICES_URL}/{invoice_id}/Attachments/{filename}"
+    started = time.monotonic()
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
-                f"{INVOICES_URL}/{invoice_id}/Attachments/{filename}",
+                endpoint,
                 headers={
                     "Authorization": f'Bearer {connection_row["access_token"]}',
                     "xero-tenant-id": connection_row["tenant_id"],
@@ -763,7 +890,27 @@ async def attach_file_to_invoice(
                 content=content,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                endpoint,
+                "PUT invoice attachment",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(content or b""),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "invoice attachment upload")
+        _record_xero_usage(
+            connection_row,
+            endpoint,
+            "PUT invoice attachment",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(content or b""),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "invoice attachment upload")
         if not response.content:
@@ -779,10 +926,12 @@ async def attach_file_to_contact(
     content_type: str,
 ) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    endpoint = f"{CONTACTS_URL}/{contact_id}/Attachments/{filename}"
+    started = time.monotonic()
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
-                f"{CONTACTS_URL}/{contact_id}/Attachments/{filename}",
+                endpoint,
                 headers={
                     "Authorization": f'Bearer {connection_row["access_token"]}',
                     "xero-tenant-id": connection_row["tenant_id"],
@@ -792,7 +941,27 @@ async def attach_file_to_contact(
                 content=content,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                endpoint,
+                "PUT contact attachment",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(content or b""),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "contact attachment upload")
+        _record_xero_usage(
+            connection_row,
+            endpoint,
+            "PUT contact attachment",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(content or b""),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "contact attachment upload")
         if not response.content:
@@ -802,6 +971,8 @@ async def attach_file_to_contact(
 
 async def create_credit_note(connection_row: dict, credit_note_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    started = time.monotonic()
+    request_payload = {"CreditNotes": [credit_note_payload]}
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
@@ -813,10 +984,30 @@ async def create_credit_note(connection_row: dict, credit_note_payload: dict) ->
                     "Content-Type": "application/json",
                     "Idempotency-Key": str(uuid4()),
                 },
-                json={"CreditNotes": [credit_note_payload]},
+                json=request_payload,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                CREDIT_NOTES_URL,
+                "POST credit note",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "credit note creation")
+        _record_xero_usage(
+            connection_row,
+            CREDIT_NOTES_URL,
+            "POST credit note",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "credit note creation")
         if not response.content:
@@ -826,10 +1017,13 @@ async def create_credit_note(connection_row: dict, credit_note_payload: dict) ->
 
 async def allocate_credit_note(connection_row: dict, credit_note_id: str, allocation_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    endpoint = f"{CREDIT_NOTES_URL}/{credit_note_id}/Allocations"
+    started = time.monotonic()
+    request_payload = {"Allocations": [allocation_payload]}
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
-                f"{CREDIT_NOTES_URL}/{credit_note_id}/Allocations",
+                endpoint,
                 headers={
                     "Authorization": f'Bearer {connection_row["access_token"]}',
                     "xero-tenant-id": connection_row["tenant_id"],
@@ -837,10 +1031,30 @@ async def allocate_credit_note(connection_row: dict, credit_note_id: str, alloca
                     "Content-Type": "application/json",
                     "Idempotency-Key": str(uuid4()),
                 },
-                json={"Allocations": [allocation_payload]},
+                json=request_payload,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                endpoint,
+                "PUT credit note allocation",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "credit note allocation")
+        _record_xero_usage(
+            connection_row,
+            endpoint,
+            "PUT credit note allocation",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "credit note allocation")
         if not response.content:
@@ -850,10 +1064,13 @@ async def allocate_credit_note(connection_row: dict, credit_note_id: str, alloca
 
 async def allocate_overpayment(connection_row: dict, overpayment_id: str, allocation_payload: dict) -> dict:
     connection_row = await refresh_connection(connection_row["id"])
+    endpoint = f"{OVERPAYMENTS_URL}/{overpayment_id}/Allocations"
+    started = time.monotonic()
+    request_payload = {"Allocations": [allocation_payload]}
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.put(
-                f"{OVERPAYMENTS_URL}/{overpayment_id}/Allocations",
+                endpoint,
                 headers={
                     "Authorization": f'Bearer {connection_row["access_token"]}',
                     "xero-tenant-id": connection_row["tenant_id"],
@@ -861,10 +1078,30 @@ async def allocate_overpayment(connection_row: dict, overpayment_id: str, alloca
                     "Content-Type": "application/json",
                     "Idempotency-Key": str(uuid4()),
                 },
-                json={"Allocations": [allocation_payload]},
+                json=request_payload,
             )
         except httpx.RequestError as exc:
+            _record_xero_usage(
+                connection_row,
+                endpoint,
+                "PUT overpayment allocation",
+                success=False,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                request_bytes=len(str(request_payload)),
+                error_message=str(exc),
+            )
             _raise_xero_request_error(exc, "overpayment allocation")
+        _record_xero_usage(
+            connection_row,
+            endpoint,
+            "PUT overpayment allocation",
+            status_code=response.status_code,
+            success=not response.is_error,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            request_bytes=len(str(request_payload)),
+            response_bytes=len(response.content or b""),
+            error_message="" if not response.is_error else str(response.text or "")[:500],
+        )
         if response.is_error:
             _raise_xero_http_error(response, "overpayment allocation")
         if not response.content:
