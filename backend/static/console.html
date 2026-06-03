@@ -16413,6 +16413,22 @@
                 flex-wrap: wrap;
                 gap: 10px;
             }
+            .xero-lock-date-stat-actions {
+                width: 100%;
+                margin-top: 6px;
+                display: flex;
+                justify-content: flex-end;
+            }
+            .xero-lock-date-stat-actions .primary-button {
+                min-height: 38px;
+                padding-inline: 16px;
+                font-size: 0.8rem;
+                font-weight: 900;
+            }
+            .xero-lock-date-stat-actions .primary-button[disabled] {
+                opacity: 0.6;
+                cursor: not-allowed;
+            }
             #xeroLockDateScreen .xero-lock-date-search {
                 display: flex;
                 flex-wrap: wrap;
@@ -16626,6 +16642,80 @@
                 min-height: 38px;
                 padding-inline: 14px;
                 font-size: 0.8rem;
+                font-weight: 900;
+            }
+            .xero-lock-mismatch-toolbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                flex-wrap: wrap;
+                padding: 10px 12px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 12px;
+                background: rgba(248, 251, 255, 0.9);
+            }
+            .xero-lock-mismatch-toolbar strong {
+                font-size: 0.82rem;
+                font-weight: 900;
+            }
+            .xero-lock-mismatch-toolbar span {
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 800;
+            }
+            .xero-lock-mismatch-toolbar .detail-actions {
+                margin-left: auto;
+                display: inline-flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            .xero-lock-mismatch-toolbar .ghost-button,
+            .xero-lock-mismatch-toolbar .primary-button {
+                min-height: 34px;
+                padding-inline: 12px;
+                font-size: 0.76rem;
+                font-weight: 900;
+            }
+            #xeroLockMismatchProgressBar {
+                height: 8px;
+                width: 100%;
+                border-radius: 999px;
+                background: rgba(29, 103, 242, 0.12);
+                overflow: hidden;
+            }
+            #xeroLockMismatchProgressBar span {
+                display: block;
+                height: 100%;
+                width: 0%;
+                border-radius: inherit;
+                background: linear-gradient(90deg, #1d67f2, #27b05f);
+                transition: width 0.35s ease;
+            }
+            #xeroLockMismatchTableBody tr {
+                transition: background-color 0.25s ease, transform 0.25s ease, opacity 0.25s ease;
+            }
+            #xeroLockMismatchTableBody tr.is-fixing {
+                background: rgba(233, 241, 255, 0.8);
+                animation: xero-mismatch-fixing-pulse 1s ease-in-out infinite;
+            }
+            #xeroLockMismatchTableBody tr.is-fixed {
+                background: rgba(232, 248, 238, 0.92);
+                transform: translateX(6px);
+            }
+            #xeroLockMismatchTableBody tr.is-failed {
+                background: rgba(255, 231, 231, 0.9);
+            }
+            @keyframes xero-mismatch-fixing-pulse {
+                0% { box-shadow: inset 0 0 0 0 rgba(29, 103, 242, 0.06); }
+                50% { box-shadow: inset 0 0 0 999px rgba(29, 103, 242, 0.08); }
+                100% { box-shadow: inset 0 0 0 0 rgba(29, 103, 242, 0.06); }
+            }
+            .xero-lock-date-flag-cell .xero-lock-fix-button {
+                margin-top: 8px;
+                min-height: 34px;
+                padding-inline: 12px;
+                font-size: 0.76rem;
                 font-weight: 900;
             }
             .xero-lock-columns {
@@ -17217,7 +17307,11 @@
                                 <strong id="xeroLockDateSummary">Loading lock-date data…</strong>
                                 <small id="xeroLockDateCHHealth">Companies House API status not checked yet.</small>
                             </article>
-                            <div class="xero-lock-date-stats" id="xeroLockDateStats"></div>
+                            <div class="xero-lock-date-stats" id="xeroLockDateStats">
+                                <div class="xero-lock-date-stat-actions">
+                                    <button class="primary-button" id="xeroLockCleanupButton" type="button" hidden>Clean Up Mismatches</button>
+                                </div>
+                            </div>
                         </div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
                         <div class="practice-pack-topbar-summary" id="practicePackTopbarSummary" aria-label="Practice Pack summary" role="status" aria-live="polite" hidden>
@@ -18992,19 +19086,34 @@
                                     <p class="detail-meta" id="xeroLockMismatchSummary">Checking lock mismatches…</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" id="xeroLockMismatchSelectAllButton" type="button">Select all</button>
+                                    <button class="ghost-button" id="xeroLockMismatchClearSelectionButton" type="button">Clear</button>
+                                    <button class="primary-button" id="xeroLockMismatchApplyFixButton" type="button">Apply Fix to Selected</button>
                                     <button class="ghost-button" id="xeroLockMismatchDownloadPdfButton" type="button">Download PDF</button>
                                     <button class="ghost-button" id="xeroLockMismatchCloseButton" type="button">Close</button>
                                 </div>
                             </div>
+                            <div class="xero-lock-mismatch-toolbar">
+                                <div>
+                                    <strong id="xeroLockMismatchSelectionMeta">No mismatches selected</strong>
+                                    <span id="xeroLockMismatchProgressMeta">Choose the clients to fix in bulk.</span>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="xeroLockMismatchSelectFlaggedButton" type="button">Select flagged only</button>
+                                </div>
+                            </div>
+                            <div id="xeroLockMismatchProgressBar" hidden><span id="xeroLockMismatchProgressFill"></span></div>
                             <div class="ch-companies-table-wrap">
                                 <table class="ch-table" aria-label="Lock mismatch list">
                                     <thead>
                                         <tr>
+                                            <th><input id="xeroLockMismatchSelectAllToggle" type="checkbox" aria-label="Select all mismatches"></th>
                                             <th>Tenant</th>
                                             <th>Company</th>
                                             <th>CH Number</th>
                                             <th>Xero Lock Date</th>
                                             <th>CH Submitted Accounts</th>
+                                            <th>Mismatch Size</th>
                                             <th>Reason</th>
                                         </tr>
                                     </thead>
@@ -20735,6 +20844,7 @@
             let xeroLockDateOverview = { mainTenantName: "", rows: [], meta: {} };
             let xeroLockDateLoading = false;
             let xeroLockDateFullRefreshRunning = false;
+            let xeroLockDateFixInFlightTenantIds = new Set();
             let xeroLockDateSearchTerm = "";
             let selectedXeroLockDateTenantIds = new Set();
             let xeroLockDateColumnSettings = { showCompanyNumber: false, menuOpen: false };
@@ -20742,7 +20852,10 @@
             let xeroLockDateCHHealth = { loading: false, ok: null, checkedAt: "", message: "Companies House API status not checked yet." };
             const xeroLockDateCHHealthCacheMs = 10 * 60 * 1000;
             let xeroLockMismatchLoading = false;
+            let xeroLockMismatchFixing = false;
             let xeroLockMismatchData = { generatedAt: "", rows: [], summary: {} };
+            let xeroLockMismatchSelectedTenantIds = new Set();
+            let xeroLockMismatchFixState = {};
             const bankStatementChartOfAccountsFallback = [
                 { code: "200", name: "Sales", type: "Revenue", taxType: "20% (VAT on Income)" },
                 { code: "260", name: "Other Revenue", type: "Revenue", taxType: "20% (VAT on Income)" },
@@ -21366,6 +21479,7 @@
                         xeroAccounts: config.endpoints?.xeroAccounts || "/api/xero/chart-of-accounts",
                         postingSettings: config.endpoints?.postingSettings || "/api/xero/posting-settings",
                         xeroLockDates: config.endpoints?.xeroLockDates || "/api/xero/lock-dates",
+                        xeroLockFix: config.endpoints?.xeroLockFix || "/api/xero/lock-dates/:tenantId/fix",
                         xeroLockPopulateMappings: config.endpoints?.xeroLockPopulateMappings || "/api/xero/lock-dates/populate-mappings",
                         xeroLockMismatches: config.endpoints?.xeroLockMismatches || "/api/xero/lock-dates/mismatches",
                         xeroLockMismatchesPdf: config.endpoints?.xeroLockMismatchesPdf || "/api/xero/lock-dates/mismatches/report.pdf",
@@ -28520,6 +28634,9 @@
                     selectedXeroLockDateTenantIds = new Set(
                         [...selectedXeroLockDateTenantIds].filter((tenantId) => visibleTenantIds.has(String(tenantId || "")))
                     );
+                    xeroLockDateFixInFlightTenantIds = new Set(
+                        [...xeroLockDateFixInFlightTenantIds].filter((tenantId) => visibleTenantIds.has(String(tenantId || "")))
+                    );
                     if (activeView === "xero-lock-date") renderXeroLockDateScreen();
                     if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 } catch (error) {
@@ -28552,6 +28669,35 @@
                     showToast(error.message || "Unable to save mapping", "error");
                 } finally {
                     button?.removeAttribute("disabled");
+                }
+            }
+
+            async function fixXeroLockDateMismatch(tenantId, button) {
+                const safeTenantId = String(tenantId || "").trim();
+                if (!safeTenantId || xeroLockDateFixInFlightTenantIds.has(safeTenantId)) return;
+                xeroLockDateFixInFlightTenantIds.add(safeTenantId);
+                button?.setAttribute("disabled", "disabled");
+                const originalLabel = button?.textContent || "Fix For Me";
+                if (button) button.textContent = "Fixing...";
+                try {
+                    const payload = await requestJSON(endpointURL(api.endpoints.xeroLockFix, { tenantId: safeTenantId }), {
+                        method: "POST",
+                        body: JSON.stringify({}),
+                    });
+                    await loadXeroLockDateOverview(true);
+                    if (payload?.updated) {
+                        showToast(payload?.message || "Xero lock date updated.", "success");
+                    } else {
+                        showToast(payload?.message || "Xero lock date already covers the latest filed accounts period.", "info");
+                    }
+                } catch (error) {
+                    showToast(error.message || "Unable to update Xero lock date", "error");
+                } finally {
+                    xeroLockDateFixInFlightTenantIds.delete(safeTenantId);
+                    if (button) button.textContent = originalLabel;
+                    button?.removeAttribute("disabled");
+                    if (activeView === "xero-lock-date") renderXeroLockDateScreen();
+                    if (activeView === "settings" && activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 }
             }
 
@@ -28686,11 +28832,64 @@
                 if (modal) modal.hidden = true;
             }
 
+            function parseIsoDate(value) {
+                if (!value) return null;
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return null;
+                return date;
+            }
+
+            function xeroLockMismatchTargetDate(row) {
+                return String(row?.yearEndDate || row?.accountsFiledDate || "");
+            }
+
+            function xeroLockMismatchSizeDays(row) {
+                const targetDate = parseIsoDate(xeroLockMismatchTargetDate(row));
+                if (!targetDate) return null;
+                const lockDate = parseIsoDate(row?.xeroLockDate || "");
+                if (!lockDate) return null;
+                const dayMs = 24 * 60 * 60 * 1000;
+                return Math.max(0, Math.floor((targetDate.getTime() - lockDate.getTime()) / dayMs));
+            }
+
+            function xeroLockMismatchRowClass(tenantId) {
+                const status = xeroLockMismatchFixState?.[tenantId]?.status || "";
+                if (status === "fixing") return "is-fixing";
+                if (status === "fixed") return "is-fixed";
+                if (status === "failed") return "is-failed";
+                return "";
+            }
+
+            function xeroLockMismatchProgressSnapshot() {
+                const rows = Array.isArray(xeroLockMismatchData.rows) ? xeroLockMismatchData.rows : [];
+                const total = rows.length;
+                let fixed = 0;
+                let failed = 0;
+                rows.forEach((row) => {
+                    const tenantId = String(row?.tenantId || "");
+                    const status = xeroLockMismatchFixState?.[tenantId]?.status || "";
+                    if (status === "fixed") fixed += 1;
+                    if (status === "failed") failed += 1;
+                });
+                return { total, fixed, failed };
+            }
+
             function renderXeroLockMismatchModal() {
                 const summary = document.getElementById("xeroLockMismatchSummary");
                 const body = document.getElementById("xeroLockMismatchTableBody");
+                const selectionMeta = document.getElementById("xeroLockMismatchSelectionMeta");
+                const progressMeta = document.getElementById("xeroLockMismatchProgressMeta");
+                const progressBar = document.getElementById("xeroLockMismatchProgressBar");
+                const progressFill = document.getElementById("xeroLockMismatchProgressFill");
+                const applyFixButton = document.getElementById("xeroLockMismatchApplyFixButton");
+                const selectAllToggle = document.getElementById("xeroLockMismatchSelectAllToggle");
                 if (!summary || !body) return;
                 const rows = Array.isArray(xeroLockMismatchData.rows) ? xeroLockMismatchData.rows : [];
+                const tenantIds = rows.map((row) => String(row?.tenantId || "")).filter(Boolean);
+                xeroLockMismatchSelectedTenantIds = new Set(
+                    [...xeroLockMismatchSelectedTenantIds].filter((tenantId) => tenantIds.includes(tenantId))
+                );
+                const selectedCount = tenantIds.filter((tenantId) => xeroLockMismatchSelectedTenantIds.has(tenantId)).length;
                 if (xeroLockMismatchLoading) {
                     summary.textContent = "Checking lock mismatches…";
                 } else {
@@ -28701,24 +28900,76 @@
                         ? `${rows.length.toLocaleString("en-GB")} mismatch${rows.length === 1 ? "" : "es"} found. Generated: ${generatedAt}.`
                         : `No lock mismatches found. Generated: ${generatedAt}.`;
                 }
+                if (selectionMeta) {
+                    selectionMeta.textContent = selectedCount
+                        ? `${selectedCount.toLocaleString("en-GB")} selected for bulk fix`
+                        : "No mismatches selected";
+                }
+                const progress = xeroLockMismatchProgressSnapshot();
+                if (progressMeta) {
+                    progressMeta.textContent = xeroLockMismatchFixing
+                        ? `Fixing now: ${progress.fixed.toLocaleString("en-GB")} fixed, ${progress.failed.toLocaleString("en-GB")} failed.`
+                        : "Choose the clients to fix in bulk.";
+                }
+                if (progressBar && progressFill) {
+                    const showProgress = xeroLockMismatchFixing || progress.fixed > 0 || progress.failed > 0;
+                    progressBar.hidden = !showProgress;
+                    const denominator = Math.max(1, progress.total);
+                    const percent = ((progress.fixed + progress.failed) / denominator) * 100;
+                    progressFill.style.width = `${Math.max(0, Math.min(100, percent)).toFixed(2)}%`;
+                }
+                if (applyFixButton) {
+                    applyFixButton.disabled = xeroLockMismatchLoading || xeroLockMismatchFixing || selectedCount === 0;
+                    applyFixButton.textContent = xeroLockMismatchFixing
+                        ? "Applying Fix..."
+                        : selectedCount > 0
+                            ? `Apply Fix to Selected (${selectedCount})`
+                            : "Apply Fix to Selected";
+                }
+                if (selectAllToggle) {
+                    selectAllToggle.checked = tenantIds.length > 0 && selectedCount === tenantIds.length;
+                    selectAllToggle.indeterminate = selectedCount > 0 && selectedCount < tenantIds.length;
+                    selectAllToggle.disabled = xeroLockMismatchLoading || xeroLockMismatchFixing || tenantIds.length === 0;
+                }
                 body.innerHTML = rows.length
                     ? rows.map((row) => `
-                        <tr>
+                        <tr class="${xeroLockMismatchRowClass(String(row?.tenantId || ""))}">
+                            <td>
+                                <input
+                                    type="checkbox"
+                                    data-xero-lock-mismatch-select="${escapeHTML(String(row?.tenantId || ""))}"
+                                    ${xeroLockMismatchSelectedTenantIds.has(String(row?.tenantId || "")) ? "checked" : ""}
+                                    ${xeroLockMismatchFixing ? "disabled" : ""}
+                                >
+                            </td>
                             <td>${escapeHTML(row?.tenantName || "")}</td>
                             <td>${escapeHTML(row?.companyName || row?.clientName || "")}</td>
                             <td>${escapeHTML(row?.companyNumber || "")}</td>
                             <td>${escapeHTML(row?.xeroLockDate ? formatDate(row.xeroLockDate) : "Not set")}</td>
-                            <td>${escapeHTML(row?.accountsFiledDate ? formatDate(row.accountsFiledDate) : "Unknown")}</td>
-                            <td>${escapeHTML(row?.reason || "")}</td>
+                            <td>${escapeHTML(xeroLockMismatchTargetDate(row) ? formatDate(xeroLockMismatchTargetDate(row)) : "Unknown")}</td>
+                            <td>${xeroLockMismatchSizeDays(row) === null ? "Not locked" : `${xeroLockMismatchSizeDays(row)} day${xeroLockMismatchSizeDays(row) === 1 ? "" : "s"}`}</td>
+                            <td>${escapeHTML(xeroLockMismatchFixState?.[String(row?.tenantId || "")]?.message || row?.reason || "")}</td>
                         </tr>
                     `).join("")
-                    : '<tr><td colspan="6"><div class="ch-empty-state">No mismatches to review.</div></td></tr>';
+                    : '<tr><td colspan="8"><div class="ch-empty-state">No mismatches to review.</div></td></tr>';
+                body.querySelectorAll("[data-xero-lock-mismatch-select]").forEach((checkbox) => {
+                    if (checkbox.dataset.xeroLockMismatchWired === "true") return;
+                    checkbox.dataset.xeroLockMismatchWired = "true";
+                    checkbox.addEventListener("change", () => {
+                        const tenantId = checkbox.dataset.xeroLockMismatchSelect || "";
+                        if (!tenantId) return;
+                        if (checkbox.checked) xeroLockMismatchSelectedTenantIds.add(tenantId);
+                        else xeroLockMismatchSelectedTenantIds.delete(tenantId);
+                        renderXeroLockMismatchModal();
+                    });
+                });
             }
 
             async function identifyXeroLockMismatches(force = true) {
                 const modal = document.getElementById("xeroLockMismatchModal");
                 if (modal) modal.hidden = false;
                 xeroLockMismatchLoading = true;
+                xeroLockMismatchFixState = {};
                 renderXeroLockMismatchModal();
                 try {
                     const endpoint = `${api.endpoints.xeroLockMismatches}${force ? "?force=1" : ""}`;
@@ -28728,6 +28979,11 @@
                         rows: Array.isArray(payload?.rows) ? payload.rows : [],
                         summary: payload?.summary || {},
                     };
+                    if (!xeroLockMismatchSelectedTenantIds.size) {
+                        xeroLockMismatchSelectedTenantIds = new Set(
+                            (xeroLockMismatchData.rows || []).map((row) => String(row?.tenantId || "")).filter(Boolean)
+                        );
+                    }
                     renderXeroLockMismatchModal();
                 } catch (error) {
                     showToast(error.message || "Unable to identify lock mismatches", "error");
@@ -28737,6 +28993,55 @@
                     xeroLockMismatchLoading = false;
                     renderXeroLockMismatchModal();
                 }
+            }
+
+            async function applyBulkFixXeroLockMismatches() {
+                if (xeroLockMismatchFixing) return;
+                const selectedTenantIds = [...xeroLockMismatchSelectedTenantIds].filter(Boolean);
+                if (!selectedTenantIds.length) {
+                    showToast("Select at least one mismatch to fix.", "info");
+                    return;
+                }
+                const confirmed = window.confirm(
+                    `Apply lock-date fixes for ${selectedTenantIds.length.toLocaleString("en-GB")} selected mismatch${selectedTenantIds.length === 1 ? "" : "es"}?`
+                );
+                if (!confirmed) return;
+                xeroLockMismatchFixing = true;
+                selectedTenantIds.forEach((tenantId) => {
+                    xeroLockMismatchFixState[tenantId] = { status: "queued", message: "Queued for fix..." };
+                });
+                renderXeroLockMismatchModal();
+                let fixedCount = 0;
+                let failedCount = 0;
+                for (const tenantId of selectedTenantIds) {
+                    xeroLockMismatchFixState[tenantId] = { status: "fixing", message: "Updating Xero lock date..." };
+                    renderXeroLockMismatchModal();
+                    try {
+                        const payload = await requestJSON(endpointURL(api.endpoints.xeroLockFix, { tenantId }), {
+                            method: "POST",
+                            body: JSON.stringify({}),
+                        });
+                        if (payload?.updated) {
+                            fixedCount += 1;
+                            xeroLockMismatchFixState[tenantId] = { status: "fixed", message: "Fixed. Xero lock date updated." };
+                        } else {
+                            fixedCount += 1;
+                            xeroLockMismatchFixState[tenantId] = { status: "fixed", message: payload?.message || "Already aligned." };
+                        }
+                    } catch (error) {
+                        failedCount += 1;
+                        xeroLockMismatchFixState[tenantId] = { status: "failed", message: error?.message || "Fix failed." };
+                    }
+                    renderXeroLockMismatchModal();
+                    await new Promise((resolve) => setTimeout(resolve, 120));
+                }
+                xeroLockMismatchFixing = false;
+                await loadXeroLockDateOverview(true);
+                await identifyXeroLockMismatches(true);
+                showToast(
+                    `Mismatch clean-up complete: ${fixedCount.toLocaleString("en-GB")} fixed${failedCount ? `, ${failedCount.toLocaleString("en-GB")} failed` : ""}.`,
+                    failedCount ? "info" : "success"
+                );
             }
 
             async function downloadXeroLockMismatchPdf() {
@@ -28899,7 +29204,13 @@
                                 <span>${escapeHTML(card.label)}</span>
                                 <strong>${escapeHTML(card.value)}</strong>
                             </span>
-                        `).join("");
+                        `).join("") + `
+                            <div class="xero-lock-date-stat-actions">
+                                <button class="primary-button" id="xeroLockCleanupButton" type="button" ${flagged > 0 ? "" : "disabled"}>
+                                    ${flagged > 0 ? `Clean Up Mismatches (${flagged})` : "Clean Up Mismatches"}
+                                </button>
+                            </div>
+                        `;
                     }
                 }
                 const warningRows = xeroLockDateOverview.rows || [];
@@ -28964,6 +29275,11 @@
                     deleteSelectedButton.disabled = selectedCount === 0 || xeroLockDateLoading;
                     deleteSelectedButton.textContent = selectedCount > 0 ? `Delete Selected (${selectedCount})` : "Delete Selected";
                 }
+                const cleanupButton = document.getElementById("xeroLockCleanupButton");
+                if (cleanupButton && cleanupButton.dataset.lockDateWired !== "true") {
+                    cleanupButton.dataset.lockDateWired = "true";
+                    cleanupButton.addEventListener("click", () => identifyXeroLockMismatches(true));
+                }
                 body.innerHTML = filteredRows.length
                     ? filteredRows.map((row) => {
                         const tenantId = String(row?.tenantId || "");
@@ -29000,6 +29316,7 @@
                             row?.tenantName,
                         ].find((value) => String(value || "").trim());
                         const isSelected = selectedXeroLockDateTenantIds.has(tenantId);
+                        const fixInFlight = xeroLockDateFixInFlightTenantIds.has(tenantId);
                         return `
                             <tr>
                                 <td class="select-cell">
@@ -29039,6 +29356,9 @@
                                             : isFlagged
                                                 ? '<span class="ch-pill is-bad">Last filed accounts period is not locked in Xero</span>'
                                                 : '<span class="ch-pill is-good">Lock date covers latest filed accounts period</span>'}
+                                    ${isFlagged
+                                        ? `<button class="ghost-button xero-lock-fix-button" type="button" data-xero-lock-fix="${escapeHTML(tenantId)}" ${fixInFlight ? "disabled" : ""}>${fixInFlight ? "Fixing..." : "Fix For Me"}</button>`
+                                        : ""}
                                     ${row?.xeroError ? `<small>${escapeHTML(row.xeroError)}</small>` : ""}
                                 </td>
                             </tr>
@@ -29062,6 +29382,16 @@
                     button.addEventListener("click", () => {
                         const tenantId = button.dataset.xeroLockMapDelete || "";
                         deleteXeroLockDateTenant(tenantId, button);
+                    });
+                });
+                body.querySelectorAll("[data-xero-lock-fix]").forEach((button) => {
+                    if (button.dataset.xeroLockFixWired === "true") return;
+                    button.dataset.xeroLockFixWired = "true";
+                    button.addEventListener("click", (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const tenantId = button.dataset.xeroLockFix || "";
+                        fixXeroLockDateMismatch(tenantId, button);
                     });
                 });
                 body.querySelectorAll("[data-xero-lock-select]").forEach((checkbox) => {
@@ -48094,7 +48424,6 @@
                     .join("");
                 renderSidebarSupportBubble();
             }
-
             function renderPracticePackScreen() {
                 initialisePracticePackMonth();
                 practicePackHistory = loadPracticePackHistory();
@@ -50773,6 +51102,67 @@
                         }
                         showToast("Opening Xero connection", "info");
                         window.location.assign(url);
+                    });
+                }
+                const xeroLockMismatchCloseButton = document.getElementById("xeroLockMismatchCloseButton");
+                if (xeroLockMismatchCloseButton && xeroLockMismatchCloseButton.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchCloseButton.dataset.lockDateWired = "true";
+                    xeroLockMismatchCloseButton.addEventListener("click", closeXeroLockMismatchModal);
+                }
+                const xeroLockMismatchDownloadPdfButton = document.getElementById("xeroLockMismatchDownloadPdfButton");
+                if (xeroLockMismatchDownloadPdfButton && xeroLockMismatchDownloadPdfButton.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchDownloadPdfButton.dataset.lockDateWired = "true";
+                    xeroLockMismatchDownloadPdfButton.addEventListener("click", downloadXeroLockMismatchPdf);
+                }
+                const xeroLockMismatchApplyFixButton = document.getElementById("xeroLockMismatchApplyFixButton");
+                if (xeroLockMismatchApplyFixButton && xeroLockMismatchApplyFixButton.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchApplyFixButton.dataset.lockDateWired = "true";
+                    xeroLockMismatchApplyFixButton.addEventListener("click", applyBulkFixXeroLockMismatches);
+                }
+                const xeroLockMismatchSelectAllButton = document.getElementById("xeroLockMismatchSelectAllButton");
+                if (xeroLockMismatchSelectAllButton && xeroLockMismatchSelectAllButton.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchSelectAllButton.dataset.lockDateWired = "true";
+                    xeroLockMismatchSelectAllButton.addEventListener("click", () => {
+                        const rows = Array.isArray(xeroLockMismatchData.rows) ? xeroLockMismatchData.rows : [];
+                        xeroLockMismatchSelectedTenantIds = new Set(rows.map((row) => String(row?.tenantId || "")).filter(Boolean));
+                        renderXeroLockMismatchModal();
+                    });
+                }
+                const xeroLockMismatchSelectFlaggedButton = document.getElementById("xeroLockMismatchSelectFlaggedButton");
+                if (xeroLockMismatchSelectFlaggedButton && xeroLockMismatchSelectFlaggedButton.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchSelectFlaggedButton.dataset.lockDateWired = "true";
+                    xeroLockMismatchSelectFlaggedButton.addEventListener("click", () => {
+                        const rows = Array.isArray(xeroLockMismatchData.rows) ? xeroLockMismatchData.rows : [];
+                        xeroLockMismatchSelectedTenantIds = new Set(rows.map((row) => String(row?.tenantId || "")).filter(Boolean));
+                        renderXeroLockMismatchModal();
+                    });
+                }
+                const xeroLockMismatchClearSelectionButton = document.getElementById("xeroLockMismatchClearSelectionButton");
+                if (xeroLockMismatchClearSelectionButton && xeroLockMismatchClearSelectionButton.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchClearSelectionButton.dataset.lockDateWired = "true";
+                    xeroLockMismatchClearSelectionButton.addEventListener("click", () => {
+                        xeroLockMismatchSelectedTenantIds.clear();
+                        renderXeroLockMismatchModal();
+                    });
+                }
+                const xeroLockMismatchSelectAllToggle = document.getElementById("xeroLockMismatchSelectAllToggle");
+                if (xeroLockMismatchSelectAllToggle && xeroLockMismatchSelectAllToggle.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchSelectAllToggle.dataset.lockDateWired = "true";
+                    xeroLockMismatchSelectAllToggle.addEventListener("change", () => {
+                        const rows = Array.isArray(xeroLockMismatchData.rows) ? xeroLockMismatchData.rows : [];
+                        if (xeroLockMismatchSelectAllToggle.checked) {
+                            xeroLockMismatchSelectedTenantIds = new Set(rows.map((row) => String(row?.tenantId || "")).filter(Boolean));
+                        } else {
+                            xeroLockMismatchSelectedTenantIds.clear();
+                        }
+                        renderXeroLockMismatchModal();
+                    });
+                }
+                const xeroLockMismatchModal = document.getElementById("xeroLockMismatchModal");
+                if (xeroLockMismatchModal && xeroLockMismatchModal.dataset.lockDateWired !== "true") {
+                    xeroLockMismatchModal.dataset.lockDateWired = "true";
+                    xeroLockMismatchModal.addEventListener("click", (event) => {
+                        if (event.target?.id === "xeroLockMismatchModal") closeXeroLockMismatchModal();
                     });
                 }
                 const menuBankStatementsButton = document.getElementById("menuBankStatementsButton");

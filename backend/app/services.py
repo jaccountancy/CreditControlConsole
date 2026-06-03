@@ -48,6 +48,7 @@ from .xero import (
     normalise_contact,
     normalise_invoice,
     normalise_payment,
+    update_organisation_period_lock_date,
     xero_api_get,
 )
 
@@ -929,6 +930,115 @@ def save_xero_tenant_company_mapping(user: dict, tenant_id: str, payload: dict) 
             mapping_row = cursor.fetchone()
         connection.commit()
     return _serialise_tenant_mapping(mapping_row, tenant_id)
+
+
+async def fix_xero_lock_date_mismatch(user: dict, tenant_id: str) -> dict:
+    safe_tenant_id = str(tenant_id or "").strip()
+    if not safe_tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant ID is required.")
+
+    connection_rows = list_xero_connections_for_user(user["id"], include_fallback=True)
+    connection_row = next(
+        (row for row in connection_rows if str(row.get("tenant_id") or "").strip() == safe_tenant_id),
+        None,
+    )
+    if connection_row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Xero tenant connection not found.")
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT m.company_number, ch.company_name, ch.client_name, ch.last_filed_date, ch.filing_history
+                FROM xero_tenant_company_mappings m
+                LEFT JOIN ch_companies ch ON UPPER(ch.company_number) = UPPER(m.company_number)
+                WHERE m.tenant_id = %s
+                """,
+                (safe_tenant_id,),
+            )
+            ch_mapping_row = cursor.fetchone() or {}
+            cursor.execute(
+                """
+                SELECT period_lock_date, end_of_year_lock_date, base_currency
+                FROM xero_lock_date_snapshots
+                WHERE tenant_id = %s
+                """,
+                (safe_tenant_id,),
+            )
+            snapshot_row = cursor.fetchone() or {}
+        connection.commit()
+
+    mapped_company_number = str(ch_mapping_row.get("company_number") or "").strip().upper()
+    if not mapped_company_number:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Map this tenant to a Companies House company number first.",
+        )
+
+    accounts_year_end_date = _companies_house_year_end_date(ch_mapping_row)
+    accounts_filed_date = _latest_accounts_filed_date(ch_mapping_row)
+    target_lock_date = accounts_year_end_date or accounts_filed_date
+    if target_lock_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No submitted Companies House accounts date is available for this mapped company yet.",
+        )
+
+    existing_period_lock_date = _parse_date_value(snapshot_row.get("period_lock_date"))
+    existing_end_of_year_lock_date = _parse_date_value(snapshot_row.get("end_of_year_lock_date"))
+    existing_effective_lock_date = max(
+        [item for item in (existing_period_lock_date, existing_end_of_year_lock_date) if item],
+        default=None,
+    )
+    if existing_effective_lock_date and existing_effective_lock_date >= target_lock_date:
+        return {
+            "tenantId": safe_tenant_id,
+            "tenantName": str(connection_row.get("tenant_name") or ""),
+            "companyNumber": mapped_company_number,
+            "targetLockDate": target_lock_date.isoformat(),
+            "periodLockDate": existing_period_lock_date.isoformat() if existing_period_lock_date else "",
+            "endOfYearLockDate": existing_end_of_year_lock_date.isoformat() if existing_end_of_year_lock_date else "",
+            "updated": False,
+            "message": "Xero lock date already covers the latest filed Companies House accounts period.",
+        }
+
+    updated_lock_dates = await update_organisation_period_lock_date(connection_row, target_lock_date)
+    period_lock_date = updated_lock_dates.get("period_lock_date") or target_lock_date
+    end_of_year_lock_date = updated_lock_dates.get("end_of_year_lock_date")
+    base_currency = str(updated_lock_dates.get("base_currency") or snapshot_row.get("base_currency") or "").strip()
+    now = utcnow()
+    _upsert_xero_lock_date_snapshot(
+        safe_tenant_id,
+        period_lock_date,
+        end_of_year_lock_date,
+        base_currency,
+        "",
+        now,
+    )
+    record_audit_event(
+        "xero_connection",
+        safe_tenant_id,
+        "xero.lock_date_fixed",
+        {
+            "tenant_id": safe_tenant_id,
+            "tenant_name": str(connection_row.get("tenant_name") or ""),
+            "company_number": mapped_company_number,
+            "target_lock_date": target_lock_date.isoformat(),
+            "result_period_lock_date": period_lock_date.isoformat() if period_lock_date else "",
+            "result_end_of_year_lock_date": end_of_year_lock_date.isoformat() if end_of_year_lock_date else "",
+        },
+        user.get("id"),
+    )
+    return {
+        "tenantId": safe_tenant_id,
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "companyNumber": mapped_company_number,
+        "targetLockDate": target_lock_date.isoformat(),
+        "periodLockDate": period_lock_date.isoformat() if period_lock_date else "",
+        "endOfYearLockDate": end_of_year_lock_date.isoformat() if end_of_year_lock_date else "",
+        "updated": True,
+        "message": "Xero period lock date updated to match Companies House.",
+    }
 
 
 async def xero_lock_date_overview_payload(user: dict, force_refresh: bool = False) -> dict:

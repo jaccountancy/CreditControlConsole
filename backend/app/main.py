@@ -84,6 +84,7 @@ from .services import (
     delete_me_report_submission,
     extract_me_report_ct_comps_loss,
     factory_reset_console,
+    fix_xero_lock_date_mismatch,
     get_xero_connection_for_user,
     get_operation_run,
     get_ignition_sync_run,
@@ -1107,6 +1108,11 @@ async def api_xero_lock_date_mismatches(
     user: dict = Depends(require_panel_user),
 ):
     return {"status": "ok", **await xero_lock_date_mismatch_payload(user, force_refresh=force)}
+
+
+@app.post("/api/xero/lock-dates/{tenant_id}/fix")
+async def api_xero_lock_date_fix(tenant_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await fix_xero_lock_date_mismatch(user, tenant_id)}
 
 
 @app.get("/api/xero/lock-dates/mismatches/report.pdf")

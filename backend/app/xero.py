@@ -1,7 +1,7 @@
 import asyncio
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.utils import format_datetime, parsedate_to_datetime
 from uuid import uuid4
 
@@ -13,6 +13,7 @@ from .database import get_connection, utcnow
 
 TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
+ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
 ACCOUNTS_URL = "https://api.xero.com/api.xro/2.0/Accounts"
 CONTACTS_URL = "https://api.xero.com/api.xro/2.0/Contacts"
 INVOICES_URL = "https://api.xero.com/api.xro/2.0/Invoices"
@@ -592,6 +593,45 @@ async def xero_api_get(
                     "response": response.text[:1000],
                 },
             ) from exc
+
+
+async def update_organisation_period_lock_date(connection_row: dict, lock_date: date) -> dict:
+    connection_row = await refresh_connection(connection_row["id"])
+    lock_date_text = lock_date.isoformat()
+    async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
+        try:
+            response = await client.put(
+                ORGANISATION_URL,
+                headers={
+                    "Authorization": f'Bearer {connection_row["access_token"]}',
+                    "xero-tenant-id": connection_row["tenant_id"],
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": str(uuid4()),
+                },
+                json={"Organisations": [{"PeriodLockDate": lock_date_text}]},
+            )
+        except httpx.RequestError as exc:
+            _raise_xero_request_error(exc, "lock date update")
+        if response.is_error:
+            _raise_xero_http_error(response, "lock date update")
+        if not response.content:
+            return {
+                "period_lock_date": lock_date,
+                "end_of_year_lock_date": None,
+                "base_currency": "",
+            }
+        payload = response.json()
+    organisations = payload.get("Organisations") or []
+    organisation = organisations[0] if organisations else {}
+    period_lock_date = _xero_date(organisation.get("PeriodLockDate")) or lock_date
+    end_of_year_lock_date = _xero_date(organisation.get("EndOfYearLockDate"))
+    base_currency = str(organisation.get("BaseCurrency") or "").strip()
+    return {
+        "period_lock_date": period_lock_date,
+        "end_of_year_lock_date": end_of_year_lock_date,
+        "base_currency": base_currency,
+    }
 
 
 async def create_history_record(connection_row: dict, resource: str, resource_id: str, details: str) -> dict:
