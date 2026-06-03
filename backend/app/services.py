@@ -142,6 +142,7 @@ DATABASE_METRIC_TABLES = {
     "ignition_connections": "Ignition connections",
     "ignition_sync_runs": "Ignition sync runs",
     "ignition_reporting_records": "Ignition records",
+    "ignition_renewal_price_recommendations": "Ignition renewal pricing recommendations",
     "me_report_clients": "ME report clients",
     "me_report_account_mappings": "ME report mappings",
     "me_report_reviews": "ME report reviews",
@@ -14915,6 +14916,31 @@ IGNITION_RENEWAL_WORKBOOK_HEADERS = [
     "Variance %",
     "AT Comments",
 ]
+IGNITION_RENEWAL_DEFAULT_UPLIFT = Decimal("0.0250")
+IGNITION_RENEWAL_MIN_UPLIFT = Decimal("0.0000")
+IGNITION_RENEWAL_MAX_UPLIFT = Decimal("0.1000")
+IGNITION_RENEWAL_HISTORY_LIMIT = 8
+
+IGNITION_RENEWAL_RECOMMENDATION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["recommendations"],
+    "properties": {
+        "recommendations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["recommendationKey", "increasePercent", "reason"],
+                "properties": {
+                    "recommendationKey": {"type": "string"},
+                    "increasePercent": {"type": "number"},
+                    "reason": {"type": "string"},
+                },
+            },
+        }
+    },
+}
 
 
 def _ignition_provider_status(exc: HTTPException) -> int:
@@ -15786,12 +15812,338 @@ def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -
     return variance, (variance / new_monthly).quantize(Decimal("0.0001"))
 
 
+def _ignition_text_key(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().casefold())
+
+
+def _ignition_proposal_effective_date(row: dict) -> date | None:
+    start = _ignition_proposal_start_date(row)
+    if start:
+        return start
+    for candidate in (
+        row.get("accepted_at"),
+        row.get("acceptedAt"),
+        row.get("signed_at"),
+        row.get("signedAt"),
+        row.get("created_at"),
+        row.get("createdAt"),
+    ):
+        parsed = _parse_ignition_renewal_date_value(candidate)
+        if parsed:
+            return parsed
+    return None
+
+
+def _decimal_median(values: list[Decimal]) -> Decimal:
+    ordered = sorted(values)
+    if not ordered:
+        return Decimal("0")
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / Decimal("2")
+
+
+def _clamp_uplift_percent(value: Decimal) -> Decimal:
+    clipped = min(IGNITION_RENEWAL_MAX_UPLIFT, max(IGNITION_RENEWAL_MIN_UPLIFT, value))
+    return clipped.quantize(Decimal("0.0001"))
+
+
+def _ignition_recommendation_context(
+    item: dict,
+    proposal_records: list[dict],
+    previous_items: list[dict],
+) -> dict:
+    client_key = _ignition_text_key(item.get("client_name") or "")
+    plan_key = _ignition_text_key(item.get("plan_name") or _plan_label_for_text(item.get("service_name") or ""))
+    proposal_points: list[dict] = []
+    for record in proposal_records:
+        payload = record.get("payload") or {}
+        if not _is_accepted_ignition_proposal(payload):
+            continue
+        if _ignition_text_key(_ignition_proposal_client_name(payload)) != client_key:
+            continue
+        service_name = _ignition_proposal_service_name(payload)
+        payload_plan_key = _ignition_text_key(_plan_label_for_text(service_name))
+        if plan_key and plan_key != "other" and payload_plan_key != plan_key:
+            continue
+        monthly = _money(_proposal_mrr(payload))
+        if monthly <= 0:
+            continue
+        event_date = _ignition_proposal_effective_date(payload)
+        if not event_date:
+            continue
+        proposal_points.append(
+            {
+                "date": event_date.isoformat(),
+                "mrr": float(monthly),
+                "source": "proposal",
+            }
+        )
+    proposal_points.sort(key=lambda row: (row.get("date") or "", row.get("mrr") or 0))
+
+    change_rows: list[dict] = []
+    for index in range(1, len(proposal_points)):
+        previous = Decimal(str(proposal_points[index - 1]["mrr"]))
+        current = Decimal(str(proposal_points[index]["mrr"]))
+        if previous <= 0:
+            continue
+        change = (current - previous) / previous
+        if abs(change) > Decimal("0.50"):
+            continue
+        change_rows.append(
+            {
+                "date": proposal_points[index]["date"],
+                "percent": float(change.quantize(Decimal("0.0001"))),
+                "source": "proposal",
+            }
+        )
+
+    for row in previous_items:
+        if _ignition_text_key(row.get("client_name") or "") != client_key:
+            continue
+        row_plan_key = _ignition_text_key(row.get("plan_name") or _plan_label_for_text(row.get("service_name") or ""))
+        if plan_key and plan_key != "other" and row_plan_key != plan_key:
+            continue
+        current = _money(row.get("current_monthly_fee"))
+        new_monthly = _money(row.get("new_monthly_fee"))
+        if current <= 0 or new_monthly <= 0:
+            continue
+        change = (new_monthly - current) / current
+        if abs(change) > Decimal("0.50"):
+            continue
+        renewal_date = row.get("renewal_date")
+        renewal_date_text = renewal_date.isoformat() if hasattr(renewal_date, "isoformat") else str(renewal_date or "")
+        change_rows.append(
+            {
+                "date": renewal_date_text,
+                "percent": float(change.quantize(Decimal("0.0001"))),
+                "source": "renewal_run",
+            }
+        )
+
+    change_rows.sort(key=lambda row: row.get("date") or "")
+    recent_changes = change_rows[-IGNITION_RENEWAL_HISTORY_LIMIT:]
+    context_payload = {
+        "clientName": item.get("client_name") or "",
+        "planName": item.get("plan_name") or "",
+        "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
+        "recentChanges": recent_changes,
+        "proposalPoints": proposal_points[-IGNITION_RENEWAL_HISTORY_LIMIT:],
+    }
+    history_hash = hashlib.sha256(json.dumps(context_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return {
+        "client_key": client_key,
+        "plan_key": plan_key,
+        "history_hash": history_hash,
+        "context_payload": context_payload,
+        "recent_changes": recent_changes,
+    }
+
+
+def _ignition_rule_uplift_recommendation(context: dict) -> tuple[Decimal, str]:
+    recent_changes = context.get("recent_changes") or []
+    percentages = [Decimal(str(row.get("percent"))) for row in recent_changes if row.get("percent") is not None]
+    if not percentages:
+        return IGNITION_RENEWAL_DEFAULT_UPLIFT, "Default uplift applied (no comparable historical pricing changes found)."
+    median_change = _decimal_median(percentages)
+    if len(percentages) >= 3:
+        uplift = median_change
+    else:
+        uplift = (median_change * Decimal("0.7")) + (IGNITION_RENEWAL_DEFAULT_UPLIFT * Decimal("0.3"))
+    uplift = _clamp_uplift_percent(uplift)
+    reason = (
+        f"Based on {len(percentages)} historical change point"
+        f"{'' if len(percentages) == 1 else 's'}; median prior change {float(median_change * Decimal('100')):.1f}%."
+    )
+    return uplift, reason
+
+
+async def _ignition_openai_uplift_recommendations(contexts: list[dict]) -> dict[str, dict]:
+    settings = get_settings()
+    if not contexts or not settings.openai_api_key:
+        return {}
+    compact = []
+    for row in contexts:
+        compact.append(
+            {
+                "recommendationKey": row.get("recommendationKey") or "",
+                "clientName": row.get("clientName") or "",
+                "planName": row.get("planName") or "",
+                "currentMonthlyFee": float(row.get("currentMonthlyFee") or 0),
+                "localIncreasePercent": float(row.get("localIncreasePercent") or 0),
+                "historicalChangePercents": [float(value) for value in (row.get("historicalChangePercents") or [])][:8],
+            }
+        )
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "You recommend annual monthly-fee uplift percentages for accountancy renewals. "
+                            "Use historical client increase percentages and the local baseline as anchors. "
+                            "Return JSON only. Keep increasePercent between 0.0 and 0.10. "
+                            "Avoid aggressive jumps unless history clearly supports it."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": json.dumps({"items": compact})}],
+            },
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "ignition_renewal_price_recommendations",
+                "schema": IGNITION_RENEWAL_RECOMMENDATION_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": min(12000, max(1800, len(compact) * 220)),
+    }
+    try:
+        text = _extract_response_text(await _post_openai_responses(request_body, "ignition renewal price recommendations"))
+        payload = json.loads(text) if text else {}
+    except Exception:
+        logger.exception("OpenAI uplift recommendations failed")
+        return {}
+    recommendations = {}
+    for item in payload.get("recommendations") or []:
+        recommendation_key = str(item.get("recommendationKey") or "").strip()
+        if not recommendation_key:
+            continue
+        try:
+            increase_percent = _clamp_uplift_percent(Decimal(str(item.get("increasePercent") or "0")))
+        except Exception:
+            continue
+        reason = str(item.get("reason") or "").strip()
+        recommendations[recommendation_key] = {
+            "increase_percent": increase_percent,
+            "reason": reason,
+            "engine": "openai",
+        }
+    return recommendations
+
+
+async def _apply_ignition_renewal_price_recommendations(
+    user: dict,
+    items: list[dict],
+    proposal_records: list[dict],
+    previous_items: list[dict],
+    cursor,
+) -> list[dict]:
+    contexts_by_proposal: dict[str, dict] = {}
+    ai_inputs: list[dict] = []
+    for item in items:
+        proposal_external_id = str(item.get("proposal_external_id") or "")
+        if not proposal_external_id:
+            continue
+        context = _ignition_recommendation_context(item, proposal_records, previous_items)
+        contexts_by_proposal[proposal_external_id] = context
+        cursor.execute(
+            """
+            SELECT recommended_increase_percent, reason, engine, history_sample_size
+            FROM ignition_renewal_price_recommendations
+            WHERE user_id = %s
+              AND client_key = %s
+              AND plan_key = %s
+              AND history_hash = %s
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (user["id"], context["client_key"], context["plan_key"], context["history_hash"]),
+        )
+        cached = cursor.fetchone()
+        if cached:
+            increase_percent = _clamp_uplift_percent(Decimal(str(cached.get("recommended_increase_percent") or 0)))
+            reason = str(cached.get("reason") or "").strip() or "Cached historical recommendation reused."
+            engine = str(cached.get("engine") or "cache")
+            history_sample_size = int(cached.get("history_sample_size") or len(context["recent_changes"]))
+            item["recommended_increase_percent"] = increase_percent
+            item["recommendation_reason"] = reason
+            item["recommendation_engine"] = engine
+            item["recommendation_history_sample_size"] = history_sample_size
+            continue
+        local_percent, local_reason = _ignition_rule_uplift_recommendation(context)
+        item["recommended_increase_percent"] = local_percent
+        item["recommendation_reason"] = local_reason
+        item["recommendation_engine"] = "rule"
+        item["recommendation_history_sample_size"] = len(context["recent_changes"])
+        ai_inputs.append(
+            {
+                "recommendationKey": proposal_external_id,
+                "clientName": item.get("client_name") or "",
+                "planName": item.get("plan_name") or "",
+                "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
+                "localIncreasePercent": float(local_percent),
+                "historicalChangePercents": [row.get("percent") for row in context["recent_changes"] if row.get("percent") is not None],
+            }
+        )
+
+    ai_recommendations = await _ignition_openai_uplift_recommendations(ai_inputs)
+    for item in items:
+        proposal_external_id = str(item.get("proposal_external_id") or "")
+        if proposal_external_id in ai_recommendations:
+            ai_row = ai_recommendations[proposal_external_id]
+            item["recommended_increase_percent"] = ai_row["increase_percent"]
+            item["recommendation_reason"] = ai_row.get("reason") or item.get("recommendation_reason") or ""
+            item["recommendation_engine"] = ai_row.get("engine") or "openai"
+        current_monthly = _money(item.get("current_monthly_fee"))
+        increase_percent = _clamp_uplift_percent(Decimal(str(item.get("recommended_increase_percent") or IGNITION_RENEWAL_DEFAULT_UPLIFT)))
+        new_monthly = _money(current_monthly * (Decimal("1.0") + increase_percent))
+        variance, variance_percent = _ignition_renewal_variance(current_monthly, new_monthly)
+        item["new_monthly_fee"] = new_monthly
+        item["variance"] = variance
+        item["variance_percent"] = variance_percent
+
+        context = contexts_by_proposal.get(proposal_external_id)
+        if not context:
+            continue
+        cursor.execute(
+            """
+            INSERT INTO ignition_renewal_price_recommendations (
+                user_id, client_key, plan_key, history_hash,
+                recommended_increase_percent, reason, engine, history_sample_size,
+                context_payload, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+            ON CONFLICT (user_id, client_key, plan_key, history_hash)
+            DO UPDATE SET
+                recommended_increase_percent = EXCLUDED.recommended_increase_percent,
+                reason = EXCLUDED.reason,
+                engine = EXCLUDED.engine,
+                history_sample_size = EXCLUDED.history_sample_size,
+                context_payload = EXCLUDED.context_payload,
+                updated_at = EXCLUDED.updated_at
+            """,
+            (
+                user["id"],
+                context["client_key"],
+                context["plan_key"],
+                context["history_hash"],
+                increase_percent,
+                str(item.get("recommendation_reason") or "").strip(),
+                str(item.get("recommendation_engine") or "rule"),
+                int(item.get("recommendation_history_sample_size") or 0),
+                json.dumps(context["context_payload"], default=_json_default),
+                utcnow(),
+                utcnow(),
+            ),
+        )
+    return items
+
+
 def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     row = record.get("payload") or {}
     proposal_start_date = _ignition_proposal_start_date(row)
     client_created_date = _ignition_proposal_client_created_date(row)
     current_monthly = _money(_proposal_mrr(row))
-    new_monthly = _money(current_monthly * Decimal("1.025"))
+    new_monthly = _money(current_monthly * (Decimal("1.0") + IGNITION_RENEWAL_DEFAULT_UPLIFT))
     variance, variance_percent = _ignition_renewal_variance(current_monthly, new_monthly)
     service_name = _ignition_proposal_service_name(row)
     plan_name = _plan_label_for_text(service_name)
@@ -16344,6 +16696,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
     connection = get_ignition_connection_for_user(user["id"])
     proposals_source = "cached"
     refresh_error_message = ""
+    refresh_requested = bool(payload.get("refreshProposals"))
     window_start = utcnow().date()
     window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
     with get_connection() as db:
@@ -16358,35 +16711,36 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 (user["id"],),
             )
             records = cursor.fetchall()
-            try:
-                proposals, _meta = await asyncio.wait_for(
-                    fetch_ignition_collection(connection, "/reporting/proposals"),
-                    timeout=IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS,
-                )
-                _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
-                proposals_source = "live"
-                cursor.execute(
-                    """
-                    SELECT external_id, payload
-                    FROM ignition_reporting_records
-                    WHERE user_id = %s
-                      AND dataset = 'proposals'
-                    """,
-                    (user["id"],),
-                )
-                records = cursor.fetchall()
-            except asyncio.TimeoutError:
-                refresh_error_message = (
-                    f"Ignition proposals refresh timed out after {IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS} seconds."
-                )
-            except httpx.HTTPError as exc:
-                refresh_error_message = f"Ignition proposals refresh failed: {exc}"
-            except HTTPException as exc:
-                detail = exc.detail
-                if isinstance(detail, dict):
-                    refresh_error_message = str(detail.get("message") or detail.get("error") or "")
-                else:
-                    refresh_error_message = str(detail or "")
+            if refresh_requested or not records:
+                try:
+                    proposals, _meta = await asyncio.wait_for(
+                        fetch_ignition_collection(connection, "/reporting/proposals"),
+                        timeout=IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS,
+                    )
+                    _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
+                    proposals_source = "live"
+                    cursor.execute(
+                        """
+                        SELECT external_id, payload
+                        FROM ignition_reporting_records
+                        WHERE user_id = %s
+                          AND dataset = 'proposals'
+                        """,
+                        (user["id"],),
+                    )
+                    records = cursor.fetchall()
+                except asyncio.TimeoutError:
+                    refresh_error_message = (
+                        f"Ignition proposals refresh timed out after {IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS} seconds."
+                    )
+                except httpx.HTTPError as exc:
+                    refresh_error_message = f"Ignition proposals refresh failed: {exc}"
+                except HTTPException as exc:
+                    detail = exc.detail
+                    if isinstance(detail, dict):
+                        refresh_error_message = str(detail.get("message") or detail.get("error") or "")
+                    else:
+                        refresh_error_message = str(detail or "")
             if not records:
                 message = (
                     "Ignition proposals are not available yet. Run an Ignition sync, then retry creating the renewals list."
@@ -16418,6 +16772,23 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 new_items = [item for item in available_items if str(item.get("proposal_external_id") or "") in selected_proposal_ids]
             else:
                 new_items = available_items
+            cursor.execute(
+                """
+                SELECT proposal_external_id, client_name, plan_name, service_name, renewal_date,
+                       current_monthly_fee, new_monthly_fee
+                FROM ignition_renewal_items
+                WHERE user_id = %s
+                """,
+                (user["id"],),
+            )
+            previous_pricing_items = cursor.fetchall() or []
+            new_items = await _apply_ignition_renewal_price_recommendations(
+                user=user,
+                items=new_items,
+                proposal_records=records,
+                previous_items=previous_pricing_items,
+                cursor=cursor,
+            )
             skipped_count = len(candidates) - len(new_items)
             skipped_previously_picked = len(candidates) - len(available_items)
             skipped_not_selected = len(available_items) - len(new_items)
@@ -16484,6 +16855,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
             "skipped_not_selected": skipped_not_selected,
             "proposal_source": proposals_source,
             "refresh_error": refresh_error_message,
+            "refresh_requested": refresh_requested,
             "selection_requested_count": len(selected_proposal_ids),
         },
         user["id"],

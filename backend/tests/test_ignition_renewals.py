@@ -61,6 +61,52 @@ class IgnitionRenewalsTests(unittest.TestCase):
         self.assertEqual(items[0]["proposal_external_id"], "proposal-1")
         self.assertEqual(items[0]["renewal_date"], date(2026, 6, 1))
 
+    def test_rule_uplift_recommendation_uses_median_history(self):
+        context = {
+            "recent_changes": [
+                {"percent": 0.02},
+                {"percent": 0.03},
+                {"percent": 0.04},
+            ]
+        }
+        percent, reason = services._ignition_rule_uplift_recommendation(context)
+        self.assertEqual(percent, services.Decimal("0.0300"))
+        self.assertIn("historical", reason.lower())
+
+    def test_recommendation_context_builds_hash_and_history(self):
+        item = {
+            "proposal_external_id": "proposal-new",
+            "client_name": "Acme Ltd",
+            "plan_name": "Standard",
+            "service_name": "Standard Plan Subscription",
+            "current_monthly_fee": services.Decimal("100.00"),
+        }
+        proposal_records = [
+            {
+                "external_id": "proposal-old-1",
+                "payload": {
+                    "name": "Standard Plan",
+                    "client_name": "Acme Ltd",
+                    "state": "accepted",
+                    "accepted_at": "2024-06-01T09:00:00Z",
+                    "services": [{"name": "Standard Plan Subscription", "pricing": {"minimum_period_value": "90"}, "billing": {"period": "month"}}],
+                },
+            },
+            {
+                "external_id": "proposal-old-2",
+                "payload": {
+                    "name": "Standard Plan",
+                    "client_name": "Acme Ltd",
+                    "state": "accepted",
+                    "accepted_at": "2025-06-01T09:00:00Z",
+                    "services": [{"name": "Standard Plan Subscription", "pricing": {"minimum_period_value": "100"}, "billing": {"period": "month"}}],
+                },
+            },
+        ]
+        context = services._ignition_recommendation_context(item, proposal_records, [])
+        self.assertTrue(context["history_hash"])
+        self.assertGreaterEqual(len(context["recent_changes"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

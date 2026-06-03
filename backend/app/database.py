@@ -1065,6 +1065,40 @@ ON ignition_renewal_ineligible_proposals (user_id, proposal_external_id);
 CREATE INDEX IF NOT EXISTS ignition_renewal_ineligible_user_created_idx
 ON ignition_renewal_ineligible_proposals (user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS ignition_renewal_price_recommendations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_key TEXT NOT NULL,
+    plan_key TEXT NOT NULL,
+    history_hash TEXT NOT NULL,
+    recommended_increase_percent NUMERIC(9, 4) NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL DEFAULT '',
+    engine TEXT NOT NULL DEFAULT 'rule',
+    history_sample_size INTEGER NOT NULL DEFAULT 0,
+    context_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, client_key, plan_key, history_hash)
+);
+
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS client_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS plan_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS history_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS recommended_increase_percent NUMERIC(9, 4) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'rule';
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS history_sample_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS context_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_renewal_price_recommendations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_renewal_price_recommendations_unique_idx
+ON ignition_renewal_price_recommendations (user_id, client_key, plan_key, history_hash);
+
+CREATE INDEX IF NOT EXISTS ignition_renewal_price_recommendations_user_updated_idx
+ON ignition_renewal_price_recommendations (user_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS me_report_clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
