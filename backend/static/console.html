@@ -12504,6 +12504,82 @@
                 font-size: 0.76rem;
                 font-weight: 700;
             }
+            .ch-preflight-choice {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+            }
+            .ch-preflight-choice-button {
+                width: 28px;
+                height: 28px;
+                border-radius: 999px;
+                border: 1px solid var(--line);
+                background: #fff;
+                color: var(--muted);
+                font-size: 0.92rem;
+                font-weight: 900;
+                line-height: 1;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                cursor: pointer;
+                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+            }
+            .ch-preflight-choice-button:hover,
+            .ch-preflight-choice-button:focus-visible {
+                outline: none;
+                border-color: rgba(29, 103, 242, 0.4);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.14);
+            }
+            .ch-preflight-choice-button.is-selected.is-no-changes {
+                border-color: rgba(255, 83, 83, 0.38);
+                background: rgba(255, 231, 231, 0.92);
+                color: #c43f3f;
+            }
+            .ch-preflight-choice-button.is-selected.is-changes-required {
+                border-color: rgba(39, 176, 95, 0.38);
+                background: rgba(228, 250, 236, 0.95);
+                color: #1f8a4b;
+            }
+            .ch-preflight-helper {
+                display: grid;
+                gap: 8px;
+                padding: 10px 12px;
+                border: 1px solid rgba(29, 103, 242, 0.18);
+                border-radius: 12px;
+                background: rgba(236, 244, 255, 0.76);
+            }
+            .ch-preflight-helper strong {
+                font-size: 0.84rem;
+                font-weight: 880;
+                color: var(--ink);
+            }
+            .ch-preflight-helper p {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+                line-height: 1.42;
+            }
+            .ch-preflight-legend {
+                display: inline-flex;
+                flex-wrap: wrap;
+                align-items: center;
+                gap: 10px;
+            }
+            .ch-preflight-legend-item {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.76rem;
+                font-weight: 760;
+                color: var(--muted);
+            }
+            .ch-preflight-legend-item .ch-preflight-choice-button {
+                cursor: default;
+                box-shadow: none;
+            }
             .operation-review-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -49630,7 +49706,7 @@
                         { key: "details", label: "Check details" },
                     ],
                     rows: initialPreflight.rows,
-                    onRender: ({ body }) => {
+                    onRender: ({ body, summary }) => {
                         const tools = body.querySelector(".operation-review-tools");
                         if (tools) tools.remove();
                         const tableWrap = body.querySelector(".operation-review-table-wrap");
@@ -49654,10 +49730,22 @@
                                                 <td>${escapeHTML(row.companyNumber)}</td>
                                                 <td>${escapeHTML(row.readiness)}</td>
                                                 <td>
-                                                    <select data-ch-preflight-action>
-                                                        <option value="no-changes" selected>No changes required</option>
-                                                        <option value="changes-required">Changes required</option>
-                                                    </select>
+                                                    <div class="ch-preflight-choice" role="group" aria-label="Submission choice">
+                                                        <button
+                                                            type="button"
+                                                            class="ch-preflight-choice-button is-no-changes is-selected"
+                                                            data-ch-preflight-action="no-changes"
+                                                            aria-pressed="true"
+                                                            title="No changes required"
+                                                        >✕</button>
+                                                        <button
+                                                            type="button"
+                                                            class="ch-preflight-choice-button is-changes-required"
+                                                            data-ch-preflight-action="changes-required"
+                                                            aria-pressed="false"
+                                                            title="Changes required"
+                                                        >✓</button>
+                                                    </div>
                                                 </td>
                                                 <td>${escapeHTML(row.details)}</td>
                                             </tr>
@@ -49665,17 +49753,69 @@
                                     </tbody>
                                 </table>
                             `;
+                            const setPreflightChoice = (targetRow, action) => {
+                                if (!targetRow) return;
+                                const nextAction = action === "changes-required" ? "changes-required" : "no-changes";
+                                targetRow.setAttribute("data-ch-preflight-selected-action", nextAction);
+                                targetRow.querySelectorAll("[data-ch-preflight-action]").forEach((button) => {
+                                    const buttonAction = String(button.getAttribute("data-ch-preflight-action") || "no-changes");
+                                    const selected = buttonAction === nextAction;
+                                    button.classList.toggle("is-selected", selected);
+                                    button.setAttribute("aria-pressed", selected ? "true" : "false");
+                                });
+                            };
+                            tableWrap.querySelectorAll("tr[data-ch-preflight-company-id]").forEach((targetRow) => {
+                                setPreflightChoice(targetRow, "no-changes");
+                            });
+                            const renderPreflightSummary = () => {
+                                if (!summary) return;
+                                const reviewRows = Array.from(tableWrap.querySelectorAll("tr[data-ch-preflight-company-id]"));
+                                const selectedCount = reviewRows.length;
+                                const changesRequiredCount = reviewRows.filter((targetRow) => (
+                                    String(targetRow.getAttribute("data-ch-preflight-selected-action") || "no-changes") === "changes-required"
+                                )).length;
+                                const noChangesCount = Math.max(0, selectedCount - changesRequiredCount);
+                                summary.innerHTML = [
+                                    `${selectedCount.toLocaleString("en-GB")} selected`,
+                                    `${noChangesCount.toLocaleString("en-GB")} no changes`,
+                                    `${changesRequiredCount.toLocaleString("en-GB")} changes required`,
+                                    `${initialPreflight.warningOnly.length.toLocaleString("en-GB")} warnings`,
+                                ].map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`).join("");
+                            };
+                            renderPreflightSummary();
+                            tableWrap.addEventListener("click", (event) => {
+                                const button = event.target?.closest?.("[data-ch-preflight-action]");
+                                if (!button) return;
+                                const targetRow = button.closest("tr[data-ch-preflight-company-id]");
+                                if (!targetRow) return;
+                                const action = String(button.getAttribute("data-ch-preflight-action") || "no-changes");
+                                setPreflightChoice(targetRow, action);
+                                renderPreflightSummary();
+                            });
                         }
-                        const note = document.createElement("div");
-                        note.className = "operation-review-muted";
-                        note.textContent = "Default is No changes for all selected clients. Switch any row to Changes required to open full review before submission.";
-                        body.prepend(note);
+                        const helper = document.createElement("div");
+                        helper.className = "ch-preflight-helper";
+                        helper.innerHTML = `
+                            <strong>Choose only clients that need updates</strong>
+                            <p>Every row starts on <em>No changes</em> (cross). Use the tick only for clients that require changes before submission.</p>
+                            <div class="ch-preflight-legend" aria-hidden="true">
+                                <span class="ch-preflight-legend-item">
+                                    <span class="ch-preflight-choice-button is-no-changes is-selected">✕</span>
+                                    No changes
+                                </span>
+                                <span class="ch-preflight-legend-item">
+                                    <span class="ch-preflight-choice-button is-changes-required is-selected">✓</span>
+                                    Changes required
+                                </span>
+                            </div>
+                        `;
+                        body.prepend(helper);
                     },
                     resultProvider: () => {
                         const rows = Array.from(document.querySelectorAll("#operationReviewBody tr[data-ch-preflight-company-id]"));
                         const actions = rows.map((tr) => {
                             const companyId = String(tr.getAttribute("data-ch-preflight-company-id") || "");
-                            const action = String(tr.querySelector("[data-ch-preflight-action]")?.value || "no-changes");
+                            const action = String(tr.getAttribute("data-ch-preflight-selected-action") || "no-changes");
                             return { companyId, action };
                         });
                         return { actions };
