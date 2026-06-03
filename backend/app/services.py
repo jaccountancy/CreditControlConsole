@@ -15453,6 +15453,12 @@ def _ignition_proposal_is_self_assessment(row: dict) -> bool:
         "self-assessment",
         "sa100",
         "personal tax return",
+        "annual accounts & ct",
+        "annual accounts and ct",
+        "annual accounts + ct",
+        "accounts & ct",
+        "accounts and ct",
+        "accountant letter",
     )
     return any(marker in text for marker in markers)
 
@@ -15725,7 +15731,7 @@ def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -
 def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     row = record.get("payload") or {}
     current_monthly = _money(_proposal_mrr(row))
-    new_monthly = current_monthly
+    new_monthly = _money(current_monthly * Decimal("1.025"))
     variance, variance_percent = _ignition_renewal_variance(current_monthly, new_monthly)
     service_name = _ignition_proposal_service_name(row)
     plan_name = _plan_label_for_text(service_name)
@@ -15758,8 +15764,6 @@ def _ignition_upcoming_renewal_proposals(records: list[dict], window_start: date
         if not _is_accepted_ignition_proposal(proposal_payload):
             continue
         if not _ignition_proposal_client_is_active(proposal_payload):
-            continue
-        if _ignition_proposal_is_self_assessment(proposal_payload):
             continue
         candidates.append(_ignition_renewal_item_seed(record, renewal_date))
     return sorted(
@@ -16024,16 +16028,51 @@ def _ignition_renewal_candidates_for_user(user: dict) -> dict:
                 (user["id"],),
             )
             already_picked = {str(row.get("proposal_external_id") or "") for row in (cursor.fetchall() or [])}
+            cursor.execute(
+                """
+                SELECT proposal_external_id
+                FROM ignition_renewal_ineligible_proposals
+                WHERE user_id = %s
+                """,
+                (user["id"],),
+            )
+            manually_ineligible = {str(row.get("proposal_external_id") or "") for row in (cursor.fetchall() or [])}
         connection.commit()
-    candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
-    available = [item for item in candidates if str(item.get("proposal_external_id") or "") not in already_picked]
+    synced_candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
+    self_assessment_excluded = [
+        item for item in synced_candidates if _ignition_proposal_is_self_assessment(item.get("proposal_payload") or {})
+    ]
+    non_self_assessment_candidates = [
+        item for item in synced_candidates if str(item.get("proposal_external_id") or "") not in {
+            str(excluded.get("proposal_external_id") or "") for excluded in self_assessment_excluded
+        }
+    ]
+    available = [
+        item
+        for item in non_self_assessment_candidates
+        if str(item.get("proposal_external_id") or "") not in already_picked
+        and str(item.get("proposal_external_id") or "") not in manually_ineligible
+    ]
+    already_picked_count = sum(
+        1
+        for item in non_self_assessment_candidates
+        if str(item.get("proposal_external_id") or "") in already_picked
+    )
+    manually_ineligible_count = sum(
+        1
+        for item in non_self_assessment_candidates
+        if str(item.get("proposal_external_id") or "") in manually_ineligible
+    )
     return {
         "windowStart": window_start.isoformat(),
         "windowEnd": window_end.isoformat(),
         "windowWeeks": IGNITION_RENEWAL_WINDOW_WEEKS,
-        "candidateCount": len(candidates),
+        "syncedCount": len(synced_candidates),
+        "candidateCount": len(available),
+        "selfAssessmentExcludedCount": len(self_assessment_excluded),
+        "manuallyIneligibleCount": manually_ineligible_count,
         "availableCount": len(available),
-        "alreadyPickedCount": len(candidates) - len(available),
+        "alreadyPickedCount": already_picked_count,
         "candidates": [_serialize_ignition_renewal_candidate(item) for item in available],
     }
 

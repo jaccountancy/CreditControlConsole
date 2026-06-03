@@ -1043,6 +1043,28 @@ ON ignition_renewal_items (user_id, proposal_external_id);
 CREATE INDEX IF NOT EXISTS ignition_renewal_items_run_idx
 ON ignition_renewal_items (run_id, renewal_date ASC);
 
+CREATE TABLE IF NOT EXISTS ignition_renewal_ineligible_proposals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    proposal_external_id TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'user-marked-ineligible',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, proposal_external_id)
+);
+
+ALTER TABLE ignition_renewal_ineligible_proposals ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE ignition_renewal_ineligible_proposals ADD COLUMN IF NOT EXISTS proposal_external_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_ineligible_proposals ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'user-marked-ineligible';
+ALTER TABLE ignition_renewal_ineligible_proposals ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+ALTER TABLE ignition_renewal_ineligible_proposals ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE UNIQUE INDEX IF NOT EXISTS ignition_renewal_ineligible_user_proposal_idx
+ON ignition_renewal_ineligible_proposals (user_id, proposal_external_id);
+
+CREATE INDEX IF NOT EXISTS ignition_renewal_ineligible_user_created_idx
+ON ignition_renewal_ineligible_proposals (user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS me_report_clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,

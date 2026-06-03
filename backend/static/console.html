@@ -13222,6 +13222,40 @@
             .ignition-renewals-batch-table {
                 min-width: 1020px;
             }
+            .ignition-renewals-batch-table th:first-child,
+            .ignition-renewals-batch-table td:first-child {
+                position: static;
+                left: auto;
+                background: transparent;
+            }
+            .ignition-renewals-batch-table thead th:first-child {
+                background: var(--surface-soft);
+            }
+            .ignition-renewals-batch-table th:nth-child(1),
+            .ignition-renewals-batch-table td:nth-child(1) {
+                width: 46px;
+                min-width: 46px;
+                max-width: 46px;
+            }
+            .ignition-renewals-batch-table th:nth-child(2),
+            .ignition-renewals-batch-table td:nth-child(2) { width: 12%; }
+            .ignition-renewals-batch-table th:nth-child(3),
+            .ignition-renewals-batch-table td:nth-child(3) { width: 20%; }
+            .ignition-renewals-batch-table th:nth-child(4),
+            .ignition-renewals-batch-table td:nth-child(4) { width: 10%; }
+            .ignition-renewals-batch-table th:nth-child(5),
+            .ignition-renewals-batch-table td:nth-child(5) { width: 8%; }
+            .ignition-renewals-batch-table th:nth-child(6),
+            .ignition-renewals-batch-table td:nth-child(6) { width: 12%; }
+            .ignition-renewals-batch-table th:nth-child(7),
+            .ignition-renewals-batch-table td:nth-child(7) { width: 12%; }
+            .ignition-renewals-batch-table th:nth-child(8),
+            .ignition-renewals-batch-table td:nth-child(8) { width: 12%; }
+            .ignition-renewals-batch-table th:nth-child(9),
+            .ignition-renewals-batch-table td:nth-child(9) {
+                width: 130px;
+                min-width: 130px;
+            }
             .ignition-renewals-batch-table th,
             .ignition-renewals-batch-table td {
                 padding: 8px 9px;
@@ -13241,7 +13275,8 @@
                 background: rgba(29, 103, 242, 0.05);
             }
             .ignition-renewals-batch-table td:last-child {
-                min-width: 120px;
+                min-width: 130px;
+                white-space: nowrap;
             }
             .renewals-run-actions {
                 display: inline-flex;
@@ -20235,6 +20270,7 @@
                                         <p class="detail-meta" id="ignitionRenewalStartSummary">Select eligible clients to include in this renewal batch before pricing edits.</p>
                                     </div>
                                     <div class="detail-actions">
+                                        <button class="ghost-button" id="ignitionRenewalsDeselectAllCandidatesButton" type="button">Deselect all</button>
                                         <button class="ghost-button" id="closeIgnitionRenewalStartButton" type="button">Close</button>
                                         <button class="primary-button" id="confirmIgnitionRenewalStartButton" type="button">Include selected and continue</button>
                                     </div>
@@ -39351,6 +39387,12 @@
                 );
             }
 
+            function ignitionRenewalSelectableRunIdsFromRenderedTable() {
+                return [...document.querySelectorAll('[data-renewals-select-run]:not(:disabled)')]
+                    .map((input) => String(input?.dataset?.renewalsSelectRun || "").trim())
+                    .filter(Boolean);
+            }
+
             function openIgnitionRenewalsPricingStage() {
                 ignitionRenewalsWorkspaceStage = "pricing";
                 renderIgnitionRenewals();
@@ -54099,6 +54141,11 @@
                 if (closeIgnitionRenewalHistoryButton) closeIgnitionRenewalHistoryButton.addEventListener("click", closeIgnitionRenewalHistory);
                 const closeIgnitionRenewalStartButton = document.getElementById("closeIgnitionRenewalStartButton");
                 if (closeIgnitionRenewalStartButton) closeIgnitionRenewalStartButton.addEventListener("click", closeIgnitionRenewalStartModal);
+                const ignitionRenewalsDeselectAllCandidatesButton = document.getElementById("ignitionRenewalsDeselectAllCandidatesButton");
+                if (ignitionRenewalsDeselectAllCandidatesButton) ignitionRenewalsDeselectAllCandidatesButton.addEventListener("click", () => {
+                    ignitionRenewalSelection = new Set();
+                    renderIgnitionRenewalStartModal();
+                });
                 const confirmIgnitionRenewalStartButton = document.getElementById("confirmIgnitionRenewalStartButton");
                 if (confirmIgnitionRenewalStartButton) confirmIgnitionRenewalStartButton.addEventListener("click", startIgnitionRenewals);
                 const ignitionRenewalStartModal = document.getElementById("ignitionRenewalStartModal");
@@ -54143,8 +54190,7 @@
                     const selectAllRuns = event.target?.id === "ignitionRenewalsSelectAllRuns";
                     if (selectAllRuns) {
                         const shouldSelect = !!event.target.checked;
-                        const runs = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
-                        const selectableIds = ignitionRenewalBatchSelectableRunIds(runs);
+                        const selectableIds = ignitionRenewalSelectableRunIdsFromRenderedTable();
                         ignitionRenewalBatchSelection = shouldSelect ? new Set(selectableIds) : new Set();
                         renderIgnitionRenewals();
                         return;
@@ -54176,8 +54222,7 @@
                     }
                     const selectAllRunsButton = event.target.closest?.("#ignitionRenewalsSelectAllRunsButton");
                     if (selectAllRunsButton) {
-                        const runs = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
-                        ignitionRenewalBatchSelection = new Set(ignitionRenewalBatchSelectableRunIds(runs));
+                        ignitionRenewalBatchSelection = new Set(ignitionRenewalSelectableRunIdsFromRenderedTable());
                         renderIgnitionRenewals();
                         return;
                     }
