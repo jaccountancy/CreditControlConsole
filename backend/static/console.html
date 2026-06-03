@@ -49080,6 +49080,8 @@
                 authRegisterUploading: false,
                 authRegisterPopulating: false,
                 authRegisterLoaded: false,
+                authRegisterRows: [],
+                authRegisterLookupByNumber: new Map(),
             };
 
             function setCompaniesHouseSettingsStatus(message, tone) {
@@ -49204,6 +49206,12 @@
                     const payload = await requestJSON("/api/companies-house/auth-code-register?limit=300");
                     const rows = payload?.rows || [];
                     const totalCount = Number(payload?.totalCount || rows.length || 0);
+                    companiesHouseSettings.authRegisterRows = rows;
+                    companiesHouseSettings.authRegisterLookupByNumber = new Map(
+                        rows
+                            .map((row) => [normaliseCompanyNumberInput(row?.companyNumber || ""), row])
+                            .filter(([companyNumber]) => Boolean(companyNumber))
+                    );
                     renderAuthCodeRegisterDirectory(rows, totalCount);
                     companiesHouseSettings.authRegisterLoaded = true;
                 } catch (error) {
@@ -50078,6 +50086,227 @@
                 });
             }
 
+            function chNormaliseAuthCode(value) {
+                return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+            }
+
+            function chAuthCodeLooksValid(value) {
+                return /^[A-Z0-9]{6}$/.test(chNormaliseAuthCode(value));
+            }
+
+            async function chResolveMissingAuthCodesForSubmission(selectedCompanies = []) {
+                if (!companiesHouseSettings.authRegisterLoaded) {
+                    try {
+                        await loadAuthCodeRegisterDirectory(true);
+                    } catch (error) {
+                        console.error("Unable to preload auth code register for workflow", error);
+                    }
+                }
+                const selectedIds = new Set(
+                    selectedCompanies
+                        .map((company) => String(company?.id || ""))
+                        .filter(Boolean)
+                );
+                const missingAuthRows = selectedCompanies
+                    .filter((company) => !company?.authCodeOnFile)
+                    .map((company) => ({
+                        companyId: String(company?.id || ""),
+                        companyName: String(company?.companyName || "—"),
+                        companyNumber: String(company?.companyNumber || ""),
+                        registerMatchAvailable: companiesHouseSettings.authRegisterLookupByNumber.has(normaliseCompanyNumberInput(company?.companyNumber || "")),
+                    }));
+                if (!missingAuthRows.length) return true;
+
+                const reviewResult = await showOperationReviewDialog({
+                    eyebrow: "Confirmation statements",
+                    title: "Resolve missing auth codes",
+                    subtitle: "Enter missing Companies House auth codes, or search your uploaded auth code register before submission.",
+                    confirmLabel: "Save and continue",
+                    cancelLabel: "Back",
+                    summaryChips: [
+                        `${missingAuthRows.length.toLocaleString("en-GB")} missing auth code`,
+                        `${companiesHouseSettings.authRegisterRows.length.toLocaleString("en-GB")} register rows loaded`,
+                    ],
+                    columns: [{ key: "companyName", label: "Company" }],
+                    rows: missingAuthRows,
+                    onRender: ({ body, summary }) => {
+                        const tools = body.querySelector(".operation-review-tools");
+                        if (tools) tools.remove();
+                        const tableWrap = body.querySelector(".operation-review-table-wrap");
+                        if (!tableWrap) return;
+                        const renderSummary = () => {
+                            if (!summary) return;
+                            const rows = Array.from(tableWrap.querySelectorAll("tr[data-ch-authfix-company-id]"));
+                            const resolved = rows.filter((row) => row.getAttribute("data-ch-authfix-on-file") === "true").length;
+                            const readyFromInput = rows.filter((row) => {
+                                if (row.getAttribute("data-ch-authfix-on-file") === "true") return false;
+                                const input = row.querySelector("[data-ch-authfix-input]");
+                                return chAuthCodeLooksValid(input?.value || "");
+                            }).length;
+                            const unresolved = Math.max(0, rows.length - resolved - readyFromInput);
+                            summary.innerHTML = [
+                                `${rows.length.toLocaleString("en-GB")} missing`,
+                                `${resolved.toLocaleString("en-GB")} found in register`,
+                                `${readyFromInput.toLocaleString("en-GB")} entered`,
+                                `${unresolved.toLocaleString("en-GB")} unresolved`,
+                            ].map((chip) => `<span class="operation-review-chip">${escapeHTML(chip)}</span>`).join("");
+                        };
+                        tableWrap.innerHTML = `
+                            <table class="operation-review-table">
+                                <thead>
+                                    <tr>
+                                        <th>Company</th>
+                                        <th>Number</th>
+                                        <th>Enter auth code</th>
+                                        <th>Search register</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${missingAuthRows.map((row) => `
+                                        <tr data-ch-authfix-company-id="${escapeHTML(row.companyId)}" data-ch-authfix-on-file="false">
+                                            <td>${escapeHTML(row.companyName)}</td>
+                                            <td>${escapeHTML(row.companyNumber || "—")}</td>
+                                            <td><input type="text" data-ch-authfix-input maxlength="12" placeholder="e.g. A1B2C3"></td>
+                                            <td><button class="ghost-button" type="button" data-ch-authfix-search ${row.registerMatchAvailable ? "" : "disabled"}>${row.registerMatchAvailable ? "Search register" : "No match loaded"}</button></td>
+                                            <td data-ch-authfix-status>${row.registerMatchAvailable ? "Missing" : "Missing · no loaded register match"}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                            <p class="operation-review-muted">Auth codes are six alphanumeric characters. Search uses your uploaded register and saves any match to the company record.</p>
+                        `;
+                        tableWrap.addEventListener("input", (event) => {
+                            const input = event.target?.closest?.("[data-ch-authfix-input]");
+                            if (!input) return;
+                            const row = input.closest("tr[data-ch-authfix-company-id]");
+                            if (!row) return;
+                            row.setAttribute("data-ch-authfix-on-file", "false");
+                            const status = row.querySelector("[data-ch-authfix-status]");
+                            if (status) {
+                                status.textContent = chAuthCodeLooksValid(input.value || "")
+                                    ? "Ready to save"
+                                    : (String(input.value || "").trim() ? "Invalid format (use 6 letters/numbers)" : "Missing");
+                            }
+                            renderSummary();
+                        });
+                        tableWrap.addEventListener("click", async (event) => {
+                            const button = event.target?.closest?.("[data-ch-authfix-search]");
+                            if (!button) return;
+                            const row = button.closest("tr[data-ch-authfix-company-id]");
+                            if (!row) return;
+                            const companyId = String(row.getAttribute("data-ch-authfix-company-id") || "");
+                            const status = row.querySelector("[data-ch-authfix-status]");
+                            button.disabled = true;
+                            if (status) status.textContent = "Searching register…";
+                            try {
+                                const payload = await requestJSON("/api/companies-house/auth-code-register/populate", {
+                                    method: "POST",
+                                    body: JSON.stringify({ companyIds: [companyId] }),
+                                });
+                                const result = payload?.result || {};
+                                const populated = Array.isArray(result?.populated)
+                                    ? result.populated.find((item) => String(item?.companyId || "") === companyId)
+                                    : null;
+                                const skipped = Array.isArray(result?.skipped)
+                                    ? result.skipped.find((item) => String(item?.companyId || "") === companyId)
+                                    : null;
+                                if (populated) {
+                                    row.setAttribute("data-ch-authfix-on-file", "true");
+                                    const input = row.querySelector("[data-ch-authfix-input]");
+                                    if (input) input.value = "";
+                                    if (status) status.textContent = `Found in register (${populated.matchType || "match"})`;
+                                } else if (String(skipped?.reason || "").toLowerCase().includes("already on file")) {
+                                    row.setAttribute("data-ch-authfix-on-file", "true");
+                                    if (status) status.textContent = "Already on file";
+                                } else {
+                                    if (status) status.textContent = skipped?.reason || "No register match found";
+                                    button.disabled = false;
+                                }
+                            } catch (error) {
+                                if (status) status.textContent = error?.message || "Search failed";
+                                button.disabled = false;
+                            } finally {
+                                renderSummary();
+                            }
+                        });
+                        renderSummary();
+                    },
+                    resultProvider: () => {
+                        const rows = Array.from(document.querySelectorAll("#operationReviewBody tr[data-ch-authfix-company-id]"));
+                        const manualUpdates = [];
+                        const invalid = [];
+                        rows.forEach((row) => {
+                            if (row.getAttribute("data-ch-authfix-on-file") === "true") return;
+                            const companyId = String(row.getAttribute("data-ch-authfix-company-id") || "");
+                            const input = row.querySelector("[data-ch-authfix-input]");
+                            const code = chNormaliseAuthCode(input?.value || "");
+                            if (!code) return;
+                            if (!chAuthCodeLooksValid(code)) {
+                                invalid.push(companyId);
+                                return;
+                            }
+                            manualUpdates.push({ companyId, authCode: code });
+                        });
+                        return { manualUpdates, invalid };
+                    },
+                });
+                if (!reviewResult) return false;
+
+                const invalidIds = new Set(Array.isArray(reviewResult?.invalid) ? reviewResult.invalid.map((value) => String(value || "")) : []);
+                if (invalidIds.size) {
+                    chSetWorkflowStatus("Fix invalid auth code formats (use 6 letters/numbers) before continuing.", "error");
+                    showToast("Some auth codes are invalid. Use 6 letters/numbers.", "error");
+                    return false;
+                }
+
+                const updates = Array.isArray(reviewResult?.manualUpdates) ? reviewResult.manualUpdates : [];
+                const failedUpdates = [];
+                for (const update of updates) {
+                    if (!update?.companyId || !update?.authCode) continue;
+                    try {
+                        await requestJSON(`/api/companies-house/companies/${encodeURIComponent(update.companyId)}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({
+                                authCode: update.authCode,
+                                filingAuthorityReference: update.authCode,
+                            }),
+                        });
+                    } catch (error) {
+                        failedUpdates.push({
+                            companyId: String(update.companyId || ""),
+                            reason: error?.message || "Unable to save auth code.",
+                        });
+                    }
+                }
+                if (failedUpdates.length) {
+                    chSetWorkflowStatus(
+                        `${failedUpdates.length.toLocaleString("en-GB")} auth code update${failedUpdates.length === 1 ? "" : "s"} failed. Fix and retry.`,
+                        "error"
+                    );
+                    showToast(failedUpdates[0]?.reason || "Unable to save one or more auth code updates.", "error");
+                    return false;
+                }
+
+                await loadCompaniesHouseCompanies(true);
+                companiesHouseState.selectedCompanyIds = new Set(
+                    (companiesHouseState.companies || [])
+                        .map((company) => String(company?.id || ""))
+                        .filter((companyId) => selectedIds.has(companyId))
+                );
+                renderCompaniesHouseCompaniesTable();
+
+                const stillMissing = chSelectedCompanies().filter((company) => !company?.authCodeOnFile);
+                if (stillMissing.length) {
+                    chSetWorkflowStatus(
+                        `${stillMissing.length.toLocaleString("en-GB")} selected client${stillMissing.length === 1 ? "" : "s"} still missing auth code. Add codes or search register, then retry.`,
+                        "error"
+                    );
+                    return false;
+                }
+                return true;
+            }
+
             async function chShowWorkflowChangesDialog(companies = []) {
                 const toNullableBool = (value) => {
                     if (value === true || value === false) return value;
@@ -50506,6 +50735,9 @@
                     );
                     renderCompaniesHouseCompaniesTable();
                 }
+
+                const authCodesResolved = await chResolveMissingAuthCodesForSubmission(chSelectedCompanies());
+                if (!authCodesResolved) return;
 
                 const selected = chSelectedCompanies().filter((company) => company.eligibleForSubmission);
                 if (!selected.length) {
