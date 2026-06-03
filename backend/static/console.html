@@ -31698,76 +31698,12 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="supplier-recon-controls">
-                            <label>
-                                Add supplier contact
-                                <select id="supplierReconciliationContactSelect">
-                                    ${contacts.length
-                                        ? contacts.map((contact) => `<option value="${escapeHTML(contact.xeroContactId)}" ${contact.xeroContactId === selectedSupplierReconciliationContactId ? "selected" : ""}>${escapeHTML(contact.name || contact.xeroContactId)}${contact.email ? ` · ${escapeHTML(contact.email)}` : ""}${connectedByContactId.has(contact.xeroContactId) ? " · Connected" : ""}</option>`).join("")
-                                        : `<option value="">${supplierReconciliationContactsLoading ? "Loading Xero supplier contacts..." : "Load contacts when needed"}</option>`}
-                                </select>
-                            </label>
-                            <div class="supplier-recon-controls-actions">
-                                <button class="ghost-button" id="supplierReconciliationLoadContactsButton" type="button" ${supplierReconciliationContactsLoading ? "disabled" : ""}>${supplierReconciliationContactsLoading ? "Loading contacts..." : "Load contacts"}</button>
-                                <button class="primary-button" id="supplierReconciliationConnectButton" type="button" ${contacts.length ? "" : "disabled"}>Connect supplier</button>
-                            </div>
-                        </div>
-                        <div class="supplier-recon-client-table-wrap">
-                            <table class="supplier-recon-client-table" aria-label="Connected supplier clients">
-                                <thead>
-                                    <tr>
-                                        <th>Supplier</th>
-                                        <th>Email</th>
-                                        <th>Workspace status</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${connectedContacts.length
-                                        ? connectedContacts.map((contact) => `
-                                            <tr>
-                                                <td><strong>${escapeHTML(contact.name || contact.xeroContactId)}</strong><small>Connected ${contact.createdAt ? formatDate(contact.createdAt) : "recently"}</small></td>
-                                                <td>${escapeHTML(contact.email || "No email saved")}</td>
-                                                <td><span class="supplier-recon-status is-green">Ready</span></td>
-                                                <td>
-                                                    <div class="detail-actions">
-                                                        <button class="primary-button" type="button" data-supplier-recon-open="${escapeHTML(contact.xeroContactId)}">Access workspace</button>
-                                                        <button class="ghost-button danger-button" type="button" data-supplier-recon-remove="${escapeHTML(contact.id)}">Remove</button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        `).join("")
-                                        : '<tr><td colspan="4">No suppliers connected yet. Add one above to create a workspace.</td></tr>'}
-                                </tbody>
-                            </table>
-                        </div>
                     `;
                     actionList.innerHTML = '<div class="empty-state"><p class="eyebrow">Workspace</p><h4>Select a supplier workspace</h4><p>Use Access workspace to upload statements and reconcile invoice rows.</p></div>';
                     detail.innerHTML = '<div class="empty-state"><p class="eyebrow">Report output</p><h4>Supplier reconciliation report will appear here</h4><p>After extraction, this area shows paid, awaiting payment, and missing invoices from the statement.</p></div>';
 
-                    const contactSelect = document.getElementById("supplierReconciliationContactSelect");
-                    if (contactSelect && contactSelect.value !== selectedSupplierReconciliationContactId) {
-                        contactSelect.value = selectedSupplierReconciliationContactId;
-                    }
-                    contactSelect?.addEventListener("change", (event) => {
-                        selectedSupplierReconciliationContactId = String(event.target.value || "");
-                    });
-                    document.getElementById("supplierReconciliationLoadContactsButton")?.addEventListener("click", () => loadSupplierReconciliationContacts(true));
-                    document.getElementById("supplierReconciliationConnectButton")?.addEventListener("click", renderConnectSupplier);
                     document.getElementById("supplierReconciliationReconnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
                     document.getElementById("supplierReconciliationRefreshButton")?.addEventListener("click", () => loadSupplierReconciliation(true));
-                    document.querySelectorAll("[data-supplier-recon-open]").forEach((button) => {
-                        button.addEventListener("click", () => {
-                            selectedSupplierReconciliationContactId = button.dataset.supplierReconOpen || "";
-                            supplierReconciliationWorkspaceOpen = true;
-                            supplierReconciliationStatusFilter = "all";
-                            supplierReconciliationWorkspaceTab = "statements";
-                            renderSupplierReconciliationScreen();
-                        });
-                    });
-                    document.querySelectorAll("[data-supplier-recon-remove]").forEach((button) => {
-                        button.addEventListener("click", () => removeSupplierWorkspace(button.dataset.supplierReconRemove || ""));
-                    });
                     return;
                 }
 
