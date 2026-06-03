@@ -141,8 +141,8 @@ def _coerce_settings_amount(value, field: str) -> Decimal:
 
 
 def _compact_credential(value: object) -> str:
-    """Normalise credential-style values by removing all whitespace characters."""
-    return "".join(str(value or "").split())
+    """Preserve full credential content; trim only leading/trailing whitespace."""
+    return str(value or "").strip()
 
 
 def _load_settings_row() -> dict | None:
@@ -1753,12 +1753,11 @@ def _enhance_authorisation_failure_reason(
     lower = text.lower()
     if "authorisation failure" not in lower and "authorization failure" not in lower and "authentication" not in lower:
         return text
-    presenter_suffix = presenter_id[-4:] if presenter_id else ""
     environment_text = _xml_text(environment, "sandbox").lower()
     context = (
         f"Authorisation check: environment={environment_text}, "
-        f"company={_xml_text(company_number)}, presenterIdSuffix={presenter_suffix or 'n/a'}, "
-        f"presenterAuthHint={_mask(presenter_auth)}, companyAuthHint={_mask(company_auth_code)}. "
+        f"company={_xml_text(company_number)}, presenterId={_xml_text(presenter_id)}, "
+        f"presenterAuth={_xml_text(presenter_auth)}, companyAuthCode={_xml_text(company_auth_code)}. "
         "CH rejected credentials for this filing path."
     )
     likely_causes = [
@@ -5601,9 +5600,9 @@ def export_companies_house_support_report(limit: int = 50, status_filter: str = 
     lines.append(f"Generated at (UTC): {now.isoformat()}")
     lines.append(f"Environment: {environment}")
     lines.append(f"Presenter ID: {presenter_id}")
-    lines.append(f"Presenter Auth Hint: {_mask(presenter_auth)}")
+    lines.append(f"Presenter Auth: {presenter_auth}")
     lines.append(f"Credit Account Number: {_xml_text(settings_row.get('credit_account_number'))}")
-    lines.append(f"API Key Hint: {_xml_text(settings_row.get('api_key_hint'))}")
+    lines.append(f"API Key: {decrypt_api_key()}")
     lines.append(f"Rows Included: {len(rows)}")
     lines.append(f"Status Filter: {status_value}")
     lines.append("")
