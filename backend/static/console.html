@@ -35082,13 +35082,11 @@
                 });
 
                 if (!clients.length) {
-                    tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="7"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No ME Report clients match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
+                    tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="6"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No ME Report clients match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
                     return;
                 }
 
                 tbody.innerHTML = clients.map((client) => {
-                    const light = meReportNormalisedTrafficLight(client.trafficLight || client.summary?.trafficLight || "amber");
-                    const lightLabel = meReportTrafficLightLabel(light);
                     const clientStatus = meReportClientStatus(client);
                     const openReviewCount = meReportOpenReviewCount(client);
                     const submissions = meReportClientSubmissions(client);
@@ -35104,7 +35102,6 @@
                                     <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(email)}</small></div>
                                 </div>
                             </td>
-                            <td><span class="me-report-table-light">${meReportTrafficLightIcon(light)}${escapeHTML(lightLabel)}</span><small><span class="me-report-client-status is-${clientStatus}">${escapeHTML(clientStatus)}</span></small></td>
                             <td><strong>${openReviewCount.toLocaleString("en-GB")}</strong><small>open review point${openReviewCount === 1 ? "" : "s"}</small></td>
                             <td><strong>${submissions.length.toLocaleString("en-GB")}</strong><small>${latestSubmissionTime ? `Latest ${escapeHTML(formatDate(new Date(latestSubmissionTime)))}` : "No submissions"}</small></td>
                             <td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${readyReportCount ? `${readyReportCount.toLocaleString("en-GB")} ready to send` : "Latest activity"}</small></td>
@@ -35608,7 +35605,6 @@
                         <thead>
                             <tr>
                                 <th>${meReportClientSortButton("client", "Client")}</th>
-                                <th>${meReportClientSortButton("health", "Health")}</th>
                                 <th>${meReportClientSortButton("review", "Review")}</th>
                                 <th>${meReportClientSortButton("submissions", "Submissions")}</th>
                                 <th>${meReportClientSortButton("activity", "Last activity")}</th>

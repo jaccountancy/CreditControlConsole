@@ -12584,6 +12584,49 @@ def _me_report_contact_match_for_name_from_options(contacts: list[dict], client_
     return contains[0][1] if contains else None
 
 
+def _me_report_authoritative_name_variants(name: str) -> list[str]:
+    raw_name = str(name or "").strip()
+    if not raw_name:
+        return []
+    variants = {_normalise_contact_match_text(raw_name)}
+    suffixless = re.sub(r"\b(?:ltd|limited|llp|plc|inc|company|co)\b\.?", " ", raw_name, flags=re.IGNORECASE)
+    suffixless_key = _normalise_contact_match_text(suffixless)
+    if len(suffixless_key) >= 5:
+        variants.add(suffixless_key)
+    return [variant for variant in variants if len(variant) >= 5]
+
+
+def _me_report_contact_match_for_authoritative_name_from_options(contacts: list[dict], authoritative_name: str) -> dict | None:
+    wanted_variants = _me_report_authoritative_name_variants(authoritative_name)
+    if not wanted_variants:
+        return None
+    contact_variants = [
+        (
+            contact,
+            _me_report_authoritative_name_variants(contact.get("name") or ""),
+        )
+        for contact in contacts
+    ]
+    exact = [
+        contact
+        for contact, variants in contact_variants
+        if variants and any(variant == wanted for variant in variants for wanted in wanted_variants)
+    ]
+    if exact:
+        return exact[0]
+    contains = [
+        (max(len(variant) for variant in variants), contact)
+        for contact, variants in contact_variants
+        if variants and any(
+            (wanted in variant or variant in wanted)
+            for variant in variants
+            for wanted in wanted_variants
+        )
+    ]
+    contains.sort(key=lambda item: item[0], reverse=True)
+    return contains[0][1] if contains else None
+
+
 def _me_report_contact_match_for_name(user: dict, client_name: str) -> dict | None:
     return _me_report_contact_match_for_name_from_options(_me_report_contact_options(user), client_name)
 
@@ -12679,9 +12722,18 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
             filename = file_item.get("filename") or "overview-report"
             content = file_item.get("content") or b""
             content_type = file_item.get("content_type") or ""
+            try:
+                upload_kind = _me_report_upload_kind(filename, content_type)
+            except HTTPException:
+                upload_kind = "pdf"
             lines = _extract_me_report_bulk_file_lines(content, filename, content_type)
             candidate_names = _extract_me_report_bulk_client_candidates_from_lines(lines, filename)
-            detected_name = candidate_names[0] if candidate_names else ""
+            spreadsheet_row_two_name = (
+                _extract_me_report_spreadsheet_second_row_client_name(content)
+                if upload_kind == "spreadsheet"
+                else ""
+            )
+            detected_name = spreadsheet_row_two_name or (candidate_names[0] if candidate_names else "")
             manual_xero_contact_id = str(file_item.get("manual_xero_contact_id") or "").strip()
             manual_contact = next((contact for contact in contacts if contact.get("xeroContactId") == manual_xero_contact_id), None) if manual_xero_contact_id else None
             if manual_xero_contact_id and not manual_contact:
@@ -12693,7 +12745,22 @@ async def bulk_upload_me_report_submission_pdfs(user: dict, files: list[dict]) -
                     "candidateNames": candidate_names[:8],
                     "message": "The selected Xero contact could not be found. Refresh ME Report data and choose the contact again.",
                 }
-            contact, matched_name = (manual_contact, manual_contact.get("name") or "") if manual_contact else _me_report_contact_match_for_bulk_candidates(contacts, candidate_names, lines, filename)
+            if manual_contact:
+                contact, matched_name = manual_contact, manual_contact.get("name") or ""
+            elif upload_kind == "spreadsheet" and spreadsheet_row_two_name:
+                contact = _me_report_contact_match_for_authoritative_name_from_options(contacts, spreadsheet_row_two_name)
+                matched_name = spreadsheet_row_two_name if contact else ""
+                if not contact:
+                    return {
+                        "index": file_index,
+                        "filename": filename,
+                        "status": "needs_review",
+                        "detectedClientName": spreadsheet_row_two_name,
+                        "candidateNames": [spreadsheet_row_two_name, *candidate_names[:7]],
+                        "message": "Could not match first-tab row-2 client name to a Xero contact. Confirm the client manually.",
+                    }
+            else:
+                contact, matched_name = _me_report_contact_match_for_bulk_candidates(contacts, candidate_names, lines, filename)
             if matched_name:
                 detected_name = matched_name
             if not contact:
