@@ -1647,6 +1647,33 @@ def _parse_ch_submission_response(*, response_text: str, response_root: ET.Eleme
     }
 
 
+def _enhance_authorisation_failure_reason(
+    reason: str,
+    *,
+    environment: str,
+    presenter_id: str,
+    presenter_auth: str,
+    company_auth_code: str,
+    company_number: str,
+) -> str:
+    text = _xml_text(reason)
+    lower = text.lower()
+    if "authorisation failure" not in lower and "authorization failure" not in lower and "authentication" not in lower:
+        return text
+    presenter_suffix = presenter_id[-4:] if presenter_id else ""
+    context = (
+        f"Authorisation check: environment={_xml_text(environment, 'sandbox')}, "
+        f"company={_xml_text(company_number)}, presenterIdSuffix={presenter_suffix or 'n/a'}, "
+        f"presenterAuthHint={_mask(presenter_auth)}, companyAuthHint={_mask(company_auth_code)}. "
+        "CH rejected credentials for this filing path."
+    )
+    if context.lower() in lower:
+        return text
+    if text:
+        return f"{text} | {context}"
+    return context
+
+
 def _parse_ch_status_response(*, response_text: str, response_root: ET.Element) -> dict:
     errors = _ch_gateway_errors(response_root)
     payment_evidence = _extract_payment_evidence(response_root)
@@ -4128,7 +4155,14 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 requested_submission_number=submission_reference,
             )
         except HTTPException as exc:
-            rejection_reason = str(exc.detail)
+            rejection_reason = _enhance_authorisation_failure_reason(
+                str(exc.detail),
+                environment=environment,
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                company_auth_code=company_auth_code,
+                company_number=company_number,
+            )
             _record_submission_failure(rejection_reason, "gateway_submission")
             continue
         except Exception as exc:  # pragma: no cover - defensive guard to avoid aborting full bulk run
@@ -4146,7 +4180,14 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
 
         try:
             status_value = _xml_text(parsed_submission.get("status"), "submitted")
-            rejection_reason = _xml_text(parsed_submission.get("rejectionReason"))
+            rejection_reason = _enhance_authorisation_failure_reason(
+                _xml_text(parsed_submission.get("rejectionReason")),
+                environment=environment,
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                company_auth_code=company_auth_code,
+                company_number=company_number,
+            )
             fee_amount = configured_fee_amount
             payment_evidence = parsed_submission.get("paymentEvidence") or {}
             payment_reconciliation: dict | None = None
