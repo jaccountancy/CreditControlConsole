@@ -5047,9 +5047,19 @@ def get_company_detail(company_id: str) -> dict:
 
 def update_company(company_id: str, payload: dict, user: dict) -> dict:
     user_id = user.get("id") if isinstance(user, dict) else None
+    current_company = get_company_detail(company_id)
+    current_company_number = normalise_company_number(current_company.get("companyNumber"))
+    current_auth_code_on_file = bool(current_company.get("authCodeOnFile"))
     updates: dict[str, object] = {}
     json_columns: set[str] = set()
     auth_code_value = _coerce_text(payload.get("authCode"), 200) if "authCode" in payload else ""
+    if auth_code_value:
+        auth_code_value = re.sub(r"[^A-Z0-9]", "", auth_code_value.upper())
+        if not re.fullmatch(r"[A-Z0-9]{6}", auth_code_value):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Authentication code must be 6 alphanumeric characters.",
+            )
 
     if "internalStatus" in payload:
         internal_status = str(payload.get("internalStatus") or "").strip()
@@ -5163,8 +5173,7 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
             share_capital_patch["statementOfCapital"] = normalised_soc
 
     if share_capital_patch:
-        current = get_company_detail(company_id)
-        current_share_capital = current.get("shareCapital") if isinstance(current.get("shareCapital"), dict) else {}
+        current_share_capital = current_company.get("shareCapital") if isinstance(current_company.get("shareCapital"), dict) else {}
         merged_share_capital = {**current_share_capital, **share_capital_patch}
         updates["share_capital"] = json.dumps(merged_share_capital)
         json_columns.add("share_capital")
@@ -5173,6 +5182,24 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
         normalised_review = _normalise_workflow_review(payload.get("workflowReview"), user_id=user_id)
         updates["workflow_review"] = json.dumps(normalised_review)
         json_columns.add("workflow_review")
+
+    if updates.get("internal_status") == "ready_to_file":
+        if not _is_valid_company_number(current_company_number):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Cannot include this client in confirmation-statement filing workflow until a valid "
+                    "Companies House company number is saved."
+                ),
+            )
+        if not (current_auth_code_on_file or bool(auth_code_value)):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Cannot include this client in confirmation-statement filing workflow until a valid "
+                    "6-character Companies House authentication code is saved."
+                ),
+            )
 
     if not updates and not auth_code_value:
         return get_company_detail(company_id)
