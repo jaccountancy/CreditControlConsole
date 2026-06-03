@@ -13103,8 +13103,9 @@
             }
             .ignition-renewals-table {
                 width: 100%;
-                min-width: 980px;
+                min-width: 1220px;
                 border-collapse: collapse;
+                table-layout: fixed;
             }
             .ignition-renewals-table th,
             .ignition-renewals-table td {
@@ -13112,6 +13113,7 @@
                 border-bottom: 1px solid var(--line);
                 text-align: left;
                 vertical-align: top;
+                overflow-wrap: anywhere;
             }
             .ignition-renewals-table th {
                 position: sticky;
@@ -13126,7 +13128,7 @@
             .ignition-renewals-table input,
             .ignition-renewals-table textarea {
                 width: 100%;
-                min-width: 92px;
+                min-width: 0;
                 border: 1px solid rgba(61, 85, 130, 0.14);
                 border-radius: 8px;
                 padding: 7px 8px;
@@ -13135,7 +13137,6 @@
                 background: #ffffff;
             }
             .ignition-renewals-table textarea {
-                min-width: 240px;
                 min-height: 42px;
                 resize: vertical;
             }
@@ -13144,6 +13145,26 @@
                 white-space: nowrap;
                 font-weight: 900;
             }
+            .ignition-renewals-table th:nth-child(1),
+            .ignition-renewals-table td:nth-child(1) { width: 15%; }
+            .ignition-renewals-table th:nth-child(2),
+            .ignition-renewals-table td:nth-child(2) { width: 11%; }
+            .ignition-renewals-table th:nth-child(3),
+            .ignition-renewals-table td:nth-child(3) { width: 9%; }
+            .ignition-renewals-table th:nth-child(4),
+            .ignition-renewals-table td:nth-child(4) { width: 10%; }
+            .ignition-renewals-table th:nth-child(5),
+            .ignition-renewals-table td:nth-child(5) { width: 8%; }
+            .ignition-renewals-table th:nth-child(6),
+            .ignition-renewals-table td:nth-child(6) { width: 8%; }
+            .ignition-renewals-table th:nth-child(7),
+            .ignition-renewals-table td:nth-child(7) { width: 8%; }
+            .ignition-renewals-table th:nth-child(8),
+            .ignition-renewals-table td:nth-child(8) { width: 8%; }
+            .ignition-renewals-table th:nth-child(9),
+            .ignition-renewals-table td:nth-child(9) { width: 6%; }
+            .ignition-renewals-table th:nth-child(10),
+            .ignition-renewals-table td:nth-child(10) { width: 17%; }
             .ignition-renewal-history-wrap {
                 display: grid;
                 grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
@@ -39105,7 +39126,7 @@
                                     <tr>
                                         <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
                                         <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
-                                        <td>${escapeHTML(item.planName || "")}</td>
+                                        <td>${escapeHTML(ignitionRenewalPlanLabel(item))}</td>
                                         <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
                                         <td class="money-cell">${formatCurrency(item.newMonthlyFee || 0)}</td>
                                         <td class="money-cell">${formatCurrency((Number(item.newMonthlyFee || 0) - Number(item.currentMonthlyFee || 0)))}</td>
@@ -39157,6 +39178,15 @@
 
             function ignitionRenewalPercent(value) {
                 return `${(Number(value || 0) * 100).toLocaleString("en-GB", { maximumFractionDigits: 1 })}%`;
+            }
+
+            function ignitionRenewalPlanLabel(item) {
+                const source = `${item?.planName || ""} ${item?.serviceName || ""} ${item?.proposalName || ""}`.toLowerCase();
+                if (source.includes("self assessment") || source.includes("self-assessment") || source.includes("sa100")) {
+                    return "Self assessment";
+                }
+                if (source.includes("micro")) return "Micro plan";
+                return "Standard plan";
             }
 
             function ignitionRenewalRun() {
@@ -39309,10 +39339,13 @@
                     const proposed = Number(item.newMonthlyFee || 0);
                     const variance = proposed - current;
                     const increasePercent = current > 0 ? variance / current : 0;
+                    const proposalEndDate = formatDate(item.renewalDate || "");
+                    const planLabel = ignitionRenewalPlanLabel(item);
                     return `
                         <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}">
                             <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><span>${escapeHTML(item.proposalName || "")}</span></td>
-                            <td><strong>${escapeHTML(item.planName || "Other")}</strong><br><span>${escapeHTML(item.serviceName || "")}</span></td>
+                            <td><strong>${escapeHTML(planLabel)}</strong></td>
+                            <td>${escapeHTML(proposalEndDate || "-")}</td>
                             <td><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" ${locked ? "disabled" : ""}></td>
                             <td class="money-cell">${formatCurrency(current)}</td>
                             <td><input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${proposed.toFixed(2)}" ${locked ? "disabled" : ""}></td>
@@ -39329,6 +39362,7 @@
                             <tr>
                                 <th>Client Name</th>
                                 <th>Plan</th>
+                                <th>Proposal End Date</th>
                                 <th>Client Manager</th>
                                 <th>Net Monthly Fee</th>
                                 <th>New Net Monthly Fee</th>
