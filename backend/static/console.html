@@ -50570,6 +50570,7 @@
                     let submittedCount = 0;
                     let skippedCount = 0;
                     let failedCount = 0;
+                    let rejectedCount = 0;
                     let acceptedCount = 0;
                     let processingCount = 0;
                     const skippedRows = [];
@@ -50636,6 +50637,8 @@
                                     acceptedCount += 1;
                                 } else if (status === "submitted") {
                                     processingCount += 1;
+                                } else if (status === "rejected") {
+                                    rejectedCount += 1;
                                 }
                                 submittedRows.push({
                                     companyId,
@@ -50684,9 +50687,10 @@
                         .filter(Boolean)
                         .slice(0, 2)
                         .join(" | ");
-                    const hasProblems = skippedCount > 0 || failedCount > 0;
+                    const totalFailedCount = failedCount + rejectedCount;
+                    const hasProblems = skippedCount > 0 || totalFailedCount > 0;
                     chSetWorkflowStatus(
-                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${failedCount.toLocaleString("en-GB")} failed · ${processingCount.toLocaleString("en-GB")} processing. Accepted ${acceptedCount.toLocaleString("en-GB")} · CH charge applied ${formatCurrency(creditChargeApplied)}.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
+                        `Submitted ${submittedCount.toLocaleString("en-GB")} · ${skippedCount.toLocaleString("en-GB")} skipped · ${totalFailedCount.toLocaleString("en-GB")} failed · ${processingCount.toLocaleString("en-GB")} processing. Accepted ${acceptedCount.toLocaleString("en-GB")} · CH charge applied ${formatCurrency(creditChargeApplied)}.${skippedReasonSummary ? ` Skip reason: ${skippedReasonSummary}` : ""}`,
                         hasProblems ? "error" : "success"
                     );
                     companiesHouseState.tabLoaded.dashboard = false;
@@ -50728,7 +50732,7 @@
                             `${acceptedCount.toLocaleString("en-GB")} accepted`,
                             `${processingCount.toLocaleString("en-GB")} processing`,
                             `${skippedCount.toLocaleString("en-GB")} skipped`,
-                            `${failedCount.toLocaleString("en-GB")} failed`,
+                            `${totalFailedCount.toLocaleString("en-GB")} failed`,
                         ],
                         columns: [
                             { key: "companyName", label: "Company" },
