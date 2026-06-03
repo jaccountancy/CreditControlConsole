@@ -15575,6 +15575,34 @@ def _parse_ignition_renewal_date_value(value) -> date | None:
     return None
 
 
+def _ignition_proposal_contract_months(row: dict) -> int | None:
+    values = [
+        row.get("minimum_contract_length"),
+        row.get("minimumContractLength"),
+        row.get("contract_length"),
+        row.get("contractLength"),
+    ]
+    terms = row.get("terms") if isinstance(row.get("terms"), dict) else {}
+    values.extend(
+        [
+            terms.get("minimum_contract_length"),
+            terms.get("minimumContractLength"),
+            terms.get("contract_length"),
+            terms.get("contractLength"),
+        ]
+    )
+    for value in values:
+        if value in (None, "", 0):
+            continue
+        try:
+            months = int(Decimal(str(value)))
+        except Exception:
+            continue
+        if months > 0:
+            return months
+    return None
+
+
 def _ignition_proposal_end_date(row: dict) -> date | None:
     def walk(value) -> date | None:
         if isinstance(value, dict):
@@ -15596,7 +15624,27 @@ def _ignition_proposal_end_date(row: dict) -> date | None:
                     return parsed
         return None
 
-    return walk(row)
+    parsed_end = walk(row)
+    if parsed_end:
+        return parsed_end
+    contract_months = _ignition_proposal_contract_months(row)
+    if contract_months is None:
+        return None
+    start_candidates = (
+        row.get("accepted_at"),
+        row.get("acceptedAt"),
+        row.get("signed_at"),
+        row.get("signedAt"),
+        row.get("start_date"),
+        row.get("startDate"),
+        row.get("created_at"),
+        row.get("createdAt"),
+    )
+    for candidate in start_candidates:
+        start_date = _parse_ignition_renewal_date_value(candidate)
+        if start_date:
+            return _add_months(start_date, contract_months)
+    return None
 
 
 def _ignition_renewal_variance(current_monthly: Decimal, new_monthly: Decimal) -> tuple[Decimal, Decimal]:
@@ -16081,36 +16129,35 @@ async def create_ignition_renewal_run(user: dict) -> dict:
                 (user["id"],),
             )
             records = cursor.fetchall()
-            if not records:
-                try:
-                    proposals, _meta = await asyncio.wait_for(
-                        fetch_ignition_collection(connection, "/reporting/proposals"),
-                        timeout=IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS,
-                    )
-                    _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
-                    proposals_source = "live"
-                    cursor.execute(
-                        """
-                        SELECT external_id, payload
-                        FROM ignition_reporting_records
-                        WHERE user_id = %s
-                          AND dataset = 'proposals'
-                        """,
-                        (user["id"],),
-                    )
-                    records = cursor.fetchall()
-                except asyncio.TimeoutError:
-                    refresh_error_message = (
-                        f"Ignition proposals refresh timed out after {IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS} seconds."
-                    )
-                except httpx.HTTPError as exc:
-                    refresh_error_message = f"Ignition proposals refresh failed: {exc}"
-                except HTTPException as exc:
-                    detail = exc.detail
-                    if isinstance(detail, dict):
-                        refresh_error_message = str(detail.get("message") or detail.get("error") or "")
-                    else:
-                        refresh_error_message = str(detail or "")
+            try:
+                proposals, _meta = await asyncio.wait_for(
+                    fetch_ignition_collection(connection, "/reporting/proposals"),
+                    timeout=IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS,
+                )
+                _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
+                proposals_source = "live"
+                cursor.execute(
+                    """
+                    SELECT external_id, payload
+                    FROM ignition_reporting_records
+                    WHERE user_id = %s
+                      AND dataset = 'proposals'
+                    """,
+                    (user["id"],),
+                )
+                records = cursor.fetchall()
+            except asyncio.TimeoutError:
+                refresh_error_message = (
+                    f"Ignition proposals refresh timed out after {IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS} seconds."
+                )
+            except httpx.HTTPError as exc:
+                refresh_error_message = f"Ignition proposals refresh failed: {exc}"
+            except HTTPException as exc:
+                detail = exc.detail
+                if isinstance(detail, dict):
+                    refresh_error_message = str(detail.get("message") or detail.get("error") or "")
+                else:
+                    refresh_error_message = str(detail or "")
             if not records:
                 message = (
                     "Ignition proposals are not available yet. Run an Ignition sync, then retry creating the renewals list."
@@ -16120,7 +16167,17 @@ async def create_ignition_renewal_run(user: dict) -> dict:
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
             candidates = _ignition_upcoming_renewal_proposals(records, window_start, window_end)
 
-            cursor.execute("SELECT proposal_external_id FROM ignition_renewal_items WHERE user_id = %s", (user["id"],))
+            cursor.execute(
+                """
+                SELECT item.proposal_external_id
+                FROM ignition_renewal_items AS item
+                JOIN ignition_renewal_runs AS run ON run.id = item.run_id
+                WHERE item.user_id = %s
+                  AND run.user_id = item.user_id
+                  AND run.finalised_at IS NULL
+                """,
+                (user["id"],),
+            )
             already_picked = {row["proposal_external_id"] for row in cursor.fetchall()}
             new_items = [item for item in candidates if item["proposal_external_id"] not in already_picked]
             skipped_count = len(candidates) - len(new_items)
