@@ -13304,6 +13304,18 @@
                 from { transform: translateX(-120%); }
                 to { transform: translateX(120%); }
             }
+            @keyframes renewals-ai-populate-sheen {
+                from { transform: translateX(-120%); }
+                to { transform: translateX(120%); }
+            }
+            @keyframes renewals-input-reveal {
+                0% { opacity: 0; transform: translateY(5px) scale(0.97); }
+                100% { opacity: 1; transform: translateY(0) scale(1); }
+            }
+            @keyframes renewals-row-populated {
+                0% { box-shadow: inset 0 0 0 0 rgba(29, 103, 242, 0.2); }
+                100% { box-shadow: inset 0 0 0 0 rgba(29, 103, 242, 0); }
+            }
             @keyframes renewals-start-ai-dot {
                 0%, 100% { box-shadow: 0 0 0 0 rgba(29, 103, 242, 0.24); }
                 55% { box-shadow: 0 0 0 8px rgba(29, 103, 242, 0.07); }
@@ -13434,11 +13446,37 @@
                 opacity: 0.58;
                 cursor: not-allowed;
             }
+            .renewals-ai-populate-button.is-populating {
+                position: relative;
+                overflow: hidden;
+            }
+            .renewals-ai-populate-button.is-populating::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(112deg, rgba(255, 255, 255, 0) 16%, rgba(255, 255, 255, 0.72) 50%, rgba(255, 255, 255, 0) 84%);
+                transform: translateX(-120%);
+                animation: renewals-ai-populate-sheen 1s linear infinite;
+                pointer-events: none;
+            }
             .renewals-ai-cell {
                 display: inline-flex;
                 align-items: center;
                 gap: 7px;
                 width: 100%;
+            }
+            .ignition-renewals-pricing-table tr.is-ai-populating {
+                background: linear-gradient(90deg, rgba(29, 103, 242, 0.08), rgba(29, 103, 242, 0.02));
+                transition: background 0.25s ease;
+            }
+            .ignition-renewals-pricing-table tr.is-ai-populated {
+                animation: renewals-row-populated 0.55s ease;
+            }
+            .ignition-renewals-pricing-table input[data-renewal-field="newMonthlyFee"].is-ai-revealed {
+                animation: renewals-input-reveal 0.46s cubic-bezier(.22, .61, .36, 1);
+                border-color: rgba(29, 103, 242, 0.45);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+                background: rgba(242, 248, 255, 0.96);
             }
             .renewals-ai-hint {
                 width: 18px;
@@ -22549,6 +22587,7 @@
             let ignitionRenewalStatusChangedRunIds = new Set();
             const ignitionRenewalStatusChangedTimers = new Map();
             let ignitionRenewalAIAppliedRows = new Set();
+            let ignitionRenewalAIPopulating = false;
             const ignitionRenewalAIMetadataByRowId = new Map();
             let ignitionRenewalBatchSearchTerm = "";
             let ignitionRenewalBatchSortMode = "created-desc";
@@ -40699,14 +40738,15 @@
                         clientName: String(item.clientName || ""),
                         proposalName: String(item.proposalName || item.planName || item.serviceName || ""),
                     });
-                    const hasManualValue = Number.isFinite(proposed) && proposed > 0;
-                    const variance = hasManualValue ? proposed - current : 0;
-                    const increasePercent = hasManualValue && current > 0 ? variance / current : 0;
                     const proposalName = String(item.proposalName || item.planName || item.serviceName || "")
                         .replace(/<[^>]*>/g, " ")
                         .replace(/\s+/g, " ")
                         .trim();
                     const isAiApplied = ignitionRenewalAIAppliedRows.has(rowId);
+                    const hasManualValue = Number.isFinite(proposed) && proposed > 0;
+                    const showValue = locked || isAiApplied;
+                    const variance = showValue && hasManualValue ? proposed - current : 0;
+                    const increasePercent = showValue && hasManualValue && current > 0 ? variance / current : 0;
                     const aiTooltip = isAiApplied ? ignitionRenewalTooltipText(item, ignitionRenewalAIMetadataByRowId.get(rowId)) : "";
                     return `
                         <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
@@ -40715,12 +40755,12 @@
                             <td data-label="Net Monthly Fee" class="money-cell">${formatCurrency(current)}</td>
                             <td data-label="New Net Monthly Fee">
                                 <div class="renewals-ai-cell">
-                                    <input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${hasManualValue ? proposed.toFixed(2) : ""}" ${locked ? "disabled" : ""}>
+                                    <input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${showValue && hasManualValue ? proposed.toFixed(2) : ""}" ${locked ? "disabled" : ""}>
                                     ${isAiApplied ? `<span class="renewals-ai-hint" title="${escapeHTML(aiTooltip)}" aria-label="AI reasoning">?</span>` : ""}
                                 </div>
                             </td>
-                            <td data-label="Variance" class="money-cell" data-renewal-variance>${hasManualValue ? formatCurrency(variance) : "-"}</td>
-                            <td data-label="Uplift %" class="percent-cell" data-renewal-variance-percent>${hasManualValue ? ignitionRenewalPercent(increasePercent) : "-"}</td>
+                            <td data-label="Variance" class="money-cell" data-renewal-variance>${showValue && hasManualValue ? formatCurrency(variance) : "-"}</td>
+                            <td data-label="Uplift %" class="percent-cell" data-renewal-variance-percent>${showValue && hasManualValue ? ignitionRenewalPercent(increasePercent) : "-"}</td>
                         </tr>
                     `;
                 }).join("");
@@ -40733,7 +40773,7 @@
                                 <th>Net Monthly Fee</th>
                                 <th>
                                     <div class="renewals-ai-populate-wrap">
-                                        <button class="renewals-ai-populate-button" id="ignitionRenewalsAIPopulateButton" type="button" ${locked ? "disabled" : ""}>AI populate</button>
+                                        <button class="renewals-ai-populate-button${ignitionRenewalAIPopulating ? " is-populating" : ""}" id="ignitionRenewalsAIPopulateButton" type="button" ${locked || ignitionRenewalAIPopulating ? "disabled" : ""}>${ignitionRenewalAIPopulating ? "AI populating..." : "AI populate"}</button>
                                     </div>
                                     <span>New Net Monthly Fee</span>
                                 </th>
@@ -40787,42 +40827,78 @@
                 ].join("\n");
             }
 
-            function populateIgnitionRenewalsFromAI() {
+            async function populateIgnitionRenewalsFromAI() {
+                if (ignitionRenewalAIPopulating) return;
                 const rows = [...document.querySelectorAll("[data-renewal-row]")];
                 if (!rows.length) {
                     showToast("No pricing rows are available to populate.", "info");
                     return;
                 }
                 const run = ignitionRenewalRun();
-                let populatedCount = 0;
-                rows.forEach((row) => {
-                    const rowId = String(row.dataset.renewalId || "");
-                    const metadata = ignitionRenewalAIMetadataByRowId.get(rowId);
-                    const input = row.querySelector('[data-renewal-field="newMonthlyFee"]');
-                    if (!metadata || !input || input.disabled) return;
-                    const amount = Number(metadata.recommendedMonthly || 0);
-                    if (!Number.isFinite(amount) || amount <= 0) return;
-                    input.value = amount.toFixed(2);
-                    ignitionRenewalAIAppliedRows.add(rowId);
-                    const runItem = (run?.items || []).find((item) => String(item?.id || "") === rowId);
-                    if (runItem) runItem.newMonthlyFee = amount;
-                    updateIgnitionRenewalVariance(row);
-                    const aiCell = row.querySelector(".renewals-ai-cell");
-                    if (aiCell && !aiCell.querySelector(".renewals-ai-hint")) {
-                        aiCell.insertAdjacentHTML("beforeend", '<span class="renewals-ai-hint" aria-label="AI reasoning">?</span>');
-                    }
-                    const hint = aiCell?.querySelector(".renewals-ai-hint");
-                    if (hint) {
-                        hint.title = ignitionRenewalTooltipText(runItem || {}, metadata);
-                        hint.setAttribute("aria-label", "AI reasoning");
-                    }
-                    populatedCount += 1;
-                });
-                if (!populatedCount) {
+                const targetRows = rows
+                    .map((row) => {
+                        const rowId = String(row.dataset.renewalId || "");
+                        const metadata = ignitionRenewalAIMetadataByRowId.get(rowId);
+                        const input = row.querySelector('[data-renewal-field="newMonthlyFee"]');
+                        const amount = Number(metadata?.recommendedMonthly || 0);
+                        if (!rowId || !metadata || !input || input.disabled || !Number.isFinite(amount) || amount <= 0) {
+                            return null;
+                        }
+                        return { row, rowId, metadata, input, amount };
+                    })
+                    .filter(Boolean);
+                if (!targetRows.length) {
                     showToast("No AI pricing suggestions were available for this batch.", "info");
                     return;
                 }
-                showToast(`AI populated ${populatedCount.toLocaleString("en-GB")} fee suggestion${populatedCount === 1 ? "" : "s"}.`, "success");
+
+                ignitionRenewalAIPopulating = true;
+                const aiPopulateButton = document.getElementById("ignitionRenewalsAIPopulateButton");
+                if (aiPopulateButton) {
+                    aiPopulateButton.disabled = true;
+                    aiPopulateButton.classList.add("is-populating");
+                    aiPopulateButton.textContent = "AI populating...";
+                }
+
+                let populatedCount = 0;
+                try {
+                    for (const { row, rowId, metadata, input, amount } of targetRows) {
+                        row.classList.remove("is-ai-populated");
+                        row.classList.add("is-ai-populating");
+                        await delay(110);
+
+                        input.value = amount.toFixed(2);
+                        ignitionRenewalAIAppliedRows.add(rowId);
+                        const runItem = (run?.items || []).find((item) => String(item?.id || "") === rowId);
+                        if (runItem) runItem.newMonthlyFee = amount;
+                        updateIgnitionRenewalVariance(row);
+                        const aiCell = row.querySelector(".renewals-ai-cell");
+                        if (aiCell && !aiCell.querySelector(".renewals-ai-hint")) {
+                            aiCell.insertAdjacentHTML("beforeend", '<span class="renewals-ai-hint" aria-label="AI reasoning">?</span>');
+                        }
+                        const hint = aiCell?.querySelector(".renewals-ai-hint");
+                        if (hint) {
+                            hint.title = ignitionRenewalTooltipText(runItem || {}, metadata);
+                            hint.setAttribute("aria-label", "AI reasoning");
+                        }
+
+                        input.classList.add("is-ai-revealed");
+                        window.setTimeout(() => input.classList.remove("is-ai-revealed"), 420);
+                        row.classList.remove("is-ai-populating");
+                        row.classList.add("is-ai-populated");
+                        window.setTimeout(() => row.classList.remove("is-ai-populated"), 560);
+                        populatedCount += 1;
+                        await delay(150);
+                    }
+                } finally {
+                    ignitionRenewalAIPopulating = false;
+                    if (aiPopulateButton) {
+                        aiPopulateButton.disabled = false;
+                        aiPopulateButton.classList.remove("is-populating");
+                        aiPopulateButton.textContent = "AI populate";
+                    }
+                }
+                showToast(`AI populated ${populatedCount.toLocaleString("en-GB")} fee suggestion${populatedCount === 1 ? "" : "s"} one by one.`, "success");
             }
 
             function collectIgnitionRenewalEdits() {
