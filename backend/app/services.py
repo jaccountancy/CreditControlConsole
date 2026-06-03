@@ -16208,6 +16208,11 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
         "new_monthly_fee": new_monthly,
         "variance": variance,
         "variance_percent": variance_percent,
+        "recommended_increase_percent": IGNITION_RENEWAL_DEFAULT_UPLIFT,
+        "recommendation_reason": "",
+        "recommendation_engine": "rule",
+        "recommendation_history_sample_size": 0,
+        "recommendation_context": {},
         "comments": service_name or plan_name,
         "proposal_payload": row,
     }
@@ -16964,70 +16969,26 @@ async def _ignition_renewal_ai_summary(run: dict, items: list[dict]) -> str:
 
 
 def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str = "") -> str:
-    def _email_plain_text(value: object) -> str:
-        text = str(value or "")
-        text = re.sub(r"<[^>]*>", " ", text)
-        return re.sub(r"\s+", " ", text).strip()
-
     total_current = _money(run.get("total_current_monthly"))
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     annualised_uplift = variance * Decimal("12")
-    by_plan: dict[str, int] = defaultdict(int)
-    for item in items:
-        by_plan[item.get("plan_name") or "Other"] += 1
-    plan_summary = ", ".join(f"{plan}: {count}" for plan, count in sorted(by_plan.items())) or "No plan data"
-    summary = str(summary_text or "").strip() or _ignition_renewal_default_summary(run, items)
-    summary = re.sub(r"^\s*(?:hi|hello|dear)\b[^\n]*\n+", "", summary, flags=re.IGNORECASE).strip() or summary
     lines = [
         "Dear Amie,",
         "",
-        summary,
+        "Please find the finalised renewals batch attached as PDF.",
         "",
-        "The latest Ignition renewals round has been finalised and is ready to action.",
-        "",
+        f"Reference: {_ignition_renewal_batch_reference(run)}",
         f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}",
         f"Renewals included: {len(items)}",
         f"Current monthly fees: £{total_current:,.2f}",
         f"Proposed monthly fees: £{total_new:,.2f}",
-        f"Extra generated from this batch (monthly): £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)",
-        f"Extra generated from this batch (annualised): £{annualised_uplift:,.2f}",
-        f"Plans: {plan_summary}",
+        f"Monthly uplift: £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)",
+        f"Annualised uplift: £{annualised_uplift:,.2f}",
         "",
-        "Renewal details:",
-    ]
-
-    sorted_items = sorted(
-        items,
-        key=lambda item: (
-            _iso(item.get("renewal_date")) or "9999-12-31",
-            _email_plain_text(item.get("client_name")).lower(),
-        ),
-    )
-    for index, item in enumerate(sorted_items, start=1):
-        current = _money(item.get("current_monthly_fee"))
-        proposed = _money(item.get("new_monthly_fee"))
-        item_variance = _money(proposed - current)
-        item_variance_percent = ((item_variance / current) * Decimal("100")) if current > 0 else Decimal("0")
-        lines.extend([
-            "",
-            (
-                f"{index}. {_email_plain_text(item.get('client_name')) or 'Client'}"
-                f" | Manager: {_email_plain_text(item.get('client_manager')) or '-'}"
-                f" | Renewal date: {_iso(item.get('renewal_date')) or '-'}"
-            ),
-            (
-                f"   Current: £{current:,.2f} | Proposed: £{proposed:,.2f}"
-                f" | Variance: £{item_variance:,.2f} ({item_variance_percent:.1f}%)"
-            ),
-            f"   Plan/service: {_email_plain_text(item.get('plan_name') or item.get('service_name')) or '-'}",
-            f"   Comments: {_email_plain_text(item.get('comments')) or '-'}",
-        ])
-
-    lines.extend([
-        "",
+        "A concise client fee table is included below in this email.",
         "A PDF copy of this renewal batch is also attached.",
-    ])
+    ]
     return "\n".join(lines).strip() + "\n"
 
 
@@ -17037,36 +16998,56 @@ def _ignition_renewals_email_html_body(run: dict, items: list[dict], plain_body:
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     annualised_uplift = variance * Decimal("12")
     window_label = f"{_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
-    item_count = len(items)
     paragraphs = [segment.strip() for segment in str(plain_body or "").split("\n\n") if segment.strip()]
     body_html = "".join(
         f"<p style=\"margin:0 0 14px;\">{html.escape(paragraph).replace(chr(10), '<br>')}</p>"
         for paragraph in paragraphs
     )
-    summary_rows = [
-        ("Jaccountancy Renewal Reference Number", batch_reference),
-        ("Window", window_label),
-        ("Selected clients", f"{item_count:,}"),
-        ("Current monthly total", f"£{total_current:,.2f}"),
-        ("Proposed monthly total", f"£{total_new:,.2f}"),
-        ("Monthly uplift", f"£{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)"),
-        ("Annualised uplift", f"£{annualised_uplift:,.2f}"),
-    ]
-    summary_table_html = "".join(
+    sorted_items = sorted(
+        items,
+        key=lambda item: (
+            _iso(item.get("renewal_date")) or "9999-12-31",
+            str(item.get("client_name") or "").lower(),
+        ),
+    )
+    item_rows_html = "".join(
         "<tr>"
-        f"<th style=\"text-align:left;padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;font-weight:700;\">{html.escape(label)}</th>"
-        f"<td style=\"padding:8px 10px;border:1px solid #d5e2f1;\">{html.escape(value)}</td>"
+        f"<td style=\"padding:8px 10px;border:1px solid #d5e2f1;\">{html.escape(str(item.get('client_name') or '-'))}</td>"
+        f"<td style=\"padding:8px 10px;border:1px solid #d5e2f1;text-align:right;\">£{_money(item.get('current_monthly_fee')):,.2f}</td>"
+        f"<td style=\"padding:8px 10px;border:1px solid #d5e2f1;text-align:right;\">£{_money(item.get('new_monthly_fee')):,.2f}</td>"
         "</tr>"
-        for label, value in summary_rows
+        for item in sorted_items
+    )
+    totals_row_html = (
+        "<tr>"
+        "<th style=\"padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;text-align:left;\">Totals</th>"
+        f"<th style=\"padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;text-align:right;\">£{total_current:,.2f}</th>"
+        f"<th style=\"padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;text-align:right;\">£{total_new:,.2f}</th>"
+        "</tr>"
+    )
+    batch_summary_html = (
+        "<p style=\"margin:0 0 14px;\">"
+        f"<strong>Reference:</strong> {html.escape(batch_reference)}<br>"
+        f"<strong>Window:</strong> {html.escape(window_label)}<br>"
+        f"<strong>Monthly uplift:</strong> £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)<br>"
+        f"<strong>Annualised uplift:</strong> £{annualised_uplift:,.2f}"
+        "</p>"
     )
     return (
         "<!doctype html>"
         "<html><body style=\"margin:0;padding:20px;color:#17395A;font-family:Arial,sans-serif;font-size:15px;line-height:1.45;\">"
         f"{body_html}"
+        f"{batch_summary_html}"
         "<div style=\"margin-top:16px;\">"
-        "<h3 style=\"margin:0 0 10px;color:#0b4f86;font-size:17px;\">Renewal batch summary</h3>"
+        "<h3 style=\"margin:0 0 10px;color:#0b4f86;font-size:17px;\">Client fee summary</h3>"
         "<table style=\"width:100%;border-collapse:collapse;font-size:14px;\">"
-        f"{summary_table_html}"
+        "<tr>"
+        "<th style=\"text-align:left;padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;font-weight:700;\">Client</th>"
+        "<th style=\"text-align:right;padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;font-weight:700;\">Old monthly fee</th>"
+        "<th style=\"text-align:right;padding:8px 10px;border:1px solid #d5e2f1;background:#f3f8ff;color:#1e4168;font-weight:700;\">New monthly fee</th>"
+        "</tr>"
+        f"{item_rows_html}"
+        f"{totals_row_html}"
         "</table>"
         "</div>"
         "</body></html>"
@@ -17473,10 +17454,13 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                     INSERT INTO ignition_renewal_items (
                         run_id, user_id, proposal_external_id, proposal_name, client_id, client_name,
                         client_manager, service_name, plan_name, renewal_date, current_monthly_fee,
-                        new_monthly_fee, variance, variance_percent, comments, proposal_payload,
+                        new_monthly_fee, variance, variance_percent,
+                        recommended_increase_percent, recommendation_reason, recommendation_engine,
+                        recommendation_history_sample_size, recommendation_context,
+                        comments, proposal_payload,
                         created_at, updated_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s)
                     ON CONFLICT (user_id, proposal_external_id) DO NOTHING
                     RETURNING *
                     """,
@@ -17495,6 +17479,11 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                         item["new_monthly_fee"],
                         item["variance"],
                         item["variance_percent"],
+                        item.get("recommended_increase_percent") or Decimal("0"),
+                        str(item.get("recommendation_reason") or "").strip(),
+                        str(item.get("recommendation_engine") or "rule").strip() or "rule",
+                        int(item.get("recommendation_history_sample_size") or 0),
+                        json.dumps(item.get("recommendation_context") or {}, default=_json_default),
                         item["comments"],
                         json.dumps(item["proposal_payload"], default=_json_default),
                         utcnow(),
@@ -17570,6 +17559,22 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
                 current = _money(update.get("currentMonthlyFee"))
                 new_monthly = _money(update.get("newMonthlyFee"))
                 variance, variance_percent = _ignition_renewal_variance(current, new_monthly)
+                recommendation_reason = str(update.get("recommendationReason") or "").strip()
+                recommendation_engine = str(update.get("recommendationEngine") or "rule").strip().lower() or "rule"
+                if recommendation_engine not in {"rule", "openai", "cache", "manual"}:
+                    recommendation_engine = "rule"
+                recommendation_context = update.get("recommendationContext")
+                if not isinstance(recommendation_context, dict):
+                    recommendation_context = {}
+                try:
+                    recommendation_history_sample_size = int(update.get("recommendationHistorySampleSize") or 0)
+                except (TypeError, ValueError):
+                    recommendation_history_sample_size = 0
+                recommendation_history_sample_size = max(0, recommendation_history_sample_size)
+                try:
+                    recommended_increase_percent = _clamp_uplift_percent(Decimal(str(update.get("recommendedIncreasePercent") or 0)))
+                except Exception:
+                    recommended_increase_percent = Decimal("0")
                 cursor.execute(
                     """
                     UPDATE ignition_renewal_items
@@ -17580,6 +17585,11 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
                         new_monthly_fee = %s,
                         variance = %s,
                         variance_percent = %s,
+                        recommended_increase_percent = %s,
+                        recommendation_reason = %s,
+                        recommendation_engine = %s,
+                        recommendation_history_sample_size = %s,
+                        recommendation_context = %s::jsonb,
                         comments = %s,
                         updated_at = %s
                     WHERE id = %s
@@ -17594,6 +17604,11 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
                         new_monthly,
                         variance,
                         variance_percent,
+                        recommended_increase_percent,
+                        recommendation_reason,
+                        recommendation_engine,
+                        recommendation_history_sample_size,
+                        json.dumps(recommendation_context, default=_json_default),
                         str(update.get("comments") or "").strip(),
                         utcnow(),
                         item_id,

@@ -1011,6 +1011,11 @@ CREATE TABLE IF NOT EXISTS ignition_renewal_items (
     new_monthly_fee NUMERIC(12, 2) NOT NULL DEFAULT 0,
     variance NUMERIC(12, 2) NOT NULL DEFAULT 0,
     variance_percent NUMERIC(9, 4) NOT NULL DEFAULT 0,
+    recommended_increase_percent NUMERIC(9, 4) NOT NULL DEFAULT 0,
+    recommendation_reason TEXT NOT NULL DEFAULT '',
+    recommendation_engine TEXT NOT NULL DEFAULT 'rule',
+    recommendation_history_sample_size INTEGER NOT NULL DEFAULT 0,
+    recommendation_context JSONB NOT NULL DEFAULT '{}'::jsonb,
     comments TEXT NOT NULL DEFAULT '',
     proposal_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     zapier_sent_at TIMESTAMPTZ,
@@ -1033,6 +1038,11 @@ ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS current_monthly_fee 
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS new_monthly_fee NUMERIC(12, 2) NOT NULL DEFAULT 0;
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS variance NUMERIC(12, 2) NOT NULL DEFAULT 0;
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS variance_percent NUMERIC(9, 4) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS recommended_increase_percent NUMERIC(9, 4) NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS recommendation_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS recommendation_engine TEXT NOT NULL DEFAULT 'rule';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS recommendation_history_sample_size INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS recommendation_context JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS comments TEXT NOT NULL DEFAULT '';
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS proposal_payload JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS zapier_sent_at TIMESTAMPTZ;

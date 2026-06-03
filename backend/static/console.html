@@ -41166,6 +41166,7 @@
                     return '<div class="empty-state"><p class="eyebrow">No proposals</p><h4>No unpicked accepted active-client proposals have period end dates in the coming 8 weeks</h4><p>The safeguard is active: proposals already reserved in earlier renewal rounds are not picked up again.</p></div>';
                 }
                 ignitionRenewalAIMetadataByRowId.clear();
+                ignitionRenewalAIAppliedRows.clear();
                 const rows = items.map((item) => {
                     const rowId = String(item.id || "");
                     const current = Number(item.currentMonthlyFee || 0);
@@ -41183,6 +41184,7 @@
                         recommendedIncreasePercent,
                         reason: aiReason,
                         context: aiContext,
+                        engine: String(item.recommendationEngine || ""),
                         clientName: String(item.clientName || ""),
                         proposalName: String(item.proposalName || item.planName || item.serviceName || ""),
                     });
@@ -41190,7 +41192,9 @@
                         .replace(/<[^>]*>/g, " ")
                         .replace(/\s+/g, " ")
                         .trim();
-                    const isAiApplied = ignitionRenewalAIAppliedRows.has(rowId);
+                    const persistedAiApplied = String(item.recommendationEngine || "").trim().toLowerCase() === "openai";
+                    const isAiApplied = persistedAiApplied || ignitionRenewalAIAppliedRows.has(rowId);
+                    if (isAiApplied) ignitionRenewalAIAppliedRows.add(rowId);
                     const hasManualValue = Number.isFinite(proposed) && proposed > 0;
                     const showValue = locked || isAiApplied;
                     const variance = showValue && hasManualValue ? proposed - current : 0;
@@ -41317,7 +41321,13 @@
                     ? String(new Date(startDate).getUTCFullYear())
                     : "";
                 const currentMonthly = Number(item?.currentMonthlyFee || 0);
-                const recommendedMonthly = Number(meta.recommendedMonthly || item?.newMonthlyFee || 0);
+                const aiSuggestedMonthly = Number(context.aiSuggestedMonthly);
+                const recommendedMonthly = Number.isFinite(aiSuggestedMonthly) && aiSuggestedMonthly > 0
+                    ? aiSuggestedMonthly
+                    : Number(meta.recommendedMonthly || item?.newMonthlyFee || 0);
+                const finalMonthlyChosen = Number.isFinite(Number(context.finalMonthlyChosen))
+                    ? Number(context.finalMonthlyChosen)
+                    : Number(item?.newMonthlyFee || recommendedMonthly || 0);
                 const recommendedDelta = Number.isFinite(recommendedMonthly) ? recommendedMonthly - currentMonthly : 0;
                 const recommendedPercent = currentMonthly > 0
                     ? (recommendedDelta / currentMonthly)
@@ -41328,16 +41338,19 @@
                 const averageHistoricalPercent = historicalPercents.length
                     ? historicalPercents.reduce((sum, value) => sum + value, 0) / historicalPercents.length
                     : recommendedPercent;
+                const wasManuallyAdjustedAfterAi = Boolean(context.wasManuallyAdjustedAfterAi) || Math.abs(finalMonthlyChosen - recommendedMonthly) > 0.004;
                 const reason = String(meta.reason || item?.recommendationReason || "Recommendation based on available historical changes.").trim();
                 return {
                     proposalPoints,
                     pointChanges,
                     startYear,
                     currentMonthly,
+                    finalMonthlyChosen,
                     recommendedMonthly,
                     recommendedDelta,
                     recommendedPercent,
                     averageHistoricalPercent,
+                    wasManuallyAdjustedAfterAi,
                     reason,
                 };
             }
@@ -41357,10 +41370,13 @@
                     renewalSentences.push(`On the second renewal (${secondChange.dateLabel}) we ${ignitionRenewalAmountNarrative(secondChange.delta)} (${ignitionRenewalPercent(secondChange.percent)}).`);
                 }
                 const suggestionSentence = `For this year's renewal, I suggest ${ignitionRenewalAmountNarrative(data.recommendedDelta)} (${ignitionRenewalPercent(data.recommendedPercent)}), taking the net monthly fee to ${formatCurrency(data.recommendedMonthly)}.`;
+                const manualAdjustmentSentence = data.wasManuallyAdjustedAfterAi
+                    ? `AI suggested ${formatCurrency(data.recommendedMonthly)}, then this was manually adjusted to ${formatCurrency(data.finalMonthlyChosen)} before finalising.`
+                    : "";
                 const trendSentence = `Across ${Math.max(1, data.pointChanges.length)} historical renewal${data.pointChanges.length === 1 ? "" : "s"}, the average uplift has been ${ignitionRenewalPercent(data.averageHistoricalPercent)}.`;
                 const reasonSentence = data.reason ? `Why this recommendation: ${data.reason}` : "";
                 return {
-                    summary: [openingSentence, ...renewalSentences, suggestionSentence, trendSentence, reasonSentence].filter(Boolean).join(" "),
+                    summary: [openingSentence, ...renewalSentences, suggestionSentence, manualAdjustmentSentence, trendSentence, reasonSentence].filter(Boolean).join(" "),
                     historyLines: data.proposalPoints.length
                         ? data.proposalPoints.map((point) => `${formatDate(point.date) || point.date}: ${formatCurrency(point.mrr)}`)
                         : ["No historical proposal fee points available."],
@@ -41496,7 +41512,15 @@
                         input.value = amount.toFixed(2);
                         ignitionRenewalAIAppliedRows.add(rowId);
                         const runItem = (run?.items || []).find((item) => String(item?.id || "") === rowId);
-                        if (runItem) runItem.newMonthlyFee = amount;
+                        if (runItem) {
+                            runItem.newMonthlyFee = amount;
+                            runItem.recommendedIncreasePercent = Number(metadata?.recommendedIncreasePercent || runItem.recommendedIncreasePercent || 0);
+                            runItem.recommendationReason = String(metadata?.reason || runItem.recommendationReason || "").trim();
+                            runItem.recommendationEngine = "openai";
+                            runItem.recommendationContext = metadata?.context && typeof metadata.context === "object"
+                                ? metadata.context
+                                : (runItem.recommendationContext && typeof runItem.recommendationContext === "object" ? runItem.recommendationContext : {});
+                        }
                         updateIgnitionRenewalVariance(row);
                         const aiCell = row.querySelector(".renewals-ai-cell");
                         if (aiCell && !aiCell.querySelector(".renewals-ai-hint-button")) {
@@ -41526,19 +41550,44 @@
             }
 
             function collectIgnitionRenewalEdits() {
-                return [...document.querySelectorAll("[data-renewal-row]")].map((row) => ({
-                    id: row.dataset.renewalId || "",
-                    clientManager: row.querySelector('[data-renewal-field="clientManager"]')?.value || "",
-                    serviceName: row.dataset.serviceName || "",
-                    planName: row.dataset.planName || "",
-                    currentMonthlyFee: Number(row.dataset.currentMonthly || 0),
-                    newMonthlyFee: Number(
+                const run = ignitionRenewalRun();
+                const itemsById = new Map((run?.items || []).map((item) => [String(item?.id || ""), item]));
+                return [...document.querySelectorAll("[data-renewal-row]")].map((row) => {
+                    const rowId = String(row.dataset.renewalId || "");
+                    const metadata = ignitionRenewalAIMetadataByRowId.get(rowId) || {};
+                    const runItem = itemsById.get(rowId) || {};
+                    const aiApplied = ignitionRenewalAIAppliedRows.has(rowId);
+                    const proposedMonthlyFee = Number(
                         String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim()
                         || String(row.dataset.newMonthly || "").trim()
                         || 0
-                    ),
-                    comments: row.querySelector('[data-renewal-field="comments"]')?.value || row.dataset.comments || ""
-                }));
+                    );
+                    const recommendationContextBase = runItem.recommendationContext && typeof runItem.recommendationContext === "object"
+                        ? { ...runItem.recommendationContext }
+                        : (metadata.context && typeof metadata.context === "object" ? { ...metadata.context } : {});
+                    const aiSuggestedMonthly = Number(metadata.recommendedMonthly ?? recommendationContextBase.aiSuggestedMonthly ?? 0);
+                    const aiSuggestedKnown = Number.isFinite(aiSuggestedMonthly) && aiSuggestedMonthly > 0;
+                    const wasManuallyAdjustedAfterAi = aiApplied && aiSuggestedKnown && Math.abs(proposedMonthlyFee - aiSuggestedMonthly) > 0.004;
+                    if (aiApplied && aiSuggestedKnown) recommendationContextBase.aiSuggestedMonthly = Number(aiSuggestedMonthly.toFixed(2));
+                    if (aiApplied) recommendationContextBase.finalMonthlyChosen = Number(proposedMonthlyFee.toFixed(2));
+                    if (aiApplied) recommendationContextBase.wasManuallyAdjustedAfterAi = wasManuallyAdjustedAfterAi;
+                    return {
+                        id: rowId,
+                        clientManager: row.querySelector('[data-renewal-field="clientManager"]')?.value || "",
+                        serviceName: row.dataset.serviceName || "",
+                        planName: row.dataset.planName || "",
+                        currentMonthlyFee: Number(row.dataset.currentMonthly || 0),
+                        newMonthlyFee: proposedMonthlyFee,
+                        recommendedIncreasePercent: Number(runItem.recommendedIncreasePercent ?? metadata.recommendedIncreasePercent ?? 0),
+                        recommendationReason: String(runItem.recommendationReason || metadata.reason || "").trim(),
+                        recommendationEngine: aiApplied
+                            ? "openai"
+                            : String(runItem.recommendationEngine || metadata.engine || "rule").trim().toLowerCase(),
+                        recommendationHistorySampleSize: Number(runItem.recommendationHistorySampleSize || 0),
+                        recommendationContext: recommendationContextBase,
+                        comments: row.querySelector('[data-renewal-field="comments"]')?.value || row.dataset.comments || ""
+                    };
+                });
             }
 
             function ignitionRenewalsMissingNewFeeCount() {
@@ -42073,6 +42122,12 @@
                 if (!ensureIgnitionRenewalsNewFeesEntered("finalising")) return;
                 if (!window.confirm("Finalise this renewals round? After finalising you can export the PDF report for Amie to create the renewals in Ignition.")) return;
                 try {
+                    const savePayload = await requestJSON(
+                        api.endpoints.ignitionRenewalRun,
+                        { method: "POST", body: JSON.stringify({ items: collectIgnitionRenewalEdits() }) },
+                        { runId: run.id }
+                    );
+                    ignitionData.renewals = savePayload.renewals || ignitionData.renewals || {};
                     const wasAlreadyFinalised = Boolean(run.finalisedAt);
                     const payload = await requestJSON(api.endpoints.ignitionRenewalFinalise, { method: "POST", body: JSON.stringify({}) }, { runId: run.id });
                     if (!payload.alreadyFinalised && !wasAlreadyFinalised) {
