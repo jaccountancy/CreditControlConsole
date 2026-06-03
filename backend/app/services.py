@@ -15459,6 +15459,8 @@ def _ignition_proposal_is_self_assessment(row: dict) -> bool:
         "accounts & ct",
         "accounts and ct",
         "accountant letter",
+        "late payment charge",
+        "lpc",
     )
     return any(marker in text for marker in markers)
 
