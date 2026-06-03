@@ -27,6 +27,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 import httpx
 from fastapi import HTTPException, status
+from psycopg import errors as pg_errors
 
 from .config import get_settings
 from .database import get_connection, utcnow
@@ -16566,56 +16567,82 @@ def _ignition_renewal_reference_label(reference_number: int) -> str:
     return f"JUKRE-{max(1, int(reference_number or 0)):03d}"
 
 
+def _ignition_renewal_batch_reference_legacy_number(cursor, user_id: str, run_id: str) -> int:
+    cursor.execute(
+        """
+        SELECT sequence.reference_number
+        FROM (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS reference_number
+            FROM ignition_renewal_runs
+            WHERE user_id = %s
+        ) AS sequence
+        WHERE sequence.id = %s
+        """,
+        (user_id, run_id),
+    )
+    row = cursor.fetchone() or {}
+    return int(row.get("reference_number") or 1)
+
+
 def _ensure_ignition_renewal_batch_reference_number(cursor, user_id: str, run_id: str) -> int:
-    cursor.execute(
-        """
-        SELECT batch_reference_number
-        FROM ignition_renewal_runs
-        WHERE id = %s AND user_id = %s
-        """,
-        (run_id, user_id),
-    )
-    existing = cursor.fetchone()
-    existing_number = int(existing.get("batch_reference_number") or 0) if existing else 0
-    if existing_number > 0:
-        return existing_number
+    try:
+        cursor.execute(
+            """
+            SELECT batch_reference_number
+            FROM ignition_renewal_runs
+            WHERE id = %s AND user_id = %s
+            """,
+            (run_id, user_id),
+        )
+        existing = cursor.fetchone()
+        existing_number = int(existing.get("batch_reference_number") or 0) if existing else 0
+        if existing_number > 0:
+            return existing_number
 
-    cursor.execute(
-        """
-        SELECT COALESCE(MAX(batch_reference_number), 0) AS max_reference
-        FROM ignition_renewal_runs
-        WHERE user_id = %s
-        """,
-        (user_id,),
-    )
-    max_row = cursor.fetchone() or {}
-    next_number = int(max_row.get("max_reference") or 0) + 1
-    cursor.execute(
-        """
-        UPDATE ignition_renewal_runs
-        SET batch_reference_number = %s,
-            updated_at = NOW()
-        WHERE id = %s
-          AND user_id = %s
-          AND (batch_reference_number IS NULL OR batch_reference_number = 0)
-        RETURNING batch_reference_number
-        """,
-        (next_number, run_id, user_id),
-    )
-    updated = cursor.fetchone()
-    if updated:
-        return int(updated.get("batch_reference_number") or next_number)
+        # Serialize per-user reference assignment to avoid race conditions.
+        lock_key = f"ignition-renewal-batch-ref:{user_id}"
+        cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (lock_key,))
 
-    cursor.execute(
-        """
-        SELECT batch_reference_number
-        FROM ignition_renewal_runs
-        WHERE id = %s AND user_id = %s
-        """,
-        (run_id, user_id),
-    )
-    final_row = cursor.fetchone() or {}
-    return int(final_row.get("batch_reference_number") or next_number)
+        cursor.execute(
+            """
+            SELECT COALESCE(MAX(batch_reference_number), 0) AS max_reference
+            FROM ignition_renewal_runs
+            WHERE user_id = %s
+            """,
+            (user_id,),
+        )
+        max_row = cursor.fetchone() or {}
+        next_number = int(max_row.get("max_reference") or 0) + 1
+        cursor.execute(
+            """
+            UPDATE ignition_renewal_runs
+            SET batch_reference_number = %s,
+                updated_at = NOW()
+            WHERE id = %s
+              AND user_id = %s
+              AND (batch_reference_number IS NULL OR batch_reference_number = 0)
+            RETURNING batch_reference_number
+            """,
+            (next_number, run_id, user_id),
+        )
+        updated = cursor.fetchone()
+        if updated:
+            return int(updated.get("batch_reference_number") or next_number)
+
+        cursor.execute(
+            """
+            SELECT batch_reference_number
+            FROM ignition_renewal_runs
+            WHERE id = %s AND user_id = %s
+            """,
+            (run_id, user_id),
+        )
+        final_row = cursor.fetchone() or {}
+        return int(final_row.get("batch_reference_number") or next_number)
+    except pg_errors.UndefinedColumn:
+        # Backward-compatible fallback for environments where schema migration
+        # has not applied yet.
+        return _ignition_renewal_batch_reference_legacy_number(cursor, user_id, run_id)
 
 
 def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None = None) -> dict | None:
