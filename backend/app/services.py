@@ -16795,7 +16795,107 @@ def _build_ignition_renewals_workbook(items: list[dict]) -> bytes:
     return _build_simple_xlsx_workbook(rows, "Renewals")
 
 
-def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
+def _ignition_renewal_default_summary(run: dict, items: list[dict]) -> str:
+    total_current = _money(run.get("total_current_monthly"))
+    total_new = _money(run.get("total_new_monthly"))
+    variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    annualised_uplift = variance * Decimal("12")
+    top_items = sorted(
+        items,
+        key=lambda item: _money(item.get("new_monthly_fee")) - _money(item.get("current_monthly_fee")),
+        reverse=True,
+    )[:3]
+    highlights = []
+    for item in top_items:
+        current_fee = _money(item.get("current_monthly_fee"))
+        proposed_fee = _money(item.get("new_monthly_fee"))
+        item_variance = proposed_fee - current_fee
+        if item_variance <= 0:
+            continue
+        highlights.append(
+            f"{item.get('client_name') or 'Client'} (+£{item_variance:,.2f} / month)"
+        )
+    highlight_text = ", ".join(highlights) if highlights else "No individual uplift highlights"
+    return (
+        f"This finalised renewals batch contains {len(items)} proposal{'s' if len(items) != 1 else ''}. "
+        f"Monthly fees move from £{total_current:,.2f} to £{total_new:,.2f}, generating "
+        f"£{variance:,.2f} uplift per month ({variance_percent * Decimal('100'):.1f}%) and "
+        f"£{annualised_uplift:,.2f} annualised uplift. Key uplift contributors: {highlight_text}."
+    )
+
+
+async def _ignition_renewal_ai_summary(run: dict, items: list[dict]) -> str:
+    fallback = _ignition_renewal_default_summary(run, items)
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return fallback
+    total_current = _money(run.get("total_current_monthly"))
+    total_new = _money(run.get("total_new_monthly"))
+    variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
+    compact_items = []
+    for item in sorted(
+        items,
+        key=lambda row: _money(row.get("new_monthly_fee")) - _money(row.get("current_monthly_fee")),
+        reverse=True,
+    )[:40]:
+        compact_items.append(
+            {
+                "clientName": item.get("client_name") or "",
+                "manager": item.get("client_manager") or "",
+                "planName": item.get("plan_name") or item.get("service_name") or "",
+                "currentMonthlyFee": float(_money(item.get("current_monthly_fee"))),
+                "newMonthlyFee": float(_money(item.get("new_monthly_fee"))),
+                "variance": float(_money(item.get("new_monthly_fee")) - _money(item.get("current_monthly_fee"))),
+            }
+        )
+    request_body = {
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Write a concise UK business email summary for a finalised Ignition renewals batch. "
+                            "Use plain English, no markdown, no bullets. Keep it to 2 short paragraphs."
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(
+                            {
+                                "windowStart": _iso(run.get("window_start")),
+                                "windowEnd": _iso(run.get("window_end")),
+                                "itemCount": len(items),
+                                "totalCurrentMonthly": float(total_current),
+                                "totalNewMonthly": float(total_new),
+                                "monthlyUplift": float(variance),
+                                "upliftPercent": float(variance_percent * Decimal("100")),
+                                "items": compact_items,
+                            },
+                            default=_json_default,
+                        ),
+                    }
+                ],
+            },
+        ],
+        "max_output_tokens": 420,
+    }
+    try:
+        payload = await _post_openai_responses(request_body, "ignition renewals email summary")
+        text = _extract_response_text(payload).strip()
+        return text or fallback
+    except Exception as exc:
+        logger.warning("Unable to generate AI summary for ignition renewals email: %s", exc)
+        return fallback
+
+
+def _ignition_renewal_email_body(run: dict, items: list[dict], summary_text: str = "") -> str:
     total_current = _money(run.get("total_current_monthly"))
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
@@ -16804,8 +16904,10 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
     for item in items:
         by_plan[item.get("plan_name") or "Other"] += 1
     plan_summary = ", ".join(f"{plan}: {count}" for plan, count in sorted(by_plan.items())) or "No plan data"
+    summary = str(summary_text or "").strip() or _ignition_renewal_default_summary(run, items)
     return (
-        "Hi Amie,\n\n"
+        "Hi,\n\n"
+        f"{summary}\n\n"
         "The latest Ignition renewals round has been finalised and is ready to action.\n\n"
         f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}\n"
         f"Renewals included: {len(items)}\n"
@@ -17243,26 +17345,58 @@ def mark_ignition_renewal_proposals_ineligible(user: dict, payload: dict | None 
     return {"renewals": ignition_renewals_payload(user), "markedCount": len(cleaned_ids)}
 
 
-async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
+def _clean_ignition_renewal_email(value: object) -> str:
+    email = str(value or "").strip()
+    if not email:
+        return ""
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid recipient email address.")
+    return email
+
+
+def _ignition_renewals_email_subject(run: dict) -> str:
+    return f"Ignition renewals to action: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
+
+
+async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict | None = None) -> dict:
     settings = get_settings()
-    recipient = str(settings.ignition_renewals_recipient_email or "").strip()
-    if not recipient:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_RECIPIENT_EMAIL before sending renewal rounds.")
-    if not settings.smtp_host or not settings.smtp_from_email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending renewal emails.")
+    safe_payload = payload if isinstance(payload, dict) else {}
     run, items = _ignition_renewal_run_with_items(user, run_id)
     if not items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to email.")
     if not run.get("finalised_at"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before emailing Amie.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before emailing.")
+    recipient = _clean_ignition_renewal_email(
+        safe_payload.get("recipientEmail") or safe_payload.get("recipient") or settings.ignition_renewals_recipient_email
+    )
+    if not recipient:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_RECIPIENT_EMAIL or provide a recipient email.")
+    subject = str(safe_payload.get("subject") or "").strip() or _ignition_renewals_email_subject(run)
+    custom_body = str(safe_payload.get("body") or "").strip()
+    if custom_body:
+        body = custom_body
+    else:
+        summary = await _ignition_renewal_ai_summary(run, items)
+        body = _ignition_renewal_email_body(run, items, summary_text=summary)
+    return {"recipientEmail": recipient, "subject": subject, "body": body}
+
+
+async def send_ignition_renewals_email(user: dict, run_id: str, payload: dict | None = None) -> dict:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending renewal emails.")
+    email_preview = await ignition_renewals_email_preview(user, run_id, payload)
+    recipient = email_preview["recipientEmail"]
+    subject = email_preview["subject"]
+    body = email_preview["body"]
+    run, items = _ignition_renewal_run_with_items(user, run_id)
     report_pdf = _build_ignition_renewals_pdf(run, items)
     filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
-    subject = f"Ignition renewals to action: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
     message["To"] = recipient
-    message.set_content(_ignition_renewal_email_body(run, items))
+    message.set_content(body)
     message.add_attachment(
         report_pdf,
         maintype="application",

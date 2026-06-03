@@ -20908,6 +20908,37 @@
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalHistoryTableWrap"></div>
                             </section>
                         </div>
+                        <div class="ignition-renewals-modal" id="ignitionRenewalEmailModal" hidden>
+                            <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalEmailTitle">
+                                <div class="ignition-renewals-modal-head">
+                                    <div>
+                                        <p class="eyebrow">Renewals email</p>
+                                        <h3 id="ignitionRenewalEmailTitle">Send finalised renewals PDF</h3>
+                                        <p class="detail-meta" id="ignitionRenewalEmailSummary">Review recipient and AI summary before sending.</p>
+                                    </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="closeIgnitionRenewalEmailButton" type="button">Close</button>
+                                        <button class="primary-button" id="sendIgnitionRenewalEmailButton" type="button">Send email</button>
+                                    </div>
+                                </div>
+                                <div class="ignition-renewals-table-wrap">
+                                    <div class="supplier-recon-email-grid">
+                                        <label>
+                                            To
+                                            <input id="ignitionRenewalEmailTo" type="email" autocomplete="off" placeholder="recipient@example.com">
+                                        </label>
+                                        <label class="full">
+                                            Subject
+                                            <input id="ignitionRenewalEmailSubject" type="text" autocomplete="off">
+                                        </label>
+                                        <label class="full">
+                                            Message
+                                            <textarea id="ignitionRenewalEmailBody" rows="11"></textarea>
+                                        </label>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
                         <section class="ignition-tab-panel" data-ignition-panel="staff-income" hidden>
                             <section class="detail-panel ignition-staff-fee-panel">
                                 <div class="ignition-report-head">
@@ -22777,6 +22808,9 @@
             let ignitionRenewalBatchRefCounter = Math.max(0, ...Object.values(ignitionRenewalBatchRefs).map((value) => Number(value) || 0));
             let ignitionRenewalStartModalOpen = false;
             let ignitionRenewalHistoryModalOpen = false;
+            let ignitionRenewalEmailModalOpen = false;
+            let ignitionRenewalEmailSending = false;
+            let ignitionRenewalEmailRunId = "";
             let ignitionRenewalHistoryLoading = false;
             let ignitionRenewalHistorySelectedRunId = "";
             const ignitionRenewalHistoryByRunId = new Map();
@@ -23200,6 +23234,7 @@
                         ignitionRenewalIneligible: config.endpoints?.ignitionRenewalIneligible || "/api/ignition/renewals/ineligible",
                         ignitionRenewalDelete: config.endpoints?.ignitionRenewalDelete || "/api/ignition/renewals/:runId",
                         ignitionRenewalEmail: config.endpoints?.ignitionRenewalEmail || "/api/ignition/renewals/:runId/email",
+                        ignitionRenewalEmailPreview: config.endpoints?.ignitionRenewalEmailPreview || "/api/ignition/renewals/:runId/email-preview",
                         ignitionRenewalPdf: config.endpoints?.ignitionRenewalPdf || "/api/ignition/renewals/:runId/pdf",
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
                         meReport: config.endpoints?.meReport || "/api/me-report",
@@ -40834,12 +40869,24 @@
                                                 <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-view-run="${escapeHTML(run.id || "")}" title="View batch" aria-label="View batch">
                                                     <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
                                                 </button>
-                                                <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-edit-run="${escapeHTML(run.id || "")}" ${ignitionRenewalRunIsLocked(run) ? "disabled" : ""} title="Edit batch" aria-label="Edit batch">
-                                                    <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"></path></svg></span>
-                                                </button>
-                                                <button class="ghost-button renewals-action-icon-button danger-button" type="button" data-renewals-delete-run="${escapeHTML(run.id || "")}" ${ignitionRenewalRunIsLocked(run) ? "disabled" : ""} title="${ignitionRenewalRunIsLocked(run) ? "Completed/finished batches cannot be deleted" : "Delete batch"}" aria-label="Delete batch">
-                                                    <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
-                                                </button>
+                                                ${ignitionRenewalRunIsLocked(run)
+                                                    ? `
+                                                        <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-email-run="${escapeHTML(run.id || "")}" title="Email finalised batch" aria-label="Email finalised batch">
+                                                            <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z"></path><path d="m3 8 9 6 9-6"></path></svg></span>
+                                                        </button>
+                                                        <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-download-run="${escapeHTML(run.id || "")}" title="Download finalised batch PDF" aria-label="Download finalised batch PDF">
+                                                            <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3v11"></path><path d="m8 10 4 4 4-4"></path><path d="M5 18h14"></path></svg></span>
+                                                        </button>
+                                                    `
+                                                    : `
+                                                        <button class="ghost-button renewals-action-icon-button" type="button" data-renewals-edit-run="${escapeHTML(run.id || "")}" title="Edit batch" aria-label="Edit batch">
+                                                            <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z"></path></svg></span>
+                                                        </button>
+                                                        <button class="ghost-button renewals-action-icon-button danger-button" type="button" data-renewals-delete-run="${escapeHTML(run.id || "")}" title="Delete batch" aria-label="Delete batch">
+                                                            <span class="renewals-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 14h10l1-14"></path></svg></span>
+                                                        </button>
+                                                    `
+                                                }
                                             </div>
                                         </td>
                                     </tr>
@@ -41617,28 +41664,114 @@
                 }
             }
 
+            function closeIgnitionRenewalEmailModal() {
+                ignitionRenewalEmailModalOpen = false;
+                ignitionRenewalEmailSending = false;
+                ignitionRenewalEmailRunId = "";
+                const modal = document.getElementById("ignitionRenewalEmailModal");
+                const sendButton = document.getElementById("sendIgnitionRenewalEmailButton");
+                if (sendButton) {
+                    sendButton.disabled = false;
+                    sendButton.textContent = "Send email";
+                }
+                if (modal) modal.hidden = true;
+            }
+
+            async function openIgnitionRenewalEmailModal(runId = "") {
+                const targetRunId = String(runId || "").trim();
+                if (!targetRunId) return;
+                const summary = document.getElementById("ignitionRenewalEmailSummary");
+                const toInput = document.getElementById("ignitionRenewalEmailTo");
+                const subjectInput = document.getElementById("ignitionRenewalEmailSubject");
+                const bodyInput = document.getElementById("ignitionRenewalEmailBody");
+                const sendButton = document.getElementById("sendIgnitionRenewalEmailButton");
+                const modal = document.getElementById("ignitionRenewalEmailModal");
+                ignitionRenewalEmailModalOpen = true;
+                ignitionRenewalEmailSending = false;
+                ignitionRenewalEmailRunId = targetRunId;
+                if (modal) modal.hidden = false;
+                if (sendButton) {
+                    sendButton.disabled = true;
+                    sendButton.textContent = "Send email";
+                }
+                if (summary) summary.textContent = "Generating AI summary draft...";
+                if (toInput) toInput.value = ignitionData.renewals?.recipientEmail || "";
+                if (subjectInput) subjectInput.value = "";
+                if (bodyInput) bodyInput.value = "";
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewalEmailPreview, {}, { runId: targetRunId });
+                    const email = payload?.email || {};
+                    if (toInput) toInput.value = String(email.recipientEmail || ignitionData.renewals?.recipientEmail || "");
+                    if (subjectInput) subjectInput.value = String(email.subject || "");
+                    if (bodyInput) bodyInput.value = String(email.body || "");
+                    if (summary) summary.textContent = "Review recipient and AI summary before sending.";
+                    if (sendButton) sendButton.disabled = false;
+                    setTimeout(() => document.getElementById("ignitionRenewalEmailTo")?.focus(), 0);
+                } catch (error) {
+                    console.error("Unable to build ignition renewals email preview", error);
+                    if (summary) summary.textContent = error.message || "Unable to generate the email preview.";
+                    showToast(error.message || "Unable to generate email preview", "error");
+                }
+            }
+
+            async function sendIgnitionRenewalEmailFromModal() {
+                const targetRunId = String(ignitionRenewalEmailRunId || "").trim();
+                if (!targetRunId || ignitionRenewalEmailSending) return;
+                const toInput = document.getElementById("ignitionRenewalEmailTo");
+                const subjectInput = document.getElementById("ignitionRenewalEmailSubject");
+                const bodyInput = document.getElementById("ignitionRenewalEmailBody");
+                const sendButton = document.getElementById("sendIgnitionRenewalEmailButton");
+                const summary = document.getElementById("ignitionRenewalEmailSummary");
+                const recipientEmail = String(toInput?.value || "").trim();
+                const subject = String(subjectInput?.value || "").trim();
+                const body = String(bodyInput?.value || "").trim();
+                if (!recipientEmail) {
+                    showToast("Enter a recipient email before sending.", "error");
+                    return;
+                }
+                ignitionRenewalEmailSending = true;
+                if (sendButton) {
+                    sendButton.disabled = true;
+                    sendButton.textContent = "Sending...";
+                }
+                if (summary) summary.textContent = "Sending renewal report email...";
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.ignitionRenewalEmail,
+                        { method: "POST", body: JSON.stringify({ recipientEmail, subject, body }) },
+                        { runId: targetRunId }
+                    );
+                    ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
+                    showToast("Renewals report emailed", "success");
+                    closeIgnitionRenewalEmailModal();
+                    renderIgnitionScreen();
+                } catch (error) {
+                    console.error("Unable to email renewals report", error);
+                    if (summary) summary.textContent = error.message || "Unable to send renewals email.";
+                    showToast(error.message || "Unable to email renewals report", "error");
+                    ignitionRenewalEmailSending = false;
+                    if (sendButton) {
+                        sendButton.disabled = false;
+                        sendButton.textContent = "Send email";
+                    }
+                }
+            }
+
             async function emailIgnitionRenewals() {
                 const run = ignitionRenewalRun();
                 if (!run?.id) return;
                 if (!ensureIgnitionRenewalsNewFeesEntered("emailing")) return;
-                const recipient = ignitionData.renewals?.recipientEmail || "Amie";
-                if (!window.confirm(`Email the finalised renewals pack to ${recipient}?`)) return;
-                try {
-                    const payload = await requestJSON(api.endpoints.ignitionRenewalEmail, { method: "POST", body: JSON.stringify({ items: collectIgnitionRenewalEdits() }) }, { runId: run.id });
-                    ignitionData.renewals = payload.renewals || ignitionData.renewals || {};
-                    showToast("Renewals workbook emailed", "success");
-                    renderIgnitionScreen();
-                } catch (error) {
-                    console.error("Unable to email renewals workbook", error);
-                    showToast(error.message || "Unable to email renewals workbook", "error");
-                }
+                openIgnitionRenewalEmailModal(run.id);
             }
 
-            async function exportIgnitionRenewalsPdf() {
-                const run = ignitionRenewalRun();
-                if (!run?.id) return;
+            async function downloadIgnitionRenewalsPdfForRun(runId = "") {
+                const targetRunId = String(runId || "").trim();
+                if (!targetRunId) return;
+                const fallbackRun = (Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [])
+                    .find((row) => String(row?.id || "") === targetRunId)
+                    || ignitionRenewalRun();
                 try {
-                    const response = await fetch(endpointURL(api.endpoints.ignitionRenewalPdf, { runId: run.id }), {
+                    const response = await fetch(endpointURL(api.endpoints.ignitionRenewalPdf, { runId: targetRunId }), {
                         credentials: "include",
                         headers: { ...api.headers, ...panelAuthHeaders() },
                     });
@@ -41652,7 +41785,7 @@
                     const url = URL.createObjectURL(blob);
                     const anchor = document.createElement("a");
                     anchor.href = url;
-                    anchor.download = `ignition-renewals-${(run.windowStart || "window-start").slice(0, 10)}-to-${(run.windowEnd || "window-end").slice(0, 10)}.pdf`;
+                    anchor.download = `ignition-renewals-${(fallbackRun?.windowStart || "window-start").slice(0, 10)}-to-${(fallbackRun?.windowEnd || "window-end").slice(0, 10)}.pdf`;
                     document.body.appendChild(anchor);
                     anchor.click();
                     anchor.remove();
@@ -41661,6 +41794,12 @@
                     console.error("Unable to export renewals PDF", error);
                     showToast(error.message || "Unable to export renewals PDF", "error");
                 }
+            }
+
+            async function exportIgnitionRenewalsPdf() {
+                const run = ignitionRenewalRun();
+                if (!run?.id) return;
+                return downloadIgnitionRenewalsPdfForRun(run.id);
             }
 
             async function finaliseIgnitionRenewals() {
@@ -55581,6 +55720,14 @@
                 if (exportIgnitionRenewalsPdfButton) exportIgnitionRenewalsPdfButton.addEventListener("click", exportIgnitionRenewalsPdf);
                 const finaliseIgnitionRenewalsButton = document.getElementById("finaliseIgnitionRenewalsButton");
                 if (finaliseIgnitionRenewalsButton) finaliseIgnitionRenewalsButton.addEventListener("click", finaliseIgnitionRenewals);
+                const closeIgnitionRenewalEmailButton = document.getElementById("closeIgnitionRenewalEmailButton");
+                if (closeIgnitionRenewalEmailButton) closeIgnitionRenewalEmailButton.addEventListener("click", closeIgnitionRenewalEmailModal);
+                const sendIgnitionRenewalEmailButton = document.getElementById("sendIgnitionRenewalEmailButton");
+                if (sendIgnitionRenewalEmailButton) sendIgnitionRenewalEmailButton.addEventListener("click", sendIgnitionRenewalEmailFromModal);
+                const ignitionRenewalEmailModal = document.getElementById("ignitionRenewalEmailModal");
+                if (ignitionRenewalEmailModal) ignitionRenewalEmailModal.addEventListener("click", (event) => {
+                    if (event.target?.id === "ignitionRenewalEmailModal") closeIgnitionRenewalEmailModal();
+                });
                 const ignitionRenewalsTableWrap = document.getElementById("ignitionRenewalsTableWrap");
                 if (ignitionRenewalsTableWrap) ignitionRenewalsTableWrap.addEventListener("input", (event) => {
                     if (event.target?.id === "ignitionRenewalsBatchSearchInput") {
@@ -55696,6 +55843,18 @@
                         if (runId) loadIgnitionRenewalRunIntoWorkspace(runId);
                         return;
                     }
+                    const emailRunButton = event.target.closest?.("[data-renewals-email-run]");
+                    if (emailRunButton) {
+                        const runId = String(emailRunButton.dataset.renewalsEmailRun || "").trim();
+                        if (runId) openIgnitionRenewalEmailModal(runId);
+                        return;
+                    }
+                    const downloadRunButton = event.target.closest?.("[data-renewals-download-run]");
+                    if (downloadRunButton) {
+                        const runId = String(downloadRunButton.dataset.renewalsDownloadRun || "").trim();
+                        if (runId) downloadIgnitionRenewalsPdfForRun(runId);
+                        return;
+                    }
                     const editRunButton = event.target.closest?.("[data-renewals-edit-run]");
                     if (editRunButton) {
                         const runId = String(editRunButton.dataset.renewalsEditRun || "").trim();
@@ -55733,6 +55892,7 @@
                 document.addEventListener("keydown", (event) => {
                     if (event.key === "Escape" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
                     if (event.key === "Escape" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
+                    if (event.key === "Escape" && ignitionRenewalEmailModalOpen) closeIgnitionRenewalEmailModal();
                     if (event.key === "Escape" && ignitionRenewalReasoningModalOpen) closeIgnitionRenewalReasoningModal();
                 });
                 const addMeReportClientButton = document.getElementById("addMeReportClientButton");

@@ -91,6 +91,7 @@ from .services import (
     create_ignition_renewal_run,
     delete_ignition_renewal_run,
     finalise_ignition_renewals,
+    ignition_renewals_email_preview,
     ignition_renewals_report_pdf,
     mark_ignition_renewal_proposals_ineligible,
     insights_payload,
@@ -1663,9 +1664,16 @@ def api_delete_ignition_renewal_run(run_id: str, user: dict = Depends(require_pa
 
 @app.post("/api/ignition/renewals/{run_id}/email")
 async def api_send_ignition_renewals_email(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
-    payload = await request.json()
-    update_ignition_renewal_run(user, run_id, payload)
-    return {"status": "ok", **await send_ignition_renewals_email(user, run_id)}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await send_ignition_renewals_email(user, run_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.get("/api/ignition/renewals/{run_id}/email-preview")
+async def api_ignition_renewals_email_preview(run_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "email": await ignition_renewals_email_preview(user, run_id)}
 
 
 @app.post("/api/ignition/renewals/{run_id}/finalise")
