@@ -18225,10 +18225,6 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path><path d="m15 17 2 2 3-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>HMRC 64-8s</strong><span>Agent authority</span></span>
                                 </a>
-                                <a class="app-nav-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Client Register</strong><span>CH auth code directory</span></span>
-                                </a>
                                 <a class="app-nav-button" href="#credit-control-ignition" data-app-nav="ignition">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Renewals</strong><span>Proposal workspace</span></span>
@@ -18272,6 +18268,10 @@
                                 <a class="app-nav-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>CS, Secretarial, Lock Dates</span></span>
+                                </a>
+                                <a class="app-nav-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Client Register</strong><span>CH auth code directory</span></span>
                                 </a>
                                 <button class="app-nav-button" type="button" data-settings-nav="mapping">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
@@ -25489,6 +25489,7 @@
                 if (activeView === "late-charges") return "lpcs";
                 if (activeView === "bad-debt") return "bad-debt";
                 if (activeView === "risk-assessments") return "risk-assessments";
+                if (activeView === "confirmation-statements" && companiesHouseState.activeTab === "settings") return "client-auth-register";
                 if (activeView === "confirmation-statements") return "confirmation-statements";
                 if (activeView === "sa100-prep") return "sa100-prep";
                 if (activeView === "company-secretarial" || activeView === "company-secreterial") return "company-secretarial";
@@ -25853,6 +25854,7 @@
                 if (section === "bad-debt") return openBadDebtScreen();
                 if (section === "risk-assessments") return openRiskAssessmentsScreen();
                 if (section === "confirmation-statements") return openConfirmationStatementsScreen();
+                if (section === "client-auth-register") return openClientAuthRegisterScreen();
                 if (section === "company-secretarial" || section === "company-secreterial") return openCompanySecreterialScreen();
                 if (section === "hmrc-64-8s") return openHmrc648Screen();
                 if (section === "aml-verification") return openAmlVerificationScreen();
@@ -26016,7 +26018,7 @@
             const sidebarNavGroups = {
                 "credit-control": creditControlNavSections,
                 "practice-tools": practiceToolsNavSections,
-                settings: new Set(["settings"]),
+                settings: new Set(["settings", "client-auth-register"]),
             };
             let sidebarSupportHistory = [];
             let sidebarSupportHistoryOpen = false;
@@ -26104,6 +26106,7 @@
                 "bad-debt": "credit-control-bad-debt",
                 "risk-assessments": "credit-control-risk-assessments",
                 "confirmation-statements": "credit-control-confirmation-statements",
+                "client-auth-register": "credit-control-client-auth-register",
                 "company-secretarial": "credit-control-company-secretarial",
                 "company-secreterial": "credit-control-company-secreterial",
                 "hmrc-64-8s": "credit-control-hmrc-64-8s",
@@ -29128,6 +29131,11 @@
                 activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                 loadCompaniesHouseSettings();
                 scrollConsoleToTop();
+            }
+
+            function openClientAuthRegisterScreen() {
+                companiesHouseState.activeTab = "settings";
+                openConfirmationStatementsScreen();
             }
 
             function openCompanySecreterialScreen() {
@@ -49442,6 +49450,7 @@
                 else if (activeView === "late-charges") activeNavSection = "lpcs";
                 else if (activeView === "bad-debt") activeNavSection = "bad-debt";
                 else if (activeView === "risk-assessments") activeNavSection = "risk-assessments";
+                else if (activeView === "confirmation-statements" && companiesHouseState.activeTab === "settings") activeNavSection = "client-auth-register";
                 else if (activeView === "confirmation-statements") activeNavSection = "confirmation-statements";
                 else if (activeView === "company-secretarial" || activeView === "company-secreterial") activeNavSection = "company-secretarial";
                 else if (activeView === "hmrc-64-8s") activeNavSection = "hmrc-64-8s";
