@@ -40529,7 +40529,7 @@
                             <tr>
                                 <th><input type="checkbox" id="ignitionRenewalsSelectAllCandidates" ${selectedSet.size === candidates.length ? "checked" : ""} aria-label="Select all candidates"></th>
                                 <th>Client</th>
-                                <th>Client Created</th>
+                                <th>Client ID</th>
                                 <th>Proposal Start Date</th>
                                 <th>Proposal End Date</th>
                                 <th>Manager</th>
@@ -40543,7 +40543,7 @@
                                     <tr>
                                         <td><input type="checkbox" data-renewal-candidate-id="${escapeHTML(candidateId)}" ${checked ? "checked" : ""}></td>
                                         <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
-                                        <td>${escapeHTML(formatDate(item.clientCreatedDate || ""))}</td>
+                                        <td>${escapeHTML(item.clientId || "--")}</td>
                                         <td>${escapeHTML(formatDate(item.proposalStartDate || ""))}</td>
                                         <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
                                         <td>${escapeHTML(item.clientManager || "Unassigned")}</td>
@@ -41205,6 +41205,7 @@
                     return `
                         <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-new-monthly="${showValue && hasManualValue ? proposed.toFixed(2) : ""}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
                             <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong>${proposalName ? `<span class="ignition-renewals-proposal-name">${escapeHTML(proposalName)}</span>` : ""}</td>
+                            <td data-label="Client ID">${escapeHTML(item.clientId || "--")}</td>
                             <td data-label="Client Manager"><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" readonly disabled></td>
                             <td data-label="Net Monthly Fee" class="money-cell">${formatCurrency(current)}</td>
                             <td data-label="New Net Monthly Fee">
@@ -41226,6 +41227,7 @@
                         <thead>
                             <tr>
                                 <th>Client Name</th>
+                                <th>Client ID</th>
                                 <th>Client Manager</th>
                                 <th>Net Monthly Fee</th>
                                 <th>
@@ -41242,6 +41244,7 @@
                         <tfoot>
                             <tr>
                                 <td class="ignition-renewals-pricing-total-label">Totals</td>
+                                <td></td>
                                 <td></td>
                                 <td class="money-cell" data-renewal-total-current>${formatCurrency(items.reduce((sum, item) => sum + Number(item.currentMonthlyFee || 0), 0))}</td>
                                 <td class="money-cell" data-renewal-total-new>-</td>

@@ -1001,6 +1001,7 @@ CREATE TABLE IF NOT EXISTS ignition_renewal_items (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     proposal_external_id TEXT NOT NULL,
     proposal_name TEXT NOT NULL DEFAULT '',
+    client_id TEXT NOT NULL DEFAULT '',
     client_name TEXT NOT NULL DEFAULT '',
     client_manager TEXT NOT NULL DEFAULT '',
     service_name TEXT NOT NULL DEFAULT '',
@@ -1022,6 +1023,7 @@ ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS run_id UUID REFERENC
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS proposal_external_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS proposal_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS client_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS client_manager TEXT NOT NULL DEFAULT '';
 ALTER TABLE ignition_renewal_items ADD COLUMN IF NOT EXISTS service_name TEXT NOT NULL DEFAULT '';

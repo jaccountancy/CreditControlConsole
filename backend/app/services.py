@@ -16192,6 +16192,7 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
     return {
         "proposal_external_id": str(record.get("external_id") or ""),
         "proposal_name": row.get("name") or row.get("reference_number") or "Ignition proposal",
+        "client_id": "",
         "client_name": _ignition_proposal_client_name(row),
         "client_manager": _ignition_proposal_client_manager(row),
         "service_name": service_name,
@@ -16206,6 +16207,37 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
         "comments": service_name or plan_name,
         "proposal_payload": row,
     }
+
+
+def _ignition_client_register_id_lookup(user_id: str) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    if not user_id:
+        return lookup
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT client_id, client_name, company_name
+                    FROM ch_auth_code_register
+                    WHERE COALESCE(TRIM(client_id), '') <> ''
+                    ORDER BY updated_at DESC
+                    """
+                )
+                rows = cursor.fetchall() or []
+            connection.commit()
+    except Exception:
+        logger.exception("Unable to load client IDs from client register")
+        return lookup
+    for row in rows:
+        client_id = str(row.get("client_id") or "").strip()
+        if not client_id:
+            continue
+        for raw_name in (row.get("client_name"), row.get("company_name")):
+            key = _ignition_text_key(raw_name or "")
+            if key and key not in lookup:
+                lookup[key] = client_id
+    return lookup
 
 
 def _ignition_client_register_manager_overrides(user_id: str) -> dict[str, str]:
@@ -16261,6 +16293,7 @@ def _ignition_upcoming_renewal_proposals(
     client_records: list[dict] | None = None,
 ) -> list[dict]:
     manager_overrides = _ignition_client_register_manager_overrides(str(user_id or "").strip())
+    client_id_lookup = _ignition_client_register_id_lookup(str(user_id or "").strip())
     client_created_lookup = _ignition_client_created_lookup(client_records or [])
     candidates = []
     for record in records:
@@ -16284,6 +16317,11 @@ def _ignition_upcoming_renewal_proposals(
         manager_override = _ignition_manager_override_for_proposal(proposal_payload, manager_overrides)
         if manager_override:
             item["client_manager"] = manager_override
+        for key in _ignition_client_lookup_keys(proposal_payload):
+            client_id = client_id_lookup.get(key)
+            if client_id:
+                item["client_id"] = client_id
+                break
         candidates.append(item)
     return sorted(
         candidates,
@@ -16494,6 +16532,7 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
         "runId": str(row.get("run_id") or ""),
         "proposalExternalId": row.get("proposal_external_id") or "",
         "proposalName": row.get("proposal_name") or "",
+        "clientId": str(row.get("client_id") or ""),
         "clientName": row.get("client_name") or "",
         "clientManager": row.get("client_manager") or "",
         "serviceName": row.get("service_name") or "",
@@ -16567,6 +16606,7 @@ def _serialize_ignition_renewal_candidate(item: dict) -> dict:
     return {
         "proposalExternalId": str(item.get("proposal_external_id") or ""),
         "proposalName": str(item.get("proposal_name") or ""),
+        "clientId": str(item.get("client_id") or ""),
         "clientName": str(item.get("client_name") or ""),
         "clientManager": str(item.get("client_manager") or ""),
         "serviceName": str(item.get("service_name") or ""),
@@ -17427,12 +17467,12 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                 cursor.execute(
                     """
                     INSERT INTO ignition_renewal_items (
-                        run_id, user_id, proposal_external_id, proposal_name, client_name,
+                        run_id, user_id, proposal_external_id, proposal_name, client_id, client_name,
                         client_manager, service_name, plan_name, renewal_date, current_monthly_fee,
                         new_monthly_fee, variance, variance_percent, comments, proposal_payload,
                         created_at, updated_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                     ON CONFLICT (user_id, proposal_external_id) DO NOTHING
                     RETURNING *
                     """,
@@ -17441,6 +17481,7 @@ async def create_ignition_renewal_run(user: dict, payload: dict | None = None) -
                         user["id"],
                         item["proposal_external_id"],
                         item["proposal_name"],
+                        item.get("client_id") or "",
                         item["client_name"],
                         item["client_manager"],
                         item["service_name"],
