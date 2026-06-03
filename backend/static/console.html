@@ -13396,55 +13396,91 @@
                 min-width: 130px;
                 white-space: nowrap;
             }
-            .renewals-status-cell {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                flex-wrap: wrap;
-            }
+            .renewals-status-bubble,
             .renewals-status-pill {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                min-height: 28px;
+                min-height: 30px;
                 border-radius: 999px;
-                padding: 5px 10px;
-                font-size: 0.74rem;
+                padding: 6px 12px;
+                font-size: 0.73rem;
                 font-weight: 850;
                 letter-spacing: 0.02em;
                 border: 1px solid transparent;
                 white-space: nowrap;
+                transition: transform 180ms ease, box-shadow 220ms ease, background 220ms ease, border-color 220ms ease, color 220ms ease, opacity 200ms ease;
             }
+            .renewals-status-bubble {
+                appearance: none;
+                cursor: pointer;
+                outline: 0;
+                padding-right: 28px;
+                background-image:
+                    linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+                background-position:
+                    calc(100% - 15px) calc(50% - 2px),
+                    calc(100% - 10px) calc(50% - 2px);
+                background-size: 5px 5px, 5px 5px;
+                background-repeat: no-repeat;
+            }
+            .renewals-status-bubble:hover,
+            .renewals-status-bubble:focus-visible {
+                transform: translateY(-1px);
+                box-shadow: 0 10px 18px rgba(30, 47, 77, 0.12);
+            }
+            .renewals-status-bubble.is-updating {
+                cursor: wait;
+                opacity: 0.82;
+                animation: renewals-status-pulse 900ms ease-in-out infinite;
+            }
+            .renewals-status-bubble.is-changed {
+                animation: renewals-status-pop 360ms cubic-bezier(0.2, 0.9, 0.25, 1);
+            }
+            .renewals-status-pill {
+                cursor: default;
+            }
+            .renewals-status-bubble.is-draft,
             .renewals-status-pill.is-draft {
                 color: #8a6000;
                 background: rgba(255, 205, 82, 0.24);
                 border-color: rgba(255, 205, 82, 0.5);
             }
+            .renewals-status-bubble.is-finalised,
             .renewals-status-pill.is-finalised {
                 color: #0f7a45;
                 background: rgba(39, 176, 95, 0.2);
                 border-color: rgba(39, 176, 95, 0.4);
             }
+            .renewals-status-bubble.is-failed,
+            .renewals-status-bubble.is-review-needed,
             .renewals-status-pill.is-failed,
             .renewals-status-pill.is-review-needed {
                 color: #b72020;
                 background: rgba(255, 83, 83, 0.18);
                 border-color: rgba(255, 83, 83, 0.34);
             }
+            .renewals-status-bubble.is-awaiting-review,
             .renewals-status-pill.is-awaiting-review {
                 color: #6040b0;
                 background: rgba(141, 98, 255, 0.18);
                 border-color: rgba(141, 98, 255, 0.34);
             }
-            .renewals-status-select {
-                min-height: 28px;
-                border-radius: 999px;
-                padding: 5px 10px;
-                border: 1px solid var(--line);
-                background: rgba(255, 255, 255, 0.86);
-                color: var(--ink);
-                font-size: 0.72rem;
-                font-weight: 750;
+            .renewals-status-bubble:disabled {
+                cursor: not-allowed;
+                opacity: 0.68;
+                box-shadow: none;
+                transform: none;
+            }
+            @keyframes renewals-status-pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.03); }
+            }
+            @keyframes renewals-status-pop {
+                0% { transform: scale(1); }
+                55% { transform: scale(1.08); }
+                100% { transform: scale(1); }
             }
             .renewals-run-actions {
                 display: inline-flex;
@@ -19379,6 +19415,7 @@
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterDueSoon"> Due ≤30 days</label>
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterOverdue"> Overdue</label>
                                     <button class="ghost-button" type="button" id="chCompaniesSyncButton">Sync from Companies House</button>
+                                    <button class="ghost-button" type="button" id="chCompaniesTestConnectionButton">Test CH connection</button>
                                     <button class="ghost-button" type="button" id="chCompaniesReloadButton">Refresh</button>
                                 </div>
                                 <article class="ch-workflow-card" id="chWorkflowCard" hidden>
@@ -22321,6 +22358,9 @@
             let ignitionRenewalsWorkspaceStage = "batch";
             let ignitionRenewalSelection = new Set();
             let ignitionRenewalBatchSelection = new Set();
+            let ignitionRenewalStatusUpdatingRunIds = new Set();
+            let ignitionRenewalStatusChangedRunIds = new Set();
+            const ignitionRenewalStatusChangedTimers = new Map();
             let ignitionRenewalAIAppliedRows = new Set();
             const ignitionRenewalAIMetadataByRowId = new Map();
             let ignitionRenewalBatchSearchTerm = "";
@@ -40253,18 +40293,20 @@
                                         <td data-label="Renewal Batch Ref"><strong>${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}</strong></td>
                                         <td data-label="Window">${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
                                         <td data-label="Status">
-                                            <div class="renewals-status-cell">
-                                                <span class="renewals-status-pill is-${escapeHTML(ignitionRenewalStatusMeta(run).tone)}">${escapeHTML(ignitionRenewalStatusMeta(run).label)}</span>
-                                                ${ignitionRenewalRunIsLocked(run)
-                                                    ? ""
-                                                    : `<select class="renewals-status-select" data-renewals-status-run="${escapeHTML(run.id || "")}" aria-label="Update status for ${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}">
-                                                        <option value="draft" ${ignitionRenewalStatusMeta(run).value === "draft" ? "selected" : ""}>Draft</option>
-                                                        <option value="awaiting_review" ${ignitionRenewalStatusMeta(run).value === "awaiting_review" ? "selected" : ""}>Awaiting review</option>
-                                                        <option value="review_needed" ${ignitionRenewalStatusMeta(run).value === "review_needed" ? "selected" : ""}>Review needed</option>
-                                                        <option value="failed" ${ignitionRenewalStatusMeta(run).value === "failed" ? "selected" : ""}>Failed</option>
-                                                    </select>`
-                                                }
-                                            </div>
+                                            ${ignitionRenewalRunIsLocked(run)
+                                                ? `<span class="renewals-status-pill is-${escapeHTML(ignitionRenewalStatusMeta(run).tone)}">${escapeHTML(ignitionRenewalStatusMeta(run).label)}</span>`
+                                                : `<select
+                                                    class="renewals-status-bubble is-${escapeHTML(ignitionRenewalStatusMeta(run).tone)}${ignitionRenewalStatusUpdatingRunIds.has(String(run.id || "")) ? " is-updating" : ""}${ignitionRenewalStatusChangedRunIds.has(String(run.id || "")) ? " is-changed" : ""}"
+                                                    data-renewals-status-run="${escapeHTML(run.id || "")}"
+                                                    aria-label="Update status for ${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}"
+                                                    ${ignitionRenewalStatusUpdatingRunIds.has(String(run.id || "")) ? "disabled" : ""}
+                                                >
+                                                    <option value="draft" ${ignitionRenewalStatusMeta(run).value === "draft" ? "selected" : ""}>Draft</option>
+                                                    <option value="awaiting_review" ${ignitionRenewalStatusMeta(run).value === "awaiting_review" ? "selected" : ""}>Awaiting review</option>
+                                                    <option value="review_needed" ${ignitionRenewalStatusMeta(run).value === "review_needed" ? "selected" : ""}>Review needed</option>
+                                                    <option value="failed" ${ignitionRenewalStatusMeta(run).value === "failed" ? "selected" : ""}>Failed</option>
+                                                </select>`
+                                            }
                                         </td>
                                         <td data-label="Clients">${Number(run.pickedCount || run.itemCount || 0).toLocaleString("en-GB")}</td>
                                         <td data-label="Current MRR" class="money-cell">${formatCurrency(run.totalCurrentMonthly || 0)}</td>
@@ -40640,11 +40682,20 @@
                 const safeStatus = String(status || "").trim().toLowerCase();
                 if (!safeRunId || !safeStatus) return;
                 const run = (ignitionData.renewals?.recentRuns || []).find((item) => String(item?.id || "") === safeRunId) || null;
+                if (ignitionRenewalStatusValue(run) === safeStatus) return;
                 if (ignitionRenewalRunIsLocked(run)) {
                     showToast("Finalised renewal batches are locked and cannot be changed.", "info");
                     renderIgnitionRenewals();
                     return;
                 }
+                ignitionRenewalStatusUpdatingRunIds.add(safeRunId);
+                ignitionRenewalStatusChangedRunIds.delete(safeRunId);
+                const existingTimer = ignitionRenewalStatusChangedTimers.get(safeRunId);
+                if (existingTimer) {
+                    window.clearTimeout(existingTimer);
+                    ignitionRenewalStatusChangedTimers.delete(safeRunId);
+                }
+                renderIgnitionRenewals();
                 try {
                     const payload = await requestJSON(
                         api.endpoints.ignitionRenewalRun,
@@ -40652,11 +40703,21 @@
                         { runId: safeRunId }
                     );
                     ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    ignitionRenewalStatusChangedRunIds.add(safeRunId);
+                    const timer = window.setTimeout(() => {
+                        ignitionRenewalStatusChangedRunIds.delete(safeRunId);
+                        ignitionRenewalStatusChangedTimers.delete(safeRunId);
+                        renderIgnitionRenewals();
+                    }, 900);
+                    ignitionRenewalStatusChangedTimers.set(safeRunId, timer);
                     showToast("Batch status updated", "success");
                     renderIgnitionRenewals();
                 } catch (error) {
                     console.error("Unable to update renewal batch status", error);
                     showToast(error.message || "Unable to update renewal batch status", "error");
+                    renderIgnitionRenewals();
+                } finally {
+                    ignitionRenewalStatusUpdatingRunIds.delete(safeRunId);
                     renderIgnitionRenewals();
                 }
             }
@@ -55602,10 +55663,12 @@
                 const saveButton = document.getElementById("saveCompaniesHouseSettingsButton");
                 const exportButton = document.getElementById("exportCompaniesHouseRawXmlButton");
                 const reloadButton = document.getElementById("reloadCompaniesHouseSettingsButton");
+                const workflowTestButton = document.getElementById("chCompaniesTestConnectionButton");
                 if (testButton) testButton.disabled = true;
                 if (saveButton) saveButton.disabled = true;
                 if (exportButton) exportButton.disabled = true;
                 if (reloadButton) reloadButton.disabled = true;
+                if (workflowTestButton) workflowTestButton.disabled = true;
                 setCompaniesHouseSettingsStatus("Testing Companies House connection…", "muted");
                 try {
                     const body = {
@@ -55652,6 +55715,7 @@
                     if (testButton) testButton.disabled = false;
                     if (saveButton) saveButton.disabled = false;
                     if (reloadButton) reloadButton.disabled = false;
+                    if (workflowTestButton) workflowTestButton.disabled = false;
                     updateCompaniesHouseRawXmlExportButtonState();
                 }
             }
@@ -58236,6 +58300,7 @@
                 document.getElementById("chTopbarSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
                 document.getElementById("chCompaniesReloadButton")?.addEventListener("click", () => loadCompaniesHouseCompanies(true));
                 document.getElementById("chCompaniesSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
+                document.getElementById("chCompaniesTestConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
                 const searchInput = document.getElementById("chCompaniesSearch");
                 let searchTimer;
                 searchInput?.addEventListener("input", () => {
