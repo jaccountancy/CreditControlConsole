@@ -13321,6 +13321,21 @@
             .ignition-renewals-pricing-table td:nth-child(6) { width: 8%; }
             .ignition-renewals-pricing-table th:nth-child(7),
             .ignition-renewals-pricing-table td:nth-child(7) { width: 8%; }
+            .ignition-renewals-pricing-table tfoot td {
+                position: sticky;
+                bottom: 0;
+                z-index: 2;
+                background: rgba(245, 249, 255, 0.98);
+                border-top: 1px solid rgba(61, 85, 130, 0.2);
+                border-bottom: 0;
+                font-weight: 900;
+            }
+            .ignition-renewals-pricing-total-label {
+                color: var(--muted);
+                font-size: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+            }
             .renewals-ai-populate-wrap {
                 display: flex;
                 justify-content: flex-start;
@@ -40367,6 +40382,7 @@
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
                     if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, Boolean(run.finalisedAt));
+                    updateIgnitionRenewalTotalsFromTable();
                 } else {
                     if (title) title.textContent = "Proposals ending in the coming 8 weeks";
                     if (summary) summary.textContent = "No renewal batch is open. Return to Batches to select clients and start a renewal run.";
@@ -40597,6 +40613,16 @@
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
+                        <tfoot>
+                            <tr>
+                                <td class="ignition-renewals-pricing-total-label">Totals</td>
+                                <td></td>
+                                <td class="money-cell" data-renewal-total-current>${formatCurrency(items.reduce((sum, item) => sum + Number(item.currentMonthlyFee || 0), 0))}</td>
+                                <td class="money-cell" data-renewal-total-new>-</td>
+                                <td class="money-cell" data-renewal-total-variance>-</td>
+                                <td class="percent-cell"></td>
+                            </tr>
+                        </tfoot>
                     </table>
                 `;
             }
@@ -40708,18 +40734,47 @@
                 if (!rawValue.length) {
                     if (varianceTarget) varianceTarget.textContent = "-";
                     if (percentTarget) percentTarget.textContent = "-";
+                    updateIgnitionRenewalTotalsFromTable();
                     return;
                 }
                 const proposed = Number(rawValue || 0);
                 if (!Number.isFinite(proposed)) {
                     if (varianceTarget) varianceTarget.textContent = "-";
                     if (percentTarget) percentTarget.textContent = "-";
+                    updateIgnitionRenewalTotalsFromTable();
                     return;
                 }
                 const variance = proposed - current;
                 const variancePercent = current > 0 ? variance / current : 0;
                 if (varianceTarget) varianceTarget.textContent = formatCurrency(variance);
                 if (percentTarget) percentTarget.textContent = ignitionRenewalPercent(variancePercent);
+                updateIgnitionRenewalTotalsFromTable();
+            }
+
+            function updateIgnitionRenewalTotalsFromTable() {
+                const rows = [...document.querySelectorAll("[data-renewal-row]")];
+                const currentTarget = document.querySelector("[data-renewal-total-current]");
+                const newTarget = document.querySelector("[data-renewal-total-new]");
+                const varianceTarget = document.querySelector("[data-renewal-total-variance]");
+                if (!rows.length || !currentTarget || !newTarget || !varianceTarget) return;
+                let currentTotal = 0;
+                let newTotal = 0;
+                let varianceTotal = 0;
+                let hasNewFees = false;
+                rows.forEach((row) => {
+                    const current = Number(row.dataset.currentMonthly || 0);
+                    const rawNewFee = String(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || "").trim();
+                    currentTotal += Number.isFinite(current) ? current : 0;
+                    if (!rawNewFee.length) return;
+                    const proposed = Number(rawNewFee);
+                    if (!Number.isFinite(proposed)) return;
+                    hasNewFees = true;
+                    newTotal += proposed;
+                    varianceTotal += (proposed - current);
+                });
+                currentTarget.textContent = formatCurrency(currentTotal);
+                newTarget.textContent = hasNewFees ? formatCurrency(newTotal) : "-";
+                varianceTarget.textContent = hasNewFees ? formatCurrency(varianceTotal) : "-";
             }
 
             function updateIgnitionRenewalFromPercent(row) {
