@@ -90,6 +90,7 @@ from .services import (
     get_ignition_sync_run,
     create_ignition_renewal_run,
     finalise_ignition_renewals,
+    ignition_renewals_report_pdf,
     insights_payload,
     ignition_payload,
     ignition_renewals_payload,
@@ -1643,6 +1644,16 @@ async def api_send_ignition_renewals_email(run_id: str, request: Request, user: 
 async def api_finalise_ignition_renewals(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
     await request.body()
     return {"status": "ok", **await finalise_ignition_renewals(user, run_id)}
+
+
+@app.get("/api/ignition/renewals/{run_id}/pdf")
+def api_ignition_renewals_pdf(run_id: str, user: dict = Depends(require_panel_user)):
+    pdf_bytes, filename = ignition_renewals_report_pdf(user, run_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/me-report")

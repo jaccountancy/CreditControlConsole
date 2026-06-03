@@ -14823,6 +14823,21 @@ async def retry_bank_statement_upload(user: dict, upload_id: str) -> dict:
 IGNITION_PLAN_LABELS = ("Solo", "Solo+", "Solo MTD", "Micro", "Starter", "Standard", "Premium", "Ultimate")
 OPTIONAL_IGNITION_DATASETS = {"deals", "deal_stages"}
 IGNITION_RENEWAL_WINDOW_WEEKS = 8
+IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS = 20
+IGNITION_ACTIVE_CLIENT_STATUSES = {"active", "current", "live"}
+IGNITION_INACTIVE_CLIENT_STATUS_MARKERS = {
+    "inactive",
+    "archive",
+    "archived",
+    "deleted",
+    "cancel",
+    "cancelled",
+    "canceled",
+    "churn",
+    "former",
+    "lost",
+    "closed",
+}
 IGNITION_RENEWAL_END_DATE_KEYS = {
     "end_date",
     "ends_on",
@@ -15296,6 +15311,36 @@ def _is_accepted_ignition_proposal(row: dict) -> bool:
     return state == "accepted" or bool(row.get("accepted_at") or row.get("acceptedAt"))
 
 
+def _ignition_proposal_client_is_active(row: dict) -> bool:
+    client = row.get("client") if isinstance(row.get("client"), dict) else {}
+    customer = row.get("customer") if isinstance(row.get("customer"), dict) else {}
+    values = [
+        row.get("client_status"),
+        row.get("clientStatus"),
+        row.get("client_state"),
+        row.get("clientState"),
+        row.get("lifecycle_stage"),
+        row.get("lifecycleStage"),
+        client.get("status"),
+        client.get("state"),
+        client.get("lifecycle_stage"),
+        client.get("lifecycleStage"),
+        customer.get("status"),
+        customer.get("state"),
+        customer.get("lifecycle_stage"),
+        customer.get("lifecycleStage"),
+    ]
+    statuses = [str(value).strip().lower() for value in values if str(value or "").strip()]
+    if not statuses:
+        return True
+    for status_text in statuses:
+        if status_text in IGNITION_ACTIVE_CLIENT_STATUSES:
+            return True
+        if any(marker in status_text for marker in IGNITION_INACTIVE_CLIENT_STATUS_MARKERS):
+            return False
+    return False
+
+
 def _first_mapping_text(value, keys: tuple[str, ...]) -> str:
     if not isinstance(value, dict):
         return ""
@@ -15587,6 +15632,8 @@ def _ignition_upcoming_renewal_proposals(records: list[dict], window_start: date
         if not (window_start <= renewal_date <= window_end):
             continue
         if not _is_accepted_ignition_proposal(proposal_payload):
+            continue
+        if not _ignition_proposal_client_is_active(proposal_payload):
             continue
         candidates.append(_ignition_renewal_item_seed(record, renewal_date))
     return sorted(
@@ -15902,7 +15949,7 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
     plan_summary = ", ".join(f"{plan}: {count}" for plan, count in sorted(by_plan.items())) or "No plan data"
     return (
         "Hi Amie,\n\n"
-        "The latest Ignition renewals round is ready to action.\n\n"
+        "The latest Ignition renewals round has been finalised and is ready to action.\n\n"
         f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}\n"
         f"Renewals included: {len(items)}\n"
         f"Current monthly fees: £{total_current:,.2f}\n"
@@ -15913,21 +15960,105 @@ def _ignition_renewal_email_body(run: dict, items: list[dict]) -> str:
     )
 
 
+def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except Exception:
+        lines = [
+            "Ignition renewals round",
+            f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}",
+            f"Items: {len(items)}",
+            "",
+        ]
+        for item in items[:120]:
+            current = _money(item.get("current_monthly_fee"))
+            proposed = _money(item.get("new_monthly_fee"))
+            increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
+            lines.append(
+                f"{item.get('client_name') or 'Client'} | {item.get('plan_name') or 'Other'} | "
+                f"Current £{current:,.2f} | Proposed £{proposed:,.2f} | Increase {increase_percent:.1f}%"
+            )
+        return _minimal_me_report_pdf(lines)
+
+    buffer = io.BytesIO()
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+    )
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph("Ignition Renewals Proposal Round", styles["Title"]),
+        Spacer(1, 6),
+        Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", styles["Normal"]),
+        Paragraph(f"Generated: {_iso(utcnow())}", styles["Normal"]),
+        Spacer(1, 10),
+    ]
+    table_rows = [[
+        "Client",
+        "Plan",
+        "Current Net Monthly",
+        "Proposed Net Monthly",
+        "Increase %",
+        "Manager",
+        "Comments",
+    ]]
+    for item in items:
+        current = _money(item.get("current_monthly_fee"))
+        proposed = _money(item.get("new_monthly_fee"))
+        increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
+        table_rows.append([
+            str(item.get("client_name") or ""),
+            str(item.get("plan_name") or "Other"),
+            f"£{current:,.2f}",
+            f"£{proposed:,.2f}",
+            f"{increase_percent:.1f}%",
+            str(item.get("client_manager") or ""),
+            str(item.get("comments") or ""),
+        ])
+    table = Table(
+        table_rows,
+        repeatRows=1,
+        colWidths=[150, 70, 105, 105, 70, 100, 220],
+    )
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1d67f2")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c7d0de")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f9ff")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(table)
+    document.build(story)
+    return buffer.getvalue()
+
+
+def ignition_renewals_report_pdf(user: dict, run_id: str) -> tuple[bytes, str]:
+    run, items = _ignition_renewal_run_with_items(user, run_id)
+    if not items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to export.")
+    if not run.get("finalised_at"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before exporting the PDF report.")
+    filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
+    return _build_ignition_renewals_pdf(run, items), filename
+
+
 async def create_ignition_renewal_run(user: dict) -> dict:
     connection = get_ignition_connection_for_user(user["id"])
-    proposals_source = "live"
+    proposals_source = "cached"
     refresh_error_message = ""
-    try:
-        proposals, _meta = await fetch_ignition_collection(connection, "/reporting/proposals")
-        _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
-    except HTTPException as exc:
-        detail = exc.detail
-        if isinstance(detail, dict):
-            refresh_error_message = str(detail.get("message") or detail.get("error") or "")
-        else:
-            refresh_error_message = str(detail or "")
-        proposals_source = "cached"
-
     window_start = utcnow().date()
     window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
     with get_connection() as db:
@@ -15942,10 +16073,39 @@ async def create_ignition_renewal_run(user: dict) -> dict:
                 (user["id"],),
             )
             records = cursor.fetchall()
-            if proposals_source == "cached" and not records:
+            if not records:
+                try:
+                    proposals, _meta = await asyncio.wait_for(
+                        fetch_ignition_collection(connection, "/reporting/proposals"),
+                        timeout=IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS,
+                    )
+                    _upsert_ignition_records(user, connection.get("practice_id") or "", "proposals", proposals)
+                    proposals_source = "live"
+                    cursor.execute(
+                        """
+                        SELECT external_id, payload
+                        FROM ignition_reporting_records
+                        WHERE user_id = %s
+                          AND dataset = 'proposals'
+                        """,
+                        (user["id"],),
+                    )
+                    records = cursor.fetchall()
+                except asyncio.TimeoutError:
+                    refresh_error_message = (
+                        f"Ignition proposals refresh timed out after {IGNITION_RENEWALS_REFRESH_TIMEOUT_SECONDS} seconds."
+                    )
+                except httpx.HTTPError as exc:
+                    refresh_error_message = f"Ignition proposals refresh failed: {exc}"
+                except HTTPException as exc:
+                    detail = exc.detail
+                    if isinstance(detail, dict):
+                        refresh_error_message = str(detail.get("message") or detail.get("error") or "")
+                    else:
+                        refresh_error_message = str(detail or "")
+            if not records:
                 message = (
-                    "Ignition proposals could not be refreshed and there is no cached proposal data to build a renewals round. "
-                    "Run an Ignition sync, then retry."
+                    "Ignition proposals are not available yet. Run an Ignition sync, then retry creating the renewals list."
                 )
                 if refresh_error_message:
                     message = f"{message} Provider response: {refresh_error_message}"
@@ -16093,6 +16253,8 @@ async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
     run, items = _ignition_renewal_run_with_items(user, run_id)
     if not items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to email.")
+    if not run.get("finalised_at"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before emailing Amie.")
     workbook = _build_ignition_renewals_workbook(items)
     filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.xlsx"
     subject = f"Ignition renewals to action: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}"
@@ -16124,7 +16286,7 @@ async def send_ignition_renewals_email(user: dict, run_id: str) -> dict:
             cursor.execute(
                 """
                 UPDATE ignition_renewal_runs
-                SET status = 'emailed',
+                SET status = CASE WHEN status = 'finalised' THEN 'finalised' ELSE 'emailed' END,
                     email_sent_at = COALESCE(email_sent_at, %s),
                     updated_at = %s
                 WHERE id = %s AND user_id = %s
@@ -16146,8 +16308,6 @@ async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items to finalise.")
     if run.get("finalised_at"):
         return {"renewals": ignition_renewals_payload(user, run_id), "alreadyFinalised": True}
-    if not run.get("email_sent_at"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Send the renewal workbook to Amie before finalising and raising ELs.")
     payload = {
         "event": "ignition_renewals_finalised",
         "run": _serialize_ignition_renewal_run(run),
