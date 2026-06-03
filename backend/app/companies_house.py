@@ -223,6 +223,32 @@ def get_companies_house_settings() -> dict:
     return _serialise(_ensure_settings_row())
 
 
+def _connection_test_probe_company_number(overrides: dict) -> str:
+    override_number = _xml_text(overrides.get("probeCompanyNumber"))
+    if override_number:
+        _, number_digits = _ch_split_company_number(override_number)
+        return override_number if number_digits else ""
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT company_number
+                    FROM ch_companies
+                    WHERE COALESCE(company_number, '') <> ''
+                    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+                    LIMIT 1
+                    """
+                )
+                row = cursor.fetchone() or {}
+            connection.commit()
+    except Exception:
+        return ""
+    company_number = _xml_text(row.get("company_number"))
+    _, number_digits = _ch_split_company_number(company_number)
+    return company_number if number_digits else ""
+
+
 def test_companies_house_connection(payload: dict | None = None) -> dict:
     overrides = payload or {}
     settings_row = _ensure_settings_row()
@@ -322,17 +348,32 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
     if gateway_attempted:
         gateway_started = utcnow()
         try:
-            gateway_request = _build_ch_status_xml(
-                presenter_id=presenter_id,
-                presenter_auth=presenter_auth,
-                environment=environment,
-                transaction_id=_ch_txn_id(),
-                submission_number="ZZZZZZ",
-            )
-            gateway_request_debug = (
-                f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_xml_text(presenter_auth)}, "
-                f"gatewayTest={_ch_gateway_test_flag(environment)}, class=GetSubmissionStatus, submissionNumber=ZZZZZZ."
-            )
+            probe_company_number = _connection_test_probe_company_number(overrides)
+            if probe_company_number:
+                gateway_request = _build_ch_status_xml(
+                    presenter_id=presenter_id,
+                    presenter_auth=presenter_auth,
+                    environment=environment,
+                    transaction_id=_ch_txn_id(),
+                    company_number=probe_company_number,
+                )
+                gateway_request_debug = (
+                    f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_xml_text(presenter_auth)}, "
+                    f"gatewayTest={_ch_gateway_test_flag(environment)}, class=GetSubmissionStatus, "
+                    f"companyNumber={_xml_text(probe_company_number)}."
+                )
+            else:
+                gateway_request = _build_ch_status_xml(
+                    presenter_id=presenter_id,
+                    presenter_auth=presenter_auth,
+                    environment=environment,
+                    transaction_id=_ch_txn_id(),
+                    submission_number="ZZZZZZ",
+                )
+                gateway_request_debug = (
+                    f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_xml_text(presenter_auth)}, "
+                    f"gatewayTest={_ch_gateway_test_flag(environment)}, class=GetSubmissionStatus, submissionNumber=ZZZZZZ."
+                )
             gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
             gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
             gateway_response_bytes = len(gateway_response_text.encode("utf-8"))
