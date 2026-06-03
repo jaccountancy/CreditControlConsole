@@ -17550,11 +17550,11 @@
                                 </article>
                             </section>
                             <section class="ch-tab-panel" data-ch-panel="companies" hidden>
-                                <div class="ch-workflow-launch-row">
+                                <div class="ch-workflow-launch-row" id="chCompaniesWorkflowLaunchRow">
                                     <button class="ghost-button ch-workflow-launch-pill" type="button" id="chWorkflowStartButton">Start Bulk workflow</button>
                                     <button class="ghost-button" type="button" id="chWorkflowHideButton" hidden>Hide bulk workflow</button>
                                 </div>
-                                <div class="ch-companies-toolbar">
+                                <div class="ch-companies-toolbar" id="chCompaniesToolbar">
                                     <input id="chCompaniesSearch" type="search" placeholder="Search company name, number or client...">
                                     <select id="chCompaniesStatusFilter" aria-label="Filter by status">
                                         <option value="all">All statuses</option>
@@ -17603,7 +17603,7 @@
                                         <span class="ch-settings-status is-muted" id="chWorkflowStatus">Select clients to start the workflow.</span>
                                     </div>
                                 </article>
-                                <div class="ch-companies-table-wrap">
+                                <div class="ch-companies-table-wrap" id="chCompaniesTableWrap">
                                     <table class="ch-table" id="chCompaniesTable">
                                         <thead>
                                             <tr>
@@ -49363,6 +49363,7 @@
                 workflowBusy: false,
                 workflowOpen: false,
                 topbarSyncing: false,
+                companyDetailView: false,
             };
 
             const CH_INTERNAL_STATUS_LABELS = {
@@ -49461,6 +49462,7 @@
                 if (!tab) return;
                 companiesHouseState.activeTab = tab;
                 if (tab !== "companies") companiesHouseState.workflowOpen = false;
+                if (tab !== "companies") companiesHouseState.companyDetailView = false;
                 renderConfirmationStatementsOnboarding();
                 document.querySelectorAll(".ch-subnav-tab").forEach((node) => {
                     const isActive = node.dataset.chTab === tab;
@@ -49470,6 +49472,7 @@
                 document.querySelectorAll(".ch-tab-panel").forEach((panel) => {
                     panel.hidden = panel.dataset.chPanel !== tab;
                 });
+                renderCompaniesHouseCompanyDetailView();
                 if (tab === "dashboard" || tab === "rejected") loadCompaniesHouseDashboard();
                 else if (tab === "companies") loadCompaniesHouseCompanies();
                 else if (tab === "import") loadCompaniesHouseImports();
@@ -49478,6 +49481,28 @@
                     loadCompaniesHouseSettings();
                     loadAuthCodeRegisterDirectory();
                 }
+            }
+
+            function renderCompaniesHouseCompanyDetailView() {
+                const detailMode = Boolean(companiesHouseState.companyDetailView);
+                const workflowLaunch = document.getElementById("chCompaniesWorkflowLaunchRow");
+                const toolbar = document.getElementById("chCompaniesToolbar");
+                const tableWrap = document.getElementById("chCompaniesTableWrap");
+                const workflowCard = document.getElementById("chWorkflowCard");
+                const detailCard = document.getElementById("chCompanyDetailCard");
+                if (workflowLaunch) workflowLaunch.hidden = detailMode;
+                if (toolbar) toolbar.hidden = detailMode;
+                if (tableWrap) tableWrap.hidden = detailMode;
+                if (workflowCard) workflowCard.hidden = detailMode ? true : !Boolean(companiesHouseState.workflowOpen);
+                if (detailCard) detailCard.hidden = !detailMode;
+            }
+
+            function closeCompaniesHouseCompanyDetailView() {
+                companiesHouseState.companyDetailView = false;
+                companiesHouseState.selectedCompanyId = null;
+                companiesHouseState.companyDetail = null;
+                renderCompaniesHouseCompanyDetailView();
+                renderCompaniesHouseCompaniesTable();
             }
 
             function renderConfirmationStatementsOnboarding() {
@@ -49727,7 +49752,9 @@
                 if (!company?.nextMadeUpToDate) reasons.push("Missing made-up-to date");
                 if (!company?.authCodeOnFile) reasons.push("Missing auth code (re-import BM CSV with Auth Code column or add it in company detail)");
                 if (["paused", "do_not_file", "inactive"].includes(internalStatus)) reasons.push(`Blocked by internal status (${internalStatus.replace(/_/g, " ")})`);
-                if (authorityStatus !== "authorised") reasons.push("Filing authority is not authorised (set to Authorised in full review)");
+                if (authorityStatus !== "authorised" && !company?.authCodeOnFile) {
+                    reasons.push("Filing authority is not authorised (set to Authorised in full review)");
+                }
                 return reasons;
             }
 
@@ -49795,6 +49822,7 @@
             function renderCompaniesHouseCompaniesTable() {
                 const body = document.getElementById("chCompaniesTableBody");
                 if (!body) return;
+                renderCompaniesHouseCompanyDetailView();
                 const companies = companiesHouseState.companies || [];
                 if (!companies.length) {
                     body.innerHTML = `<tr><td colspan="8" class="ch-empty-state">No companies match the current filter. Import a BM Client export from the Import tab to add some.</td></tr>`;
@@ -49889,9 +49917,7 @@
                     const deletedName = String(payload?.result?.companyName || companyName || "Company");
                     companiesHouseState.selectedCompanyIds?.delete?.(safeCompanyId);
                     if (String(companiesHouseState.selectedCompanyId || "") === safeCompanyId) {
-                        companiesHouseState.selectedCompanyId = null;
-                        const detailCard = document.getElementById("chCompanyDetailCard");
-                        if (detailCard) detailCard.hidden = true;
+                        closeCompaniesHouseCompanyDetailView();
                     }
                     companiesHouseState.tabLoaded.dashboard = false;
                     companiesHouseState.tabLoaded.companies = false;
@@ -49979,24 +50005,81 @@
             }
 
             async function chShowWorkflowChangesDialog(companies = []) {
-                const rows = companies.map((company) => ({
-                    companyId: String(company.id || ""),
-                    companyName: String(company.companyName || "—"),
-                    companyNumber: String(company.companyNumber || "—"),
-                    issues: chSubmissionIneligibilityReasons(company),
-                    filingAuthorityStatus: String(company.filingAuthorityStatus || "pending"),
-                    filingAuthorityReference: String(company.filingAuthorityReference || ""),
-                }));
+                const toNullableBool = (value) => {
+                    if (value === true || value === false) return value;
+                    const text = String(value ?? "").trim().toLowerCase();
+                    if (["true", "1", "yes", "y"].includes(text)) return true;
+                    if (["false", "0", "no", "n"].includes(text)) return false;
+                    return null;
+                };
+                const boolToSelect = (value) => (value === true ? "true" : value === false ? "false" : "unset");
+                const toSicCodes = (value) => {
+                    const raw = Array.isArray(value) ? value : String(value || "").split(/[,\n;]+/g);
+                    const seen = new Set();
+                    const output = [];
+                    raw.forEach((entry) => {
+                        const code = String(entry || "").toUpperCase().replace(/\s+/g, "").trim();
+                        if (!code || seen.has(code)) return;
+                        seen.add(code);
+                        output.push(code);
+                    });
+                    return output.slice(0, 20);
+                };
+                const exemptionRouteFromFlags = (flags = {}) => {
+                    if (flags.pscExemptAsSharesAdmittedOnMarket === true) return "shares-admitted";
+                    if (flags.pscExemptAsTradingOnUKRegulatedMarket === true) return "uk-regulated";
+                    if (flags.pscExemptAsTradingOnRegulatedMarket === true) return "regulated";
+                    return "none";
+                };
+                const rows = companies.map((company) => {
+                    const shareCapital = (company && typeof company.shareCapital === "object" && company.shareCapital) ? company.shareCapital : {};
+                    const cs01FlagsSource = (shareCapital.cs01Flags && typeof shareCapital.cs01Flags === "object")
+                        ? shareCapital.cs01Flags
+                        : ((shareCapital.confirmationStatement && typeof shareCapital.confirmationStatement === "object")
+                            ? shareCapital.confirmationStatement
+                            : {});
+                    const cs01Flags = {
+                        tradingOnMarket: toNullableBool(cs01FlagsSource.tradingOnMarket),
+                        dtr5Applies: toNullableBool(cs01FlagsSource.dtr5Applies),
+                        pscExemptAsTradingOnRegulatedMarket: toNullableBool(cs01FlagsSource.pscExemptAsTradingOnRegulatedMarket),
+                        pscExemptAsSharesAdmittedOnMarket: toNullableBool(cs01FlagsSource.pscExemptAsSharesAdmittedOnMarket),
+                        pscExemptAsTradingOnUKRegulatedMarket: toNullableBool(cs01FlagsSource.pscExemptAsTradingOnUKRegulatedMarket),
+                    };
+                    const statementOfCapital = (shareCapital.statementOfCapital && typeof shareCapital.statementOfCapital === "object")
+                        ? shareCapital.statementOfCapital
+                        : {};
+                    const activePscCount = (Array.isArray(company?.pscs) ? company.pscs : [])
+                        .filter((psc) => psc && typeof psc === "object" && !String(psc.ceasedOn || "").trim())
+                        .length;
+                    return {
+                        companyId: String(company.id || ""),
+                        companyName: String(company.companyName || "—"),
+                        companyNumber: String(company.companyNumber || "—"),
+                        issues: chSubmissionIneligibilityReasons(company),
+                        filingAuthorityStatus: String(company.filingAuthorityStatus || "pending"),
+                        filingAuthorityReference: String(company.filingAuthorityReference || ""),
+                        contactEmail: String(company.contactEmail || ""),
+                        sicCodes: toSicCodes(company.sicCodes || []),
+                        cs01Flags,
+                        pscExemptionRoute: exemptionRouteFromFlags(cs01Flags),
+                        activePscCount,
+                        statementOfCapital: {
+                            totalNumberOfSharesIssued: String(statementOfCapital.totalNumberOfSharesIssued || ""),
+                            totalAggregateNominalValue: String(statementOfCapital.totalAggregateNominalValue || ""),
+                        },
+                    };
+                });
                 const rowById = new Map(rows.map((row) => [row.companyId, row]));
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Full review for clients needing changes",
-                    subtitle: "Update required fields in one place, save, then re-run submission.",
+                    subtitle: "Update filing details, CS01 flags, and statement data before bulk submission.",
                     confirmLabel: "Save changes",
                     cancelLabel: "Back",
                     summaryChips: [
                         `${rows.length.toLocaleString("en-GB")} need changes`,
-                        "Bulk-edit authority details",
+                        "Authority + CS01 sections",
+                        "SIC + statement of capital",
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
                     rows: [{ companyName: "Loading..." }],
@@ -50006,63 +50089,148 @@
                             .join("");
                         body.innerHTML = `
                             <div class="operation-review-table-wrap">
-                                <table class="operation-review-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Company</th>
-                                            <th>Issues found</th>
-                                            <th>Filing authority</th>
-                                            <th>Authentication code</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${rows.map((row) => `
-                                            <tr data-ch-review-company-id="${escapeHTML(row.companyId)}">
-                                                <td>
-                                                    <strong>${escapeHTML(row.companyName)}</strong><br>
-                                                    <small class="operation-review-muted">${escapeHTML(row.companyNumber)}</small>
-                                                </td>
-                                                <td>${escapeHTML(row.issues.join(" | "))}</td>
-                                                <td>
-                                                    <select data-ch-review-field="filingAuthorityStatus">
-                                                        ${options}
-                                                    </select>
-                                                </td>
-                                                <td><input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Authentication code"></td>
-                                            </tr>
-                                        `).join("")}
-                                    </tbody>
-                                </table>
+                                ${rows.map((row) => `
+                                    <article class="ch-detail-card" data-ch-review-company-id="${escapeHTML(row.companyId)}" style="margin-bottom: 12px;">
+                                        <header class="ch-settings-head">
+                                            <div>
+                                                <p class="eyebrow">${escapeHTML(row.companyNumber)}</p>
+                                                <h3 style="margin:0;">${escapeHTML(row.companyName)}</h3>
+                                                <p class="ch-section-sub">${escapeHTML(row.issues.join(" | ") || "No blocking issues detected.")}</p>
+                                            </div>
+                                        </header>
+                                        <div class="ch-detail-edit">
+                                            <label>
+                                                Filing authority status
+                                                <select data-ch-review-field="filingAuthorityStatus">${options}</select>
+                                            </label>
+                                            <label>
+                                                Authentication code
+                                                <input type="text" data-ch-review-field="filingAuthorityReference" value="${escapeHTML(row.filingAuthorityReference)}" placeholder="Enter CH authentication code">
+                                            </label>
+                                            <label>
+                                                Registered email
+                                                <input type="email" data-ch-review-field="contactEmail" value="${escapeHTML(row.contactEmail)}" placeholder="registered office email">
+                                            </label>
+                                            <label class="is-wide">
+                                                SIC codes (comma-separated)
+                                                <input type="text" data-ch-review-field="sicCodes" value="${escapeHTML(row.sicCodes.join(", "))}" placeholder="e.g. 69201, 62020">
+                                            </label>
+                                            <label>
+                                                Trading on market
+                                                <select data-ch-review-field="tradingOnMarket">
+                                                    <option value="unset">Not set</option>
+                                                    <option value="true">Yes</option>
+                                                    <option value="false">No</option>
+                                                </select>
+                                            </label>
+                                            <label>
+                                                DTR5 applies
+                                                <select data-ch-review-field="dtr5Applies">
+                                                    <option value="unset">Not set</option>
+                                                    <option value="true">Yes</option>
+                                                    <option value="false">No</option>
+                                                </select>
+                                            </label>
+                                            <label>
+                                                PSC exemption route
+                                                <select data-ch-review-field="pscExemptionRoute">
+                                                    <option value="none">None (use active PSC records)</option>
+                                                    <option value="regulated">Trading on regulated market</option>
+                                                    <option value="shares-admitted">Shares admitted on market (DTR5)</option>
+                                                    <option value="uk-regulated">Trading on UK regulated market</option>
+                                                </select>
+                                            </label>
+                                            <label>
+                                                Total shares issued
+                                                <input type="text" data-ch-review-field="totalNumberOfSharesIssued" value="${escapeHTML(row.statementOfCapital.totalNumberOfSharesIssued)}" placeholder="e.g. 100">
+                                            </label>
+                                            <label>
+                                                Total aggregate nominal value
+                                                <input type="text" data-ch-review-field="totalAggregateNominalValue" value="${escapeHTML(row.statementOfCapital.totalAggregateNominalValue)}" placeholder="e.g. 100">
+                                            </label>
+                                            <label class="is-wide">
+                                                CS01 context
+                                                <small class="operation-review-muted">${escapeHTML(row.activePscCount ? `${row.activePscCount} active PSC record(s) currently on file.` : "No active PSC records currently on file.")}</small>
+                                            </label>
+                                        </div>
+                                    </article>
+                                `).join("")}
                             </div>
                         `;
-                        body.querySelectorAll("tr[data-ch-review-company-id]").forEach((tr) => {
-                            const companyId = String(tr.getAttribute("data-ch-review-company-id") || "");
+                        body.querySelectorAll("[data-ch-review-company-id]").forEach((card) => {
+                            const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
                             const row = rowById.get(companyId);
-                            const statusSelect = tr.querySelector('[data-ch-review-field="filingAuthorityStatus"]');
+                            const statusSelect = card.querySelector('[data-ch-review-field="filingAuthorityStatus"]');
                             if (statusSelect && row) statusSelect.value = row.filingAuthorityStatus;
+                            const tradingSelect = card.querySelector('[data-ch-review-field="tradingOnMarket"]');
+                            if (tradingSelect && row) tradingSelect.value = boolToSelect(row.cs01Flags.tradingOnMarket);
+                            const dtr5Select = card.querySelector('[data-ch-review-field="dtr5Applies"]');
+                            if (dtr5Select && row) dtr5Select.value = boolToSelect(row.cs01Flags.dtr5Applies);
+                            const pscRouteSelect = card.querySelector('[data-ch-review-field="pscExemptionRoute"]');
+                            if (pscRouteSelect && row) pscRouteSelect.value = row.pscExemptionRoute || "none";
                         });
                     },
                     resultProvider: () => {
+                        const fromSelect = (value) => {
+                            const text = String(value || "unset").toLowerCase();
+                            if (text === "true") return true;
+                            if (text === "false") return false;
+                            return null;
+                        };
                         const updates = [];
-                        const rowNodes = document.querySelectorAll("#operationReviewBody tr[data-ch-review-company-id]");
-                        rowNodes.forEach((tr) => {
-                            const companyId = String(tr.getAttribute("data-ch-review-company-id") || "");
+                        const cardNodes = document.querySelectorAll("#operationReviewBody [data-ch-review-company-id]");
+                        cardNodes.forEach((card) => {
+                            const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
                             const original = rowById.get(companyId);
                             if (!original) return;
-                            const nextStatus = String(tr.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
-                            const nextReference = String(tr.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
-                            const changed = (
-                                nextStatus !== original.filingAuthorityStatus
-                                || nextReference !== original.filingAuthorityReference
-                            );
-                            if (!changed) return;
-                            updates.push({
-                                companyId,
-                                body: {
-                                    filingAuthorityStatus: nextStatus,
-                                    filingAuthorityReference: nextReference,
-                                },
-                            });
+                            const nextStatus = String(card.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
+                            const nextReference = String(card.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
+                            const nextContactEmail = String(card.querySelector('[data-ch-review-field="contactEmail"]')?.value || "").trim();
+                            const nextSicCodes = toSicCodes(String(card.querySelector('[data-ch-review-field="sicCodes"]')?.value || ""));
+                            const tradingOnMarket = fromSelect(card.querySelector('[data-ch-review-field="tradingOnMarket"]')?.value);
+                            const dtr5Applies = fromSelect(card.querySelector('[data-ch-review-field="dtr5Applies"]')?.value);
+                            const exemptionRoute = String(card.querySelector('[data-ch-review-field="pscExemptionRoute"]')?.value || "none");
+                            const nextTotalShares = String(card.querySelector('[data-ch-review-field="totalNumberOfSharesIssued"]')?.value || "").trim();
+                            const nextTotalNominal = String(card.querySelector('[data-ch-review-field="totalAggregateNominalValue"]')?.value || "").trim();
+
+                            const nextFlags = {};
+                            if (tradingOnMarket !== null) nextFlags.tradingOnMarket = tradingOnMarket;
+                            if (dtr5Applies !== null) nextFlags.dtr5Applies = dtr5Applies;
+                            if (exemptionRoute === "regulated") {
+                                nextFlags.pscExemptAsTradingOnRegulatedMarket = true;
+                                nextFlags.pscExemptAsSharesAdmittedOnMarket = false;
+                                nextFlags.pscExemptAsTradingOnUKRegulatedMarket = false;
+                            } else if (exemptionRoute === "shares-admitted") {
+                                nextFlags.pscExemptAsTradingOnRegulatedMarket = false;
+                                nextFlags.pscExemptAsSharesAdmittedOnMarket = true;
+                                nextFlags.pscExemptAsTradingOnUKRegulatedMarket = false;
+                            } else if (exemptionRoute === "uk-regulated") {
+                                nextFlags.pscExemptAsTradingOnRegulatedMarket = true;
+                                nextFlags.pscExemptAsSharesAdmittedOnMarket = false;
+                                nextFlags.pscExemptAsTradingOnUKRegulatedMarket = true;
+                            } else {
+                                if (String(original.pscExemptionRoute || "none") !== "none") {
+                                    nextFlags.pscExemptAsTradingOnRegulatedMarket = false;
+                                    nextFlags.pscExemptAsSharesAdmittedOnMarket = false;
+                                    nextFlags.pscExemptAsTradingOnUKRegulatedMarket = false;
+                                }
+                            }
+
+                            const nextStatement = {};
+                            if (nextTotalShares) nextStatement.totalNumberOfSharesIssued = nextTotalShares;
+                            if (nextTotalNominal) nextStatement.totalAggregateNominalValue = nextTotalNominal;
+
+                            const body = {};
+                            if (nextStatus !== original.filingAuthorityStatus) body.filingAuthorityStatus = nextStatus;
+                            if (nextReference !== original.filingAuthorityReference) {
+                                body.filingAuthorityReference = nextReference;
+                                if (nextReference) body.authCode = nextReference;
+                            }
+                            if (nextContactEmail !== original.contactEmail) body.contactEmail = nextContactEmail;
+                            if (JSON.stringify(nextSicCodes) !== JSON.stringify(original.sicCodes)) body.sicCodes = nextSicCodes;
+                            if (JSON.stringify(nextFlags) !== JSON.stringify(original.cs01Flags || {})) body.cs01Flags = nextFlags;
+                            if (JSON.stringify(nextStatement) !== JSON.stringify(original.statementOfCapital || {})) body.statementOfCapital = nextStatement;
+                            if (Object.keys(body).length) updates.push({ companyId, body });
                         });
                         return updates;
                     },
@@ -50613,14 +50781,15 @@
 
             async function openCompaniesHouseCompanyDetail(companyId) {
                 companiesHouseState.selectedCompanyId = companyId;
+                companiesHouseState.companyDetailView = true;
+                activateCompaniesHouseTab("companies");
                 renderCompaniesHouseCompaniesTable();
-                const card = document.getElementById("chCompanyDetailCard");
-                if (!card) return;
-                card.hidden = false;
                 try {
                     const payload = await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`);
                     companiesHouseState.companyDetail = payload?.company || null;
                     renderCompaniesHouseCompanyDetail();
+                    const panel = document.querySelector('.ch-tab-panel[data-ch-panel="companies"]');
+                    panel?.scrollIntoView?.({ behavior: "smooth", block: "start" });
                 } catch (error) {
                     console.error("Unable to load company detail", error);
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
@@ -51247,9 +51416,7 @@
                     chRenderWorkflowVisibility();
                 });
                 document.getElementById("chCompanyDetailClose")?.addEventListener("click", () => {
-                    const card = document.getElementById("chCompanyDetailCard"); if (card) card.hidden = true;
-                    companiesHouseState.selectedCompanyId = null;
-                    renderCompaniesHouseCompaniesTable();
+                    closeCompaniesHouseCompanyDetailView();
                 });
                 document.getElementById("chCompanyDetailSave")?.addEventListener("click", saveCompaniesHouseCompanyDetail);
                 const importFile = document.getElementById("chImportFile");

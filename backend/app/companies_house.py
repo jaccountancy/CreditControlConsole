@@ -3380,12 +3380,23 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         submission_issues.append("Missing authentication code.")
     if blocked_internal:
         submission_issues.append(f"Blocked by internal status ({internal_status.replace('_', ' ')}).")
-    if str(row.get("filing_authority_status") or "pending") != "authorised":
+    filing_authority_status = str(row.get("filing_authority_status") or "pending")
+    if filing_authority_status != "authorised" and not has_auth:
         submission_issues.append("Filing authority is not authorised.")
     authority_expires_at = row.get("filing_authority_expires_at")
     if authority_expires_at is not None:
         if not isinstance(authority_expires_at, datetime) or authority_expires_at.date() < today:
             submission_issues.append("Filing authority has expired.")
+    cs01_validation_errors: list[str] = []
+    if isinstance(next_made_up_to, date):
+        try:
+            cs_payload = _build_cs01_payload(row)
+            cs01_validation_errors = _validate_cs01_payload(row, next_made_up_to, cs_payload=cs_payload)
+        except Exception as exc:  # pragma: no cover - defensive
+            cs01_validation_errors = [f"Unable to prepare CS01 payload: {str(exc) or exc.__class__.__name__}"]
+    for message in cs01_validation_errors:
+        if message not in submission_issues:
+            submission_issues.append(message)
     filed_within_last_12_months = bool(
         isinstance(last_filed, date)
         and last_filed >= (today - timedelta(days=365))
@@ -3400,7 +3411,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         and has_made_up_to_date
         and not blocked_internal
         and has_auth
-        and str(row.get("filing_authority_status") or "pending") == "authorised"
+        and not cs01_validation_errors
         and (
             row.get("filing_authority_expires_at") is None
             or (
@@ -3647,7 +3658,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 "reason": reason,
             })
             continue
-        if filing_authority_status != "authorised":
+        if filing_authority_status != "authorised" and not has_auth:
             reason = "Client filing authority is not recorded as authorised."
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append({
@@ -4645,6 +4656,8 @@ def get_company_detail(company_id: str) -> dict:
 def update_company(company_id: str, payload: dict, user: dict) -> dict:
     user_id = user.get("id") if isinstance(user, dict) else None
     updates: dict[str, object] = {}
+    json_columns: set[str] = set()
+    auth_code_value = _coerce_text(payload.get("authCode"), 200) if "authCode" in payload else ""
 
     if "internalStatus" in payload:
         internal_status = str(payload.get("internalStatus") or "").strip()
@@ -4675,7 +4688,10 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
             )
         updates["filing_authority_status"] = filing_authority_status
     if "filingAuthorityReference" in payload:
-        updates["filing_authority_reference"] = _coerce_text(payload.get("filingAuthorityReference"), 200)
+        filing_reference = _coerce_text(payload.get("filingAuthorityReference"), 200)
+        updates["filing_authority_reference"] = filing_reference
+        if filing_reference and not auth_code_value:
+            auth_code_value = filing_reference
     if "filingAuthorityReceivedAt" in payload:
         received_value = payload.get("filingAuthorityReceivedAt")
         if received_value in (None, ""):
@@ -4697,27 +4713,109 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filingAuthorityExpiresAt timestamp.") from exc
             updates["filing_authority_expires_at"] = parsed
 
-    if not updates:
+    if "sicCodes" in payload:
+        raw_codes = payload.get("sicCodes")
+        if isinstance(raw_codes, list):
+            sic_candidates = [str(code or "").strip() for code in raw_codes]
+        else:
+            sic_candidates = re.split(r"[,\n;]+", str(raw_codes or ""))
+        sic_codes: list[str] = []
+        seen_codes: set[str] = set()
+        for candidate in sic_candidates:
+            code = re.sub(r"\s+", "", str(candidate or "").upper())
+            if not code:
+                continue
+            if not re.fullmatch(r"[0-9A-Z]{4,8}", code):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid SIC code '{candidate}'. Use alphanumeric codes (4-8 characters).",
+                )
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
+            sic_codes.append(code)
+        updates["sic_codes"] = json.dumps(sic_codes[:20])
+        json_columns.add("sic_codes")
+
+    share_capital_patch: dict[str, object] = {}
+    if "cs01Flags" in payload:
+        raw_flags = payload.get("cs01Flags")
+        if not isinstance(raw_flags, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'cs01Flags' must be an object.")
+        normalised_flags: dict[str, bool] = {}
+        for key in (
+            "tradingOnMarket",
+            "dtr5Applies",
+            "pscExemptAsTradingOnRegulatedMarket",
+            "pscExemptAsSharesAdmittedOnMarket",
+            "pscExemptAsTradingOnUKRegulatedMarket",
+        ):
+            value = _first_bool_from_sources(raw_flags.get(key))
+            if value is not None:
+                normalised_flags[key] = value
+        share_capital_patch["cs01Flags"] = normalised_flags
+        share_capital_patch["confirmationStatement"] = normalised_flags
+
+    if "statementOfCapital" in payload:
+        raw_soc = payload.get("statementOfCapital")
+        if raw_soc in (None, ""):
+            share_capital_patch["statementOfCapital"] = {}
+        elif not isinstance(raw_soc, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'statementOfCapital' must be an object.")
+        else:
+            normalised_soc: dict[str, str] = {}
+            if raw_soc.get("totalNumberOfSharesIssued") not in (None, ""):
+                normalised_soc["totalNumberOfSharesIssued"] = _ch_decimal_text(raw_soc.get("totalNumberOfSharesIssued"))
+            if raw_soc.get("totalAggregateNominalValue") not in (None, ""):
+                normalised_soc["totalAggregateNominalValue"] = _ch_decimal_text(raw_soc.get("totalAggregateNominalValue"))
+            share_capital_patch["statementOfCapital"] = normalised_soc
+
+    if share_capital_patch:
+        current = get_company_detail(company_id)
+        current_share_capital = current.get("shareCapital") if isinstance(current.get("shareCapital"), dict) else {}
+        merged_share_capital = {**current_share_capital, **share_capital_patch}
+        updates["share_capital"] = json.dumps(merged_share_capital)
+        json_columns.add("share_capital")
+
+    if not updates and not auth_code_value:
         return get_company_detail(company_id)
 
-    set_clauses = ", ".join(f"{column} = %s" for column in updates)
+    set_clauses = ", ".join(
+        f"{column} = %s::jsonb" if column in json_columns else f"{column} = %s"
+        for column in updates
+    )
     params = list(updates.values()) + [company_id]
 
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                f"UPDATE ch_companies SET {set_clauses}, updated_at = NOW() WHERE id = %s RETURNING id",
-                params,
-            )
-            row = cursor.fetchone()
+            if updates:
+                cursor.execute(
+                    f"UPDATE ch_companies SET {set_clauses}, updated_at = NOW() WHERE id = %s RETURNING id",
+                    params,
+                )
+                row = cursor.fetchone()
+            else:
+                cursor.execute("SELECT id FROM ch_companies WHERE id = %s", (company_id,))
+                row = cursor.fetchone()
             if row is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found.")
+            if auth_code_value:
+                _save_company_auth_code(cursor, company_id, auth_code_value, user_id)
             cursor.execute(
                 """
                 INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
                 VALUES ('ch_company', %s, 'company_updated', %s::jsonb, %s)
                 """,
-                (company_id, json.dumps({"fields": list(updates.keys())}), user_id),
+                (
+                    company_id,
+                    json.dumps(
+                        {
+                            "fields": list(updates.keys()),
+                            "authCodeUpdated": bool(auth_code_value),
+                        }
+                    ),
+                    user_id,
+                ),
             )
         connection.commit()
 
