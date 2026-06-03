@@ -16925,6 +16925,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.enums import TA_LEFT, TA_RIGHT
         from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except Exception:
         lines = [
@@ -16948,50 +16949,82 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        leftMargin=28,
-        rightMargin=28,
-        topMargin=28,
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=22,
         bottomMargin=28,
     )
     styles = getSampleStyleSheet()
+    body_style = ParagraphStyle(
+        "IgnitionRenewalsBody",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#17395A"),
+    )
     title_style = ParagraphStyle(
         "IgnitionRenewalsTitle",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=21,
-        leading=25,
+        fontSize=23,
+        leading=26,
         textColor=colors.HexColor("#035581"),
-        spaceAfter=4,
+        spaceAfter=3,
     )
     subtitle_style = ParagraphStyle(
         "IgnitionRenewalsSubtitle",
-        parent=styles["BodyText"],
+        parent=body_style,
         fontName="Helvetica",
-        fontSize=9,
-        leading=12,
+        fontSize=9.2,
+        leading=11.8,
         textColor=colors.HexColor("#035581"),
     )
     metric_label_style = ParagraphStyle(
         "IgnitionRenewalsMetricLabel",
-        parent=styles["BodyText"],
+        parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=8,
-        leading=10,
+        fontSize=7.4,
+        leading=9,
         textColor=colors.white,
     )
     metric_value_style = ParagraphStyle(
         "IgnitionRenewalsMetricValue",
-        parent=styles["BodyText"],
+        parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=12,
-        leading=14,
+        fontSize=11.8,
+        leading=13.8,
         textColor=colors.white,
+    )
+    header_cell_style = ParagraphStyle(
+        "IgnitionRenewalsHeaderCell",
+        parent=body_style,
+        fontName="Helvetica-Bold",
+        fontSize=7.7,
+        leading=9.2,
+        textColor=colors.white,
+        alignment=TA_LEFT,
+    )
+    cell_style = ParagraphStyle(
+        "IgnitionRenewalsCell",
+        parent=body_style,
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#17395A"),
+        alignment=TA_LEFT,
+    )
+    money_cell_style = ParagraphStyle(
+        "IgnitionRenewalsMoneyCell",
+        parent=cell_style,
+        fontName="Helvetica-Bold",
+        alignment=TA_RIGHT,
     )
     total_row_style = ParagraphStyle(
         "IgnitionRenewalsTotalRow",
-        parent=styles["BodyText"],
+        parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=8,
+        fontSize=8.2,
         leading=10,
         textColor=colors.HexColor("#035581"),
     )
@@ -17013,14 +17046,16 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     annualised_uplift = variance * Decimal("12")
+    generated_at = _iso(utcnow())
 
     story.extend([
         Paragraph("Renewals Proposal Round", title_style),
         Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", subtitle_style),
-        Paragraph(f"Generated: {_iso(utcnow())}", subtitle_style),
-        Spacer(1, 10),
+        Paragraph(f"Generated: {generated_at}", subtitle_style),
+        Spacer(1, 11),
     ])
 
+    metrics_col_width = document.width / 5
     metrics_table = Table([
         [
             Paragraph("Renewals", metric_label_style),
@@ -17036,17 +17071,18 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
             Paragraph(f"£{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)", metric_value_style),
             Paragraph(f"£{annualised_uplift:,.2f}", metric_value_style),
         ],
-    ], colWidths=[75, 98, 98, 118, 118])
+    ], colWidths=[metrics_col_width] * 5)
     metrics_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0075C9")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#035581")),
+        ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#035581")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#035581")),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    story.extend([metrics_table, Spacer(1, 12)])
+    story.extend([metrics_table, Spacer(1, 10)])
 
     def _pdf_plain_text(value: object) -> str:
         text = str(value or "")
@@ -17055,14 +17091,14 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         return text
 
     table_rows = [[
-        "Client Name",
-        "Manager",
-        "Renewal Date",
-        "Current Monthly Fee",
-        "Proposed Monthly Fee",
-        "Variance",
-        "Variance %",
-        "Comments",
+        Paragraph("Client Name", header_cell_style),
+        Paragraph("Manager", header_cell_style),
+        Paragraph("Renewal Date", header_cell_style),
+        Paragraph("Current Monthly Fee", header_cell_style),
+        Paragraph("Proposed Monthly Fee", header_cell_style),
+        Paragraph("Variance", header_cell_style),
+        Paragraph("Variance %", header_cell_style),
+        Paragraph("Comments", header_cell_style),
     ]]
     for item in items:
         current = _money(item.get("current_monthly_fee"))
@@ -17070,50 +17106,74 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict]) -> bytes:
         variance = _money(proposed - current)
         increase_percent = ((proposed - current) / current * Decimal("100")) if current > 0 else Decimal("0")
         table_rows.append([
-            _pdf_plain_text(item.get("client_name")),
-            _pdf_plain_text(item.get("client_manager")),
-            _iso(item.get("renewal_date")) or "",
-            f"£{current:,.2f}",
-            f"£{proposed:,.2f}",
-            f"£{variance:,.2f}",
-            f"{increase_percent:.1f}%",
-            _pdf_plain_text(item.get("comments")),
+            Paragraph(_pdf_plain_text(item.get("client_name")) or "-", cell_style),
+            Paragraph(_pdf_plain_text(item.get("client_manager")) or "-", cell_style),
+            Paragraph(_iso(item.get("renewal_date")) or "-", cell_style),
+            Paragraph(f"£{current:,.2f}", money_cell_style),
+            Paragraph(f"£{proposed:,.2f}", money_cell_style),
+            Paragraph(f"£{variance:,.2f}", money_cell_style),
+            Paragraph(f"{increase_percent:.1f}%", money_cell_style),
+            Paragraph(_pdf_plain_text(item.get("comments")) or "-", cell_style),
         ])
 
     table_rows.append([
         Paragraph("TOTAL", total_row_style),
-        "",
-        "",
+        Paragraph("", total_row_style),
+        Paragraph("", total_row_style),
         Paragraph(f"£{total_current:,.2f}", total_row_style),
         Paragraph(f"£{total_new:,.2f}", total_row_style),
         Paragraph(f"£{variance:,.2f}", total_row_style),
         Paragraph(f"{variance_percent * Decimal('100'):.1f}%", total_row_style),
-        "",
+        Paragraph("", total_row_style),
     ])
 
+    col_widths = [
+        document.width * 0.16,
+        document.width * 0.11,
+        document.width * 0.10,
+        document.width * 0.13,
+        document.width * 0.14,
+        document.width * 0.10,
+        document.width * 0.08,
+        document.width * 0.18,
+    ]
     table = Table(
         table_rows,
         repeatRows=1,
-        colWidths=[122, 76, 66, 76, 80, 58, 52, 132],
+        colWidths=col_widths,
     )
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0075C9")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7.6),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7C4D4")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F1F2F2")]),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#DCEEFE")),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#0075C9")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#035581")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F5F8FC")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E7F1FA")),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.9, colors.HexColor("#0075C9")),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#035581")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4.5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4.5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
     ]))
     story.append(table)
-    document.build(story)
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#C7D6E6"))
+        canvas.setLineWidth(0.5)
+        canvas.line(doc.leftMargin, 18, doc.pagesize[0] - doc.rightMargin, 18)
+        canvas.setFillColor(colors.HexColor("#6D839C"))
+        canvas.setFont("Helvetica", 7.2)
+        canvas.drawString(doc.leftMargin, 10, "Jaccountancy | Renewals Proposal Round")
+        canvas.drawRightString(doc.pagesize[0] - doc.rightMargin, 10, f"Page {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    document.build(story, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
     return buffer.getvalue()
 
 
