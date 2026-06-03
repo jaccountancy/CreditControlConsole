@@ -49441,6 +49441,7 @@
                 selectedDeadLetterIds: new Set(),
                 workflowBusy: false,
                 workflowOpen: false,
+                workflowAuthCodeOverrides: {},
                 topbarSyncing: false,
                 companyDetailView: false,
             };
@@ -50266,6 +50267,11 @@
                 }
 
                 const updates = Array.isArray(reviewResult?.manualUpdates) ? reviewResult.manualUpdates : [];
+                companiesHouseState.workflowAuthCodeOverrides = Object.fromEntries(
+                    updates
+                        .filter((update) => update?.companyId && update?.authCode)
+                        .map((update) => [String(update.companyId), String(update.authCode)])
+                );
                 const failedUpdates = [];
                 for (const update of updates) {
                     if (!update?.companyId || !update?.authCode) continue;
@@ -50575,6 +50581,7 @@
 
             async function submitSelectedCompaniesWorkflow() {
                 if (companiesHouseState.workflowBusy) return;
+                companiesHouseState.workflowAuthCodeOverrides = {};
                 const initiallySelected = chSelectedCompanies();
                 if (!initiallySelected.length) {
                     chSetWorkflowStatus("Select at least one company before running the confirmation workflow.", "error");
@@ -50833,7 +50840,11 @@
                             );
                             payload = await requestJSON("/api/companies-house/submissions/bulk", {
                                 method: "POST",
-                                body: JSON.stringify({ companyIds: batch, workflowActions }),
+                                body: JSON.stringify({
+                                    companyIds: batch,
+                                    workflowActions,
+                                    authCodeOverrides: companiesHouseState.workflowAuthCodeOverrides || {},
+                                }),
                             });
                         } catch (error) {
                             const retryableFailure = Number(error?.statusCode || 0) >= 500 || error instanceof TypeError;
@@ -51057,6 +51068,7 @@
                     chSetWorkflowStatus(workflowMessage, "error");
                     showToast(workflowMessage, "error");
                 } finally {
+                    companiesHouseState.workflowAuthCodeOverrides = {};
                     companiesHouseState.workflowBusy = false;
                     chUpdateWorkflowControls();
                 }

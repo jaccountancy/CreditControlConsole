@@ -3671,6 +3671,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
     raw_workflow_actions = payload.get("workflowActions") if isinstance(payload.get("workflowActions"), dict) else {}
+    raw_auth_code_overrides = payload.get("authCodeOverrides") if isinstance(payload.get("authCodeOverrides"), dict) else {}
     workflow_actions_by_company_id = {
         str(company_id or "").strip(): (
             "changes-required"
@@ -3678,6 +3679,11 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             else "no-changes"
         )
         for company_id, action in (raw_workflow_actions or {}).items()
+        if str(company_id or "").strip()
+    }
+    auth_code_overrides_by_company_id = {
+        str(company_id or "").strip(): re.sub(r"[^A-Z0-9]", "", str(code or "").strip().upper())
+        for company_id, code in (raw_auth_code_overrides or {}).items()
         if str(company_id or "").strip()
     }
     if not company_ids:
@@ -3846,9 +3852,21 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             )
             continue
 
-        company_auth_code = _load_company_auth_code(company_id)
+        company_auth_code = auth_code_overrides_by_company_id.get(company_id) or _load_company_auth_code(company_id)
         if not company_auth_code:
             reason = "Authentication code could not be decrypted for this company."
+            _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
+            skipped.append(
+                {
+                    "companyId": company_id,
+                    "companyNumber": company_number,
+                    "companyName": company_name,
+                    "reason": reason,
+                }
+            )
+            continue
+        if not re.fullmatch(r"[A-Z0-9]{6}", company_auth_code):
+            reason = "Authentication code must be 6 alphanumeric characters."
             _record_submission_skip(company_id=company_id, company_number=company_number, reason=reason)
             skipped.append(
                 {
