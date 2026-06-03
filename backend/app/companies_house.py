@@ -210,52 +210,67 @@ def test_companies_house_connection() -> dict:
             detail="Configure a Companies House API key before running a connection test.",
         )
 
-    base_url = _companies_house_api_base(environment)
-    # Use a deterministic endpoint to validate credentials/environment.
-    # A 404 on this dummy company number confirms auth succeeded.
-    endpoint = f"{base_url}/company/00000000"
-    started = utcnow()
+    presenter_id = _xml_text(settings_row.get("presenter_id"))
+    presenter_auth = decrypt_presenter_auth()
+    if not presenter_id or not presenter_auth:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure Presenter ID and Presenter authentication code before running a full connection test.",
+        )
 
+    base_url = _companies_house_api_base(environment)
+    endpoint = f"{base_url}/company/00000000"
+    rest_started = utcnow()
     with _companies_house_http_client(api_key) as client:
         response = client.get(endpoint)
+    rest_duration_ms = int((utcnow() - rest_started).total_seconds() * 1000)
 
-    duration_ms = int((utcnow() - started).total_seconds() * 1000)
     if response.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Companies House rejected the API credentials. Check environment and API key.",
         )
-    if response.status_code in {
-        status.HTTP_404_NOT_FOUND,
+    if response.is_error and response.status_code not in {
         status.HTTP_400_BAD_REQUEST,
+        status.HTTP_404_NOT_FOUND,
         status.HTTP_429_TOO_MANY_REQUESTS,
     }:
-        return {
-            "connected": True,
-            "environment": environment,
-            "apiBaseUrl": base_url,
-            "endpoint": endpoint,
-            "statusCode": response.status_code,
-            "durationMs": duration_ms,
-            "sampleResultCount": 0,
-            "message": "Companies House API connection is working.",
-        }
-    if response.is_error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Companies House connection test failed ({response.status_code}).",
+            detail=f"Companies House REST connection test failed ({response.status_code}).",
         )
 
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Companies House returned invalid JSON during the connection test.",
-        ) from exc
+    sample_count = 0
+    if not response.is_error and response.status_code != status.HTTP_404_NOT_FOUND:
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Companies House returned invalid JSON during the REST connection test.",
+            ) from exc
+        items = payload.get("items")
+        sample_count = len(items) if isinstance(items, list) else 0
 
-    items = payload.get("items")
-    sample_count = len(items) if isinstance(items, list) else 0
+    gateway_started = utcnow()
+    gateway_request = _build_ch_status_xml(
+        presenter_id=presenter_id,
+        presenter_auth=presenter_auth,
+        environment=environment,
+        transaction_id=_ch_txn_id(),
+        submission_number="ZZZZZZ",
+    )
+    gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
+    gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
+    gateway_errors = _ch_gateway_errors(gateway_response_root)
+    gateway_error_text = " | ".join(gateway_errors).lower()
+    if any(token in gateway_error_text for token in ("authorisation", "authorization", "authentication", "senderid", "sender id")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Companies House XML gateway rejected presenter credentials or filing authority. Check Presenter ID/auth code and account permissions.",
+        )
+
+    duration_ms = rest_duration_ms + gateway_duration_ms
     return {
         "connected": True,
         "environment": environment,
@@ -263,8 +278,14 @@ def test_companies_house_connection() -> dict:
         "endpoint": endpoint,
         "statusCode": response.status_code,
         "durationMs": duration_ms,
+        "restDurationMs": rest_duration_ms,
+        "gatewayDurationMs": gateway_duration_ms,
         "sampleResultCount": sample_count,
-        "message": "Companies House API connection is working.",
+        "restConnected": True,
+        "gatewayConnected": True,
+        "gatewayErrorCount": len(gateway_errors),
+        "gatewayResponseBytes": len(gateway_response_text.encode("utf-8")),
+        "message": "Companies House REST and XML gateway connections are working.",
     }
 
 

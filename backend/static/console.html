@@ -28089,13 +28089,15 @@
                     const result = payload?.result || {};
                     const envLabel = result.environment === "production" ? "production" : "sandbox";
                     const latency = Number(result.durationMs || 0);
+                    const restLatency = Number(result.restDurationMs || latency);
+                    const gatewayLatency = Number(result.gatewayDurationMs || 0);
                     const sampleCount = Number(result.sampleResultCount || 0);
                     const checkedAt = new Date().toISOString();
                     xeroLockDateCHHealth = {
                         loading: false,
                         ok: true,
                         checkedAt,
-                        message: `Companies House API connected (${envLabel}) · ${latency}ms · sample results ${sampleCount}.`,
+                        message: `CH connected (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount}.`,
                     };
                 } catch (error) {
                     xeroLockDateCHHealth = {
@@ -49287,9 +49289,11 @@
                     const result = payload?.result || {};
                     const envLabel = result.environment === "production" ? "production" : "sandbox";
                     const latency = Number(result.durationMs || 0);
+                    const restLatency = Number(result.restDurationMs || latency);
+                    const gatewayLatency = Number(result.gatewayDurationMs || 0);
                     const sampleCount = Number(result.sampleResultCount || 0);
                     setCompaniesHouseSettingsStatus(
-                        `Connection OK (${envLabel}) · ${latency}ms · sample results ${sampleCount}.`,
+                        `Connection OK (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount}.`,
                         "success"
                     );
                     showToast("Companies House connection test passed.", "success");
