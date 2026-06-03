@@ -54065,8 +54065,13 @@
                 }
             }
 
+            function applyDeveloperLogDefaultFilters() {
+                developerLogModeFilter = "system";
+            }
+
             function openDeveloperLog() {
                 const panel = document.getElementById("developerLogPanel");
+                applyDeveloperLogDefaultFilters();
                 if (panel) panel.hidden = false;
                 closeTopbarMenu();
                 loadDeveloperLog();
@@ -55111,6 +55116,7 @@
             function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
                 activeView = "settings";
                 activeSettingsSection = settingsSectionCopy[section] ? section : "data-import";
+                if (activeSettingsSection === "developer-log") applyDeveloperLogDefaultFilters();
                 showSettingsSidebar(sidebarMode);
                 syncActiveViewShell();
                 closeToolbarMenus();
