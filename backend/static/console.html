@@ -5633,11 +5633,16 @@
                 margin-top: 18px;
             }
             .insights-live-greeting {
+                margin: 0;
                 text-transform: none;
-                letter-spacing: 0;
-                color: #6b7b98;
-                font-size: 0.92rem;
-                font-weight: 850;
+                letter-spacing: -0.01em;
+                color: #1e3455;
+                font-size: clamp(1.12rem, 0.98rem + 0.78vw, 1.62rem);
+                line-height: 1.12;
+                font-weight: 940;
+            }
+            .insights-live-greeting.is-ticking {
+                animation: insightsGreetingTick 0.32s ease;
             }
             #insightsScreen > .detail-hero.insights-hero {
                 position: relative;
@@ -5651,6 +5656,12 @@
                     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 250, 255, 0.96) 100%);
                 box-shadow: 0 18px 34px rgba(25, 57, 107, 0.10);
                 isolation: isolate;
+                transition: transform 0.22s ease, box-shadow 0.24s ease, border-color 0.2s ease;
+            }
+            #insightsScreen > .detail-hero.insights-hero:hover {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.2);
+                box-shadow: 0 22px 38px rgba(25, 57, 107, 0.14);
             }
             #insightsScreen > .detail-hero.insights-hero::before {
                 content: "";
@@ -5672,9 +5683,46 @@
                 pointer-events: none;
                 z-index: 1;
             }
+            #insightsScreen > .detail-hero.insights-hero .insights-hero-lead {
+                min-width: 0;
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 12px;
+                align-items: center;
+            }
+            #insightsScreen > .detail-hero.insights-hero .insights-hero-mark {
+                width: 42px;
+                height: 42px;
+                border-radius: 14px;
+                display: inline-grid;
+                place-items: center;
+                color: #ffffff;
+                background: linear-gradient(145deg, #2b8bcd, #1d67f2);
+                box-shadow: 0 12px 26px rgba(29, 103, 242, 0.26);
+                position: relative;
+                isolation: isolate;
+            }
+            #insightsScreen > .detail-hero.insights-hero .insights-hero-mark svg {
+                width: 17px;
+                height: 17px;
+                stroke: currentColor;
+                fill: none;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            #insightsScreen > .detail-hero.insights-hero .insights-hero-mark::after {
+                content: "";
+                position: absolute;
+                inset: -6px;
+                border-radius: 16px;
+                border: 1px solid rgba(29, 103, 242, 0.2);
+                animation: insightsHeroMarkPulse 2.2s ease-in-out infinite;
+            }
             #insightsScreen > .detail-hero.insights-hero .insights-hero-copy {
                 display: grid;
                 gap: 6px;
+                min-width: 0;
             }
             #insightsScreen > .detail-hero.insights-hero .insights-hero-title {
                 margin: 0;
@@ -5698,6 +5746,7 @@
                 font-weight: 920;
                 letter-spacing: 0.08em;
                 text-transform: uppercase;
+                transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
             }
             #insightsScreen > .detail-hero.insights-hero .insights-hero-chip::before {
                 content: "";
@@ -5716,15 +5765,51 @@
                 opacity: 1;
                 animation: insightsHeroSheen 1.05s linear infinite;
             }
+            #insightsScreen > .detail-hero.insights-hero.is-loading .insights-hero-chip {
+                border-color: rgba(29, 103, 242, 0.44);
+                background: rgba(233, 241, 255, 0.9);
+                color: #1d53b6;
+            }
+            #insightsScreen .insights-hero .detail-meta {
+                margin: 0;
+                color: #6f7f99;
+                font-size: clamp(0.84rem, 0.79rem + 0.18vw, 0.94rem);
+                font-weight: 770;
+                line-height: 1.35;
+            }
             #insightsScreen .insights-hero .detail-actions {
                 align-self: center;
             }
             #insightsScreen #refreshInsightsButton {
+                position: relative;
+                overflow: hidden;
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
                 border-color: rgba(29, 103, 242, 0.34);
                 background: rgba(255, 255, 255, 0.88);
                 color: #1b4fb4;
                 font-weight: 900;
                 box-shadow: 0 8px 20px rgba(29, 103, 242, 0.13);
+                transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+            }
+            #insightsScreen #refreshInsightsButton::before {
+                content: "↻";
+                font-size: 0.98rem;
+                line-height: 1;
+                color: currentColor;
+                opacity: 0.9;
+                transform-origin: 50% 50%;
+            }
+            #insightsScreen #refreshInsightsButton::after {
+                content: "";
+                position: absolute;
+                inset: -48% auto -48% -64%;
+                width: 48%;
+                background: linear-gradient(115deg, rgba(255, 255, 255, 0) 24%, rgba(255, 255, 255, 0.62) 50%, rgba(255, 255, 255, 0) 76%);
+                opacity: 0;
+                transition: opacity 0.2s ease;
+                pointer-events: none;
             }
             #insightsScreen #refreshInsightsButton:hover:not(:disabled),
             #insightsScreen #refreshInsightsButton:focus-visible:not(:disabled) {
@@ -5732,12 +5817,25 @@
                 background: #ffffff;
                 color: #133f95;
                 transform: translateY(-1px);
+                box-shadow: 0 12px 24px rgba(29, 103, 242, 0.18);
+            }
+            #insightsScreen #refreshInsightsButton:hover::after,
+            #insightsScreen #refreshInsightsButton:focus-visible::after {
+                opacity: 1;
+                animation: insightsRefreshSheen 0.9s linear;
+            }
+            #insightsScreen #refreshInsightsButton.is-busy::before {
+                animation: insightsRefreshSpin 0.92s linear infinite;
             }
             body.is-insights-entering #insightsScreen > .detail-hero.insights-hero {
                 animation: insightsHeroEnter 0.64s cubic-bezier(0.16, 1, 0.3, 1);
             }
             body.is-insights-entering #insightsTopbarSummary {
                 animation: insightsTopbarEnter 0.74s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+            @keyframes insightsGreetingTick {
+                0% { opacity: 0.82; transform: translateY(1px); }
+                100% { opacity: 1; transform: translateY(0); }
             }
             @keyframes insightsHeroEnter {
                 from {
@@ -5772,6 +5870,18 @@
             @keyframes insightsLiveDot {
                 0%, 100% { box-shadow: 0 0 0 0 rgba(31, 143, 110, 0.32); }
                 60% { box-shadow: 0 0 0 7px rgba(31, 143, 110, 0); }
+            }
+            @keyframes insightsHeroMarkPulse {
+                0%, 100% { opacity: 0.46; transform: scale(1); }
+                50% { opacity: 0; transform: scale(1.08); }
+            }
+            @keyframes insightsRefreshSpin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+            @keyframes insightsRefreshSheen {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(310%); }
             }
             .insights-main {
                 min-width: 0;
@@ -5933,10 +6043,13 @@
                 #insightsScreen > .detail-hero.insights-hero::before,
                 #insightsScreen > .detail-hero.insights-hero::after,
                 #insightsScreen > .detail-hero.insights-hero .insights-hero-chip::before,
+                #insightsScreen > .detail-hero.insights-hero .insights-hero-mark::after,
                 .insights-topbar-summary.is-entering article,
                 body.is-insights-entering #insightsScreen > .detail-hero.insights-hero,
                 body.is-insights-entering #insightsTopbarSummary,
-                .insights-topbar-summary strong.is-value-updated {
+                .insights-topbar-summary strong.is-value-updated,
+                .insights-live-greeting.is-ticking,
+                #insightsScreen #refreshInsightsButton.is-busy::before {
                     animation: none !important;
                 }
             }
@@ -6342,6 +6455,19 @@
                 #insightsScreen > .detail-hero.insights-hero {
                     padding: 16px;
                     border-radius: 18px;
+                }
+                #insightsScreen > .detail-hero.insights-hero .insights-hero-lead {
+                    grid-template-columns: 1fr;
+                    gap: 10px;
+                }
+                #insightsScreen > .detail-hero.insights-hero .insights-hero-mark {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 12px;
+                }
+                #insightsScreen #refreshInsightsButton {
+                    width: 100%;
+                    justify-content: center;
                 }
                 .insights-home .insight-chart {
                     border-radius: 16px;
@@ -19648,13 +19774,23 @@
                     </div>
 
                     <section class="insights-screen detail-card" id="insightsScreen" hidden>
-                        <div class="detail-hero insights-hero">
-                            <div>
-                                <p class="eyebrow insights-live-greeting" id="insightsLiveGreeting">Loading local time...</p>
-                                <p class="detail-meta" id="insightsMeta">AI analysis, reports and collection trends from synced Xero data.</p>
+                        <div class="detail-hero insights-hero" id="insightsHeroCard">
+                            <div class="insights-hero-lead">
+                                <span class="insights-hero-mark" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                        <path d="M4 12h4l2-5 4 10 2-5h4"></path>
+                                    </svg>
+                                </span>
+                                <div class="insights-hero-copy">
+                                    <span class="insights-hero-chip" id="insightsHeroChip">Live platform pulse</span>
+                                    <h2 class="insights-live-greeting insights-hero-title" id="insightsLiveGreeting">Loading local time...</h2>
+                                    <p class="detail-meta" id="insightsMeta">AI analysis, reports and collection trends from synced Xero data.</p>
+                                </div>
                             </div>
                             <div class="detail-actions">
-                                <button class="ghost-button" id="refreshInsightsButton" type="button">Refresh with Jenius AI</button>
+                                <button class="ghost-button" id="refreshInsightsButton" type="button" aria-busy="false">
+                                    <span id="refreshInsightsButtonLabel">Refresh with Jenius AI</span>
+                                </button>
                             </div>
                         </div>
 
@@ -46546,6 +46682,8 @@
 
             function setAiLoading(loading, detail = "Building the AI copilot briefing") {
                 insightsLoading = loading;
+                const insightsHero = document.getElementById("insightsHeroCard");
+                if (insightsHero) insightsHero.classList.toggle("is-loading", Boolean(loading));
                 const banner = document.getElementById("aiInlineBanner");
                 if (banner) {
                     banner.hidden = !loading;
@@ -46564,8 +46702,15 @@
                 renderSidebarSupportBubble();
                 updateTopbarInlineStatusState();
                 const refreshButton = document.getElementById("refreshInsightsButton");
+                const refreshLabel = document.getElementById("refreshInsightsButtonLabel");
                 if (refreshButton) {
                     refreshButton.disabled = loading;
+                    refreshButton.classList.toggle("is-busy", Boolean(loading));
+                    refreshButton.setAttribute("aria-busy", String(Boolean(loading)));
+                }
+                if (refreshLabel) {
+                    refreshLabel.textContent = loading ? "Jenius AI refreshing..." : "Refresh with Jenius AI";
+                } else if (refreshButton) {
                     refreshButton.textContent = loading ? "Jenius AI refreshing..." : "Refresh with Jenius AI";
                 }
             }
@@ -46586,7 +46731,11 @@
 
             function updateInsightsLiveGreeting() {
                 const target = document.getElementById("insightsLiveGreeting");
-                if (target) target.textContent = insightsGreetingText();
+                if (target) {
+                    target.classList.remove("is-ticking");
+                    target.textContent = insightsGreetingText();
+                    window.requestAnimationFrame(() => target.classList.add("is-ticking"));
+                }
             }
 
             function startInsightsClock() {
@@ -46908,6 +47057,14 @@
                 const payload = insightsData || localInsightsPayload("local");
                 const analytics = payload.analytics || {};
                 const ai = payload.ai || {};
+                const hero = document.getElementById("insightsHeroCard");
+                if (hero) hero.classList.toggle("is-loading", Boolean(insightsLoading && !insightsData));
+                const heroChip = document.getElementById("insightsHeroChip");
+                if (heroChip) {
+                    heroChip.textContent = insightsLoading
+                        ? "Refreshing now"
+                        : (ai.status === "ready" ? "OpenAI live" : "Local analytics");
+                }
                 document.getElementById("insightsMeta").textContent = analytics.generatedAt
                     ? `System briefing generated ${formatDate(analytics.generatedAt)} · ${ai.status === "ready" ? "OpenAI powered" : "Local analytics"}`
                     : "Whole-system AI analysis covering debtor book, bank extraction, month-end, Jashflow and platform status.";
