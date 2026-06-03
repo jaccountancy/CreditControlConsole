@@ -14854,6 +14854,7 @@ IGNITION_RENEWAL_END_DATE_KEYS = {
     "billing_end_date",
     "service_end_date",
 }
+IGNITION_RENEWAL_END_DATE_KEYS_NORMALISED = {key.replace("_", "").replace("-", "") for key in IGNITION_RENEWAL_END_DATE_KEYS}
 IGNITION_RENEWAL_WORKBOOK_HEADERS = [
     "Client Name",
     "Client Manager",
@@ -15334,11 +15335,17 @@ def _ignition_proposal_client_is_active(row: dict) -> bool:
     if not statuses:
         return True
     for status_text in statuses:
-        if status_text in IGNITION_ACTIVE_CLIENT_STATUSES:
+        compact = status_text.replace("_", "").replace("-", "").strip()
+        if (
+            status_text in IGNITION_ACTIVE_CLIENT_STATUSES
+            or compact in {"active", "current", "live", "activeclient", "client", "customer", "subscribed"}
+            or "active" in compact
+        ):
             return True
         if any(marker in status_text for marker in IGNITION_INACTIVE_CLIENT_STATUS_MARKERS):
             return False
-    return False
+    # Default to active unless there is an explicit inactive marker.
+    return True
 
 
 def _first_mapping_text(value, keys: tuple[str, ...]) -> str:
@@ -15573,7 +15580,8 @@ def _ignition_proposal_end_date(row: dict) -> date | None:
         if isinstance(value, dict):
             for key, item in value.items():
                 key_text = str(key or "").strip().lower()
-                if key_text in IGNITION_RENEWAL_END_DATE_KEYS:
+                key_normalised = key_text.replace("_", "").replace("-", "")
+                if key_text in IGNITION_RENEWAL_END_DATE_KEYS or key_normalised in IGNITION_RENEWAL_END_DATE_KEYS_NORMALISED:
                     parsed = _parse_ignition_renewal_date_value(item)
                     if parsed:
                         return parsed
