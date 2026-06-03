@@ -10129,6 +10129,9 @@
             #supplierReconciliationScreen .supplier-recon-row.is-green {
                 background: rgba(39, 176, 95, 0.11);
             }
+            #supplierReconciliationScreen .supplier-recon-row.is-orange {
+                background: rgba(255, 159, 47, 0.14);
+            }
             #supplierReconciliationScreen .supplier-recon-status {
                 display: inline-block;
                 border-radius: 999px;
@@ -10148,6 +10151,10 @@
             #supplierReconciliationScreen .supplier-recon-status.is-green {
                 background: rgba(39, 176, 95, 0.2);
                 color: #1f7d47;
+            }
+            #supplierReconciliationScreen .supplier-recon-status.is-orange {
+                background: rgba(255, 159, 47, 0.22);
+                color: #8a5c05;
             }
             #supplierReconciliationScreen .supplier-recon-filter {
                 display: inline-flex;
@@ -10338,6 +10345,55 @@
             .supplier-recon-email-panel textarea,
             .supplier-recon-email-panel input {
                 width: 100%;
+            }
+            .supplier-recon-match-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 281;
+                display: grid;
+                place-items: center;
+                background: rgba(19, 29, 48, 0.48);
+                padding: 20px;
+            }
+            .supplier-recon-match-panel {
+                width: min(880px, 100%);
+                max-height: min(88vh, 920px);
+                overflow: auto;
+                border-radius: 22px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: rgba(255, 255, 255, 0.98);
+                box-shadow: 0 16px 36px rgba(30, 47, 77, 0.18);
+                padding: 18px;
+                display: grid;
+                gap: 12px;
+            }
+            .supplier-recon-match-search {
+                width: 100%;
+            }
+            .supplier-recon-match-table-wrap {
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                overflow: auto;
+                background: rgba(255, 255, 255, 0.9);
+            }
+            .supplier-recon-match-table {
+                width: 100%;
+                min-width: 760px;
+                border-collapse: collapse;
+            }
+            .supplier-recon-match-table th,
+            .supplier-recon-match-table td {
+                text-align: left;
+                padding: 10px;
+                border-bottom: 1px solid rgba(61, 85, 130, 0.12);
+                vertical-align: top;
+            }
+            .supplier-recon-match-table th {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
             }
             #meReportScreen .me-report-light-line {
                 margin-top: 6px;
@@ -19535,6 +19591,25 @@
                             </div>
                         </section>
                     </div>
+                    <div class="supplier-recon-match-modal" id="supplierReconciliationMatchModal" hidden>
+                        <section class="supplier-recon-match-panel" role="dialog" aria-modal="true" aria-labelledby="supplierReconciliationMatchTitle">
+                            <div class="jashflow-detail-head">
+                                <div>
+                                    <p class="eyebrow">Supplier matching</p>
+                                    <h3 id="supplierReconciliationMatchTitle">Choose supplier contact</h3>
+                                    <p class="detail-meta">Select the correct Xero supplier when auto-match confidence is low.</p>
+                                </div>
+                            </div>
+                            <label>
+                                Search contacts
+                                <input id="supplierReconciliationMatchSearchInput" class="supplier-recon-match-search" type="search" autocomplete="off" placeholder="Search by name, email or contact ID...">
+                            </label>
+                            <div class="supplier-recon-match-table-wrap" id="supplierReconciliationMatchTableWrap"></div>
+                            <div class="detail-actions">
+                                <button class="ghost-button" id="supplierReconciliationMatchCloseButton" type="button">Close</button>
+                            </div>
+                        </section>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="ignitionScreen" hidden>
                         <div class="detail-hero">
@@ -21441,6 +21516,8 @@
             const supplierReconciliationUploadEstimatedSeconds = 120;
             let supplierReconciliationEmailModalOpen = false;
             let supplierReconciliationEmailSending = false;
+            let supplierReconciliationMatchModalOpen = false;
+            let supplierReconciliationMatchSearchTerm = "";
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [], clients: [] }, renewals: { currentRun: null, recentRuns: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
             let ignitionRenewalsLoading = false;
@@ -32610,10 +32687,132 @@
                 bodyInput?.focus();
             }
 
+            async function connectSupplierReconciliationContact(contactId, options = {}) {
+                const selectedContactId = String(contactId || "").trim();
+                if (!selectedContactId) return false;
+                const tenantId = String(supplierReconciliationWorkspaceTenantId || supplierReconciliationData.xero?.tenantId || "").trim();
+                if (!tenantId) {
+                    showToast("Choose a client workspace first.", "error");
+                    return false;
+                }
+                try {
+                    const response = await requestJSON(api.endpoints.supplierReconciliationClients, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            xeroContactId: selectedContactId,
+                            tenantId,
+                        }),
+                    });
+                    const nextState = normaliseSupplierReconciliationPayload(response);
+                    supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
+                    selectedSupplierReconciliationContactId = selectedContactId;
+                    if (options.showToast !== false) showToast("Supplier saved to workspace", "success");
+                    return true;
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to save supplier", "error");
+                    return false;
+                }
+            }
+
+            function setSupplierReconciliationMatchModalOpen(isOpen) {
+                supplierReconciliationMatchModalOpen = Boolean(isOpen);
+                const modal = document.getElementById("supplierReconciliationMatchModal");
+                if (modal) modal.hidden = !supplierReconciliationMatchModalOpen;
+                if (!supplierReconciliationMatchModalOpen) {
+                    supplierReconciliationMatchSearchTerm = "";
+                    const searchInput = document.getElementById("supplierReconciliationMatchSearchInput");
+                    if (searchInput) searchInput.value = "";
+                    return;
+                }
+                renderSupplierReconciliationMatchModal();
+                document.getElementById("supplierReconciliationMatchSearchInput")?.focus();
+            }
+
+            function renderSupplierReconciliationMatchModal() {
+                const wrap = document.getElementById("supplierReconciliationMatchTableWrap");
+                if (!wrap) return;
+                const result = supplierReconciliationData?.result || {};
+                const xeroMatch = result?.xeroMatch || {};
+                const candidateRows = Array.isArray(xeroMatch.candidates) ? xeroMatch.candidates : [];
+                const contactOptions = supplierReconciliationContacts();
+                const byId = new Map();
+                candidateRows.forEach((row) => {
+                    const id = String(row?.xeroContactId || "").trim();
+                    if (!id) return;
+                    byId.set(id, {
+                        xeroContactId: id,
+                        name: String(row?.name || "").trim(),
+                        email: String(row?.email || "").trim(),
+                        score: Number(row?.score || 0),
+                        method: String(row?.method || "").trim(),
+                        matchedOn: String(row?.matchedOn || "").trim(),
+                        source: "candidate",
+                    });
+                });
+                contactOptions.forEach((contact) => {
+                    const id = String(contact?.xeroContactId || "").trim();
+                    if (!id) return;
+                    if (!byId.has(id)) {
+                        byId.set(id, {
+                            xeroContactId: id,
+                            name: String(contact?.name || "").trim(),
+                            email: String(contact?.email || "").trim(),
+                            score: 0,
+                            method: "",
+                            matchedOn: "",
+                            source: "contact",
+                        });
+                    }
+                });
+                const query = String(supplierReconciliationMatchSearchTerm || "").trim().toLowerCase();
+                const rows = [...byId.values()]
+                    .filter((row) => {
+                        if (!query) return true;
+                        const haystack = [row.name, row.email, row.xeroContactId, row.matchedOn].join(" ").toLowerCase();
+                        return haystack.includes(query);
+                    })
+                    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0) || String(left.name || "").localeCompare(String(right.name || "")));
+                wrap.innerHTML = `
+                    <table class="supplier-recon-match-table" aria-label="Supplier contact candidates">
+                        <thead>
+                            <tr>
+                                <th>Contact</th>
+                                <th>Email</th>
+                                <th>Match</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.length ? rows.map((row) => `
+                                <tr>
+                                    <td><strong>${escapeHTML(row.name || row.xeroContactId || "Contact")}</strong><small>${escapeHTML(row.xeroContactId || "")}</small></td>
+                                    <td>${escapeHTML(row.email || "No email")}</td>
+                                    <td>${row.score > 0 ? `${Math.round(Number(row.score || 0) * 100)}% (${escapeHTML(row.method || "match")})` : "Available contact"}${row.matchedOn ? `<small>Matched on: ${escapeHTML(row.matchedOn)}</small>` : ""}</td>
+                                    <td><button class="primary-button" type="button" data-supplier-recon-match-pick="${escapeHTML(row.xeroContactId)}">Select</button></td>
+                                </tr>
+                            `).join("") : '<tr><td colspan="4">No contacts match this search.</td></tr>'}
+                        </tbody>
+                    </table>
+                `;
+                wrap.querySelectorAll("[data-supplier-recon-match-pick]").forEach((button) => {
+                    button.addEventListener("click", async () => {
+                        const nextContactId = String(button.getAttribute("data-supplier-recon-match-pick") || "").trim();
+                        if (!nextContactId) return;
+                        const saved = await connectSupplierReconciliationContact(nextContactId);
+                        if (!saved) return;
+                        setSupplierReconciliationMatchModalOpen(false);
+                        showToast("Supplier contact selected. Re-upload to rerun reconciliation with this contact.", "info");
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+            }
+
             function supplierReconciliationRowClass(row) {
                 const key = String(row?.statusColor || "").toLowerCase();
                 if (key === "green") return "is-green";
                 if (key === "yellow") return "is-yellow";
+                if (key === "orange") return "is-orange";
                 return "is-red";
             }
 
@@ -32670,9 +32869,15 @@
                         missingCount: modelRows.filter((row) => row.reconciliation.statusKey === "missing").length,
                         allocatedCount: modelRows.filter((row) => row.reconciliation.statusKey === "allocated").length,
                         paidCount: modelRows.filter((row) => row.reconciliation.statusKey === "paid").length,
+                        xeroOnlyCount: modelRows.filter((row) => row.reconciliation.statusKey === "xero_only").length,
+                        xeroCreditCount: modelRows.filter((row) => row.reconciliation.statusKey === "xero_credit_unallocated").length,
+                        xeroCashCount: modelRows.filter((row) => row.reconciliation.statusKey === "xero_cash_unallocated").length,
                         missingAmount: sumByStatus("missing"),
                         allocatedAmount: sumByStatus("allocated"),
-                        paidAmount: sumByStatus("paid")
+                        paidAmount: sumByStatus("paid"),
+                        xeroOnlyAmount: sumByStatus("xero_only"),
+                        xeroCreditAmount: sumByStatus("xero_credit_unallocated"),
+                        xeroCashAmount: sumByStatus("xero_cash_unallocated")
                     },
                     rows: modelRows
                 };
@@ -32699,6 +32904,7 @@
                     paid: rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "paid"),
                     allocated: rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "allocated"),
                     missing: rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "missing"),
+                    xeroFlags: rows.filter((row) => ["xero_only", "xero_credit_unallocated", "xero_cash_unallocated"].includes(String(row?.statusKey || "").toLowerCase())),
                 };
                 const nowStamp = new Intl.DateTimeFormat("en-GB", {
                     day: "2-digit",
@@ -32754,13 +32960,19 @@
                     ...linesForRows(byStatus.missing, { includeXero: false }),
                     ""
                 ];
+                const xeroFlagsSection = [
+                    "ITEMS ON XERO NOT ON THIS STATEMENT (INVOICES / CREDITS / CASH)",
+                    `Count: ${byStatus.xeroFlags.length.toLocaleString("en-GB")}`,
+                    ...linesForRows(byStatus.xeroFlags, { includeXero: true }),
+                    ""
+                ];
                 const footer = [
                     "Action required:",
                     byStatus.missing.length
                         ? "Please provide the missing invoices listed above so we can post them to Xero."
                         : "No missing invoices were identified from this statement."
                 ];
-                return [...header, ...paidSection, ...allocatedSection, ...missingSection, ...footer].join("\n");
+                return [...header, ...paidSection, ...allocatedSection, ...missingSection, ...xeroFlagsSection, ...footer].join("\n");
             }
 
             function downloadSupplierReconciliationReport(result = supplierReconciliationData.result) {
@@ -33021,25 +33233,10 @@
 
                 const renderConnectSupplier = async () => {
                     if (!selectedSupplierReconciliationContactId) return;
-                    const tenantId = String(supplierReconciliationWorkspaceTenantId || supplierReconciliationData.xero?.tenantId || "").trim();
-                    if (!tenantId) return showToast("Choose a client workspace first.", "error");
-                    try {
-                        const response = await requestJSON(api.endpoints.supplierReconciliationClients, {
-                            method: "POST",
-                            body: JSON.stringify({
-                                xeroContactId: selectedSupplierReconciliationContactId,
-                                tenantId,
-                            }),
-                        });
-                        const nextState = normaliseSupplierReconciliationPayload(response);
-                        supplierReconciliationData = { ...supplierReconciliationData, ...nextState, result: supplierReconciliationData.result };
-                        supplierReconciliationWorkspaceOpen = true;
-                        showToast("Supplier saved to workspace", "success");
-                        renderSupplierReconciliationScreen();
-                    } catch (error) {
-                        if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                        else showToast(error.message || "Unable to save supplier", "error");
-                    }
+                    const connected = await connectSupplierReconciliationContact(selectedSupplierReconciliationContactId, { showToast: true });
+                    if (!connected) return;
+                    supplierReconciliationWorkspaceOpen = true;
+                    renderSupplierReconciliationScreen();
                 };
 
                 const removeSupplierWorkspace = async (supplierClientId, options = {}) => {
@@ -33583,6 +33780,10 @@
                     const paidRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "paid");
                     const unpaidRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "allocated");
                     const missingRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "missing");
+                    const xeroOnlyRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "xero_only");
+                    const xeroCreditRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "xero_credit_unallocated");
+                    const xeroCashRows = rows.filter((row) => String(row?.statusKey || "").toLowerCase() === "xero_cash_unallocated");
+                    const xeroFlagRows = [...xeroOnlyRows, ...xeroCreditRows, ...xeroCashRows];
                     const model = supplierReconciliationStatementModel(result);
                     const profile = model.supplierProfile || {};
                     const xeroMatch = result?.xeroMatch || {};
@@ -33612,18 +33813,22 @@
                             <article><span>Missing</span><strong>${Number(summary.missingCount || 0).toLocaleString("en-GB")}</strong></article>
                             <article><span>Awaiting payment</span><strong>${Number(summary.allocatedCount || 0).toLocaleString("en-GB")}</strong></article>
                             <article><span>Paid</span><strong>${Number(summary.paidCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Xero-only invoices</span><strong>${Number(summary.xeroOnlyCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Unallocated credits</span><strong>${Number(summary.xeroUnallocatedCreditCount || 0).toLocaleString("en-GB")}</strong></article>
+                            <article><span>Unallocated cash</span><strong>${Number(summary.xeroUnallocatedCashCount || 0).toLocaleString("en-GB")}</strong></article>
                             <article><span>Matched bills</span><strong>${Number(summary.matchedBillCount || 0).toLocaleString("en-GB")}</strong></article>
                         </div>
                         <div class="supplier-recon-model-meta">
                             <strong>Supplier-facing report is ready</strong>
-                            <span>${Number(model.summary.totalLines || 0).toLocaleString("en-GB")} rows summarised. Download report to share what is paid, awaiting payment, and missing from Xero.</span>
+                            <span>${Number(model.summary.totalLines || 0).toLocaleString("en-GB")} rows summarised. Includes statement-to-Xero matches and Xero-only flags for invoices, unallocated credits, and unallocated cash.</span>
                         </div>
                         ${xeroMatch.proposedContactId ? `
                             <div class="supplier-recon-model-meta">
                                 <strong>Xero contact auto-match</strong>
-                                <span>Matched to ${escapeHTML(xeroMatch.proposedName || xeroMatch.proposedContactId)} (${Math.round(Number(xeroMatch.confidence || 0) * 100)}% confidence). ${xeroMatch.needsConfirmation ? "Confirm this match or pick a different contact." : "Match confidence is high."}</span>
+                                <span>Matched to ${escapeHTML(xeroMatch.proposedName || xeroMatch.proposedContactId)} (${Math.round(Number(xeroMatch.confidence || 0) * 100)}% confidence)${xeroMatch.matchedOn ? ` using "${escapeHTML(xeroMatch.matchedOn)}"` : ""}. ${xeroMatch.needsConfirmation ? "Confirm this match or pick a different contact." : "Match confidence is high."}</span>
                                 <div class="detail-actions">
                                     <button class="primary-button" type="button" data-supplier-recon-confirm-match="${escapeHTML(xeroMatch.proposedContactId)}">Confirm match</button>
+                                    <button class="ghost-button" type="button" id="supplierReconciliationOpenMatchModalButton">Pick different contact</button>
                                 </div>
                                 ${matchCandidates.length ? `
                                     <div class="supplier-recon-history-table-wrap">
@@ -33641,7 +33846,7 @@
                                                     <tr>
                                                         <td><strong>${escapeHTML(candidate.name || candidate.xeroContactId || "Contact")}</strong><small>${escapeHTML(candidate.xeroContactId || "")}</small></td>
                                                         <td>${escapeHTML(candidate.email || "No email")}</td>
-                                                        <td>${Math.round(Number(candidate.score || 0) * 100)}% (${escapeHTML(candidate.method || "match")})</td>
+                                                        <td>${Math.round(Number(candidate.score || 0) * 100)}% (${escapeHTML(candidate.method || "match")})${candidate.matchedOn ? `<small>${escapeHTML(candidate.matchedOn)}</small>` : ""}</td>
                                                         <td><button class="ghost-button" type="button" data-supplier-recon-select-candidate="${escapeHTML(candidate.xeroContactId || "")}">Select</button></td>
                                                     </tr>
                                                 `).join("")}
@@ -33704,6 +33909,18 @@
                                 </thead>
                                 <tbody>
                                     ${renderRows(missingRows, "No missing invoices identified from this statement.")}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="supplier-recon-results-wrap" role="table" aria-label="Xero items not present on statement">
+                            <table class="supplier-recon-table">
+                                <thead>
+                                    <tr>
+                                        <th colspan="5">Items On Xero Not On Statement (Invoices / Credits / Cash)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${renderRows(xeroFlagRows, "No Xero-only invoice, credit, or cash flags for this supplier.")}
                                 </tbody>
                             </table>
                         </div>
@@ -33827,10 +34044,11 @@
                     renderSupplierReconciliationScreen();
                 });
                 document.querySelectorAll("[data-supplier-recon-confirm-match]").forEach((button) => {
-                    button.addEventListener("click", () => {
+                    button.addEventListener("click", async () => {
                         const contactId = String(button.dataset.supplierReconConfirmMatch || "");
                         if (!contactId) return;
                         selectedSupplierReconciliationContactId = contactId;
+                        await connectSupplierReconciliationContact(contactId, { showToast: false });
                         showToast("Supplier match confirmed. You can continue with this workspace.", "success");
                         renderSupplierReconciliationScreen();
                     });
@@ -33840,10 +34058,13 @@
                         const contactId = String(button.dataset.supplierReconSelectCandidate || "");
                         if (!contactId) return;
                         selectedSupplierReconciliationContactId = contactId;
-                        await renderConnectSupplier();
+                        await connectSupplierReconciliationContact(contactId, { showToast: false });
                         showToast("Alternative supplier selected. Re-upload the statement to re-run reconciliation with this supplier.", "info");
                         renderSupplierReconciliationScreen();
                     });
+                });
+                document.getElementById("supplierReconciliationOpenMatchModalButton")?.addEventListener("click", () => {
+                    setSupplierReconciliationMatchModalOpen(true);
                 });
                 document.getElementById("supplierReconciliationSupplierSearchInput")?.addEventListener("input", (event) => {
                     supplierReconciliationSupplierSearchTerm = String(event.target.value || "");
@@ -33930,6 +34151,18 @@
                     });
                     modal.addEventListener("click", (event) => {
                         if (event.target === modal) setSupplierReconciliationEmailModalOpen(false);
+                    });
+                }
+                const matchModal = document.getElementById("supplierReconciliationMatchModal");
+                if (matchModal && matchModal.dataset.supplierReconWired !== "true") {
+                    matchModal.dataset.supplierReconWired = "true";
+                    document.getElementById("supplierReconciliationMatchCloseButton")?.addEventListener("click", () => setSupplierReconciliationMatchModalOpen(false));
+                    document.getElementById("supplierReconciliationMatchSearchInput")?.addEventListener("input", (event) => {
+                        supplierReconciliationMatchSearchTerm = String(event.target.value || "");
+                        renderSupplierReconciliationMatchModal();
+                    });
+                    matchModal.addEventListener("click", (event) => {
+                        if (event.target === matchModal) setSupplierReconciliationMatchModalOpen(false);
                     });
                 }
             }

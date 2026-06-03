@@ -16508,6 +16508,13 @@ def _xero_bill_deep_link(invoice_id: str) -> str:
     return f"https://go.xero.com/AccountsPayable/View.aspx?InvoiceID={clean_invoice_id}"
 
 
+def _xero_credit_note_deep_link(credit_note_id: str) -> str:
+    clean_credit_note_id = str(credit_note_id or "").strip()
+    if not clean_credit_note_id:
+        return ""
+    return f"https://go.xero.com/AccountsPayable/ViewCreditNote.aspx?CreditNoteID={clean_credit_note_id}"
+
+
 async def _supplier_reconciliation_contact_options_for_connection(connection_row: dict) -> list[dict]:
     try:
         contacts = await fetch_paginated_collection(connection_row, CONTACTS_URL, "Contacts", max_pages=10, params={"order": "Name ASC"})
@@ -16735,46 +16742,163 @@ def _normalise_supplier_match_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
 
 
-def _supplier_reconciliation_best_contact_match(contacts: list[dict], supplier_name: str, supplier_email: str) -> tuple[dict | None, float, str, list[dict]]:
-    supplier_name_norm = _normalise_supplier_match_text(supplier_name)
+def _supplier_match_tokens(value: str) -> list[str]:
+    text = _normalise_supplier_match_text(value)
+    if not text:
+        return []
+    legal_tokens = {"ltd", "limited", "llp", "plc", "inc", "co", "company", "corp", "corporation"}
+    return [token for token in text.split() if token and token not in legal_tokens]
+
+
+def _supplier_token_overlap_score(left: str, right: str) -> float:
+    left_tokens = set(_supplier_match_tokens(left))
+    right_tokens = set(_supplier_match_tokens(right))
+    if not left_tokens or not right_tokens:
+        return 0.0
+    intersection = len(left_tokens & right_tokens)
+    union = len(left_tokens | right_tokens)
+    if union <= 0:
+        return 0.0
+    return intersection / union
+
+
+def _supplier_statement_name_candidates(
+    statement_text: str,
+    filename: str,
+    extracted_supplier_name: str,
+    extracted_client_name: str,
+) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidate(value: str, score: float = 0.0) -> None:
+        clean = str(value or "").strip(" :,-")
+        if not clean:
+            return
+        normalised = _normalise_supplier_match_text(clean)
+        if not normalised:
+            return
+        if normalised == _normalise_supplier_match_text(extracted_client_name):
+            return
+        if normalised in {"statement", "statement date", "payment advice", "balance due"}:
+            return
+        if normalised in seen:
+            return
+        seen.add(normalised)
+        candidates.append((score, clean))
+
+    add_candidate(extracted_supplier_name, 10.0)
+
+    for pattern, base_score in (
+        (r"To pay by BACS transfer:\s*([^,\n]+)", 9.8),
+        (r"Cheques must be made payable to\s+([^\n]+)", 9.7),
+        (r"Registered Office:\s*([^,\n]+)", 9.5),
+    ):
+        for match in re.finditer(pattern, statement_text or "", flags=re.IGNORECASE):
+            add_candidate(match.group(1), base_score)
+
+    company_suffix = re.compile(r"\b(ltd|limited|llp|plc|inc|company|corp|corporation)\b", re.IGNORECASE)
+    exclude_fragments = (
+        "statement",
+        "invoice",
+        "payment",
+        "balance",
+        "due date",
+        "account number",
+        "vat number",
+        "sort code",
+        "iban",
+        "swift",
+        "bank",
+        "road",
+        "yard",
+        "estate",
+        "united kingdom",
+    )
+    lines = [str(line or "").strip() for line in str(statement_text or "").splitlines()]
+    for index, line in enumerate(lines[:70]):
+        if not line or len(line) > 90:
+            continue
+        lowered = line.lower()
+        if any(fragment in lowered for fragment in exclude_fragments):
+            continue
+        if not company_suffix.search(line):
+            continue
+        position_bonus = 1.0 if index <= 18 else 0.0
+        add_candidate(line, 8.0 + position_bonus)
+
+    file_stem = re.sub(r"\.pdf$", "", str(filename or ""), flags=re.IGNORECASE).strip()
+    if file_stem:
+        add_candidate(file_stem, 3.0)
+
+    ranked = sorted(candidates, key=lambda item: item[0], reverse=True)
+    return [name for _, name in ranked[:12]]
+
+
+def _supplier_reconciliation_best_contact_match(contacts: list[dict], supplier_name_candidates: list[str], supplier_email: str) -> tuple[dict | None, float, str, str, list[dict]]:
+    name_candidates = [str(item or "").strip() for item in supplier_name_candidates if str(item or "").strip()]
+    if not name_candidates:
+        name_candidates = [""]
     supplier_email_norm = str(supplier_email or "").strip().lower()
     candidates: list[dict] = []
     best: dict | None = None
     best_score = 0.0
     best_method = ""
+    best_matched_on = ""
     for contact in contacts:
         contact_name = str(contact.get("name") or "").strip()
         contact_email = str(contact.get("email") or "").strip().lower()
         if not contact_name:
             continue
-        name_norm = _normalise_supplier_match_text(contact_name)
-        score = 0.0
-        method = "name_similarity"
+        contact_name_norm = _normalise_supplier_match_text(contact_name)
+        row_best_score = 0.0
+        row_best_method = "name_similarity"
+        row_best_name = ""
         if supplier_email_norm and contact_email and supplier_email_norm == contact_email:
-            score = 1.0
-            method = "email_exact"
-        elif supplier_name_norm and name_norm and supplier_name_norm == name_norm:
-            score = 0.98
-            method = "name_exact"
-        elif supplier_name_norm and name_norm and (supplier_name_norm in name_norm or name_norm in supplier_name_norm):
-            score = 0.9
-            method = "name_contains"
-        elif supplier_name_norm and name_norm:
-            score = difflib.SequenceMatcher(a=supplier_name_norm, b=name_norm).ratio()
+            row_best_score = 1.0
+            row_best_method = "email_exact"
+            row_best_name = supplier_email_norm
+        else:
+            for supplier_name in name_candidates:
+                supplier_name_norm = _normalise_supplier_match_text(supplier_name)
+                if not supplier_name_norm or not contact_name_norm:
+                    continue
+                score = 0.0
+                method = "name_similarity"
+                overlap = _supplier_token_overlap_score(supplier_name, contact_name)
+                if supplier_name_norm == contact_name_norm:
+                    score = 0.985
+                    method = "name_exact"
+                elif overlap >= 0.92:
+                    score = 0.965
+                    method = "token_overlap"
+                elif supplier_name_norm in contact_name_norm or contact_name_norm in supplier_name_norm:
+                    score = 0.93
+                    method = "name_contains"
+                else:
+                    ratio = difflib.SequenceMatcher(a=supplier_name_norm, b=contact_name_norm).ratio()
+                    score = max(ratio, overlap)
+                    method = "name_similarity" if ratio >= overlap else "token_similarity"
+                if score > row_best_score:
+                    row_best_score = score
+                    row_best_method = method
+                    row_best_name = supplier_name
         candidate = {
             "xeroContactId": str(contact.get("xeroContactId") or ""),
             "name": contact_name,
             "email": contact_email,
-            "score": float(round(score, 4)),
-            "method": method,
+            "score": float(round(row_best_score, 4)),
+            "method": row_best_method,
+            "matchedOn": row_best_name,
         }
         candidates.append(candidate)
-        if score > best_score:
+        if row_best_score > best_score:
             best = contact
-            best_score = score
-            best_method = method
+            best_score = row_best_score
+            best_method = row_best_method
+            best_matched_on = row_best_name
     candidates.sort(key=lambda row: row.get("score", 0), reverse=True)
-    return best, best_score, best_method, candidates[:8]
+    return best, best_score, best_method, best_matched_on, candidates[:8]
 
 
 def _ensure_supplier_reconciliation_client_connected(tenant_id: str, contact: dict, user_id: str) -> None:
@@ -16834,7 +16958,15 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
     extracted = await _extract_supplier_statement_lines(statement_text, filename or "supplier-statement.pdf")
     extracted_lines = [line for line in (extracted.get("lines") or []) if isinstance(line, dict)]
     extraction_supplier_name = str(extracted.get("supplierName") or "").strip()
+    extraction_client_name = str(extracted.get("clientName") or "").strip()
     extraction_email = str(extracted.get("emailAddress") or "").strip()
+    supplier_name_candidates = _supplier_statement_name_candidates(
+        statement_text,
+        filename or "supplier-statement.pdf",
+        extraction_supplier_name,
+        extraction_client_name,
+    )
+    resolved_supplier_name = supplier_name_candidates[0] if supplier_name_candidates else extraction_supplier_name
 
     xero_match_payload = {
         "proposedContactId": "",
@@ -16842,20 +16974,28 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
         "proposedEmail": "",
         "confidence": 0.0,
         "method": "",
+        "matchedOn": "",
         "needsConfirmation": False,
         "candidates": [],
+        "supplierNameCandidates": supplier_name_candidates[:8],
     }
     if not contact_id:
         contacts = await _supplier_reconciliation_contact_options_for_connection(connection_row)
-        best_contact, best_score, best_method, candidates = _supplier_reconciliation_best_contact_match(contacts, extraction_supplier_name, extraction_email)
+        best_contact, best_score, best_method, matched_on, candidates = _supplier_reconciliation_best_contact_match(
+            contacts,
+            supplier_name_candidates,
+            extraction_email,
+        )
         xero_match_payload = {
             "proposedContactId": str((best_contact or {}).get("xeroContactId") or ""),
             "proposedName": str((best_contact or {}).get("name") or ""),
             "proposedEmail": str((best_contact or {}).get("email") or ""),
             "confidence": float(round(best_score or 0.0, 4)),
             "method": best_method,
-            "needsConfirmation": bool(best_contact) and (best_score < 0.97),
+            "matchedOn": str(matched_on or ""),
+            "needsConfirmation": bool(best_contact) and (best_score < 0.95),
             "candidates": candidates,
+            "supplierNameCandidates": supplier_name_candidates[:8],
         }
         contact_id = str((best_contact or {}).get("xeroContactId") or "")
         if best_contact:
@@ -16873,11 +17013,15 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
                     "proposedEmail": str(confirmed_contact.get("email") or ""),
                     "confidence": 1.0,
                     "method": "user_selected",
+                    "matchedOn": str(confirmed_contact.get("name") or ""),
                     "needsConfirmation": False,
                     "candidates": [],
+                    "supplierNameCandidates": supplier_name_candidates[:8],
                 }
 
     bills = []
+    supplier_credit_notes = []
+    supplier_overpayments = []
     if contact_id:
         where = f'Type=="ACCPAY"&&Status!="VOIDED"&&Status!="DELETED"&&{_xero_contact_where(contact_id)}'
         try:
@@ -16886,6 +17030,34 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
             bills = await fetch_paginated_collection(connection_row, INVOICES_URL, "Invoices", params={"where": where, "order": "Date DESC"})
         contact_id_lower = contact_id.lower()
         bills = [bill for bill in bills if _xero_transaction_contact_id(bill) == contact_id_lower]
+        try:
+            supplier_credit_notes = await fetch_paginated_collection(
+                connection_row,
+                CREDIT_NOTES_URL,
+                "CreditNotes",
+                params={"where": 'Type=="ACCPAYCREDIT"&&Status=="AUTHORISED"', "order": "Date DESC"},
+            )
+        except HTTPException:
+            supplier_credit_notes = []
+        supplier_credit_notes = [
+            note
+            for note in supplier_credit_notes
+            if _xero_transaction_contact_id(note) == contact_id_lower and str(note.get("Type") or "").upper() == "ACCPAYCREDIT"
+        ]
+        try:
+            supplier_overpayments = await fetch_paginated_collection(
+                connection_row,
+                OVERPAYMENTS_URL,
+                "Overpayments",
+                params={"where": 'Status=="AUTHORISED"', "order": "Date DESC"},
+            )
+        except HTTPException:
+            supplier_overpayments = []
+        supplier_overpayments = [
+            payment
+            for payment in supplier_overpayments
+            if _xero_transaction_contact_id(payment) == contact_id_lower and "SPEND" in str(payment.get("Type") or "").upper()
+        ]
 
     bill_rows = []
     invoice_lookup = {}
@@ -16918,6 +17090,7 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
                 invoice_lookup[key] = row
 
     reconciliation_rows = []
+    matched_invoice_ids: set[str] = set()
     for index, line in enumerate(extracted_lines):
         line_invoice = str(line.get("invoiceNumber") or "").strip()
         line_reference = str(line.get("reference") or "").strip()
@@ -16960,11 +17133,101 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
                 "xeroUrl": matched.get("xeroUrl") if matched else "",
             }
         )
+        if matched and str(matched.get("invoiceId") or "").strip():
+            matched_invoice_ids.add(str(matched.get("invoiceId") or "").strip())
+
+    xero_only_rows = []
+    for bill in bill_rows:
+        invoice_id = str(bill.get("invoiceId") or "").strip()
+        if not invoice_id or invoice_id in matched_invoice_ids:
+            continue
+        xero_only_rows.append(
+            {
+                "id": f"xero-only-{invoice_id}",
+                "invoiceNumber": str(bill.get("invoiceNumber") or "").strip(),
+                "reference": str(bill.get("reference") or "").strip(),
+                "invoiceDate": str(bill.get("date") or "").strip(),
+                "dueDate": str(bill.get("dueDate") or "").strip(),
+                "description": "Present in Xero but not listed on this supplier statement.",
+                "amount": float(_money(bill.get("total"))),
+                "balance": float(_money(bill.get("amountDue"))),
+                "statusKey": "xero_only",
+                "statusLabel": "Missing from statement (in Xero)",
+                "statusColor": "orange",
+                "xeroInvoiceId": invoice_id,
+                "xeroInvoiceNumber": str(bill.get("invoiceNumber") or "").strip(),
+                "xeroInvoiceStatus": str(bill.get("status") or "").strip(),
+                "xeroAmountDue": float(_money(bill.get("amountDue"))),
+                "xeroAmountPaid": float(_money(bill.get("amountPaid"))),
+                "xeroUrl": str(bill.get("xeroUrl") or "").strip(),
+            }
+        )
+    reconciliation_rows.extend(xero_only_rows)
+
+    xero_credit_rows = []
+    for note in supplier_credit_notes:
+        remaining_credit = _remaining_credit(note)
+        if remaining_credit <= Decimal("0.01"):
+            continue
+        credit_note_id = str(note.get("CreditNoteID") or note.get("ID") or "").strip()
+        credit_note_number = str(note.get("CreditNoteNumber") or note.get("Reference") or credit_note_id).strip()
+        xero_credit_rows.append(
+            {
+                "id": f"xero-credit-{credit_note_id or credit_note_number or uuid4()}",
+                "invoiceNumber": credit_note_number,
+                "reference": str(note.get("Reference") or "").strip(),
+                "invoiceDate": str(_xero_payload_date(note.get("DateString") or note.get("Date")) or "").strip(),
+                "dueDate": "",
+                "description": "Supplier credit note is unallocated in Xero.",
+                "amount": -float(remaining_credit),
+                "balance": -float(remaining_credit),
+                "statusKey": "xero_credit_unallocated",
+                "statusLabel": "Unallocated supplier credit in Xero",
+                "statusColor": "orange",
+                "xeroInvoiceId": credit_note_id,
+                "xeroInvoiceNumber": credit_note_number,
+                "xeroInvoiceStatus": str(note.get("Status") or "").strip(),
+                "xeroAmountDue": -float(remaining_credit),
+                "xeroAmountPaid": 0.0,
+                "xeroUrl": _xero_credit_note_deep_link(credit_note_id),
+            }
+        )
+    reconciliation_rows.extend(xero_credit_rows)
+
+    xero_cash_rows = []
+    for payment in supplier_overpayments:
+        remaining_credit = _remaining_credit(payment)
+        if remaining_credit <= Decimal("0.01"):
+            continue
+        overpayment_id = str(payment.get("OverpaymentID") or payment.get("ID") or "").strip()
+        overpayment_number = str(payment.get("OverpaymentNumber") or payment.get("Reference") or overpayment_id).strip()
+        xero_cash_rows.append(
+            {
+                "id": f"xero-cash-{overpayment_id or overpayment_number or uuid4()}",
+                "invoiceNumber": overpayment_number,
+                "reference": str(payment.get("Reference") or "").strip(),
+                "invoiceDate": str(_xero_payload_date(payment.get("DateString") or payment.get("Date")) or "").strip(),
+                "dueDate": "",
+                "description": "Supplier overpayment cash is unallocated in Xero.",
+                "amount": -float(remaining_credit),
+                "balance": -float(remaining_credit),
+                "statusKey": "xero_cash_unallocated",
+                "statusLabel": "Unallocated supplier cash in Xero",
+                "statusColor": "orange",
+                "xeroInvoiceId": overpayment_id,
+                "xeroInvoiceNumber": overpayment_number,
+                "xeroInvoiceStatus": str(payment.get("Status") or "").strip(),
+                "xeroAmountDue": -float(remaining_credit),
+                "xeroAmountPaid": 0.0,
+                "xeroUrl": "",
+            }
+        )
+    reconciliation_rows.extend(xero_cash_rows)
 
     return {
         "tenantId": tenant_id,
         "contactId": contact_id,
-        "supplierName": str(extracted.get("supplierName") or "").strip(),
+        "supplierName": str(resolved_supplier_name or extracted.get("supplierName") or "").strip(),
         "clientName": str(extracted.get("clientName") or "").strip(),
         "emailAddress": str(extracted.get("emailAddress") or "").strip(),
         "supplierAddress": str(extracted.get("supplierAddress") or "").strip(),
@@ -16975,7 +17238,7 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
         "supplierBankIban": str(extracted.get("supplierBankIban") or "").strip(),
         "supplierBankSwiftBic": str(extracted.get("supplierBankSwiftBic") or "").strip(),
         "supplierProfile": {
-            "name": str(extracted.get("supplierName") or "").strip(),
+            "name": str(resolved_supplier_name or extracted.get("supplierName") or "").strip(),
             "address": str(extracted.get("supplierAddress") or "").strip(),
             "email": str(extracted.get("emailAddress") or "").strip(),
             "phone": str(extracted.get("supplierPhone") or "").strip(),
@@ -16994,6 +17257,12 @@ async def supplier_reconciliation_extract(user: dict, xero_contact_id: str, tena
             "missingCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "missing"),
             "allocatedCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "allocated"),
             "paidCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "paid"),
+            "xeroOnlyCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "xero_only"),
+            "xeroOnlyAmount": float(sum(_money(row.get("balance")) for row in reconciliation_rows if row["statusKey"] == "xero_only")),
+            "xeroUnallocatedCreditCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "xero_credit_unallocated"),
+            "xeroUnallocatedCreditAmount": float(sum(_money(row.get("balance")) for row in reconciliation_rows if row["statusKey"] == "xero_credit_unallocated")),
+            "xeroUnallocatedCashCount": sum(1 for row in reconciliation_rows if row["statusKey"] == "xero_cash_unallocated"),
+            "xeroUnallocatedCashAmount": float(sum(_money(row.get("balance")) for row in reconciliation_rows if row["statusKey"] == "xero_cash_unallocated")),
             "matchedBillCount": len({row["xeroInvoiceId"] for row in reconciliation_rows if row.get("xeroInvoiceId")}),
         },
         "xeroMatch": xero_match_payload,
