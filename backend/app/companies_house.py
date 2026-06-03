@@ -316,6 +316,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
     gateway_connected = False
     gateway_errors: list[str] = []
     gateway_error_message = ""
+    gateway_request_debug = ""
     gateway_response_bytes = 0
     gateway_duration_ms = 0
     if gateway_attempted:
@@ -327,6 +328,10 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                 environment=environment,
                 transaction_id=_ch_txn_id(),
                 submission_number="ZZZZZZ",
+            )
+            gateway_request_debug = (
+                f"Sent presenterId={_xml_text(presenter_id)}, presenterAuth={_xml_text(presenter_auth)}, "
+                f"gatewayTest={_ch_gateway_test_flag(environment)}, class=GetSubmissionStatus, submissionNumber=ZZZZZZ."
             )
             gateway_response_text, gateway_response_root = _post_ch_gateway(gateway_request)
             gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
@@ -340,11 +345,15 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
                 )
                 if gateway_errors:
                     gateway_error_message = f"{gateway_error_message} Gateway detail: {_xml_text(gateway_errors[0])[:220]}"
+                if gateway_request_debug:
+                    gateway_error_message = f"{gateway_error_message} {gateway_request_debug}"
             else:
                 gateway_connected = True
         except HTTPException as exc:
             gateway_duration_ms = int((utcnow() - gateway_started).total_seconds() * 1000)
             gateway_error_message = str(exc.detail or "Companies House XML gateway connection test failed.")
+            if gateway_request_debug:
+                gateway_error_message = f"{gateway_error_message} {gateway_request_debug}"
     else:
         gateway_error_message = (
             "XML gateway test skipped because Presenter ID/auth code are not configured. "
@@ -377,6 +386,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         "gatewayErrorCount": len(gateway_errors),
         "gatewayErrors": gateway_errors[:10],
         "gatewayResponseBytes": gateway_response_bytes,
+        "gatewayRequestDebug": gateway_request_debug,
         "gatewayError": gateway_error_message,
         "message": message,
     }

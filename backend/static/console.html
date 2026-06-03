@@ -53621,8 +53621,10 @@
                         ? (result.gatewayConnected ? "XML OK" : "XML failed")
                         : "XML skipped";
                     const summary = `${result.message || "Connection check completed."} (${envLabel}) · REST ${restLatency}ms · XML ${gatewayLatency}ms · total ${latency}ms · sample results ${sampleCount} · ${gatewayState}.`;
+                    const debug = String(result.gatewayRequestDebug || "").trim();
+                    const summaryWithDebug = debug ? `${summary} ${debug}` : summary;
                     const isConnected = result.connected !== false;
-                    setCompaniesHouseSettingsStatus(summary, isConnected ? "success" : "error");
+                    setCompaniesHouseSettingsStatus(summaryWithDebug, isConnected ? "success" : "error");
                     showToast(
                         isConnected
                             ? "Companies House connection test passed."
