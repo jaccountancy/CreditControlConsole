@@ -40371,6 +40371,8 @@
             function ignitionRenewalBatchReferenceForRun(run = null) {
                 const serverLabel = String(run?.batchReference || "").trim();
                 if (serverLabel) return serverLabel;
+                const serverNumber = Number(run?.batchReferenceNumber || 0);
+                if (serverNumber > 0) return ignitionRenewalBatchRefLabel(serverNumber);
                 const runId = String(run?.id || "").trim();
                 if (!runId) return "JUKRE-000";
                 const value = ignitionRenewalBatchRefNumber(run);
@@ -40379,6 +40381,18 @@
                 ignitionRenewalBatchRefs[runId] = ignitionRenewalBatchRefCounter;
                 persistIgnitionRenewalBatchRefs();
                 return ignitionRenewalBatchRefLabel(ignitionRenewalBatchRefCounter);
+            }
+
+            function ignitionRenewalWorkflowReference(run = null) {
+                const current = String(ignitionRenewalBatchReferenceForRun(run) || "").trim();
+                if (current && current !== "JUKRE-000") return current;
+                const recentRuns = Array.isArray(ignitionData?.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                const latest = recentRuns
+                    .filter((item) => String(item?.id || "").trim())
+                    .slice()
+                    .sort((left, right) => dateSortValue(right?.createdAt || right?.created_at || "") - dateSortValue(left?.createdAt || left?.created_at || ""))[0] || null;
+                const recent = String(ignitionRenewalBatchReferenceForRun(latest) || "").trim();
+                return recent && recent !== "JUKRE-000" ? recent : "";
             }
 
             function ignitionRenewalRunIsLocked(run = null) {
@@ -40965,7 +40979,7 @@
                 const panel = document.getElementById("ignitionRenewalsPanel");
                 if (!panel) return;
                 const run = ignitionRenewalRun();
-                const batchReference = run ? ignitionRenewalBatchReferenceForRun(run) : "";
+                const batchReference = ignitionRenewalWorkflowReference(run);
                 const finaliseCelebrating = Date.now() < ignitionRenewalFinaliseCelebrationUntil;
                 panel.classList.toggle("is-finalised-celebration", finaliseCelebrating);
 
@@ -40984,7 +40998,7 @@
                     const candidates = ignitionRenewalCandidates();
                     const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
                     ensureIgnitionRenewalSelection();
-                    if (title) title.textContent = "Renewal batches";
+                    if (title) title.textContent = batchReference ? `${batchReference} · Renewal batches` : "Renewal batches";
                     if (summary) {
                         summary.textContent = `Step 1: select eligible clients from Start workflow, then continue to pricing review. ${Number(recentRuns.length || 0).toLocaleString("en-GB")} batches in status.`;
                     }
@@ -41003,7 +41017,7 @@
                     const elapsed = ignitionRenewalsElapsedSeconds();
                     const loadingStep = ignitionRenewalsLoadingStep();
                     const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
-                    if (title) title.textContent = batchReference || "Preparing proposal list";
+                    if (title) title.textContent = batchReference ? `${batchReference} · Preparing proposal list` : "Preparing proposal list";
                     if (summary) summary.textContent = `${loadingStep.detail} ${ignitionRenewalsEtaText()}.`;
                     if (meta) {
                         meta.innerHTML = [
@@ -41057,7 +41071,7 @@
                     }
                     updateIgnitionRenewalTotalsFromTable();
                 } else {
-                    if (title) title.textContent = "Proposals ending in the coming 8 weeks";
+                    if (title) title.textContent = batchReference ? `${batchReference} · Proposals ending in the coming 8 weeks` : "Proposals ending in the coming 8 weeks";
                     if (summary) summary.textContent = "No renewal batch is open. Return to Batches to select clients and start a renewal run.";
                     if (meta) {
                         meta.innerHTML = [
@@ -41071,7 +41085,7 @@
 
                 const finalised = Boolean(run?.finalisedAt);
                 const pricingStage = ignitionRenewalsWorkspaceStage === "pricing";
-                const showBatchRefTopbarTitle = pricingStage && Boolean(run?.id);
+                const showBatchRefTopbarTitle = Boolean(batchReference);
                 const syncButton = document.getElementById("runIgnitionSyncButton");
                 document.body.classList.toggle("is-ignition-batch-ref-title", showBatchRefTopbarTitle);
                 renderTopbarIdentity();
@@ -41813,6 +41827,9 @@
                 closeIgnitionRenewalStartModal();
                 ignitionRenewalsWorkspaceStage = "pricing";
                 ignitionRenewalsLoading = true;
+                if (ignitionData?.renewals) {
+                    ignitionData.renewals = { ...ignitionData.renewals, currentRun: null };
+                }
                 ignitionRenewalsStartedAt = Date.now();
                 const renewalsController = new AbortController();
                 const renewalsTimeout = window.setTimeout(() => renewalsController.abort(), 120000);

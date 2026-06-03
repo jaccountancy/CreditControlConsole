@@ -17419,10 +17419,12 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     annualised_uplift = variance * Decimal("12")
     generated_at = _iso(utcnow())
-    report_title = f"Renewals : {batch_reference}" if str(batch_reference or "").strip() else "Renewals Proposal Round"
+    report_reference = str(batch_reference or "").strip() or "JUKRE-000"
+    report_title = report_reference
 
     story.extend([
         Paragraph(report_title, title_style),
+        Paragraph("Renewals Proposal Round", subtitle_style),
         Paragraph(f"Window: {_iso(run.get('window_start'))} to {_iso(run.get('window_end'))}", subtitle_style),
         Paragraph(f"Generated: {generated_at}", subtitle_style),
         Spacer(1, 10),
@@ -17574,7 +17576,7 @@ def ignition_renewals_report_pdf(user: dict, run_id: str) -> tuple[bytes, str]:
     if not run.get("finalised_at"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before exporting the PDF report.")
     batch_reference = _ignition_renewal_batch_reference(user, run_id)
-    filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
+    filename = f"{batch_reference.lower()}-ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
     return _build_ignition_renewals_pdf(run, items, batch_reference=batch_reference), filename
 
 
