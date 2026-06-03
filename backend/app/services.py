@@ -17044,6 +17044,13 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], batch_reference: 
     total_new = _money(run.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     annualised_uplift = variance * Decimal("12")
+    sorted_items = sorted(
+        items,
+        key=lambda item: (
+            _iso(item.get("renewal_date")) or "9999-12-31",
+            str(item.get("client_name") or "").lower(),
+        ),
+    )
     lines = [
         "Dear Amie,",
         "",
@@ -17057,9 +17064,23 @@ def _ignition_renewal_email_body(run: dict, items: list[dict], batch_reference: 
         f"Monthly uplift: £{variance:,.2f} ({variance_percent * Decimal('100'):.1f}%)",
         f"Annualised uplift: £{annualised_uplift:,.2f}",
         "",
-        "A concise client fee table is included below in this email.",
-        "A PDF copy of this renewal batch is also attached.",
+        "Client fee table (old vs new):",
+        "Client | Old monthly fee | New monthly fee",
+        "----------------------------------------",
     ]
+    for item in sorted_items:
+        client_name = str(item.get("client_name") or "Client").replace("\n", " ").strip()
+        current = _money(item.get("current_monthly_fee"))
+        proposed = _money(item.get("new_monthly_fee"))
+        lines.append(f"{client_name} | £{current:,.2f} | £{proposed:,.2f}")
+    lines.extend([
+        "----------------------------------------",
+        f"TOTALS | £{total_current:,.2f} | £{total_new:,.2f}",
+        "",
+        "A PDF copy of this renewal batch is also attached.",
+        "",
+        "Please can you renew these proposals and accept them on ignition, as well as sharing them with the client and confirming they are about to renew, thanks, Jay",
+    ])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -17767,6 +17788,13 @@ def _ignition_renewals_email_subject(batch_reference: str) -> str:
     return f"Renewals to action: {reference}"
 
 
+def _clean_ignition_renewal_batch_reference(value: object) -> str:
+    text = str(value or "").strip().upper()
+    if re.fullmatch(r"JUKRE-\d{1,6}", text):
+        return text
+    return ""
+
+
 async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict | None = None) -> dict:
     settings = get_settings()
     safe_payload = payload if isinstance(payload, dict) else {}
@@ -17780,7 +17808,7 @@ async def ignition_renewals_email_preview(user: dict, run_id: str, payload: dict
     )
     if not recipient:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Set IGNITION_RENEWALS_RECIPIENT_EMAIL or provide a recipient email.")
-    batch_reference = _ignition_renewal_batch_reference(user, run_id)
+    batch_reference = _clean_ignition_renewal_batch_reference(safe_payload.get("batchReference")) or _ignition_renewal_batch_reference(user, run_id)
     subject = str(safe_payload.get("subject") or "").strip() or _ignition_renewals_email_subject(batch_reference)
     custom_body = str(safe_payload.get("body") or "").strip()
     if custom_body:
@@ -17799,8 +17827,8 @@ async def send_ignition_renewals_email(user: dict, run_id: str, payload: dict | 
     recipient = email_preview["recipientEmail"]
     subject = email_preview["subject"]
     body = email_preview["body"]
+    batch_reference = str(email_preview.get("batchReference") or "").strip() or _ignition_renewal_batch_reference(user, run_id)
     run, items = _ignition_renewal_run_with_items(user, run_id)
-    batch_reference = _ignition_renewal_batch_reference(user, run_id)
     report_pdf = _build_ignition_renewals_pdf(run, items, batch_reference=batch_reference)
     filename = f"ignition-renewals-{_iso(run.get('window_start'))}-to-{_iso(run.get('window_end'))}.pdf"
     message = EmailMessage()
