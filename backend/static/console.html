@@ -16505,7 +16505,7 @@
                 font-weight: 700;
             }
             .developer-log-entry pre {
-                max-height: 180px;
+                max-height: 320px;
                 overflow: auto;
                 margin: 0;
                 padding: 10px;
@@ -16535,7 +16535,8 @@
                 background: rgba(255, 83, 83, 0.12);
             }
             .settings-developer-log-list {
-                max-height: 420px;
+                min-height: min(56vh, 680px);
+                max-height: min(72vh, 900px);
                 padding: 0;
             }
             .settings-developer-log-list .empty-state {
@@ -24559,6 +24560,12 @@
             }
 
             let lastFailureDetailsText = "";
+            let lastFailureSignature = "";
+            let lastFailureOpenedAt = 0;
+            let lastToastSignature = "";
+            let lastToastShownAt = 0;
+            const UI_FAILURE_DEDUPE_WINDOW_MS = 12000;
+            const UI_TOAST_DEDUPE_WINDOW_MS = 6000;
 
             function stringifyFailureDetails(value) {
                 if (value == null) return "";
@@ -24584,6 +24591,10 @@
                 const summaryNode = document.getElementById("failureDetailsSummary");
                 const bodyNode = document.getElementById("failureDetailsBody");
                 if (!panel || !titleNode || !summaryNode || !bodyNode) return;
+                const detailsText = stringifyFailureDetails(details);
+                const signature = [endpoint, method, String(statusCode || ""), message, detailsText.slice(0, 500)].join("|");
+                const now = Date.now();
+                if (signature === lastFailureSignature && now - lastFailureOpenedAt < UI_FAILURE_DEDUPE_WINDOW_MS) return;
                 titleNode.textContent = title || "Request failure details";
                 summaryNode.textContent = summary || "Detailed diagnostics for the most recent failure.";
                 const rows = [
@@ -24594,8 +24605,10 @@
                     message ? `Message: ${message}` : "",
                     "",
                     "Details:",
-                    stringifyFailureDetails(details) || "(none provided by API)",
+                    detailsText || "(none provided by API)",
                 ].filter(Boolean);
+                lastFailureSignature = signature;
+                lastFailureOpenedAt = now;
                 lastFailureDetailsText = rows.join("\n");
                 bodyNode.textContent = lastFailureDetailsText;
                 panel.hidden = false;
@@ -53607,6 +53620,11 @@
             }
 
             function showToast(message, type = "info", action = null, duration = null) {
+                const signature = `${type}|${String(message || "")}`;
+                const now = Date.now();
+                if (signature === lastToastSignature && now - lastToastShownAt < UI_TOAST_DEDUPE_WINDOW_MS) return;
+                lastToastSignature = signature;
+                lastToastShownAt = now;
                 pushSystemActivity({
                     type,
                     label: type === "error" ? "Error message" : type === "success" ? "Completed" : "Notification",

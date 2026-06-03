@@ -88,7 +88,19 @@ def require_panel_user(request: Request) -> dict:
     if origin and origin.rstrip("/") not in allowed_panel_origins():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This panel origin is not allowed.")
 
-    user = current_user_from_request(request)
+    try:
+        user = current_user_from_request(request)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "message": "Unable to validate the panel session right now.",
+                "error": str(exc) or exc.__class__.__name__,
+                "type": exc.__class__.__name__,
+            },
+        ) from exc
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
