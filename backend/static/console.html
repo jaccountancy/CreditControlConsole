@@ -13171,6 +13171,14 @@
                 white-space: nowrap;
                 font-weight: 900;
             }
+            .ignition-renewals-proposal-name {
+                display: block;
+                margin-top: 2px;
+                color: #70809c;
+                font-size: 0.72rem;
+                font-weight: 700;
+                line-height: 1.25;
+            }
             .ignition-renewals-table th:nth-child(1),
             .ignition-renewals-table td:nth-child(1) { width: 20%; }
             .ignition-renewals-table th:nth-child(2),
@@ -20142,11 +20150,7 @@
                     </div>
 
                     <section class="late-charges-screen detail-card" id="ignitionScreen" hidden>
-                        <div class="detail-hero">
-                            <div class="detail-actions ignition-primary-actions">
-                                <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
-                            </div>
-                        </div>
+                        <div class="detail-hero"></div>
                         <section class="ignition-tab-panel" data-ignition-panel="overview">
                             <section class="detail-panel ignition-panel">
                                 <div class="ignition-summary-grid" aria-label="Ignition management metrics">
@@ -20213,6 +20217,7 @@
                                         <p class="detail-meta" id="ignitionRenewalsSummary">Create a renewals round from accepted Ignition proposals ending in the next 8 weeks.</p>
                                     </div>
                                     <div class="detail-actions">
+                                        <button class="primary-button" id="runIgnitionSyncButton" type="button">Sync changes</button>
                                         <button class="ghost-button" id="ignitionRenewalsBackToBatchesButton" type="button" hidden>Back to batches</button>
                                     </div>
                                 </div>
@@ -39915,16 +39920,19 @@
                     const variance = proposed - current;
                     const increasePercent = current > 0 ? variance / current : 0;
                     const proposalEndDate = formatDate(item.renewalDate || "");
+                    const proposalName = String(item.proposalName || item.planName || item.serviceName || "")
+                        .replace(/<[^>]*>/g, " ")
+                        .replace(/\s+/g, " ")
+                        .trim();
                     return `
-                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}">
-                            <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong></td>
+                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || item.planName || item.serviceName || "")}">
+                            <td data-label="Client Name"><strong>${escapeHTML(item.clientName || "Unknown client")}</strong>${proposalName ? `<span class="ignition-renewals-proposal-name">${escapeHTML(proposalName)}</span>` : ""}</td>
                             <td data-label="Proposal End Date">${escapeHTML(proposalEndDate || "-")}</td>
                             <td data-label="Client Manager"><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" ${locked ? "disabled" : ""}></td>
                             <td data-label="Net Monthly Fee" class="money-cell">${formatCurrency(current)}</td>
                             <td data-label="New Net Monthly Fee"><input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${proposed.toFixed(2)}" ${locked ? "disabled" : ""}></td>
                             <td data-label="Variance" class="money-cell" data-renewal-variance>${formatCurrency(variance)}</td>
                             <td data-label="Uplift %" class="percent-cell" data-renewal-variance-percent>${ignitionRenewalPercent(increasePercent)}</td>
-                            <td data-label="AT Comments"><textarea data-renewal-field="comments" rows="3" ${locked ? "disabled" : ""}>${escapeHTML(item.comments || item.planName || item.serviceName || "")}</textarea></td>
                         </tr>
                     `;
                 }).join("");
@@ -39939,7 +39947,6 @@
                                 <th>New Net Monthly Fee</th>
                                 <th>Variance</th>
                                 <th>Uplift %</th>
-                                <th>AT Comments</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
@@ -39955,7 +39962,7 @@
                     planName: row.dataset.planName || "",
                     currentMonthlyFee: Number(row.dataset.currentMonthly || 0),
                     newMonthlyFee: Number(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || 0),
-                    comments: row.querySelector('[data-renewal-field="comments"]')?.value || ""
+                    comments: row.querySelector('[data-renewal-field="comments"]')?.value || row.dataset.comments || ""
                 }));
             }
 
