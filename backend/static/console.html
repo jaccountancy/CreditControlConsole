@@ -9756,6 +9756,9 @@
                 flex-wrap: wrap;
                 margin-bottom: 8px;
             }
+            #supplierReconciliationScreen .supplier-recon-workspace-summary {
+                margin: 0 0 10px;
+            }
             #supplierReconciliationScreen .supplier-recon-tabs button {
                 min-height: 34px;
                 padding: 6px 12px;
@@ -32195,6 +32198,14 @@
                             <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Manage statement submissions, then move to Report Output to review reconciliation results."}</p>
                         </div>
                     </div>
+                    ${supplierReconciliationWorkspaceTab === "workspace" ? `
+                        <div class="ignition-summary-grid supplier-recon-workspace-summary">
+                            <article><span>Connected suppliers</span><strong>${workspaceClients.length.toLocaleString("en-GB")}</strong></article>
+                            <article><span>Extracted supplier records</span><strong>${supplierReconciliationWorkspaceSuppliers().length.toLocaleString("en-GB")}</strong></article>
+                            <article><span>Submitted statements</span><strong>${(supplierReconciliationSubmissionHistory || []).filter((row) => !supplierReconciliationWorkspaceTenantId || String(row.tenantId || "") === String(supplierReconciliationWorkspaceTenantId || "")).length.toLocaleString("en-GB")}</strong></article>
+                            <article><span>Current tenant</span><strong>${escapeHTML(supplierReconciliationWorkspaceTenantName || "Workspace")}</strong></article>
+                        </div>
+                    ` : ""}
                     <div class="supplier-recon-tabs" role="tablist" aria-label="Supplier workspace tabs">
                         <button type="button" data-supplier-recon-tab="supplier-workspace" class="${supplierReconciliationWorkspaceTab === "supplier-workspace" ? "is-active" : ""}">Supplier Workspace</button>
                         <button type="button" data-supplier-recon-tab="workspace" class="${supplierReconciliationWorkspaceTab === "workspace" ? "is-active" : ""}">Workspace</button>
@@ -32231,12 +32242,6 @@
                                 <h3>Statement processing workspace</h3>
                                 <p class="detail-meta">Upload supplier statements, then use Report Output to review paid, unpaid, and missing invoices.</p>
                             </div>
-                        </div>
-                        <div class="ignition-summary-grid">
-                            <article><span>Connected suppliers</span><strong>${workspaceClients.length.toLocaleString("en-GB")}</strong></article>
-                            <article><span>Extracted supplier records</span><strong>${supplierReconciliationWorkspaceSuppliers().length.toLocaleString("en-GB")}</strong></article>
-                            <article><span>Submitted statements</span><strong>${(supplierReconciliationSubmissionHistory || []).filter((row) => !supplierReconciliationWorkspaceTenantId || String(row.tenantId || "") === String(supplierReconciliationWorkspaceTenantId || "")).length.toLocaleString("en-GB")}</strong></article>
-                            <article><span>Current tenant</span><strong>${escapeHTML(supplierReconciliationWorkspaceTenantName || "Workspace")}</strong></article>
                         </div>
                     `;
                 } else if (supplierReconciliationWorkspaceTab === "supplier-workspace") {
