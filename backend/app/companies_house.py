@@ -86,10 +86,10 @@ COMPANIES_HOUSE_XML_GATEWAY_URL = "https://xmlgw.companieshouse.gov.uk/v1-0/xmlg
 GOVTALK_NS = "http://www.govtalk.gov.uk/CM/envelope"
 CH_HEADER_NS = "http://xmlgw.companieshouse.gov.uk/Header"
 CH_FORMS_NS = "http://xmlgw.companieshouse.gov.uk"
-CH_GATEWAY_MAX_ATTEMPTS = 3
-CH_GATEWAY_BACKOFF_SECONDS = 1.0
-CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 12.0
-CH_GATEWAY_MAX_ELAPSED_SECONDS = 28.0
+CH_GATEWAY_MAX_ATTEMPTS = 4
+CH_GATEWAY_BACKOFF_SECONDS = 1.5
+CH_GATEWAY_REQUEST_TIMEOUT_SECONDS = 20.0
+CH_GATEWAY_MAX_ELAPSED_SECONDS = 75.0
 CH_XSD_VALIDATION_ENABLED = True
 CH_FORM_SUBMISSION_XSD_URL = "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-9.xsd"
 
@@ -3942,114 +3942,127 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             _record_submission_failure(rejection_reason, "gateway_submission_unexpected")
             continue
 
-        status_value = _xml_text(parsed_submission.get("status"), "submitted")
-        rejection_reason = _xml_text(parsed_submission.get("rejectionReason"))
-        fee_amount = configured_fee_amount
-        payment_evidence = parsed_submission.get("paymentEvidence") or {}
-        payment_reconciliation: dict | None = None
-        if status_value == "accepted" and not _payment_evidence_complete(payment_evidence):
-            payment_reconciliation = _status_poll_payment_reconciliation(
-                presenter_id=presenter_id,
-                presenter_auth=presenter_auth,
-                environment=environment,
-                submission_number=submission_reference,
-                now=now,
-            )
-            payment_evidence = {
-                **payment_evidence,
-                **(payment_reconciliation.get("paymentEvidence") or {}),
-            }
-        if status_value == "accepted" and not _payment_evidence_complete(payment_evidence):
-            payment_evidence = {
-                **payment_evidence,
-                **_payment_confirmation_fallback_evidence(
-                    source="gateway_accept_without_payment_fields",
-                    status_code=_xml_text(parsed_submission.get("statusCode"), "ACCEPT"),
+        try:
+            status_value = _xml_text(parsed_submission.get("status"), "submitted")
+            rejection_reason = _xml_text(parsed_submission.get("rejectionReason"))
+            fee_amount = configured_fee_amount
+            payment_evidence = parsed_submission.get("paymentEvidence") or {}
+            payment_reconciliation: dict | None = None
+            if status_value == "accepted" and not _payment_evidence_complete(payment_evidence):
+                payment_reconciliation = _status_poll_payment_reconciliation(
+                    presenter_id=presenter_id,
+                    presenter_auth=presenter_auth,
+                    environment=environment,
+                    submission_number=submission_reference,
                     now=now,
-                ),
+                )
+                payment_evidence = {
+                    **payment_evidence,
+                    **(payment_reconciliation.get("paymentEvidence") or {}),
+                }
+            if status_value == "accepted" and not _payment_evidence_complete(payment_evidence):
+                payment_evidence = {
+                    **payment_evidence,
+                    **_payment_confirmation_fallback_evidence(
+                        source="gateway_accept_without_payment_fields",
+                        status_code=_xml_text(parsed_submission.get("statusCode"), "ACCEPT"),
+                        now=now,
+                    ),
+                }
+            payment_confirmed = True if status_value == "accepted" else None
+            response_payload = {
+                "queuedAt": now.isoformat(),
+                "source": "bulk_workflow",
+                "mode": "live_gateway",
+                "companyNumber": company_number,
+                "gatewayStatusCode": parsed_submission.get("statusCode"),
+                "gatewayStatuses": parsed_submission.get("statuses") or [],
+                "gatewayErrors": parsed_submission.get("errors") or [],
+                "paymentEvidence": payment_evidence,
+                "paymentReconciliation": payment_reconciliation or {},
+                "rawResponse": parsed_submission.get("rawResponse") or "",
             }
-        payment_confirmed = True if status_value == "accepted" else None
-        response_payload = {
-            "queuedAt": now.isoformat(),
-            "source": "bulk_workflow",
-            "mode": "live_gateway",
-            "companyNumber": company_number,
-            "gatewayStatusCode": parsed_submission.get("statusCode"),
-            "gatewayStatuses": parsed_submission.get("statuses") or [],
-            "gatewayErrors": parsed_submission.get("errors") or [],
-            "paymentEvidence": payment_evidence,
-            "paymentReconciliation": payment_reconciliation or {},
-            "rawResponse": parsed_submission.get("rawResponse") or "",
-        }
 
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE ch_submissions
-                    SET fee_amount = %s,
-                        payment_reference = %s,
-                        status = %s,
-                        rejection_reason = %s,
-                        payment_confirmed = %s,
-                        payment_evidence = %s::jsonb,
-                        response_payload = %s::jsonb,
-                        updated_at = %s,
-                        completed_at = %s
-                    WHERE id = %s
-                    """,
-                    (
-                        fee_amount,
-                        credit_account_number,
-                        status_value,
-                        rejection_reason,
-                        payment_confirmed,
-                        json.dumps(payment_evidence),
-                        json.dumps(response_payload),
-                        now,
-                        now if status_value in {"accepted", "rejected"} else None,
-                        submission_id,
-                    ),
+            with get_connection() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE ch_submissions
+                        SET fee_amount = %s,
+                            payment_reference = %s,
+                            status = %s,
+                            rejection_reason = %s,
+                            payment_confirmed = %s,
+                            payment_evidence = %s::jsonb,
+                            response_payload = %s::jsonb,
+                            updated_at = %s,
+                            completed_at = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            fee_amount,
+                            credit_account_number,
+                            status_value,
+                            rejection_reason,
+                            payment_confirmed,
+                            json.dumps(payment_evidence),
+                            json.dumps(response_payload),
+                            now,
+                            now if status_value in {"accepted", "rejected"} else None,
+                            submission_id,
+                        ),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                        VALUES ('ch_submission', %s, %s, %s::jsonb, %s)
+                        """,
+                        (
+                            submission_id,
+                            "bulk_submission_sent_live" if status_value != "rejected" else "bulk_submission_rejected_live",
+                            json.dumps({
+                                "companyId": company_id,
+                                "companyNumber": company_number,
+                                "workflow": "confirmation_statement_bulk",
+                                "statusCode": parsed_submission.get("statusCode"),
+                                "errors": parsed_submission.get("errors") or [],
+                            }),
+                            user_id,
+                        ),
+                    )
+                connection.commit()
+            if status_value == "rejected":
+                _record_dead_letter(
+                    company_id=company_id,
+                    submission_id=submission_id,
+                    stage="gateway_submission",
+                    reason=rejection_reason or "Gateway rejected submission",
+                    payload={"statusCode": parsed_submission.get("statusCode"), "paymentEvidence": payment_evidence},
                 )
-                cursor.execute(
-                    """
-                    INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
-                    VALUES ('ch_submission', %s, %s, %s::jsonb, %s)
-                    """,
-                    (
-                        submission_id,
-                        "bulk_submission_sent_live" if status_value != "rejected" else "bulk_submission_rejected_live",
-                        json.dumps({
-                            "companyId": company_id,
-                            "companyNumber": company_number,
-                            "workflow": "confirmation_statement_bulk",
-                            "statusCode": parsed_submission.get("statusCode"),
-                            "errors": parsed_submission.get("errors") or [],
-                        }),
-                        user_id,
-                    ),
-                )
-            connection.commit()
-        if status_value == "rejected":
-            _record_dead_letter(
-                company_id=company_id,
-                submission_id=submission_id,
-                stage="gateway_submission",
-                reason=rejection_reason or "Gateway rejected submission",
-                payload={"statusCode": parsed_submission.get("statusCode"), "paymentEvidence": payment_evidence},
+
+            submitted.append({
+                "submissionId": submission_id,
+                "companyId": company_id,
+                "companyName": row.get("company_name") or "",
+                "companyNumber": company_number,
+                "status": status_value,
+                "submittedAt": now.isoformat(),
+                "submissionReference": submission_reference,
+                "transactionId": transaction_id,
+                "rejectionReason": rejection_reason,
+            })
+        except Exception as exc:  # pragma: no cover - defensive guard to avoid aborting full bulk run
+            rejection_reason = (
+                "Unexpected error while finalising Companies House submission. "
+                f"{str(exc) or exc.__class__.__name__}"
             )
-
-        submitted.append({
-            "submissionId": submission_id,
-            "companyId": company_id,
-            "companyName": row.get("company_name") or "",
-            "companyNumber": company_number,
-            "status": status_value,
-            "submittedAt": now.isoformat(),
-            "submissionReference": submission_reference,
-            "transactionId": transaction_id,
-            "rejectionReason": rejection_reason,
-        })
+            logger.exception(
+                "Unexpected Companies House bulk submission post-processing failure for %s (%s)",
+                company_number,
+                company_id,
+            )
+            _record_submission_failure(rejection_reason, "gateway_postprocess_unexpected")
+            continue
 
     for missing_id in missing_ids:
         skipped.append({
