@@ -13103,7 +13103,7 @@
             }
             .ignition-renewals-table {
                 width: 100%;
-                min-width: 1220px;
+                min-width: 980px;
                 border-collapse: collapse;
                 table-layout: fixed;
             }
@@ -13146,25 +13146,19 @@
                 font-weight: 900;
             }
             .ignition-renewals-table th:nth-child(1),
-            .ignition-renewals-table td:nth-child(1) { width: 15%; }
+            .ignition-renewals-table td:nth-child(1) { width: 28%; }
             .ignition-renewals-table th:nth-child(2),
             .ignition-renewals-table td:nth-child(2) { width: 11%; }
             .ignition-renewals-table th:nth-child(3),
-            .ignition-renewals-table td:nth-child(3) { width: 9%; }
+            .ignition-renewals-table td:nth-child(3) { width: 13%; }
             .ignition-renewals-table th:nth-child(4),
-            .ignition-renewals-table td:nth-child(4) { width: 10%; }
+            .ignition-renewals-table td:nth-child(4) { width: 13%; }
             .ignition-renewals-table th:nth-child(5),
-            .ignition-renewals-table td:nth-child(5) { width: 8%; }
+            .ignition-renewals-table td:nth-child(5) { width: 11%; }
             .ignition-renewals-table th:nth-child(6),
-            .ignition-renewals-table td:nth-child(6) { width: 8%; }
+            .ignition-renewals-table td:nth-child(6) { width: 11%; }
             .ignition-renewals-table th:nth-child(7),
-            .ignition-renewals-table td:nth-child(7) { width: 8%; }
-            .ignition-renewals-table th:nth-child(8),
-            .ignition-renewals-table td:nth-child(8) { width: 8%; }
-            .ignition-renewals-table th:nth-child(9),
-            .ignition-renewals-table td:nth-child(9) { width: 6%; }
-            .ignition-renewals-table th:nth-child(10),
-            .ignition-renewals-table td:nth-child(10) { width: 17%; }
+            .ignition-renewals-table td:nth-child(7) { width: 13%; }
             .ignition-renewal-history-wrap {
                 display: grid;
                 grid-template-columns: minmax(250px, 320px) minmax(0, 1fr);
@@ -39114,11 +39108,9 @@
                                 <tr>
                                     <th>Client</th>
                                     <th>Renewal Date</th>
-                                    <th>Plan</th>
                                     <th>Current Fee</th>
                                     <th>New Fee</th>
                                     <th>Variance</th>
-                                    <th>Comments</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -39126,11 +39118,9 @@
                                     <tr>
                                         <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><small>${escapeHTML(item.proposalName || "")}</small></td>
                                         <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
-                                        <td>${escapeHTML(ignitionRenewalPlanLabel(item))}</td>
                                         <td class="money-cell">${formatCurrency(item.currentMonthlyFee || 0)}</td>
                                         <td class="money-cell">${formatCurrency(item.newMonthlyFee || 0)}</td>
                                         <td class="money-cell">${formatCurrency((Number(item.newMonthlyFee || 0) - Number(item.currentMonthlyFee || 0)))}</td>
-                                        <td>${escapeHTML(item.comments || "")}</td>
                                     </tr>
                                 `).join("")}
                             </tbody>
@@ -39181,12 +39171,35 @@
             }
 
             function ignitionRenewalPlanLabel(item) {
-                const source = `${item?.planName || ""} ${item?.serviceName || ""} ${item?.proposalName || ""}`.toLowerCase();
-                if (source.includes("self assessment") || source.includes("self-assessment") || source.includes("sa100")) {
-                    return "Self assessment";
-                }
-                if (source.includes("micro")) return "Micro plan";
-                return "Standard plan";
+                const raw = `${item?.planName || ""} ${item?.serviceName || ""} ${item?.proposalName || ""}`
+                    .replace(/<[^>]*>/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim()
+                    .toLowerCase();
+
+                const has = (...phrases) => phrases.some((phrase) => raw.includes(phrase));
+                const labels = [
+                    { label: "Self Assessment", match: () => has("self assessment", "self-assessment", "sa100", "tax return") },
+                    { label: "Solo MTD", match: () => has("solo mtd") },
+                    { label: "Solo+", match: () => has("solo+") || (has("solo plus") && !has("mtd")) },
+                    { label: "Solo", match: () => has("solo") && !has("solo+") && !has("solo plus") && !has("solo mtd") },
+                    { label: "Micro Plan", match: () => has("micro package", "micro plan", "discounted micro") },
+                    { label: "Starter Plan", match: () => has("starter package", "starter plan") },
+                    { label: "Standard Plan", match: () => has("standard package", "standard plan") },
+                    { label: "Premium Plan", match: () => has("premium package", "premium plan") },
+                    { label: "Ultimate Plan", match: () => has("ultimate package", "ultimate plan") },
+                    { label: "Bookkeeping", match: () => has("bookkeeping", "book keeping") },
+                ];
+
+                const matched = labels.find((entry) => entry.match());
+                if (matched) return matched.label;
+
+                const fallback = String(item?.planName || "")
+                    .replace(/<[^>]*>/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (!fallback || fallback.toLowerCase() === "other") return "Other";
+                return fallback;
             }
 
             function ignitionRenewalRun() {
@@ -39340,19 +39353,15 @@
                     const variance = proposed - current;
                     const increasePercent = current > 0 ? variance / current : 0;
                     const proposalEndDate = formatDate(item.renewalDate || "");
-                    const planLabel = ignitionRenewalPlanLabel(item);
                     return `
-                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}">
+                        <tr data-renewal-row data-renewal-id="${escapeHTML(item.id)}" data-current-monthly="${current}" data-plan-name="${escapeHTML(item.planName || "")}" data-service-name="${escapeHTML(item.serviceName || "")}" data-comments="${escapeHTML(item.comments || "")}">
                             <td><strong>${escapeHTML(item.clientName || "Unknown client")}</strong><br><span>${escapeHTML(item.proposalName || "")}</span></td>
-                            <td><strong>${escapeHTML(planLabel)}</strong></td>
                             <td>${escapeHTML(proposalEndDate || "-")}</td>
                             <td><input data-renewal-field="clientManager" value="${escapeHTML(item.clientManager || "")}" ${locked ? "disabled" : ""}></td>
                             <td class="money-cell">${formatCurrency(current)}</td>
                             <td><input data-renewal-field="newMonthlyFee" type="number" min="0" step="0.01" value="${proposed.toFixed(2)}" ${locked ? "disabled" : ""}></td>
-                            <td><input data-renewal-field="increasePercent" type="number" step="0.1" value="${(increasePercent * 100).toFixed(1)}" ${locked ? "disabled" : ""}></td>
                             <td class="money-cell" data-renewal-variance>${formatCurrency(variance)}</td>
                             <td class="percent-cell" data-renewal-variance-percent>${ignitionRenewalPercent(increasePercent)}</td>
-                            <td><textarea data-renewal-field="comments" ${locked ? "disabled" : ""}>${escapeHTML(item.comments || "")}</textarea></td>
                         </tr>
                     `;
                 }).join("");
@@ -39361,15 +39370,12 @@
                         <thead>
                             <tr>
                                 <th>Client Name</th>
-                                <th>Plan</th>
                                 <th>Proposal End Date</th>
                                 <th>Client Manager</th>
                                 <th>Net Monthly Fee</th>
                                 <th>New Net Monthly Fee</th>
-                                <th>Increase %</th>
                                 <th>Variance</th>
                                 <th>Uplift %</th>
-                                <th>AT Comments</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
@@ -39385,7 +39391,7 @@
                     planName: row.dataset.planName || "",
                     currentMonthlyFee: Number(row.dataset.currentMonthly || 0),
                     newMonthlyFee: Number(row.querySelector('[data-renewal-field="newMonthlyFee"]')?.value || 0),
-                    comments: row.querySelector('[data-renewal-field="comments"]')?.value || ""
+                    comments: row.dataset.comments || ""
                 }));
             }
 
