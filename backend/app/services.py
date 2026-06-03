@@ -8828,7 +8828,7 @@ def _me_report_account_breakdown(accounts: list[dict]) -> list[dict]:
     return rows
 
 
-def _me_report_account_transactions(account: dict, limit: int = 80) -> list[dict]:
+def _me_report_account_transactions(account: dict, limit: int | None = 2000) -> list[dict]:
     transactions = account.get("transactions") if isinstance(account.get("transactions"), list) else []
     rows = []
     for transaction in transactions:
@@ -8848,7 +8848,141 @@ def _me_report_account_transactions(account: dict, limit: int = 80) -> list[dict
             "amount": float(amount),
             "source": _me_report_source_page("Review of Transactions", source_page),
         })
-    return rows[:limit]
+    if limit is None:
+        return rows
+    return rows[: max(0, int(limit))]
+
+
+def _me_report_duplicate_and_misposting_risks(trial_balance_accounts: list[dict]) -> tuple[list[dict], list[str]]:
+    rows: list[dict] = []
+    for account in trial_balance_accounts:
+        if not isinstance(account, dict):
+            continue
+        account_code = str(account.get("accountCode") or "").strip()
+        account_name = str(account.get("accountName") or "").strip()
+        account_type = str(account.get("accountType") or "").strip()
+        account_amount = abs(_me_report_account_amount(account))
+        transactions = _me_report_account_transactions(account, limit=None)
+        if account_amount >= Decimal("1.00") and not transactions:
+            # Keep the warning explicit so reviewers know drill-down data is incomplete for this nominal.
+            rows.append(
+                {
+                    "kind": "missing_transaction_detail",
+                    "description": f"{account_name or account_code or 'Nominal account'} has YTD activity but no transaction detail rows were extracted.",
+                    "date": "",
+                    "amount": float(account_amount),
+                    "reason": "Upload/export with transaction detail (account transactions) to enable full drill-down.",
+                    "source": _me_report_source_page("Trial Balance", account.get("sourcePage")),
+                }
+            )
+        for transaction in transactions:
+            desc = str(transaction.get("description") or "").strip()
+            amount = abs(_money(transaction.get("amount")))
+            tx_date = str(transaction.get("date") or "").strip()
+            if not desc and amount == 0:
+                continue
+            rows.append(
+                {
+                    "kind": "transaction",
+                    "accountCode": account_code,
+                    "accountName": account_name,
+                    "accountType": account_type,
+                    "description": desc,
+                    "date": tx_date,
+                    "amount": float(amount),
+                    "source": str(transaction.get("source") or _me_report_source_page("Review of Transactions", account.get("sourcePage"))),
+                }
+            )
+
+    duplicate_risks: list[dict] = []
+    warning_items: list[str] = []
+    tx_rows = [row for row in rows if row.get("kind") == "transaction"]
+
+    # Duplicate pattern: same date + amount + near-identical description across one or more accounts.
+    buckets: dict[tuple[str, str, str], list[dict]] = {}
+    for row in tx_rows:
+        amount_key = f"{abs(_money(row.get('amount'))):.2f}"
+        desc_key = re.sub(r"[^a-z0-9]+", " ", str(row.get("description") or "").lower()).strip()
+        if not desc_key:
+            continue
+        bucket_key = (str(row.get("date") or ""), amount_key, desc_key)
+        buckets.setdefault(bucket_key, []).append(row)
+    for (tx_date, _amount_key, desc_key), bucket in buckets.items():
+        if len(bucket) < 2:
+            continue
+        first = bucket[0]
+        account_labels = sorted({f"{str(item.get('accountCode') or '').strip()} {str(item.get('accountName') or '').strip()}".strip() for item in bucket})
+        duplicate_risks.append(
+            {
+                "description": first.get("description") or desc_key,
+                "date": tx_date,
+                "amount": float(abs(_money(first.get("amount")))),
+                "reason": (
+                    f"Potential duplicate posting: {len(bucket)} rows share date/amount/description"
+                    + (f" across {len(account_labels)} nominals." if len(account_labels) > 1 else ".")
+                ),
+                "source": first.get("source") or "Review of Transactions",
+            }
+        )
+
+    # Misposting pattern: invoice/bill-style row and direct payment-style row with same amount close together.
+    invoice_re = re.compile(r"\b(invoice|bill|supplier invoice|purchase invoice|inv\s*#?)\b", re.IGNORECASE)
+    payment_re = re.compile(r"\b(payment|paid|bank transfer|bank trf|direct debit|dd|spend money)\b", re.IGNORECASE)
+    payment_index: dict[str, list[dict]] = {}
+    for row in tx_rows:
+        desc = str(row.get("description") or "")
+        if not payment_re.search(desc) or invoice_re.search(desc):
+            continue
+        amount_key = f"{abs(_money(row.get('amount'))):.2f}"
+        payment_index.setdefault(amount_key, []).append(row)
+    for row in tx_rows:
+        desc = str(row.get("description") or "")
+        if not invoice_re.search(desc):
+            continue
+        amount_key = f"{abs(_money(row.get('amount'))):.2f}"
+        candidates = payment_index.get(amount_key) or []
+        tx_date = _parse_optional_iso_date(row.get("date"))
+        for payment_row in candidates:
+            payment_date = _parse_optional_iso_date(payment_row.get("date"))
+            if tx_date and payment_date and abs((payment_date - tx_date).days) > 14:
+                continue
+            if str(payment_row.get("accountCode") or "") == str(row.get("accountCode") or ""):
+                continue
+            duplicate_risks.append(
+                {
+                    "description": row.get("description") or "",
+                    "date": row.get("date") or "",
+                    "amount": float(abs(_money(row.get("amount")))),
+                    "reason": (
+                        "Potential invoice/payment misposting: invoice-style and direct-payment-style rows "
+                        "share the same amount in nearby dates across different nominals."
+                    ),
+                    "source": row.get("source") or "Review of Transactions",
+                }
+            )
+            break
+
+    # Convert missing transaction detail rows into warning text.
+    for row in rows:
+        if row.get("kind") == "missing_transaction_detail":
+            warning_items.append(str(row.get("description") or "").strip())
+
+    deduped_risks: list[dict] = []
+    seen_keys: set[str] = set()
+    for risk in duplicate_risks:
+        key = "|".join(
+            [
+                str(risk.get("description") or "").strip().lower(),
+                str(risk.get("date") or "").strip(),
+                f"{abs(_money(risk.get('amount'))):.2f}",
+                str(risk.get("reason") or "").strip().lower(),
+            ]
+        )
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        deduped_risks.append(risk)
+    return deduped_risks[:40], warning_items[:40]
 
 
 def _me_report_director_loan_account_code(account: dict) -> str:
@@ -10396,7 +10530,22 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         }
         for item in (extracted.get("duplicateTransactionRisks") or [])
         if isinstance(item, dict) and (item.get("description") or item.get("reason"))
-    ][:12]
+    ]
+    local_duplicate_risks, local_warning_items = _me_report_duplicate_and_misposting_risks(trial_balance_accounts)
+    duplicate_risks.extend(local_duplicate_risks)
+    duplicate_risks = list(
+        {
+            (
+                str(item.get("description") or "").strip().lower(),
+                str(item.get("date") or "").strip(),
+                f"{abs(_money(item.get('amount'))):.2f}",
+                str(item.get("reason") or "").strip().lower(),
+            ): item
+            for item in duplicate_risks
+        }.values()
+    )[:40]
+    warnings.extend(local_warning_items)
+    warnings = list(dict.fromkeys(warnings))
     stored_trial_balance_accounts = [
         {
             "accountCode": str(account.get("accountCode") or ""),
@@ -10406,7 +10555,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
             "creditYTD": float(_money(account.get("creditYTD"))),
             "amount": float(_me_report_account_amount(account)),
             "source": _me_report_source_page("Trial Balance", account.get("sourcePage")),
-            "transactions": _me_report_account_transactions(account),
+            "transactions": _me_report_account_transactions(account, limit=None),
         }
         for account in trial_balance_accounts
         if isinstance(account, dict) and (account.get("accountCode") or account.get("accountName"))

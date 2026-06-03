@@ -24932,6 +24932,12 @@
                             ${rows.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
                         </div>
                     </article>
+                    ${renderMeReportTransactionDrilldown(
+                        summary,
+                        "profit-loss",
+                        "Profit and Loss transaction drill-down",
+                        "All extracted YTD transaction rows linked to Profit and Loss nominals are listed below for figure drill-down."
+                    )}
                 `;
             }
 
@@ -38031,6 +38037,76 @@
                     });
             }
 
+            function meReportIsBalanceSheetAccountType(accountType = "") {
+                return Boolean(meReportBalanceSheetTypeToGroup(accountType));
+            }
+
+            function meReportTransactionDrilldownRows(summary = {}, scope = "all") {
+                const rows = [];
+                meReportObjectRows(summary.trialBalanceAccounts).forEach((account) => {
+                    const accountCode = String(account.accountCode || account.code || "").trim();
+                    const accountName = String(account.accountName || account.name || "Nominal account").trim();
+                    const accountType = String(account.accountType || account.type || "").trim();
+                    const isBalanceSheet = meReportIsBalanceSheetAccountType(accountType);
+                    if (scope === "profit-loss" && isBalanceSheet) return;
+                    if (scope === "balance-sheet" && !isBalanceSheet) return;
+                    meReportObjectRows(account.transactions).forEach((transaction) => {
+                        rows.push({
+                            date: String(transaction.date || "").trim(),
+                            description: String(transaction.description || "").trim(),
+                            amount: meReportMoneyValue(transaction.amount || 0),
+                            source: String(transaction.source || account.source || "Review of Transactions").trim(),
+                            accountCode,
+                            accountName,
+                        });
+                    });
+                });
+                return rows.sort((left, right) => {
+                    const leftTime = Date.parse(left.date || "") || 0;
+                    const rightTime = Date.parse(right.date || "") || 0;
+                    if (rightTime !== leftTime) return rightTime - leftTime;
+                    return String(left.description || "").localeCompare(String(right.description || ""));
+                });
+            }
+
+            function renderMeReportTransactionDrilldown(summary = {}, scope = "all", title = "Transaction drill-down", subtitle = "") {
+                const rows = meReportTransactionDrilldownRows(summary, scope);
+                const duplicateRisks = meReportObjectRows(summary.duplicateTransactionRisks);
+                const warnings = Array.isArray(summary.warnings) ? summary.warnings : [];
+                const previewWarnings = [
+                    ...duplicateRisks.slice(0, 3).map((item) => item.reason || item.description || ""),
+                    ...warnings.filter((item) => /duplicate|mispost|invoice|payment|nominal|transaction detail/i.test(String(item || ""))).slice(0, 3),
+                ].filter(Boolean);
+                return `
+                    <article class="me-report-insight-card me-report-table-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">${escapeHTML(title)}</p>
+                                <h3>${rows.length.toLocaleString("en-GB")} extracted YTD transaction row${rows.length === 1 ? "" : "s"}</h3>
+                                <p class="detail-meta">${escapeHTML(subtitle || "All extracted transaction rows for this section are listed for drill-down.")}</p>
+                                ${previewWarnings.length ? `<p class="detail-meta">${escapeHTML(previewWarnings.join(" · "))}</p>` : ""}
+                            </div>
+                        </div>
+                        <div class="jashflow-table-wrap">
+                            <table>
+                                <thead><tr><th>Date</th><th>Nominal</th><th>Description</th><th>Amount</th><th>Source</th></tr></thead>
+                                <tbody>
+                                    ${rows.length ? rows.map((row) => `
+                                        <tr>
+                                            <td>${escapeHTML(row.date ? formatDate(row.date) : "—")}</td>
+                                            <td><strong>${escapeHTML(row.accountCode || "")}</strong><br><small>${escapeHTML(row.accountName || "Nominal account")}</small></td>
+                                            <td>${escapeHTML(row.description || "—")}</td>
+                                            <td>${formatCurrency(row.amount || 0)}</td>
+                                            <td>${escapeHTML(row.source || "Review of Transactions")}</td>
+                                        </tr>
+                                    `).join("") : '<tr><td colspan="5">No transaction detail rows were extracted for this section in the uploaded report.</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+                `;
+            }
+
             function meReportBalanceSheetSectionOptions(rows = []) {
                 return ["all", "Assets", "Liabilities", "Equity"];
             }
@@ -38140,6 +38216,12 @@
                                 : '<tbody><tr><td colspan="3">No Balance Sheet rows were extracted from this report.</td></tr></tbody>'}
                         </table>
                     </article>
+                    ${renderMeReportTransactionDrilldown(
+                        summary,
+                        "balance-sheet",
+                        "Balance Sheet transaction drill-down",
+                        "All extracted YTD transaction rows linked to Balance Sheet nominals are listed below for figure drill-down."
+                    )}
                 `;
             }
 
