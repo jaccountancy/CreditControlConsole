@@ -17991,7 +17991,16 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
             if selected_run_id:
                 cursor.execute("SELECT * FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (selected_run_id, user["id"]))
             else:
-                cursor.execute("SELECT * FROM ignition_renewal_runs WHERE user_id = %s ORDER BY created_at DESC LIMIT 1", (user["id"],))
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM ignition_renewal_runs
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (user["id"],),
+                )
             current_run = cursor.fetchone()
             items = []
             if current_run:
@@ -18014,7 +18023,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
                        finalised_at, error_message, created_at, updated_at
                 FROM ignition_renewal_runs
                 WHERE user_id = %s
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 """,
                 (user["id"],),
             )
