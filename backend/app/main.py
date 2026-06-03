@@ -1598,8 +1598,11 @@ async def api_jashflow_interest_preview(request: Request, user: dict = Depends(r
 
 
 @app.get("/api/ignition")
-def api_ignition(user: dict = Depends(require_panel_user)):
-    return {"status": "ok", "ignition": ignition_payload(user)}
+def api_ignition(
+    include_dashboard: bool = Query(default=True, description="Include heavy dashboard aggregates."),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "ignition": ignition_payload(user, include_dashboard=include_dashboard)}
 
 
 @app.post("/api/ignition/sync")
@@ -1615,7 +1618,7 @@ def api_ignition_sync_status(sync_run_id: str, user: dict = Depends(require_pane
     sync_run = get_ignition_sync_run(user, sync_run_id)
     payload = {"status": sync_run["status"], "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
     if sync_run["status"] == "completed":
-        payload["ignition"] = ignition_payload(user)
+        payload["ignition"] = ignition_payload(user, include_dashboard=False)
     return payload
 
 

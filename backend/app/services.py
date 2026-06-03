@@ -14920,6 +14920,7 @@ IGNITION_RENEWAL_DEFAULT_UPLIFT = Decimal("0.0250")
 IGNITION_RENEWAL_MIN_UPLIFT = Decimal("0.0000")
 IGNITION_RENEWAL_MAX_UPLIFT = Decimal("0.1000")
 IGNITION_RENEWAL_HISTORY_LIMIT = 8
+IGNITION_RENEWAL_EDITABLE_STATUSES = {"draft", "awaiting_review", "review_needed", "failed"}
 
 IGNITION_RENEWAL_RECOMMENDATION_SCHEMA = {
     "type": "object",
@@ -16458,6 +16459,30 @@ def _ignition_records_for_user(user: dict) -> dict[str, list[dict]]:
     return grouped
 
 
+def _ignition_dataset_counts_for_user(user_id: str) -> dict[str, int]:
+    counts: dict[str, int] = {dataset: 0 for dataset, _ in IGNITION_DATASETS}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT dataset, COUNT(*) AS row_count
+                FROM ignition_reporting_records
+                WHERE user_id = %s
+                GROUP BY dataset
+                """,
+                (user_id,),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    for row in rows:
+        dataset = str(row.get("dataset") or "")
+        row_count = int(row.get("row_count") or 0)
+        if not dataset:
+            continue
+        counts[dataset] = row_count
+    return counts
+
+
 def _serialize_ignition_renewal_item(row: dict) -> dict:
     recommendation_context = row.get("recommendation_context")
     if not isinstance(recommendation_context, dict):
@@ -16716,7 +16741,10 @@ def _recalculate_ignition_renewal_run(cursor, run_id: str) -> dict:
         """
         UPDATE ignition_renewal_runs
         SET picked_count = %s,
-            status = CASE WHEN status IN ('finalised', 'emailed') THEN status ELSE %s END,
+            status = CASE
+                WHEN status IN ('finalised', 'emailed', 'completed', 'finished', 'awaiting_review', 'review_needed', 'failed') THEN status
+                ELSE %s
+            END,
             total_current_monthly = %s,
             total_new_monthly = %s,
             updated_at = %s
@@ -17069,6 +17097,14 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
     updates = payload.get("items") if isinstance(payload, dict) else []
     if not isinstance(updates, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Renewal item updates must be a list.")
+    requested_status = str(payload.get("status") or "").strip().lower() if isinstance(payload, dict) and payload.get("status") is not None else ""
+    if requested_status:
+        requested_status = requested_status.replace("-", "_").replace(" ", "_")
+        if requested_status not in IGNITION_RENEWAL_EDITABLE_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Status must be one of draft, awaiting_review, review_needed, or failed.",
+            )
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute("SELECT * FROM ignition_renewal_runs WHERE id = %s AND user_id = %s", (run_id, user["id"]))
@@ -17079,6 +17115,17 @@ def update_ignition_renewal_run(user: dict, run_id: str, payload: dict) -> dict:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalised renewal runs cannot be edited.")
             if run.get("email_sent_at"):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Renewal runs cannot be edited after the workbook has been emailed.")
+            if requested_status:
+                cursor.execute(
+                    """
+                    UPDATE ignition_renewal_runs
+                    SET status = %s,
+                        updated_at = %s
+                    WHERE id = %s
+                      AND user_id = %s
+                    """,
+                    (requested_status, utcnow(), run_id, user["id"]),
+                )
             for update in updates:
                 if not isinstance(update, dict):
                     continue
@@ -17305,7 +17352,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
     }
 
 
-def ignition_payload(user: dict) -> dict:
+def ignition_payload(user: dict, include_dashboard: bool = True) -> dict:
     try:
         connection = get_ignition_connection_for_user(user["id"])
     except HTTPException:
@@ -17319,8 +17366,20 @@ def ignition_payload(user: dict) -> dict:
             )
             latest_run = cursor.fetchone()
         db.commit()
-    records = _ignition_records_for_user(user)
-    dataset_counts = {dataset: len(records.get(dataset, [])) for dataset, _ in IGNITION_DATASETS}
+    if include_dashboard:
+        records = _ignition_records_for_user(user)
+        dataset_counts = {dataset: len(records.get(dataset, [])) for dataset, _ in IGNITION_DATASETS}
+        dashboard = _ignition_dashboard(records)
+    else:
+        dataset_counts = _ignition_dataset_counts_for_user(user["id"])
+        dashboard = {
+            "totals": {},
+            "servicePerformance": [],
+            "managerPerformance": [],
+            "awaitingProposals": [],
+            "clients": [],
+            "renewalAnalysis": {},
+        }
     return {
         "connection": {
             "connected": bool(connection and connection.get("status") == "connected"),
@@ -17332,7 +17391,7 @@ def ignition_payload(user: dict) -> dict:
             "errorMessage": connection.get("error_message") if connection else "",
         },
         "datasetCounts": dataset_counts,
-        "dashboard": _ignition_dashboard(records),
+        "dashboard": dashboard,
         "renewals": ignition_renewals_payload(user),
         "syncRun": serialize_ignition_sync_run(active_run or latest_run),
         "activeSyncRun": serialize_ignition_sync_run(active_run),

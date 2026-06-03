@@ -13396,6 +13396,56 @@
                 min-width: 130px;
                 white-space: nowrap;
             }
+            .renewals-status-cell {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+            .renewals-status-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 28px;
+                border-radius: 999px;
+                padding: 5px 10px;
+                font-size: 0.74rem;
+                font-weight: 850;
+                letter-spacing: 0.02em;
+                border: 1px solid transparent;
+                white-space: nowrap;
+            }
+            .renewals-status-pill.is-draft {
+                color: #8a6000;
+                background: rgba(255, 205, 82, 0.24);
+                border-color: rgba(255, 205, 82, 0.5);
+            }
+            .renewals-status-pill.is-finalised {
+                color: #0f7a45;
+                background: rgba(39, 176, 95, 0.2);
+                border-color: rgba(39, 176, 95, 0.4);
+            }
+            .renewals-status-pill.is-failed,
+            .renewals-status-pill.is-review-needed {
+                color: #b72020;
+                background: rgba(255, 83, 83, 0.18);
+                border-color: rgba(255, 83, 83, 0.34);
+            }
+            .renewals-status-pill.is-awaiting-review {
+                color: #6040b0;
+                background: rgba(141, 98, 255, 0.18);
+                border-color: rgba(141, 98, 255, 0.34);
+            }
+            .renewals-status-select {
+                min-height: 28px;
+                border-radius: 999px;
+                padding: 5px 10px;
+                border: 1px solid var(--line);
+                background: rgba(255, 255, 255, 0.86);
+                color: var(--ink);
+                font-size: 0.72rem;
+                font-weight: 750;
+            }
             .renewals-run-actions {
                 display: inline-flex;
                 align-items: center;
@@ -22261,6 +22311,8 @@
             let supplierReconciliationMatchSearchTerm = "";
             let ignitionData = { connection: {}, datasetCounts: {}, dashboard: { totals: {}, servicePerformance: [], managerPerformance: [], awaitingProposals: [], clients: [] }, renewals: { currentRun: null, recentRuns: [] }, syncRun: null, activeSyncRun: null };
             let ignitionLoading = false;
+            let ignitionLoadedAt = 0;
+            const ignitionReloadWindowMs = 5 * 60 * 1000;
             let ignitionRenewalsLoading = false;
             let ignitionRenewalStartLoading = false;
             let ignitionRenewalsStartedAt = 0;
@@ -38938,11 +38990,18 @@
 
             async function loadIgnition(force = false) {
                 if (ignitionLoading && !force) return;
+                const loadedRecently = ignitionLoadedAt > 0 && (Date.now() - ignitionLoadedAt) < ignitionReloadWindowMs;
+                if (!force && loadedRecently) return;
                 ignitionLoading = true;
                 renderIgnitionScreen();
                 try {
-                    const payload = await requestJSON(api.endpoints.ignition);
+                    const includeDashboard = activeIgnitionTab !== "renewals";
+                    const endpoint = includeDashboard
+                        ? api.endpoints.ignition
+                        : `${api.endpoints.ignition}?include_dashboard=false`;
+                    const payload = await requestJSON(endpoint);
                     ignitionData = normaliseIgnitionPayload(payload);
+                    ignitionLoadedAt = Date.now();
                     const activeRun = ignitionData.activeSyncRun;
                     if (syncRunIsActive(activeRun) && !isIgnitionSyncing) {
                         monitorQueuedIgnitionSync(activeRun.id, { started: activeRun.status !== "queued", syncRun: activeRun });
@@ -39541,8 +39600,24 @@
 
             function ignitionRenewalRunIsLocked(run = null) {
                 if (!run || typeof run !== "object") return false;
-                const status = String(run.status || "").trim().toLowerCase();
-                return Boolean(run.finalisedAt || run.completedAt || run.finishedAt || ["finalised", "completed", "finished"].includes(status));
+                const status = ignitionRenewalStatusValue(run);
+                return Boolean(run.finalisedAt || run.completedAt || run.finishedAt || ["finalised", "completed", "finished", "emailed"].includes(status));
+            }
+
+            function ignitionRenewalStatusValue(run = null) {
+                const raw = String(run?.status || "").trim().toLowerCase();
+                return raw.replace(/[\s-]+/g, "_") || "draft";
+            }
+
+            function ignitionRenewalStatusMeta(run = null) {
+                const status = ignitionRenewalStatusValue(run);
+                if (status === "finalised" || status === "completed" || status === "finished" || status === "emailed") {
+                    return { value: "finalised", label: status === "emailed" ? "Emailed" : "Finalised", tone: "finalised" };
+                }
+                if (status === "awaiting_review") return { value: "awaiting_review", label: "Awaiting review", tone: "awaiting-review" };
+                if (status === "review_needed") return { value: "review_needed", label: "Review needed", tone: "review-needed" };
+                if (status === "failed") return { value: "failed", label: "Failed", tone: "failed" };
+                return { value: "draft", label: status === "empty" ? "Empty" : "Draft", tone: "draft" };
             }
 
             function ignitionRenewalBatchSelectableRunIds(runs = []) {
@@ -39565,11 +39640,14 @@
                 const sortMode = String(ignitionRenewalBatchSortMode || "created-desc").trim().toLowerCase();
                 const filtered = list.filter((run) => {
                     if (!run || typeof run !== "object") return false;
-                    const status = String(run.status || "").trim().toLowerCase() || "draft";
+                    const status = ignitionRenewalStatusValue(run);
                     const isLocked = ignitionRenewalRunIsLocked(run);
                     if (statusFilter === "open" && isLocked) return false;
                     if (statusFilter === "locked" && !isLocked) return false;
                     if (statusFilter === "draft" && status !== "draft") return false;
+                    if (statusFilter === "awaiting_review" && status !== "awaiting_review") return false;
+                    if (statusFilter === "review_needed" && status !== "review_needed") return false;
+                    if (statusFilter === "failed" && status !== "failed") return false;
                     if (statusFilter === "empty" && Number(run.pickedCount || run.itemCount || 0) > 0) return false;
                     if (search) {
                         const reference = ignitionRenewalBatchReferenceForRun(run).toLowerCase();
@@ -40174,7 +40252,20 @@
                                         </td>
                                         <td data-label="Renewal Batch Ref"><strong>${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}</strong></td>
                                         <td data-label="Window">${escapeHTML(run.windowStart ? `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}` : "-")}</td>
-                                        <td data-label="Status">${escapeHTML(run.status || "draft")}</td>
+                                        <td data-label="Status">
+                                            <div class="renewals-status-cell">
+                                                <span class="renewals-status-pill is-${escapeHTML(ignitionRenewalStatusMeta(run).tone)}">${escapeHTML(ignitionRenewalStatusMeta(run).label)}</span>
+                                                ${ignitionRenewalRunIsLocked(run)
+                                                    ? ""
+                                                    : `<select class="renewals-status-select" data-renewals-status-run="${escapeHTML(run.id || "")}" aria-label="Update status for ${escapeHTML(ignitionRenewalBatchReferenceForRun(run))}">
+                                                        <option value="draft" ${ignitionRenewalStatusMeta(run).value === "draft" ? "selected" : ""}>Draft</option>
+                                                        <option value="awaiting_review" ${ignitionRenewalStatusMeta(run).value === "awaiting_review" ? "selected" : ""}>Awaiting review</option>
+                                                        <option value="review_needed" ${ignitionRenewalStatusMeta(run).value === "review_needed" ? "selected" : ""}>Review needed</option>
+                                                        <option value="failed" ${ignitionRenewalStatusMeta(run).value === "failed" ? "selected" : ""}>Failed</option>
+                                                    </select>`
+                                                }
+                                            </div>
+                                        </td>
                                         <td data-label="Clients">${Number(run.pickedCount || run.itemCount || 0).toLocaleString("en-GB")}</td>
                                         <td data-label="Current MRR" class="money-cell">${formatCurrency(run.totalCurrentMonthly || 0)}</td>
                                         <td data-label="Proposed MRR" class="money-cell">${formatCurrency(run.totalNewMonthly || 0)}</td>
@@ -40238,6 +40329,9 @@
                                         <option value="open" ${ignitionRenewalBatchStatusFilter === "open" ? "selected" : ""}>Open only</option>
                                         <option value="locked" ${ignitionRenewalBatchStatusFilter === "locked" ? "selected" : ""}>Finalised/completed</option>
                                         <option value="draft" ${ignitionRenewalBatchStatusFilter === "draft" ? "selected" : ""}>Draft only</option>
+                                        <option value="awaiting_review" ${ignitionRenewalBatchStatusFilter === "awaiting_review" ? "selected" : ""}>Awaiting review</option>
+                                        <option value="review_needed" ${ignitionRenewalBatchStatusFilter === "review_needed" ? "selected" : ""}>Review needed</option>
+                                        <option value="failed" ${ignitionRenewalBatchStatusFilter === "failed" ? "selected" : ""}>Failed</option>
                                         <option value="empty" ${ignitionRenewalBatchStatusFilter === "empty" ? "selected" : ""}>Empty only</option>
                                     </select>
                                 </label>
@@ -40538,6 +40632,32 @@
                 } catch (error) {
                     console.error("Unable to save renewal edits", error);
                     showToast(error.message || "Unable to save renewal edits", "error");
+                }
+            }
+
+            async function updateIgnitionRenewalBatchStatus(runId, status) {
+                const safeRunId = String(runId || "").trim();
+                const safeStatus = String(status || "").trim().toLowerCase();
+                if (!safeRunId || !safeStatus) return;
+                const run = (ignitionData.renewals?.recentRuns || []).find((item) => String(item?.id || "") === safeRunId) || null;
+                if (ignitionRenewalRunIsLocked(run)) {
+                    showToast("Finalised renewal batches are locked and cannot be changed.", "info");
+                    renderIgnitionRenewals();
+                    return;
+                }
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.ignitionRenewalRun,
+                        { method: "POST", body: JSON.stringify({ status: safeStatus, items: [] }) },
+                        { runId: safeRunId }
+                    );
+                    ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    showToast("Batch status updated", "success");
+                    renderIgnitionRenewals();
+                } catch (error) {
+                    console.error("Unable to update renewal batch status", error);
+                    showToast(error.message || "Unable to update renewal batch status", "error");
+                    renderIgnitionRenewals();
                 }
             }
 
@@ -54613,6 +54733,11 @@
                         renderIgnitionRenewals();
                         return;
                     }
+                    const statusRunId = String(event.target?.dataset?.renewalsStatusRun || "").trim();
+                    if (statusRunId) {
+                        updateIgnitionRenewalBatchStatus(statusRunId, String(event.target.value || "draft"));
+                        return;
+                    }
                     const candidateId = String(event.target?.dataset?.renewalCandidateId || "");
                     if (candidateId) {
                         if (event.target.checked) ignitionRenewalSelection.add(candidateId);
@@ -58291,6 +58416,8 @@
                 }
                 if (isIgnitionView()) {
                     loadIgnition();
+                } else {
+                    window.setTimeout(() => loadIgnition(), 0);
                 }
                 if (activeView === "me-report") {
                     loadMeReport();
