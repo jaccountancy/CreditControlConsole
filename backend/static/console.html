@@ -20106,6 +20106,7 @@
             const BANK_SA100_MANUAL_INVOICES_KEY = `${STORAGE_KEY}:bank-sa100-manual-invoices`;
             const SUPPLIER_RECONCILIATION_HISTORY_KEY = `${STORAGE_KEY}:supplier-reconciliation-history`;
             const SUPPLIER_RECONCILIATION_SUPPLIERS_KEY = `${STORAGE_KEY}:supplier-reconciliation-suppliers`;
+            const SUPPLIER_RECONCILIATION_STATEMENTS_KEY = `${STORAGE_KEY}:supplier-reconciliation-statements`;
             const USER_ACTIVITY_LIMIT = 500;
             const FACTORY_RESET_REVEAL_CLICKS = 4;
             const PRODUCTION_API_BASE_URL = "https://creditcontrolconsole-production.up.railway.app";
@@ -20661,12 +20662,16 @@
             let supplierReconciliationActiveSubmissionId = "";
             let supplierReconciliationSubmissionHistory = loadSupplierReconciliationSubmissionHistory();
             let supplierReconciliationSuppliers = loadSupplierReconciliationSuppliers();
+            let supplierReconciliationStatements = loadSupplierReconciliationStatements();
             let supplierReconciliationWorkspaceSearchTerm = "";
             let supplierReconciliationWorkspaceTypeFilter = "all";
             let supplierReconciliationWorkspaceSortMode = "tenant-asc";
             let supplierReconciliationSupplierSearchTerm = "";
             let supplierReconciliationSupplierFilter = "all";
             let supplierReconciliationSupplierSortMode = "name-asc";
+            let supplierReconciliationSupplierScreenOpen = false;
+            let supplierReconciliationSelectedSupplierId = "";
+            let supplierReconciliationSelectedStatementId = "";
             const supplierReconciliationMaxUploadBytes = 50 * 1024 * 1024;
             let supplierReconciliationUploadStartedAt = 0;
             let supplierReconciliationUploadTimer = null;
@@ -31179,7 +31184,12 @@
             }
 
             function selectedSupplierReconciliationContact() {
-                return supplierReconciliationContacts().find((contact) => contact.xeroContactId === selectedSupplierReconciliationContactId) || null;
+                const tenantId = String(supplierReconciliationWorkspaceTenantId || "").trim();
+                const contact = supplierReconciliationContacts().find((item) => item.xeroContactId === selectedSupplierReconciliationContactId) || null;
+                if (!contact) return null;
+                if (!tenantId) return contact;
+                const inWorkspace = supplierReconciliationWorkspaceClients().some((client) => client.xeroContactId === contact.xeroContactId);
+                return inWorkspace ? contact : null;
             }
 
             function selectedSupplierReconciliationConnectedClient() {
@@ -31254,9 +31264,117 @@
                 }
             }
 
+            function loadSupplierReconciliationStatements() {
+                try {
+                    const payload = JSON.parse(localStorage.getItem(SUPPLIER_RECONCILIATION_STATEMENTS_KEY) || "[]");
+                    if (!Array.isArray(payload)) return [];
+                    return payload
+                        .filter((item) => item && typeof item === "object")
+                        .map((item) => ({
+                            id: String(item.id || "").trim(),
+                            tenantId: String(item.tenantId || "").trim(),
+                            supplierId: String(item.supplierId || "").trim(),
+                            supplierContactId: String(item.supplierContactId || "").trim(),
+                            supplierName: String(item.supplierName || "").trim(),
+                            filename: String(item.filename || "").trim(),
+                            statementDate: String(item.statementDate || "").trim(),
+                            submittedAt: String(item.submittedAt || "").trim(),
+                            completedAt: String(item.completedAt || "").trim(),
+                            status: String(item.status || "processed").trim().toLowerCase(),
+                            summary: {
+                                totalLines: Number(item?.summary?.totalLines || 0),
+                                missingCount: Number(item?.summary?.missingCount || 0),
+                                allocatedCount: Number(item?.summary?.allocatedCount || 0),
+                                paidCount: Number(item?.summary?.paidCount || 0),
+                                missingAmount: Number(item?.summary?.missingAmount || 0),
+                                allocatedAmount: Number(item?.summary?.allocatedAmount || 0),
+                                paidAmount: Number(item?.summary?.paidAmount || 0)
+                            },
+                            rows: Array.isArray(item.rows) ? item.rows : [],
+                            supplierProfile: item?.supplierProfile && typeof item.supplierProfile === "object"
+                                ? item.supplierProfile
+                                : {},
+                            currencyCode: String(item.currencyCode || "GBP").trim() || "GBP"
+                        }))
+                        .filter((item) => item.id && item.tenantId && item.supplierId)
+                        .slice(0, 600);
+                } catch {
+                    return [];
+                }
+            }
+
+            function persistSupplierReconciliationStatements() {
+                try {
+                    localStorage.setItem(SUPPLIER_RECONCILIATION_STATEMENTS_KEY, JSON.stringify((supplierReconciliationStatements || []).slice(0, 600)));
+                } catch (error) {
+                    console.warn("Unable to persist supplier reconciliation statements", error);
+                }
+            }
+
+            function supplierReconciliationWorkspaceStatements() {
+                const tenantId = String(supplierReconciliationWorkspaceTenantId || "").trim();
+                if (!tenantId) return [];
+                return (supplierReconciliationStatements || []).filter((item) => String(item.tenantId || "") === tenantId);
+            }
+
+            function selectedSupplierReconciliationSupplierRecord() {
+                return supplierReconciliationWorkspaceSuppliers().find((row) => row.id === supplierReconciliationSelectedSupplierId) || null;
+            }
+
+            function supplierReconciliationSupplierStatements(supplierId = supplierReconciliationSelectedSupplierId) {
+                const id = String(supplierId || "").trim();
+                if (!id) return [];
+                return supplierReconciliationWorkspaceStatements()
+                    .filter((item) => String(item.supplierId || "") === id)
+                    .slice()
+                    .sort((left, right) => String(right.submittedAt || "").localeCompare(String(left.submittedAt || "")));
+            }
+
+            function selectedSupplierReconciliationStatementRecord() {
+                const statementId = String(supplierReconciliationSelectedStatementId || "").trim();
+                if (!statementId) return null;
+                return supplierReconciliationSupplierStatements().find((row) => row.id === statementId) || null;
+            }
+
+            function upsertSupplierReconciliationStatement(statement = {}) {
+                const id = String(statement.id || "").trim();
+                const tenantId = String(statement.tenantId || "").trim();
+                const supplierId = String(statement.supplierId || "").trim();
+                if (!id || !tenantId || !supplierId) return;
+                const next = {
+                    id,
+                    tenantId,
+                    supplierId,
+                    supplierContactId: String(statement.supplierContactId || "").trim(),
+                    supplierName: String(statement.supplierName || "").trim(),
+                    filename: String(statement.filename || "").trim(),
+                    statementDate: String(statement.statementDate || "").trim(),
+                    submittedAt: String(statement.submittedAt || "").trim(),
+                    completedAt: String(statement.completedAt || "").trim(),
+                    status: String(statement.status || "processed").trim().toLowerCase(),
+                    summary: {
+                        totalLines: Number(statement?.summary?.totalLines || 0),
+                        missingCount: Number(statement?.summary?.missingCount || 0),
+                        allocatedCount: Number(statement?.summary?.allocatedCount || 0),
+                        paidCount: Number(statement?.summary?.paidCount || 0),
+                        missingAmount: Number(statement?.summary?.missingAmount || 0),
+                        allocatedAmount: Number(statement?.summary?.allocatedAmount || 0),
+                        paidAmount: Number(statement?.summary?.paidAmount || 0)
+                    },
+                    rows: Array.isArray(statement.rows) ? statement.rows : [],
+                    supplierProfile: statement?.supplierProfile && typeof statement.supplierProfile === "object"
+                        ? statement.supplierProfile
+                        : {},
+                    currencyCode: String(statement.currencyCode || "GBP").trim() || "GBP"
+                };
+                const filtered = (supplierReconciliationStatements || []).filter((item) => item.id !== next.id);
+                supplierReconciliationStatements = [next, ...filtered].slice(0, 600);
+                persistSupplierReconciliationStatements();
+            }
+
             function upsertSupplierReconciliationSupplier(profile = {}) {
                 const tenantId = String(profile.tenantId || "").trim();
-                if (!tenantId) return;
+                if (!tenantId) return "";
                 const supplierContactId = String(profile.supplierContactId || "").trim();
                 const normalizedId = String(profile.id || (tenantId && supplierContactId ? `${tenantId}:${supplierContactId}` : `${tenantId}:${Date.now()}`)).trim();
                 const next = {
@@ -31281,6 +31399,7 @@
                 });
                 supplierReconciliationSuppliers = [next, ...filtered].slice(0, 600);
                 persistSupplierReconciliationSuppliers();
+                return next.id;
             }
 
             function persistSupplierReconciliationSubmissionHistory() {
@@ -31312,6 +31431,9 @@
                 supplierReconciliationWorkspaceTenantName = "";
                 supplierReconciliationStatusFilter = "all";
                 supplierReconciliationWorkspaceTab = "workspace";
+                supplierReconciliationSupplierScreenOpen = false;
+                supplierReconciliationSelectedSupplierId = "";
+                supplierReconciliationSelectedStatementId = "";
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
@@ -31367,8 +31489,9 @@
                 renderSupplierReconciliationScreen();
                 try {
                     const endpoint = api.endpoints.supplierReconciliationContacts;
-                    const query = supplierReconciliationData.xero?.tenantId
-                        ? `?tenantId=${encodeURIComponent(supplierReconciliationData.xero.tenantId)}`
+                    const tenantId = String(supplierReconciliationWorkspaceTenantId || supplierReconciliationData.xero?.tenantId || "").trim();
+                    const query = tenantId
+                        ? `?tenantId=${encodeURIComponent(tenantId)}`
                         : "";
                     const payload = await requestJSON(`${endpoint}${query}`);
                     const nextState = normaliseSupplierReconciliationPayload(payload);
@@ -31670,7 +31793,7 @@
                     if (matchedContactId) {
                         selectedSupplierReconciliationContactId = matchedContactId;
                     }
-                    upsertSupplierReconciliationSupplier({
+                    const supplierRecordId = upsertSupplierReconciliationSupplier({
                         tenantId: workspaceTenantId,
                         supplierContactId: matchedContactId,
                         id: workspaceTenantId && matchedContactId ? `${workspaceTenantId}:${matchedContactId}` : "",
@@ -31684,6 +31807,23 @@
                         bankIban: String(profile.bankIban || supplierReconciliationData.result?.supplierBankIban || ""),
                         bankSwiftBic: String(profile.bankSwiftBic || supplierReconciliationData.result?.supplierBankSwiftBic || ""),
                         statementDate: String(supplierReconciliationData.result?.statementDate || ""),
+                    });
+                    const statementModel = supplierReconciliationStatementModel(supplierReconciliationData.result);
+                    upsertSupplierReconciliationStatement({
+                        id: submissionId,
+                        tenantId: workspaceTenantId,
+                        supplierId: supplierRecordId || (workspaceTenantId && matchedContactId ? `${workspaceTenantId}:${matchedContactId}` : ""),
+                        supplierContactId: matchedContactId,
+                        supplierName: String(statementModel.supplierName || matchedContact?.name || selectedClient?.name || "Supplier"),
+                        filename: String(supplierReconciliationData.result?.filename || file.name || "supplier-statement.pdf"),
+                        statementDate: String(statementModel.statementDate || supplierReconciliationData.result?.statementDate || ""),
+                        submittedAt: new Date().toISOString(),
+                        completedAt: new Date().toISOString(),
+                        status: "processed",
+                        summary: statementModel.summary,
+                        rows: statementModel.rows,
+                        supplierProfile: statementModel.supplierProfile,
+                        currencyCode: statementModel.currencyCode || "GBP"
                     });
                     supplierReconciliationSubmissionHistory = (supplierReconciliationSubmissionHistory || []).map((item) => {
                         if (item.id !== submissionId) return item;
@@ -31754,8 +31894,19 @@
                     supplierReconciliationWorkspaceTenantId = "";
                     supplierReconciliationWorkspaceTenantName = "";
                 }
-                if (supplierReconciliationWorkspaceOpen && workspaceClients.length && !workspaceClientIds.has(selectedSupplierReconciliationContactId)) {
-                    selectedSupplierReconciliationContactId = workspaceClients[0]?.xeroContactId || "";
+                if (supplierReconciliationWorkspaceOpen) {
+                    if (workspaceClients.length && !workspaceClientIds.has(selectedSupplierReconciliationContactId)) {
+                        selectedSupplierReconciliationContactId = workspaceClients[0]?.xeroContactId || "";
+                    } else if (!workspaceClients.length) {
+                        selectedSupplierReconciliationContactId = "";
+                    }
+                }
+                const workspaceSuppliers = supplierReconciliationWorkspaceSuppliers();
+                const workspaceSupplierIds = new Set(workspaceSuppliers.map((row) => row.id));
+                if (supplierReconciliationSupplierScreenOpen && (!supplierReconciliationSelectedSupplierId || !workspaceSupplierIds.has(supplierReconciliationSelectedSupplierId))) {
+                    supplierReconciliationSupplierScreenOpen = false;
+                    supplierReconciliationSelectedSupplierId = "";
+                    supplierReconciliationSelectedStatementId = "";
                 }
                 const selectedContact = selectedSupplierReconciliationContact();
                 const connectedClient = selectedSupplierReconciliationConnectedClient();
@@ -31813,9 +31964,11 @@
                     supplierReconciliationWorkspaceOpen = true;
                     supplierReconciliationWorkspaceTab = "workspace";
                     supplierReconciliationStatusFilter = "all";
+                    supplierReconciliationSupplierScreenOpen = false;
+                    supplierReconciliationSelectedSupplierId = "";
+                    supplierReconciliationSelectedStatementId = "";
                     const firstClient = supplierReconciliationConnectedClients().find((client) => String(client.tenantId || "") === tenantId);
                     selectedSupplierReconciliationContactId = String(firstClient?.xeroContactId || "");
-                    loadSupplierReconciliationContacts(true);
                     renderSupplierReconciliationScreen();
                 };
 
@@ -32038,7 +32191,7 @@
                     <div class="jashflow-detail-head">
                         <div>
                             <p class="eyebrow">Workspace</p>
-                            <h3>${escapeHTML(selectedContact?.name || connectedClient?.name || "No supplier selected")}</h3>
+                            <h3>${escapeHTML(connectedClient?.name || selectedContact?.name || "No supplier selected")}</h3>
                             <p class="detail-meta">${supplierReconciliationUploading ? `Processing ETA ${formatSyncDuration(processingRemaining)} remaining · elapsed ${formatSyncDuration(processingElapsed)}` : "Manage statement submissions, then move to Report Output to review reconciliation results."}</p>
                         </div>
                     </div>
@@ -32058,6 +32211,18 @@
                 `;
 
                 const result = activeResult;
+                const resolveSupplierIdForSubmission = (row) => {
+                    const tenantId = String(row?.tenantId || supplierReconciliationWorkspaceTenantId || "").trim();
+                    const contactId = String(row?.supplierContactId || "").trim();
+                    if (tenantId && contactId) {
+                        const byContact = supplierReconciliationWorkspaceSuppliers().find((item) => String(item.supplierContactId || "") === contactId);
+                        if (byContact?.id) return byContact.id;
+                        return `${tenantId}:${contactId}`;
+                    }
+                    const name = String(row?.supplierName || "").trim().toLowerCase();
+                    if (!name) return "";
+                    return supplierReconciliationWorkspaceSuppliers().find((item) => String(item.name || "").trim().toLowerCase() === name)?.id || "";
+                };
                 if (supplierReconciliationWorkspaceTab === "workspace") {
                     detail.innerHTML = `
                         <div class="jashflow-detail-head">
@@ -32079,37 +32244,147 @@
                         .slice()
                         .sort((left, right) => String(right.updatedAt || "").localeCompare(String(left.updatedAt || "")))
                         .slice(0, 120);
-                    detail.innerHTML = `
-                        <div class="jashflow-detail-head">
-                            <div>
-                                <p class="eyebrow">Supplier Workspace</p>
-                                <h3>Extracted supplier records</h3>
-                                <p class="detail-meta">Each uploaded statement can populate supplier contact and bank details for this workspace.</p>
-                            </div>
-                        </div>
-                        <div class="supplier-recon-history-table-wrap">
-                            <table class="supplier-recon-history-table" aria-label="Extracted supplier records">
-                                <thead>
-                                    <tr>
-                                        <th>Supplier</th>
-                                        <th>Contact</th>
-                                        <th>Bank details</th>
-                                        <th>Latest statement</th>
+                    const activeSupplier = selectedSupplierReconciliationSupplierRecord();
+                    if (supplierReconciliationSupplierScreenOpen && activeSupplier) {
+                        const supplierStatements = supplierReconciliationSupplierStatements(activeSupplier.id);
+                        if (!supplierReconciliationSelectedStatementId && supplierStatements.length) {
+                            supplierReconciliationSelectedStatementId = supplierStatements[0].id;
+                        }
+                        const activeStatement = selectedSupplierReconciliationStatementRecord() || supplierStatements[0] || null;
+                        if (activeStatement) {
+                            supplierReconciliationData.result = {
+                                ...(supplierReconciliationData.result || {}),
+                                tenantId: activeStatement.tenantId,
+                                supplierName: activeStatement.supplierName || activeSupplier.name,
+                                filename: activeStatement.filename,
+                                statementDate: activeStatement.statementDate,
+                                currencyCode: activeStatement.currencyCode || "GBP",
+                                supplierProfile: activeStatement.supplierProfile || activeSupplier,
+                                rows: Array.isArray(activeStatement.rows) ? activeStatement.rows : [],
+                                summary: activeStatement.summary || {}
+                            };
+                        }
+                        const rows = Array.isArray(activeStatement?.rows) ? activeStatement.rows : [];
+                        const paidRows = rows.filter((row) => String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase() === "paid");
+                        const unpaidRows = rows.filter((row) => String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase() === "allocated");
+                        const missingRows = rows.filter((row) => String(row?.reconciliation?.statusKey || row?.statusKey || "").toLowerCase() === "missing");
+                        const renderStatementRows = (groupRows, emptyCopy) => (
+                            groupRows.length
+                                ? groupRows.map((row) => `
+                                    <tr class="supplier-recon-row ${supplierReconciliationRowClass(row.reconciliation || row)}">
+                                        <td><strong>${escapeHTML(row.invoiceNumber || row.reference || "No ref")}</strong><small>${escapeHTML(row.description || row.reference || "Statement line")}</small></td>
+                                        <td>${escapeHTML(row.invoiceDate ? formatDate(row.invoiceDate) : "—")}</td>
+                                        <td>${formatCurrency(row.amount || 0)}</td>
+                                        <td>${formatCurrency(row.balance || 0)}</td>
+                                        <td>${row?.reconciliation?.xeroUrl || row?.xeroUrl ? `<a class="ghost-button" target="_blank" rel="noopener" href="${escapeHTML(row?.reconciliation?.xeroUrl || row?.xeroUrl || "")}">Open in Xero</a>` : '<button class="ghost-button" type="button" disabled>Missing</button>'}</td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    ${supplierRows.length ? supplierRows.map((row) => `
+                                `).join("")
+                                : `<tr><td colspan="5">${escapeHTML(emptyCopy)}</td></tr>`
+                        );
+                        detail.innerHTML = `
+                            <div class="jashflow-detail-head">
+                                <div>
+                                    <p class="eyebrow">Supplier screen</p>
+                                    <h3>${escapeHTML(activeSupplier.name || "Supplier workspace")}</h3>
+                                    <p class="detail-meta">${escapeHTML(activeSupplier.email || "No email")} · ${escapeHTML(activeSupplier.phone || "No telephone")} · ${escapeHTML(activeSupplier.bankName || "No bank name")}</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="supplierReconciliationBackToSupplierListButton" type="button">Back to supplier list</button>
+                                </div>
+                            </div>
+                            <div class="supplier-recon-history-table-wrap">
+                                <table class="supplier-recon-history-table" aria-label="Submitted statements for selected supplier">
+                                    <thead>
                                         <tr>
-                                            <td><strong>${escapeHTML(row.name || "Unknown supplier")}</strong><small>${escapeHTML(row.address || "No address extracted")}</small></td>
-                                            <td><strong>${escapeHTML(row.email || "No email")}</strong><small>${escapeHTML(row.phone || "No telephone")}</small></td>
-                                            <td><strong>${escapeHTML(row.bankName || "No bank name")}</strong><small>${escapeHTML([row.bankAccountNumber, row.bankSortCode, row.bankIban, row.bankSwiftBic].filter(Boolean).join(" · ") || "No bank details extracted")}</small></td>
-                                            <td>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "—")}</td>
+                                            <th>Submitted</th>
+                                            <th>Statement</th>
+                                            <th>Status</th>
+                                            <th>Missing</th>
+                                            <th>Awaiting payment</th>
+                                            <th>Paid</th>
                                         </tr>
-                                    `).join("") : '<tr><td colspan="4">No supplier records extracted yet for this workspace.</td></tr>'}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
+                                    </thead>
+                                    <tbody>
+                                        ${supplierStatements.length ? supplierStatements.map((row) => `
+                                            <tr data-supplier-recon-open-statement="${escapeHTML(row.id)}" class="${row.id === (activeStatement?.id || "") ? "is-selected" : ""}">
+                                                <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "In progress")}</small></td>
+                                                <td><strong>${escapeHTML(row.filename || "Statement")}</strong><small>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "No statement date")}</small></td>
+                                                <td><span class="supplier-recon-status ${supplierReconciliationSubmissionStatusClass(row.status)}">${escapeHTML(supplierReconciliationSubmissionStatusLabel(row.status))}</span></td>
+                                                <td>${Number(row?.summary?.missingCount || 0).toLocaleString("en-GB")}</td>
+                                                <td>${Number(row?.summary?.allocatedCount || 0).toLocaleString("en-GB")}</td>
+                                                <td>${Number(row?.summary?.paidCount || 0).toLocaleString("en-GB")}</td>
+                                            </tr>
+                                        `).join("") : '<tr><td colspan="6">No submitted supplier statements for this supplier yet.</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                            ${activeStatement ? `
+                                <div class="jashflow-detail-head">
+                                    <div>
+                                        <p class="eyebrow">Statement detail</p>
+                                        <h3>${escapeHTML(activeStatement.filename || "Supplier statement")}</h3>
+                                        <p class="detail-meta">${escapeHTML(activeStatement.statementDate ? formatDate(activeStatement.statementDate) : "No statement date")} · ${escapeHTML(activeStatement.currencyCode || "GBP")} · ${Number(activeStatement?.summary?.totalLines || rows.length).toLocaleString("en-GB")} lines extracted</p>
+                                    </div>
+                                </div>
+                                <div class="ignition-summary-grid">
+                                    <article><span>Missing</span><strong>${Number(activeStatement?.summary?.missingCount || 0).toLocaleString("en-GB")}</strong></article>
+                                    <article><span>Awaiting payment</span><strong>${Number(activeStatement?.summary?.allocatedCount || 0).toLocaleString("en-GB")}</strong></article>
+                                    <article><span>Paid</span><strong>${Number(activeStatement?.summary?.paidCount || 0).toLocaleString("en-GB")}</strong></article>
+                                    <article><span>Total lines</span><strong>${Number(activeStatement?.summary?.totalLines || rows.length).toLocaleString("en-GB")}</strong></article>
+                                </div>
+                                <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices paid in Xero">
+                                    <table class="supplier-recon-table">
+                                        <thead><tr><th colspan="5">Invoices We Have (Paid)</th></tr></thead>
+                                        <tbody>${renderStatementRows(paidRows, "No paid invoices found from this statement.")}</tbody>
+                                    </table>
+                                </div>
+                                <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices awaiting payment in Xero">
+                                    <table class="supplier-recon-table">
+                                        <thead><tr><th colspan="5">Invoices We Have (Unpaid / Awaiting Payment)</th></tr></thead>
+                                        <tbody>${renderStatementRows(unpaidRows, "No unpaid invoices found from this statement.")}</tbody>
+                                    </table>
+                                </div>
+                                <div class="supplier-recon-results-wrap" role="table" aria-label="Invoices missing in Xero">
+                                    <table class="supplier-recon-table">
+                                        <thead><tr><th colspan="5">Invoices We Do Not Have (Missing In Xero)</th></tr></thead>
+                                        <tbody>${renderStatementRows(missingRows, "No missing invoices identified from this statement.")}</tbody>
+                                    </table>
+                                </div>
+                            ` : '<div class="empty-state"><p class="eyebrow">Statement detail</p><h4>No statement selected</h4><p>Select a statement above to view line-by-line reconciliation.</p></div>'}
+                        `;
+                    } else {
+                        detail.innerHTML = `
+                            <div class="jashflow-detail-head">
+                                <div>
+                                    <p class="eyebrow">Supplier Workspace</p>
+                                    <h3>Extracted supplier records</h3>
+                                    <p class="detail-meta">Each uploaded statement can populate supplier contact and bank details for this workspace.</p>
+                                </div>
+                            </div>
+                            <div class="supplier-recon-history-table-wrap">
+                                <table class="supplier-recon-history-table" aria-label="Extracted supplier records">
+                                    <thead>
+                                        <tr>
+                                            <th>Supplier</th>
+                                            <th>Contact</th>
+                                            <th>Bank details</th>
+                                            <th>Latest statement</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${supplierRows.length ? supplierRows.map((row) => `
+                                            <tr data-supplier-recon-open-supplier="${escapeHTML(row.id)}">
+                                                <td><strong>${escapeHTML(row.name || "Unknown supplier")}</strong><small>${escapeHTML(row.address || "No address extracted")}</small></td>
+                                                <td><strong>${escapeHTML(row.email || "No email")}</strong><small>${escapeHTML(row.phone || "No telephone")}</small></td>
+                                                <td><strong>${escapeHTML(row.bankName || "No bank name")}</strong><small>${escapeHTML([row.bankAccountNumber, row.bankSortCode, row.bankIban, row.bankSwiftBic].filter(Boolean).join(" · ") || "No bank details extracted")}</small></td>
+                                                <td>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "—")}<small>Open supplier</small></td>
+                                            </tr>
+                                        `).join("") : '<tr><td colspan="4">No supplier records extracted yet for this workspace.</td></tr>'}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    }
                 } else if (supplierReconciliationWorkspaceTab === "submitted-statements") {
                     const historyRows = (supplierReconciliationSubmissionHistory || [])
                         .filter((row) => !supplierReconciliationWorkspaceTenantId || String(row.tenantId || "") === String(supplierReconciliationWorkspaceTenantId || ""))
@@ -32139,7 +32414,7 @@
                                 </thead>
                                 <tbody>
                                     ${historyRows.length ? historyRows.map((row) => `
-                                        <tr>
+                                        <tr data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">
                                             <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "In progress")}</small></td>
                                             <td><strong>${escapeHTML(row.supplierName || row.supplierContactId || "Unknown supplier")}</strong><small>${escapeHTML(row.supplierContactId || "")}</small></td>
                                             <td>${escapeHTML(row.filename || "Statement")}</td>
@@ -32293,6 +32568,9 @@
                     supplierReconciliationWorkspaceTenantId = "";
                     supplierReconciliationWorkspaceTenantName = "";
                     supplierReconciliationStatusFilter = "all";
+                    supplierReconciliationSupplierScreenOpen = false;
+                    supplierReconciliationSelectedSupplierId = "";
+                    supplierReconciliationSelectedStatementId = "";
                     renderSupplierReconciliationScreen();
                 });
                 document.getElementById("supplierReconciliationReconnectXeroButton")?.addEventListener("click", openSupplierReconciliationXeroConnect);
@@ -32328,6 +32606,11 @@
                 document.querySelectorAll("[data-supplier-recon-tab]").forEach((button) => {
                     button.addEventListener("click", () => {
                         supplierReconciliationWorkspaceTab = String(button.dataset.supplierReconTab || "statements");
+                        if (supplierReconciliationWorkspaceTab !== "supplier-workspace") {
+                            supplierReconciliationSupplierScreenOpen = false;
+                            supplierReconciliationSelectedSupplierId = "";
+                            supplierReconciliationSelectedStatementId = "";
+                        }
                         renderSupplierReconciliationScreen();
                     });
                 });
@@ -32340,6 +32623,42 @@
                 });
                 document.querySelectorAll("[data-supplier-recon-remove]").forEach((button) => {
                     button.addEventListener("click", () => removeSupplierWorkspace(button.dataset.supplierReconRemove || ""));
+                });
+                document.querySelectorAll("[data-supplier-recon-open-supplier]").forEach((row) => {
+                    row.addEventListener("click", () => {
+                        const supplierId = String(row.getAttribute("data-supplier-recon-open-supplier") || "").trim();
+                        if (!supplierId) return;
+                        supplierReconciliationWorkspaceTab = "supplier-workspace";
+                        supplierReconciliationSupplierScreenOpen = true;
+                        supplierReconciliationSelectedSupplierId = supplierId;
+                        supplierReconciliationSelectedStatementId = "";
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+                document.querySelectorAll("[data-supplier-recon-history-supplier]").forEach((row) => {
+                    row.addEventListener("click", () => {
+                        const supplierId = String(row.getAttribute("data-supplier-recon-history-supplier") || "").trim();
+                        if (!supplierId) return;
+                        supplierReconciliationWorkspaceTab = "supplier-workspace";
+                        supplierReconciliationSupplierScreenOpen = true;
+                        supplierReconciliationSelectedSupplierId = supplierId;
+                        supplierReconciliationSelectedStatementId = "";
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+                document.querySelectorAll("[data-supplier-recon-open-statement]").forEach((row) => {
+                    row.addEventListener("click", () => {
+                        const statementId = String(row.getAttribute("data-supplier-recon-open-statement") || "").trim();
+                        if (!statementId) return;
+                        supplierReconciliationSelectedStatementId = statementId;
+                        renderSupplierReconciliationScreen();
+                    });
+                });
+                document.getElementById("supplierReconciliationBackToSupplierListButton")?.addEventListener("click", () => {
+                    supplierReconciliationSupplierScreenOpen = false;
+                    supplierReconciliationSelectedSupplierId = "";
+                    supplierReconciliationSelectedStatementId = "";
+                    renderSupplierReconciliationScreen();
                 });
                 document.querySelectorAll("[data-supplier-recon-confirm-match]").forEach((button) => {
                     button.addEventListener("click", () => {
