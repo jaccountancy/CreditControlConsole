@@ -16322,6 +16322,15 @@
                 font-size: 0.78rem;
                 font-weight: 760;
             }
+            .xero-lock-date-cell strong a {
+                color: #1d4ea8;
+                text-decoration: underline;
+                text-underline-offset: 2px;
+            }
+            .xero-lock-date-cell strong a:hover,
+            .xero-lock-date-cell strong a:focus-visible {
+                color: #173f89;
+            }
             .xero-lock-mapping-cell {
                 min-width: 218px;
             }
@@ -28592,6 +28601,18 @@
                         const accountsDataMissing = Boolean(row?.flags?.insufficientAccountsData);
                         const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
                         const lastSubmittedDate = companiesHouse?.yearEndDate || companiesHouse?.accountsFiledDate || "";
+                        const companyNumberRaw = String(companiesHouse?.companyNumber || mapping?.companyNumber || "").trim().toUpperCase();
+                        const companyNumber = companyNumberRaw.replace(/[^A-Z0-9]/g, "");
+                        const companiesHouseFilingHistoryUrl = companyNumber
+                            ? `https://find-and-update.company-information.service.gov.uk/company/${encodeURIComponent(companyNumber)}/filing-history`
+                            : "";
+                        const lastSubmittedDateMarkup = lastSubmittedDate
+                            ? (
+                                companiesHouseFilingHistoryUrl
+                                    ? `<a href="${escapeHTML(companiesHouseFilingHistoryUrl)}" target="_blank" rel="noopener noreferrer">${escapeHTML(formatDate(lastSubmittedDate))}</a>`
+                                    : escapeHTML(formatDate(lastSubmittedDate))
+                            )
+                            : "—";
                         const lastSubmittedHelper = companiesHouse?.yearEndDate
                             ? "Latest accounts period end filed at Companies House"
                             : companiesHouse?.accountsFiledDate
@@ -28620,7 +28641,7 @@
                                     <small>Current lock date in Xero</small>
                                 </td>
                                 <td class="xero-lock-date-cell">
-                                    <strong>${escapeHTML(lastSubmittedDate ? formatDate(lastSubmittedDate) : "—")}</strong>
+                                    <strong>${lastSubmittedDateMarkup}</strong>
                                     <small>${escapeHTML(lastSubmittedHelper)}</small>
                                 </td>
                                 <td class="xero-lock-mapping-cell xero-lock-company-number-column">
