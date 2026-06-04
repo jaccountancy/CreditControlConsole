@@ -13505,6 +13505,31 @@
                 color: #253c5f;
                 font-weight: 700;
             }
+            .ignition-renewals-client-email-input {
+                width: 100%;
+                min-height: 34px;
+                border: 1px solid rgba(76, 101, 147, 0.24);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.92);
+                color: #253c5f;
+                font-size: 0.82rem;
+                font-weight: 700;
+                padding: 6px 10px;
+                transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+            }
+            .ignition-renewals-client-email-input::placeholder {
+                color: #8ea0bc;
+                font-weight: 650;
+            }
+            .ignition-renewals-client-email-input:focus {
+                border-color: rgba(29, 103, 242, 0.55);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.12);
+                outline: none;
+            }
+            .ignition-renewals-client-email-input.is-empty {
+                color: #8ea0bc;
+                font-weight: 670;
+            }
             .ignition-renewals-client-email-value.is-empty {
                 color: #8ea0bc;
                 font-weight: 670;
@@ -31713,6 +31738,8 @@
             function openXeroLockFixProgressModal() {
                 const modal = document.getElementById("xeroLockFixProgressModal");
                 if (!modal) return;
+                const mismatchModal = document.getElementById("xeroLockMismatchModal");
+                if (mismatchModal) mismatchModal.hidden = true;
                 modal.hidden = false;
                 xeroLockFixProcessingInBackground = false;
                 renderXeroLockFixProgressUI();
@@ -31742,7 +31769,7 @@
                 if (!summary || !currentTenantLabel || !currentTenantMeta || !tableBody) return;
 
                 const progress = xeroLockMismatchProgressSnapshot();
-                const totalInRun = Math.max(xeroLockFixProgressTenantIds.length, progress.total, xeroLockFixLastRunTotals.total || 0);
+                const totalInRun = xeroLockFixProgressTenantIds.length || Number(xeroLockFixLastRunTotals.total || 0) || progress.total;
                 if (summary) {
                     if (xeroLockMismatchFixing) {
                         summary.textContent = `${progress.fixed.toLocaleString("en-GB")} fixed, ${progress.failed.toLocaleString("en-GB")} failed, ${Math.max(totalInRun - progress.fixed - progress.failed, 0).toLocaleString("en-GB")} remaining.`;
@@ -42233,6 +42260,17 @@
                 return typeof value === "string" ? value : "";
             }
 
+            function setIgnitionRenewalClientCommsRecipientEmail(proposalExternalId = "", email = "") {
+                const key = String(proposalExternalId || "").trim();
+                if (!key) return;
+                const safeEmail = String(email || "").trim();
+                ignitionRenewalClientCommsPopulatedEmailByProposal[key] = safeEmail;
+                const existingDraft = ignitionRenewalClientCommsDraftsByProposal[key];
+                if (existingDraft && typeof existingDraft === "object") {
+                    existingDraft.recipientEmail = safeEmail;
+                }
+            }
+
             function ignitionRenewalClientCommsDefaultSubject(item, run = null) {
                 const batchReference = ignitionRenewalBatchReferenceForRun(run || ignitionRenewalRun());
                 const clientName = String(item?.clientName || "Client").trim();
@@ -43682,10 +43720,10 @@
                                     const uploadBadgeText = sent ? "Email sent" : (fileName ? "Letter uploaded" : "");
                                     const uploadActionLabel = sent ? "" : (fileName ? "Replace letter" : "Awaiting upload · Choose file");
                                     const populatedEmail = ignitionRenewalClientCommsPopulatedEmail(proposalId);
-                                    const emailDisplay = populatedEmail === undefined ? "" : (populatedEmail || "No email found");
-                                    const emailClass = populatedEmail === undefined
-                                        ? "ignition-renewals-client-email-value"
-                                        : `ignition-renewals-client-email-value${populatedEmail ? "" : " is-empty"}`;
+                                    const sourceEmail = ignitionRenewalClientCommsSourceEmail(item);
+                                    const draftEmail = ignitionRenewalClientCommsDraft(proposalId)?.recipientEmail;
+                                    const emailValue = populatedEmail === undefined ? String(draftEmail || "") : populatedEmail;
+                                    const emailClass = `ignition-renewals-client-email-input${emailValue ? "" : " is-empty"}`;
                                     const propReference = ignitionRenewalPropReferenceFromFileName(fileName) || "--";
                                     const rowReady = sent || !!fileName;
                                     return `
@@ -43695,7 +43733,17 @@
                                                 <br><small>${escapeHTML(item.proposalName || "")}</small>
                                             </td>
                                             <td>${escapeHTML(documentId || "")}</td>
-                                            <td><span class="${emailClass}" data-renewal-comms-email-value>${escapeHTML(emailDisplay)}</span></td>
+                                            <td>
+                                                <input
+                                                    class="${emailClass}"
+                                                    data-renewal-comms-email-value
+                                                    data-renewal-comms-email-override="${escapeHTML(proposalId)}"
+                                                    type="email"
+                                                    inputmode="email"
+                                                    value="${escapeHTML(emailValue)}"
+                                                    placeholder="${escapeHTML(sourceEmail ? "Enter email" : "No email found - enter manually")}"
+                                                >
+                                            </td>
                                             <td>
                                                 <div class="ignition-renewals-upload-inline">
                                                     ${uploadBadgeText ? `<span class="ignition-renewals-upload-pill ${sent ? "is-sent" : ""}">${escapeHTML(uploadBadgeText)}</span>` : ""}
@@ -43881,12 +43929,10 @@
                         if (row) row.classList.add("is-email-populating");
                         await delay(105);
 
-                        ignitionRenewalClientCommsPopulatedEmailByProposal[proposalId] = sourceEmail || null;
-                        const existingDraft = ignitionRenewalClientCommsDraftsByProposal[proposalId];
-                        if (existingDraft && typeof existingDraft === "object") existingDraft.recipientEmail = sourceEmail;
+                        setIgnitionRenewalClientCommsRecipientEmail(proposalId, sourceEmail);
 
                         if (emailNode) {
-                            emailNode.textContent = sourceEmail || "No email found";
+                            emailNode.value = sourceEmail || "";
                             emailNode.classList.toggle("is-empty", !sourceEmail);
                             emailNode.classList.remove("is-revealed");
                             void emailNode.offsetWidth;
@@ -58570,12 +58616,28 @@
                         }
                         return;
                     }
+                    const emailProposalId = String(event.target?.dataset?.renewalCommsEmailOverride || "").trim();
+                    if (emailProposalId) {
+                        const recipientEmail = String(event.target?.value || "").trim();
+                        setIgnitionRenewalClientCommsRecipientEmail(emailProposalId, recipientEmail);
+                        event.target.classList.toggle("is-empty", !recipientEmail);
+                        refreshIgnitionRenewalClientCommsSendButtonState();
+                        return;
+                    }
                     if (event.target?.id === "ignitionRenewalClientCommsTo" || event.target?.id === "ignitionRenewalClientCommsSubject" || event.target?.id === "ignitionRenewalClientCommsBody") {
                         ignitionRenewalClientCommsCaptureDraft();
                         refreshIgnitionRenewalClientCommsSendButtonState();
                     }
                 });
                 if (ignitionRenewalClientCommsWrap) ignitionRenewalClientCommsWrap.addEventListener("input", (event) => {
+                    const emailProposalId = String(event.target?.dataset?.renewalCommsEmailOverride || "").trim();
+                    if (emailProposalId) {
+                        const recipientEmail = String(event.target?.value || "").trim();
+                        setIgnitionRenewalClientCommsRecipientEmail(emailProposalId, recipientEmail);
+                        event.target.classList.toggle("is-empty", !recipientEmail);
+                        refreshIgnitionRenewalClientCommsSendButtonState();
+                        return;
+                    }
                     if (event.target?.id === "ignitionRenewalClientCommsTo" || event.target?.id === "ignitionRenewalClientCommsSubject" || event.target?.id === "ignitionRenewalClientCommsBody") {
                         ignitionRenewalClientCommsCaptureDraft();
                         refreshIgnitionRenewalClientCommsSendButtonState();
