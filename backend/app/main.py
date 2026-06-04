@@ -210,6 +210,10 @@ from .services import (
     me_report_juk_invoice_check,
     mark_me_report_purchases_paid_personally,
     delete_me_report_unreconciled_transaction,
+    vault_analyze_files,
+    vault_file_content,
+    vault_payload,
+    vault_upload_files,
     queue_bank_statement_retry,
     queue_bank_statement_upload,
     store_gmail_connection,
@@ -1851,6 +1855,64 @@ def api_ignition_renewals(user: dict = Depends(require_panel_user)):
 @app.get("/api/micro-analyzer/clients")
 def api_micro_analyzer_clients(user: dict = Depends(require_panel_user)):
     return {"status": "ok", **micro_analyzer_clients_payload(user)}
+
+
+@app.get("/api/vault")
+def api_vault(
+    search: str = Query("", alias="search"),
+    folder: str = Query("", alias="folder"),
+    tag: str = Query("", alias="tag"),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **vault_payload(user, search=search, folder=folder, tag=tag)}
+
+
+@app.post("/api/vault/analyze")
+async def api_vault_analyze(
+    files: list[UploadFile] = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    payloads: list[dict] = []
+    for file in files or []:
+        payloads.append(
+            {
+                "filename": file.filename or "document",
+                "content_type": file.content_type or "",
+                "file_bytes": await file.read(),
+            }
+        )
+    return {"status": "ok", **await vault_analyze_files(user, payloads)}
+
+
+@app.post("/api/vault/upload")
+async def api_vault_upload(
+    files: list[UploadFile] = File(...),
+    manifest: str = Form("{}"),
+    user: dict = Depends(require_panel_user),
+):
+    manifest_payload = {}
+    try:
+        candidate = json.loads(manifest or "{}")
+        manifest_payload = candidate if isinstance(candidate, dict) else {}
+    except Exception:
+        manifest_payload = {}
+    payloads: list[dict] = []
+    for file in files or []:
+        payloads.append(
+            {
+                "filename": file.filename or "document",
+                "content_type": file.content_type or "",
+                "file_bytes": await file.read(),
+            }
+        )
+    return {"status": "ok", **await vault_upload_files(user, payloads, manifest_payload)}
+
+
+@app.get("/api/vault/files/{file_id}/content")
+def api_vault_file_content(file_id: str, user: dict = Depends(require_panel_user)):
+    file_bytes, filename, content_type = vault_file_content(user, file_id)
+    safe_name = str(filename or "file").replace('"', "'")
+    return Response(content=file_bytes, media_type=content_type, headers={"Content-Disposition": f'inline; filename="{safe_name}"'})
 
 
 @app.post("/api/ignition/renewals/populate-client-ids")

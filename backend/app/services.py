@@ -7,6 +7,7 @@ import html
 import io
 import json
 import logging
+import mimetypes
 import os
 import re
 import signal
@@ -22,6 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from email.message import EmailMessage
 from email.utils import formataddr
+from pathlib import Path
 from urllib.parse import quote, urlencode
 from uuid import UUID, uuid4
 from xml.sax.saxutils import escape as xml_escape
@@ -20828,6 +20830,474 @@ def micro_analyzer_clients_payload(user: dict) -> dict:
         seen_contact_ids.add(dedupe_key)
         deduped.append(row)
     return {"clients": deduped, "count": len(deduped)}
+
+
+VAULT_MAX_FILE_BYTES = 75 * 1024 * 1024
+VAULT_MAX_TEXT_PREVIEW_CHARS = 12000
+VAULT_MAX_INDEX_CHARS = 60000
+VAULT_ACTIVITY_LIMIT = 300
+VAULT_AI_RENAME_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "filename": {"type": "string"},
+        "folder": {"type": "string"},
+        "summary": {"type": "string"},
+        "source": {"type": "string", "enum": ["client", "internal", "supplier", "hmrc", "companies-house", "bank", "unknown"]},
+        "tags": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["filename", "folder", "summary", "source", "tags"],
+}
+
+
+def _vault_root_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "vault_store"
+
+
+def _vault_safe_user_id(user_id: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(user_id or "").strip()).strip("-")
+    return cleaned or "anonymous"
+
+
+def _vault_user_dir(user_id: str) -> Path:
+    return _vault_root_dir() / _vault_safe_user_id(user_id)
+
+
+def _vault_files_dir(user_id: str) -> Path:
+    return _vault_user_dir(user_id) / "files"
+
+
+def _vault_index_path(user_id: str) -> Path:
+    return _vault_user_dir(user_id) / "index.json"
+
+
+def _vault_load_index(user_id: str) -> dict:
+    index_path = _vault_index_path(user_id)
+    if not index_path.exists():
+        return {"files": [], "activities": []}
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        files = payload.get("files") if isinstance(payload.get("files"), list) else []
+        activities = payload.get("activities") if isinstance(payload.get("activities"), list) else []
+        return {"files": files, "activities": activities}
+    except Exception:
+        return {"files": [], "activities": []}
+
+
+def _vault_save_index(user_id: str, index_payload: dict) -> None:
+    user_dir = _vault_user_dir(user_id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    _vault_files_dir(user_id).mkdir(parents=True, exist_ok=True)
+    index_path = _vault_index_path(user_id)
+    index_payload["files"] = list(index_payload.get("files") or [])
+    index_payload["activities"] = list(index_payload.get("activities") or [])[:VAULT_ACTIVITY_LIMIT]
+    index_path.write_text(json.dumps(index_payload, ensure_ascii=False, default=str), encoding="utf-8")
+
+
+def _vault_slug(value: str, fallback: str = "document") -> str:
+    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return text or fallback
+
+
+def _vault_clean_filename(filename: str, default_ext: str = "") -> str:
+    name = str(filename or "").strip().replace("/", "-").replace("\\", "-")
+    if not name:
+        name = "document"
+    name = re.sub(r"\s+", " ", name)
+    name = re.sub(r"[^A-Za-z0-9._()\- +]+", "", name).strip(" .")
+    stem, ext = os.path.splitext(name)
+    if not ext and default_ext:
+        ext = default_ext
+    stem = stem[:120].strip() or "document"
+    ext = ext[:20]
+    return f"{stem}{ext}"
+
+
+def _vault_content_type(filename: str, content_type: str | None = None) -> str:
+    supplied = str(content_type or "").strip().lower()
+    if supplied:
+        return supplied
+    guessed, _ = mimetypes.guess_type(filename or "")
+    return guessed or "application/octet-stream"
+
+
+def _vault_extract_pdf_text(file_bytes: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(file_bytes))
+        lines: list[str] = []
+        for page in reader.pages[:80]:
+            lines.append(page.extract_text() or "")
+        return "\n".join(lines).strip()
+    except Exception:
+        return ""
+
+
+def _vault_extract_docx_text(file_bytes: bytes) -> str:
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            xml_payload = archive.read("word/document.xml")
+    except Exception:
+        return ""
+    try:
+        root = ET.fromstring(xml_payload)
+    except Exception:
+        return ""
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    chunks = [str(node.text or "").strip() for node in root.findall(".//w:t", namespace)]
+    return "\n".join(filter(None, chunks)).strip()
+
+
+def _vault_extract_xlsx_text(file_bytes: bytes) -> str:
+    lines = _extract_me_report_bulk_spreadsheet_lines(file_bytes, max_sheets=6, max_rows_per_sheet=200, max_columns_per_row=22)
+    return "\n".join(lines).strip()
+
+
+def _vault_extract_text(file_bytes: bytes, filename: str, content_type: str) -> str:
+    ext = str(os.path.splitext(filename)[1] or "").lower()
+    if "pdf" in content_type or ext == ".pdf":
+        return _vault_extract_pdf_text(file_bytes)
+    if content_type.endswith("wordprocessingml.document") or ext == ".docx":
+        return _vault_extract_docx_text(file_bytes)
+    if "spreadsheetml" in content_type or ext in {".xlsx", ".xlsm"}:
+        return _vault_extract_xlsx_text(file_bytes)
+    if content_type.startswith("text/") or ext in {".txt", ".csv", ".json", ".md", ".log"}:
+        try:
+            return file_bytes.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+    return ""
+
+
+def _vault_default_folder(filename: str, text: str) -> str:
+    lower = f"{filename} {text[:600]}".lower()
+    if any(token in lower for token in ("cs01", "confirmation statement", "companies house", "psc", "director", "incorporation")):
+        return "Company Secretarial"
+    if any(token in lower for token in ("vat", "ct600", "corporation tax", "self assessment", "sa100")):
+        return "Tax"
+    if any(token in lower for token in ("invoice", "bill", "statement", "receipt", "purchase")):
+        return "Bookkeeping"
+    if any(token in lower for token in ("bank", "transaction", "reconciliation")):
+        return "Banking"
+    if any(token in lower for token in ("contract", "engagement", "proposal", "letter")):
+        return "Engagements"
+    return "Inbox"
+
+
+def _vault_default_tags(filename: str, text: str, folder: str) -> list[str]:
+    pool = f"{filename} {text} {folder}".lower()
+    tags = [folder]
+    if "invoice" in pool or "bill" in pool:
+        tags.append("Invoice")
+    if "vat" in pool:
+        tags.append("VAT")
+    if "confirmation statement" in pool or "cs01" in pool:
+        tags.append("CS01")
+    if "bank" in pool or "statement" in pool:
+        tags.append("Bank")
+    if "xero" in pool:
+        tags.append("Xero")
+    if "ignition" in pool:
+        tags.append("Ignition")
+    output: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        clean = str(tag or "").strip()
+        if not clean:
+            continue
+        key = clean.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(clean[:24])
+    return output[:6]
+
+
+def _vault_activity(index_payload: dict, kind: str, message: str, detail: str = "", file_id: str = "") -> None:
+    activities = list(index_payload.get("activities") or [])
+    activities.insert(
+        0,
+        {
+            "id": str(uuid4()),
+            "kind": str(kind or "info"),
+            "message": str(message or "").strip(),
+            "detail": str(detail or "").strip(),
+            "fileId": str(file_id or ""),
+            "at": utcnow().isoformat(),
+        },
+    )
+    index_payload["activities"] = activities[:VAULT_ACTIVITY_LIMIT]
+
+
+async def _vault_ai_suggest_name(filename: str, content_type: str, extracted_text: str) -> dict:
+    settings = get_settings()
+    cleaned_name = _vault_clean_filename(filename)
+    default_folder = _vault_default_folder(cleaned_name, extracted_text)
+    if not settings.openai_api_key:
+        summary_seed = " ".join(extracted_text.split())[:180]
+        tags = _vault_default_tags(cleaned_name, extracted_text, default_folder)
+        return {
+            "filename": cleaned_name,
+            "folder": default_folder,
+            "summary": summary_seed or "Uploaded document.",
+            "source": "unknown",
+            "tags": tags,
+            "engine": "rule",
+        }
+
+    prompt = (
+        "You are renaming and organising files for an accounting practice document vault. "
+        "Return a very clear filename, short folder path (1-2 levels max), one-sentence summary, and likely source."
+    )
+    excerpt = " ".join((extracted_text or "").split())[:3000]
+    request_body = {
+        "input": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {
+                        "type": "input_text",
+                        "text": f"Original filename: {filename}\nContent type: {content_type}\nExtracted text sample:\n{excerpt or '[no text extracted]'}",
+                    },
+                ],
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "vault_file_name",
+                "schema": VAULT_AI_RENAME_SCHEMA,
+                "strict": True,
+            }
+        },
+        "max_output_tokens": 350,
+    }
+    try:
+        payload = await _post_openai_responses(request_body, "vault file naming", preferred_model=settings.openai_model, timeout_seconds=30)
+        parsed = _load_openai_json_response(payload, "OpenAI returned invalid JSON for vault file naming.")
+        ai_filename = _vault_clean_filename(parsed.get("filename") or cleaned_name, default_ext=os.path.splitext(cleaned_name)[1])
+        ai_folder = str(parsed.get("folder") or default_folder).strip() or default_folder
+        ai_summary = str(parsed.get("summary") or "").strip()
+        ai_source = str(parsed.get("source") or "unknown").strip().lower()
+        return {
+            "filename": ai_filename,
+            "folder": ai_folder[:80],
+            "summary": ai_summary[:320],
+            "source": ai_source if ai_source in {"client", "internal", "supplier", "hmrc", "companies-house", "bank", "unknown"} else "unknown",
+            "tags": _vault_default_tags(ai_filename, extracted_text, ai_folder) if not isinstance(parsed.get("tags"), list) else [
+                str(tag).strip()[:24] for tag in parsed.get("tags") if str(tag).strip()
+            ][:6],
+            "engine": "openai",
+        }
+    except Exception:
+        summary_seed = " ".join(extracted_text.split())[:180]
+        tags = _vault_default_tags(cleaned_name, extracted_text, default_folder)
+        return {
+            "filename": cleaned_name,
+            "folder": default_folder,
+            "summary": summary_seed or "Uploaded document.",
+            "source": "unknown",
+            "tags": tags,
+            "engine": "rule",
+        }
+
+
+async def vault_analyze_files(user: dict, files: list[dict]) -> dict:
+    analyses: list[dict] = []
+    if not files:
+        return {"analyses": analyses}
+    for item in files:
+        filename = str(item.get("filename") or "document")
+        file_bytes = item.get("file_bytes") or b""
+        content_type = _vault_content_type(filename, item.get("content_type"))
+        if len(file_bytes) > VAULT_MAX_FILE_BYTES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{filename} is larger than 75 MB.")
+        extracted_text = _vault_extract_text(file_bytes, filename, content_type)
+        suggestion = await _vault_ai_suggest_name(filename, content_type, extracted_text)
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        analyses.append(
+            {
+                "analysisId": str(uuid4()),
+                "originalName": filename,
+                "contentType": content_type,
+                "sizeBytes": len(file_bytes),
+                "sha256": file_hash,
+                "suggestedName": _vault_clean_filename(suggestion.get("filename") or filename, default_ext=os.path.splitext(filename)[1]),
+                "suggestedFolder": str(suggestion.get("folder") or "Inbox").strip() or "Inbox",
+                "summary": str(suggestion.get("summary") or "").strip(),
+                "source": str(suggestion.get("source") or "unknown"),
+                "tags": list(suggestion.get("tags") or []),
+                "engine": str(suggestion.get("engine") or "rule"),
+                "textPreview": (extracted_text or "")[:VAULT_MAX_TEXT_PREVIEW_CHARS],
+            }
+        )
+    return {"analyses": analyses}
+
+
+def _vault_search_rank(file_row: dict, term: str) -> int:
+    hay_name = str(file_row.get("displayName") or "").lower()
+    hay_folder = str(file_row.get("folder") or "").lower()
+    hay_summary = str(file_row.get("summary") or "").lower()
+    hay_index = str(file_row.get("textIndex") or "").lower()
+    hay_tags = " ".join(str(tag or "").lower() for tag in (file_row.get("tags") or []))
+    score = 0
+    if term in hay_name:
+        score += 6
+    if term in hay_folder:
+        score += 3
+    if term in hay_tags:
+        score += 3
+    if term in hay_summary:
+        score += 2
+    if term in hay_index:
+        score += 1
+    return score
+
+
+def vault_payload(user: dict, search: str = "", folder: str = "", tag: str = "") -> dict:
+    index_payload = _vault_load_index(user["id"])
+    files = list(index_payload.get("files") or [])
+    query = str(search or "").strip().lower()
+    folder_filter = str(folder or "").strip().lower()
+    tag_filter = str(tag or "").strip().lower()
+    if folder_filter:
+        files = [row for row in files if str(row.get("folder") or "").strip().lower() == folder_filter]
+    if tag_filter:
+        files = [
+            row
+            for row in files
+            if any(str(item or "").strip().lower() == tag_filter for item in (row.get("tags") or []))
+        ]
+    if query:
+        files = [row for row in files if _vault_search_rank(row, query) > 0]
+        files.sort(key=lambda row: (_vault_search_rank(row, query), str(row.get("uploadedAt") or "")), reverse=True)
+    else:
+        files.sort(key=lambda row: str(row.get("uploadedAt") or ""), reverse=True)
+    folders = sorted({str(row.get("folder") or "Inbox").strip() or "Inbox" for row in index_payload.get("files") or []}, key=lambda item: item.casefold())
+    tags = sorted({
+        str(tag_item).strip()
+        for row in index_payload.get("files") or []
+        for tag_item in (row.get("tags") or [])
+        if str(tag_item).strip()
+    }, key=lambda item: item.casefold())
+    return {
+        "files": files[:500],
+        "folders": folders,
+        "tags": tags,
+        "activities": list(index_payload.get("activities") or [])[:120],
+        "summary": {
+            "totalFiles": len(index_payload.get("files") or []),
+            "filteredFiles": len(files),
+            "totalFolders": len(folders),
+            "totalTags": len(tags),
+            "lastActivityAt": (index_payload.get("activities") or [{}])[0].get("at", "") if index_payload.get("activities") else "",
+        },
+    }
+
+
+async def vault_upload_files(user: dict, files: list[dict], manifest_by_hash: dict[str, dict] | None = None) -> dict:
+    manifest_by_hash = manifest_by_hash or {}
+    index_payload = _vault_load_index(user["id"])
+    file_rows = list(index_payload.get("files") or [])
+    existing_hash_map = {str(row.get("sha256") or ""): row for row in file_rows if str(row.get("sha256") or "")}
+    now_iso = utcnow().isoformat()
+    uploaded_count = 0
+    duplicate_count = 0
+    for item in files:
+        original_name = str(item.get("filename") or "document")
+        file_bytes = item.get("file_bytes") or b""
+        if len(file_bytes) > VAULT_MAX_FILE_BYTES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{original_name} is larger than 75 MB.")
+        content_type = _vault_content_type(original_name, item.get("content_type"))
+        sha_value = hashlib.sha256(file_bytes).hexdigest()
+        manifest = manifest_by_hash.get(sha_value) or {}
+        if sha_value in existing_hash_map:
+            duplicate = existing_hash_map[sha_value]
+            duplicate_count += 1
+            _vault_activity(
+                index_payload,
+                "dedupe",
+                "Merged duplicate upload",
+                f"{original_name} matches existing file {duplicate.get('displayName') or duplicate.get('originalName')}.",
+                str(duplicate.get("id") or ""),
+            )
+            continue
+
+        extracted_text = _vault_extract_text(file_bytes, original_name, content_type)
+        ai_suggestion = await _vault_ai_suggest_name(original_name, content_type, extracted_text)
+        suggested_name = _vault_clean_filename(
+            str(manifest.get("name") or ai_suggestion.get("filename") or original_name),
+            default_ext=os.path.splitext(original_name)[1],
+        )
+        suggested_folder = str(manifest.get("folder") or ai_suggestion.get("folder") or _vault_default_folder(original_name, extracted_text)).strip() or "Inbox"
+        summary = str(manifest.get("summary") or ai_suggestion.get("summary") or "").strip()
+        source = str(manifest.get("source") or ai_suggestion.get("source") or "unknown").strip().lower() or "unknown"
+        tag_list = manifest.get("tags") if isinstance(manifest.get("tags"), list) else ai_suggestion.get("tags")
+        tags = []
+        for tag in (tag_list or []):
+            clean = str(tag or "").strip()
+            if not clean:
+                continue
+            if clean.casefold() in {item.casefold() for item in tags}:
+                continue
+            tags.append(clean[:24])
+            if len(tags) >= 6:
+                break
+        if not tags:
+            tags = _vault_default_tags(suggested_name, extracted_text, suggested_folder)
+
+        file_id = str(uuid4())
+        ext = os.path.splitext(suggested_name)[1] or os.path.splitext(original_name)[1]
+        storage_name = f"{file_id}{ext}"
+        storage_path = _vault_files_dir(user["id"]) / storage_name
+        storage_path.parent.mkdir(parents=True, exist_ok=True)
+        storage_path.write_bytes(file_bytes)
+
+        row = {
+            "id": file_id,
+            "originalName": original_name,
+            "displayName": suggested_name,
+            "folder": suggested_folder,
+            "summary": summary,
+            "source": source if source in {"client", "internal", "supplier", "hmrc", "companies-house", "bank", "unknown"} else "unknown",
+            "tags": tags,
+            "contentType": content_type,
+            "sizeBytes": len(file_bytes),
+            "uploadedAt": now_iso,
+            "sha256": sha_value,
+            "storagePath": storage_name,
+            "textIndex": (extracted_text or "")[:VAULT_MAX_INDEX_CHARS],
+        }
+        file_rows.append(row)
+        existing_hash_map[sha_value] = row
+        uploaded_count += 1
+        _vault_activity(index_payload, "upload", f"Uploaded {suggested_name}", f"Stored in {suggested_folder}.", file_id)
+        _vault_activity(index_payload, "organize", f"Created/updated folder {suggested_folder}", "Jenius organized file placement.", file_id)
+        _vault_activity(index_payload, "tag", f"Assigned tags to {suggested_name}", ", ".join(tags), file_id)
+        if str(original_name).strip() != suggested_name:
+            _vault_activity(index_payload, "rename", f"Renamed {original_name}", f"New filename: {suggested_name}", file_id)
+
+    index_payload["files"] = file_rows
+    _vault_save_index(user["id"], index_payload)
+    return {
+        "uploadedCount": uploaded_count,
+        "duplicateCount": duplicate_count,
+        **vault_payload(user),
+    }
+
+
+def vault_file_content(user: dict, file_id: str) -> tuple[bytes, str, str]:
+    index_payload = _vault_load_index(user["id"])
+    row = next((item for item in index_payload.get("files") or [] if str(item.get("id") or "") == str(file_id or "")), None)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vault file not found.")
+    storage_name = str(row.get("storagePath") or "")
+    storage_path = _vault_files_dir(user["id"]) / storage_name
+    if not storage_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vault file content is unavailable.")
+    return storage_path.read_bytes(), str(row.get("displayName") or row.get("originalName") or "file"), _vault_content_type(str(row.get("displayName") or row.get("originalName") or ""), row.get("contentType"))
 
 
 def run_ignition_sync_job(user: dict, sync_run_id: str) -> None:

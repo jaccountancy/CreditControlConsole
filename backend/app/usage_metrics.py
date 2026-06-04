@@ -856,7 +856,7 @@ def _sync_git_push_release_updates(limit: int = 180) -> None:
                         updated_at
                     )
                     VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::timestamptz, %s)
-                    ON CONFLICT (deployment_id) DO UPDATE
+                    ON CONFLICT (deployment_id) WHERE deployment_id <> '' DO UPDATE
                     SET title = EXCLUDED.title,
                         summary = EXCLUDED.summary,
                         details = EXCLUDED.details,
@@ -916,7 +916,7 @@ def _sync_runtime_release_update() -> None:
                     updated_at
                 )
                 VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::timestamptz, %s)
-                ON CONFLICT (deployment_id) DO UPDATE
+                ON CONFLICT (deployment_id) WHERE deployment_id <> '' DO UPDATE
                 SET title = EXCLUDED.title,
                     summary = EXCLUDED.summary,
                     details = EXCLUDED.details,
