@@ -18011,6 +18011,65 @@
                 display: grid;
                 gap: 12px;
             }
+            .me-report-bulk-client-card {
+                width: 100%;
+                display: grid;
+                grid-template-columns: 22px minmax(0, 1fr);
+                gap: 10px;
+                align-items: center;
+                text-align: left;
+                padding: 12px 13px;
+                border-radius: 14px;
+                border: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.94);
+                color: var(--ink);
+                font: inherit;
+                cursor: pointer;
+                transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+            }
+            .me-report-bulk-client-card:hover {
+                transform: translateY(-1px);
+                border-color: rgba(29, 103, 242, 0.26);
+                box-shadow: 0 10px 18px rgba(30, 47, 77, 0.08);
+            }
+            .me-report-bulk-client-card.is-selected {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: color-mix(in srgb, var(--blue-soft) 72%, #ffffff);
+                box-shadow: 0 10px 18px rgba(29, 103, 242, 0.12);
+            }
+            .me-report-bulk-client-icon {
+                width: 20px;
+                height: 20px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.24);
+                color: transparent;
+                background: #fff;
+                display: inline-grid;
+                place-items: center;
+                font-size: 0.72rem;
+                font-weight: 1000;
+            }
+            .me-report-bulk-client-card.is-selected .me-report-bulk-client-icon {
+                color: #fff;
+                border-color: rgba(29, 103, 242, 0.42);
+                background: var(--blue);
+            }
+            .me-report-bulk-client-copy strong,
+            .me-report-bulk-client-copy small {
+                display: block;
+                min-width: 0;
+                overflow-wrap: anywhere;
+            }
+            .me-report-bulk-client-copy strong {
+                font-size: 0.9rem;
+                font-weight: 950;
+            }
+            .me-report-bulk-client-copy small {
+                margin-top: 2px;
+                color: var(--muted);
+                font-size: 0.76rem;
+                font-weight: 760;
+            }
             .me-report-bulk-match-row {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
@@ -19811,6 +19870,20 @@
                 background: #fff;
                 box-shadow: 0 6px 18px rgba(29, 103, 242, 0.14);
             }
+            .ch-subnav-utility {
+                margin-left: auto;
+                border: 1px solid rgba(39, 176, 95, 0.24);
+                background: rgba(255, 255, 255, 0.9);
+                color: #168246;
+                font-weight: 820;
+                padding: 8px 12px;
+                border-radius: 10px;
+                cursor: pointer;
+            }
+            .ch-subnav-utility:hover {
+                background: var(--green-soft);
+                border-color: rgba(39, 176, 95, 0.34);
+            }
             .ch-onboarding-card {
                 display: grid;
                 gap: 12px;
@@ -21094,6 +21167,14 @@
                                 <a class="app-nav-button" href="#credit-control-practice-packs" data-app-nav="practice-packs">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6.5 12 3l8 3.5"></path><path d="M4 6.5V17l8 4 8-4V6.5"></path><path d="M12 12 4 8"></path><path d="m12 12 8-4"></path><path d="M12 12v9"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Practice Packs</strong><span>BM CSVs</span></span>
+                                </a>
+                                <a class="app-nav-button" href="#credit-control-code-breaker" data-app-nav="code-breaker">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 10h8"></path><path d="M8 14h4"></path><path d="M16 14h.01"></path><path d="M16 18h.01"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Code Breaker</strong><span>Post-filing delta analysis</span></span>
+                                </a>
+                                <a class="app-nav-button" href="#credit-control-micro-analyzer" data-app-nav="micro-analyzer">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="8" cy="12" r="3"></circle><circle cx="16" cy="12" r="3"></circle><path d="M3 12h2"></path><path d="M19 12h2"></path><path d="M11 12h2"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Micro Analyzer</strong><span>Micro/Starter VAT cleanup</span></span>
                                 </a>
                             </div>
                         </div>
@@ -22523,6 +22604,7 @@
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="companies" role="tab" aria-selected="false">Companies</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="import" role="tab" aria-selected="false">Import</button>
                                 <button class="ch-subnav-tab" type="button" data-ch-tab="audit" role="tab" aria-selected="false">Audit</button>
+                                <button class="ch-subnav-utility" type="button" id="chPopulateAuthCodesFromSubnavButton">Populate auth codes</button>
                             </nav>
                             <section class="ch-onboarding-card" id="chOnboardingCard" hidden>
                                 <div class="ch-onboarding-head">
@@ -24340,6 +24422,103 @@
                             </section>
                         </section>
                     </section>
+
+                    <section class="late-charges-screen detail-card" id="codeBreakerScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>Code Breaker</h3>
+                                    <p class="detail-meta">Track post-filing Xero changes after Companies House submission and produce reversal guidance.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="primary-button" id="codeBreakerSetupWorkspaceButton" type="button">Set up workspace</button>
+                                    <button class="ghost-button" id="codeBreakerRefreshButton" type="button">Refresh</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="codeBreakerSummary">Loading Code Breaker workspaces.</p>
+                            <section class="detail-panel" id="codeBreakerSetupPanel" hidden>
+                                <h4>Set up Code Breaker workspace</h4>
+                                <form class="bank-account-form" id="codeBreakerWorkspaceForm">
+                                    <label>
+                                        Client / workspace name
+                                        <input id="codeBreakerClientNameInput" type="text" autocomplete="off" placeholder="Start typing client name">
+                                    </label>
+                                    <label>
+                                        Xero connection
+                                        <select id="codeBreakerTenantSelect"></select>
+                                    </label>
+                                    <label>
+                                        Xero contact
+                                        <select id="codeBreakerContactSelect"></select>
+                                    </label>
+                                    <label>
+                                        Companies House number
+                                        <input id="codeBreakerCompanyNumberInput" type="text" autocomplete="off" placeholder="e.g. 12345678">
+                                    </label>
+                                    <label>
+                                        Filing submitted at
+                                        <input id="codeBreakerSubmittedAtInput" type="date">
+                                    </label>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="codeBreakerCancelSetupButton" type="button">Cancel</button>
+                                        <button class="primary-button" type="submit">Save workspace</button>
+                                    </div>
+                                </form>
+                            </section>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Code Breaker workspaces">
+                                    <thead>
+                                        <tr>
+                                            <th>Workspace</th>
+                                            <th>Company no</th>
+                                            <th>Submitted at</th>
+                                            <th>Xero contact</th>
+                                            <th>Delta status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="codeBreakerWorkspaceTableBody"></tbody>
+                                </table>
+                            </section>
+                            <section class="detail-panel" id="codeBreakerAnalysisPanel" hidden>
+                                <h4 id="codeBreakerAnalysisTitle">Analysis</h4>
+                                <p class="detail-meta" id="codeBreakerAnalysisMeta">Run a workspace analysis to compare post-filing Xero movement.</p>
+                                <div id="codeBreakerAnalysisOutput"></div>
+                            </section>
+                        </section>
+                    </section>
+
+                    <section class="late-charges-screen detail-card" id="microAnalyzerScreen" hidden>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>Micro Analyzer</h3>
+                                    <p class="detail-meta">Find Ignition Micro/Starter clients, match to Xero organisations, and remove VAT coding for compliance.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="microAnalyzerRefreshButton" type="button">Refresh list</button>
+                                    <button class="primary-button" id="microAnalyzerRunAllButton" type="button">Analyze all</button>
+                                </div>
+                            </div>
+                            <p class="late-charge-summary" id="microAnalyzerSummary">Loading Micro/Starter client list.</p>
+                            <section class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="Micro analyzer client table">
+                                    <thead>
+                                        <tr>
+                                            <th>Ignition client</th>
+                                            <th>Plan</th>
+                                            <th>Xero match</th>
+                                            <th>VAT-coded lines</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="microAnalyzerTableBody"></tbody>
+                                </table>
+                            </section>
+                        </section>
+                    </section>
                     <div class="company-secretarial-modal" id="yePrepAiReviewModal" hidden>
                         <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="yePrepAiReviewTitle">
                             <div class="company-secretarial-modal-head">
@@ -25752,6 +25931,15 @@
             let sa100PrepStage = "workspace";
             let selectedVatReturnKey = "";
             let vatReturnDetailTab = "transactions";
+            const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
+            let codeBreakerWorkspaces = loadCodeBreakerWorkspaces();
+            let codeBreakerCompanies = [];
+            let codeBreakerSetupOpen = false;
+            let selectedCodeBreakerWorkspaceId = "";
+            let codeBreakerAnalysisByWorkspaceId = {};
+            let microAnalyzerRows = [];
+            let microAnalyzerLoading = false;
+            const microAnalyzerResultsByCustomerId = {};
             let vatAiReviewModalOpen = false;
             let yePrepAiReviewModalOpen = false;
             let yePrepAiReviewLoading = false;
@@ -25888,6 +26076,8 @@
                 "ignition-clients": "Ignition Client Register",
                 "me-report": "Monthly Flows",
                 "practice-packs": "Practice Pack Generator",
+                "code-breaker": "Code Breaker",
+                "micro-analyzer": "Micro Analyzer",
                 settings: "Settings"
             };
             const topbarViewSummaries = {
@@ -25915,6 +26105,8 @@
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
                 "me-report": "Run monthly bookkeeping flows, complete checks, route review approvals, and send client-ready outputs.",
                 "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
+                "code-breaker": "Detect post-submission deltas between filed data and live Xero changes, then generate adjustment guidance.",
+                "micro-analyzer": "Identify Ignition Micro/Starter clients and clear VAT coding from matched Xero transactions.",
                 settings: "Manage import scope, integrations, posting defaults, templates, logs, and system controls."
             };
             const settingsTopbarSummaries = {
@@ -27671,6 +27863,36 @@
 
             function persistSyncSettings() {
                 localStorage.setItem(SYNC_SETTINGS_KEY, JSON.stringify(syncSettings));
+            }
+
+            function loadCodeBreakerWorkspaces() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(codeBreakerStorageKey) || "[]");
+                    if (!Array.isArray(stored)) return [];
+                    return stored
+                        .map((row) => ({
+                            id: String(row?.id || ""),
+                            clientName: String(row?.clientName || "").trim(),
+                            xeroTenantId: String(row?.xeroTenantId || "").trim(),
+                            xeroTenantName: String(row?.xeroTenantName || "").trim(),
+                            xeroContactId: String(row?.xeroContactId || "").trim(),
+                            companyNumber: String(row?.companyNumber || "").trim().toUpperCase(),
+                            submittedAt: String(row?.submittedAt || "").trim(),
+                            createdAt: String(row?.createdAt || "").trim(),
+                            updatedAt: String(row?.updatedAt || "").trim(),
+                        }))
+                        .filter((row) => row.id && row.clientName);
+                } catch {
+                    return [];
+                }
+            }
+
+            function persistCodeBreakerWorkspaces() {
+                try {
+                    localStorage.setItem(codeBreakerStorageKey, JSON.stringify(codeBreakerWorkspaces || []));
+                } catch {
+                    // Code Breaker workspaces can operate in-memory if browser storage is unavailable.
+                }
             }
 
             function normaliseLetterTemplate(template, fallback = {}) {
@@ -29502,6 +29724,8 @@
                 if (activeView === "sa100-prep") return "sa100-prep";
                 if (activeView === "ye-prep") return "ye-prep";
                 if (activeView === "vat-return-prepare") return "vat-return-prepare";
+                if (activeView === "code-breaker") return "code-breaker";
+                if (activeView === "micro-analyzer") return "micro-analyzer";
                 if (activeView === "company-secretarial" || activeView === "company-secreterial") return "company-secretarial";
                 if (activeView === "hmrc-64-8s") return "hmrc-64-8s";
                 if (activeView === "aml-verification") return "aml-verification";
@@ -29667,6 +29891,8 @@
                 if (activeView === "sa100-prep") return "practice";
                 if (activeView === "ye-prep") return "practice";
                 if (activeView === "practice-packs") return "practice";
+                if (activeView === "code-breaker") return "practice";
+                if (activeView === "micro-analyzer") return "practice";
                 if (activeView === "settings") return "settings";
                 if (activeView === "insights") return "insights";
                 return "credit";
@@ -29794,10 +30020,12 @@
                 setElementVisible(document.getElementById("yePrepScreen"), activeView === "ye-prep");
                 setElementVisible(document.getElementById("vatReturnPrepareScreen"), activeView === "vat-return-prepare");
                 setElementVisible(document.getElementById("practicePackScreen"), activeView === "practice-packs");
+                setElementVisible(document.getElementById("codeBreakerScreen"), activeView === "code-breaker");
+                setElementVisible(document.getElementById("microAnalyzerScreen"), activeView === "micro-analyzer");
                 document.body.classList.toggle("is-ledger-view", activeView === "ledger");
                 document.body.classList.toggle("is-client-view", activeView === "client");
                 document.body.classList.toggle("is-bank-account-view", Boolean(activeBankStatementAccountForTopbar()));
-                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
+                document.body.classList.toggle("is-tool-page", ["late-charges", "bad-debt", "risk-assessments", "confirmation-statements", "client-auth-register", "sa100-prep", "ye-prep", "vat-return-prepare", "code-breaker", "micro-analyzer", "company-secretarial", "company-secreterial", "hmrc-64-8s", "aml-verification", "xero-lock-date", "jashflow", "bank-statements", "supplier-reconciliation", "supplier-reconciliation-statement-page", "ignition", "ignition-clients", "me-report", "practice-packs", "settings", "insights", "notifications"].includes(activeView));
                 const ignitionRenewalsTopbarActions = document.getElementById("ignitionRenewalsTopbarActions");
                 if (ignitionRenewalsTopbarActions) ignitionRenewalsTopbarActions.hidden = activeView !== "ignition";
                 const ignitionTopbarTabs = document.getElementById("ignitionTopbarTabs");
@@ -29889,6 +30117,26 @@
                 scrollConsoleToTop();
             }
 
+            function openCodeBreakerScreen() {
+                activeView = "code-breaker";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                refreshCodeBreakerData();
+                scrollConsoleToTop();
+            }
+
+            function openMicroAnalyzerScreen() {
+                activeView = "micro-analyzer";
+                syncActiveViewShell();
+                closeTopbarMenu();
+                closeToolbarMenus();
+                renderAll();
+                refreshMicroAnalyzerRows();
+                scrollConsoleToTop();
+            }
+
             function navigateApp(section) {
                 if (section === "home") return openInsightsScreen();
                 if (section === "notifications") return openNotificationsScreen();
@@ -29910,6 +30158,8 @@
                 if (section === "sa100-prep") return openSa100PrepScreen();
                 if (section === "ye-prep") return openYePrepScreen();
                 if (section === "vat-return-prepare") return openVatReturnPrepareScreen();
+                if (section === "code-breaker") return openCodeBreakerScreen();
+                if (section === "micro-analyzer") return openMicroAnalyzerScreen();
                 if (section === "practice-packs") return openPracticePackScreen();
                 if (section === "settings") return openSettingsScreen();
             }
@@ -30058,6 +30308,8 @@
                 "ignition",
                 "me-report",
                 "practice-packs",
+                "code-breaker",
+                "micro-analyzer",
             ]);
             const practicePrepNavSections = new Set([
                 "sa100-prep",
@@ -30171,6 +30423,8 @@
                 "ye-prep": "credit-control-ye-prep",
                 "vat-return-prepare": "credit-control-vat-return-prepare",
                 "practice-packs": "credit-control-practice-packs",
+                "code-breaker": "credit-control-code-breaker",
+                "micro-analyzer": "credit-control-micro-analyzer",
                 settings: "credit-control-settings",
             };
 
@@ -48692,14 +48946,9 @@
             }
 
             function meReportConnectedPanelClientsForBulkFlows() {
-                const rows = Array.isArray(state?.customers) ? state.customers : [];
-                return rows
-                    .map((client) => ({
-                        xeroContactId: String(client?.xeroContactId || client?.contactId || "").trim(),
-                        name: String(client?.name || client?.clientName || "").trim(),
-                        email: String(client?.email || client?.contact || "").trim(),
-                    }))
-                    .filter((client) => client.xeroContactId);
+                // Intentionally disabled for monthly-flow candidate generation.
+                // We only want system-linked clients (not raw tenant contact lists).
+                return [];
             }
 
             function meReportBulkFlowCandidates(companies = [], tenantId = "") {
@@ -48719,16 +48968,6 @@
                         xeroContactId: contactId,
                         name: String(company?.companyName || company?.clientName || contact?.name || "Unnamed client"),
                         email: String(company?.contactEmail || contact?.email || ""),
-                    });
-                });
-                meReportConnectedPanelClientsForBulkFlows().forEach((client) => {
-                    const contactId = String(client?.xeroContactId || "").trim();
-                    if (!contactId || candidatesByContactId.has(contactId)) return;
-                    const contact = contactsById.get(contactId);
-                    candidatesByContactId.set(contactId, {
-                        xeroContactId: contactId,
-                        name: String(client?.name || contact?.name || "Unnamed client"),
-                        email: String(client?.email || contact?.email || ""),
                     });
                 });
                 return Array.from(candidatesByContactId.values()).sort((left, right) => String(left?.name || "").localeCompare(String(right?.name || ""), "en", { sensitivity: "base" }));
@@ -49681,22 +49920,22 @@
                             const label = String(contact?.name || "Unnamed client");
                             const email = String(contact?.email || "");
                             return `
-                                <label class="me-report-bulk-match-item">
-                                    <input type="checkbox" data-me-report-bulk-client="${escapeHTML(contactId)}" ${checked ? "checked" : ""}>
-                                    <div>
+                                <button class="me-report-bulk-client-card${checked ? " is-selected" : ""}" type="button" data-me-report-bulk-client="${escapeHTML(contactId)}" aria-pressed="${checked ? "true" : "false"}">
+                                    <span class="me-report-bulk-client-icon" aria-hidden="true">✓</span>
+                                    <span class="me-report-bulk-client-copy">
                                         <strong>${escapeHTML(label)}</strong>
                                         <small>${escapeHTML(email || contactId || "Xero-linked client")}</small>
-                                    </div>
-                                </label>
+                                    </span>
+                                </button>
                             `;
                         }).join("");
                         clientsList.querySelectorAll("[data-me-report-bulk-client]").forEach((checkbox) => {
-                            checkbox.addEventListener("change", (event) => {
+                            checkbox.addEventListener("click", (event) => {
                                 if (!meReportBulkPeriodDialogState) return;
-                                const contactId = String(event.target.dataset.meReportBulkClient || "");
+                                const contactId = String(event.currentTarget.dataset.meReportBulkClient || "");
                                 const current = new Set((meReportBulkPeriodDialogState.selectedContactIds || []).map((item) => String(item || "")));
-                                if (event.target.checked) current.add(contactId);
-                                else current.delete(contactId);
+                                if (current.has(contactId)) current.delete(contactId);
+                                else current.add(contactId);
                                 meReportBulkPeriodDialogState.selectedContactIds = Array.from(current);
                                 renderMeReportBulkPeriodPanel();
                             });
@@ -57581,6 +57820,12 @@
                     const vatEntry = selectedVatReturnEntry(vatReturnQueueRows());
                     return vatEntry ? `${vatEntry.clientName} · period ending ${formatDate(vatEntry.periodEndISO)}` : "VAT return queue";
                 }
+                if (activeView === "code-breaker") {
+                    return `${(codeBreakerWorkspaces || []).length.toLocaleString("en-GB")} workspaces`;
+                }
+                if (activeView === "micro-analyzer") {
+                    return `${(microAnalyzerRows || []).length.toLocaleString("en-GB")} Micro/Starter clients`;
+                }
                 if (activeView === "ignition-clients") return "Client register";
                 if (activeView === "confirmation-statements") return `${(companiesHouseState.companies || []).length.toLocaleString("en-GB")} companies in workflow`;
                 if (activeView === "xero-lock-date") return `${(xeroLockDateOverview.rows || []).length.toLocaleString("en-GB")} Xero tenants`;
@@ -58237,6 +58482,8 @@
                 else if (activeView === "sa100-prep") activeNavSection = "sa100-prep";
                 else if (activeView === "ye-prep") activeNavSection = "ye-prep";
                 else if (activeView === "vat-return-prepare") activeNavSection = "vat-return-prepare";
+                else if (activeView === "code-breaker") activeNavSection = "code-breaker";
+                else if (activeView === "micro-analyzer") activeNavSection = "micro-analyzer";
                 else if (activeView === "practice-packs") activeNavSection = "practice-packs";
                 else if (activeView === "settings") activeNavSection = "settings";
                 else if (activeView === "client") activeNavSection = "clients";
@@ -63941,6 +64188,531 @@
                 }
             }
 
+            function codeBreakerConnections() {
+                const fromMeReport = typeof meReportXeroConnections === "function" ? meReportXeroConnections() : [];
+                if (Array.isArray(fromMeReport) && fromMeReport.length) return fromMeReport;
+                const tenantId = String(state?.organisation?.xeroTenantId || "").trim();
+                const tenantName = String(state?.organisation?.xeroTenantName || state?.organisation?.tenantName || "").trim();
+                if (tenantId) return [{ tenantId, tenantName: tenantName || tenantId, tenantType: "" }];
+                return [];
+            }
+
+            function codeBreakerCustomersForTenant(tenantId = "") {
+                const rows = Array.isArray(state?.customers) ? state.customers : [];
+                const cleanTenantId = String(tenantId || "").trim();
+                const withContacts = rows.filter((row) => String(row?.xeroContactId || row?.contactId || "").trim());
+                if (!cleanTenantId) return withContacts;
+                const scoped = withContacts.filter((row) => {
+                    const rowTenant = String(row?.tenantId || row?.xeroTenantId || row?.tenant || "").trim();
+                    return rowTenant && rowTenant === cleanTenantId;
+                });
+                return scoped.length ? scoped : withContacts;
+            }
+
+            function codeBreakerBestMatchByName(name = "") {
+                const search = String(name || "").trim().toLowerCase();
+                if (!search) return { customer: null, company: null };
+                const tokenisedSearch = search.replace(/[^a-z0-9]+/g, " ").trim();
+                const score = (value = "") => {
+                    const candidate = String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+                    if (!candidate) return 0;
+                    if (candidate === tokenisedSearch) return 120;
+                    if (candidate.includes(tokenisedSearch) || tokenisedSearch.includes(candidate)) return 95;
+                    const searchTokens = new Set(tokenisedSearch.split(" ").filter(Boolean));
+                    const candidateTokens = new Set(candidate.split(" ").filter(Boolean));
+                    const overlap = [...searchTokens].filter((token) => candidateTokens.has(token)).length;
+                    const denom = Math.max(searchTokens.size, candidateTokens.size, 1);
+                    return Math.round((overlap / denom) * 100);
+                };
+                let bestCustomer = null;
+                let bestCustomerScore = 0;
+                codeBreakerCustomersForTenant("").forEach((row) => {
+                    const rowScore = Math.max(score(row?.name), score(row?.clientName), score(row?.companyName));
+                    if (rowScore > bestCustomerScore) {
+                        bestCustomer = row;
+                        bestCustomerScore = rowScore;
+                    }
+                });
+                let bestCompany = null;
+                let bestCompanyScore = 0;
+                (Array.isArray(codeBreakerCompanies) ? codeBreakerCompanies : []).forEach((row) => {
+                    const rowScore = Math.max(score(row?.companyName), score(row?.clientName));
+                    if (rowScore > bestCompanyScore) {
+                        bestCompany = row;
+                        bestCompanyScore = rowScore;
+                    }
+                });
+                return {
+                    customer: bestCustomerScore >= 45 ? bestCustomer : null,
+                    company: bestCompanyScore >= 45 ? bestCompany : null,
+                };
+            }
+
+            async function refreshCodeBreakerData() {
+                if (!state?.organisation?.xeroConnected) {
+                    codeBreakerCompanies = [];
+                    renderCodeBreakerScreen();
+                    return;
+                }
+                try {
+                    const payload = await requestJSON("/api/companies-house/companies?xeroConnected=true");
+                    codeBreakerCompanies = Array.isArray(payload?.companies) ? payload.companies : [];
+                } catch (error) {
+                    console.warn("Unable to load Code Breaker Companies House rows", error);
+                }
+                renderCodeBreakerScreen();
+            }
+
+            function codeBreakerWorkspaceStatus(workspace = {}) {
+                const analysis = codeBreakerAnalysisByWorkspaceId[String(workspace?.id || "")] || null;
+                if (!analysis) return { label: "Pending analysis", className: "is-review" };
+                if (analysis.error) return { label: "Error", className: "is-overdue" };
+                if (!Number(analysis.changedCount || 0)) return { label: "No post-filing deltas", className: "is-open" };
+                return { label: `${Number(analysis.changedCount || 0)} change${Number(analysis.changedCount || 0) === 1 ? "" : "s"} found`, className: "is-due" };
+            }
+
+            function renderCodeBreakerAnalysis(workspace = null) {
+                const panel = document.getElementById("codeBreakerAnalysisPanel");
+                const title = document.getElementById("codeBreakerAnalysisTitle");
+                const meta = document.getElementById("codeBreakerAnalysisMeta");
+                const output = document.getElementById("codeBreakerAnalysisOutput");
+                if (!panel || !title || !meta || !output) return;
+                const analysis = workspace ? codeBreakerAnalysisByWorkspaceId[String(workspace.id || "")] : null;
+                if (!workspace || !analysis) {
+                    panel.hidden = true;
+                    return;
+                }
+                panel.hidden = false;
+                title.textContent = `${workspace.clientName} · Delta analysis`;
+                if (analysis.error) {
+                    meta.textContent = analysis.error;
+                    output.innerHTML = "";
+                    return;
+                }
+                meta.textContent = analysis.changedCount
+                    ? `${analysis.changedCount.toLocaleString("en-GB")} invoice changes found after ${formatDate(analysis.submittedAt)}.`
+                    : `No invoice changes detected after ${formatDate(analysis.submittedAt)}.`;
+                const recommendations = Array.isArray(analysis.recommendations) ? analysis.recommendations : [];
+                const rows = Array.isArray(analysis.rows) ? analysis.rows : [];
+                output.innerHTML = `
+                    <div class="key-metrics-grid">
+                        <article class="key-metric-card"><span>Submitted at</span><strong>${escapeHTML(formatDate(analysis.submittedAt))}</strong></article>
+                        <article class="key-metric-card"><span>Post-filing changes</span><strong>${Number(analysis.changedCount || 0).toLocaleString("en-GB")}</strong></article>
+                        <article class="key-metric-card"><span>Net delta</span><strong>${escapeHTML(formatCurrency(analysis.netDelta || 0))}</strong></article>
+                    </div>
+                    <div class="detail-panel" style="margin-top:10px;">
+                        <h4>Jenius AI adjustment guidance</h4>
+                        ${recommendations.length
+                            ? `<ul>${recommendations.map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>`
+                            : "<p>No corrective adjustments are currently recommended.</p>"}
+                    </div>
+                    <section class="ch-companies-table-wrap" style="margin-top:10px;">
+                        <table class="ch-table" aria-label="Code Breaker delta rows">
+                            <thead><tr><th>Invoice</th><th>Date</th><th>Status</th><th>Amount due</th></tr></thead>
+                            <tbody>
+                                ${rows.length
+                                    ? rows.map((row) => `<tr><td>${escapeHTML(String(row.invoiceNumber || row.id || ""))}</td><td>${escapeHTML(formatDate(row.date || ""))}</td><td>${escapeHTML(String(row.status || ""))}</td><td>${escapeHTML(formatCurrency(row.amountDue || 0))}</td></tr>`).join("")
+                                    : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No changes</p><h4>No post-filing movement detected</h4><p>Xero invoices currently align with the submitted period.</p></div></td></tr>'}
+                            </tbody>
+                        </table>
+                    </section>
+                `;
+            }
+
+            async function runCodeBreakerAnalysis(workspaceId = "") {
+                const workspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(workspaceId || ""));
+                if (!workspace) return;
+                selectedCodeBreakerWorkspaceId = workspace.id;
+                const customer = codeBreakerCustomersForTenant(workspace.xeroTenantId).find((row) => String(row?.xeroContactId || row?.contactId || "") === String(workspace.xeroContactId || ""));
+                if (!customer) {
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Unable to locate the linked Xero client in this tenant." };
+                    renderCodeBreakerScreen();
+                    return;
+                }
+                try {
+                    await ensureCustomerTransactions(customer, false, { silent: true });
+                } catch (error) {
+                    console.warn("Unable to refresh customer invoices for Code Breaker", error);
+                }
+                const company = (codeBreakerCompanies || []).find((row) =>
+                    String(row?.companyNumber || "").toUpperCase() === String(workspace.companyNumber || "").toUpperCase()
+                    || String(row?.xeroContactId || "") === String(workspace.xeroContactId || "")
+                ) || null;
+                const submittedAt = String(
+                    workspace.submittedAt
+                    || company?.latestSubmissionCompletedAt
+                    || company?.latestSubmissionAt
+                    || ""
+                ).slice(0, 10);
+                const submittedMs = dateSortValue(submittedAt || "");
+                if (!submittedAt || !Number.isFinite(submittedMs) || submittedMs === Number.MAX_SAFE_INTEGER) {
+                    codeBreakerAnalysisByWorkspaceId[workspace.id] = { error: "Missing filing submission date. Set submitted date in workspace setup." };
+                    renderCodeBreakerScreen();
+                    return;
+                }
+                const invoices = Array.isArray(customer?.invoices) ? customer.invoices : [];
+                const changedRows = invoices.filter((invoice) => {
+                    const relevantDate = invoice?.updatedAt || invoice?.xeroUpdatedAt || invoice?.invoiceDate || invoice?.createdAt || invoice?.dueDate || "";
+                    return dateSortValue(relevantDate) >= submittedMs;
+                });
+                const netDelta = changedRows.reduce((sum, row) => sum + Number(row?.amountDue || 0), 0);
+                const recommendations = [];
+                if (!changedRows.length) {
+                    recommendations.push("No post-submission invoice movement detected; no unwind journals currently required.");
+                } else {
+                    recommendations.push(`Post submissions changes total ${formatCurrency(netDelta)} across ${changedRows.length.toLocaleString("en-GB")} invoice rows.`);
+                    recommendations.push("Review and reverse post-filing sales/expense invoices that fall inside the submitted period and were entered after filing.");
+                    recommendations.push("Post a correction journal in the current period to align retained earnings and tax/VAT control accounts with filed figures.");
+                    recommendations.push("Apply lock date after adjustment posting to prevent further drift from Companies House submitted accounts.");
+                }
+                codeBreakerAnalysisByWorkspaceId[workspace.id] = {
+                    submittedAt,
+                    changedCount: changedRows.length,
+                    netDelta,
+                    rows: changedRows.map((row) => ({
+                        id: row?.id || "",
+                        invoiceNumber: row?.invoiceNumber || row?.xeroInvoiceId || "",
+                        date: row?.updatedAt || row?.invoiceDate || row?.createdAt || "",
+                        status: row?.status || "",
+                        amountDue: Number(row?.amountDue || 0),
+                    })),
+                    recommendations,
+                };
+                renderCodeBreakerScreen();
+            }
+
+            function renderCodeBreakerScreen() {
+                const screen = document.getElementById("codeBreakerScreen");
+                if (!screen) return;
+                const summary = document.getElementById("codeBreakerSummary");
+                const setupPanel = document.getElementById("codeBreakerSetupPanel");
+                const setupButton = document.getElementById("codeBreakerSetupWorkspaceButton");
+                const refreshButton = document.getElementById("codeBreakerRefreshButton");
+                const form = document.getElementById("codeBreakerWorkspaceForm");
+                const cancelButton = document.getElementById("codeBreakerCancelSetupButton");
+                const nameInput = document.getElementById("codeBreakerClientNameInput");
+                const tenantSelect = document.getElementById("codeBreakerTenantSelect");
+                const contactSelect = document.getElementById("codeBreakerContactSelect");
+                const companyNumberInput = document.getElementById("codeBreakerCompanyNumberInput");
+                const submittedInput = document.getElementById("codeBreakerSubmittedAtInput");
+                const tableBody = document.getElementById("codeBreakerWorkspaceTableBody");
+                if (!summary || !setupPanel || !setupButton || !refreshButton || !form || !cancelButton || !nameInput || !tenantSelect || !contactSelect || !companyNumberInput || !submittedInput || !tableBody) return;
+
+                const connections = codeBreakerConnections();
+                const activeTenant = String(tenantSelect.value || connections[0]?.tenantId || "").trim();
+                tenantSelect.innerHTML = connections.length
+                    ? connections.map((row) => `<option value="${escapeHTML(String(row.tenantId || ""))}" ${String(row.tenantId || "") === activeTenant ? "selected" : ""}>${escapeHTML(String(row.tenantName || row.tenantId || "Xero tenant"))}</option>`).join("")
+                    : '<option value="">No Xero connections</option>';
+                const customers = codeBreakerCustomersForTenant(tenantSelect.value || activeTenant);
+                const selectedContact = String(contactSelect.value || "").trim();
+                contactSelect.innerHTML = customers.length
+                    ? customers.map((row) => {
+                        const contactId = String(row?.xeroContactId || row?.contactId || "");
+                        const label = String(row?.name || row?.clientName || row?.companyName || "Unnamed client");
+                        return `<option value="${escapeHTML(contactId)}" ${contactId === selectedContact ? "selected" : ""}>${escapeHTML(label)}</option>`;
+                    }).join("")
+                    : '<option value="">No Xero contacts</option>';
+
+                setupPanel.hidden = !codeBreakerSetupOpen;
+                setupButton.textContent = codeBreakerSetupOpen ? "Hide setup" : "Set up workspace";
+                summary.textContent = `${(codeBreakerWorkspaces || []).length.toLocaleString("en-GB")} workspace${(codeBreakerWorkspaces || []).length === 1 ? "" : "s"} configured.`;
+
+                if (setupButton.dataset.cbWired !== "true") {
+                    setupButton.dataset.cbWired = "true";
+                    setupButton.addEventListener("click", () => {
+                        codeBreakerSetupOpen = !codeBreakerSetupOpen;
+                        renderCodeBreakerScreen();
+                    });
+                }
+                if (refreshButton.dataset.cbWired !== "true") {
+                    refreshButton.dataset.cbWired = "true";
+                    refreshButton.addEventListener("click", () => refreshCodeBreakerData());
+                }
+                if (cancelButton.dataset.cbWired !== "true") {
+                    cancelButton.dataset.cbWired = "true";
+                    cancelButton.addEventListener("click", () => {
+                        codeBreakerSetupOpen = false;
+                        renderCodeBreakerScreen();
+                    });
+                }
+                if (tenantSelect.dataset.cbWired !== "true") {
+                    tenantSelect.dataset.cbWired = "true";
+                    tenantSelect.addEventListener("change", renderCodeBreakerScreen);
+                }
+                if (nameInput.dataset.cbWired !== "true") {
+                    nameInput.dataset.cbWired = "true";
+                    nameInput.addEventListener("input", () => {
+                        const match = codeBreakerBestMatchByName(nameInput.value);
+                        if (match.customer && !companyNumberInput.value) {
+                            contactSelect.value = String(match.customer?.xeroContactId || match.customer?.contactId || "");
+                        }
+                        if (match.company) {
+                            if (!companyNumberInput.value) companyNumberInput.value = String(match.company?.companyNumber || "").toUpperCase();
+                            if (!submittedInput.value) {
+                                const submitted = String(match.company?.latestSubmissionCompletedAt || match.company?.latestSubmissionAt || "").slice(0, 10);
+                                if (submitted) submittedInput.value = submitted;
+                            }
+                        }
+                    });
+                }
+                if (form.dataset.cbWired !== "true") {
+                    form.dataset.cbWired = "true";
+                    form.addEventListener("submit", (event) => {
+                        event.preventDefault();
+                        const clientName = String(nameInput.value || "").trim();
+                        const xeroTenantId = String(tenantSelect.value || "").trim();
+                        const xeroContactId = String(contactSelect.value || "").trim();
+                        const companyNumber = String(companyNumberInput.value || "").trim().toUpperCase();
+                        const submittedAt = String(submittedInput.value || "").trim();
+                        if (!clientName || !xeroContactId || !companyNumber || !submittedAt) {
+                            showToast("Enter client name, Xero contact, company number, and submitted date.", "error");
+                            return;
+                        }
+                        const xeroTenantName = String((connections.find((row) => String(row?.tenantId || "") === xeroTenantId) || {}).tenantName || "").trim();
+                        const now = new Date().toISOString();
+                        codeBreakerWorkspaces.unshift({
+                            id: `code-breaker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            clientName,
+                            xeroTenantId,
+                            xeroTenantName,
+                            xeroContactId,
+                            companyNumber,
+                            submittedAt,
+                            createdAt: now,
+                            updatedAt: now,
+                        });
+                        persistCodeBreakerWorkspaces();
+                        codeBreakerSetupOpen = false;
+                        nameInput.value = "";
+                        companyNumberInput.value = "";
+                        submittedInput.value = "";
+                        showToast("Code Breaker workspace created.", "success");
+                        renderCodeBreakerScreen();
+                    });
+                }
+
+                if (!codeBreakerWorkspaces.length) {
+                    tableBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No workspaces</p><h4>Create a Code Breaker workspace</h4><p>Set up a workspace to compare post-submission Xero changes against filed accounts.</p></div></td></tr>';
+                } else {
+                    tableBody.innerHTML = codeBreakerWorkspaces.map((workspace) => {
+                        const status = codeBreakerWorkspaceStatus(workspace);
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(workspace.clientName || "Workspace")}</strong><small>${escapeHTML(workspace.xeroTenantName || workspace.xeroTenantId || "")}</small></td>
+                                <td>${escapeHTML(workspace.companyNumber || "--")}</td>
+                                <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
+                                <td>${escapeHTML(workspace.xeroContactId || "--")}</td>
+                                <td><span class="lock-status-pill ${escapeHTML(status.className)}">${escapeHTML(status.label)}</span></td>
+                                <td>
+                                    <button class="ghost-button" type="button" data-code-breaker-run="${escapeHTML(workspace.id)}">Run</button>
+                                    <button class="ghost-button danger-button" type="button" data-code-breaker-remove="${escapeHTML(workspace.id)}">Delete</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join("");
+                    tableBody.querySelectorAll("[data-code-breaker-run]").forEach((button) => {
+                        button.addEventListener("click", () => runCodeBreakerAnalysis(button.dataset.codeBreakerRun || ""));
+                    });
+                    tableBody.querySelectorAll("[data-code-breaker-remove]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            const workspaceId = String(button.dataset.codeBreakerRemove || "");
+                            codeBreakerWorkspaces = codeBreakerWorkspaces.filter((row) => String(row.id || "") !== workspaceId);
+                            delete codeBreakerAnalysisByWorkspaceId[workspaceId];
+                            if (selectedCodeBreakerWorkspaceId === workspaceId) selectedCodeBreakerWorkspaceId = "";
+                            persistCodeBreakerWorkspaces();
+                            renderCodeBreakerScreen();
+                        });
+                    });
+                }
+                const selectedWorkspace = (codeBreakerWorkspaces || []).find((row) => String(row.id || "") === String(selectedCodeBreakerWorkspaceId || "")) || null;
+                renderCodeBreakerAnalysis(selectedWorkspace);
+            }
+
+            function microAnalyzerClientRows() {
+                const candidates = ignitionRenewalCandidates();
+                const rows = candidates.filter((item) => {
+                    const combined = `${item?.planName || ""} ${item?.serviceName || ""} ${item?.proposalName || ""}`.toLowerCase();
+                    return /\bmicro\b|\bstarter\b/.test(combined);
+                });
+                const byClientName = new Map();
+                rows.forEach((row) => {
+                    const key = String(row?.clientName || "").trim().toLowerCase();
+                    if (!key || byClientName.has(key)) return;
+                    byClientName.set(key, row);
+                });
+                return Array.from(byClientName.values());
+            }
+
+            function microAnalyzerMatchCustomer(clientName = "") {
+                const clean = String(clientName || "").trim().toLowerCase();
+                if (!clean) return null;
+                const customers = Array.isArray(state?.customers) ? state.customers : [];
+                let best = null;
+                let bestScore = 0;
+                customers.forEach((row) => {
+                    const rowName = String(row?.name || "").trim().toLowerCase();
+                    if (!rowName) return;
+                    let score = 0;
+                    if (rowName === clean) score = 120;
+                    else if (rowName.includes(clean) || clean.includes(rowName)) score = 92;
+                    else {
+                        const left = new Set(clean.replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean));
+                        const right = new Set(rowName.replace(/[^a-z0-9]+/g, " ").split(" ").filter(Boolean));
+                        const overlap = [...left].filter((token) => right.has(token)).length;
+                        score = Math.round((overlap / Math.max(left.size, right.size, 1)) * 100);
+                    }
+                    if (score > bestScore) {
+                        best = row;
+                        bestScore = score;
+                    }
+                });
+                return bestScore >= 45 ? best : null;
+            }
+
+            function refreshMicroAnalyzerRows() {
+                microAnalyzerLoading = true;
+                renderMicroAnalyzerScreen();
+                const rows = microAnalyzerClientRows();
+                microAnalyzerRows = rows.map((row) => {
+                    const customer = microAnalyzerMatchCustomer(row?.clientName || "");
+                    const planName = String(row?.planName || row?.serviceName || row?.proposalName || "Micro/Starter").trim();
+                    return {
+                        id: String(row?.id || row?.clientId || row?.clientName || ""),
+                        clientName: String(row?.clientName || "Client"),
+                        planName,
+                        customerId: String(customer?.id || ""),
+                        customerName: String(customer?.name || ""),
+                    };
+                });
+                microAnalyzerLoading = false;
+                renderMicroAnalyzerScreen();
+            }
+
+            async function runMicroAnalyzerForRow(rowId = "") {
+                const row = (microAnalyzerRows || []).find((item) => String(item.id || "") === String(rowId || ""));
+                if (!row) return;
+                if (!row.customerId) {
+                    microAnalyzerResultsByCustomerId[rowId] = { error: "No Xero client match found for this Ignition client." };
+                    renderMicroAnalyzerScreen();
+                    return;
+                }
+                const customer = findCustomerById(row.customerId);
+                if (!customer) {
+                    microAnalyzerResultsByCustomerId[rowId] = { error: "Matched Xero client is unavailable in current sync." };
+                    renderMicroAnalyzerScreen();
+                    return;
+                }
+                const window = vatPeriodWindowForDate(new Date());
+                const entry = {
+                    key: `${customer.id}:${isoDateOnly(window.periodEnd)}`,
+                    clientId: customer.id,
+                    clientName: customer.name || row.clientName || "Client",
+                    periodStartISO: isoDateOnly(window.periodStart),
+                    periodEndISO: isoDateOnly(window.periodEnd),
+                    deadlineISO: isoDateOnly(window.deadline),
+                    xeroContactId: customer.xeroContactId || "",
+                };
+                await ensureVatReturnTransactions(entry, true, { silent: true });
+                const cache = vatReturnTransactionCache.get(entry.key) || {};
+                const transactions = vatTransactionsWithEdits(entry, Array.isArray(cache.transactions) ? cache.transactions : []);
+                const vatRows = transactions.filter((tx) => {
+                    const taxCode = String(tx?.taxCode || "").trim();
+                    return !/^(none|no vat|novat|exempt|outside scope)$/i.test(taxCode) && Math.abs(Number(tx?.taxAmount || 0)) > 0;
+                });
+                microAnalyzerResultsByCustomerId[rowId] = {
+                    rowId,
+                    customerId: customer.id,
+                    entry,
+                    vatRows,
+                    vatCount: vatRows.length,
+                    analysedAt: new Date().toISOString(),
+                    fixedAt: "",
+                };
+                renderMicroAnalyzerScreen();
+            }
+
+            async function applyMicroAnalyzerFix(rowId = "") {
+                const result = microAnalyzerResultsByCustomerId[rowId];
+                if (!result) {
+                    await runMicroAnalyzerForRow(rowId);
+                    return applyMicroAnalyzerFix(rowId);
+                }
+                if (result.error) return showToast(result.error, "error");
+                const entry = result.entry;
+                const vatRows = Array.isArray(result.vatRows) ? result.vatRows : [];
+                if (!entry || !vatRows.length) {
+                    showToast("No VAT-coded rows were found for this client.", "info");
+                    return;
+                }
+                vatRows.forEach((row) => {
+                    const id = vatTransactionId(row);
+                    upsertVatTransactionEdit(entry.key, id, { taxCode: "NONE" });
+                });
+                result.fixedAt = new Date().toISOString();
+                showToast(`${vatRows.length.toLocaleString("en-GB")} rows set to NO VAT for ${entry.clientName}.`, "success");
+                renderMicroAnalyzerScreen();
+            }
+
+            function renderMicroAnalyzerScreen() {
+                const summary = document.getElementById("microAnalyzerSummary");
+                const tableBody = document.getElementById("microAnalyzerTableBody");
+                const refreshButton = document.getElementById("microAnalyzerRefreshButton");
+                const runAllButton = document.getElementById("microAnalyzerRunAllButton");
+                if (!summary || !tableBody || !refreshButton || !runAllButton) return;
+                summary.textContent = microAnalyzerLoading
+                    ? "Loading Micro/Starter clients from Ignition..."
+                    : `${(microAnalyzerRows || []).length.toLocaleString("en-GB")} Micro/Starter clients loaded.`;
+                if (refreshButton.dataset.microWired !== "true") {
+                    refreshButton.dataset.microWired = "true";
+                    refreshButton.addEventListener("click", refreshMicroAnalyzerRows);
+                }
+                if (runAllButton.dataset.microWired !== "true") {
+                    runAllButton.dataset.microWired = "true";
+                    runAllButton.addEventListener("click", async () => {
+                        for (const row of microAnalyzerRows) {
+                            // Sequential keeps API calls controlled for Xero limits.
+                            await runMicroAnalyzerForRow(row.id);
+                        }
+                        showToast("Micro Analyzer run complete.", "success");
+                    });
+                }
+                if (microAnalyzerLoading) {
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Reading Ignition client plans</h4><p>Fetching Micro/Starter plan candidates and matching Xero clients.</p></div></td></tr>';
+                    return;
+                }
+                if (!microAnalyzerRows.length) {
+                    tableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No Micro/Starter clients found</h4><p>Sync Ignition renewals to load plan-level client rows first.</p></div></td></tr>';
+                    return;
+                }
+                tableBody.innerHTML = microAnalyzerRows.map((row) => {
+                    const result = microAnalyzerResultsByCustomerId[row.id] || {};
+                    const vatCount = Number(result.vatCount || 0);
+                    const vatLabel = result.error
+                        ? result.error
+                        : result.analysedAt
+                            ? `${vatCount.toLocaleString("en-GB")} VAT-coded line${vatCount === 1 ? "" : "s"}${result.fixedAt ? " · fixed" : ""}`
+                            : "Not analyzed";
+                    return `
+                        <tr>
+                            <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(row.id)}</small></td>
+                            <td>${escapeHTML(row.planName || "Micro/Starter")}</td>
+                            <td>${row.customerId ? `<strong>${escapeHTML(row.customerName || row.customerId)}</strong><small>${escapeHTML(row.customerId)}</small>` : '<span class="ch-pill is-warn">No match</span>'}</td>
+                            <td>${escapeHTML(vatLabel)}</td>
+                            <td>
+                                <button class="ghost-button" type="button" data-micro-analyze="${escapeHTML(row.id)}">Analyze</button>
+                                <button class="primary-button" type="button" data-micro-fix="${escapeHTML(row.id)}" ${!row.customerId ? "disabled" : ""}>Set NO VAT</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("");
+                tableBody.querySelectorAll("[data-micro-analyze]").forEach((button) => {
+                    button.addEventListener("click", () => runMicroAnalyzerForRow(button.dataset.microAnalyze || ""));
+                });
+                tableBody.querySelectorAll("[data-micro-fix]").forEach((button) => {
+                    button.addEventListener("click", () => applyMicroAnalyzerFix(button.dataset.microFix || ""));
+                });
+            }
+
             function wireRiskAssessmentControls() {
                 const createButton = document.getElementById("riskAssessmentsCreateButton");
                 if (createButton && createButton.dataset.riskWired !== "true") {
@@ -64071,6 +64843,7 @@
                 renderYePrepScreen();
                 renderVatReturnPrepareScreen();
                 renderPracticePackScreen();
+                renderCodeBreakerScreen();
                 renderClientScreen();
                 enhanceConsoleButtons();
                 persistState();
@@ -69876,7 +70649,7 @@
             function chWorkflowConfiguredUnitAmount() {
                 const configured = Number(companiesHouseSettings.data?.xeroInvoiceUnitAmount || 0);
                 if (configured > 0) return configured;
-                return 13;
+                return 50;
             }
 
             function chWorkflowCreditAccountNumber() {
@@ -71479,19 +72252,22 @@
                 const workflowUnitAmount = chWorkflowConfiguredUnitAmount();
                 const creditAccountNumber = chWorkflowCreditAccountNumber();
                 const projectedTotalCharge = workflowUnitAmount * selected.length;
+                const submitChargeLabel = selected.length === 1
+                    ? `Send Confirmation Statement (Pay ${formatCurrency(projectedTotalCharge)})`
+                    : `Send Confirmation Statements (Pay ${formatCurrency(projectedTotalCharge)})`;
                 const finalReadyChip = finalPreflight.warningOnly.length
                     ? `${selected.length.toLocaleString("en-GB")} ready to submit (${finalPreflight.warningOnly.length.toLocaleString("en-GB")} with warning${finalPreflight.warningOnly.length === 1 ? "" : "s"})`
                     : `${selected.length.toLocaleString("en-GB")} ready to submit`;
                 const finalReviewConfirmed = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "Final submission review",
-                    subtitle: "Confirm filing details and projected Companies House credit charge before sending.",
-                    confirmLabel: "Submit confirmation statements",
+                    subtitle: "Confirm filing details and the exact charge before sending. Submission immediately charges the filing payment method.",
+                    confirmLabel: submitChargeLabel,
                     cancelLabel: "Back",
                     panelMode: "fullscreen",
                     summaryChips: [
                         finalReadyChip,
-                        `Projected CH charge ${formatCurrency(projectedTotalCharge)}`,
+                        `Charge on send ${formatCurrency(projectedTotalCharge)}`,
                         `Unit fee ${formatCurrency(workflowUnitAmount)} each`,
                         `Credit account ${creditAccountNumber || "Not set"}`,
                     ],
@@ -71506,7 +72282,7 @@
                     onRender: ({ body }) => {
                         const note = document.createElement("div");
                         note.className = "operation-review-muted";
-                        note.textContent = "Only companies shown here will be submitted. Accepted submissions are charged to the Companies House credit account. You can then select successful rows and raise Xero invoices.";
+                        note.textContent = `Only companies shown here will be submitted. Pressing “${submitChargeLabel}” confirms submission and charges ${formatCurrency(projectedTotalCharge)} immediately to the Companies House payment method on file.`;
                         body.prepend(note);
                     },
                 });
@@ -72446,6 +73222,10 @@
                     });
                 });
                 document.getElementById("chTopbarSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
+                document.getElementById("chPopulateAuthCodesFromSubnavButton")?.addEventListener("click", async () => {
+                    await populateAuthCodesFromDirectoryHandler();
+                    if (companiesHouseState.activeTab === "companies") loadCompaniesHouseCompanies(true);
+                });
                 document.getElementById("chCompaniesReloadButton")?.addEventListener("click", () => loadCompaniesHouseCompanies(true));
                 document.getElementById("chCompaniesSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
                 document.getElementById("chCompaniesTestConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
