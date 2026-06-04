@@ -22100,21 +22100,16 @@
                                 <div class="panel-heading">
                                     <div>
                                         <p class="eyebrow">Product releases</p>
-                                        <h3>Release notes and deployment updates</h3>
+                                        <h3>Published deployments from Railway</h3>
                                     </div>
                                     <div class="detail-actions">
                                         <button class="ghost-button" id="productReleasesRefreshButton" type="button">Refresh deployments</button>
-                                        <button class="ghost-button" id="productReleasesOpenUsageButton" type="button">Open usage dashboard</button>
                                     </div>
                                 </div>
-                                <p class="settings-help">Track backend and console release history, rollout notes, and technical change summaries.</p>
+                                <p class="settings-help">Track published Railway deployments and change history across backend and console.</p>
                                 <p class="settings-help" id="productReleasesDeploymentsSummary">Loading deployment history…</p>
                                 <div class="database-metrics-list settings-usage-list" id="productReleasesDeploymentsList">
                                     <div class="empty-state"><p class="eyebrow">Deployments</p><h4>Waiting for deployment data</h4><p>Refresh to load the latest deployments and release notes.</p></div>
-                                </div>
-                                <p class="settings-help" id="productReleasesApiUsageSummary">Loading API usage hotspots…</p>
-                                <div class="database-metrics-list settings-usage-list" id="productReleasesApiHotspots">
-                                    <div class="empty-state"><p class="eyebrow">No usage data</p><h4>Open API Usage or refresh this panel</h4><p>This area highlights the pages/features currently consuming the most API calls.</p></div>
                                 </div>
                             </section>
 
@@ -63554,7 +63549,6 @@
                 renderPendingXeroActions();
                 renderSettingsUsage();
                 renderProductReleasesDeployments();
-                renderProductReleasesApiHotspots();
                 renderPostingSettings();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
@@ -65434,115 +65428,21 @@
                     target.innerHTML = '<div class="empty-state"><p class="eyebrow">Deployments</p><h4>No deployment history found</h4><p>Refresh to fetch the latest deployment records.</p></div>';
                     return;
                 }
-                summary.textContent = `Showing ${rows.length.toLocaleString("en-GB")} deployment update${rows.length === 1 ? "" : "s"}${generatedAt ? ` · refreshed ${formatDate(generatedAt)}` : ""}.`;
+                summary.textContent = `Showing ${rows.length.toLocaleString("en-GB")} published deployment${rows.length === 1 ? "" : "s"}${generatedAt ? ` · refreshed ${formatDate(generatedAt)}` : ""}.`;
                 target.innerHTML = `
+                    <div class="database-metrics-heading"><span>Deployment</span><span>Published</span><span>Source</span></div>
                     <ul class="release-deployment-list">
                         ${rows.map((row, index) => {
                             const heading = row.title || row.summary || `Deployment ${index + 1}`;
                             const deployedAt = row.deployedAt || row.createdAt || row.updatedAt || "";
-                            const detailRows = Array.isArray(row.details) ? row.details.filter((item) => String(item || "").trim()) : [];
+                            const sourceLabel = String(row.source || "").toLowerCase() === "runtime"
+                                ? "RAILWAY RUNTIME"
+                                : String(row.source || "RAILWAY").toUpperCase();
                             return `
-                                <li>
-                                    <div class="release-deployment-head">
-                                        <strong>${escapeHTML(heading)}</strong>
-                                        <span class="release-deployment-meta">${escapeHTML(deployedAt ? formatDeveloperLogStamp(deployedAt) : "--")}</span>
-                                    </div>
-                                    <div class="release-deployment-meta">${escapeHTML([
-                                        row.deploymentId ? `Deploy ${row.deploymentId}` : "",
-                                        row.commitSha ? `Commit ${row.commitSha.slice(0, 10)}` : "",
-                                        row.source ? String(row.source).toUpperCase() : "",
-                                    ].filter(Boolean).join(" · ") || "Deployment metadata unavailable")}</div>
-                                    ${row.summary ? `<p class="settings-help">${escapeHTML(row.summary)}</p>` : ""}
-                                    ${detailRows.length
-                                        ? `<ul>${detailRows.slice(0, 8).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>`
-                                        : ""}
-                                </li>
-                            `;
-                        }).join("")}
-                    </ul>
-                `;
-            }
-
-            function renderProductReleasesApiHotspots() {
-                const summary = document.getElementById("productReleasesApiUsageSummary");
-                const target = document.getElementById("productReleasesApiHotspots");
-                const openUsageButton = document.getElementById("productReleasesOpenUsageButton");
-                const rangeDays = Number(settingsUsageData?.range?.days || settingsUsageDays || 30);
-                const topFeatures = Array.isArray(settingsUsageData?.topFeatures) ? settingsUsageData.topFeatures.slice(0, 8) : [];
-                const topEndpoints = Array.isArray(settingsUsageData?.topEndpoints) ? settingsUsageData.topEndpoints.slice(0, 8) : [];
-                const merged = [
-                    ...topFeatures.map((row) => ({ ...row, kind: "feature", name: row.feature || "Unknown feature" })),
-                    ...topEndpoints.map((row) => ({ ...row, kind: "endpoint", name: row.endpoint || "Unknown endpoint" })),
-                ]
-                    .sort((a, b) => Number(b.requests || 0) - Number(a.requests || 0))
-                    .slice(0, 8);
-
-                const hasData = merged.length > 0;
-                const highUsageRows = merged.filter((row) => Number(row.requests || 0) >= 30 || Number(row.share || 0) >= 0.2);
-                const anyCritical = merged.some((row) => Number(row.requests || 0) >= 60 || Number(row.share || 0) >= 0.3);
-
-                if (summary) {
-                    if (settingsUsageLoading) {
-                        summary.textContent = "Refreshing API usage hotspots…";
-                    } else if (!hasData) {
-                        summary.textContent = "No API usage data recorded yet for this period.";
-                    } else {
-                        summary.textContent = `${highUsageRows.length.toLocaleString("en-GB")} deployed item${highUsageRows.length === 1 ? "" : "s"} with high API usage in the last ${rangeDays.toLocaleString("en-GB")} days.`;
-                    }
-                }
-                if (openUsageButton) {
-                    openUsageButton.classList.toggle("danger-button", anyCritical);
-                    openUsageButton.textContent = anyCritical ? "Open usage dashboard (high usage)" : "Open usage dashboard";
-                }
-                if (!target) return;
-                if (!hasData) {
-                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">No usage data</p><h4>No API usage hotspots yet</h4><p>Refresh this panel after API activity has been recorded.</p></div>';
-                    return;
-                }
-                const resolveReleaseTopic = (row) => {
-                    const lowerName = String(row?.name || "").toLowerCase();
-                    const lowerProvider = String(row?.provider || "").toLowerCase();
-                    const source = `${lowerName} ${lowerProvider}`;
-
-                    if (source.includes("bad debt") || source.includes("bad-debt") || source.includes("bad_debt")) {
-                        return { label: "Bad Debt", tone: "bad-debt" };
-                    }
-                    if (source.includes("late payment") || source.includes("late-charge") || source.includes("late charge") || source.includes("lpc")) {
-                        return { label: "LPC", tone: "lpc" };
-                    }
-                    if (source.includes("renewal") || source.includes("renewals")) {
-                        return { label: "Renewals", tone: "renewals" };
-                    }
-                    if (source.includes("ignition")) {
-                        return { label: "Ignition", tone: "ignition" };
-                    }
-                    if (source.includes("logic") || source.includes("workflow") || source.includes("rules") || source.includes("engine")) {
-                        return { label: "Logic", tone: "logic" };
-                    }
-                    if (source.includes("xero")) {
-                        return { label: "Xero", tone: "xero" };
-                    }
-                    if (source.includes("backend") || source.includes("server") || source.includes("api") || row.kind === "endpoint") {
-                        return { label: "Backend", tone: "backend" };
-                    }
-                    return { label: "Console", tone: "console" };
-                };
-
-                target.innerHTML = `
-                    <ul class="release-hotspot-list">
-                        ${merged.map((row, index) => {
-                            const requests = Number(row.requests || 0);
-                            const share = Number(row.share || 0);
-                            const deployedTypeLabel = row.kind === "feature" ? "Deployed feature" : "Deployed API endpoint";
-                            const releaseTopic = resolveReleaseTopic(row);
-                            return `
-                                <li>
-                                    <span class="release-hotspot-main">
-                                        <span class="release-topic-pill release-topic-pill--${releaseTopic.tone}">${escapeHTML(releaseTopic.label)}</span>
-                                        <span class="release-hotspot-name">${escapeHTML(`#${index + 1} · ${deployedTypeLabel}: ${row.name || "Unknown"}`)}</span>
-                                    </span>
-                                    <strong>${requests.toLocaleString("en-GB")} calls (${(share * 100).toFixed(1)}%)</strong>
-                                    <small>${escapeHTML(String(row.provider || "api").toUpperCase())}</small>
+                                <li class="database-metrics-row">
+                                    <strong>${escapeHTML(heading)}</strong>
+                                    <b>${escapeHTML(deployedAt ? formatDeveloperLogStamp(deployedAt) : "--")}</b>
+                                    <b>${escapeHTML(sourceLabel)}</b>
                                 </li>
                             `;
                         }).join("")}
@@ -65570,7 +65470,6 @@
                 if (settingsUsageLoading && !force) return;
                 settingsUsageLoading = true;
                 renderSettingsUsage();
-                renderProductReleasesApiHotspots();
                 try {
                     const payload = await requestJSON(`${api.endpoints.settingsUsage}?days=${encodeURIComponent(settingsUsageDays)}`);
                     settingsUsageData = payload || settingsUsageData;
@@ -65587,7 +65486,6 @@
                 } finally {
                     settingsUsageLoading = false;
                     renderSettingsUsage();
-                    renderProductReleasesApiHotspots();
                 }
             }
 
@@ -66955,9 +66853,8 @@
                     });
                 }
                 document.getElementById("productReleasesRefreshButton")?.addEventListener("click", async () => {
-                    await Promise.all([loadSettingsUsage(true), loadProductReleases(true)]);
+                    await loadProductReleases(true);
                 });
-                document.getElementById("productReleasesOpenUsageButton")?.addEventListener("click", () => openSettingsScreen("usage"));
                 document.getElementById("reloadRenewalSettingsButton")?.addEventListener("click", () => loadIgnition(true));
                 document.getElementById("renewalSettingsUnlockRunSelect")?.addEventListener("change", renderRenewalSettings);
                 document.getElementById("unlockRenewalSettingsButton")?.addEventListener("click", unlockRenewalSettingsBatch);

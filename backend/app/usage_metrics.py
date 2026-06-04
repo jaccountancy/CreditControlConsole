@@ -739,6 +739,10 @@ def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
                     updated_at
                 FROM release_updates
                 WHERE (%s::uuid IS NULL OR created_by_user_id IS NULL OR created_by_user_id = %s::uuid)
+                  AND (
+                    NULLIF(BTRIM(deployment_id), '') IS NOT NULL
+                    OR LOWER(COALESCE(source, '')) LIKE 'railway%%'
+                  )
                 ORDER BY COALESCE(created_at, updated_at) DESC, id DESC
                 LIMIT %s
                 """,

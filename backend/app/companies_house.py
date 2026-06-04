@@ -172,27 +172,28 @@ def _decrypt_setting_secret(encrypted_value: object, label: str) -> str:
 
 
 def configured_presenter_id(settings_row: dict | None = None) -> str:
+    env_value = _compact_credential(get_settings().companies_house_presenter_id)
+    if env_value:
+        return env_value
     row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
-    row_value = _compact_credential(row.get("presenter_id"))
-    if row_value:
-        return row_value
-    return _compact_credential(get_settings().companies_house_presenter_id)
+    return _compact_credential(row.get("presenter_id"))
 
 
 def configured_presenter_auth(settings_row: dict | None = None) -> str:
+    env_value = _compact_credential(get_settings().companies_house_presenter_auth)
+    if env_value:
+        return env_value
     row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
-    decrypted = _compact_credential(_decrypt_setting_secret(row.get("presenter_auth_encrypted"), CH_PRESENTER_AUTH_LABEL))
-    if decrypted:
-        return decrypted
-    return _compact_credential(get_settings().companies_house_presenter_auth)
+    return _compact_credential(_decrypt_setting_secret(row.get("presenter_auth_encrypted"), CH_PRESENTER_AUTH_LABEL))
 
 
 def configured_api_key(settings_row: dict | None = None) -> str:
+    env_value = _validated_companies_house_api_key(_compact_credential(get_settings().companies_house_api_key))
+    if env_value:
+        return env_value
     row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
     decrypted = _compact_credential(_decrypt_setting_secret(row.get("api_key_encrypted"), CH_API_KEY_LABEL))
-    if decrypted:
-        return _validated_companies_house_api_key(decrypted)
-    return _validated_companies_house_api_key(_compact_credential(get_settings().companies_house_api_key))
+    return _validated_companies_house_api_key(decrypted)
 
 
 def _load_settings_row() -> dict | None:
