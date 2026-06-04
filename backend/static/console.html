@@ -25081,7 +25081,7 @@
                                 <div>
                                     <p class="eyebrow">Practice Tools</p>
                                     <h3>YE Prep</h3>
-                                    <p class="detail-meta">Open a customer workspace, pick a year end, check Companies House deadlines, and review Xero-driven year-end data.</p>
+                                    <p class="detail-meta">Sync Companies House by company number, confirm the accounting period, then complete Xero-driven YE checks.</p>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="yePrepBackToCustomersButton" type="button" hidden>Back to customers</button>
@@ -25475,12 +25475,13 @@
                             <div class="company-secretarial-modal-head">
                                 <div>
                                     <p class="eyebrow">YE Prep Workspace</p>
-                                    <h4 id="yePrepWorkspaceConfirmTitle">Open customer workspace</h4>
-                                    <p class="detail-meta" id="yePrepWorkspaceConfirmSummary">Confirm the year end and review Companies House context before loading workspace data.</p>
+                                    <h4 id="yePrepWorkspaceConfirmTitle">Open accounting period workspace</h4>
+                                    <p class="detail-meta" id="yePrepWorkspaceConfirmSummary">Sync Companies House dates, confirm the accounting period, then open the YE workspace.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" id="yePrepWorkspaceConfirmSyncCompaniesButton" type="button">Sync Companies House</button>
                                     <button class="ghost-button" id="yePrepWorkspaceConfirmCloseButton" type="button">Close</button>
-                                    <button class="primary-button" id="yePrepWorkspaceConfirmOpenButton" type="button">Open workspace</button>
+                                    <button class="primary-button" id="yePrepWorkspaceConfirmOpenButton" type="button">Open accounting period workspace</button>
                                 </div>
                             </div>
                             <section class="detail-panel" style="padding: 0;">
@@ -27757,6 +27758,7 @@
             let yePrepWorkspaceConfirmCustomerId = "";
             let yePrepWorkspaceConfirmYearEnd = "";
             let yePrepWorkspaceConfirmSyncing = false;
+            let yePrepWorkspaceConfirmCompaniesSyncing = false;
             let yePrepAutoPromptedTenantId = "";
             let visibleColumns = {
                 description: persistedUIState.visibleColumns?.description !== false,
@@ -27999,6 +28001,7 @@
                         note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
+                        vatReturns: config.endpoints?.vatReturns || "/api/xero/vat-returns",
                         vatReturnTransactions: config.endpoints?.vatReturnTransactions || "/api/customers/:customerId/vat-returns/:periodEnd/transactions",
                         yePrepAiReview: config.endpoints?.yePrepAiReview || "/api/ye-prep/review",
                         allocation: config.endpoints?.allocation || "/api/customers/:customerId/allocations",
@@ -31223,6 +31226,7 @@
                 closeTopbarMenu();
                 closeToolbarMenus();
                 renderAll();
+                loadVatReturnQueue(false);
                 scrollConsoleToTop();
             }
 
@@ -63348,82 +63352,113 @@
                 if (workflow.stage === "awaiting-client-approval") {
                     return { label: "Awaiting Client Approval", className: "is-open" };
                 }
+                if (entry?.submitted) {
+                    return { label: "Submitted", className: "is-open" };
+                }
+                if (String(entry?.status || "").trim()) {
+                    return { label: `Outstanding · ${String(entry.status)}`, className: "is-due" };
+                }
                 return base;
+            }
+
+            async function loadVatReturnQueue(force = false) {
+                if (!isXeroConnected()) {
+                    vatReturnQueueRows = [];
+                    vatReturnQueueWorkspaces = [];
+                    vatReturnQueueLoadedAt = "";
+                    vatReturnQueueError = "";
+                    if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
+                    return;
+                }
+                if (vatReturnQueueLoading) return;
+                if (!force && vatReturnQueueLoadedAt && Array.isArray(vatReturnQueueRows) && vatReturnQueueRows.length) return;
+                vatReturnQueueLoading = true;
+                vatReturnQueueError = "";
+                if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
+                try {
+                    const payload = await requestJSON(api.endpoints.vatReturns);
+                    vatReturnQueueRows = Array.isArray(payload?.rows) ? payload.rows : [];
+                    vatReturnQueueWorkspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
+                    vatReturnQueueLoadedAt = String(payload?.fetchedAt || new Date().toISOString());
+                    if (selectedVatReturnKey && !vatReturnQueueRows.some((row) => String(row?.key || "") === selectedVatReturnKey)) {
+                        selectedVatReturnKey = "";
+                    }
+                } catch (error) {
+                    vatReturnQueueRows = [];
+                    vatReturnQueueWorkspaces = [];
+                    vatReturnQueueLoadedAt = "";
+                    vatReturnQueueError = error?.message || "Unable to load VAT return periods from Xero.";
+                } finally {
+                    vatReturnQueueLoading = false;
+                    if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
+                }
             }
 
             function vatReturnAllQueueRows() {
                 if (!state.organisation?.xeroConnected) return [];
-                const connections = meReportXeroConnections()
-                    .filter((connection) => {
-                        const tenantId = String(connection?.tenantId || "").trim();
-                        if (!tenantId) return false;
-                        const tenantType = String(connection?.tenantType || "").trim().toLowerCase();
-                        return !tenantType || tenantType === "organisation" || tenantType === "organization";
-                    });
-                const customers = Array.isArray(state.customers) ? state.customers : [];
-                const customersByTenantId = new Map();
-                customers.forEach((client) => {
-                    const tenantId = String(client?.tenantId || client?.xeroTenantId || "").trim();
-                    if (!tenantId || customersByTenantId.has(tenantId)) return;
-                    customersByTenantId.set(tenantId, client);
-                });
-                return connections
-                    .map((connection) => {
-                        const tenantId = String(connection?.tenantId || "").trim();
-                        const client = customersByTenantId.get(tenantId) || null;
-                        const configuredPeriodEnd = parseDateValue(client?.vatPeriodEnd || client?.vat?.periodEnd || client?.vatReturnPeriodEnd || "");
-                        const window = configuredPeriodEnd && configuredPeriodEnd <= new Date()
-                            ? (() => {
-                                const periodEnd = configuredPeriodEnd;
-                                const periodStart = new Date(periodEnd.getFullYear(), periodEnd.getMonth() - 2, 1);
-                                const deadline = new Date(periodEnd.getFullYear(), periodEnd.getMonth() + 1, periodEnd.getDate());
-                                deadline.setDate(deadline.getDate() + 7);
-                                return { periodStart, periodEnd, deadline };
-                            })()
-                            : vatPeriodWindowForDate(new Date());
-                        const key = `${String(client?.id || tenantId || "tenant")}:${isoDateOnly(window.periodEnd)}`;
+                const rows = Array.isArray(vatReturnQueueRows) ? vatReturnQueueRows : [];
+                return rows
+                    .map((row, index) => {
+                        const periodStart = parseDateValue(row?.periodStartISO || "");
+                        const periodEnd = parseDateValue(row?.periodEndISO || "");
+                        const deadline = parseDateValue(row?.deadlineISO || "");
+                        const key = String(row?.key || `${row?.tenantId || "tenant"}:${row?.periodEndISO || index + 1}`);
                         return {
                             key,
-                            clientId: String(client?.id || ""),
-                            clientName: client?.name || connection?.tenantName || tenantId || "Connected organisation",
-                            tenantName: String(connection?.tenantName || "").trim(),
-                            tenantId,
-                            hasMappedClient: Boolean(client?.id),
-                            periodStart: window.periodStart,
-                            periodEnd: window.periodEnd,
-                            deadline: window.deadline,
-                            periodStartISO: isoDateOnly(window.periodStart),
-                            periodEndISO: isoDateOnly(window.periodEnd),
-                            deadlineISO: isoDateOnly(window.deadline),
-                            xeroContactId: client?.xeroContactId || client?.contactId || "",
+                            taxReturnId: String(row?.taxReturnId || ""),
+                            status: String(row?.status || ""),
+                            submitted: Boolean(row?.submitted),
+                            clientId: String(row?.clientId || ""),
+                            clientName: String(row?.clientName || row?.tenantName || row?.tenantId || "Connected organisation"),
+                            tenantName: String(row?.tenantName || "").trim(),
+                            tenantId: String(row?.tenantId || "").trim(),
+                            hasMappedClient: Boolean(row?.hasMappedClient),
+                            periodStart,
+                            periodEnd,
+                            deadline,
+                            periodStartISO: String(row?.periodStartISO || ""),
+                            periodEndISO: String(row?.periodEndISO || ""),
+                            deadlineISO: String(row?.deadlineISO || ""),
+                            xeroContactId: String(row?.xeroContactId || ""),
                         };
                     })
-                    .sort((left, right) => left.deadline.getTime() - right.deadline.getTime() || left.clientName.localeCompare(right.clientName));
+                    .filter((row) => row.tenantId && row.periodEndISO);
             }
 
             function vatReturnWorkspaceRows() {
+                const fromApi = Array.isArray(vatReturnQueueWorkspaces) ? vatReturnQueueWorkspaces : [];
+                if (fromApi.length) {
+                    return [...fromApi]
+                        .map((row) => ({
+                            tenantId: String(row?.tenantId || "").trim(),
+                            tenantName: String(row?.tenantName || row?.tenantId || "").trim(),
+                            periodCount: Number(row?.periodCount || 0),
+                            submittedCount: Number(row?.submittedCount || 0),
+                            outstandingCount: Number(row?.outstandingCount || 0),
+                            error: String(row?.error || ""),
+                        }))
+                        .filter((row) => row.tenantId)
+                        .sort((left, right) => String(left.tenantName || left.tenantId || "").localeCompare(String(right.tenantName || right.tenantId || "")));
+                }
                 const rowsByTenant = new Map();
-                const add = (tenantId = "", tenantName = "") => {
-                    const id = String(tenantId || "").trim();
-                    if (!id) return;
-                    if (rowsByTenant.has(id)) return;
-                    rowsByTenant.set(id, {
-                        tenantId: id,
-                        tenantName: String(tenantName || "").trim(),
-                    });
-                };
-                meReportXeroConnections()
-                    .filter((connection) => {
-                        const tenantType = String(connection?.tenantType || "").trim().toLowerCase();
-                        return !tenantType || tenantType === "organisation" || tenantType === "organization";
-                    })
-                    .forEach((connection) => add(connection?.tenantId, connection?.tenantName));
-                (Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [])
-                    .filter((row) => {
-                        const tenantType = String(row?.tenantType || "").trim().toLowerCase();
-                        return !tenantType || tenantType === "organisation" || tenantType === "organization";
-                    })
-                    .forEach((row) => add(row?.tenantId, row?.tenantName));
+                vatReturnAllQueueRows().forEach((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    if (!tenantId) return;
+                    if (!rowsByTenant.has(tenantId)) {
+                        rowsByTenant.set(tenantId, {
+                            tenantId,
+                            tenantName: String(row?.tenantName || tenantId).trim(),
+                            periodCount: 0,
+                            submittedCount: 0,
+                            outstandingCount: 0,
+                            error: "",
+                        });
+                    }
+                    const bucket = rowsByTenant.get(tenantId);
+                    bucket.periodCount += 1;
+                    if (row.submitted) bucket.submittedCount += 1;
+                    else bucket.outstandingCount += 1;
+                });
                 return Array.from(rowsByTenant.values())
                     .sort((left, right) => String(left.tenantName || left.tenantId || "").localeCompare(String(right.tenantName || right.tenantId || "")));
             }
@@ -63935,11 +63970,14 @@
                 }
                 if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
                 try {
-                    const payload = await requestJSON(
+                    const requestPath = endpointURL(
                         api.endpoints.vatReturnTransactions,
-                        {},
                         { customerId: entry.clientId, periodEnd: entry.periodEndISO }
                     );
+                    const query = new URLSearchParams();
+                    if (entry?.tenantId) query.set("tenantId", String(entry.tenantId));
+                    if (entry?.periodStartISO) query.set("periodStart", String(entry.periodStartISO));
+                    const payload = await requestJSON(query.toString() ? `${requestPath}?${query.toString()}` : requestPath);
                     const sourceRows = Array.isArray(payload?.transactions) ? payload.transactions : (Array.isArray(payload) ? payload : []);
                     let transactions = sourceRows.map((row) => normaliseVatTransaction(row));
                     let source = "xero-vat-return";
@@ -63952,7 +63990,8 @@
                     vatReturnTransactionCache.set(entry.key, {
                         fetchedAt: new Date().toISOString(),
                         source,
-                        transactions
+                        transactions,
+                        taxReturn: payload?.taxReturn || null
                     });
                 } catch (error) {
                     console.error("Unable to load VAT return transactions", error);
@@ -64052,6 +64091,8 @@
 
                 const allRows = vatReturnAllQueueRows();
                 const workspaceRows = vatReturnWorkspaceRows();
+                const queueLoading = vatReturnQueueLoading;
+                const queueError = vatReturnQueueError;
                 if (vatReturnSelectedWorkspaceTenantId && !workspaceRows.some((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())) {
                     vatReturnSelectedWorkspaceTenantId = "";
                     selectedVatReturnKey = "";
@@ -64099,6 +64140,7 @@
                         refreshButton.textContent = "Syncing Xero...";
                         try {
                             await runXeroSync();
+                            await loadVatReturnQueue(true);
                             const entry = selectedVatReturnEntry(vatReturnQueueRows());
                             if (entry) {
                                 await ensureVatReturnTransactions(entry, true);
@@ -64163,17 +64205,45 @@
                     return;
                 }
 
+                if (queueLoading && !allRows.length && !workspaceRows.length && !inDetail) {
+                    summary.textContent = "Loading VAT return periods from Xero.";
+                    queueBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Reading VAT returns from Xero</h4><p>Submitted and outstanding VAT periods are being pulled from your connected Xero tenants.</p></div></td></tr>';
+                    metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
+                    noVatBody.innerHTML = "";
+                    warningsBody.innerHTML = "";
+                    exportButton.disabled = true;
+                    refreshButton.disabled = false;
+                    return;
+                }
+
+                if (queueError && !allRows.length && !inDetail) {
+                    summary.textContent = queueError;
+                    queueBody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not read VAT return periods</h4><p>${escapeHTML(queueError)}</p></div></td></tr>`;
+                    metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
+                    noVatBody.innerHTML = "";
+                    warningsBody.innerHTML = "";
+                    exportButton.disabled = true;
+                    refreshButton.disabled = false;
+                    return;
+                }
+
                 if (workspacePickerRequired && !inDetail) {
                     summary.textContent = `${workspaceRows.length.toLocaleString("en-GB")} Xero client workspace${workspaceRows.length === 1 ? "" : "s"} available. Select one to open VAT return preparation.`;
                     queueBody.innerHTML = workspaceRows.map((row) => {
                         const tenantRows = allRows.filter((item) => String(item?.tenantId || "").trim() === String(row?.tenantId || "").trim());
                         const nextDue = tenantRows[0]?.deadlineISO || "";
+                        const workspaceLabel = Number(row?.periodCount || tenantRows.length || 0);
+                        const submittedCount = Number(row?.submittedCount || tenantRows.filter((item) => item.submitted).length || 0);
+                        const outstandingCount = Number(row?.outstandingCount || Math.max(workspaceLabel - submittedCount, 0));
+                        const hasWorkspaceError = Boolean(String(row?.error || "").trim());
                         return `
                         <tr>
                             <td><strong>${escapeHTML(row.tenantName || row.clientName || row.tenantId)}</strong><small>${escapeHTML(row.tenantId || "")}</small></td>
                             <td>${escapeHTML(tenantRows[0]?.periodEndISO ? formatDate(tenantRows[0].periodEndISO) : "—")}</td>
                             <td>${escapeHTML(nextDue ? formatDate(nextDue) : "—")}</td>
-                            <td><span class="lock-status-pill is-open">Workspace</span></td>
+                            <td><span class="lock-status-pill ${hasWorkspaceError ? "is-overdue" : "is-open"}">${hasWorkspaceError ? "Error" : `${workspaceLabel} periods · ${submittedCount} submitted · ${outstandingCount} outstanding`}</span></td>
                             <td><button class="primary-button" type="button" data-vat-workspace-open="${escapeHTML(row.tenantId || "")}">Open workspace</button></td>
                         </tr>
                     `;
@@ -64693,9 +64763,42 @@
                 };
             }
 
+            function yePrepResolvedCompanyNumber(customer = {}, rows = yePrepCustomerRows("")) {
+                const direct = normaliseCompanyNumberInput(
+                    customer?.companyNumber
+                    || customer?.customer?.companyNumber
+                    || customer?.lockRow?.mapping?.companyNumber
+                    || customer?.lockRow?.companiesHouse?.companyNumber
+                    || ""
+                );
+                if (direct) return direct;
+                const customerId = String(customer?.id || customer?.customer?.id || "").trim();
+                const tenantId = String(customer?.connected?.tenantId || customer?.lockRow?.tenantId || "").trim();
+                const companyName = normaliseStatus(
+                    customer?.companyName
+                    || customer?.lockRow?.mapping?.companyName
+                    || customer?.lockRow?.companiesHouse?.companyName
+                    || ""
+                );
+                const matched = (Array.isArray(rows) ? rows : [])
+                    .find((row) => {
+                        const rowCompanyNumber = normaliseCompanyNumberInput(row?.companyNumber || row?.customer?.companyNumber || "");
+                        if (!rowCompanyNumber) return false;
+                        const rowCustomerId = String(row?.id || row?.customer?.id || "").trim();
+                        const rowTenantId = String(row?.connected?.tenantId || row?.lockRow?.tenantId || "").trim();
+                        const rowCompanyName = normaliseStatus(row?.companyName || "");
+                        if (customerId && rowCustomerId && rowCustomerId === customerId) return true;
+                        if (tenantId && rowTenantId && rowTenantId === tenantId) return true;
+                        if (companyName && rowCompanyName && rowCompanyName === companyName) return true;
+                        return false;
+                    });
+                return normaliseCompanyNumberInput(matched?.companyNumber || matched?.customer?.companyNumber || "");
+            }
+
             async function loadYePrepCompaniesHouseDetail(customer = {}, force = false) {
-                const companyNumber = normaliseCompanyNumberInput(customer?.companyNumber || "");
+                const companyNumber = yePrepResolvedCompanyNumber(customer);
                 if (!companyNumber) return null;
+                if (customer && !customer.companyNumber) customer.companyNumber = companyNumber;
                 if (!force && yePrepCompaniesHouseCompanyCache[companyNumber]) return yePrepCompaniesHouseCompanyCache[companyNumber];
                 const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(companyNumber)}`);
                 const companies = Array.isArray(payload?.companies) ? payload.companies : [];
@@ -64829,13 +64932,51 @@
                     showToast("Unable to load this workspace row.", "error");
                     return;
                 }
-                const periods = yePrepCompaniesHousePeriods(selected, yePrepCompaniesHouseCompanyCache[normaliseCompanyNumberInput(selected.companyNumber || "")] || selected.lockRow?.companiesHouse || null);
-                const selectable = periods.filter((period) => period.status?.selectable).map((period) => period.yearEnd);
+                const companyNumber = yePrepResolvedCompanyNumber(selected, rows);
+                if (companyNumber && !selected.companyNumber) selected.companyNumber = companyNumber;
+                const periods = yePrepCompaniesHousePeriods(selected, yePrepCompaniesHouseCompanyCache[companyNumber] || selected.lockRow?.companiesHouse || null);
+                const selectable = periods
+                    .filter((period) => period.status?.selectable)
+                    .sort((left, right) => {
+                        const leftPriority = left.status?.key === "overdue" ? 0 : 1;
+                        const rightPriority = right.status?.key === "overdue" ? 0 : 1;
+                        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+                        return dateSortValue(right.yearEnd) - dateSortValue(left.yearEnd);
+                    })
+                    .map((period) => period.yearEnd);
                 yePrepWorkspaceConfirmCustomerId = String(selected.id || "");
                 yePrepWorkspaceConfirmYearEnd = selectable[0] || "";
                 yePrepWorkspaceConfirmSyncing = false;
+                yePrepWorkspaceConfirmCompaniesSyncing = false;
                 yePrepWorkspaceConfirmOpen = true;
                 renderYePrepWorkspaceConfirmModal();
+            }
+
+            async function yePrepSyncWorkspaceCompaniesHouse() {
+                if (yePrepWorkspaceConfirmCompaniesSyncing || yePrepWorkspaceConfirmSyncing) return;
+                const rows = yePrepCustomerRows();
+                const selected = rows.find((row) => String(row?.id || "") === String(yePrepWorkspaceConfirmCustomerId || ""));
+                if (!selected) {
+                    showToast("Unable to sync Companies House for this workspace row.", "error");
+                    return;
+                }
+                const companyNumber = yePrepResolvedCompanyNumber(selected, rows);
+                if (companyNumber && !selected.companyNumber) selected.companyNumber = companyNumber;
+                if (!companyNumber) {
+                    showToast("This customer has no company number on the selected row or client register.", "error");
+                    return;
+                }
+                yePrepWorkspaceConfirmCompaniesSyncing = true;
+                renderYePrepWorkspaceConfirmModal();
+                try {
+                    await loadYePrepCompaniesHouseDetail(selected, true);
+                    showToast("Companies House dates synced for this client.", "success");
+                } catch (error) {
+                    showToast(error?.message || "Unable to sync Companies House dates for this client.", "error");
+                } finally {
+                    yePrepWorkspaceConfirmCompaniesSyncing = false;
+                    renderYePrepWorkspaceConfirmModal();
+                }
             }
 
             async function yePrepConfirmOpenCustomerWorkspace() {
@@ -64847,17 +64988,20 @@
                     renderYePrepWorkspaceConfirmModal();
                     return;
                 }
-                const periods = yePrepCompaniesHousePeriods(selected, yePrepCompaniesHouseCompanyCache[normaliseCompanyNumberInput(selected.companyNumber || "")] || selected.lockRow?.companiesHouse || null);
+                const companyNumber = yePrepResolvedCompanyNumber(selected, rows);
+                if (companyNumber && !selected.companyNumber) selected.companyNumber = companyNumber;
+                const periods = yePrepCompaniesHousePeriods(selected, yePrepCompaniesHouseCompanyCache[companyNumber] || selected.lockRow?.companiesHouse || null);
                 const selectable = periods.filter((period) => period.status?.selectable).map((period) => period.yearEnd);
                 const chosenYearEnd = selectable.includes(yePrepWorkspaceConfirmYearEnd) ? yePrepWorkspaceConfirmYearEnd : (selectable[0] || "");
                 if (!chosenYearEnd) {
-                    showToast("No open Companies House period is currently available for YE prep.", "error");
+                    showToast("No selectable Companies House accounting period is currently available for YE prep.", "error");
                     return;
                 }
                 if (yePrepWorkspaceConfirmSyncing) return;
                 yePrepWorkspaceConfirmSyncing = true;
                 renderYePrepWorkspaceConfirmModal();
                 try {
+                    await runXeroSync();
                     if (selected?.meReportClient?.id) {
                         await runSelectedMeReportSync(selected.meReportClient.id);
                     } else {
@@ -64882,15 +65026,16 @@
                 yePrepActiveTab = "overview";
                 yePrepLockDateCheck = null;
                 yePrepWorkspaceConfirmSyncing = false;
+                yePrepWorkspaceConfirmCompaniesSyncing = false;
                 yePrepWorkspaceConfirmOpen = false;
                 closeYePrepAiReviewModal();
                 renderYePrepWorkspaceConfirmModal();
-                showToast(`YE workspace loaded for ${formatDate(chosenYearEnd)} with synced Xero data.`, "success");
+                showToast(`Accounting period workspace loaded for ${formatDate(chosenYearEnd)} with synced Xero + Companies House context.`, "success");
                 renderYePrepScreen();
             }
 
             function closeYePrepWorkspaceConfirmModal() {
-                if (yePrepWorkspaceConfirmSyncing) return;
+                if (yePrepWorkspaceConfirmSyncing || yePrepWorkspaceConfirmCompaniesSyncing) return;
                 yePrepWorkspaceConfirmOpen = false;
                 renderYePrepWorkspaceConfirmModal();
             }
@@ -64979,6 +65124,22 @@
                                     : escapeHTML(comparison.message || "No comparative year data available.")}
                             </li>
                             <li>If lock-date is flagged or YoY movement is unusually large, complete reconciliation before final YE sign-off.</li>
+                        </ul>
+                    </article>
+                    <article class="me-report-insight-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Accounting Period Workspace</p>
+                                <h3>Year-end completion checklist</h3>
+                                <p class="detail-meta">After period confirmation, use Transactions + tab checks to complete YE adjustments and final tax support.</p>
+                            </div>
+                        </div>
+                        <ul>
+                            <li>Corporation Tax working: add-backs, disallowables, and CT computation support.</li>
+                            <li>Dividends and DLA: reconcile postings, vouchers/minutes, and participator balances.</li>
+                            <li>Trading losses brought forward: confirm opening balance and YE utilization.</li>
+                            <li>Fixed assets and depreciation: verify additions, disposals, depreciation and capital allowance mapping.</li>
+                            <li>Working capital adjustments: accruals, prepayments, debtors, creditors, and cut-off journals.</li>
                         </ul>
                     </article>
                 `;
@@ -65511,7 +65672,8 @@
                 const contextBody = document.getElementById("yePrepWorkspaceConfirmContextBody");
                 const closeButton = document.getElementById("yePrepWorkspaceConfirmCloseButton");
                 const openButton = document.getElementById("yePrepWorkspaceConfirmOpenButton");
-                if (!modal || !summary || !periodsBody || !contextBody || !closeButton || !openButton) return;
+                const syncCompaniesButton = document.getElementById("yePrepWorkspaceConfirmSyncCompaniesButton");
+                if (!modal || !summary || !periodsBody || !contextBody || !closeButton || !openButton || !syncCompaniesButton) return;
 
                 modal.hidden = !yePrepWorkspaceConfirmOpen;
                 if (!yePrepWorkspaceConfirmOpen) return;
@@ -65524,21 +65686,32 @@
                     contextBody.innerHTML = '<tr><td colspan="2">No Companies House context is available for this row.</td></tr>';
                     closeButton.disabled = false;
                     openButton.disabled = true;
+                    syncCompaniesButton.disabled = true;
                     return;
                 }
 
-                const companyNumber = normaliseCompanyNumberInput(selected.companyNumber || "");
+                const companyNumber = yePrepResolvedCompanyNumber(selected, rows);
+                if (companyNumber && !selected.companyNumber) selected.companyNumber = companyNumber;
                 const cachedCompany = companyNumber ? (yePrepCompaniesHouseCompanyCache[companyNumber] || null) : null;
                 const chCompany = cachedCompany || selected.lockRow?.companiesHouse || null;
                 const periods = yePrepCompaniesHousePeriods(selected, chCompany);
-                const openPeriods = periods.filter((row) => row.status?.key === "open");
-                const selectablePeriods = openPeriods.filter((row) => row.status?.selectable).map((row) => row.yearEnd);
+                const selectablePeriods = periods
+                    .filter((row) => row.status?.selectable)
+                    .sort((left, right) => {
+                        const leftPriority = left.status?.key === "overdue" ? 0 : 1;
+                        const rightPriority = right.status?.key === "overdue" ? 0 : 1;
+                        if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+                        return dateSortValue(right.yearEnd) - dateSortValue(left.yearEnd);
+                    })
+                    .map((row) => row.yearEnd);
                 if (!selectablePeriods.includes(yePrepWorkspaceConfirmYearEnd)) {
                     yePrepWorkspaceConfirmYearEnd = selectablePeriods[0] || "";
                 }
-                summary.textContent = `${selected.companyName || "Client workspace"} · Select an open period, then sync and open workspace.`;
-                periodsBody.innerHTML = openPeriods.length
-                    ? openPeriods.map((period) => `
+                const overdueSelectableCount = periods.filter((period) => period.status?.key === "overdue" && period.status?.selectable).length;
+                const syncPrefix = yePrepWorkspaceConfirmCompaniesSyncing ? "Syncing Companies House..." : "Companies House synced";
+                summary.textContent = `${selected.companyName || "Client workspace"} · ${syncPrefix} · Select the accounting period, then open workspace.${overdueSelectableCount ? ` ${overdueSelectableCount.toLocaleString("en-GB")} overdue period${overdueSelectableCount === 1 ? "" : "s"} available.` : ""}`;
+                periodsBody.innerHTML = periods.length
+                    ? periods.map((period) => `
                         <tr>
                             <td><input type="radio" name="yePrepConfirmYearEnd" value="${escapeHTML(period.yearEnd || "")}" ${period.yearEnd === yePrepWorkspaceConfirmYearEnd ? "checked" : ""} ${period.status?.selectable ? "" : "disabled"}></td>
                             <td><strong>${escapeHTML(period.yearEnd ? formatDate(period.yearEnd) : "—")}</strong></td>
@@ -65547,17 +65720,20 @@
                             <td><span class="lock-status-pill ${escapeHTML(period.status?.className || "is-review")}">${escapeHTML(period.status?.label || "Review")}</span></td>
                         </tr>
                     `).join("")
-                    : '<tr><td colspan="5">No open Companies House periods were found for this row.</td></tr>';
+                    : '<tr><td colspan="5">No Companies House accounting periods were found for this row.</td></tr>';
                 openButton.disabled = yePrepWorkspaceConfirmSyncing
+                    || yePrepWorkspaceConfirmCompaniesSyncing
                     || !yePrepWorkspaceConfirmYearEnd;
-                openButton.textContent = yePrepWorkspaceConfirmSyncing ? "Syncing Xero data..." : "Open workspace";
-                closeButton.disabled = yePrepWorkspaceConfirmSyncing;
+                openButton.textContent = yePrepWorkspaceConfirmSyncing ? "Syncing Xero data..." : "Open accounting period workspace";
+                closeButton.disabled = yePrepWorkspaceConfirmSyncing || yePrepWorkspaceConfirmCompaniesSyncing;
+                syncCompaniesButton.disabled = yePrepWorkspaceConfirmSyncing || yePrepWorkspaceConfirmCompaniesSyncing;
+                syncCompaniesButton.textContent = yePrepWorkspaceConfirmCompaniesSyncing ? "Syncing Companies House..." : "Sync Companies House";
 
                 const contextRows = [
                     { label: "Company", value: selected.companyName || "—" },
                     { label: "Company no.", value: companyNumber || "Missing on client register" },
                     { label: "Xero tenant", value: selected.connected?.tenantName || selected.connected?.tenantId || "—" },
-                    { label: "Open periods", value: selectablePeriods.length ? selectablePeriods.map((value) => formatDate(value)).join(", ") : "None currently open" },
+                    { label: "Selectable periods", value: selectablePeriods.length ? selectablePeriods.map((value) => formatDate(value)).join(", ") : "None currently selectable" },
                 ];
                 contextBody.innerHTML = contextRows.map((row) => `
                     <tr>
@@ -65573,6 +65749,10 @@
                 if (openButton.dataset.yePrepWired !== "true") {
                     openButton.dataset.yePrepWired = "true";
                     openButton.addEventListener("click", yePrepConfirmOpenCustomerWorkspace);
+                }
+                if (syncCompaniesButton.dataset.yePrepWired !== "true") {
+                    syncCompaniesButton.dataset.yePrepWired = "true";
+                    syncCompaniesButton.addEventListener("click", yePrepSyncWorkspaceCompaniesHouse);
                 }
                 if (modal.dataset.yePrepWired !== "true") {
                     modal.dataset.yePrepWired = "true";

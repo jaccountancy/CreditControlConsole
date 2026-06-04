@@ -148,6 +148,7 @@ OPENAI_INSIGHTS_TIMEOUT_SECONDS = 135
 OPENAI_ME_REPORT_TIMEOUT_SECONDS = 300
 RISK_ASSESSMENT_MAX_CLIENTS_PER_REQUEST = 200
 XERO_ORGANISATION_URL = "https://api.xero.com/api.xro/2.0/Organisation"
+XERO_TAX_RETURNS_URL = "https://api.xero.com/api.xro/2.0/TaxReturns"
 XERO_LOCK_DATE_CACHE_TTL = timedelta(minutes=20)
 SYNC_PHASE_OUTSTANDING = "outstanding_invoices"
 SYNC_PHASE_PAYMENTS = "payments"
@@ -719,6 +720,17 @@ def get_xero_connection_for_user(user_id: str) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has not linked Xero yet.")
     preferred_tenant_name = get_settings().xero_primary_tenant_name
     return max(rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name))
+
+
+def xero_connection_for_user_tenant(user: dict, tenant_id: str | None = None, include_fallback: bool = True) -> dict:
+    requested_tenant_id = str(tenant_id or "").strip()
+    if not requested_tenant_id:
+        return get_xero_connection_for_user(user["id"])
+    rows = list_xero_connections_for_user(user["id"], include_fallback=include_fallback)
+    row = next((item for item in rows if str(item.get("tenant_id") or "").strip() == requested_tenant_id), None)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected Xero connection is unavailable.")
+    return row
 
 
 def disconnect_xero(user: dict, tenant_id: str | None = None, disconnect_all: bool = False) -> dict:
@@ -22785,13 +22797,13 @@ def _serialize_xero_invoice_transaction(invoice: dict, local_lookup: dict[str, d
     }
 
 
-def _validate_customer_xero_access(customer_id: str, user: dict) -> tuple[dict, dict]:
+def _validate_customer_xero_access(customer_id: str, user: dict, tenant_id: str | None = None) -> tuple[dict, dict]:
     try:
         parsed_customer_id = UUID(str(customer_id))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid customer id.") from exc
 
-    connection_row = get_xero_connection_for_user(user["id"])
+    connection_row = xero_connection_for_user_tenant(user, tenant_id, include_fallback=True)
     with get_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -22805,6 +22817,243 @@ def _validate_customer_xero_access(customer_id: str, user: dict) -> tuple[dict, 
     if not customer.get("xero_contact_id"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Customer is not linked to a Xero contact.")
     return customer, connection_row
+
+
+def _vat_return_period_start_from_end(period_end: date) -> date:
+    month = period_end.month - 2
+    year = period_end.year
+    if month <= 0:
+        month += 12
+        year -= 1
+    return date(year, month, 1)
+
+
+def _vat_return_status_submitted(status_value: str) -> bool:
+    status = str(status_value or "").strip().upper()
+    if not status:
+        return False
+    submitted_statuses = {
+        "FILED",
+        "POSTED",
+        "PAID",
+        "APPROVED",
+        "SUBMITTED",
+        "COMPLETED",
+        "FINALISED",
+        "FINALIZED",
+        "LOCKED",
+    }
+    if status in submitted_statuses:
+        return True
+    return False
+
+
+def _serialise_xero_tax_return(
+    raw_return: dict,
+    connection_row: dict,
+    customer_by_tenant: dict[str, dict],
+    index: int,
+) -> dict:
+    tenant_id = str(connection_row.get("tenant_id") or "").strip()
+    tenant_name = str(connection_row.get("tenant_name") or tenant_id).strip()
+    customer = customer_by_tenant.get(tenant_id) or {}
+    customer_id = str(customer.get("id") or "").strip()
+    status = str(raw_return.get("Status") or raw_return.get("TaxReturnStatus") or raw_return.get("State") or "").strip()
+    period_start = _parse_optional_iso_date(
+        raw_return.get("PeriodStartDate")
+        or raw_return.get("StartDate")
+        or raw_return.get("FromDate")
+    )
+    period_end = _parse_optional_iso_date(
+        raw_return.get("PeriodEndDate")
+        or raw_return.get("EndDate")
+        or raw_return.get("ToDate")
+    )
+    due_date = _parse_optional_iso_date(raw_return.get("DueDate") or raw_return.get("PaymentDueDate"))
+    if period_start is None and period_end is not None:
+        period_start = _vat_return_period_start_from_end(period_end)
+    if due_date is None and period_end is not None:
+        due_date = period_end + timedelta(days=37)
+    tax_return_id = str(raw_return.get("TaxReturnID") or raw_return.get("Id") or "").strip()
+    period_end_iso = _iso(period_end) or ""
+    period_start_iso = _iso(period_start) or ""
+    due_date_iso = _iso(due_date) or ""
+    key_parts = [customer_id or tenant_id or "tenant", period_end_iso or due_date_iso or str(index + 1), tax_return_id or str(index + 1)]
+    key = ":".join(key_parts)
+    net_tax = _money(
+        raw_return.get("NetTax")
+        or raw_return.get("TotalTax")
+        or raw_return.get("TotalTaxAmount")
+        or raw_return.get("AmountDue")
+        or 0
+    )
+    return {
+        "key": key,
+        "taxReturnId": tax_return_id,
+        "status": status,
+        "submitted": _vat_return_status_submitted(status),
+        "periodStartISO": period_start_iso,
+        "periodEndISO": period_end_iso,
+        "deadlineISO": due_date_iso,
+        "fetchedAt": _iso(utcnow()),
+        "filedAt": _iso(_parse_optional_iso_date(raw_return.get("FiledDate"))),
+        "amountDue": float(net_tax),
+        "tenantId": tenant_id,
+        "tenantName": tenant_name,
+        "clientId": customer_id,
+        "clientName": str(customer.get("name") or tenant_name or "Connected organisation").strip(),
+        "hasMappedClient": bool(customer_id),
+    }
+
+
+def _sort_vat_return_rows(rows: list[dict]) -> list[dict]:
+    return sorted(
+        rows,
+        key=lambda row: (
+            -(date.fromisoformat(row["periodEndISO"]).toordinal() if row.get("periodEndISO") else 0),
+            -(date.fromisoformat(row["deadlineISO"]).toordinal() if row.get("deadlineISO") else 0),
+            str(row.get("clientName") or "").casefold(),
+        ),
+    )
+
+
+async def xero_vat_returns_payload(user: dict, tenant_id: str | None = None) -> dict:
+    requested_tenant_id = str(tenant_id or "").strip()
+    source_rows = list_xero_connections_for_user(user["id"], include_fallback=not requested_tenant_id)
+    connection_rows = []
+    for row in source_rows:
+        row_tenant_id = str(row.get("tenant_id") or "").strip()
+        if not row_tenant_id:
+            continue
+        if requested_tenant_id and row_tenant_id != requested_tenant_id:
+            continue
+        tenant_type = str(row.get("tenant_type") or "").strip().upper()
+        if tenant_type not in ("", "ORGANISATION", "ORGANIZATION"):
+            continue
+        connection_rows.append(row)
+    if requested_tenant_id and not connection_rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Selected Xero connection is unavailable.")
+
+    preferred_tenant_name = get_settings().xero_primary_tenant_name
+    connection_rows = sorted(connection_rows, key=lambda row: _xero_connection_sort_key(row, preferred_tenant_name), reverse=True)
+    tenant_ids = [str(row.get("tenant_id") or "").strip() for row in connection_rows]
+    customer_by_tenant: dict[str, dict] = {}
+    if tenant_ids:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, name, tenant_id, xero_contact_id
+                    FROM customers
+                    WHERE tenant_id = ANY(%s)
+                    ORDER BY
+                        CASE WHEN COALESCE(TRIM(xero_contact_id), '') <> '' THEN 0 ELSE 1 END,
+                        updated_at DESC NULLS LAST,
+                        created_at DESC,
+                        name ASC
+                    """,
+                    (tenant_ids,),
+                )
+                rows = cursor.fetchall() or []
+            connection.commit()
+        for row in rows:
+            row_tenant_id = str(row.get("tenant_id") or "").strip()
+            if row_tenant_id and row_tenant_id not in customer_by_tenant:
+                customer_by_tenant[row_tenant_id] = row
+
+    all_rows: list[dict] = []
+    workspaces: list[dict] = []
+    for connection_row in connection_rows:
+        row_tenant_id = str(connection_row.get("tenant_id") or "").strip()
+        workspace_rows: list[dict] = []
+        workspace_error = ""
+        try:
+            payload = await xero_api_get(connection_row, XERO_TAX_RETURNS_URL)
+            raw_returns = payload.get("TaxReturns") or payload.get("taxReturns") or []
+            workspace_rows = [
+                _serialise_xero_tax_return(raw_return, connection_row, customer_by_tenant, index)
+                for index, raw_return in enumerate(raw_returns)
+                if isinstance(raw_return, dict)
+            ]
+            workspace_rows = [row for row in workspace_rows if row.get("periodEndISO") or row.get("deadlineISO")]
+        except Exception as exc:
+            workspace_error = _sync_error_message(exc)
+        all_rows.extend(workspace_rows)
+        customer = customer_by_tenant.get(row_tenant_id) or {}
+        workspaces.append(
+            {
+                "tenantId": row_tenant_id,
+                "tenantName": str(connection_row.get("tenant_name") or row_tenant_id).strip(),
+                "tenantType": str(connection_row.get("tenant_type") or "").strip(),
+                "clientId": str(customer.get("id") or "").strip(),
+                "clientName": str(customer.get("name") or connection_row.get("tenant_name") or row_tenant_id).strip(),
+                "periodCount": len(workspace_rows),
+                "submittedCount": sum(1 for row in workspace_rows if row.get("submitted")),
+                "outstandingCount": sum(1 for row in workspace_rows if not row.get("submitted")),
+                "error": workspace_error,
+            }
+        )
+    return {
+        "rows": _sort_vat_return_rows(all_rows),
+        "workspaces": workspaces,
+        "fetchedAt": _iso(utcnow()),
+    }
+
+
+def _invoice_lines_for_vat_period(raw_invoices: list[dict], period_start: date, period_end: date) -> list[dict]:
+    rows: list[dict] = []
+    period_start_ordinal = period_start.toordinal()
+    period_end_ordinal = period_end.toordinal()
+    for invoice in raw_invoices:
+        if not isinstance(invoice, dict):
+            continue
+        invoice_date = _parse_optional_iso_date(invoice.get("DateString") or invoice.get("Date"))
+        if not invoice_date:
+            continue
+        invoice_day = invoice_date.toordinal()
+        if invoice_day < period_start_ordinal or invoice_day > period_end_ordinal:
+            continue
+        invoice_id = str(invoice.get("InvoiceID") or "").strip()
+        reference = str(invoice.get("InvoiceNumber") or invoice_id).strip()
+        line_items = invoice.get("LineItems") or []
+        if not isinstance(line_items, list) or not line_items:
+            line_items = [
+                {
+                    "Description": str(invoice.get("Reference") or "Invoice"),
+                    "LineAmount": invoice.get("SubTotal") or invoice.get("Total") or 0,
+                    "TaxAmount": invoice.get("TotalTax") or 0,
+                    "TaxType": str(invoice.get("TaxType") or "").strip(),
+                    "AccountCode": "",
+                }
+            ]
+        for index, line in enumerate(line_items):
+            line_amount = _money(line.get("LineAmount") or 0)
+            line_tax = _money(line.get("TaxAmount") or 0)
+            line_total = _money(line_amount + line_tax)
+            row = {
+                "id": f"{invoice_id}:{index}",
+                "date": invoice_date.isoformat(),
+                "reference": reference,
+                "description": str(line.get("Description") or invoice.get("Reference") or "Invoice line").strip(),
+                "netAmount": float(line_amount),
+                "taxAmount": float(line_tax),
+                "grossAmount": float(line_total),
+                "taxCode": str(line.get("TaxType") or "").strip(),
+                "accountCode": str(line.get("AccountCode") or "").strip(),
+                "sourceType": "xero-invoice-line",
+                "transactionType": str(invoice.get("Type") or "").strip(),
+                "documentType": "invoice",
+            }
+            rows.append(row)
+    return rows
+
+
+def _tax_return_for_period(rows: list[dict], period_end: date) -> dict | None:
+    period_end_iso = period_end.isoformat()
+    for row in rows:
+        if str(row.get("periodEndISO") or "").strip() == period_end_iso:
+            return row
+    return None
 
 
 def _local_invoice_lookup(customer_id: str) -> dict[str, dict]:
@@ -22944,6 +23193,47 @@ async def _customer_xero_transactions_payload(customer: dict, connection_row: di
 async def customer_xero_transactions(customer_id: str, user: dict) -> dict:
     customer, connection_row = _validate_customer_xero_access(customer_id, user)
     return await _customer_xero_transactions_payload(customer, connection_row)
+
+
+async def customer_vat_return_transactions(
+    customer_id: str,
+    period_end: str,
+    user: dict,
+    *,
+    tenant_id: str | None = None,
+    period_start: str | None = None,
+) -> dict:
+    customer, connection_row = _validate_customer_xero_access(customer_id, user, tenant_id=tenant_id)
+    period_end_date = _parse_optional_iso_date(period_end)
+    if period_end_date is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period end date must be in YYYY-MM-DD format.")
+    period_start_date = _parse_optional_iso_date(period_start) if period_start else None
+    if period_start_date is None:
+        period_start_date = _vat_return_period_start_from_end(period_end_date)
+    if period_start_date > period_end_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Period start date cannot be after period end date.")
+
+    raw_invoices = await fetch_paginated_collection(
+        connection_row,
+        INVOICES_URL,
+        "Invoices",
+        params={"ContactIDs": customer.get("xero_contact_id"), "order": "Date DESC"},
+        max_pages=12,
+    )
+    transactions = _invoice_lines_for_vat_period(raw_invoices, period_start_date, period_end_date)
+    vat_queue = await xero_vat_returns_payload(user, tenant_id=connection_row.get("tenant_id"))
+    tax_return_row = _tax_return_for_period(vat_queue.get("rows") or [], period_end_date)
+
+    return {
+        "customerId": str(customer.get("id") or ""),
+        "tenantId": str(connection_row.get("tenant_id") or ""),
+        "tenantName": str(connection_row.get("tenant_name") or ""),
+        "periodStartISO": period_start_date.isoformat(),
+        "periodEndISO": period_end_date.isoformat(),
+        "taxReturn": tax_return_row,
+        "transactions": transactions,
+        "fetchedAt": _iso(utcnow()),
+    }
 
 
 async def _refresh_local_invoice_from_xero(

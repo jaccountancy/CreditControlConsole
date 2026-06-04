@@ -85,6 +85,7 @@ from .services import (
     create_late_payment_charges,
     company_calendar_payload,
     create_payment_plan,
+    customer_vat_return_transactions,
     customer_detail,
     customer_xero_transactions,
     dashboard_payload,
@@ -195,6 +196,7 @@ from .services import (
     xero_lock_date_mismatch_payload,
     xero_lock_date_mismatch_pdf,
     xero_chart_of_accounts_payload,
+    xero_vat_returns_payload,
     bank_statement_payload,
     bulk_update_invoice_status,
     bulk_send_me_report_emails,
@@ -2427,6 +2429,28 @@ async def api_supplier_reconciliation_email(request: Request, user: dict = Depen
 @app.get("/api/customers/{customer_id}/xero-transactions")
 async def api_customer_xero_transactions(customer_id: str, user: dict = Depends(require_panel_user)):
     return await customer_xero_transactions(customer_id, user)
+
+
+@app.get("/api/xero/vat-returns")
+async def api_xero_vat_returns(tenantId: str = Query(default=""), user: dict = Depends(require_panel_user)):
+    return {"status": "ok", **await xero_vat_returns_payload(user, tenant_id=tenantId or None)}
+
+
+@app.get("/api/customers/{customer_id}/vat-returns/{period_end}/transactions")
+async def api_customer_vat_return_transactions(
+    customer_id: str,
+    period_end: str,
+    tenantId: str = Query(default=""),
+    periodStart: str = Query(default=""),
+    user: dict = Depends(require_panel_user),
+):
+    return await customer_vat_return_transactions(
+        customer_id,
+        period_end,
+        user,
+        tenant_id=tenantId or None,
+        period_start=periodStart or None,
+    )
 
 
 @app.post("/api/customers/{customer_id}/allocations")
