@@ -49423,6 +49423,7 @@
                 if (!meReportBulkPeriodDialogState) return;
                 meReportBulkPeriodDialogState.loadingContacts = true;
                 renderMeReportBulkPeriodPanel();
+                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
                 const companies = await meReportConnectedCompaniesForBulkFlows();
                 const contacts = meReportBulkFlowCandidates(companies, meReportActiveTenantId());
                 const existingContactIds = new Set((meReportData.clients || []).map((item) => String(item.xeroContactId || "")).filter(Boolean));
@@ -54612,6 +54613,7 @@
             }
 
             async function bulkCreateMeReportFlowsFromXero(periodConfig = null, selectedContactIds = []) {
+                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
                 const companies = await meReportConnectedCompaniesForBulkFlows();
                 const contacts = meReportBulkFlowCandidates(companies, meReportActiveTenantId());
                 if (!contacts.length) {
