@@ -4155,6 +4155,7 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         and latest_submission_completed_at is not None
         and not latest_submission_invoice_id
     )
+    xero_contact_id = str(row.get("xero_link_contact_id") or "").strip()
     return {
         "id": str(row.get("id")) if row.get("id") else None,
         "companyNumber": row.get("company_number") or "",
@@ -4207,6 +4208,9 @@ def _serialise_company_row(row: dict, *, include_auth: bool = True) -> dict:
         "dueInDays": due_in_days,
         "eligibleForSubmission": eligible_for_submission,
         "eligibleForInvoicing": eligible_for_invoicing,
+        "xeroConnected": bool(xero_contact_id),
+        "xeroContactId": xero_contact_id,
+        "xeroCustomerId": str(row.get("xero_link_customer_id") or ""),
     }
 
 
@@ -4240,6 +4244,10 @@ def list_companies(filters: dict | None = None) -> list[dict]:
     if only_overdue:
         where_clauses.append("c.next_due_date IS NOT NULL AND c.next_due_date < CURRENT_DATE")
 
+    only_xero_connected = bool(filters.get("xeroConnected"))
+    if only_xero_connected:
+        where_clauses.append("NULLIF(TRIM(COALESCE(xero_link.xero_contact_id, '')), '') IS NOT NULL")
+
     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     sql = f"""
@@ -4252,7 +4260,9 @@ def list_companies(filters: dict | None = None) -> list[dict]:
                latest.submitted_at AS latest_submission_at,
                latest.submission_reference AS latest_submission_reference,
                latest.xero_invoice_id AS latest_submission_xero_invoice_id,
-               latest.completed_at AS latest_submission_completed_at
+               latest.completed_at AS latest_submission_completed_at,
+               xero_link.customer_id AS xero_link_customer_id,
+               xero_link.xero_contact_id AS xero_link_contact_id
         FROM ch_companies c
         LEFT JOIN ch_auth_codes a ON a.company_id = c.id
         LEFT JOIN LATERAL (
@@ -4262,6 +4272,45 @@ def list_companies(filters: dict | None = None) -> list[dict]:
             ORDER BY s.submitted_at DESC
             LIMIT 1
         ) latest ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT cust.id AS customer_id,
+                   cust.xero_contact_id
+            FROM customers cust
+            WHERE (
+                (
+                    NULLIF(TRIM(COALESCE(c.client_id, '')), '') IS NOT NULL
+                    AND (
+                        LOWER(COALESCE(cust.client_id, '')) = LOWER(c.client_id)
+                        OR LOWER(COALESCE(cust.id::text, '')) = LOWER(c.client_id)
+                    )
+                )
+                OR (
+                    NULLIF(TRIM(COALESCE(c.company_name, '')), '') IS NOT NULL
+                    AND LOWER(COALESCE(cust.name, '')) = LOWER(c.company_name)
+                )
+                OR (
+                    NULLIF(TRIM(COALESCE(c.contact_email, '')), '') IS NOT NULL
+                    AND LOWER(COALESCE(cust.email, '')) = LOWER(c.contact_email)
+                )
+            )
+            ORDER BY
+                CASE
+                    WHEN (
+                        NULLIF(TRIM(COALESCE(c.client_id, '')), '') IS NOT NULL
+                        AND (
+                            LOWER(COALESCE(cust.client_id, '')) = LOWER(c.client_id)
+                            OR LOWER(COALESCE(cust.id::text, '')) = LOWER(c.client_id)
+                        )
+                    ) THEN 0
+                    WHEN (
+                        NULLIF(TRIM(COALESCE(c.company_name, '')), '') IS NOT NULL
+                        AND LOWER(COALESCE(cust.name, '')) = LOWER(c.company_name)
+                    ) THEN 1
+                    ELSE 2
+                END,
+                cust.updated_at DESC NULLS LAST
+            LIMIT 1
+        ) xero_link ON TRUE
         {where_sql}
         ORDER BY
             CASE WHEN c.next_due_date IS NULL THEN 1 ELSE 0 END,
@@ -4383,6 +4432,14 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
     failed: list[dict] = []
     now = utcnow()
     today = date.today()
+
+    def _submission_support_report_path(submission_id: str | None = None) -> str:
+        if submission_id:
+            return (
+                "/api/companies-house/submissions/support-report.txt"
+                f"?status=all&limit=1&submission_id={submission_id}"
+            )
+        return "/api/companies-house/submissions/support-report.txt?status=rejected&limit=50"
 
     def _record_submission_skip(*, company_id: str, company_number: str, reason: str) -> None:
         with get_connection() as connection:
@@ -4749,10 +4806,12 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             )
             failed.append(
                 {
+                    "submissionId": submission_id,
                     "companyId": company_id,
                     "companyNumber": company_number,
                     "companyName": company_name,
                     "reason": rejection_reason,
+                    "supportReportPath": _submission_support_report_path(submission_id),
                 }
             )
 
@@ -4923,6 +4982,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 "submissionReference": submission_reference,
                 "transactionId": transaction_id,
                 "rejectionReason": rejection_reason,
+                "supportReportPath": _submission_support_report_path(submission_id),
             })
         except Exception as exc:  # pragma: no cover - defensive guard to avoid aborting full bulk run
             rejection_reason = (
@@ -4968,6 +5028,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
         "skipped": skipped,
         "failed": failed,
         "reconciliation": reconciliation,
+        "supportReportPath": _submission_support_report_path(),
     }
 
 
@@ -6021,7 +6082,12 @@ def _support_report_text(value: object) -> str:
     return _xml_text(value)
 
 
-def export_companies_house_support_report(limit: int = 50, status_filter: str = "rejected") -> str:
+def export_companies_house_support_report(
+    limit: int = 50,
+    status_filter: str = "rejected",
+    company_id: str | None = None,
+    submission_id: str | None = None,
+) -> str:
     limit_value = max(1, min(int(limit or 50), 500))
     status_value = _xml_text(status_filter, "rejected").lower()
     if status_value not in {"rejected", "all"}:
@@ -6036,53 +6102,44 @@ def export_companies_house_support_report(limit: int = 50, status_filter: str = 
     presenter_auth = decrypt_presenter_auth()
     now = utcnow()
 
+    company_id_value = _xml_text(company_id)
+    submission_id_value = _xml_text(submission_id)
+    where_clauses: list[str] = []
+    query_params: list[object] = []
+    if status_value == "rejected":
+        where_clauses.append("s.status = 'rejected'")
+    if company_id_value:
+        where_clauses.append("s.company_id::text = %s")
+        query_params.append(company_id_value)
+    if submission_id_value:
+        where_clauses.append("s.id::text = %s")
+        query_params.append(submission_id_value)
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
     with get_connection() as connection:
         with connection.cursor() as cursor:
-            if status_value == "rejected":
-                cursor.execute(
-                    """
-                    SELECT s.*,
-                           c.company_number,
-                           c.company_name,
-                           c.client_name,
-                           c.next_made_up_to_date,
-                           c.next_due_date,
-                           c.filing_authority_status,
-                           c.filing_authority_reference,
-                           c.filing_authority_expires_at,
-                           c.contact_email,
-                           a.code_hint AS auth_code_hint
-                    FROM ch_submissions s
-                    JOIN ch_companies c ON c.id = s.company_id
-                    LEFT JOIN ch_auth_codes a ON a.company_id = c.id
-                    WHERE s.status = 'rejected'
-                    ORDER BY s.submitted_at DESC NULLS LAST, s.created_at DESC
-                    LIMIT %s
-                    """,
-                    (limit_value,),
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT s.*,
-                           c.company_number,
-                           c.company_name,
-                           c.client_name,
-                           c.next_made_up_to_date,
-                           c.next_due_date,
-                           c.filing_authority_status,
-                           c.filing_authority_reference,
-                           c.filing_authority_expires_at,
-                           c.contact_email,
-                           a.code_hint AS auth_code_hint
-                    FROM ch_submissions s
-                    JOIN ch_companies c ON c.id = s.company_id
-                    LEFT JOIN ch_auth_codes a ON a.company_id = c.id
-                    ORDER BY s.submitted_at DESC NULLS LAST, s.created_at DESC
-                    LIMIT %s
-                    """,
-                    (limit_value,),
-                )
+            cursor.execute(
+                f"""
+                SELECT s.*,
+                       c.company_number,
+                       c.company_name,
+                       c.client_name,
+                       c.next_made_up_to_date,
+                       c.next_due_date,
+                       c.filing_authority_status,
+                       c.filing_authority_reference,
+                       c.filing_authority_expires_at,
+                       c.contact_email,
+                       a.code_hint AS auth_code_hint
+                FROM ch_submissions s
+                JOIN ch_companies c ON c.id = s.company_id
+                LEFT JOIN ch_auth_codes a ON a.company_id = c.id
+                {where_sql}
+                ORDER BY s.submitted_at DESC NULLS LAST, s.created_at DESC
+                LIMIT %s
+                """,
+                (*query_params, limit_value),
+            )
             rows = cursor.fetchall() or []
         connection.commit()
 

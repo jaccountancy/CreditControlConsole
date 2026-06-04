@@ -1324,6 +1324,7 @@ def api_companies_house_list(
     missing_auth: bool = Query(False, alias="missingAuth"),
     due_soon: bool = Query(False, alias="dueSoon"),
     overdue: bool = Query(False, alias="overdue"),
+    xero_connected: bool = Query(False, alias="xeroConnected"),
     user: dict = Depends(require_panel_user),
 ):
     companies = list_companies({
@@ -1332,6 +1333,7 @@ def api_companies_house_list(
         "missingAuth": missing_auth,
         "dueSoon": due_soon,
         "overdue": overdue,
+        "xeroConnected": xero_connected,
     })
     return {"status": "ok", "companies": companies}
 
@@ -1430,9 +1432,16 @@ def api_companies_house_submission_attempts_export(
 def api_companies_house_support_report(
     limit: int = Query(50, ge=1, le=500),
     status_filter: str = Query("rejected", alias="status"),
+    company_id: str | None = Query(None),
+    submission_id: str | None = Query(None),
     user: dict = Depends(require_panel_user),
 ):
-    content = export_companies_house_support_report(limit=limit, status_filter=status_filter)
+    content = export_companies_house_support_report(
+        limit=limit,
+        status_filter=status_filter,
+        company_id=company_id,
+        submission_id=submission_id,
+    )
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
     return Response(
         content=content,

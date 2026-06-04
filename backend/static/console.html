@@ -10392,11 +10392,18 @@
                 border-radius: 22px;
                 padding: 28px;
             }
+            #meReportScreen.detail-card {
+                gap: 10px;
+                padding-top: 22px;
+            }
             #bankStatementsScreen .detail-hero,
             #meReportScreen .detail-hero {
                 align-items: center;
                 padding-bottom: 18px;
                 border-bottom: 1px solid var(--line);
+            }
+            #meReportScreen .detail-hero {
+                padding-bottom: 10px;
             }
             #bankStatementsScreen .detail-hero .detail-meta,
             #meReportScreen .detail-hero .detail-meta {
@@ -10407,6 +10414,10 @@
             #meReportScreen .bank-statement-workspace,
             #meReportScreen #meReportClientFormPanel {
                 margin-top: 18px;
+            }
+            #meReportScreen .bank-statement-workspace,
+            #meReportScreen #meReportClientFormPanel {
+                margin-top: 6px;
             }
             #bankStatementsScreen .bank-client-form,
             #meReportScreen #meReportClientFormPanel {
@@ -21788,6 +21799,10 @@
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterMissingAuth"> Missing auth</label>
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterDueSoon"> Due ≤30 days</label>
                                     <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterOverdue"> Overdue</label>
+                                    <label class="ch-checkbox-inline"><input type="checkbox" id="chCompaniesFilterXeroConnected"> Xero connected</label>
+                                    <button class="ghost-button" type="button" id="chCompaniesBulkReassignButton">Bulk reassign</button>
+                                    <button class="ghost-button" type="button" id="chCompaniesBulkEditButton">Bulk edit</button>
+                                    <button class="ghost-button danger-button" type="button" id="chCompaniesBulkDeleteButton">Bulk delete</button>
                                     <button class="ghost-button" type="button" id="chCompaniesSyncButton">Sync from Companies House</button>
                                     <button class="ghost-button" type="button" id="chCompaniesTestConnectionButton">Test CH connection</button>
                                     <button class="ghost-button" type="button" id="chCompaniesReloadButton">Refresh</button>
@@ -21819,6 +21834,7 @@
                                     </div>
                                     <div class="ch-settings-actions">
                                         <button class="ghost-button" type="button" id="chWorkflowSelectEligibleButton">Select all eligible</button>
+                                        <button class="ghost-button" type="button" id="chWorkflowSelectXeroConnectedButton">Select Xero connected</button>
                                         <button class="primary-button" type="button" id="chWorkflowSubmitSelectedButton">Review & submit selected</button>
                                         <button class="primary-button" type="button" id="chWorkflowInvoiceSelectedButton">Raise invoices</button>
                                         <span class="ch-settings-status is-muted" id="chWorkflowStatus">Select clients to start the workflow.</span>
@@ -25136,7 +25152,19 @@
             let meReportFlowStatusFilter = String(persistedUIState.meReportFlowStatusFilter || "needs-completing");
             let meReportFlowManagerFilter = String(persistedUIState.meReportFlowManagerFilter || "all");
             let meReportShowCompletedFlows = persistedUIState.meReportShowCompletedFlows === true;
-            if (!["needs-completing", "needs-approved", "all", "not_started", "draft", "awaiting_review", "bounceback", "completed"].includes(meReportFlowStatusFilter)) {
+            const meReportClientTableDefaultColumns = {
+                client: true,
+                clientId: true,
+                flow: true,
+                deadline: true,
+                manager: true,
+                difficulty: true,
+                status: true,
+                activity: true,
+                action: true,
+            };
+            let meReportClientTableColumns = normaliseMeReportClientTableColumns(persistedUIState.meReportClientTableColumns);
+            if (!["needs-completing", "needs-approved", "rejected-flows", "all", "not_started", "draft", "awaiting_review", "bounceback", "completed"].includes(meReportFlowStatusFilter)) {
                 meReportFlowStatusFilter = "needs-completing";
             }
             let meReportLoading = false;
@@ -26402,6 +26430,7 @@
                         meReportFlowStatusFilter,
                         meReportFlowManagerFilter,
                         meReportShowCompletedFlows,
+                        meReportClientTableColumns,
                         meReportViewStateByClient,
                         lateChargeFilter,
                         dismissedLateChargeInvoiceIds: [...dismissedLateChargeInvoiceIds].slice(0, 5000),
@@ -46108,6 +46137,21 @@
                 return String(client?.status || "active").toLowerCase() === "archived" ? "archived" : "active";
             }
 
+            function normaliseMeReportClientTableColumns(raw = {}) {
+                const next = { ...meReportClientTableDefaultColumns };
+                if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+                    Object.keys(meReportClientTableDefaultColumns).forEach((key) => {
+                        if (key in raw) next[key] = raw[key] !== false;
+                    });
+                }
+                if (!Object.values(next).some(Boolean)) next.client = true;
+                return next;
+            }
+
+            function meReportClientColumnVisible(key = "") {
+                return meReportClientTableColumns?.[key] !== false;
+            }
+
             function meReportFlowStatus(client = {}) {
                 const raw = String(client.flowStatus || client.workflowStatus || "").toLowerCase();
                 if (["not_started", "draft", "awaiting_review", "bounceback", "completed"].includes(raw)) return raw;
@@ -46165,6 +46209,7 @@
                 if (meReportFlowStatusFilter === "all") return true;
                 if (meReportFlowStatusFilter === "needs-completing") return key !== "completed";
                 if (meReportFlowStatusFilter === "needs-approved") return key === "awaiting_review";
+                if (meReportFlowStatusFilter === "rejected-flows") return key === "bounceback";
                 return key === meReportFlowStatusFilter;
             }
 
@@ -46372,13 +46417,13 @@
             function meReportSortParts() {
                 const [key = "client", direction = "asc"] = String(meReportClientSortMode || "client-asc").split("-");
                 return {
-                    key: ["client", "flow", "manager", "difficulty", "status", "activity"].includes(key) ? key : "client",
+                    key: ["client", "flow", "deadline", "manager", "difficulty", "status", "activity"].includes(key) ? key : "client",
                     direction: direction === "desc" ? "desc" : "asc"
                 };
             }
 
             function meReportDefaultSortDirection(key) {
-                return ["client", "flow", "manager", "status"].includes(key) ? "asc" : "desc";
+                return ["client", "flow", "deadline", "manager", "status"].includes(key) ? "asc" : "desc";
             }
 
             function setMeReportClientSortMode(key) {
@@ -46392,6 +46437,7 @@
             function meReportClientSortValue(client, key) {
                 const flowOrder = { not_started: 0, draft: 1, bounceback: 2, awaiting_review: 3, completed: 4 };
                 if (key === "flow") return meReportFlowName(client);
+                if (key === "deadline") return meReportClientTimestamp(client.flowDeadlineAt);
                 if (key === "manager") return meReportFlowManager(client);
                 if (key === "difficulty") return meReportDifficultyScore(client);
                 if (key === "status") return flowOrder[meReportFlowStatus(client)] ?? 1;
@@ -46473,9 +46519,12 @@
                     const marker = button.querySelector("span");
                     if (marker) marker.textContent = active ? (currentSort.direction === "asc" ? "Asc" : "Desc") : "";
                 });
+                const visibleColumnCount = Object.keys(meReportClientTableDefaultColumns)
+                    .filter((key) => meReportClientColumnVisible(key))
+                    .length || 1;
 
                 if (!clients.length) {
-                    tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="7"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No monthly flows match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
+                    tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="${visibleColumnCount}"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No monthly flows match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
                     return;
                 }
 
@@ -46493,22 +46542,24 @@
                     const periodCopy = periodStart && periodEnd
                         ? `${meReportDateDisplay(periodStart)} to ${meReportDateDisplay(periodEnd)}`
                         : `${String(client.bookkeepingFrequency || "Monthly")} cycle`;
-                    const deadlineCopy = deadlineAt ? ` · Deadline ${meReportDateDisplay(deadlineAt)}` : "";
+                    const deadlineCopy = deadlineAt ? meReportDateDisplay(deadlineAt) : "--";
                     const email = client.xeroContactEmail || client.reportRecipientEmail || "No Xero email connected";
                     return `
                         <tr class="${client.id === selectedMeReportClientId ? "is-active" : ""}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
-                            <td>
+                            ${meReportClientColumnVisible("client") ? `<td>
                                 <div class="me-report-client-name-cell">
                                     <span class="me-report-client-table-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
                                     <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(email)}</small></div>
                                 </div>
-                            </td>
-                            <td><strong>${escapeHTML(flowName)}</strong><small>${escapeHTML(periodCopy)}${escapeHTML(deadlineCopy)}</small></td>
-                            <td><strong>${escapeHTML(manager)}</strong><small>Client manager</small></td>
-                            <td><span class="me-report-difficulty-pill is-${escapeHTML(difficultyBand)}">${difficultyScore}/10 · ${escapeHTML(meReportDifficultyLabel(difficultyScore))}</span></td>
-                            <td><span class="bank-status-pill ${meReportFlowStatusClass(flowStatus)}">${escapeHTML(flowStatusLabel)}</span></td>
-                            <td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${meReportFlowLocked(client) ? "Figures locked for review" : "Latest activity"}</small></td>
-                            <td><button class="ghost-button" type="button" data-me-report-open-client="${escapeHTML(client.id || "")}">Open</button></td>
+                            </td>` : ""}
+                            ${meReportClientColumnVisible("clientId") ? `<td><strong>${escapeHTML(client.clientId || client.id || "--")}</strong><small>Client ID</small></td>` : ""}
+                            ${meReportClientColumnVisible("flow") ? `<td><strong>${escapeHTML(flowName)}</strong><small>${escapeHTML(periodCopy)}</small></td>` : ""}
+                            ${meReportClientColumnVisible("deadline") ? `<td><strong>${escapeHTML(deadlineCopy)}</strong><small>Flow deadline</small></td>` : ""}
+                            ${meReportClientColumnVisible("manager") ? `<td><strong>${escapeHTML(manager)}</strong><small>Client manager</small></td>` : ""}
+                            ${meReportClientColumnVisible("difficulty") ? `<td><span class="me-report-difficulty-pill is-${escapeHTML(difficultyBand)}">${difficultyScore}/10 · ${escapeHTML(meReportDifficultyLabel(difficultyScore))}</span></td>` : ""}
+                            ${meReportClientColumnVisible("status") ? `<td><span class="bank-status-pill ${meReportFlowStatusClass(flowStatus)}">${escapeHTML(flowStatusLabel)}</span></td>` : ""}
+                            ${meReportClientColumnVisible("activity") ? `<td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${meReportFlowLocked(client) ? "Figures locked for review" : "Latest activity"}</small></td>` : ""}
+                            ${meReportClientColumnVisible("action") ? `<td><button class="ghost-button" type="button" data-me-report-open-client="${escapeHTML(client.id || "")}">Open</button></td>` : ""}
                         </tr>
                     `;
                 }).join("");
@@ -47240,7 +47291,8 @@
                     <div class="me-report-client-controls">
                         <div class="me-report-flow-quick-filters">
                             <button class="${meReportFlowStatusFilter === "needs-completing" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-completing">Needs completing</button>
-                            <button class="${meReportFlowStatusFilter === "needs-approved" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-approved">Needs approved</button>
+                            <button class="${meReportFlowStatusFilter === "needs-approved" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-approved">Awaiting Review</button>
+                            <button class="${meReportFlowStatusFilter === "rejected-flows" ? "is-active" : ""}" type="button" data-me-flow-shortcut="rejected-flows">Rejected Flows</button>
                             <button class="${meReportFlowStatusFilter === "all" ? "is-active" : ""}" type="button" data-me-flow-shortcut="all">All flows</button>
                         </div>
                         <label class="search-wrap me-report-client-search">
@@ -47258,7 +47310,8 @@
                             Status
                             <select id="meReportClientStatusFlowFilter" aria-label="Filter monthly flows by status">
                                 <option value="needs-completing">Needs completing</option>
-                                <option value="needs-approved">Needs approved</option>
+                                <option value="needs-approved">Awaiting Review</option>
+                                <option value="rejected-flows">Rejected Flows</option>
                                 <option value="all">All statuses</option>
                                 <option value="not_started">Not started</option>
                                 <option value="draft">Draft</option>
@@ -47271,6 +47324,21 @@
                             <input id="meReportShowCompletedFlows" type="checkbox" ${meReportShowCompletedFlows ? "checked" : ""}>
                             Show completed flows
                         </label>
+                        <a class="ghost-button" href="${escapeHTML(endpointURL("/auth/xero/start"))}">Connect additional Xero</a>
+                        <details class="xero-lock-columns me-report-flow-columns">
+                            <summary class="ghost-button">Columns</summary>
+                            <div class="xero-lock-columns-menu">
+                                <label><input type="checkbox" data-me-report-column-toggle="client" ${meReportClientColumnVisible("client") ? "checked" : ""}> Client</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="clientId" ${meReportClientColumnVisible("clientId") ? "checked" : ""}> Client ID</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="flow" ${meReportClientColumnVisible("flow") ? "checked" : ""}> Flow</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="deadline" ${meReportClientColumnVisible("deadline") ? "checked" : ""}> Deadline</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="manager" ${meReportClientColumnVisible("manager") ? "checked" : ""}> Client manager</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="difficulty" ${meReportClientColumnVisible("difficulty") ? "checked" : ""}> Difficulty</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="status" ${meReportClientColumnVisible("status") ? "checked" : ""}> Status</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="activity" ${meReportClientColumnVisible("activity") ? "checked" : ""}> Last activity</label>
+                                <label><input type="checkbox" data-me-report-column-toggle="action" ${meReportClientColumnVisible("action") ? "checked" : ""}> Action</label>
+                            </div>
+                        </details>
                     </div>
                 `;
                 clientList.appendChild(toolbar);
@@ -47281,13 +47349,15 @@
                     <table class="me-report-client-table">
                         <thead>
                             <tr>
-                                <th>${meReportClientSortButton("client", "Client")}</th>
-                                <th>${meReportClientSortButton("flow", "Flow")}</th>
-                                <th>${meReportClientSortButton("manager", "Client manager")}</th>
-                                <th>${meReportClientSortButton("difficulty", "Difficulty")}</th>
-                                <th>${meReportClientSortButton("status", "Status")}</th>
-                                <th>${meReportClientSortButton("activity", "Last activity")}</th>
-                                <th><span>Action</span></th>
+                                ${meReportClientColumnVisible("client") ? `<th>${meReportClientSortButton("client", "Client")}</th>` : ""}
+                                ${meReportClientColumnVisible("clientId") ? `<th><span>Client ID</span></th>` : ""}
+                                ${meReportClientColumnVisible("flow") ? `<th>${meReportClientSortButton("flow", "Flow")}</th>` : ""}
+                                ${meReportClientColumnVisible("deadline") ? `<th>${meReportClientSortButton("deadline", "Deadline")}</th>` : ""}
+                                ${meReportClientColumnVisible("manager") ? `<th>${meReportClientSortButton("manager", "Client manager")}</th>` : ""}
+                                ${meReportClientColumnVisible("difficulty") ? `<th>${meReportClientSortButton("difficulty", "Difficulty")}</th>` : ""}
+                                ${meReportClientColumnVisible("status") ? `<th>${meReportClientSortButton("status", "Status")}</th>` : ""}
+                                ${meReportClientColumnVisible("activity") ? `<th>${meReportClientSortButton("activity", "Last activity")}</th>` : ""}
+                                ${meReportClientColumnVisible("action") ? `<th><span>Action</span></th>` : ""}
                             </tr>
                         </thead>
                         <tbody id="meReportClientTableBody"></tbody>
@@ -47320,6 +47390,22 @@
                     meReportShowCompletedFlows = Boolean(event.target.checked);
                     persistState();
                     renderMeReportClientTableRows();
+                });
+                toolbar.querySelectorAll("[data-me-report-column-toggle]").forEach((checkbox) => {
+                    checkbox.addEventListener("change", (event) => {
+                        const key = String(event?.target?.dataset?.meReportColumnToggle || "");
+                        if (!key || !(key in meReportClientTableDefaultColumns)) return;
+                        const next = {
+                            ...meReportClientTableColumns,
+                            [key]: Boolean(event.target.checked),
+                        };
+                        if (!Object.values(next).some(Boolean)) {
+                            next.client = true;
+                        }
+                        meReportClientTableColumns = normaliseMeReportClientTableColumns(next);
+                        persistState();
+                        renderMeReportScreen();
+                    });
                 });
                 tableWrap.querySelectorAll("[data-me-report-client-sort]").forEach((button) => {
                     button.addEventListener("click", () => {
@@ -64337,7 +64423,7 @@
                 selectedCompanyId: null,
                 selectedCompanyIds: new Set(),
                 companyDetail: null,
-                companyFilters: { search: "", internalStatus: "all", missingAuth: false, dueSoon: false, overdue: false },
+                companyFilters: { search: "", internalStatus: "all", missingAuth: false, dueSoon: false, overdue: false, xeroConnected: false },
                 importPreview: null,
                 importPreviewPage: 1,
                 importPreviewPageSize: 500,
@@ -64720,6 +64806,10 @@
                 return `<span class="ch-pill is-warn">Missing</span>`;
             }
 
+            function chCompanyXeroConnected(company) {
+                return Boolean(company?.xeroConnected) || Boolean(String(company?.xeroContactId || "").trim());
+            }
+
             function chSetWorkflowStatus(text, tone = "muted") {
                 const node = document.getElementById("chWorkflowStatus");
                 if (!node) return;
@@ -64875,6 +64965,7 @@
                 const submitButton = document.getElementById("chWorkflowSubmitSelectedButton");
                 const invoiceButton = document.getElementById("chWorkflowInvoiceSelectedButton");
                 const selectEligibleButton = document.getElementById("chWorkflowSelectEligibleButton");
+                const selectXeroConnectedButton = document.getElementById("chWorkflowSelectXeroConnectedButton");
                 const selectionPill = document.getElementById("chWorkflowSelectionPill");
                 const eligibleCount = document.getElementById("chWorkflowEligibleCount");
                 const readySubmitCount = document.getElementById("chWorkflowReadyToSubmitCount");
@@ -64886,6 +64977,7 @@
                 if (submitButton) submitButton.disabled = companiesHouseState.workflowBusy || selectedCount === 0;
                 if (invoiceButton) invoiceButton.disabled = companiesHouseState.workflowBusy || selectedEligibleForInvoicing === 0;
                 if (selectEligibleButton) selectEligibleButton.disabled = companiesHouseState.workflowBusy;
+                if (selectXeroConnectedButton) selectXeroConnectedButton.disabled = companiesHouseState.workflowBusy;
                 if (!selectedCount) {
                     chSetWorkflowStatus("Select clients to start the workflow.", "muted");
                     return;
@@ -64984,6 +65076,7 @@
                 if (filters.missingAuth) params.set("missingAuth", "true");
                 if (filters.dueSoon) params.set("dueSoon", "true");
                 if (filters.overdue) params.set("overdue", "true");
+                if (filters.xeroConnected) params.set("xeroConnected", "true");
                 const query = params.toString();
                 try {
                     const payload = await requestJSON(`/api/companies-house/companies${query ? `?${query}` : ""}`);
@@ -65035,6 +65128,144 @@
                 }
             }
 
+            async function bulkReassignCompaniesHouseCompanies() {
+                if (companiesHouseState.workflowBusy) return;
+                const selected = chSelectedCompanies();
+                if (!selected.length) {
+                    chSetWorkflowStatus("Select at least one company for bulk reassignment.", "error");
+                    return;
+                }
+                const value = window.prompt(
+                    "Enter assigned staff name for selected companies. Leave blank to clear assignment.",
+                    ""
+                );
+                if (value === null) return;
+                const assignedStaffName = String(value || "").trim();
+                companiesHouseState.workflowBusy = true;
+                chUpdateWorkflowControls();
+                chSetWorkflowStatus(`Updating assigned staff for ${selected.length.toLocaleString("en-GB")} selected companies…`, "muted");
+                let updated = 0;
+                let failed = 0;
+                for (const company of selected) {
+                    const companyId = String(company?.id || "").trim();
+                    if (!companyId) continue;
+                    try {
+                        await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ assignedStaffName }),
+                        });
+                        updated += 1;
+                    } catch (error) {
+                        failed += 1;
+                    }
+                }
+                companiesHouseState.workflowBusy = false;
+                companiesHouseState.tabLoaded.companies = false;
+                companiesHouseState.tabLoaded.dashboard = false;
+                await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
+                chSetWorkflowStatus(
+                    `Bulk reassignment complete: ${updated.toLocaleString("en-GB")} updated, ${failed.toLocaleString("en-GB")} failed.`,
+                    failed ? "error" : "success"
+                );
+                showToast(
+                    `Bulk reassignment complete: ${updated} updated, ${failed} failed.`,
+                    failed ? "info" : "success"
+                );
+            }
+
+            async function bulkEditCompaniesHouseCompanies() {
+                if (companiesHouseState.workflowBusy) return;
+                const selected = chSelectedCompanies();
+                if (!selected.length) {
+                    chSetWorkflowStatus("Select at least one company for bulk edit.", "error");
+                    return;
+                }
+                const validStatuses = Object.keys(CH_INTERNAL_STATUS_LABELS || {});
+                const statusInput = window.prompt(
+                    `Enter internal status for selected companies (${validStatuses.join(", ")}).`,
+                    "active"
+                );
+                if (statusInput === null) return;
+                const internalStatus = String(statusInput || "").trim().toLowerCase();
+                if (!validStatuses.includes(internalStatus)) {
+                    chSetWorkflowStatus(`Invalid status. Use one of: ${validStatuses.join(", ")}.`, "error");
+                    showToast("Invalid status for bulk edit.", "error");
+                    return;
+                }
+                companiesHouseState.workflowBusy = true;
+                chUpdateWorkflowControls();
+                chSetWorkflowStatus(`Applying status '${internalStatus}' to ${selected.length.toLocaleString("en-GB")} selected companies…`, "muted");
+                let updated = 0;
+                let failed = 0;
+                for (const company of selected) {
+                    const companyId = String(company?.id || "").trim();
+                    if (!companyId) continue;
+                    try {
+                        await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ internalStatus }),
+                        });
+                        updated += 1;
+                    } catch (error) {
+                        failed += 1;
+                    }
+                }
+                companiesHouseState.workflowBusy = false;
+                companiesHouseState.tabLoaded.companies = false;
+                companiesHouseState.tabLoaded.dashboard = false;
+                await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
+                chSetWorkflowStatus(
+                    `Bulk edit complete: ${updated.toLocaleString("en-GB")} updated, ${failed.toLocaleString("en-GB")} failed.`,
+                    failed ? "error" : "success"
+                );
+                showToast(
+                    `Bulk edit complete: ${updated} updated, ${failed} failed.`,
+                    failed ? "info" : "success"
+                );
+            }
+
+            async function bulkDeleteCompaniesHouseCompanies() {
+                if (companiesHouseState.workflowBusy) return;
+                const selected = chSelectedCompanies();
+                if (!selected.length) {
+                    chSetWorkflowStatus("Select at least one company for bulk delete.", "error");
+                    return;
+                }
+                if (!window.confirm(`Delete ${selected.length.toLocaleString("en-GB")} selected compan${selected.length === 1 ? "y" : "ies"}? This removes local auth codes, drafts, and submissions.`)) {
+                    return;
+                }
+                companiesHouseState.workflowBusy = true;
+                chUpdateWorkflowControls();
+                chSetWorkflowStatus(`Deleting ${selected.length.toLocaleString("en-GB")} selected companies…`, "muted");
+                let deleted = 0;
+                let failed = 0;
+                for (const company of selected) {
+                    const companyId = String(company?.id || "").trim();
+                    if (!companyId) continue;
+                    try {
+                        await requestJSON(`/api/companies-house/companies/${encodeURIComponent(companyId)}`, {
+                            method: "DELETE",
+                        });
+                        deleted += 1;
+                    } catch (error) {
+                        failed += 1;
+                    }
+                }
+                companiesHouseState.workflowBusy = false;
+                companiesHouseState.selectedCompanyIds = new Set();
+                companiesHouseState.tabLoaded.companies = false;
+                companiesHouseState.tabLoaded.dashboard = false;
+                await Promise.allSettled([loadCompaniesHouseCompanies(true), loadCompaniesHouseDashboard(true)]);
+                chSetWorkflowStatus(
+                    `Bulk delete complete: ${deleted.toLocaleString("en-GB")} deleted, ${failed.toLocaleString("en-GB")} failed.`,
+                    failed ? "error" : "success"
+                );
+                showToast(
+                    `Bulk delete complete: ${deleted} deleted, ${failed} failed.`,
+                    failed ? "info" : "success"
+                );
+            }
+
             function selectEligibleCompaniesForWorkflow() {
                 const eligible = (companiesHouseState.companies || [])
                     .filter((company) => company.eligibleForSubmission)
@@ -65044,6 +65275,19 @@
                 chSetWorkflowStatus(
                     `${eligible.length.toLocaleString("en-GB")} eligible companies selected for bulk submission.`,
                     "success"
+                );
+            }
+
+            function selectXeroConnectedCompaniesForWorkflow() {
+                const xeroConnected = (companiesHouseState.companies || [])
+                    .filter((company) => chCompanyXeroConnected(company))
+                    .map((company) => String(company.id || ""))
+                    .filter(Boolean);
+                companiesHouseState.selectedCompanyIds = new Set(xeroConnected);
+                renderCompaniesHouseCompaniesTable();
+                chSetWorkflowStatus(
+                    `${xeroConnected.length.toLocaleString("en-GB")} Xero-connected companies selected.`,
+                    xeroConnected.length ? "success" : "error"
                 );
             }
 
@@ -66856,6 +67100,17 @@
                 document.getElementById("chCompaniesSyncButton")?.addEventListener("click", syncCompaniesHouseTopbarData);
                 document.getElementById("chCompaniesTestConnectionButton")?.addEventListener("click", testCompaniesHouseConnectionHandler);
                 const searchInput = document.getElementById("chCompaniesSearch");
+                if (searchInput) searchInput.value = companiesHouseState.companyFilters.search || "";
+                const statusFilter = document.getElementById("chCompaniesStatusFilter");
+                if (statusFilter) statusFilter.value = companiesHouseState.companyFilters.internalStatus || "all";
+                const missingAuthFilter = document.getElementById("chCompaniesFilterMissingAuth");
+                if (missingAuthFilter) missingAuthFilter.checked = !!companiesHouseState.companyFilters.missingAuth;
+                const dueSoonFilter = document.getElementById("chCompaniesFilterDueSoon");
+                if (dueSoonFilter) dueSoonFilter.checked = !!companiesHouseState.companyFilters.dueSoon;
+                const overdueFilter = document.getElementById("chCompaniesFilterOverdue");
+                if (overdueFilter) overdueFilter.checked = !!companiesHouseState.companyFilters.overdue;
+                const xeroConnectedFilter = document.getElementById("chCompaniesFilterXeroConnected");
+                if (xeroConnectedFilter) xeroConnectedFilter.checked = !!companiesHouseState.companyFilters.xeroConnected;
                 let searchTimer;
                 searchInput?.addEventListener("input", () => {
                     clearTimeout(searchTimer);
@@ -66878,6 +67133,10 @@
                 });
                 document.getElementById("chCompaniesFilterOverdue")?.addEventListener("change", (event) => {
                     companiesHouseState.companyFilters.overdue = !!event.target.checked;
+                    loadCompaniesHouseCompanies(true);
+                });
+                document.getElementById("chCompaniesFilterXeroConnected")?.addEventListener("change", (event) => {
+                    companiesHouseState.companyFilters.xeroConnected = !!event.target.checked;
                     loadCompaniesHouseCompanies(true);
                 });
                 document.getElementById("chCompaniesSelectAll")?.addEventListener("change", (event) => {
@@ -66917,6 +67176,7 @@
                     chUpdateWorkflowControls();
                 });
                 document.getElementById("chWorkflowSelectEligibleButton")?.addEventListener("click", selectEligibleCompaniesForWorkflow);
+                document.getElementById("chWorkflowSelectXeroConnectedButton")?.addEventListener("click", selectXeroConnectedCompaniesForWorkflow);
                 document.getElementById("chWorkflowSubmitSelectedButton")?.addEventListener("click", submitSelectedCompaniesWorkflow);
                 document.getElementById("chWorkflowInvoiceSelectedButton")?.addEventListener("click", raiseSelectedWorkflowInvoices);
                 document.getElementById("chWorkflowStartButton")?.addEventListener("click", startCompaniesHouseWorkflow);
