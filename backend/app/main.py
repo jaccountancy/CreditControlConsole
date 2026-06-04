@@ -32,7 +32,9 @@ from .companies_house import (
     commit_auth_code_register_import,
     bulk_raise_submission_invoices,
     bulk_submit_confirmation_statements,
+    complete_company_secretarial_filing,
     commit_clients_import,
+    create_company_secretarial_filing,
     dashboard_summary as companies_house_dashboard_summary,
     delete_company,
     export_companies_house_support_report,
@@ -40,10 +42,12 @@ from .companies_house import (
     get_companies_house_settings,
     get_company_detail,
     list_dead_letters,
+    list_company_secretarial_filings,
     list_companies,
     list_auth_code_register,
     list_imports as list_companies_house_imports,
     list_submission_attempts,
+    patch_company_secretarial_filing,
     parse_clients_import,
     preview_auth_code_register_csv,
     populate_auth_codes_from_register,
@@ -51,6 +55,7 @@ from .companies_house import (
     replay_dead_letter_submissions,
     run_companies_house_submission_reconciliation,
     save_companies_house_settings,
+    submit_company_secretarial_filing,
     sync_xero_lock_date_company_records,
     submission_reconciliation_report,
     start_companies_house_auto_sync_worker,
@@ -58,6 +63,7 @@ from .companies_house import (
     test_companies_house_connection,
     upload_auth_code_register_csv,
     update_company,
+    validate_company_secretarial_filing,
 )
 from .config import get_settings
 from .database import ensure_schema, get_connection
@@ -1318,6 +1324,59 @@ async def api_companies_house_auth_code_register_populate(
     payload = await request.json()
     result = populate_auth_codes_from_register(user, payload)
     return {"status": "ok", "result": result}
+
+
+@app.get("/api/company-secretarial/filings")
+def api_company_secretarial_list(
+    limit: int = Query(500, ge=20, le=2000),
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", **list_company_secretarial_filings(limit=limit)}
+
+
+@app.post("/api/company-secretarial/filings")
+async def api_company_secretarial_create(
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", "filing": create_company_secretarial_filing(user, payload)}
+
+
+@app.patch("/api/company-secretarial/filings/{filing_id}")
+async def api_company_secretarial_patch(
+    filing_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json()
+    return {"status": "ok", "filing": patch_company_secretarial_filing(user, filing_id, payload)}
+
+
+@app.post("/api/company-secretarial/filings/{filing_id}/validate")
+async def api_company_secretarial_validate(
+    filing_id: str,
+    request: Request,
+    user: dict = Depends(require_panel_user),
+):
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    return {"status": "ok", "filing": validate_company_secretarial_filing(user, filing_id, payload)}
+
+
+@app.post("/api/company-secretarial/filings/{filing_id}/submit")
+async def api_company_secretarial_submit(
+    filing_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "filing": submit_company_secretarial_filing(user, filing_id)}
+
+
+@app.post("/api/company-secretarial/filings/{filing_id}/complete")
+async def api_company_secretarial_complete(
+    filing_id: str,
+    user: dict = Depends(require_panel_user),
+):
+    return {"status": "ok", "filing": complete_company_secretarial_filing(user, filing_id)}
 
 
 @app.get("/api/companies-house/dashboard")

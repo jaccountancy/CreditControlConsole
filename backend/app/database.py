@@ -1572,6 +1572,52 @@ CREATE TABLE IF NOT EXISTS ch_drafts (
 
 CREATE INDEX IF NOT EXISTS ch_drafts_company_idx ON ch_drafts (company_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS ch_secretarial_filings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_id UUID REFERENCES ch_companies(id) ON DELETE SET NULL,
+    company_number TEXT NOT NULL DEFAULT '',
+    company_name TEXT NOT NULL DEFAULT '',
+    client_id TEXT NOT NULL DEFAULT '',
+    filing_type TEXT NOT NULL DEFAULT '',
+    filing_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    risk TEXT NOT NULL DEFAULT 'medium',
+    mode TEXT NOT NULL DEFAULT 'manual',
+    due_date DATE,
+    effective_date DATE,
+    client_approval_required BOOLEAN NOT NULL DEFAULT FALSE,
+    client_approval_status TEXT NOT NULL DEFAULT 'not_required',
+    internal_approval_required BOOLEAN NOT NULL DEFAULT FALSE,
+    internal_approval_status TEXT NOT NULL DEFAULT 'not_required',
+    evidence_attached BOOLEAN NOT NULL DEFAULT FALSE,
+    submitted_at TIMESTAMPTZ,
+    companies_house_status TEXT NOT NULL DEFAULT 'Not submitted',
+    companies_house_ref TEXT NOT NULL DEFAULT '',
+    fee_amount NUMERIC(14, 2) NOT NULL DEFAULT 0,
+    assignee TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    client_email TEXT NOT NULL DEFAULT '',
+    client_phone TEXT NOT NULL DEFAULT '',
+    client_address TEXT NOT NULL DEFAULT '',
+    auth_code_hint TEXT NOT NULL DEFAULT '',
+    source_filename TEXT NOT NULL DEFAULT '',
+    uploaded_at TIMESTAMPTZ,
+    form_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    prepared_submission JSONB NOT NULL DEFAULT '{}'::jsonb,
+    validation_messages JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ch_secretarial_filings_company_number_idx
+ON ch_secretarial_filings (company_number);
+CREATE INDEX IF NOT EXISTS ch_secretarial_filings_status_due_idx
+ON ch_secretarial_filings (status, due_date);
+CREATE INDEX IF NOT EXISTS ch_secretarial_filings_updated_idx
+ON ch_secretarial_filings (updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS ch_submissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES ch_companies(id) ON DELETE CASCADE,

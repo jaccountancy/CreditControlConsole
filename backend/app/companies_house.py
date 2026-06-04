@@ -3734,6 +3734,539 @@ def list_auth_code_register(limit: int = 300) -> dict:
     }
 
 
+COMPANY_SECRETARIAL_ALLOWED_MODES = {"api", "assisted", "manual"}
+COMPANY_SECRETARIAL_ALLOWED_STATUSES = {
+    "DRAFT",
+    "VALIDATION_FAILED",
+    "AWAITING_CLIENT_APPROVAL",
+    "AWAITING_INTERNAL_REVIEW",
+    "READY_TO_SUBMIT",
+    "SUBMITTED",
+    "COMPLETED",
+    "REJECTED",
+}
+COMPANY_SECRETARIAL_APPROVAL_STATUSES = {"not_required", "requested", "pending", "approved"}
+COMPANY_SECRETARIAL_TYPE_DEFAULTS = {
+    "AD01": {"name": "Registered office change", "risk": "medium", "mode": "api", "fee": Decimal("0.00"), "clientApprovalRequired": False, "internalApprovalRequired": True},
+    "NM01": {"name": "Company name change", "risk": "high", "mode": "api", "fee": Decimal("10.00"), "clientApprovalRequired": True, "internalApprovalRequired": True},
+    "DS01": {"name": "Strike-off application", "risk": "high", "mode": "assisted", "fee": Decimal("8.00"), "clientApprovalRequired": True, "internalApprovalRequired": True},
+    "INCORPORATION": {"name": "New company incorporation", "risk": "high", "mode": "assisted", "fee": Decimal("50.00"), "clientApprovalRequired": True, "internalApprovalRequired": True},
+    "AP01": {"name": "Director appointment", "risk": "medium", "mode": "api", "fee": Decimal("0.00"), "clientApprovalRequired": False, "internalApprovalRequired": True},
+    "TM01": {"name": "Director resignation", "risk": "medium", "mode": "api", "fee": Decimal("0.00"), "clientApprovalRequired": False, "internalApprovalRequired": True},
+    "PSC_CHANGE": {"name": "PSC update", "risk": "high", "mode": "assisted", "fee": Decimal("0.00"), "clientApprovalRequired": True, "internalApprovalRequired": True},
+    "SH01": {"name": "Share allotment", "risk": "high", "mode": "assisted", "fee": Decimal("0.00"), "clientApprovalRequired": True, "internalApprovalRequired": True},
+    "CH01": {"name": "Director detail change", "risk": "medium", "mode": "api", "fee": Decimal("0.00"), "clientApprovalRequired": False, "internalApprovalRequired": True},
+}
+
+
+def _secretarial_parse_date(value: object, field: str) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    try:
+        return datetime.fromisoformat(text).date() if "T" in text else date.fromisoformat(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field}. Expected YYYY-MM-DD.") from exc
+
+
+def _secretarial_parse_datetime(value: object, field: str) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field}. Expected ISO-8601 datetime.") from exc
+
+
+def _secretarial_decimal(value: object, field: str, default: Decimal = Decimal("0.00")) -> Decimal:
+    if value in (None, ""):
+        return default
+    decimal_value = _coerce_decimal(value, field)
+    try:
+        return decimal_value.quantize(Decimal("0.01"))
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field}.") from exc
+
+
+def _secretarial_validation_messages(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    cleaned: list[str] = []
+    for item in value:
+        text = _coerce_text(item, 500)
+        if text:
+            cleaned.append(text)
+    return cleaned
+
+
+def _derive_secretarial_status(
+    *,
+    current_status: str | None = None,
+    has_validation_issues: bool = False,
+    client_required: bool = False,
+    client_status: str = "not_required",
+    internal_required: bool = False,
+    internal_status: str = "not_required",
+) -> str:
+    status_value = str(current_status or "").strip().upper()
+    if status_value in {"SUBMITTED", "COMPLETED", "REJECTED"}:
+        return status_value
+    if has_validation_issues:
+        return "VALIDATION_FAILED"
+    if client_required and client_status != "approved":
+        return "AWAITING_CLIENT_APPROVAL"
+    if internal_required and internal_status != "approved":
+        return "AWAITING_INTERNAL_REVIEW"
+    return "READY_TO_SUBMIT"
+
+
+def _serialise_secretarial_filing(row: dict | None) -> dict:
+    row = row or {}
+    fee = row.get("fee_amount")
+    try:
+        fee_value = float(fee) if fee is not None else 0.0
+    except Exception:
+        fee_value = 0.0
+    return {
+        "id": str(row.get("id") or ""),
+        "filingType": row.get("filing_type") or "",
+        "filingName": row.get("filing_name") or "",
+        "companyId": str(row.get("company_id") or "") if row.get("company_id") else "",
+        "companyName": row.get("company_name") or "",
+        "companyNumber": row.get("company_number") or "",
+        "clientId": row.get("client_id") or "",
+        "status": row.get("status") or "DRAFT",
+        "risk": row.get("risk") or "medium",
+        "mode": row.get("mode") or "manual",
+        "dueDate": _date_or_none(row.get("due_date")),
+        "effectiveDate": _date_or_none(row.get("effective_date")),
+        "clientApprovalRequired": bool(row.get("client_approval_required")),
+        "clientApprovalStatus": row.get("client_approval_status") or "not_required",
+        "internalApprovalRequired": bool(row.get("internal_approval_required")),
+        "internalApprovalStatus": row.get("internal_approval_status") or "not_required",
+        "evidenceAttached": bool(row.get("evidence_attached")),
+        "submittedAt": row.get("submitted_at").isoformat() if row.get("submitted_at") else "",
+        "companiesHouseStatus": row.get("companies_house_status") or "Not submitted",
+        "companiesHouseRef": row.get("companies_house_ref") or "",
+        "feeAmount": fee_value,
+        "assignee": row.get("assignee") or "",
+        "notes": row.get("notes") or "",
+        "clientEmail": row.get("client_email") or "",
+        "clientPhone": row.get("client_phone") or "",
+        "clientAddress": row.get("client_address") or "",
+        "authCodeHint": row.get("auth_code_hint") or "",
+        "sourceFilename": row.get("source_filename") or "",
+        "uploadedAt": row.get("uploaded_at").isoformat() if row.get("uploaded_at") else "",
+        "formData": row.get("form_data") if isinstance(row.get("form_data"), dict) else {},
+        "preparedSubmission": row.get("prepared_submission") if isinstance(row.get("prepared_submission"), dict) else {},
+        "validationMessages": row.get("validation_messages") if isinstance(row.get("validation_messages"), list) else [],
+        "updatedAt": row.get("updated_at").isoformat() if row.get("updated_at") else "",
+        "createdAt": row.get("created_at").isoformat() if row.get("created_at") else "",
+    }
+
+
+def _load_secretarial_filing(cursor, filing_id: str) -> dict | None:
+    cursor.execute(
+        """
+        SELECT *
+        FROM ch_secretarial_filings
+        WHERE id = %s
+        """,
+        (filing_id,),
+    )
+    return cursor.fetchone() or None
+
+
+def _find_secretarial_company(cursor, payload: dict) -> dict | None:
+    company_id = str(payload.get("companyId") or "").strip()
+    company_number = normalise_company_number(payload.get("companyNumber"))
+    if company_id:
+        try:
+            UUID(company_id)
+        except (TypeError, ValueError):
+            company_id = ""
+    if company_id:
+        cursor.execute(
+            """
+            SELECT id, company_number, company_name, client_id, contact_email, contact_phone, client_address, assigned_staff_name
+            FROM ch_companies
+            WHERE id = %s
+            """,
+            (company_id,),
+        )
+        company = cursor.fetchone() or None
+        if company:
+            return company
+    if company_number:
+        cursor.execute(
+            """
+            SELECT id, company_number, company_name, client_id, contact_email, contact_phone, client_address, assigned_staff_name
+            FROM ch_companies
+            WHERE company_number = %s
+            """,
+            (company_number,),
+        )
+        return cursor.fetchone() or None
+    return None
+
+
+def _find_secretarial_register_row(cursor, company_number: str) -> dict | None:
+    if not company_number:
+        return None
+    cursor.execute(
+        """
+        SELECT company_number, client_manager, client_id, code_hint, source_filename, uploaded_at
+        FROM ch_auth_code_register
+        WHERE company_number = %s
+        ORDER BY uploaded_at DESC
+        LIMIT 1
+        """,
+        (company_number,),
+    )
+    return cursor.fetchone() or None
+
+
+def list_company_secretarial_filings(limit: int = 500) -> dict:
+    safe_limit = max(20, min(int(limit or 500), 2000))
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT *
+                FROM ch_secretarial_filings
+                ORDER BY updated_at DESC
+                LIMIT %s
+                """,
+                (safe_limit,),
+            )
+            rows = cursor.fetchall() or []
+            cursor.execute("SELECT COUNT(*) AS total FROM ch_secretarial_filings")
+            total_row = cursor.fetchone() or {}
+        connection.commit()
+    return {
+        "totalCount": int(total_row.get("total") or 0),
+        "filings": [_serialise_secretarial_filing(row) for row in rows],
+    }
+
+
+def create_company_secretarial_filing(user: dict, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    filing_type = _coerce_text(payload.get("filingType"), 40).upper()
+    if not filing_type:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="filingType is required.")
+    defaults = COMPANY_SECRETARIAL_TYPE_DEFAULTS.get(filing_type, {})
+    filing_name = _coerce_text(payload.get("filingName"), 200) or defaults.get("name") or "Company secretarial filing"
+    mode = _coerce_text(payload.get("mode"), 20).lower() or str(defaults.get("mode") or "manual")
+    if mode not in COMPANY_SECRETARIAL_ALLOWED_MODES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid mode.")
+    risk = _coerce_text(payload.get("risk"), 20).lower() or str(defaults.get("risk") or "medium")
+    if risk not in {"low", "medium", "high"}:
+        risk = "medium"
+    client_required = bool(payload.get("clientApprovalRequired", defaults.get("clientApprovalRequired", False)))
+    internal_required = bool(payload.get("internalApprovalRequired", defaults.get("internalApprovalRequired", True)))
+    client_status = _coerce_text(payload.get("clientApprovalStatus"), 30).lower() or ("requested" if client_required else "not_required")
+    if client_status not in COMPANY_SECRETARIAL_APPROVAL_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid clientApprovalStatus.")
+    internal_status = _coerce_text(payload.get("internalApprovalStatus"), 30).lower() or ("pending" if internal_required else "not_required")
+    if internal_status not in COMPANY_SECRETARIAL_APPROVAL_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid internalApprovalStatus.")
+    fee_amount = _secretarial_decimal(payload.get("feeAmount"), "feeAmount", defaults.get("fee") or Decimal("0.00"))
+    due_date = _secretarial_parse_date(payload.get("dueDate"), "dueDate")
+    effective_date = _secretarial_parse_date(payload.get("effectiveDate"), "effectiveDate")
+    validation_messages = _secretarial_validation_messages(payload.get("validationIssues") or payload.get("validationMessages") or [])
+    status_value = _coerce_text(payload.get("status"), 40).upper()
+    if status_value and status_value not in COMPANY_SECRETARIAL_ALLOWED_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status.")
+    derived_status = _derive_secretarial_status(
+        current_status=status_value or None,
+        has_validation_issues=bool(validation_messages),
+        client_required=client_required,
+        client_status=client_status,
+        internal_required=internal_required,
+        internal_status=internal_status,
+    )
+    companies_house_status = _coerce_text(payload.get("companiesHouseStatus"), 200) or (
+        "Validation failed" if derived_status == "VALIDATION_FAILED" else "Draft prepared for Companies House"
+    )
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            company = _find_secretarial_company(cursor, payload) or {}
+            company_id = company.get("id")
+            company_number = normalise_company_number(payload.get("companyNumber") or company.get("company_number"))
+            company_name = _coerce_text(payload.get("companyName"), 200) or _coerce_text(company.get("company_name"), 200)
+            client_id = _coerce_text(payload.get("clientId"), 100) or _coerce_text(company.get("client_id"), 100)
+            if not company_number:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company number is required.")
+            register_row = _find_secretarial_register_row(cursor, company_number) or {}
+            uploaded_at = _secretarial_parse_datetime(payload.get("uploadedAt"), "uploadedAt") or register_row.get("uploaded_at")
+            cursor.execute(
+                """
+                INSERT INTO ch_secretarial_filings (
+                    company_id, company_number, company_name, client_id,
+                    filing_type, filing_name, status, risk, mode, due_date, effective_date,
+                    client_approval_required, client_approval_status,
+                    internal_approval_required, internal_approval_status,
+                    evidence_attached, submitted_at, companies_house_status, companies_house_ref,
+                    fee_amount, assignee, notes, client_email, client_phone, client_address,
+                    auth_code_hint, source_filename, uploaded_at, form_data, prepared_submission,
+                    validation_messages, created_by_user_id, updated_by_user_id
+                ) VALUES (
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s::jsonb, %s::jsonb,
+                    %s::jsonb, %s, %s
+                )
+                RETURNING id
+                """,
+                (
+                    company_id,
+                    company_number,
+                    company_name,
+                    client_id,
+                    filing_type,
+                    filing_name,
+                    derived_status,
+                    risk,
+                    mode,
+                    due_date,
+                    effective_date,
+                    client_required,
+                    client_status,
+                    internal_required,
+                    internal_status,
+                    bool(payload.get("evidenceAttached")),
+                    _secretarial_parse_datetime(payload.get("submittedAt"), "submittedAt"),
+                    companies_house_status,
+                    _coerce_text(payload.get("companiesHouseRef"), 120),
+                    fee_amount,
+                    _coerce_text(payload.get("assignee"), 120) or _coerce_text(register_row.get("client_manager"), 120) or _coerce_text(company.get("assigned_staff_name"), 120),
+                    _coerce_text(payload.get("notes"), 4000),
+                    _coerce_text(payload.get("clientEmail"), 320) or _coerce_text(company.get("contact_email"), 320),
+                    _coerce_text(payload.get("clientPhone"), 120) or _coerce_text(company.get("contact_phone"), 120),
+                    _coerce_text(payload.get("clientAddress"), 2000) or _coerce_text(company.get("client_address"), 2000),
+                    _coerce_text(payload.get("authCodeHint"), 120) or _coerce_text(register_row.get("code_hint"), 120),
+                    _coerce_text(payload.get("sourceFilename"), 255) or _coerce_text(register_row.get("source_filename"), 255),
+                    uploaded_at,
+                    json.dumps(payload.get("formData") if isinstance(payload.get("formData"), dict) else {}),
+                    json.dumps(payload.get("preparedSubmission") if isinstance(payload.get("preparedSubmission"), dict) else {}),
+                    json.dumps(validation_messages),
+                    user_id,
+                    user_id,
+                ),
+            )
+            result = cursor.fetchone() or {}
+            filing_id = str(result.get("id") or "")
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_secretarial_filing', %s, 'created', %s::jsonb, %s)
+                """,
+                (filing_id, json.dumps({"filingType": filing_type, "status": derived_status}), user_id),
+            )
+            filing = _load_secretarial_filing(cursor, filing_id)
+        connection.commit()
+    return _serialise_secretarial_filing(filing)
+
+
+def patch_company_secretarial_filing(user: dict, filing_id: str, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _load_secretarial_filing(cursor, filing_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filing not found.")
+            client_status = _coerce_text(payload.get("clientApprovalStatus"), 30).lower() or row.get("client_approval_status") or "not_required"
+            internal_status = _coerce_text(payload.get("internalApprovalStatus"), 30).lower() or row.get("internal_approval_status") or "not_required"
+            if client_status not in COMPANY_SECRETARIAL_APPROVAL_STATUSES:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid clientApprovalStatus.")
+            if internal_status not in COMPANY_SECRETARIAL_APPROVAL_STATUSES:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid internalApprovalStatus.")
+            client_required = bool(payload.get("clientApprovalRequired")) if "clientApprovalRequired" in payload else bool(row.get("client_approval_required"))
+            internal_required = bool(payload.get("internalApprovalRequired")) if "internalApprovalRequired" in payload else bool(row.get("internal_approval_required"))
+            current_validation = row.get("validation_messages") if isinstance(row.get("validation_messages"), list) else []
+            next_status = _derive_secretarial_status(
+                current_status=row.get("status"),
+                has_validation_issues=bool(current_validation),
+                client_required=client_required,
+                client_status=client_status,
+                internal_required=internal_required,
+                internal_status=internal_status,
+            )
+            cursor.execute(
+                """
+                UPDATE ch_secretarial_filings
+                SET client_approval_required = %s,
+                    client_approval_status = %s,
+                    internal_approval_required = %s,
+                    internal_approval_status = %s,
+                    evidence_attached = %s,
+                    notes = %s,
+                    assignee = %s,
+                    fee_amount = %s,
+                    status = %s,
+                    companies_house_status = %s,
+                    updated_by_user_id = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (
+                    client_required,
+                    client_status,
+                    internal_required,
+                    internal_status,
+                    bool(payload.get("evidenceAttached")) if "evidenceAttached" in payload else bool(row.get("evidence_attached")),
+                    _coerce_text(payload.get("notes"), 4000) if "notes" in payload else row.get("notes"),
+                    _coerce_text(payload.get("assignee"), 120) if "assignee" in payload else row.get("assignee"),
+                    _secretarial_decimal(payload.get("feeAmount"), "feeAmount", _secretarial_decimal(row.get("fee_amount"), "feeAmount")) if "feeAmount" in payload else row.get("fee_amount"),
+                    next_status,
+                    "Client approved" if client_status == "approved" else ("Internal review approved" if internal_status == "approved" else row.get("companies_house_status")),
+                    user_id,
+                    filing_id,
+                ),
+            )
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_secretarial_filing', %s, 'updated', %s::jsonb, %s)
+                """,
+                (filing_id, json.dumps({"status": next_status}), user_id),
+            )
+            updated = _load_secretarial_filing(cursor, filing_id)
+        connection.commit()
+    return _serialise_secretarial_filing(updated)
+
+
+def validate_company_secretarial_filing(user: dict, filing_id: str, payload: dict | None = None) -> dict:
+    payload = payload or {}
+    validation_messages = _secretarial_validation_messages(payload.get("validationIssues") or payload.get("validationMessages") or [])
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _load_secretarial_filing(cursor, filing_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filing not found.")
+            status_value = _derive_secretarial_status(
+                current_status=row.get("status"),
+                has_validation_issues=bool(validation_messages),
+                client_required=bool(row.get("client_approval_required")),
+                client_status=row.get("client_approval_status") or "not_required",
+                internal_required=bool(row.get("internal_approval_required")),
+                internal_status=row.get("internal_approval_status") or "not_required",
+            )
+            if validation_messages:
+                ch_status = "Validation failed"
+            elif bool(row.get("client_approval_required")) and (row.get("client_approval_status") or "") != "approved":
+                ch_status = "Awaiting client approval"
+            elif bool(row.get("internal_approval_required")) and (row.get("internal_approval_status") or "") != "approved":
+                ch_status = "Awaiting internal review"
+            else:
+                ch_status = "Validated and ready"
+            cursor.execute(
+                """
+                UPDATE ch_secretarial_filings
+                SET validation_messages = %s::jsonb,
+                    status = %s,
+                    companies_house_status = %s,
+                    updated_by_user_id = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (json.dumps(validation_messages), status_value, ch_status, user_id, filing_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_secretarial_filing', %s, 'validated', %s::jsonb, %s)
+                """,
+                (filing_id, json.dumps({"status": status_value, "validationMessages": validation_messages}), user_id),
+            )
+            updated = _load_secretarial_filing(cursor, filing_id)
+        connection.commit()
+    return _serialise_secretarial_filing(updated)
+
+
+def submit_company_secretarial_filing(user: dict, filing_id: str) -> dict:
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _load_secretarial_filing(cursor, filing_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filing not found.")
+            status_value = str(row.get("status") or "")
+            if status_value not in {"READY_TO_SUBMIT", "SUBMITTED"}:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filing must be ready before submission.")
+            reference = _coerce_text(row.get("companies_house_ref"), 120) or f"CH-{100000 + secrets.randbelow(900000)}"
+            mode = _coerce_text(row.get("mode"), 20).lower()
+            ch_status = "Manual filing pack generated" if mode == "manual" else "Submission sent"
+            cursor.execute(
+                """
+                UPDATE ch_secretarial_filings
+                SET status = 'SUBMITTED',
+                    submitted_at = COALESCE(submitted_at, NOW()),
+                    companies_house_status = %s,
+                    companies_house_ref = %s,
+                    updated_by_user_id = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (ch_status, reference, user_id, filing_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_secretarial_filing', %s, 'submitted', %s::jsonb, %s)
+                """,
+                (filing_id, json.dumps({"companiesHouseRef": reference}), user_id),
+            )
+            updated = _load_secretarial_filing(cursor, filing_id)
+        connection.commit()
+    return _serialise_secretarial_filing(updated)
+
+
+def complete_company_secretarial_filing(user: dict, filing_id: str) -> dict:
+    user_id = user.get("id") if isinstance(user, dict) else None
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            row = _load_secretarial_filing(cursor, filing_id)
+            if not row:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filing not found.")
+            status_value = str(row.get("status") or "")
+            if status_value not in {"SUBMITTED", "COMPLETED"}:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Submit filing before marking complete.")
+            cursor.execute(
+                """
+                UPDATE ch_secretarial_filings
+                SET status = 'COMPLETED',
+                    companies_house_status = 'Accepted and archived',
+                    updated_by_user_id = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (user_id, filing_id),
+            )
+            cursor.execute(
+                """
+                INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
+                VALUES ('ch_secretarial_filing', %s, 'completed', %s::jsonb, %s)
+                """,
+                (filing_id, json.dumps({"status": "COMPLETED"}), user_id),
+            )
+            updated = _load_secretarial_filing(cursor, filing_id)
+        connection.commit()
+    return _serialise_secretarial_filing(updated)
+
+
 def populate_auth_codes_from_register(user: dict, payload: dict | None = None) -> dict:
     payload = payload or {}
     company_ids = _chunk_company_ids(payload.get("companyIds") or [])
@@ -4280,7 +4813,7 @@ def list_companies(filters: dict | None = None) -> list[dict]:
                 (
                     NULLIF(TRIM(COALESCE(c.client_id, '')), '') IS NOT NULL
                     AND (
-                        LOWER(COALESCE(cust.client_id, '')) = LOWER(c.client_id)
+                        LOWER(COALESCE(cust.account_number, '')) = LOWER(c.client_id)
                         OR LOWER(COALESCE(cust.id::text, '')) = LOWER(c.client_id)
                     )
                 )
@@ -4298,7 +4831,7 @@ def list_companies(filters: dict | None = None) -> list[dict]:
                     WHEN (
                         NULLIF(TRIM(COALESCE(c.client_id, '')), '') IS NOT NULL
                         AND (
-                            LOWER(COALESCE(cust.client_id, '')) = LOWER(c.client_id)
+                            LOWER(COALESCE(cust.account_number, '')) = LOWER(c.client_id)
                             OR LOWER(COALESCE(cust.id::text, '')) = LOWER(c.client_id)
                         )
                     ) THEN 0
