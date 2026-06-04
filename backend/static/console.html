@@ -67132,7 +67132,15 @@
                 syncActiveViewShell();
                 closeTopbarMenu();
                 closeToolbarMenus();
-                renderAll();
+                try {
+                    renderAll();
+                } catch (error) {
+                    // Keep Vault usable even if another screen renderer throws during global redraw.
+                    console.error("Unable to fully render all sections while opening Vault", error);
+                    syncActiveViewShell();
+                    renderChrome();
+                    renderVaultScreen();
+                }
                 refreshVaultData();
                 scrollConsoleToTop();
             }
@@ -67553,10 +67561,6 @@
                 if (refreshButton.dataset.vaultWired !== "true") {
                     refreshButton.dataset.vaultWired = "true";
                     refreshButton.addEventListener("click", () => {
-                        vaultFolderFilter = "Legal/Claims";
-                        vaultTagFilter = "";
-                        vaultSearchTerm = "";
-                        vaultSearchPanelOpen = true;
                         refreshVaultData();
                     });
                 }
@@ -67788,57 +67792,68 @@
             }
 
             function renderAll() {
-                syncActiveViewShell();
-                renderChrome();
-                renderSyncSettings();
-                renderSettingsNavigation();
-                renderDatabaseMetrics();
-                renderPendingXeroActions();
-                renderSettingsUsage();
-                renderProductReleasesDeployments();
-                renderPostingSettings();
-                renderFactoryResetGuard();
-                renderLetterTemplateSettings();
-                renderMeReportEmailSettings();
-                renderDashboardHero();
-                renderSummaryCounts();
-                renderToolbarControls();
-                renderInvoiceTable();
-                renderBulkActionToolbar();
-                applyColumnVisibility();
-                renderInsightsScreen();
-                renderNotificationsScreen();
-                renderLateChargesScreen();
-                renderBadDebtScreen();
-                renderRiskAssessmentsScreen();
-                renderConfirmationStatementsScreen();
-                renderCompanySecretarialScreen();
-                renderHmrc648Screen();
-                renderAmlVerificationScreen();
-                renderXeroLockDateScreen();
-                renderJashflowScreen();
-                renderBankStatementsScreen();
-                renderSupplierReconciliationScreen();
-                renderSupplierReconciliationStatementPage();
-                renderBankAccountPanel();
-                renderBankStatementUploadPanel();
-                renderBankSa100EntryPanel();
-                renderIgnitionScreen();
-                renderMeReportScreen();
-                if (typeof renderSa100PrepScreen === "function") {
-                    renderSa100PrepScreen();
-                } else {
-                    console.warn("SA100 prep renderer is unavailable in this build.");
-                }
-                renderYePrepScreen();
-                renderVatReturnPrepareScreen();
-                renderPracticePackScreen();
-                renderTaskTrackerScreen();
-                renderCodeBreakerScreen();
-                renderVaultScreen();
-                renderClientScreen();
-                enhanceConsoleButtons();
-                persistState();
+                const renderSteps = [
+                    ["syncActiveViewShell", () => syncActiveViewShell()],
+                    ["renderChrome", () => renderChrome()],
+                    ["renderSyncSettings", () => renderSyncSettings()],
+                    ["renderSettingsNavigation", () => renderSettingsNavigation()],
+                    ["renderDatabaseMetrics", () => renderDatabaseMetrics()],
+                    ["renderPendingXeroActions", () => renderPendingXeroActions()],
+                    ["renderSettingsUsage", () => renderSettingsUsage()],
+                    ["renderProductReleasesDeployments", () => renderProductReleasesDeployments()],
+                    ["renderPostingSettings", () => renderPostingSettings()],
+                    ["renderFactoryResetGuard", () => renderFactoryResetGuard()],
+                    ["renderLetterTemplateSettings", () => renderLetterTemplateSettings()],
+                    ["renderMeReportEmailSettings", () => renderMeReportEmailSettings()],
+                    ["renderDashboardHero", () => renderDashboardHero()],
+                    ["renderSummaryCounts", () => renderSummaryCounts()],
+                    ["renderToolbarControls", () => renderToolbarControls()],
+                    ["renderInvoiceTable", () => renderInvoiceTable()],
+                    ["renderBulkActionToolbar", () => renderBulkActionToolbar()],
+                    ["applyColumnVisibility", () => applyColumnVisibility()],
+                    ["renderInsightsScreen", () => renderInsightsScreen()],
+                    ["renderNotificationsScreen", () => renderNotificationsScreen()],
+                    ["renderLateChargesScreen", () => renderLateChargesScreen()],
+                    ["renderBadDebtScreen", () => renderBadDebtScreen()],
+                    ["renderRiskAssessmentsScreen", () => renderRiskAssessmentsScreen()],
+                    ["renderConfirmationStatementsScreen", () => renderConfirmationStatementsScreen()],
+                    ["renderCompanySecretarialScreen", () => renderCompanySecretarialScreen()],
+                    ["renderHmrc648Screen", () => renderHmrc648Screen()],
+                    ["renderAmlVerificationScreen", () => renderAmlVerificationScreen()],
+                    ["renderXeroLockDateScreen", () => renderXeroLockDateScreen()],
+                    ["renderJashflowScreen", () => renderJashflowScreen()],
+                    ["renderBankStatementsScreen", () => renderBankStatementsScreen()],
+                    ["renderSupplierReconciliationScreen", () => renderSupplierReconciliationScreen()],
+                    ["renderSupplierReconciliationStatementPage", () => renderSupplierReconciliationStatementPage()],
+                    ["renderBankAccountPanel", () => renderBankAccountPanel()],
+                    ["renderBankStatementUploadPanel", () => renderBankStatementUploadPanel()],
+                    ["renderBankSa100EntryPanel", () => renderBankSa100EntryPanel()],
+                    ["renderIgnitionScreen", () => renderIgnitionScreen()],
+                    ["renderMeReportScreen", () => renderMeReportScreen()],
+                    ["renderSa100PrepScreen", () => {
+                        if (typeof renderSa100PrepScreen === "function") {
+                            renderSa100PrepScreen();
+                        } else {
+                            console.warn("SA100 prep renderer is unavailable in this build.");
+                        }
+                    }],
+                    ["renderYePrepScreen", () => renderYePrepScreen()],
+                    ["renderVatReturnPrepareScreen", () => renderVatReturnPrepareScreen()],
+                    ["renderPracticePackScreen", () => renderPracticePackScreen()],
+                    ["renderTaskTrackerScreen", () => renderTaskTrackerScreen()],
+                    ["renderCodeBreakerScreen", () => renderCodeBreakerScreen()],
+                    ["renderVaultScreen", () => renderVaultScreen()],
+                    ["renderClientScreen", () => renderClientScreen()],
+                    ["enhanceConsoleButtons", () => enhanceConsoleButtons()],
+                    ["persistState", () => persistState()],
+                ];
+                renderSteps.forEach(([label, run]) => {
+                    try {
+                        run();
+                    } catch (error) {
+                        console.error(`Render step failed: ${label}`, error);
+                    }
+                });
             }
 
             function wireFilters() {
