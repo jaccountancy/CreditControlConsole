@@ -25151,6 +25151,14 @@
                                     </label>
                                 </div>
                                 <p class="me-report-bulk-period-summary" id="meReportBulkPeriodComputedSummary">Deadline for this period is the 15th of the following month.</p>
+                                <div class="me-report-bulk-period-selectors">
+                                    <div class="developer-log-actions">
+                                        <button class="ghost-button" id="meReportBulkSelectAllClientsButton" type="button">Select all</button>
+                                        <button class="ghost-button" id="meReportBulkClearClientsButton" type="button">Clear</button>
+                                    </div>
+                                    <p class="detail-meta" id="meReportBulkPeriodClientsSummary">Select Xero-connected clients for flow creation.</p>
+                                    <div class="me-report-bulk-match-list" id="meReportBulkClientSelectionList"></div>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -26214,6 +26222,7 @@
             let meReportCtCompsUploading = false;
             let meReportReviewReadyDialogState = null;
             let meReportBulkPeriodDialogState = null;
+            let selectedMeReportFlowIds = new Set();
             let meReportDirectorPaidPurchaseSelectionByClientId = {};
             let meReportFlowGuideDialogState = null;
             let expandedMeReportCalculationKey = "";
@@ -27655,9 +27664,11 @@
                 const safeNames = names.slice(0, 6).filter(Boolean);
                 const hasOverflowNames = names.length > safeNames.length;
                 const baseParts = [
-                    `New accounts: ${newCount}`,
                     `Refreshed: ${refreshedCount}`,
                 ];
+                if (newCount > 0) {
+                    baseParts.unshift(`New accounts: ${newCount}`);
+                }
                 if (totalCount > 0) baseParts.push(`Total linked: ${totalCount}`);
                 const namesPart = safeNames.length
                     ? `New: ${safeNames.join(", ")}${hasOverflowNames ? " +" + (names.length - safeNames.length) + " more" : ""}`
@@ -29798,9 +29809,6 @@
                 "bank-statements",
                 "supplier-reconciliation",
                 "confirmation-statements",
-                "sa100-prep",
-                "ye-prep",
-                "vat-return-prepare",
                 "company-secretarial",
                 "company-secreterial",
                 "xero-lock-date",
@@ -29809,9 +29817,15 @@
                 "me-report",
                 "practice-packs",
             ]);
+            const practicePrepNavSections = new Set([
+                "sa100-prep",
+                "ye-prep",
+                "vat-return-prepare",
+            ]);
             const sidebarNavGroups = {
                 "credit-control": creditControlNavSections,
                 "practice-tools": practiceToolsNavSections,
+                "practice-preps": practicePrepNavSections,
                 settings: new Set(["settings", "client-auth-register"]),
             };
             let sidebarSupportHistory = [];
@@ -47922,6 +47936,123 @@
                 return `<button class="${active ? "is-active" : ""}" type="button" data-me-report-client-sort="${escapeHTML(key)}" aria-label="Sort by ${escapeHTML(label)}">${escapeHTML(label)}<span>${active ? directionLabel : ""}</span></button>`;
             }
 
+            function meReportValidSelectedFlowIds() {
+                const validIds = new Set((meReportData.clients || []).map((client) => String(client?.id || "")).filter(Boolean));
+                selectedMeReportFlowIds = new Set([...selectedMeReportFlowIds].filter((id) => validIds.has(id)));
+                return selectedMeReportFlowIds;
+            }
+
+            function meReportSelectedFlowClients() {
+                const selected = meReportValidSelectedFlowIds();
+                return (meReportData.clients || []).filter((client) => selected.has(String(client?.id || "")));
+            }
+
+            function meReportBulkActionButtonsState() {
+                const selectedCount = meReportValidSelectedFlowIds().size;
+                const countNode = document.getElementById("meReportBulkSelectionCount");
+                if (countNode) {
+                    countNode.textContent = selectedCount
+                        ? `${selectedCount.toLocaleString("en-GB")} selected`
+                        : "No flows selected";
+                }
+                [
+                    "meReportBulkDeleteButton",
+                    "meReportBulkReassignButton",
+                    "meReportBulkEditButton",
+                ].forEach((id) => {
+                    const button = document.getElementById(id);
+                    if (button) button.disabled = selectedCount === 0;
+                });
+            }
+
+            async function bulkDeleteMeReportFlows() {
+                const selectedClients = meReportSelectedFlowClients();
+                if (!selectedClients.length) return showToast("Select one or more flows first", "error");
+                if (!window.confirm(`Delete ${selectedClients.length.toLocaleString("en-GB")} selected flow${selectedClients.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+                let deleted = 0;
+                let failed = 0;
+                for (const client of selectedClients) {
+                    try {
+                        const response = await requestJSON(api.endpoints.meReportClient, { method: "DELETE" }, { clientId: client.id });
+                        meReportData = normaliseMeReportPayload(response);
+                        deleted += 1;
+                    } catch (error) {
+                        failed += 1;
+                        console.warn("Unable to delete ME Report flow", client, error);
+                    }
+                }
+                selectedMeReportFlowIds = new Set();
+                ensureMeReportSelection();
+                renderMeReportScreen();
+                showToast(`Bulk delete complete: ${deleted} deleted${failed ? `, ${failed} failed` : ""}`, failed ? "error" : "success");
+            }
+
+            async function bulkReassignMeReportFlows() {
+                const selectedClients = meReportSelectedFlowClients();
+                if (!selectedClients.length) return showToast("Select one or more flows first", "error");
+                const owner = window.prompt("Client manager to assign to selected flows", "");
+                if (owner === null) return;
+                const cleanOwner = String(owner || "").trim();
+                let updated = 0;
+                let failed = 0;
+                for (const client of selectedClients) {
+                    try {
+                        const response = await requestJSON(api.endpoints.meReportClient, {
+                            method: "POST",
+                            body: JSON.stringify({ internalClientOwner: cleanOwner })
+                        }, { clientId: client.id });
+                        meReportData = normaliseMeReportPayload(response);
+                        updated += 1;
+                    } catch (error) {
+                        failed += 1;
+                        console.warn("Unable to bulk reassign ME Report flow", client, error);
+                    }
+                }
+                renderMeReportScreen();
+                showToast(`Bulk reassign complete: ${updated} updated${failed ? `, ${failed} failed` : ""}`, failed ? "error" : "success");
+            }
+
+            async function bulkEditMeReportFlows() {
+                const selectedClients = meReportSelectedFlowClients();
+                if (!selectedClients.length) return showToast("Select one or more flows first", "error");
+                const defaults = meReportDefaultBulkPeriod();
+                const startInput = window.prompt("Period start (YYYY-MM-DD)", defaults.periodStart || "");
+                if (startInput === null) return;
+                const endInput = window.prompt("Period end (YYYY-MM-DD)", defaults.periodEnd || "");
+                if (endInput === null) return;
+                const periodStart = String(startInput || "").trim();
+                const periodEnd = String(endInput || "").trim();
+                const startDate = new Date(periodStart);
+                const endDate = new Date(periodEnd);
+                if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
+                    return showToast("Enter a valid period range before bulk editing flows", "error");
+                }
+                const deadlineAt = meReportBulkPeriodDeadline(periodEnd);
+                let updated = 0;
+                let failed = 0;
+                for (const client of selectedClients) {
+                    try {
+                        const response = await requestJSON(api.endpoints.meReportClient, {
+                            method: "POST",
+                            body: JSON.stringify({
+                                flowMonth: startDate.getMonth() + 1,
+                                flowYear: startDate.getFullYear(),
+                                flowPeriodStart: periodStart,
+                                flowPeriodEnd: periodEnd,
+                                flowDeadlineAt: deadlineAt,
+                            })
+                        }, { clientId: client.id });
+                        meReportData = normaliseMeReportPayload(response);
+                        updated += 1;
+                    } catch (error) {
+                        failed += 1;
+                        console.warn("Unable to bulk edit ME Report flow period", client, error);
+                    }
+                }
+                renderMeReportScreen();
+                showToast(`Bulk edit complete: ${updated} updated${failed ? `, ${failed} failed` : ""}`, failed ? "error" : "success");
+            }
+
             function openMeReportClientWorkspace(clientId) {
                 if (!clientId) return;
                 selectedMeReportClientId = clientId;
@@ -47968,10 +48099,15 @@
                 });
                 const visibleColumnCount = Object.keys(meReportClientTableDefaultColumns)
                     .filter((key) => meReportClientColumnVisible(key))
-                    .length || 1;
+                    .length + 1 || 2;
+
+                const selectedIds = meReportValidSelectedFlowIds();
+                const selectedVisibleCount = clients.filter((client) => selectedIds.has(String(client?.id || ""))).length;
+                const allVisibleSelected = clients.length > 0 && selectedVisibleCount === clients.length;
 
                 if (!clients.length) {
                     tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="${visibleColumnCount}"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No monthly flows match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
+                    meReportBulkActionButtonsState();
                     return;
                 }
 
@@ -47993,6 +48129,14 @@
                     const email = client.xeroContactEmail || client.reportRecipientEmail || "No Xero email connected";
                     return `
                         <tr class="${client.id === selectedMeReportClientId ? "is-active" : ""}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
+                            <td>
+                                <input
+                                    type="checkbox"
+                                    data-me-report-flow-select="${escapeHTML(client.id || "")}"
+                                    aria-label="Select flow ${escapeHTML(client.clientName || client.id || "")}"
+                                    ${selectedIds.has(String(client.id || "")) ? "checked" : ""}
+                                >
+                            </td>
                             ${meReportClientColumnVisible("client") ? `<td>
                                 <div class="me-report-client-name-cell">
                                     <span class="me-report-client-table-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
@@ -48013,7 +48157,7 @@
 
                 tbody.querySelectorAll("[data-me-report-client-row]").forEach((row) => {
                     row.addEventListener("click", (event) => {
-                        if (event.target.closest("button")) return;
+                        if (event.target.closest("button") || event.target.closest("input[type='checkbox']")) return;
                         openMeReportClientWorkspace(row.dataset.meReportClientRow || "");
                     });
                     row.addEventListener("keydown", (event) => {
@@ -48025,6 +48169,18 @@
                 tbody.querySelectorAll("[data-me-report-open-client]").forEach((button) => {
                     button.addEventListener("click", () => openMeReportClientWorkspace(button.dataset.meReportOpenClient || ""));
                 });
+                tbody.querySelectorAll("[data-me-report-flow-select]").forEach((checkbox) => {
+                    checkbox.addEventListener("change", (event) => {
+                        const clientId = String(event.target.dataset.meReportFlowSelect || "");
+                        if (!clientId) return;
+                        if (event.target.checked) selectedMeReportFlowIds.add(clientId);
+                        else selectedMeReportFlowIds.delete(clientId);
+                        meReportBulkActionButtonsState();
+                    });
+                });
+                const selectAllCheckbox = document.getElementById("meReportSelectAllFlows");
+                if (selectAllCheckbox) selectAllCheckbox.checked = allVisibleSelected;
+                meReportBulkActionButtonsState();
             }
 
             function selectedMeReportClient() {
@@ -48748,12 +48904,18 @@
                         <p class="eyebrow">Monthly flows</p>
                         <p class="detail-meta" id="meReportClientTableSummary"></p>
                     </div>
-                    <div class="me-report-client-controls">
-                        <div class="me-report-flow-quick-filters">
-                            <button class="${meReportFlowStatusFilter === "needs-completing" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-completing">Needs completing</button>
-                            <button class="${meReportFlowStatusFilter === "needs-approved" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-approved">Awaiting Review</button>
-                            <button class="${meReportFlowStatusFilter === "rejected-flows" ? "is-active" : ""}" type="button" data-me-flow-shortcut="rejected-flows">Rejected Flows</button>
-                            <button class="${meReportFlowStatusFilter === "all" ? "is-active" : ""}" type="button" data-me-flow-shortcut="all">All flows</button>
+                        <div class="me-report-client-controls">
+                            <div class="developer-log-actions">
+                                <span class="detail-meta" id="meReportBulkSelectionCount">No flows selected</span>
+                                <button class="ghost-button" id="meReportBulkReassignButton" type="button" disabled>Bulk reassign</button>
+                                <button class="ghost-button" id="meReportBulkEditButton" type="button" disabled>Bulk edit</button>
+                                <button class="ghost-button" id="meReportBulkDeleteButton" type="button" disabled>Bulk delete</button>
+                            </div>
+                            <div class="me-report-flow-quick-filters">
+                                <button class="${meReportFlowStatusFilter === "needs-completing" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-completing">Needs completing</button>
+                                <button class="${meReportFlowStatusFilter === "needs-approved" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-approved">Awaiting Review</button>
+                                <button class="${meReportFlowStatusFilter === "rejected-flows" ? "is-active" : ""}" type="button" data-me-flow-shortcut="rejected-flows">Rejected Flows</button>
+                                <button class="${meReportFlowStatusFilter === "all" ? "is-active" : ""}" type="button" data-me-flow-shortcut="all">All flows</button>
                         </div>
                         <label class="search-wrap me-report-client-search">
                             <span class="search-icon">⌕</span>
@@ -48809,6 +48971,7 @@
                     <table class="me-report-client-table">
                         <thead>
                             <tr>
+                                <th><input id="meReportSelectAllFlows" type="checkbox" aria-label="Select all visible flows"></th>
                                 ${meReportClientColumnVisible("client") ? `<th>${meReportClientSortButton("client", "Client")}</th>` : ""}
                                 ${meReportClientColumnVisible("clientId") ? `<th><span>Client ID</span></th>` : ""}
                                 ${meReportClientColumnVisible("flow") ? `<th>${meReportClientSortButton("flow", "Flow")}</th>` : ""}
@@ -48873,6 +49036,18 @@
                         renderMeReportClientTableRows();
                     });
                 });
+                tableWrap.querySelector("#meReportSelectAllFlows")?.addEventListener("change", (event) => {
+                    const visibleIds = new Set(filteredMeReportClients().map((client) => String(client?.id || "")).filter(Boolean));
+                    if (event.target.checked) {
+                        visibleIds.forEach((id) => selectedMeReportFlowIds.add(id));
+                    } else {
+                        visibleIds.forEach((id) => selectedMeReportFlowIds.delete(id));
+                    }
+                    renderMeReportClientTableRows();
+                });
+                toolbar.querySelector("#meReportBulkDeleteButton")?.addEventListener("click", bulkDeleteMeReportFlows);
+                toolbar.querySelector("#meReportBulkReassignButton")?.addEventListener("click", bulkReassignMeReportFlows);
+                toolbar.querySelector("#meReportBulkEditButton")?.addEventListener("click", bulkEditMeReportFlows);
                 renderMeReportClientTableRows();
             }
 
@@ -49132,7 +49307,10 @@
                 return {
                     periodStart: startValue,
                     periodEnd: endValue,
-                    deadlineAt: meReportBulkPeriodDeadline(endValue)
+                    deadlineAt: meReportBulkPeriodDeadline(endValue),
+                    loadingContacts: false,
+                    candidateContacts: [],
+                    selectedContactIds: []
                 };
             }
 
@@ -49143,6 +49321,8 @@
                 const endInput = document.getElementById("meReportBulkPeriodEndInput");
                 const summary = document.getElementById("meReportBulkPeriodComputedSummary");
                 const submit = document.getElementById("confirmMeReportBulkPeriodButton");
+                const clientsSummary = document.getElementById("meReportBulkPeriodClientsSummary");
+                const clientsList = document.getElementById("meReportBulkClientSelectionList");
                 if (!panel || !startInput || !endInput || !summary || !submit || !state) return;
                 panel.hidden = false;
                 startInput.value = state.periodStart || "";
@@ -49158,12 +49338,87 @@
                 summary.textContent = validRange
                     ? `${monthLabel} period: ${meReportDateDisplay(state.periodStart)} to ${meReportDateDisplay(state.periodEnd)}. Deadline is ${meReportDateDisplay(deadline)} (15th of the following month).`
                     : "Choose a valid period where start date is before end date.";
-                submit.disabled = !validRange;
+                const candidates = Array.isArray(state.candidateContacts) ? state.candidateContacts : [];
+                const selectedIds = new Set((state.selectedContactIds || []).map((item) => String(item || "")));
+                const selectableCount = candidates.length;
+                const selectedCount = candidates.filter((contact) => selectedIds.has(String(contact?.xeroContactId || ""))).length;
+                submit.disabled = !validRange || selectableCount === 0 || selectedCount === 0;
+                if (clientsSummary) {
+                    if (state.loadingContacts) {
+                        clientsSummary.textContent = "Loading Xero-connected client list...";
+                    } else if (!selectableCount) {
+                        clientsSummary.textContent = "No Xero-connected clients are available for new flow creation.";
+                    } else {
+                        clientsSummary.textContent = `${selectedCount.toLocaleString("en-GB")} of ${selectableCount.toLocaleString("en-GB")} Xero-connected client${selectableCount === 1 ? "" : "s"} selected.`;
+                    }
+                }
+                if (clientsList) {
+                    if (state.loadingContacts) {
+                        clientsList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Refreshing Xero contacts</h4><p>Please wait while the latest connected clients are loaded.</p></div>';
+                    } else if (!selectableCount) {
+                        clientsList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No Xero-connected clients available</h4><p>Connect and sync Xero, or clear existing flows before creating new ones.</p></div>';
+                    } else {
+                        clientsList.innerHTML = candidates.map((contact) => {
+                            const contactId = String(contact?.xeroContactId || "");
+                            const checked = selectedIds.has(contactId);
+                            const label = String(contact?.name || "Unnamed Xero contact");
+                            const email = String(contact?.email || "");
+                            return `
+                                <label class="me-report-bulk-match-item">
+                                    <input type="checkbox" data-me-report-bulk-client="${escapeHTML(contactId)}" ${checked ? "checked" : ""}>
+                                    <div>
+                                        <strong>${escapeHTML(label)}</strong>
+                                        <small>${escapeHTML(email || contactId || "Xero contact")}</small>
+                                    </div>
+                                </label>
+                            `;
+                        }).join("");
+                        clientsList.querySelectorAll("[data-me-report-bulk-client]").forEach((checkbox) => {
+                            checkbox.addEventListener("change", (event) => {
+                                if (!meReportBulkPeriodDialogState) return;
+                                const contactId = String(event.target.dataset.meReportBulkClient || "");
+                                const current = new Set((meReportBulkPeriodDialogState.selectedContactIds || []).map((item) => String(item || "")));
+                                if (event.target.checked) current.add(contactId);
+                                else current.delete(contactId);
+                                meReportBulkPeriodDialogState.selectedContactIds = Array.from(current);
+                                renderMeReportBulkPeriodPanel();
+                            });
+                        });
+                    }
+                }
+            }
+
+            async function refreshMeReportBulkPeriodCandidates() {
+                if (!meReportBulkPeriodDialogState) return;
+                meReportBulkPeriodDialogState.loadingContacts = true;
+                renderMeReportBulkPeriodPanel();
+                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
+                const contacts = meReportContactOptions(meReportActiveTenantId());
+                const existingContactIds = new Set((meReportData.clients || []).map((item) => String(item.xeroContactId || "")).filter(Boolean));
+                const candidates = contacts
+                    .filter((contact) => String(contact?.xeroContactId || "").trim())
+                    .filter((contact) => !existingContactIds.has(String(contact.xeroContactId || "")));
+                meReportBulkPeriodDialogState.candidateContacts = candidates;
+                meReportBulkPeriodDialogState.selectedContactIds = candidates.map((contact) => String(contact.xeroContactId || ""));
+                meReportBulkPeriodDialogState.loadingContacts = false;
+                renderMeReportBulkPeriodPanel();
+            }
+
+            function selectAllMeReportBulkClients(selected = true) {
+                if (!meReportBulkPeriodDialogState) return;
+                const candidates = Array.isArray(meReportBulkPeriodDialogState.candidateContacts)
+                    ? meReportBulkPeriodDialogState.candidateContacts
+                    : [];
+                meReportBulkPeriodDialogState.selectedContactIds = selected
+                    ? candidates.map((contact) => String(contact?.xeroContactId || "")).filter(Boolean)
+                    : [];
+                renderMeReportBulkPeriodPanel();
             }
 
             function openMeReportBulkPeriodPanel() {
                 meReportBulkPeriodDialogState = meReportDefaultBulkPeriod();
                 renderMeReportBulkPeriodPanel();
+                refreshMeReportBulkPeriodCandidates();
             }
 
             function closeMeReportBulkPeriodPanel() {
@@ -54325,7 +54580,7 @@
                 }
             }
 
-            async function bulkCreateMeReportFlowsFromXero(periodConfig = null) {
+            async function bulkCreateMeReportFlowsFromXero(periodConfig = null, selectedContactIds = []) {
                 await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
                 const contacts = meReportContactOptions(meReportActiveTenantId());
                 if (!contacts.length) {
@@ -54345,9 +54600,12 @@
                     return;
                 }
                 const existingContactIds = new Set((meReportData.clients || []).map((item) => String(item.xeroContactId || "")).filter(Boolean));
-                const candidates = contacts.filter((contact) => !existingContactIds.has(String(contact.xeroContactId || "")));
+                const selectedSet = new Set((selectedContactIds || []).map((id) => String(id || "")).filter(Boolean));
+                const candidates = contacts
+                    .filter((contact) => !existingContactIds.has(String(contact.xeroContactId || "")))
+                    .filter((contact) => selectedSet.size === 0 || selectedSet.has(String(contact.xeroContactId || "")));
                 if (!candidates.length) {
-                    showToast("All Xero contacts already have flows", "success");
+                    showToast(selectedSet.size ? "No selected Xero clients are eligible for new flows." : "All Xero contacts already have flows", "success");
                     return;
                 }
                 meReportBulkUploading = true;
@@ -54413,8 +54671,15 @@
                     showToast("Select a valid period before creating flows", "error");
                     return;
                 }
+                const selectedContactIds = Array.isArray(meReportBulkPeriodDialogState.selectedContactIds)
+                    ? meReportBulkPeriodDialogState.selectedContactIds.map((item) => String(item || "")).filter(Boolean)
+                    : [];
+                if (!selectedContactIds.length) {
+                    showToast("Select at least one Xero-connected client before creating flows", "error");
+                    return;
+                }
                 closeMeReportBulkPeriodPanel();
-                await bulkCreateMeReportFlowsFromXero(config);
+                await bulkCreateMeReportFlowsFromXero(config, selectedContactIds);
             }
 
             function dismissMeReportQualityWarning(clientId, warningKey) {
@@ -59855,12 +60120,12 @@
                 return new Blob(chunks, { type });
             }
 
-            async function downloadPracticePackZip() {
-                if (practicePackResult?.zipBlob) {
+            async function downloadPracticePackZip(targetRun = null) {
+                if (!targetRun && practicePackResult?.zipBlob) {
                     downloadPracticePackBlob(practicePackResult.zipBlob, practicePackResult.filename);
                     return;
                 }
-                const saved = latestPracticePackRecord();
+                const saved = targetRun || latestPracticePackRecord();
                 if (!saved?.id) {
                     showToast("Generate the practice pack ZIP first.", "info");
                     return;
@@ -63083,13 +63348,56 @@
                 const expiryNote = displayResult?.expiresAt
                     ? `Expires ${new Date(displayResult.expiresAt).toLocaleString("en-GB")}`
                     : "Expires after 24 hours";
+                const retainedRuns = Array.isArray(practicePackServerRuns) ? practicePackServerRuns : [];
+                const historyRows = retainedRuns
+                    .filter((run) => String(run?.id || "") !== String(displayResult?.id || ""))
+                    .slice(0, 24);
                 outputList.innerHTML = `
                     <div class="practice-pack-output-row">
                         <div><span>${escapeHTML(displayResult.month || month)} practice pack</span><strong>${escapeHTML(displayResult.filename || "practice-pack.zip")}</strong><small>${formatBytes(displayResult.zipBlob?.size || displayResult.zipByteSize || 0)} generated ${displayResult.generatedAt ? new Date(displayResult.generatedAt).toLocaleString("en-GB") : "--"} · ${escapeHTML(expiryNote)} · total MRR ${formatCurrency(displayResult.totalMrr || 0)}</small></div>
                         <button class="primary-button" id="practicePackDownloadZipButton" type="button" ${canDownloadCurrentZip && !isExpired ? "" : "disabled"}>${canDownloadCurrentZip && !isExpired ? "Download" : "Expired after 24h"}</button>
                     </div>
+                    <div class="supplier-recon-history-table-wrap">
+                        <table class="supplier-recon-history-table" aria-label="Previous practice packs">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th>Generated</th>
+                                    <th>Clients</th>
+                                    <th>Staff packs</th>
+                                    <th>Total MRR</th>
+                                    <th>Download</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${historyRows.length
+                        ? historyRows.map((run) => {
+                            const runExpiresMs = run?.expiresAt ? Date.parse(run.expiresAt) : NaN;
+                            const runExpired = Number.isFinite(runExpiresMs) ? runExpiresMs <= Date.now() : false;
+                            return `
+                                            <tr>
+                                                <td><strong>${escapeHTML(run.month || "--")}</strong><small>${escapeHTML(run.filename || "practice-pack.zip")}</small></td>
+                                                <td>${escapeHTML(run.generatedAt ? new Date(run.generatedAt).toLocaleString("en-GB") : "--")}</td>
+                                                <td>${formatInteger(run.clientCount || 0)}</td>
+                                                <td>${formatInteger(run.staffPackCount || 0)}</td>
+                                                <td>${formatCurrency(run.totalMrr || 0)}</td>
+                                                <td><button class="ghost-button" type="button" data-practice-pack-download-run="${escapeHTML(String(run.id || ""))}" ${runExpired ? "disabled" : ""}>${runExpired ? "Expired" : "Download"}</button></td>
+                                            </tr>
+                                        `;
+                        }).join("")
+                        : '<tr><td colspan="6">No previous practice packs available.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
                 `;
                 document.getElementById("practicePackDownloadZipButton")?.addEventListener("click", downloadPracticePackZip);
+                outputList.querySelectorAll("[data-practice-pack-download-run]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const runId = String(button.dataset.practicePackDownloadRun || "");
+                        const run = retainedRuns.find((item) => String(item?.id || "") === runId);
+                        if (run) downloadPracticePackZip(run);
+                    });
+                });
             }
 
             function wirePracticePackControls() {
@@ -67500,6 +67808,8 @@
                 document.getElementById("meReportBulkPeriodForm")?.addEventListener("submit", confirmMeReportBulkPeriod);
                 document.getElementById("meReportBulkPeriodStartInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
                 document.getElementById("meReportBulkPeriodEndInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
+                document.getElementById("meReportBulkSelectAllClientsButton")?.addEventListener("click", () => selectAllMeReportBulkClients(true));
+                document.getElementById("meReportBulkClearClientsButton")?.addEventListener("click", () => selectAllMeReportBulkClients(false));
                 document.getElementById("closeMeReportBulkPeriodPanelButton")?.addEventListener("click", closeMeReportBulkPeriodPanel);
                 document.getElementById("meReportBulkPeriodPanel")?.addEventListener("click", (event) => {
                     if (event.target.id === "meReportBulkPeriodPanel") closeMeReportBulkPeriodPanel();

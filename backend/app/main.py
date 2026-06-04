@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from html import escape
@@ -253,15 +254,34 @@ background_job_executor = ThreadPoolExecutor(
 
 
 def _submit_background_job(name: str, target, *args, **kwargs) -> None:
-    future = background_job_executor.submit(target, *args, **kwargs)
-
     def _log_background_failure(done_future) -> None:
         try:
             done_future.result()
         except Exception:
             logger.exception("Background job failed: %s", name)
 
-    future.add_done_callback(_log_background_failure)
+    try:
+        future = background_job_executor.submit(target, *args, **kwargs)
+        future.add_done_callback(_log_background_failure)
+        return
+    except RuntimeError as exc:
+        # Deployment restarts can close the pooled executor while requests are still arriving.
+        if "cannot schedule new futures after shutdown" not in str(exc).lower():
+            raise
+        logger.warning("Executor unavailable while queuing background job '%s'; using thread fallback", name)
+
+    def _run_fallback_job() -> None:
+        try:
+            target(*args, **kwargs)
+        except Exception:
+            logger.exception("Background job failed (fallback thread): %s", name)
+
+    fallback_thread = threading.Thread(
+        target=_run_fallback_job,
+        name=f"panel-fallback-{name}",
+        daemon=True,
+    )
+    fallback_thread.start()
 
 
 def _run_async_job(coroutine_factory, *args, **kwargs) -> None:
