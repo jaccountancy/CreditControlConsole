@@ -1657,6 +1657,9 @@ ALTER TABLE ch_submissions ADD COLUMN IF NOT EXISTS dead_letter_reason TEXT NOT 
 CREATE UNIQUE INDEX IF NOT EXISTS ch_submissions_idempotency_idx
 ON ch_submissions (idempotency_key)
 WHERE idempotency_key <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS ch_submissions_submission_reference_unique_idx
+ON ch_submissions (submission_reference)
+WHERE submission_reference <> '';
 
 CREATE TABLE IF NOT EXISTS ch_dead_letters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

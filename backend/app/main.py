@@ -1366,9 +1366,17 @@ async def api_company_secretarial_validate(
 @app.post("/api/company-secretarial/filings/{filing_id}/submit")
 async def api_company_secretarial_submit(
     filing_id: str,
+    request: Request,
     user: dict = Depends(require_panel_user),
 ):
-    return {"status": "ok", "filing": submit_company_secretarial_filing(user, filing_id)}
+    payload = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    payload["_requestMeta"] = {
+        "ip": request.client.host if request.client else "",
+        "forwardedFor": request.headers.get("x-forwarded-for") or "",
+        "userAgent": request.headers.get("user-agent") or "",
+        "device": request.headers.get("sec-ch-ua-platform") or "",
+    }
+    return {"status": "ok", "filing": submit_company_secretarial_filing(user, filing_id, payload)}
 
 
 @app.post("/api/company-secretarial/filings/{filing_id}/complete")

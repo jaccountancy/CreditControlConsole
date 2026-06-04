@@ -36,10 +36,6 @@ except Exception:  # pragma: no cover - optional dependency guard
 CH_API_KEY_LABEL = "ch:api_key"
 CH_PRESENTER_AUTH_LABEL = "ch:presenter_auth"
 CH_COMPANY_AUTH_LABEL = "ch:company_auth"
-HARDCODED_CH_API_KEY = "2296ea5f-5390-446f-9258-d9e7db322f8e"
-HARDCODED_CH_PRESENTER_ID = "00046248000"
-HARDCODED_CH_PRESENTER_AUTH = "PLCTL2F87WL"
-
 VALID_ENVIRONMENTS = {"sandbox", "production"}
 MASK_VISIBLE_CHARS = 4
 
@@ -164,16 +160,39 @@ def _compact_credential(value: object) -> str:
     return str(value or "").strip()
 
 
-def configured_presenter_id() -> str:
-    return HARDCODED_CH_PRESENTER_ID
+def _decrypt_setting_secret(encrypted_value: object, label: str) -> str:
+    encrypted_text = _xml_text(encrypted_value)
+    if not encrypted_text:
+        return ""
+    try:
+        return decrypt_secret(encrypted_text, label)
+    except Exception:
+        logger.exception("Unable to decrypt Companies House secret for label %s", label)
+        return ""
 
 
-def configured_presenter_auth() -> str:
-    return HARDCODED_CH_PRESENTER_AUTH
+def configured_presenter_id(settings_row: dict | None = None) -> str:
+    row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
+    row_value = _compact_credential(row.get("presenter_id"))
+    if row_value:
+        return row_value
+    return _compact_credential(get_settings().companies_house_presenter_id)
 
 
-def configured_api_key() -> str:
-    return HARDCODED_CH_API_KEY
+def configured_presenter_auth(settings_row: dict | None = None) -> str:
+    row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
+    decrypted = _compact_credential(_decrypt_setting_secret(row.get("presenter_auth_encrypted"), CH_PRESENTER_AUTH_LABEL))
+    if decrypted:
+        return decrypted
+    return _compact_credential(get_settings().companies_house_presenter_auth)
+
+
+def configured_api_key(settings_row: dict | None = None) -> str:
+    row = settings_row if isinstance(settings_row, dict) else _ensure_settings_row()
+    decrypted = _compact_credential(_decrypt_setting_secret(row.get("api_key_encrypted"), CH_API_KEY_LABEL))
+    if decrypted:
+        return _validated_companies_house_api_key(decrypted)
+    return _validated_companies_house_api_key(_compact_credential(get_settings().companies_house_api_key))
 
 
 def _load_settings_row() -> dict | None:
@@ -215,17 +234,19 @@ def _serialise(row: dict) -> dict:
         if environment == "production"
         else settings.companies_house_sandbox_api_base
     )
-    presenter_auth = configured_presenter_auth()
+    api_key = configured_api_key(row)
+    presenter_id = configured_presenter_id(row)
+    presenter_auth = configured_presenter_auth(row)
     return {
         "environment": environment,
         "apiBaseUrl": api_base,
-        "apiKey": configured_api_key(),
-        "apiKeyHint": "Hardcoded in backend",
-        "apiKeyConfigured": True,
-        "presenterId": configured_presenter_id(),
-        "presenterAuth": presenter_auth,
-        "presenterAuthHint": "Hardcoded in backend",
-        "presenterAuthConfigured": True,
+        "apiKey": "",
+        "apiKeyHint": _mask(api_key) if api_key else "Not configured",
+        "apiKeyConfigured": bool(api_key),
+        "presenterId": presenter_id,
+        "presenterAuth": "",
+        "presenterAuthHint": _mask(presenter_auth) if presenter_auth else "Not configured",
+        "presenterAuthConfigured": bool(presenter_auth),
         "creditAccountNumber": row.get("credit_account_number") or "",
         "xeroInvoiceAccountCode": row.get("xero_invoice_account_code") or "",
         "xeroInvoiceItemCode": row.get("xero_invoice_item_code") or "",
@@ -263,7 +284,7 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
             detail="Environment must be 'sandbox' or 'production'.",
         )
 
-    api_key = _validated_companies_house_api_key(configured_api_key())
+    api_key = _validated_companies_house_api_key(configured_api_key(settings_row))
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -332,8 +353,8 @@ def test_companies_house_connection(payload: dict | None = None) -> dict:
         items = payload.get("items")
         sample_count = len(items) if isinstance(items, list) else 0
 
-    presenter_id = configured_presenter_id()
-    presenter_auth = configured_presenter_auth()
+    presenter_id = configured_presenter_id(settings_row)
+    presenter_auth = configured_presenter_auth(settings_row)
     gateway_attempted = bool(presenter_id and presenter_auth)
     gateway_connected = False
     gateway_errors: list[str] = []
@@ -466,12 +487,18 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
             detail="Environment must be 'sandbox' or 'production'.",
         )
 
-    api_key_value = _validated_companies_house_api_key(configured_api_key())
+    existing_api_key = configured_api_key(existing)
+    incoming_api_key = payload.get("apiKey", existing_api_key)
+    api_key_value = _validated_companies_house_api_key(_compact_credential(incoming_api_key))
     api_key_encrypted = encrypt_secret(api_key_value, CH_API_KEY_LABEL)
     api_key_hint = _mask(api_key_value)
 
-    presenter_id = configured_presenter_id()
-    presenter_auth_value = configured_presenter_auth()
+    existing_presenter_id = configured_presenter_id(existing)
+    incoming_presenter_id = payload.get("presenterId", existing_presenter_id)
+    presenter_id = _compact_credential(incoming_presenter_id)
+    existing_presenter_auth = configured_presenter_auth(existing)
+    incoming_presenter_auth = payload.get("presenterAuth", existing_presenter_auth)
+    presenter_auth_value = _compact_credential(incoming_presenter_auth)
     presenter_auth_encrypted = encrypt_secret(presenter_auth_value, CH_PRESENTER_AUTH_LABEL)
     presenter_auth_hint = _mask(presenter_auth_value)
     credit_account_number = _compact_credential(payload.get("creditAccountNumber"))
@@ -539,8 +566,9 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
         user_id=user_id,
         payload={
             "environment": environment,
-            "apiKeyChanged": False,
-            "presenterAuthChanged": False,
+            "apiKeyChanged": api_key_value != existing_api_key,
+            "presenterIdChanged": presenter_id != existing_presenter_id,
+            "presenterAuthChanged": presenter_auth_value != existing_presenter_auth,
         },
     )
 
@@ -548,7 +576,7 @@ def save_companies_house_settings(user: dict, payload: dict) -> dict:
 
 
 def decrypt_api_key() -> str:
-    return configured_api_key()
+    return configured_api_key(_ensure_settings_row())
 
 
 def _validated_companies_house_api_key(value: str) -> str:
@@ -570,7 +598,7 @@ def _validated_companies_house_api_key(value: str) -> str:
 
 
 def decrypt_presenter_auth() -> str:
-    return configured_presenter_auth()
+    return configured_presenter_auth(_ensure_settings_row())
 
 
 def _companies_house_api_base(environment: str) -> str:
@@ -1066,6 +1094,40 @@ def _ch_submission_number() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
+def _next_unique_submission_number(max_attempts: int = 30) -> str:
+    for _ in range(max_attempts):
+        candidate = _ch_submission_number()
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM ch_submissions
+                    WHERE submission_reference = %s
+                    LIMIT 1
+                    """,
+                    (candidate,),
+                )
+                existing_submission = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM ch_secretarial_filings
+                    WHERE companies_house_ref = %s
+                    LIMIT 1
+                    """,
+                    (candidate,),
+                )
+                existing_secretarial = cursor.fetchone()
+            connection.commit()
+        if not existing_submission and not existing_secretarial:
+            return candidate
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Unable to generate a unique submission number. Retry in a moment.",
+    )
+
+
 def _ch_split_company_number(company_number: str) -> tuple[str, str]:
     value = normalise_company_number(company_number)
     if not value:
@@ -1225,6 +1287,44 @@ def _build_cs01_payload(company_row: dict, *, include_change_sections: bool = Tr
 
     if payload.get("pscExemptAsTradingOnUKRegulatedMarket") is True and payload.get("pscExemptAsTradingOnRegulatedMarket") is None:
         payload["pscExemptAsTradingOnRegulatedMarket"] = True
+
+    registered_email = _xml_text(
+        confirmation_statement.get("registeredEmailAddress")
+        or confirmation_statement.get("registered_email_address")
+        or company_row.get("contact_email")
+    )
+    if registered_email:
+        payload["registeredEmailAddress"] = registered_email
+    lawful_purpose = _first_bool_from_sources(
+        confirmation_statement.get("acceptLawfulPurposeStatement"),
+        confirmation_statement.get("lawfulPurposeStatement"),
+        confirmation_statement.get("lawfulPurposeAccepted"),
+    )
+    payload["acceptLawfulPurposeStatement"] = True if lawful_purpose is None else bool(lawful_purpose)
+    state_confirmation = _first_bool_from_sources(
+        confirmation_statement.get("stateConfirmation"),
+        confirmation_statement.get("state_confirmation"),
+    )
+    payload["stateConfirmation"] = True if state_confirmation is None else bool(state_confirmation)
+    review_period_start = _parse_date_from_text(
+        confirmation_statement.get("reviewPeriodStart")
+        or confirmation_statement.get("review_period_start")
+    )
+    review_period_end = _parse_date_from_text(
+        confirmation_statement.get("reviewPeriodEnd")
+        or confirmation_statement.get("review_period_end")
+    )
+    if review_period_start:
+        payload["reviewPeriodStart"] = review_period_start.isoformat()
+    if review_period_end:
+        payload["reviewPeriodEnd"] = review_period_end.isoformat()
+    identity_verification = (
+        confirmation_statement.get("identityVerification")
+        if isinstance(confirmation_statement.get("identityVerification"), dict)
+        else {}
+    )
+    if identity_verification:
+        payload["identityVerification"] = identity_verification
     return payload
 
 
@@ -1299,7 +1399,7 @@ def _validate_ch_submission_xml_against_xsd(xml_payload: bytes) -> list[str]:
         logger.warning("Skipping CH XSD validation because schema could not be loaded: %s", exc.detail)
         return []
     except Exception as exc:
-        return [f"Unable to parse generated CS01 XML for XSD validation: {str(exc) or exc.__class__.__name__}"]
+        return [f"Unable to parse generated Companies House XML for XSD validation: {str(exc) or exc.__class__.__name__}"]
     if schema.validate(xml_doc):
         return []
     return [str(error.message) for error in schema.error_log][:10]
@@ -1339,6 +1439,19 @@ def _validate_cs01_payload(
         if isinstance(cs_payload, dict)
         else _build_cs01_payload(company_row, include_change_sections=include_change_sections)
     )
+    review_period_start = _parse_date_from_text(payload.get("reviewPeriodStart"))
+    review_period_end = _parse_date_from_text(payload.get("reviewPeriodEnd"))
+    if review_period_start and review_period_end and review_period_start > review_period_end:
+        errors.append("Review period start cannot be after review period end.")
+    if review_period_end and review_period_end != review_date:
+        errors.append("Review period end must match the submission review date.")
+    if payload.get("acceptLawfulPurposeStatement") is not True:
+        errors.append("Lawful purpose statement must be accepted for CS01.")
+    if payload.get("stateConfirmation") is not True:
+        errors.append("State confirmation must be set to true for CS01.")
+    identity_verification = payload.get("identityVerification")
+    if isinstance(identity_verification, dict) and identity_verification.get("verificationStatementGiven") is False:
+        errors.append("Identity verification statement must be confirmed when identity verification data is supplied.")
     errors.extend(_cs01_psc_market_errors(pscs, payload))
     return errors
 
@@ -1490,10 +1603,11 @@ def _build_ch_submission_xml(
                     ET.SubElement(name_node, f"{{{CH_FORMS_NS}}}Forename").text = " ".join(name_parts[:-1])
                 else:
                     ET.SubElement(name_node, f"{{{CH_FORMS_NS}}}AmalgamatedName").text = name_text
-    if registered_email:
-        ET.SubElement(cs, f"{{{CH_FORMS_NS}}}RegisteredEmailAddress").text = registered_email
-    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}AcceptLawfulPurposeStatement").text = "true"
-    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}StateConfirmation").text = "true"
+    registered_email_value = _xml_text(payload.get("registeredEmailAddress"), registered_email)
+    if registered_email_value:
+        ET.SubElement(cs, f"{{{CH_FORMS_NS}}}RegisteredEmailAddress").text = registered_email_value
+    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}AcceptLawfulPurposeStatement").text = "true" if _ch_bool(payload.get("acceptLawfulPurposeStatement"), True) else "false"
+    ET.SubElement(cs, f"{{{CH_FORMS_NS}}}StateConfirmation").text = "true" if _ch_bool(payload.get("stateConfirmation"), True) else "false"
     return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
 
 
@@ -1547,6 +1661,133 @@ def _build_ch_status_xml(
             ET.SubElement(request, f"{{{CH_FORMS_NS}}}CompanyNumber").text = number_digits
     ET.SubElement(request, f"{{{CH_FORMS_NS}}}PresenterID").text = presenter_id
     return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
+
+
+def _build_ch_status_ack_xml(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    transaction_id: str,
+) -> bytes:
+    gov = ET.Element(
+        "GovTalkMessage",
+        {
+            "xmlns": GOVTALK_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{GOVTALK_NS} http://xmlgw.companieshouse.gov.uk/v2-1/schema/Egov_ch-v2-0.xsd",
+        },
+    )
+    ET.SubElement(gov, "EnvelopeVersion").text = "1.0"
+    header = ET.SubElement(gov, "Header")
+    message_details = ET.SubElement(header, "MessageDetails")
+    ET.SubElement(message_details, "Class").text = "StatusAck"
+    ET.SubElement(message_details, "Qualifier").text = "request"
+    ET.SubElement(message_details, "TransactionID").text = transaction_id
+    ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
+    sender_details = ET.SubElement(header, "SenderDetails")
+    id_auth = ET.SubElement(sender_details, "IDAuthentication")
+    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    auth = ET.SubElement(id_auth, "Authentication")
+    ET.SubElement(auth, "Method").text = "CHMD5"
+    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    govtalk_details = ET.SubElement(gov, "GovTalkDetails")
+    ET.SubElement(govtalk_details, "Keys")
+    body = ET.SubElement(gov, "Body")
+    request = ET.SubElement(
+        body,
+        f"{{{CH_FORMS_NS}}}StatusAck",
+        {
+            "xmlns": CH_FORMS_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{CH_FORMS_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/GetStatusAck-v1-1.xsd",
+        },
+    )
+    return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
+
+
+def _build_ch_document_xml(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    transaction_id: str,
+    doc_request_key: str,
+) -> bytes:
+    gov = ET.Element(
+        "GovTalkMessage",
+        {
+            "xmlns": GOVTALK_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{GOVTALK_NS} http://xmlgw.companieshouse.gov.uk/v2-1/schema/Egov_ch-v2-0.xsd",
+        },
+    )
+    ET.SubElement(gov, "EnvelopeVersion").text = "1.0"
+    header = ET.SubElement(gov, "Header")
+    message_details = ET.SubElement(header, "MessageDetails")
+    ET.SubElement(message_details, "Class").text = "DocumentRequest"
+    ET.SubElement(message_details, "Qualifier").text = "request"
+    ET.SubElement(message_details, "TransactionID").text = transaction_id
+    ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
+    sender_details = ET.SubElement(header, "SenderDetails")
+    id_auth = ET.SubElement(sender_details, "IDAuthentication")
+    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    auth = ET.SubElement(id_auth, "Authentication")
+    ET.SubElement(auth, "Method").text = "CHMD5"
+    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    govtalk_details = ET.SubElement(gov, "GovTalkDetails")
+    ET.SubElement(govtalk_details, "Keys")
+    body = ET.SubElement(gov, "Body")
+    request = ET.SubElement(
+        body,
+        f"{{{CH_FORMS_NS}}}GetDocument",
+        {
+            "xmlns": CH_FORMS_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{CH_FORMS_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/GetDocument-v1-1.xsd",
+        },
+    )
+    ET.SubElement(request, f"{{{CH_FORMS_NS}}}DocRequestKey").text = doc_request_key
+    return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
+
+
+def _poll_ch_status_ack_and_document(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    doc_request_key: str | None,
+) -> dict:
+    output: dict[str, object] = {"statusAckRawResponse": "", "documentRawResponse": "", "errors": []}
+    errors: list[str] = []
+    try:
+        ack_xml = _build_ch_status_ack_xml(
+            presenter_id=presenter_id,
+            presenter_auth=presenter_auth,
+            environment=environment,
+            transaction_id=_ch_txn_id(),
+        )
+        ack_response, _ = _post_ch_gateway(ack_xml)
+        output["statusAckRawResponse"] = ack_response[:30000]
+    except Exception as exc:
+        errors.append(f"GetStatusAck failed: {str(exc) or exc.__class__.__name__}")
+    try:
+        if doc_request_key:
+            document_xml = _build_ch_document_xml(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                transaction_id=_ch_txn_id(),
+                doc_request_key=doc_request_key,
+            )
+            document_response, _ = _post_ch_gateway(document_xml)
+            output["documentRawResponse"] = document_response[:30000]
+        else:
+            errors.append("GetDocument skipped: no DocRequestKey was returned by GetSubmissionStatus.")
+    except Exception as exc:
+        errors.append(f"GetDocument failed: {str(exc) or exc.__class__.__name__}")
+    output["errors"] = errors
+    return output
 
 
 def _post_ch_gateway(xml_payload: bytes) -> tuple[str, ET.Element]:
@@ -1682,7 +1923,14 @@ def _status_poll_payment_reconciliation(
         parsed = _parse_ch_status_response(response_text=response_text, response_root=response_root)
         status_row = next((item for item in parsed.get("statuses", []) if item.get("submissionNumber") == submission_number), None)
         status_code = _xml_text((status_row or {}).get("statusCode"), "UNKNOWN")
+        doc_request_key = _xml_text((status_row or {}).get("docRequestKey"))
         payment_evidence = parsed.get("paymentEvidence") or {}
+        ack_document_payload = _poll_ch_status_ack_and_document(
+            presenter_id=presenter_id,
+            presenter_auth=presenter_auth,
+            environment=environment,
+            doc_request_key=doc_request_key or None,
+        )
         if not _payment_evidence_complete(payment_evidence):
             payment_evidence = {
                 **payment_evidence,
@@ -1695,8 +1943,12 @@ def _status_poll_payment_reconciliation(
         return {
             "ok": True,
             "statusCode": status_code,
+            "docRequestKey": doc_request_key,
             "paymentEvidence": payment_evidence,
             "rawResponse": parsed.get("rawResponse") or response_text[:30000],
+            "statusAckRawResponse": ack_document_payload.get("statusAckRawResponse", ""),
+            "documentRawResponse": ack_document_payload.get("documentRawResponse", ""),
+            "pollErrors": ack_document_payload.get("errors", []),
         }
     except Exception as exc:
         logger.exception("Unable to reconcile payment evidence via status poll for %s", submission_number)
@@ -1760,6 +2012,7 @@ def _parse_ch_submission_response(*, response_text: str, response_root: ET.Eleme
         sub_no_node = _ch_find_first(status_node, "SubmissionNumber")
         code_node = _ch_find_first(status_node, "StatusCode")
         company_number_node = _ch_find_first(status_node, "CompanyNumber")
+        doc_request_key_node = _ch_find_first(status_node, "DocRequestKey")
         reason_parts: list[str] = []
         for reject in _ch_find_all(status_node, "Reject"):
             description = _ch_find_first(reject, "Description")
@@ -1774,6 +2027,7 @@ def _parse_ch_submission_response(*, response_text: str, response_root: ET.Eleme
                 "submissionNumber": _xml_text(sub_no_node.text) if sub_no_node is not None else "",
                 "statusCode": _xml_text(code_node.text).upper() if code_node is not None else "",
                 "companyNumber": _xml_text(company_number_node.text) if company_number_node is not None else "",
+                "docRequestKey": _xml_text(doc_request_key_node.text) if doc_request_key_node is not None else "",
                 "rejectionReason": " | ".join(reason_parts),
             }
         )
@@ -1854,6 +2108,7 @@ def _parse_ch_status_response(*, response_text: str, response_root: ET.Element) 
         submission_number = _xml_text(_ch_find_first(status_node, "SubmissionNumber").text if _ch_find_first(status_node, "SubmissionNumber") is not None else "")
         status_code = _xml_text(_ch_find_first(status_node, "StatusCode").text if _ch_find_first(status_node, "StatusCode") is not None else "").upper()
         company_number = _xml_text(_ch_find_first(status_node, "CompanyNumber").text if _ch_find_first(status_node, "CompanyNumber") is not None else "")
+        doc_request_key = _xml_text(_ch_find_first(status_node, "DocRequestKey").text if _ch_find_first(status_node, "DocRequestKey") is not None else "")
         rejection_parts: list[str] = []
         for reject_node in _ch_find_all(status_node, "Reject"):
             code = _xml_text(_ch_find_first(reject_node, "RejectCode").text if _ch_find_first(reject_node, "RejectCode") is not None else "")
@@ -1866,6 +2121,7 @@ def _parse_ch_status_response(*, response_text: str, response_root: ET.Element) 
                 "submissionNumber": submission_number,
                 "statusCode": status_code,
                 "companyNumber": company_number,
+                "docRequestKey": doc_request_key,
                 "rejectionReason": " | ".join(rejection_parts),
             }
         )
@@ -1902,7 +2158,7 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
     requested_submission_numbers = [str(value or "").strip() for value in (payload.get("submissionNumbers") or []) if str(value or "").strip()]
     limit = max(1, min(int(payload.get("limit") or 200), 500))
     settings_row = _ensure_settings_row()
-    presenter_id = configured_presenter_id()
+    presenter_id = configured_presenter_id(settings_row)
     presenter_auth = decrypt_presenter_auth()
     environment = _xml_text(settings_row.get("environment"), "sandbox")
     if not presenter_id or not presenter_auth:
@@ -1968,7 +2224,14 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
             status_code = _xml_text(status_row.get("statusCode"), "PENDING")
             internal_status = _reconcile_submission_status_code(status_code)
             rejection_reason = _xml_text(status_row.get("rejectionReason"))
+            doc_request_key = _xml_text(status_row.get("docRequestKey"))
             payment_evidence = parsed.get("paymentEvidence") or {}
+            ack_document_payload = _poll_ch_status_ack_and_document(
+                presenter_id=presenter_id,
+                presenter_auth=presenter_auth,
+                environment=environment,
+                doc_request_key=doc_request_key or None,
+            )
             existing_payment_evidence = row.get("payment_evidence") if isinstance(row.get("payment_evidence"), dict) else {}
             merged_payment_evidence = {**existing_payment_evidence, **payment_evidence}
             now = utcnow()
@@ -2001,7 +2264,19 @@ def run_companies_house_submission_reconciliation(payload: dict | None = None) -
                             rejection_reason,
                             payment_confirmed,
                             json.dumps(merged_payment_evidence),
-                            json.dumps({"statusPoll": {"statusCode": status_code, "rawResponse": parsed.get("rawResponse", ""), "paymentEvidence": payment_evidence}}),
+                            json.dumps(
+                                {
+                                    "statusPoll": {
+                                        "statusCode": status_code,
+                                        "docRequestKey": doc_request_key,
+                                        "rawResponse": parsed.get("rawResponse", ""),
+                                        "paymentEvidence": payment_evidence,
+                                        "statusAckRawResponse": ack_document_payload.get("statusAckRawResponse", ""),
+                                        "documentRawResponse": ack_document_payload.get("documentRawResponse", ""),
+                                        "pollErrors": ack_document_payload.get("errors", []),
+                                    }
+                                }
+                            ),
                             internal_status,
                             now,
                             now,
@@ -3742,6 +4017,331 @@ COMPANY_SECRETARIAL_TYPE_DEFAULTS = {
     "SH01": {"name": "Share allotment", "risk": "high", "mode": "assisted", "fee": Decimal("0.00"), "clientApprovalRequired": True, "internalApprovalRequired": True},
     "CH01": {"name": "Director detail change", "risk": "medium", "mode": "api", "fee": Decimal("0.00"), "clientApprovalRequired": False, "internalApprovalRequired": True},
 }
+# Live XML Gateway schemas currently available for this workflow.
+SECRETARIAL_XML_SUPPORTED_TYPES = {"AD01", "NM01"}
+SECRETARIAL_XML_FORM_CONFIG = {
+    "AD01": {
+        "class": "ChangeRegisteredOfficeAddress",
+        "formIdentifier": "ChangeRegisteredOfficeAddress",
+        "schemaLocation": "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/ChangeRegisteredOfficeAddress-v2-7.xsd",
+    },
+    "NM01": {
+        "class": "ChangeOfName",
+        "formIdentifier": "ChangeOfName",
+        "schemaLocation": "http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/ChangeOfName-v2-6.xsd",
+    },
+}
+UK_POSTCODE_RE = re.compile(r"^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$", re.IGNORECASE)
+
+
+def _secretarial_hash_text(value: str) -> str:
+    return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
+
+
+def _secretarial_form_data(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _secretarial_list_of_dicts(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _secretarial_form_config(filing_type: str) -> dict:
+    return SECRETARIAL_XML_FORM_CONFIG.get(_xml_text(filing_type).upper(), {})
+
+
+def _secretarial_country_code(raw_country: str, *, company_number: str = "") -> str:
+    country = _xml_text(raw_country).upper().replace(" ", "").replace("_", "-")
+    direct_map = {
+        "GB": "GBR",
+        "UK": "GBR",
+        "GBR": "GBR",
+        "UNITEDKINGDOM": "GBR",
+        "ENGLAND": "GB-ENG",
+        "WALES": "GB-WLS",
+        "SCOTLAND": "GB-SCT",
+        "NORTHERNIRELAND": "GB-NIR",
+        "GB-ENG": "GB-ENG",
+        "GB-WLS": "GB-WLS",
+        "GB-SCT": "GB-SCT",
+        "GB-NIR": "GB-NIR",
+    }
+    if country in direct_map:
+        return direct_map[country]
+    _, number_digits = _ch_split_company_number(company_number)
+    if number_digits:
+        prefix = _xml_text(company_number).upper().replace(number_digits, "", 1)
+        if prefix in {"SC"}:
+            return "GB-SCT"
+        if prefix in {"NI"}:
+            return "GB-NIR"
+        if prefix in {"", "OC", "LP", "SO", "SL", "NC", "NL", "R0", "R1", "R2", "R3"}:
+            return "GB-ENG"
+    return "GBR"
+
+
+def _validate_secretarial_form_payload(
+    *,
+    filing_type: str,
+    form_data: dict,
+    effective_date: date | None,
+    company_number: str = "",
+) -> list[str]:
+    issues: list[str] = []
+    if effective_date is None:
+        issues.append("Effective date is required.")
+    today = date.today()
+    if isinstance(effective_date, date) and effective_date > today:
+        issues.append("Effective date cannot be in the future.")
+
+    if filing_type == "AD01":
+        address = form_data.get("newRegisteredOffice") if isinstance(form_data.get("newRegisteredOffice"), dict) else {}
+        line1 = _coerce_text(address.get("line1"), 150)
+        line2 = _coerce_text(address.get("line2"), 150)
+        city = _coerce_text(address.get("city"), 120)
+        postcode = _coerce_text(address.get("postcode"), 20).upper()
+        country = _coerce_text(address.get("country"), 100)
+        county = _coerce_text(address.get("county"), 120)
+        if not line1:
+            issues.append("AD01 requires new registered office address line 1.")
+        if not city:
+            issues.append("AD01 requires post town/city.")
+        if not postcode:
+            issues.append("AD01 requires postcode for UK filings.")
+        if postcode and not UK_POSTCODE_RE.fullmatch(postcode):
+            issues.append("AD01 postcode is not in a valid UK format.")
+        if not country:
+            issues.append("AD01 requires country.")
+        country_code = _secretarial_country_code(country, company_number=company_number)
+        if country_code not in {"GB-ENG", "GB-WLS", "GB-SCT", "GB-NIR", "GBR", "UNDEF"}:
+            issues.append("AD01 country must be a UK country code (GB-ENG/GB-WLS/GB-SCT/GB-NIR/GBR).")
+        if "PO BOX" in f"{line1} {line2} {county}".upper() and not postcode:
+            issues.append("AD01 PO Box addresses must include a postcode.")
+        return issues
+
+    if filing_type == "NM01":
+        proposed_name = _coerce_text(form_data.get("proposedCompanyName"), 200)
+        resolution_date = _secretarial_parse_date(form_data.get("resolutionDate"), "resolutionDate")
+        resolution_method = _coerce_text(form_data.get("resolutionMethod"), 30).lower()
+        authorising_name = _coerce_text(form_data.get("authorisingPersonName"), 120)
+        authorising_status = _coerce_text(form_data.get("authorisingPersonStatus"), 120)
+        if not proposed_name:
+            issues.append("NM01 requires proposed company name.")
+        elif not re.search(r"\b(LIMITED|LTD|PLC|LLP)\b$", proposed_name.upper()):
+            issues.append("NM01 proposed company name must include a valid legal suffix (Limited/Ltd/PLC/LLP).")
+        if resolution_date is None:
+            issues.append("NM01 requires resolution date.")
+        elif resolution_date > today:
+            issues.append("NM01 resolution date cannot be in the future.")
+        if resolution_method and resolution_method not in {"written", "meeting"}:
+            issues.append("NM01 resolution method must be 'written' or 'meeting'.")
+        if not authorising_name:
+            issues.append("NM01 requires authorising person name.")
+        if not authorising_status:
+            issues.append("NM01 requires authorising person status.")
+        return issues
+
+    if filing_type == "DS01":
+        application_date = _secretarial_parse_date(form_data.get("applicationDate"), "applicationDate")
+        directors = _secretarial_list_of_dicts(form_data.get("applicantDirectors"))
+        statements = form_data.get("statements") if isinstance(form_data.get("statements"), dict) else {}
+        if application_date is None:
+            issues.append("DS01 requires application date.")
+        elif application_date > today:
+            issues.append("DS01 application date cannot be in the future.")
+        if not directors:
+            issues.append("DS01 requires at least one applicant director.")
+        for index, director in enumerate(directors, start=1):
+            if not _coerce_text(director.get("forename"), 100):
+                issues.append(f"DS01 director {index} requires forename.")
+            if not _coerce_text(director.get("surname"), 100):
+                issues.append(f"DS01 director {index} requires surname.")
+        required_true_statements = {
+            "eligible": "DS01 eligibility confirmation is required.",
+            "statementTradingCeased": "DS01 must confirm trading has ceased.",
+            "statementNoInsolvencyProceedings": "DS01 must confirm no insolvency proceedings.",
+            "statementInterestedPartiesWillBeNotified": "DS01 must confirm interested parties will be notified.",
+            "statementNoImproperNameChange": "DS01 must confirm no improper recent name change.",
+        }
+        for key, message in required_true_statements.items():
+            if _first_bool_from_sources(statements.get(key)) is not True:
+                issues.append(message)
+        return issues
+
+    return issues
+
+
+def _build_secretarial_form_xml_node(
+    *,
+    filing_type: str,
+    form_data: dict,
+    namespace: str,
+    company_number: str = "",
+) -> ET.Element:
+    config = _secretarial_form_config(filing_type)
+    node_name = config.get("formIdentifier") or filing_type
+    form_node = ET.Element(f"{{{namespace}}}{node_name}")
+    if filing_type == "AD01":
+        address = form_data.get("newRegisteredOffice") if isinstance(form_data.get("newRegisteredOffice"), dict) else {}
+        line1 = _coerce_text(address.get("line1"), 150)
+        line2 = _coerce_text(address.get("line2"), 150)
+        city = _coerce_text(address.get("city"), 120)
+        county = _coerce_text(address.get("county"), 120)
+        postcode = _coerce_text(address.get("postcode"), 20).upper()
+        country = _secretarial_country_code(_coerce_text(address.get("country"), 100), company_number=company_number)
+        premise = line1.split(" ", 1)[0] if line1 else ""
+        street = line1.split(" ", 1)[1] if " " in line1 else line1
+        new_address = ET.SubElement(form_node, f"{{{namespace}}}Address")
+        if premise:
+            ET.SubElement(new_address, f"{{{namespace}}}Premise").text = premise
+        if street:
+            ET.SubElement(new_address, f"{{{namespace}}}Street").text = street
+        if line2:
+            ET.SubElement(new_address, f"{{{namespace}}}Thoroughfare").text = line2
+        if city:
+            ET.SubElement(new_address, f"{{{namespace}}}PostTown").text = city
+        if county:
+            ET.SubElement(new_address, f"{{{namespace}}}County").text = county
+        if postcode:
+            ET.SubElement(new_address, f"{{{namespace}}}Postcode").text = postcode
+        if country:
+            ET.SubElement(new_address, f"{{{namespace}}}Country").text = country
+        ET.SubElement(form_node, f"{{{namespace}}}AcceptAppropriateOfficeAddressStatement").text = "true"
+        return form_node
+
+    if filing_type == "NM01":
+        proposed_name = _coerce_text(form_data.get("proposedCompanyName"), 200)
+        resolution_date = _secretarial_parse_date(form_data.get("resolutionDate"), "resolutionDate")
+        resolution_method = _coerce_text(form_data.get("resolutionMethod"), 30).lower()
+        method_map = {"written": "RESOLUTION", "meeting": "RESOLUTION"}
+        method_value = method_map.get(resolution_method, "RESOLUTION")
+        same_day = _first_bool_from_sources(form_data.get("sameDay"))
+        ET.SubElement(form_node, f"{{{namespace}}}MethodOfChange").text = method_value
+        ET.SubElement(form_node, f"{{{namespace}}}ProposedCompanyName").text = proposed_name
+        if resolution_date:
+            ET.SubElement(form_node, f"{{{namespace}}}MeetingDate").text = resolution_date.isoformat()
+        ET.SubElement(form_node, f"{{{namespace}}}SameDay").text = "true" if same_day else "false"
+        ET.SubElement(form_node, f"{{{namespace}}}NoticeGiven").text = "true"
+        return form_node
+
+    if filing_type == "DS01":
+        application_date = _secretarial_parse_date(form_data.get("applicationDate"), "applicationDate")
+        directors = _secretarial_list_of_dicts(form_data.get("applicantDirectors"))
+        statements = form_data.get("statements") if isinstance(form_data.get("statements"), dict) else {}
+        if application_date:
+            ET.SubElement(form_node, f"{{{namespace}}}ApplicationDate").text = application_date.isoformat()
+        directors_node = ET.SubElement(form_node, f"{{{namespace}}}ApplicantDirectors")
+        for director in directors:
+            director_node = ET.SubElement(directors_node, f"{{{namespace}}}Director")
+            ET.SubElement(director_node, f"{{{namespace}}}Forename").text = _coerce_text(director.get("forename"), 100)
+            ET.SubElement(director_node, f"{{{namespace}}}Surname").text = _coerce_text(director.get("surname"), 100)
+        statements_node = ET.SubElement(form_node, f"{{{namespace}}}Statements")
+        for key, node_name in (
+            ("statementTradingCeased", "StatementTradingCeased"),
+            ("statementNoInsolvencyProceedings", "StatementNoInsolvencyProceedings"),
+            ("statementInterestedPartiesWillBeNotified", "StatementInterestedPartiesWillBeNotified"),
+            ("statementNoImproperNameChange", "StatementNoImproperNameChange"),
+            ("eligible", "Eligible"),
+        ):
+            bool_value = _first_bool_from_sources(statements.get(key))
+            if bool_value is not None:
+                ET.SubElement(statements_node, f"{{{namespace}}}{node_name}").text = "true" if bool_value else "false"
+        return form_node
+
+    return form_node
+
+
+def _build_secretarial_submission_xml(
+    *,
+    presenter_id: str,
+    presenter_auth: str,
+    environment: str,
+    company_number: str,
+    company_name: str,
+    company_auth_code: str,
+    filing_type: str,
+    submission_number: str,
+    transaction_id: str,
+    package_reference: str,
+    form_data: dict,
+    effective_date: date,
+) -> bytes:
+    config = _secretarial_form_config(filing_type)
+    message_class = _xml_text(config.get("class"), filing_type)
+    form_identifier = _xml_text(config.get("formIdentifier"), filing_type)
+    form_schema_location = _xml_text(config.get("schemaLocation"))
+    if not form_schema_location:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{filing_type} is not configured for XML software filing.",
+        )
+    gov = ET.Element(
+        "GovTalkMessage",
+        {
+            "xmlns": GOVTALK_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{GOVTALK_NS} http://xmlgw.companieshouse.gov.uk/v2-1/schema/Egov_ch-v2-0.xsd",
+        },
+    )
+    ET.SubElement(gov, "EnvelopeVersion").text = "1.0"
+    header = ET.SubElement(gov, "Header")
+    message_details = ET.SubElement(header, "MessageDetails")
+    ET.SubElement(message_details, "Class").text = message_class
+    ET.SubElement(message_details, "Qualifier").text = "request"
+    ET.SubElement(message_details, "TransactionID").text = transaction_id
+    ET.SubElement(message_details, "GatewayTest").text = _ch_gateway_test_flag(environment)
+    sender_details = ET.SubElement(header, "SenderDetails")
+    id_auth = ET.SubElement(sender_details, "IDAuthentication")
+    ET.SubElement(id_auth, "SenderID").text = presenter_id
+    auth = ET.SubElement(id_auth, "Authentication")
+    ET.SubElement(auth, "Method").text = "CHMD5"
+    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
+    govtalk_details = ET.SubElement(gov, "GovTalkDetails")
+    keys = ET.SubElement(govtalk_details, "Keys")
+    ET.SubElement(keys, "Key", {"Type": "CompanyNumber"}).text = company_number
+
+    body = ET.SubElement(gov, "Body")
+    form_submission = ET.SubElement(
+        body,
+        f"{{{CH_HEADER_NS}}}FormSubmission",
+        {
+            "xmlns": CH_HEADER_NS,
+            "xmlns:bs": CH_FORMS_NS,
+            "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+            "xsi:schemaLocation": f"{CH_HEADER_NS} http://xmlgw.companieshouse.gov.uk/v1-0/schema/forms/FormSubmission-v2-11.xsd",
+        },
+    )
+    form_header = ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}FormHeader")
+    company_type, company_number_digits = _ch_split_company_number(company_number)
+    if not company_number_digits:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported company number format for XML gateway: {company_number}.",
+        )
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyNumber").text = company_number_digits
+    if company_type != "EW":
+        ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyType").text = company_type
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyName").text = _xml_text(company_name, "UNKNOWN COMPANY")
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}CompanyAuthenticationCode").text = company_auth_code
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}PackageReference").text = _xml_text(package_reference, presenter_id)
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}Language").text = "EN"
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}FormIdentifier").text = form_identifier
+    ET.SubElement(form_header, f"{{{CH_HEADER_NS}}}SubmissionNumber").text = submission_number
+    ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}DateSigned").text = effective_date.isoformat()
+    form = ET.SubElement(form_submission, f"{{{CH_HEADER_NS}}}Form")
+    form_node = _build_secretarial_form_xml_node(
+        filing_type=filing_type,
+        form_data=form_data,
+        namespace=CH_FORMS_NS,
+        company_number=company_number,
+    )
+    form_node.set("xmlns", CH_FORMS_NS)
+    form_node.set("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
+    form_node.set("xsi:schemaLocation", f"{CH_FORMS_NS} {form_schema_location}")
+    form.append(form_node)
+    return ET.tostring(gov, encoding="utf-8", xml_declaration=True)
 
 
 def _secretarial_parse_date(value: object, field: str) -> date | None:
@@ -3964,6 +4564,19 @@ def create_company_secretarial_filing(user: dict, payload: dict | None = None) -
     due_date = _secretarial_parse_date(payload.get("dueDate"), "dueDate")
     effective_date = _secretarial_parse_date(payload.get("effectiveDate"), "effectiveDate")
     validation_messages = _secretarial_validation_messages(payload.get("validationIssues") or payload.get("validationMessages") or [])
+    form_data = _secretarial_form_data(payload.get("formData"))
+    company_number = normalise_company_number(payload.get("companyNumber"))
+    validation_messages.extend(
+        _validate_secretarial_form_payload(
+            filing_type=filing_type,
+            form_data=form_data,
+            effective_date=effective_date,
+            company_number=company_number,
+        )
+    )
+    if validation_messages:
+        # Keep insertion deterministic if duplicate checks are triggered by UI + backend.
+        validation_messages = list(dict.fromkeys(validation_messages))
     status_value = _coerce_text(payload.get("status"), 40).upper()
     if status_value and status_value not in COMPANY_SECRETARIAL_ALLOWED_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status.")
@@ -4042,7 +4655,7 @@ def create_company_secretarial_filing(user: dict, payload: dict | None = None) -
                     _coerce_text(payload.get("authCodeHint"), 120) or _coerce_text(register_row.get("code_hint"), 120),
                     _coerce_text(payload.get("sourceFilename"), 255) or _coerce_text(register_row.get("source_filename"), 255),
                     uploaded_at,
-                    json.dumps(payload.get("formData") if isinstance(payload.get("formData"), dict) else {}),
+                    json.dumps(form_data),
                     json.dumps(payload.get("preparedSubmission") if isinstance(payload.get("preparedSubmission"), dict) else {}),
                     json.dumps(validation_messages),
                     user_id,
@@ -4141,6 +4754,19 @@ def validate_company_secretarial_filing(user: dict, filing_id: str, payload: dic
             row = _load_secretarial_filing(cursor, filing_id)
             if not row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Filing not found.")
+            filing_type = _coerce_text(row.get("filing_type"), 40).upper()
+            form_data = _secretarial_form_data(row.get("form_data"))
+            effective_date = row.get("effective_date") if isinstance(row.get("effective_date"), date) else None
+            validation_messages.extend(
+                _validate_secretarial_form_payload(
+                    filing_type=filing_type,
+                    form_data=form_data,
+                    effective_date=effective_date,
+                    company_number=_coerce_text(row.get("company_number"), 20),
+                )
+            )
+            if validation_messages:
+                validation_messages = list(dict.fromkeys(validation_messages))
             status_value = _derive_secretarial_status(
                 current_status=row.get("status"),
                 has_validation_issues=bool(validation_messages),
@@ -4181,7 +4807,8 @@ def validate_company_secretarial_filing(user: dict, filing_id: str, payload: dic
     return _serialise_secretarial_filing(updated)
 
 
-def submit_company_secretarial_filing(user: dict, filing_id: str) -> dict:
+def submit_company_secretarial_filing(user: dict, filing_id: str, payload: dict | None = None) -> dict:
+    payload = payload or {}
     user_id = user.get("id") if isinstance(user, dict) else None
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -4191,28 +4818,212 @@ def submit_company_secretarial_filing(user: dict, filing_id: str) -> dict:
             status_value = str(row.get("status") or "")
             if status_value not in {"READY_TO_SUBMIT", "SUBMITTED"}:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filing must be ready before submission.")
-            reference = _coerce_text(row.get("companies_house_ref"), 120) or f"CH-{100000 + secrets.randbelow(900000)}"
+            filing_type = _coerce_text(row.get("filing_type"), 40).upper()
+            reference = _coerce_text(row.get("companies_house_ref"), 120) or _next_unique_submission_number()
             mode = _coerce_text(row.get("mode"), 20).lower()
+            effective_date = row.get("effective_date") if isinstance(row.get("effective_date"), date) else None
+            form_data = _secretarial_form_data(row.get("form_data"))
+            validation_issues = _validate_secretarial_form_payload(
+                filing_type=filing_type,
+                form_data=form_data,
+                effective_date=effective_date,
+                company_number=_coerce_text(row.get("company_number"), 20),
+            )
+            if validation_issues:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Filing validation failed: " + " | ".join(validation_issues[:5]),
+                )
+
+            approval_payload = payload.get("approval") if isinstance(payload.get("approval"), dict) else {}
+            request_meta = payload.get("_requestMeta") if isinstance(payload.get("_requestMeta"), dict) else {}
+            preview_text = json.dumps(row.get("prepared_submission") if isinstance(row.get("prepared_submission"), dict) else {}, sort_keys=True)
+            preview_hash = _secretarial_hash_text(preview_text)
+            audit_bundle = {
+                "submittedByUserId": user_id,
+                "submittedAt": utcnow().isoformat(),
+                "clientApprovalStatement": _coerce_text(approval_payload.get("clientApprovalStatement"), 4000),
+                "internalApprovalStatement": _coerce_text(approval_payload.get("internalApprovalStatement"), 4000),
+                "authCodeConfirmed": bool(approval_payload.get("authCodeConfirmed")),
+                "feeConfirmed": bool(approval_payload.get("feeConfirmed")),
+                "requestMeta": {
+                    "ip": _coerce_text(request_meta.get("ip"), 120),
+                    "forwardedFor": _coerce_text(request_meta.get("forwardedFor"), 250),
+                    "userAgent": _coerce_text(request_meta.get("userAgent"), 500),
+                    "device": _coerce_text(request_meta.get("device"), 250),
+                },
+                "previewHash": preview_hash,
+            }
+            if bool(row.get("client_approval_required")) and (row.get("client_approval_status") or "") != "approved":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client approval is required before submission.")
+            if bool(row.get("internal_approval_required")) and (row.get("internal_approval_status") or "") != "approved":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Internal approval is required before submission.")
+            if bool(row.get("client_approval_required")) and not audit_bundle["clientApprovalStatement"]:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client approval statement is required before submission.")
+            if bool(row.get("internal_approval_required")) and not audit_bundle["internalApprovalStatement"]:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Internal approval statement is required before submission.")
+            if not audit_bundle["authCodeConfirmed"]:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Submission requires explicit authentication-code confirmation.")
+            if Decimal(str(row.get("fee_amount") or "0")) > Decimal("0") and not audit_bundle["feeConfirmed"]:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fee confirmation is required before submission.")
+
             ch_status = "Manual filing pack generated" if mode == "manual" else "Submission sent"
+            response_payload: dict = {
+                "submissionReference": reference,
+                "filingType": filing_type,
+                "audit": audit_bundle,
+            }
+            request_xml = ""
+            response_xml = ""
+            request_xml_hash = ""
+            response_xml_hash = ""
+            gateway_status = "submitted"
+            rejection_reason = ""
+
+            if filing_type in SECRETARIAL_XML_SUPPORTED_TYPES and mode in {"api", "assisted"}:
+                settings_row = _ensure_settings_row()
+                environment = _xml_text(settings_row.get("environment"), "sandbox")
+                presenter_id = configured_presenter_id(settings_row)
+                presenter_auth = decrypt_presenter_auth()
+                if not presenter_id or not presenter_auth:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Presenter ID/authentication are required for software filing.",
+                    )
+                if not row.get("company_id"):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"{filing_type} software filing requires a linked Companies House company record.",
+                    )
+                company_auth_code = _load_company_auth_code(str(row.get("company_id")))
+                if not re.fullmatch(r"[A-Z0-9]{6}", company_auth_code or ""):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Valid 6-character company authentication code is required before submission.",
+                    )
+                transaction_id = _ch_txn_id()
+                request_xml_bytes = _build_secretarial_submission_xml(
+                    presenter_id=presenter_id,
+                    presenter_auth=presenter_auth,
+                    environment=environment,
+                    company_number=_coerce_text(row.get("company_number"), 20),
+                    company_name=_coerce_text(row.get("company_name"), 200),
+                    company_auth_code=company_auth_code,
+                    filing_type=filing_type,
+                    submission_number=reference,
+                    transaction_id=transaction_id,
+                    package_reference=presenter_id,
+                    form_data=form_data,
+                    effective_date=effective_date or date.today(),
+                )
+                xml_validation_errors = _validate_ch_submission_xml_against_xsd(request_xml_bytes)
+                if xml_validation_errors:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Generated {filing_type} XML failed CH XSD validation: {' | '.join(xml_validation_errors[:3])}",
+                    )
+                request_xml = request_xml_bytes.decode("utf-8", errors="replace")
+                request_xml_hash = _secretarial_hash_text(request_xml)
+                response_xml, response_root = _post_ch_gateway(request_xml_bytes)
+                response_xml_hash = _secretarial_hash_text(response_xml)
+                parsed = _parse_ch_submission_response(
+                    response_text=response_xml,
+                    response_root=response_root,
+                    requested_submission_number=reference,
+                )
+                gateway_status = _xml_text(parsed.get("status"), "submitted")
+                rejection_reason = _xml_text(parsed.get("rejectionReason"))
+                response_payload = {
+                    **response_payload,
+                    "transactionId": transaction_id,
+                    "statusCode": parsed.get("statusCode"),
+                    "gatewayStatus": gateway_status,
+                    "rejectionReason": rejection_reason,
+                    "gatewayErrors": parsed.get("errors") or [],
+                    "gatewayStatuses": parsed.get("statuses") or [],
+                    "rawResponse": parsed.get("rawResponse") or "",
+                }
+                if gateway_status == "accepted":
+                    ch_status = "Submission accepted"
+                elif gateway_status == "rejected":
+                    ch_status = rejection_reason or "Submission rejected"
+                else:
+                    ch_status = "Submission sent"
+            elif filing_type == "DS01" and mode in {"api", "assisted"}:
+                ch_status = (
+                    "DS01 is not configured for XML software submission in this workflow. "
+                    "Use manual/assisted filing and record CH acknowledgement."
+                )
+                response_payload = {
+                    **response_payload,
+                    "statusCode": "MANUAL_REQUIRED",
+                    "gatewayStatus": "manual_required",
+                    "rejectionReason": "",
+                    "gatewayErrors": [],
+                    "gatewayStatuses": [],
+                    "rawResponse": "",
+                }
+                gateway_status = "manual_required"
+
+            next_status = "SUBMITTED"
+            if gateway_status == "accepted":
+                next_status = "COMPLETED"
+            elif gateway_status == "rejected":
+                next_status = "REJECTED"
+            elif gateway_status == "manual_required":
+                next_status = "READY_TO_SUBMIT"
             cursor.execute(
                 """
                 UPDATE ch_secretarial_filings
-                SET status = 'SUBMITTED',
+                SET status = %s,
                     submitted_at = COALESCE(submitted_at, NOW()),
                     companies_house_status = %s,
                     companies_house_ref = %s,
+                    prepared_submission = COALESCE(prepared_submission, '{}'::jsonb) || %s::jsonb,
                     updated_by_user_id = %s,
                     updated_at = NOW()
                 WHERE id = %s
                 """,
-                (ch_status, reference, user_id, filing_id),
+                (
+                    next_status,
+                    ch_status,
+                    reference,
+                    json.dumps(
+                        {
+                            "lastSubmission": {
+                                "requestXmlHash": request_xml_hash,
+                                "responseXmlHash": response_xml_hash,
+                                "requestXml": request_xml[:80000],
+                                "responseXml": response_xml[:80000],
+                                "responsePayload": response_payload,
+                                "audit": audit_bundle,
+                            }
+                        }
+                    ),
+                    user_id,
+                    filing_id,
+                ),
             )
             cursor.execute(
                 """
                 INSERT INTO audit_events (entity_type, entity_id, event_type, payload, user_id)
                 VALUES ('ch_secretarial_filing', %s, 'submitted', %s::jsonb, %s)
                 """,
-                (filing_id, json.dumps({"companiesHouseRef": reference}), user_id),
+                (
+                    filing_id,
+                    json.dumps(
+                        {
+                            "companiesHouseRef": reference,
+                            "status": next_status,
+                            "companiesHouseStatus": ch_status,
+                            "requestXmlHash": request_xml_hash,
+                            "responseXmlHash": response_xml_hash,
+                            "audit": audit_bundle,
+                            "rejectionReason": rejection_reason,
+                        }
+                    ),
+                    user_id,
+                ),
             )
             updated = _load_secretarial_filing(cursor, filing_id)
         connection.commit()
@@ -5115,7 +5926,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             )
             continue
 
-        submission_reference = _ch_submission_number()
+        submission_reference = _next_unique_submission_number()
         transaction_id = _ch_txn_id()
         review_date = made_up_to
         workflow_action = workflow_actions_by_company_id.get(company_id, "no-changes")
@@ -6211,6 +7022,45 @@ def update_company(company_id: str, payload: dict, user: dict) -> dict:
                 normalised_soc["totalAggregateNominalValue"] = _ch_decimal_text(raw_soc.get("totalAggregateNominalValue"))
             share_capital_patch["statementOfCapital"] = normalised_soc
 
+    confirmation_statement_patch = (
+        dict(share_capital_patch.get("confirmationStatement"))
+        if isinstance(share_capital_patch.get("confirmationStatement"), dict)
+        else {}
+    )
+    if "registeredEmailAddress" in payload:
+        confirmation_statement_patch["registeredEmailAddress"] = _coerce_text(payload.get("registeredEmailAddress"), 320)
+    if "lawfulPurposeStatement" in payload:
+        lawful = _first_bool_from_sources(payload.get("lawfulPurposeStatement"))
+        if lawful is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'lawfulPurposeStatement' must be true or false.")
+        confirmation_statement_patch["acceptLawfulPurposeStatement"] = lawful
+    if "stateConfirmation" in payload:
+        state_confirmation = _first_bool_from_sources(payload.get("stateConfirmation"))
+        if state_confirmation is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'stateConfirmation' must be true or false.")
+        confirmation_statement_patch["stateConfirmation"] = state_confirmation
+    if "reviewPeriodStart" in payload:
+        value = payload.get("reviewPeriodStart")
+        confirmation_statement_patch["reviewPeriodStart"] = _secretarial_parse_date(value, "reviewPeriodStart").isoformat() if value not in (None, "") else ""
+    if "reviewPeriodEnd" in payload:
+        value = payload.get("reviewPeriodEnd")
+        confirmation_statement_patch["reviewPeriodEnd"] = _secretarial_parse_date(value, "reviewPeriodEnd").isoformat() if value not in (None, "") else ""
+    if "identityVerification" in payload:
+        identity_verification = payload.get("identityVerification")
+        if identity_verification in (None, ""):
+            confirmation_statement_patch["identityVerification"] = {}
+        elif not isinstance(identity_verification, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'identityVerification' must be an object.")
+        else:
+            confirmation_statement_patch["identityVerification"] = {
+                "required": bool(_first_bool_from_sources(identity_verification.get("required"))),
+                "directorPersonalCodeSupplied": bool(_first_bool_from_sources(identity_verification.get("directorPersonalCodeSupplied"))),
+                "verificationStatementGiven": bool(_first_bool_from_sources(identity_verification.get("verificationStatementGiven"),)),
+                "relevantOfficer": _coerce_text(identity_verification.get("relevantOfficer"), 200),
+            }
+    if confirmation_statement_patch:
+        share_capital_patch["confirmationStatement"] = confirmation_statement_patch
+
     if share_capital_patch:
         current_share_capital = current_company.get("shareCapital") if isinstance(current_company.get("shareCapital"), dict) else {}
         merged_share_capital = {**current_share_capital, **share_capital_patch}
@@ -6667,9 +7517,9 @@ def export_companies_house_support_report(
     lines.append(f"Generated at (UTC): {now.isoformat()}")
     lines.append(f"Environment: {environment}")
     lines.append(f"Presenter ID: {presenter_id}")
-    lines.append(f"Presenter Auth: {presenter_auth}")
+    lines.append(f"Presenter Auth: {_mask(presenter_auth)}")
     lines.append(f"Credit Account Number: {_xml_text(settings_row.get('credit_account_number'))}")
-    lines.append(f"API Key: {decrypt_api_key()}")
+    lines.append(f"API Key: {_mask(decrypt_api_key())}")
     lines.append(f"Rows Included: {len(rows)}")
     lines.append(f"Status Filter: {status_value}")
     lines.append("")
