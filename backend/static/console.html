@@ -31230,6 +31230,18 @@
                 if (!payload.evidenceAttached) checks.push("Attach supporting evidence.");
                 if (typeConfig?.clientApprovalRequired && !payload.clientApproved) checks.push("Client approval is mandatory.");
                 if (typeConfig?.internalApprovalRequired && !payload.internalApproved) checks.push("Internal approval is mandatory.");
+                const formData = payload?.formData || {};
+                if (typeConfig?.code === "NM01") {
+                    const proposedName = String(formData?.proposedCompanyName || "").trim();
+                    if (!proposedName) checks.push("NM01 requires proposed company name.");
+                }
+                if (typeConfig?.code === "AD01") {
+                    const address = formData?.newRegisteredOffice || {};
+                    if (!String(address?.line1 || "").trim()) checks.push("AD01 requires address line 1.");
+                    if (!String(address?.city || "").trim()) checks.push("AD01 requires city.");
+                    if (!String(address?.postcode || "").trim()) checks.push("AD01 requires postcode.");
+                    if (!String(address?.country || "").trim()) checks.push("AD01 requires country.");
+                }
                 if (typeConfig?.code === "DS01" && !/eligible|declaration|gazette/i.test(payload.notes || "")) {
                     checks.push("DS01 requires eligibility/declaration context in notes.");
                 }
