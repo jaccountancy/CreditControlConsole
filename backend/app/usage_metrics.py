@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from .database import get_connection, utcnow
@@ -724,6 +724,7 @@ def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
     safe_limit = max(min(_to_int(limit, 120), 300), 1)
     user_id = str(user.get("id") or "").strip() or None
     _sync_git_push_release_updates(max(180, safe_limit))
+    _sync_runtime_release_update()
     rows: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -741,10 +742,6 @@ def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
                     updated_at
                 FROM release_updates
                 WHERE (%s::uuid IS NULL OR created_by_user_id IS NULL OR created_by_user_id = %s::uuid)
-                  AND (
-                    NULLIF(BTRIM(deployment_id), '') IS NOT NULL
-                    OR LOWER(COALESCE(source, '')) LIKE 'railway%%'
-                  )
                 ORDER BY COALESCE(created_at, updated_at) DESC, id DESC
                 LIMIT %s
                 """,
@@ -774,24 +771,6 @@ def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
                 "createdAt": "" if not row.get("created_at") else row["created_at"].isoformat(),
                 "updatedAt": "" if not row.get("updated_at") else row["updated_at"].isoformat(),
             }
-        )
-
-    runtime_deployment_id = str(os.getenv("RAILWAY_DEPLOYMENT_ID") or "").strip()
-    if runtime_deployment_id and not any(row.get("deploymentId") == runtime_deployment_id for row in deployments):
-        deployments.insert(
-            0,
-            {
-                "id": f"runtime-{runtime_deployment_id}",
-                "title": "Current running deployment",
-                "summary": "Runtime deployment detected from environment variables.",
-                "details": [],
-                "deploymentId": runtime_deployment_id,
-                "commitSha": "",
-                "source": "runtime",
-                "deployedAt": utcnow().isoformat(),
-                "createdAt": utcnow().isoformat(),
-                "updatedAt": utcnow().isoformat(),
-            },
         )
 
     return {
@@ -896,4 +875,64 @@ def _sync_git_push_release_updates(limit: int = 180) -> None:
                         now,
                     ),
                 )
+        connection.commit()
+
+
+def _sync_runtime_release_update() -> None:
+    deployment_id = str(os.getenv("RAILWAY_DEPLOYMENT_ID") or "").strip()
+    if not deployment_id:
+        return
+    now = utcnow()
+    deployed_at_raw = str(os.getenv("RAILWAY_DEPLOYED_AT") or os.getenv("RAILWAY_CREATED_AT") or "").strip()
+    deployed_at = now
+    if deployed_at_raw:
+        try:
+            deployed_at = datetime.fromisoformat(deployed_at_raw.replace("Z", "+00:00"))
+        except Exception:
+            deployed_at = now
+    commit_sha = str(os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()
+    service_id = str(os.getenv("RAILWAY_SERVICE_ID") or "").strip()
+    environment_id = str(os.getenv("RAILWAY_ENVIRONMENT_ID") or "").strip()
+    short_dep = deployment_id[:12]
+    details = [
+        f"Deployment ID: {deployment_id}",
+        f"Service ID: {service_id}" if service_id else "",
+        f"Environment ID: {environment_id}" if environment_id else "",
+        f"Commit: {commit_sha[:12]}" if commit_sha else "",
+    ]
+    details = [line for line in details if line]
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO release_updates (
+                    title,
+                    summary,
+                    details,
+                    deployment_id,
+                    commit_sha,
+                    source,
+                    created_at,
+                    updated_at
+                )
+                VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::timestamptz, %s)
+                ON CONFLICT (deployment_id) DO UPDATE
+                SET title = EXCLUDED.title,
+                    summary = EXCLUDED.summary,
+                    details = EXCLUDED.details,
+                    commit_sha = EXCLUDED.commit_sha,
+                    source = EXCLUDED.source,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    f"Railway deployment · {short_dep}",
+                    "Published runtime deployment record.",
+                    json.dumps(details),
+                    deployment_id,
+                    commit_sha,
+                    "railway_runtime",
+                    deployed_at.isoformat(),
+                    now,
+                ),
+            )
         connection.commit()
