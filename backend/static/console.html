@@ -23596,26 +23596,46 @@
                                 <div>
                                     <p class="eyebrow">Practice Tools</p>
                                     <h3>YE Prep</h3>
-                                    <p class="detail-meta">Review connected Xero workspaces and their mapped client counts before year-end preparation.</p>
+                                    <p class="detail-meta">Open a customer workspace, pick a year end, check Companies House deadlines, and review Xero-driven year-end data.</p>
                                 </div>
                                 <div class="detail-actions">
+                                    <button class="ghost-button" id="yePrepBackToCustomersButton" type="button" hidden>Back to customers</button>
                                     <button class="ghost-button" id="yePrepRefreshButton" type="button">Refresh</button>
+                                    <button class="primary-button" id="yePrepSyncButton" type="button" hidden>Sync from Xero</button>
                                 </div>
                             </div>
-                            <p class="late-charge-summary" id="yePrepSummary">Loading connected Xero workspaces.</p>
-                            <section class="ch-companies-table-wrap">
-                                <table class="ch-table" aria-label="YE prep workspaces">
+                            <p class="late-charge-summary" id="yePrepSummary">Loading year-end workspaces.</p>
+                            <section id="yePrepCustomerListWrap" class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="YE prep customers">
                                     <thead>
                                         <tr>
-                                            <th>Workspace</th>
-                                            <th>Tenant ID</th>
-                                            <th>Type</th>
-                                            <th>Connected clients</th>
-                                            <th>Last updated</th>
+                                            <th>Customer workspace</th>
+                                            <th>Company number</th>
+                                            <th>Manager</th>
+                                            <th>Year ends</th>
+                                            <th>Action</th>
                                         </tr>
                                     </thead>
-                                    <tbody id="yePrepWorkspaceBody"></tbody>
+                                    <tbody id="yePrepCustomerTableBody"></tbody>
                                 </table>
+                            </section>
+                            <section id="yePrepWorkspaceWrap" hidden>
+                                <div class="detail-panel" style="padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface-soft); margin-bottom: 12px;">
+                                    <h4 id="yePrepCustomerTitle" style="margin: 0 0 6px;">Customer workspace</h4>
+                                    <p class="detail-meta" id="yePrepCustomerMeta" style="margin: 0;">Select a year end to open the review workspace.</p>
+                                    <div id="yePrepYearEndButtons" class="page-pills" style="margin-top: 10px;"></div>
+                                </div>
+                                <div id="yePrepDeadlineCards" class="key-metrics-grid"></div>
+                                <div id="yePrepTabButtons" class="page-pills" style="margin-top: 10px;">
+                                    <button class="page-pill" type="button" data-ye-tab="overview">Overview</button>
+                                    <button class="page-pill" type="button" data-ye-tab="profit-loss">Profit &amp; Loss</button>
+                                    <button class="page-pill" type="button" data-ye-tab="balance-sheet">Balance Sheet</button>
+                                    <button class="page-pill" type="button" data-ye-tab="transactions">Transactions</button>
+                                    <button class="page-pill" type="button" data-ye-tab="dla">DLA</button>
+                                    <button class="page-pill" type="button" data-ye-tab="fixed-assets">Fixed Assets</button>
+                                    <button class="page-pill" type="button" data-ye-tab="adjustments">Adjustments</button>
+                                </div>
+                                <div id="yePrepTabContent" style="margin-top: 10px;"></div>
                             </section>
                         </section>
                     </section>
@@ -23631,6 +23651,8 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="vatReturnBackButton" type="button" hidden>Back to return queue</button>
                                     <button class="ghost-button" id="vatReturnRefreshButton" type="button">Refresh</button>
+                                    <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>AI Review VAT Return</button>
+                                    <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
                                     <button class="primary-button" id="vatReturnExportNoVatButton" type="button" hidden>Export No VAT Report</button>
                                 </div>
                             </div>
@@ -23652,9 +23674,26 @@
                             <section id="vatReturnDetailWrap" hidden>
                                 <div class="key-metrics-grid" id="vatReturnDetailMetrics"></div>
                                 <div class="page-pills" id="vatReturnDetailTabs">
+                                    <button class="page-pill" id="vatReturnTabTransactions" type="button" data-vat-tab="transactions">Transactions</button>
                                     <button class="page-pill" id="vatReturnTabNoVat" type="button" data-vat-tab="no-vat">No VAT Report</button>
                                     <button class="page-pill" id="vatReturnTabWarnings" type="button" data-vat-tab="warnings">VAT Warnings</button>
                                 </div>
+                                <section class="ch-companies-table-wrap" id="vatReturnTransactionsWrap">
+                                    <table class="ch-table" aria-label="VAT transactions">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Reference</th>
+                                                <th>Description</th>
+                                                <th>Net</th>
+                                                <th>VAT</th>
+                                                <th>Account code</th>
+                                                <th>Tax code</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="vatReturnTransactionsBody"></tbody>
+                                    </table>
+                                </section>
                                 <section class="ch-companies-table-wrap" id="vatReturnNoVatWrap">
                                     <table class="ch-table" aria-label="No VAT transactions">
                                         <thead>
@@ -23688,6 +23727,98 @@
                             </section>
                         </section>
                     </section>
+                    <div class="company-secretarial-modal" id="vatAiReviewModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vatAiReviewTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">AI Review</p>
+                                    <h4 id="vatAiReviewTitle">VAT return review suggestions</h4>
+                                    <p class="detail-meta" id="vatAiReviewSummary">Review and confirm suggested tax/account code changes before applying.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="vatAiReviewApplyConfirmedButton" type="button">Apply Confirmed</button>
+                                    <button class="ghost-button" id="vatAiReviewCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="ch-companies-table-wrap">
+                                <table class="ch-table" aria-label="VAT AI review suggestions">
+                                    <thead>
+                                        <tr>
+                                            <th>Transaction</th>
+                                            <th>Suggested change</th>
+                                            <th>Reason</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="vatAiReviewBody"></tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="vatFinaliseModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vatFinaliseTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Finalise VAT Return</p>
+                                    <h4 id="vatFinaliseTitle">Choose finalisation route</h4>
+                                    <p class="detail-meta" id="vatFinaliseSummary">Send this VAT return for internal review or straight to the client for approval.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="vatFinaliseCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <div class="detail-actions" style="padding: 0 2px 2px;">
+                                <button class="primary-button" id="vatFinaliseInternalButton" type="button">Send For Internal JUK Review</button>
+                                <button class="ghost-button" id="vatFinaliseClientButton" type="button">Send Straight To Client Approval</button>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="company-secretarial-modal" id="vatClientApprovalModal" hidden>
+                        <section class="company-secretarial-modal-panel" role="dialog" aria-modal="true" aria-labelledby="vatClientApprovalTitle">
+                            <div class="company-secretarial-modal-head">
+                                <div>
+                                    <p class="eyebrow">Client Approval Email</p>
+                                    <h4 id="vatClientApprovalTitle">VAT return prepared in draft format</h4>
+                                    <p class="detail-meta" id="vatClientApprovalSummary">Confirm payment position and review no-VAT transactions to request receipts from the client.</p>
+                                </div>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="vatClientApprovalSendButton" type="button">Send For Client Approval</button>
+                                    <button class="ghost-button" id="vatClientApprovalCloseButton" type="button">Close</button>
+                                </div>
+                            </div>
+                            <section class="detail-panel" style="padding: 0;">
+                                <div class="settings-form-grid" style="padding: 0 2px;">
+                                    <label>
+                                        Is there VAT to pay?
+                                        <select id="vatClientApprovalHasPayment">
+                                            <option value="unknown">Select</option>
+                                            <option value="yes">Yes</option>
+                                            <option value="no">No</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Amount to pay (if yes)
+                                        <input id="vatClientApprovalPaymentAmount" type="number" step="0.01" min="0" placeholder="0.00">
+                                    </label>
+                                </div>
+                                <div class="ch-companies-table-wrap" style="margin-top: 10px;">
+                                    <table class="ch-table" aria-label="No VAT transactions to request receipts for">
+                                        <thead>
+                                            <tr>
+                                                <th>Date</th>
+                                                <th>Reference</th>
+                                                <th>Description</th>
+                                                <th>Net</th>
+                                                <th>VAT</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="vatClientApprovalNoVatBody"></tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        </section>
+                    </div>
 
                     <section class="late-charges-screen detail-card" id="practicePackScreen" hidden>
                         <div class="detail-hero">
@@ -24943,9 +25074,16 @@
             let selectedSa100WorkspaceId = "";
             let sa100PrepStage = "workspace";
             let selectedVatReturnKey = "";
-            let vatReturnDetailTab = "no-vat";
+            let vatReturnDetailTab = "transactions";
+            let vatAiReviewModalOpen = false;
+            let vatFinaliseModalOpen = false;
+            let vatClientApprovalModalOpen = false;
             const vatReturnTransactionCache = new Map();
             const vatReturnTransactionLoading = new Set();
+            const vatReturnManualEditsByKey = {};
+            const vatReturnAiSuggestionsByKey = {};
+            const vatReturnWorkflowByKey = {};
+            const vatClientApprovalDraftByKey = {};
             let activeNavSection = typeof persistedUIState.activeNavSection === "string" && persistedUIState.activeNavSection.trim()
                 ? persistedUIState.activeNavSection
                 : "home";
@@ -25705,6 +25843,13 @@
             let latestOperationRun = null;
             const customerTransactionCache = new Map();
             const customerTransactionLoading = new Set();
+            let yePrepSelectedCustomerId = "";
+            let yePrepSelectedYearEnd = "";
+            let yePrepActiveTab = "overview";
+            let yePrepLockDateCheck = null;
+            let yePrepCompaniesHouseCompanyCache = {};
+            let yePrepTransactionEditsByCustomerYear = {};
+            let yePrepManualAdjustmentsByCustomerYear = {};
             let visibleColumns = {
                 description: persistedUIState.visibleColumns?.description !== false,
                 clientNotes: persistedUIState.visibleColumns?.clientNotes !== false
@@ -29036,6 +29181,8 @@
                 renderAll();
                 scrollConsoleToTop();
                 loadSupplierReconciliation();
+                loadMeReport();
+                loadXeroLockDateOverview();
             }
 
             function openVatReturnPrepareScreen() {
@@ -59870,6 +60017,14 @@
             }
 
             const vatQuarterEndMonths = [2, 5, 8, 11];
+            const VAT_TAX_CODE_OPTIONS = [
+                { code: "INPUT2", label: "20% (VAT on Expenses)" },
+                { code: "OUTPUT2", label: "20% (VAT on Income)" },
+                { code: "INPUT", label: "5% (VAT on Expenses)" },
+                { code: "ZERORATED", label: "Zero rated" },
+                { code: "EXEMPT", label: "Exempt" },
+                { code: "NONE", label: "No VAT" },
+            ];
 
             function isoDateOnly(value) {
                 if (!(value instanceof Date) || Number.isNaN(value.getTime())) return "";
@@ -59911,6 +60066,23 @@
                 return { label: `Ready to submit · due in ${diffDays} day${diffDays === 1 ? "" : "s"}`, className: "is-open" };
             }
 
+            function vatWorkflowForEntry(entryKey = "") {
+                if (!vatReturnWorkflowByKey[entryKey]) vatReturnWorkflowByKey[entryKey] = { stage: "draft", updatedAt: "" };
+                return vatReturnWorkflowByKey[entryKey];
+            }
+
+            function vatEffectiveStatus(entry) {
+                const base = vatReturnStatusForDeadline(entry?.deadlineISO || "");
+                const workflow = vatWorkflowForEntry(entry?.key || "");
+                if (workflow.stage === "awaiting-review") {
+                    return { label: "Awaiting Internal Review", className: "is-due" };
+                }
+                if (workflow.stage === "awaiting-client-approval") {
+                    return { label: "Awaiting Client Approval", className: "is-open" };
+                }
+                return base;
+            }
+
             function vatReturnQueueRows() {
                 if (!state.organisation?.xeroConnected) return [];
                 return (state.customers || [])
@@ -59948,6 +60120,36 @@
                 return rows.find((row) => row.key === selectedVatReturnKey) || null;
             }
 
+            function vatTransactionId(row = {}) {
+                if (row?.id) return String(row.id);
+                const date = String(row?.date || "").trim();
+                const reference = String(row?.reference || "").trim();
+                const description = String(row?.description || "").trim();
+                const net = Number(row?.netAmount || 0).toFixed(2);
+                return [date, reference, description, net].join("|");
+            }
+
+            function vatAccountCodeOptions() {
+                const fromXero = (xeroAccounts || [])
+                    .map((account) => ({
+                        code: String(account.code || account.accountCode || "").trim(),
+                        label: `${String(account.code || account.accountCode || "").trim()} · ${String(account.name || account.accountName || "Account")}`.trim()
+                    }))
+                    .filter((item) => item.code);
+                if (fromXero.length) return fromXero;
+                return [
+                    { code: "200", label: "200 · Sales" },
+                    { code: "300", label: "300 · Purchases" },
+                    { code: "400", label: "400 · Advertising & Marketing" },
+                    { code: "404", label: "404 · Bank Fees" },
+                    { code: "820", label: "820 · VAT" }
+                ];
+            }
+
+            function vatTaxCodeOptions() {
+                return VAT_TAX_CODE_OPTIONS;
+            }
+
             function normaliseVatTransaction(row = {}, fallback = {}) {
                 const net = Number(
                     row.netAmount ?? row.net ?? row.lineAmount ?? row.amountExcludingTax ?? row.subtotal ?? fallback.netAmount ?? 0
@@ -59959,7 +60161,7 @@
                     row.grossAmount ?? row.totalAmount ?? row.amountIncludingTax ?? row.total ?? row.amount ?? (net + tax)
                 ) || (net + tax);
                 const date = row.date || row.transactionDate || row.invoiceDate || row.postedDate || fallback.date || "";
-                return {
+                const normalised = {
                     date,
                     reference: row.reference || row.invoiceNumber || row.transactionNumber || row.id || "",
                     description: row.description || row.name || row.memo || row.narrative || "Transaction",
@@ -59967,10 +60169,13 @@
                     taxAmount: tax,
                     grossAmount: gross,
                     taxCode: row.taxType || row.taxCode || row.vatCode || row.taxRate || "",
+                    accountCode: row.accountCode || row.nominalCode || row.code || row.glCode || "",
                     sourceType: row.sourceType || fallback.sourceType || "",
                     transactionType: row.transactionType || row.type || row.documentType || row.kind || "",
                     documentType: row.documentType || row.sourceDocumentType || row.type || "",
                 };
+                normalised.id = vatTransactionId(normalised);
+                return normalised;
             }
 
             function vatTransactionsFromCustomerFallback(entry) {
@@ -60024,8 +60229,57 @@
                 });
             }
 
+            function vatClientFollowUpNoVatRows(transactions = []) {
+                const excludedTextPattern = /(director.?loan|loan transfer|transfer between accounts|wage|wages|salary|paye|insurance|dividend|drawings|capital introduced|corporation tax|vat payment|vat return payment|pension|interest|hp payment|finance repayment)/i;
+                const excludedAccountCodes = new Set(["433", "437", "477", "500", "820", "825", "835", "850", "877", "900", "970", "980"]);
+                return vatNoVatTransactions(transactions).filter((row) => {
+                    const text = [row.description, row.reference, row.accountCode, row.sourceType, row.transactionType].map((part) => String(part || "")).join(" ");
+                    if (excludedTextPattern.test(text)) return false;
+                    const code = String(row.accountCode || "").trim();
+                    if (excludedAccountCodes.has(code)) return false;
+                    return true;
+                });
+            }
+
+            function vatEntryEdits(entryKey = "") {
+                if (!vatReturnManualEditsByKey[entryKey]) vatReturnManualEditsByKey[entryKey] = {};
+                return vatReturnManualEditsByKey[entryKey];
+            }
+
+            function vatTransactionsWithEdits(entry, transactions = []) {
+                const entryKey = String(entry?.key || "");
+                const edits = vatEntryEdits(entryKey);
+                return (transactions || []).map((row) => {
+                    const id = vatTransactionId(row);
+                    const edit = edits[id] || {};
+                    const next = {
+                        ...row,
+                        id,
+                        taxCode: String(edit.taxCode ?? row.taxCode ?? ""),
+                        accountCode: String(edit.accountCode ?? row.accountCode ?? "")
+                    };
+                    return next;
+                });
+            }
+
+            function upsertVatTransactionEdit(entryKey, transactionId, nextValues = {}) {
+                if (!entryKey || !transactionId) return;
+                const edits = vatEntryEdits(entryKey);
+                const current = edits[transactionId] || {};
+                edits[transactionId] = {
+                    ...current,
+                    ...nextValues
+                };
+            }
+
+            function clearVatTransactionEdit(entryKey, transactionId) {
+                const edits = vatEntryEdits(entryKey);
+                delete edits[transactionId];
+            }
+
             function vatWarningsFromTransactions(transactions = []) {
                 return (transactions || []).flatMap((row) => {
+                    const transactionId = vatTransactionId(row);
                     const netAmount = Number(row?.netAmount || 0);
                     const taxAmount = Number(row?.taxAmount || 0);
                     const vatCode = String(row?.taxCode || "").toLowerCase();
@@ -60038,7 +60292,8 @@
                         issues.push({
                             severity: "High",
                             issue: "VAT claimed on spend-money transaction above £10 without a bill record. Verify VAT receipt evidence before reclaiming.",
-                            amount: taxAmount
+                            amount: taxAmount,
+                            proposedTaxCode: "NONE"
                         });
                     }
 
@@ -60047,25 +60302,304 @@
                         issues.push({
                             severity: "Medium",
                             issue: "VAT appears unusually high versus net amount. Check the tax code and source document.",
-                            amount: taxAmount
+                            amount: taxAmount,
+                            proposedTaxCode: "INPUT2"
                         });
                     }
                     if (taxAmount > 0 && /(no vat|exempt|out of scope|zero)/.test(vatCode)) {
                         issues.push({
                             severity: "Medium",
                             issue: "Tax code suggests non‑VAT treatment but VAT amount is posted. Confirm coding and source receipt.",
-                            amount: taxAmount
+                            amount: taxAmount,
+                            proposedTaxCode: "INPUT2"
                         });
                     }
                     return issues.map((warning) => ({
+                        id: `${transactionId}:${warning.severity}:${warning.issue}`,
+                        transactionId,
                         severity: warning.severity,
                         date: row.date,
                         reference: row.reference,
                         description: row.description,
                         issue: warning.issue,
-                        amount: warning.amount
+                        amount: warning.amount,
+                        proposedTaxCode: warning.proposedTaxCode || "",
+                        proposedAccountCode: warning.proposedAccountCode || "",
                     }));
                 });
+            }
+
+            function vatAiSuggestionsForEntry(entry, transactions = []) {
+                const warnings = vatWarningsFromTransactions(transactions);
+                return warnings.map((warning) => ({
+                    id: warning.id,
+                    transactionId: warning.transactionId,
+                    reference: warning.reference || "",
+                    description: warning.description || "",
+                    reason: warning.issue || "Review VAT coding",
+                    proposedTaxCode: warning.proposedTaxCode || "",
+                    proposedAccountCode: warning.proposedAccountCode || "",
+                    status: "pending"
+                }));
+            }
+
+            function ensureVatAiSuggestions(entry, transactions = []) {
+                const entryKey = String(entry?.key || "");
+                if (!entryKey) return [];
+                const existing = Array.isArray(vatReturnAiSuggestionsByKey[entryKey]) ? vatReturnAiSuggestionsByKey[entryKey] : [];
+                if (existing.length) return existing;
+                const created = vatAiSuggestionsForEntry(entry, transactions);
+                vatReturnAiSuggestionsByKey[entryKey] = created;
+                return created;
+            }
+
+            function setVatAiSuggestionStatus(entryKey, suggestionId, status = "pending") {
+                const suggestions = Array.isArray(vatReturnAiSuggestionsByKey[entryKey]) ? vatReturnAiSuggestionsByKey[entryKey] : [];
+                vatReturnAiSuggestionsByKey[entryKey] = suggestions.map((item) => item.id === suggestionId ? { ...item, status } : item);
+            }
+
+            function closeVatAiReviewModal() {
+                vatAiReviewModalOpen = false;
+                const modal = document.getElementById("vatAiReviewModal");
+                if (modal) modal.hidden = true;
+            }
+
+            function renderVatAiReviewModal(entry, transactions = []) {
+                const modal = document.getElementById("vatAiReviewModal");
+                const body = document.getElementById("vatAiReviewBody");
+                const summary = document.getElementById("vatAiReviewSummary");
+                const applyButton = document.getElementById("vatAiReviewApplyConfirmedButton");
+                const closeButton = document.getElementById("vatAiReviewCloseButton");
+                if (!modal || !body || !summary || !applyButton || !closeButton) return;
+                modal.hidden = !vatAiReviewModalOpen;
+                if (!vatAiReviewModalOpen || !entry?.key) return;
+                const entryKey = entry.key;
+                const suggestions = ensureVatAiSuggestions(entry, transactions);
+                const confirmed = suggestions.filter((item) => item.status === "confirmed").length;
+                const rejected = suggestions.filter((item) => item.status === "rejected").length;
+                summary.textContent = `${suggestions.length.toLocaleString("en-GB")} suggestion${suggestions.length === 1 ? "" : "s"} · ${confirmed.toLocaleString("en-GB")} confirmed · ${rejected.toLocaleString("en-GB")} rejected`;
+                if (closeButton.dataset.vatWired !== "true") {
+                    closeButton.dataset.vatWired = "true";
+                    closeButton.addEventListener("click", closeVatAiReviewModal);
+                }
+                if (modal.dataset.vatWired !== "true") {
+                    modal.dataset.vatWired = "true";
+                    modal.addEventListener("click", (event) => {
+                        if (event.target === modal) closeVatAiReviewModal();
+                    });
+                }
+                if (applyButton.dataset.vatWired !== "true") {
+                    applyButton.dataset.vatWired = "true";
+                    applyButton.addEventListener("click", () => {
+                        const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!currentEntry?.key) return;
+                        const currentSuggestions = Array.isArray(vatReturnAiSuggestionsByKey[currentEntry.key]) ? vatReturnAiSuggestionsByKey[currentEntry.key] : [];
+                        let applied = 0;
+                        currentSuggestions.forEach((suggestion) => {
+                            if (suggestion.status !== "confirmed") return;
+                            upsertVatTransactionEdit(currentEntry.key, suggestion.transactionId, {
+                                ...(suggestion.proposedTaxCode ? { taxCode: suggestion.proposedTaxCode } : {}),
+                                ...(suggestion.proposedAccountCode ? { accountCode: suggestion.proposedAccountCode } : {})
+                            });
+                            applied += 1;
+                        });
+                        if (applied) showToast(`${applied.toLocaleString("en-GB")} AI suggestion${applied === 1 ? "" : "s"} applied`, "success");
+                        else showToast("No confirmed suggestions to apply", "info");
+                        closeVatAiReviewModal();
+                        renderVatReturnPrepareScreen();
+                    });
+                }
+                if (!suggestions.length) {
+                    body.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No suggestions</p><h4>No AI changes recommended</h4><p>This VAT return currently has no warning-driven changes to review.</p></div></td></tr>';
+                    return;
+                }
+                body.innerHTML = suggestions.map((suggestion) => {
+                    const statusClass = suggestion.status === "confirmed" ? "is-open" : suggestion.status === "rejected" ? "is-overdue" : "is-due";
+                    return `
+                        <tr>
+                            <td><strong>${escapeHTML(suggestion.reference || "Transaction")}</strong><small>${escapeHTML(suggestion.description || "")}</small></td>
+                            <td>
+                                ${suggestion.proposedTaxCode ? `<div>Tax code → <strong>${escapeHTML(suggestion.proposedTaxCode)}</strong></div>` : ""}
+                                ${suggestion.proposedAccountCode ? `<div>Account code → <strong>${escapeHTML(suggestion.proposedAccountCode)}</strong></div>` : ""}
+                                ${(!suggestion.proposedTaxCode && !suggestion.proposedAccountCode) ? "<div>No code change proposed</div>" : ""}
+                            </td>
+                            <td>${escapeHTML(suggestion.reason || "")}</td>
+                            <td><span class="lock-status-pill ${statusClass}">${escapeHTML(suggestion.status)}</span></td>
+                            <td>
+                                <button class="ghost-button" type="button" data-vat-ai-confirm="${escapeHTML(suggestion.id)}">Confirm</button>
+                                <button class="ghost-button" type="button" data-vat-ai-reject="${escapeHTML(suggestion.id)}">Reject</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("");
+                body.querySelectorAll("[data-vat-ai-confirm]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        setVatAiSuggestionStatus(entryKey, button.dataset.vatAiConfirm, "confirmed");
+                        renderVatAiReviewModal(entry, transactions);
+                    });
+                });
+                body.querySelectorAll("[data-vat-ai-reject]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        setVatAiSuggestionStatus(entryKey, button.dataset.vatAiReject, "rejected");
+                        renderVatAiReviewModal(entry, transactions);
+                    });
+                });
+            }
+
+            function closeVatFinaliseModal() {
+                vatFinaliseModalOpen = false;
+                const modal = document.getElementById("vatFinaliseModal");
+                if (modal) modal.hidden = true;
+            }
+
+            function closeVatClientApprovalModal() {
+                vatClientApprovalModalOpen = false;
+                const modal = document.getElementById("vatClientApprovalModal");
+                if (modal) modal.hidden = true;
+            }
+
+            function openVatClientApprovalModal(entry, transactions = []) {
+                if (!entry?.key) return;
+                const entryKey = entry.key;
+                if (!vatClientApprovalDraftByKey[entryKey]) {
+                    vatClientApprovalDraftByKey[entryKey] = {
+                        hasPayment: "unknown",
+                        paymentAmount: "",
+                    };
+                }
+                const followUpRows = vatClientFollowUpNoVatRows(transactions);
+                vatClientApprovalDraftByKey[entryKey].followUpRows = followUpRows;
+                vatClientApprovalModalOpen = true;
+                renderVatClientApprovalModal(entry, transactions);
+            }
+
+            function renderVatFinaliseModal(entry) {
+                const modal = document.getElementById("vatFinaliseModal");
+                const summary = document.getElementById("vatFinaliseSummary");
+                const closeButton = document.getElementById("vatFinaliseCloseButton");
+                const internalButton = document.getElementById("vatFinaliseInternalButton");
+                const clientButton = document.getElementById("vatFinaliseClientButton");
+                if (!modal || !summary || !closeButton || !internalButton || !clientButton) return;
+                modal.hidden = !vatFinaliseModalOpen;
+                if (!vatFinaliseModalOpen || !entry?.key) return;
+                summary.textContent = `${entry.clientName} · period ending ${formatDate(entry.periodEndISO)}. Choose internal review or send direct to client approval.`;
+                if (closeButton.dataset.vatWired !== "true") {
+                    closeButton.dataset.vatWired = "true";
+                    closeButton.addEventListener("click", closeVatFinaliseModal);
+                }
+                if (modal.dataset.vatWired !== "true") {
+                    modal.dataset.vatWired = "true";
+                    modal.addEventListener("click", (event) => {
+                        if (event.target === modal) closeVatFinaliseModal();
+                    });
+                }
+                if (internalButton.dataset.vatWired !== "true") {
+                    internalButton.dataset.vatWired = "true";
+                    internalButton.addEventListener("click", () => {
+                        const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!currentEntry?.key) return;
+                        vatReturnWorkflowByKey[currentEntry.key] = { stage: "awaiting-review", updatedAt: new Date().toISOString() };
+                        closeVatFinaliseModal();
+                        closeVatClientApprovalModal();
+                        showToast("VAT return moved to Awaiting Internal Review", "success");
+                        renderVatReturnPrepareScreen();
+                    });
+                }
+                if (clientButton.dataset.vatWired !== "true") {
+                    clientButton.dataset.vatWired = "true";
+                    clientButton.addEventListener("click", () => {
+                        const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!currentEntry?.key) return;
+                        const cache = vatReturnTransactionCache.get(currentEntry.key) || {};
+                        const transactions = vatTransactionsWithEdits(currentEntry, cache.transactions || []);
+                        closeVatFinaliseModal();
+                        openVatClientApprovalModal(currentEntry, transactions);
+                    });
+                }
+            }
+
+            function renderVatClientApprovalModal(entry, transactions = []) {
+                const modal = document.getElementById("vatClientApprovalModal");
+                const summary = document.getElementById("vatClientApprovalSummary");
+                const hasPaymentSelect = document.getElementById("vatClientApprovalHasPayment");
+                const paymentAmountInput = document.getElementById("vatClientApprovalPaymentAmount");
+                const noVatBody = document.getElementById("vatClientApprovalNoVatBody");
+                const sendButton = document.getElementById("vatClientApprovalSendButton");
+                const closeButton = document.getElementById("vatClientApprovalCloseButton");
+                if (!modal || !summary || !hasPaymentSelect || !paymentAmountInput || !noVatBody || !sendButton || !closeButton) return;
+                modal.hidden = !vatClientApprovalModalOpen;
+                if (!vatClientApprovalModalOpen || !entry?.key) return;
+                const entryKey = entry.key;
+                const draft = vatClientApprovalDraftByKey[entryKey] || { hasPayment: "unknown", paymentAmount: "", followUpRows: [] };
+                const followUpRows = Array.isArray(draft.followUpRows) && draft.followUpRows.length
+                    ? draft.followUpRows
+                    : vatClientFollowUpNoVatRows(transactions);
+                summary.textContent = `${entry.clientName} · draft VAT return prepared. Confirm payment status before sending to client approval.`;
+                hasPaymentSelect.value = String(draft.hasPayment || "unknown");
+                paymentAmountInput.value = draft.paymentAmount || "";
+                if (closeButton.dataset.vatWired !== "true") {
+                    closeButton.dataset.vatWired = "true";
+                    closeButton.addEventListener("click", closeVatClientApprovalModal);
+                }
+                if (modal.dataset.vatWired !== "true") {
+                    modal.dataset.vatWired = "true";
+                    modal.addEventListener("click", (event) => {
+                        if (event.target === modal) closeVatClientApprovalModal();
+                    });
+                }
+                if (hasPaymentSelect.dataset.vatWired !== "true") {
+                    hasPaymentSelect.dataset.vatWired = "true";
+                    hasPaymentSelect.addEventListener("change", () => {
+                        const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!currentEntry?.key) return;
+                        if (!vatClientApprovalDraftByKey[currentEntry.key]) vatClientApprovalDraftByKey[currentEntry.key] = {};
+                        vatClientApprovalDraftByKey[currentEntry.key].hasPayment = hasPaymentSelect.value || "unknown";
+                    });
+                }
+                if (paymentAmountInput.dataset.vatWired !== "true") {
+                    paymentAmountInput.dataset.vatWired = "true";
+                    paymentAmountInput.addEventListener("input", () => {
+                        const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!currentEntry?.key) return;
+                        if (!vatClientApprovalDraftByKey[currentEntry.key]) vatClientApprovalDraftByKey[currentEntry.key] = {};
+                        vatClientApprovalDraftByKey[currentEntry.key].paymentAmount = paymentAmountInput.value || "";
+                    });
+                }
+                noVatBody.innerHTML = followUpRows.length
+                    ? followUpRows
+                        .sort((left, right) => dateSortValue(right.date) - dateSortValue(left.date))
+                        .map((row) => `
+                            <tr>
+                                <td>${escapeHTML(row.date ? formatDate(row.date) : "—")}</td>
+                                <td>${escapeHTML(row.reference || "—")}</td>
+                                <td>${escapeHTML(row.description || "Transaction")}</td>
+                                <td>${formatCurrency(row.netAmount || 0)}</td>
+                                <td>${formatCurrency(row.taxAmount || 0)}</td>
+                            </tr>
+                        `).join("")
+                    : '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No follow-up items</p><h4>No qualifying no-VAT transactions for client receipt request</h4><p>Filtered out transfers, wages, insurance and other non-claimable categories.</p></div></td></tr>';
+                if (sendButton.dataset.vatWired !== "true") {
+                    sendButton.dataset.vatWired = "true";
+                    sendButton.addEventListener("click", () => {
+                        const currentEntry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!currentEntry?.key) return;
+                        const currentDraft = vatClientApprovalDraftByKey[currentEntry.key] || {};
+                        const hasPayment = String(currentDraft.hasPayment || hasPaymentSelect.value || "unknown");
+                        const paymentAmount = Number(currentDraft.paymentAmount || paymentAmountInput.value || 0);
+                        if (hasPayment === "unknown") {
+                            showToast("Confirm whether there is VAT to pay before sending to the client", "error");
+                            return;
+                        }
+                        if (hasPayment === "yes" && paymentAmount <= 0) {
+                            showToast("Enter the VAT payment amount before sending to client approval", "error");
+                            return;
+                        }
+                        vatReturnWorkflowByKey[currentEntry.key] = { stage: "awaiting-client-approval", updatedAt: new Date().toISOString() };
+                        closeVatClientApprovalModal();
+                        showToast("VAT return sent for client approval", "success");
+                        renderVatReturnPrepareScreen();
+                    });
+                }
             }
 
             async function ensureVatReturnTransactions(entry, force = false, options = {}) {
@@ -60073,7 +60607,10 @@
                 if (!force && vatReturnTransactionCache.has(entry.key)) return;
                 if (vatReturnTransactionLoading.has(entry.key)) return;
                 vatReturnTransactionLoading.add(entry.key);
-                if (force) vatReturnTransactionCache.delete(entry.key);
+                if (force) {
+                    vatReturnTransactionCache.delete(entry.key);
+                    delete vatReturnAiSuggestionsByKey[entry.key];
+                }
                 if (activeView === "vat-return-prepare") renderVatReturnPrepareScreen();
                 try {
                     const payload = await requestJSON(
@@ -60120,14 +60657,20 @@
             function openVatReturnEntry(entry) {
                 if (!entry?.key) return;
                 selectedVatReturnKey = entry.key;
-                vatReturnDetailTab = "no-vat";
+                vatReturnDetailTab = "transactions";
+                vatAiReviewModalOpen = false;
+                vatFinaliseModalOpen = false;
+                vatClientApprovalModalOpen = false;
                 renderVatReturnPrepareScreen();
                 ensureVatReturnTransactions(entry, false, { silent: true });
             }
 
             function closeVatReturnEntry() {
                 selectedVatReturnKey = "";
-                vatReturnDetailTab = "no-vat";
+                vatReturnDetailTab = "transactions";
+                closeVatAiReviewModal();
+                closeVatFinaliseModal();
+                closeVatClientApprovalModal();
                 renderVatReturnPrepareScreen();
             }
 
@@ -60142,7 +60685,8 @@
             function exportVatNoVatReport(entry) {
                 if (!entry?.key) return;
                 const cache = vatReturnTransactionCache.get(entry.key) || {};
-                const noVatRows = vatNoVatTransactions(cache.transactions || []);
+                const transactions = vatTransactionsWithEdits(entry, cache.transactions || []);
+                const noVatRows = vatNoVatTransactions(transactions);
                 if (!noVatRows.length) {
                     showToast("No no-VAT transactions found for this period", "info");
                     return;
@@ -60167,27 +60711,41 @@
                 const detailWrap = document.getElementById("vatReturnDetailWrap");
                 const metrics = document.getElementById("vatReturnDetailMetrics");
                 const tabsWrap = document.getElementById("vatReturnDetailTabs");
+                const transactionsTabButton = document.getElementById("vatReturnTabTransactions");
                 const noVatTabButton = document.getElementById("vatReturnTabNoVat");
                 const warningsTabButton = document.getElementById("vatReturnTabWarnings");
+                const transactionsWrap = document.getElementById("vatReturnTransactionsWrap");
+                const transactionsBody = document.getElementById("vatReturnTransactionsBody");
                 const noVatWrap = document.getElementById("vatReturnNoVatWrap");
                 const noVatBody = document.getElementById("vatReturnNoVatBody");
                 const warningsWrap = document.getElementById("vatReturnWarningsWrap");
                 const warningsBody = document.getElementById("vatReturnWarningsBody");
                 const backButton = document.getElementById("vatReturnBackButton");
                 const refreshButton = document.getElementById("vatReturnRefreshButton");
+                const aiReviewButton = document.getElementById("vatReturnAiReviewButton");
+                const finaliseButton = document.getElementById("vatReturnFinaliseButton");
                 const exportButton = document.getElementById("vatReturnExportNoVatButton");
-                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !noVatTabButton || !warningsTabButton || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !exportButton) return;
+                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !aiReviewButton || !finaliseButton || !exportButton) return;
 
                 const rows = vatReturnQueueRows();
                 const activeEntry = selectedVatReturnEntry(rows);
                 const inDetail = Boolean(activeEntry);
+                if (!inDetail) {
+                    if (vatAiReviewModalOpen) closeVatAiReviewModal();
+                    if (vatFinaliseModalOpen) closeVatFinaliseModal();
+                    if (vatClientApprovalModalOpen) closeVatClientApprovalModal();
+                }
 
                 queueWrap.hidden = inDetail;
                 detailWrap.hidden = !inDetail;
                 backButton.hidden = !inDetail;
+                aiReviewButton.hidden = !inDetail;
+                finaliseButton.hidden = !inDetail;
                 exportButton.hidden = !inDetail;
+                transactionsTabButton.classList.toggle("is-active", vatReturnDetailTab === "transactions");
                 noVatTabButton.classList.toggle("is-active", vatReturnDetailTab === "no-vat");
                 warningsTabButton.classList.toggle("is-active", vatReturnDetailTab === "warnings");
+                transactionsWrap.hidden = !inDetail || vatReturnDetailTab !== "transactions";
                 noVatWrap.hidden = !inDetail || vatReturnDetailTab !== "no-vat";
                 warningsWrap.hidden = !inDetail || vatReturnDetailTab !== "warnings";
 
@@ -60220,9 +60778,29 @@
                     tabsWrap.dataset.vatWired = "true";
                     tabsWrap.querySelectorAll("[data-vat-tab]").forEach((button) => {
                         button.addEventListener("click", () => {
-                            vatReturnDetailTab = button.dataset.vatTab || "no-vat";
+                            vatReturnDetailTab = button.dataset.vatTab || "transactions";
                             renderVatReturnPrepareScreen();
                         });
+                    });
+                }
+                if (aiReviewButton.dataset.vatWired !== "true") {
+                    aiReviewButton.dataset.vatWired = "true";
+                    aiReviewButton.addEventListener("click", () => {
+                        const entry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!entry) return;
+                        const cache = vatReturnTransactionCache.get(entry.key) || {};
+                        const transactions = vatTransactionsWithEdits(entry, cache.transactions || []);
+                        vatAiReviewModalOpen = true;
+                        renderVatAiReviewModal(entry, transactions);
+                    });
+                }
+                if (finaliseButton.dataset.vatWired !== "true") {
+                    finaliseButton.dataset.vatWired = "true";
+                    finaliseButton.addEventListener("click", () => {
+                        const entry = selectedVatReturnEntry(vatReturnQueueRows());
+                        if (!entry) return;
+                        vatFinaliseModalOpen = true;
+                        renderVatFinaliseModal(entry);
                     });
                 }
 
@@ -60230,10 +60808,12 @@
                     summary.textContent = "Connect Xero to load VAT returns.";
                     queueBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Xero disconnected</p><h4>Connect Xero to prepare VAT returns</h4><p>The VAT queue is available for connected Xero clients only.</p></div></td></tr>';
                     metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
                     noVatBody.innerHTML = "";
                     warningsBody.innerHTML = "";
                     exportButton.disabled = true;
                     refreshButton.disabled = false;
+                    closeVatAiReviewModal();
                     return;
                 }
 
@@ -60241,18 +60821,22 @@
                     summary.textContent = "No VAT return workspaces are currently available.";
                     queueBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No Xero-linked clients available</h4><p>Add clients with active Xero contact links to build the VAT queue.</p></div></td></tr>';
                     metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
                     noVatBody.innerHTML = "";
                     warningsBody.innerHTML = "";
                     exportButton.disabled = true;
                     refreshButton.disabled = false;
+                    closeVatAiReviewModal();
                     return;
                 }
 
                 if (!inDetail) {
                     const overdueCount = rows.filter((row) => vatReturnStatusForDeadline(row.deadlineISO).className === "is-overdue").length;
-                    summary.textContent = `${rows.length.toLocaleString("en-GB")} VAT return${rows.length === 1 ? "" : "s"} ready or due${overdueCount ? ` · ${overdueCount.toLocaleString("en-GB")} overdue` : ""}.`;
+                    const awaitingReviewCount = rows.filter((row) => vatWorkflowForEntry(row.key).stage === "awaiting-review").length;
+                    const awaitingClientCount = rows.filter((row) => vatWorkflowForEntry(row.key).stage === "awaiting-client-approval").length;
+                    summary.textContent = `${rows.length.toLocaleString("en-GB")} VAT return${rows.length === 1 ? "" : "s"} ready or due${overdueCount ? ` · ${overdueCount.toLocaleString("en-GB")} overdue` : ""}${awaitingReviewCount ? ` · ${awaitingReviewCount.toLocaleString("en-GB")} awaiting review` : ""}${awaitingClientCount ? ` · ${awaitingClientCount.toLocaleString("en-GB")} awaiting client approval` : ""}.`;
                     queueBody.innerHTML = rows.map((row) => {
-                        const status = vatReturnStatusForDeadline(row.deadlineISO);
+                        const status = vatEffectiveStatus(row);
                         return `
                             <tr>
                                 <td><strong>${escapeHTML(row.clientName)}</strong><small>${escapeHTML(row.xeroContactId)}</small></td>
@@ -60270,19 +60854,26 @@
                         });
                     });
                     metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
                     noVatBody.innerHTML = "";
                     warningsBody.innerHTML = "";
                     exportButton.disabled = true;
+                    closeVatAiReviewModal();
                     return;
                 }
+                renderVatFinaliseModal(activeEntry);
 
                 const cache = vatReturnTransactionCache.get(activeEntry.key) || null;
                 const isLoading = vatReturnTransactionLoading.has(activeEntry.key);
-                const status = vatReturnStatusForDeadline(activeEntry.deadlineISO);
-                const transactions = Array.isArray(cache?.transactions) ? cache.transactions : [];
+                const status = vatEffectiveStatus(activeEntry);
+                const rawTransactions = Array.isArray(cache?.transactions) ? cache.transactions : [];
+                const transactions = vatTransactionsWithEdits(activeEntry, rawTransactions);
                 const noVatRows = vatNoVatTransactions(transactions);
                 const warnings = vatWarningsFromTransactions(transactions);
                 const noVatNetTotal = noVatRows.reduce((sum, row) => sum + Number(row.netAmount || 0), 0);
+                if (isXeroConnected() && !xeroAccountsLoading && !xeroAccountsLoaded) {
+                    ensureXeroAccountsForJashflow(false);
+                }
 
                 summary.textContent = `${activeEntry.clientName} · VAT period ending ${formatDate(activeEntry.periodEndISO)} · ${status.label}.`;
                 metrics.innerHTML = `
@@ -60304,14 +60895,63 @@
                     });
                 }
 
+                if (isLoading && !transactions.length) {
+                    transactionsBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling VAT transactions</h4><p>Transactions are loading from Xero for this VAT period.</p></div></td></tr>';
+                } else if (!transactions.length) {
+                    transactionsBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">No transactions</p><h4>No VAT transactions found in this period</h4><p>Refresh after a Xero sync if transactions are expected.</p></div></td></tr>';
+                } else {
+                    const accountOptions = vatAccountCodeOptions();
+                    const taxOptions = vatTaxCodeOptions();
+                    const entryEdits = vatEntryEdits(activeEntry.key);
+                    transactionsBody.innerHTML = transactions
+                        .sort((left, right) => dateSortValue(right.date) - dateSortValue(left.date))
+                        .map((row) => {
+                            const id = vatTransactionId(row);
+                            const currentEdit = entryEdits[id] || {};
+                            const accountValue = String(currentEdit.accountCode ?? row.accountCode ?? "");
+                            const taxValue = String(currentEdit.taxCode ?? row.taxCode ?? "");
+                            const accountOptionsMarkup = [`<option value=\"\">Select account</option>`, ...accountOptions.map((option) => `<option value="${escapeHTML(option.code)}"${option.code === accountValue ? " selected" : ""}>${escapeHTML(option.label)}</option>`)].join("");
+                            const taxOptionsMarkup = [`<option value=\"\">Select tax code</option>`, ...taxOptions.map((option) => `<option value="${escapeHTML(option.code)}"${option.code === taxValue ? " selected" : ""}>${escapeHTML(option.code)} · ${escapeHTML(option.label)}</option>`)].join("");
+                            return `
+                                <tr>
+                                    <td>${escapeHTML(row.date ? formatDate(row.date) : "—")}</td>
+                                    <td><strong>${escapeHTML(row.reference || "—")}</strong><small>${escapeHTML(row.id || "")}</small></td>
+                                    <td>${escapeHTML(row.description || "Transaction")}</td>
+                                    <td>${formatCurrency(row.netAmount || 0)}</td>
+                                    <td>${formatCurrency(row.taxAmount || 0)}</td>
+                                    <td><select data-vat-account-code="${escapeHTML(id)}">${accountOptionsMarkup}</select></td>
+                                    <td><select data-vat-tax-code="${escapeHTML(id)}">${taxOptionsMarkup}</select></td>
+                                </tr>
+                            `;
+                        }).join("");
+                    transactionsBody.querySelectorAll("[data-vat-account-code]").forEach((select) => {
+                        select.addEventListener("change", () => {
+                            const transactionId = select.dataset.vatAccountCode || "";
+                            upsertVatTransactionEdit(activeEntry.key, transactionId, { accountCode: select.value || "" });
+                            renderVatReturnPrepareScreen();
+                        });
+                    });
+                    transactionsBody.querySelectorAll("[data-vat-tax-code]").forEach((select) => {
+                        select.addEventListener("change", () => {
+                            const transactionId = select.dataset.vatTaxCode || "";
+                            upsertVatTransactionEdit(activeEntry.key, transactionId, { taxCode: select.value || "" });
+                            renderVatReturnPrepareScreen();
+                        });
+                    });
+                }
+
                 if (cache?.error) {
                     noVatBody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not pull VAT transactions</h4><p>${escapeHTML(cache.error)}</p></div></td></tr>`;
                     warningsBody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">Unable to load</p><h4>Could not evaluate VAT warnings</h4><p>${escapeHTML(cache.error)}</p></div></td></tr>`;
+                    renderVatAiReviewModal(activeEntry, transactions);
+                    renderVatClientApprovalModal(activeEntry, transactions);
                     return;
                 }
                 if (isLoading && !transactions.length) {
                     noVatBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Pulling Xero transactions for this VAT period</h4><p>Once loaded, only no‑VAT lines are listed here and available for export.</p></div></td></tr>';
                     warningsBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Running VAT warning checks</h4><p>OpenAI checks VAT-coded transactions once Xero data is loaded.</p></div></td></tr>';
+                    renderVatAiReviewModal(activeEntry, transactions);
+                    renderVatClientApprovalModal(activeEntry, transactions);
                     return;
                 }
                 if (!noVatRows.length) {
@@ -60333,6 +60973,8 @@
 
                 if (!warnings.length) {
                     warningsBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No warnings</p><h4>No VAT warning flags were found</h4><p>OpenAI reviewed VATable transactions and did not detect issues requiring attention.</p></div></td></tr>';
+                    renderVatAiReviewModal(activeEntry, transactions);
+                    renderVatClientApprovalModal(activeEntry, transactions);
                     return;
                 }
                 warningsBody.innerHTML = warnings
@@ -60351,50 +60993,794 @@
                             <td>${formatCurrency(warning.amount || 0)}</td>
                         </tr>
                     `).join("");
+                renderVatAiReviewModal(activeEntry, transactions);
+                renderVatClientApprovalModal(activeEntry, transactions);
+            }
+
+            function yePrepStorageKeyFor(customer = {}, yearEnd = "") {
+                return `${String(customer?.id || "")}:${String(yearEnd || "")}`;
+            }
+
+            function yePrepEditStoreFor(customer = {}, yearEnd = "") {
+                const key = yePrepStorageKeyFor(customer, yearEnd);
+                if (!yePrepTransactionEditsByCustomerYear[key]) yePrepTransactionEditsByCustomerYear[key] = {};
+                return yePrepTransactionEditsByCustomerYear[key];
+            }
+
+            function yePrepAdjustmentsFor(customer = {}, yearEnd = "") {
+                const key = yePrepStorageKeyFor(customer, yearEnd);
+                if (!Array.isArray(yePrepManualAdjustmentsByCustomerYear[key])) yePrepManualAdjustmentsByCustomerYear[key] = [];
+                return yePrepManualAdjustmentsByCustomerYear[key];
+            }
+
+            function yePrepNormaliseIsoDate(value = "") {
+                const parsed = parseDateValue(value);
+                if (!parsed) return "";
+                return isoDateOnly(parsed);
+            }
+
+            function yePrepYearEndMonthFromCustomer(customer = {}) {
+                const candidates = [
+                    Number(customer?.customer?.yearEndMonth),
+                    Number(customer?.meReportClient?.yearEndMonth),
+                    Number(customer?.customer?.yearEnd),
+                ];
+                const matched = candidates.find((value) => Number.isInteger(value) && value >= 1 && value <= 12);
+                return matched || 3;
+            }
+
+            function yePrepDefaultYearEndForMonth(month = 3, year = new Date().getFullYear()) {
+                const safeMonth = Math.min(12, Math.max(1, Number(month || 3)));
+                const date = new Date(year, safeMonth, 0);
+                return isoDateOnly(date);
+            }
+
+            function yePrepYearEndsForCustomer(customer = {}) {
+                const values = new Set();
+                const push = (raw = "") => {
+                    const iso = yePrepNormaliseIsoDate(raw);
+                    if (iso) values.add(iso);
+                };
+                const meSummary = customer?.summary || {};
+                const lockRow = customer?.lockRow || {};
+                const companiesHouse = lockRow?.companiesHouse || {};
+                push(customer?.customer?.yearEndDate);
+                push(meSummary.periodEnd);
+                push(companiesHouse.yearEndDate);
+                push(companiesHouse.nextMadeUpToDate);
+                push(companiesHouse.accountsFiledDate);
+                const month = yePrepYearEndMonthFromCustomer(customer);
+                const currentYear = new Date().getFullYear();
+                push(yePrepDefaultYearEndForMonth(month, currentYear));
+                push(yePrepDefaultYearEndForMonth(month, currentYear - 1));
+                push(yePrepDefaultYearEndForMonth(month, currentYear - 2));
+                return [...values].sort((left, right) => dateSortValue(right) - dateSortValue(left)).slice(0, 6);
+            }
+
+            function yePrepCustomerRows() {
+                const stateCustomers = Array.isArray(state.customers) ? state.customers : [];
+                const customersById = new Map(stateCustomers.map((customer) => [String(customer?.id || ""), customer]));
+                const connectedClients = supplierReconciliationConnectedClients();
+                const byClientId = new Map();
+                const byContactId = new Map();
+                connectedClients.forEach((client) => {
+                    if (client?.id) byClientId.set(String(client.id), client);
+                    if (client?.xeroContactId) byContactId.set(String(client.xeroContactId), client);
+                });
+                const meReportClients = Array.isArray(meReportData?.clients) ? meReportData.clients : [];
+                const meReportById = new Map(meReportClients.map((client) => [String(client?.id || ""), client]));
+                const meReportByName = new Map(
+                    meReportClients.map((client) => [normaliseStatus(client?.clientName || ""), client]).filter(([name]) => name)
+                );
+                const lockRows = Array.isArray(xeroLockDateOverview?.rows) ? xeroLockDateOverview.rows : [];
+                const lockByCompanyNumber = new Map();
+                const lockByTenantId = new Map();
+                lockRows.forEach((row) => {
+                    const tenantId = String(row?.tenantId || "").trim();
+                    if (tenantId && !lockByTenantId.has(tenantId)) lockByTenantId.set(tenantId, row);
+                    const mappedNumber = normaliseCompanyNumberInput(row?.mapping?.companyNumber || row?.companiesHouse?.companyNumber || "");
+                    if (mappedNumber && !lockByCompanyNumber.has(mappedNumber)) lockByCompanyNumber.set(mappedNumber, row);
+                });
+
+                const rows = companySecretarialCompanies().map((company) => {
+                    const companyClientId = String(company?.clientId || "").trim();
+                    const customer = customersById.get(companyClientId) || stateCustomers.find((item) => (
+                        normaliseStatus(item?.name || "") === normaliseStatus(company?.companyName || "")
+                    )) || null;
+                    const xeroContactId = String(customer?.xeroContactId || customer?.contactId || "").trim();
+                    const connected = byClientId.get(companyClientId) || byContactId.get(xeroContactId) || null;
+                    const meReportClient = meReportById.get(companyClientId)
+                        || meReportByName.get(normaliseStatus(company?.companyName || ""))
+                        || null;
+                    const companyNumber = normaliseCompanyNumberInput(company?.companyNumber || "");
+                    const lockRow = (connected?.tenantId ? lockByTenantId.get(String(connected.tenantId || "")) : null)
+                        || (companyNumber ? lockByCompanyNumber.get(companyNumber) : null)
+                        || null;
+                    return {
+                        id: companyClientId || String(company?.id || ""),
+                        companyName: String(company?.companyName || customer?.name || "Client").trim(),
+                        companyNumber,
+                        manager: String(company?.manager || customer?.owner || customer?.accountManager || "Client Manager"),
+                        customer,
+                        connected,
+                        meReportClient,
+                        lockRow,
+                        summary: meReportAdjustedSummary(meReportClient || {}, meReportBaseSummaryForClient(meReportClient || {})),
+                    };
+                }).filter((row) => row.id || row.companyNumber || row.companyName);
+
+                return rows.sort((left, right) => String(left.companyName || "").localeCompare(String(right.companyName || "")));
+            }
+
+            function yePrepSelectedCustomer(rows = yePrepCustomerRows()) {
+                if (!rows.length) return null;
+                if (yePrepSelectedCustomerId) {
+                    const matched = rows.find((row) => String(row.id || "") === String(yePrepSelectedCustomerId || ""));
+                    if (matched) return matched;
+                }
+                return null;
+            }
+
+            function yePrepYearComparison(summary = {}, selectedYearEnd = "") {
+                const rows = meReportProfitLossRows(summary);
+                const byYear = {};
+                rows.forEach((row) => {
+                    const parsed = Date.parse(String(row.month || ""));
+                    const year = Number.isFinite(parsed)
+                        ? new Date(parsed).getFullYear()
+                        : Number(String(row.month || "").match(/\b(20\d{2})\b/)?.[1] || 0);
+                    if (!year) return;
+                    if (!byYear[year]) byYear[year] = { income: 0, profit: 0, expenses: 0 };
+                    byYear[year].income += Number(row.income || 0);
+                    byYear[year].profit += Number(row.profit || 0);
+                    byYear[year].expenses += Number(row.expenses || 0);
+                });
+                const targetYear = Number(String(selectedYearEnd || "").slice(0, 4)) || new Date().getFullYear();
+                const current = byYear[targetYear] || null;
+                const previous = byYear[targetYear - 1] || null;
+                if (!current || !previous) {
+                    return { ready: false, message: "Comparative year data is incomplete in the extracted report tables." };
+                }
+                const deltaPct = (next, prior) => {
+                    const priorValue = Number(prior || 0);
+                    if (Math.abs(priorValue) < 0.0001) return null;
+                    return ((Number(next || 0) - priorValue) / Math.abs(priorValue)) * 100;
+                };
+                const revenueDelta = deltaPct(current.income, previous.income);
+                const profitDelta = deltaPct(current.profit, previous.profit);
+                const issue = (value) => Number.isFinite(value) && Math.abs(value) >= 35;
+                return {
+                    ready: true,
+                    currentYear: targetYear,
+                    previousYear: targetYear - 1,
+                    current,
+                    previous,
+                    revenueDelta,
+                    profitDelta,
+                    requiresReview: issue(revenueDelta) || issue(profitDelta),
+                };
+            }
+
+            function yePrepLockCheckForCustomer(customer = {}, yearEnd = "") {
+                const row = customer?.lockRow || null;
+                if (!row) {
+                    return {
+                        status: "missing",
+                        label: "No lock-date mapping",
+                        detail: "Map this Xero tenant to a Companies House company number to check lock coverage.",
+                        className: "is-review",
+                        isLocked: false,
+                    };
+                }
+                if (row?.flags?.mappingMissing) {
+                    return {
+                        status: "mapping",
+                        label: "Mapping needed",
+                        detail: "Company number mapping is missing, so lock-date checks cannot be trusted yet.",
+                        className: "is-due",
+                        isLocked: false,
+                    };
+                }
+                if (row?.flags?.insufficientAccountsData) {
+                    return {
+                        status: "pending",
+                        label: "Awaiting CH data",
+                        detail: "Companies House filing history was not sufficient to confirm the lock date.",
+                        className: "is-review",
+                        isLocked: false,
+                    };
+                }
+                if (row?.flags?.accountsFiledNotLocked) {
+                    return {
+                        status: "flagged",
+                        label: "Previous year not locked",
+                        detail: "Latest filed accounts period appears outside the current Xero lock date.",
+                        className: "is-overdue",
+                        isLocked: false,
+                    };
+                }
+                const periodLock = row?.periodLockDate ? formatDate(row.periodLockDate) : "Not set";
+                const yearEndLabel = yearEnd ? formatDate(yearEnd) : "selected year end";
+                return {
+                    status: "ok",
+                    label: "Locked",
+                    detail: `${yearEndLabel} check passed. Xero period lock date is ${periodLock}.`,
+                    className: "is-open",
+                    isLocked: Boolean(row?.periodLockDate),
+                };
+            }
+
+            async function loadYePrepCompaniesHouseDetail(customer = {}, force = false) {
+                const companyNumber = normaliseCompanyNumberInput(customer?.companyNumber || "");
+                if (!companyNumber) return null;
+                if (!force && yePrepCompaniesHouseCompanyCache[companyNumber]) return yePrepCompaniesHouseCompanyCache[companyNumber];
+                const payload = await requestJSON(`/api/companies-house/companies?search=${encodeURIComponent(companyNumber)}`);
+                const companies = Array.isArray(payload?.companies) ? payload.companies : [];
+                const exact = companies.find((item) => normaliseCompanyNumberInput(item?.companyNumber || "") === companyNumber) || companies[0] || null;
+                yePrepCompaniesHouseCompanyCache[companyNumber] = exact || null;
+                return exact || null;
+            }
+
+            function yePrepTransactionsForCustomer(customer = {}, yearEnd = "") {
+                const transactionsCache = cachedCustomerTransactions(customer?.customer);
+                const rawRows = Array.isArray(transactionsCache?.transactions)
+                    ? transactionsCache.transactions
+                    : [];
+                const normalized = rawRows.map((row) => normaliseVatTransaction(row));
+                if (normalized.length) return normalized;
+                if (customer?.customer?.id) {
+                    const fallback = clientInvoices(customer.customer).map((invoice) => normaliseVatTransaction({
+                        date: invoice.invoiceDate || invoice.date || invoice.dueDate || "",
+                        reference: invoice.invoiceNumber || invoice.id || "",
+                        description: invoice.description || "Invoice",
+                        netAmount: Number(invoice.total || invoice.amountDue || 0),
+                        taxAmount: Number(invoice.taxAmount ?? invoice.vatAmount ?? 0),
+                        grossAmount: Number(invoice.total || invoice.amountDue || 0) + Number(invoice.taxAmount ?? invoice.vatAmount ?? 0),
+                        taxCode: invoice.taxType || invoice.vatCode || "",
+                        sourceType: "ledger-invoice"
+                    }));
+                    return fallback;
+                }
+                return [];
+            }
+
+            function yePrepTransactionsWithEdits(customer = {}, yearEnd = "", rows = []) {
+                const edits = yePrepEditStoreFor(customer, yearEnd);
+                return rows.map((row) => {
+                    const id = vatTransactionId(row);
+                    const edit = edits[id] || {};
+                    return {
+                        ...row,
+                        id,
+                        accountCode: String(edit.accountCode ?? row.accountCode ?? ""),
+                        taxCode: String(edit.taxCode ?? row.taxCode ?? ""),
+                    };
+                });
+            }
+
+            function yePrepOpenCustomerWorkspace(customerId = "") {
+                yePrepSelectedCustomerId = String(customerId || "");
+                yePrepSelectedYearEnd = "";
+                yePrepActiveTab = "overview";
+                yePrepLockDateCheck = null;
+                renderYePrepScreen();
+            }
+
+            function yePrepCloseCustomerWorkspace() {
+                yePrepSelectedCustomerId = "";
+                yePrepSelectedYearEnd = "";
+                yePrepActiveTab = "overview";
+                yePrepLockDateCheck = null;
+                renderYePrepScreen();
+            }
+
+            async function yePrepSyncSelectedCustomer() {
+                const rows = yePrepCustomerRows();
+                const selected = yePrepSelectedCustomer(rows);
+                if (!selected) return;
+                const syncButton = document.getElementById("yePrepSyncButton");
+                if (syncButton) {
+                    syncButton.disabled = true;
+                    syncButton.textContent = "Syncing...";
+                }
+                try {
+                    await runXeroSync();
+                    if (selected?.meReportClient?.id) {
+                        await runSelectedMeReportSync(selected.meReportClient.id);
+                    } else {
+                        await loadMeReport(true);
+                    }
+                    if (selected?.customer?.id) {
+                        await ensureCustomerTransactions(selected.customer, true, { silent: true });
+                    }
+                    await Promise.allSettled([
+                        loadSupplierReconciliation(true),
+                        loadXeroLockDateOverview(true),
+                    ]);
+                    yePrepCompaniesHouseCompanyCache = {};
+                    showToast("YE Prep synced with Xero and refreshed checks", "success");
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error?.message || "Unable to sync YE Prep data", "error");
+                } finally {
+                    if (syncButton) {
+                        syncButton.disabled = false;
+                        syncButton.textContent = "Sync from Xero";
+                    }
+                    renderYePrepScreen();
+                }
+            }
+
+            function renderYePrepOverviewTab(customer = {}, yearEnd = "") {
+                const summary = customer?.summary || {};
+                const comparison = yePrepYearComparison(summary, yearEnd);
+                const lockCheck = yePrepLockDateCheck || yePrepLockCheckForCustomer(customer, yearEnd);
+                const companyNumber = normaliseCompanyNumberInput(customer?.companyNumber || "");
+                const chCompany = companyNumber ? (yePrepCompaniesHouseCompanyCache[companyNumber] || null) : null;
+                const dueDate = chCompany?.nextDueDate || customer?.lockRow?.companiesHouse?.nextDueDate || "";
+                const madeUpTo = chCompany?.nextMadeUpToDate || customer?.lockRow?.companiesHouse?.nextMadeUpToDate || "";
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Year end", yearEnd ? formatDate(yearEnd) : "Not selected")}
+                        ${renderMeReportMetric("Turnover", formatCurrency(summary.yearToDateSales || 0))}
+                        ${renderMeReportMetric("Profit", formatCurrency(summary.yearToDateProfit || 0))}
+                        ${renderMeReportMetric("Balance check", lockCheck.label)}
+                        ${renderMeReportMetric("CH next due", dueDate ? formatDate(dueDate) : "—")}
+                        ${renderMeReportMetric("Made up to", madeUpTo ? formatDate(madeUpTo) : "—")}
+                    </div>
+                    <article class="me-report-insight-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Validity checks</p>
+                                <h3>Lock date and comparative review</h3>
+                                <p class="detail-meta">${escapeHTML(lockCheck.detail || "No lock-date checks were available.")}</p>
+                            </div>
+                        </div>
+                        <ul>
+                            <li>
+                                <span class="lock-status-pill ${escapeHTML(lockCheck.className || "is-review")}">${escapeHTML(lockCheck.label || "Review")}</span>
+                                Previous years lock-date check.
+                            </li>
+                            <li>
+                                ${comparison.ready
+                                    ? `Revenue YoY: ${formatPercent(comparison.revenueDelta || 0)} · Profit YoY: ${formatPercent(comparison.profitDelta || 0)} ${comparison.requiresReview ? "(Review required)" : "(Within expected range)"}`
+                                    : escapeHTML(comparison.message || "No comparative year data available.")}
+                            </li>
+                            <li>If lock-date is flagged or YoY movement is unusually large, complete reconciliation before final YE sign-off.</li>
+                        </ul>
+                    </article>
+                `;
+            }
+
+            function renderYePrepProfitLossTab(customer = {}, yearEnd = "") {
+                const summary = customer?.summary || {};
+                const rows = meReportProfitLossRows(summary);
+                const targetYear = Number(String(yearEnd || "").slice(0, 4));
+                const filtered = rows.filter((row) => {
+                    if (!targetYear) return true;
+                    const parsed = Date.parse(String(row.month || ""));
+                    if (Number.isFinite(parsed)) return new Date(parsed).getFullYear() === targetYear;
+                    const textYear = Number(String(row.month || "").match(/\b(20\d{2})\b/)?.[1] || 0);
+                    return textYear ? textYear === targetYear : true;
+                });
+                const visible = filtered.length ? filtered : rows;
+                return `
+                    <article class="me-report-insight-card me-report-table-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Profit and Loss</p>
+                                <h3>${visible.length.toLocaleString("en-GB")} month row${visible.length === 1 ? "" : "s"} in scope</h3>
+                                <p class="detail-meta">Data source: extracted YTD Profit and Loss schedule from ME Report workflow.</p>
+                            </div>
+                        </div>
+                        <table>
+                            <thead><tr><th>Month</th><th>Revenue</th><th>Expenditure</th><th>Profit</th><th>Margin</th></tr></thead>
+                            <tbody>
+                                ${visible.map((row) => `
+                                    <tr>
+                                        <td><strong>${escapeHTML(row.month || "Month")}</strong><br><small>${escapeHTML(row.source || "Uploaded report")}</small></td>
+                                        <td>${formatCurrency(row.income || 0)}</td>
+                                        <td>${formatCurrency(row.expenses || 0)}</td>
+                                        <td>${formatCurrency(row.profit || 0)}</td>
+                                        <td>${formatPercent(row.margin || 0)}</td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="5">No Profit and Loss rows were extracted.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderYePrepBalanceSheetTab(customer = {}) {
+                const summary = customer?.summary || {};
+                const rows = meReportBalanceSheetRows(summary);
+                return `
+                    <article class="me-report-insight-card me-report-table-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Balance Sheet</p>
+                                <h3>${rows.length.toLocaleString("en-GB")} balance row${rows.length === 1 ? "" : "s"} extracted</h3>
+                                <p class="detail-meta">Figures shown from Balance Sheet checks and Trial Balance backfill.</p>
+                            </div>
+                        </div>
+                        <table>
+                            <thead><tr><th>Group</th><th>Code</th><th>Account</th><th>Amount</th></tr></thead>
+                            <tbody>
+                                ${rows.map((row) => `
+                                    <tr>
+                                        <td>${escapeHTML(row.group || "Balance Sheet")}</td>
+                                        <td>${escapeHTML(row.code || "")}</td>
+                                        <td><strong>${escapeHTML(row.name || "Balance row")}</strong><br><small>${escapeHTML(row.section || "")}</small></td>
+                                        <td>${formatCurrency(row.amount || 0)}</td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="4">No balance sheet rows were extracted.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderYePrepTransactionsTab(customer = {}, yearEnd = "") {
+                const rawRows = yePrepTransactionsForCustomer(customer, yearEnd);
+                const rows = yePrepTransactionsWithEdits(customer, yearEnd, rawRows);
+                const accountOptions = vatAccountCodeOptions();
+                const taxOptions = vatTaxCodeOptions();
+                return `
+                    <article class="me-report-insight-card me-report-table-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Transactions</p>
+                                <h3>${rows.length.toLocaleString("en-GB")} row${rows.length === 1 ? "" : "s"} pulled from Xero/ledger data</h3>
+                                <p class="detail-meta">Adjust account code and tax rate inline before YE journals are posted.</p>
+                            </div>
+                        </div>
+                        <table>
+                            <thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Net</th><th>Account code</th><th>Tax rate</th></tr></thead>
+                            <tbody>
+                                ${rows.map((row) => {
+                                    const accountMarkup = [`<option value="">Select account</option>`, ...accountOptions.map((option) => `<option value="${escapeHTML(option.code)}"${option.code === row.accountCode ? " selected" : ""}>${escapeHTML(option.label)}</option>`)].join("");
+                                    const taxMarkup = [`<option value="">Select tax code</option>`, ...taxOptions.map((option) => `<option value="${escapeHTML(option.code)}"${option.code === row.taxCode ? " selected" : ""}>${escapeHTML(option.code)} · ${escapeHTML(option.label)}</option>`)].join("");
+                                    return `
+                                        <tr>
+                                            <td>${escapeHTML(row.date ? formatDate(row.date) : "—")}</td>
+                                            <td>${escapeHTML(row.reference || "—")}</td>
+                                            <td>${escapeHTML(row.description || "Transaction")}</td>
+                                            <td>${formatCurrency(row.netAmount || 0)}</td>
+                                            <td><select data-ye-account="${escapeHTML(row.id || "")}">${accountMarkup}</select></td>
+                                            <td><select data-ye-tax="${escapeHTML(row.id || "")}">${taxMarkup}</select></td>
+                                        </tr>
+                                    `;
+                                }).join("") || '<tr><td colspan="6">No transactions loaded for this customer.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderYePrepDlaTab(customer = {}) {
+                const summary = customer?.summary || {};
+                const dlaData = meReportDlaAccountData(summary, summary.directorLoanAccountOverrides || meReportClientDlaAccountOverrides(customer?.meReportClient || {}));
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("DLA opening", formatCurrency(dlaData.openingBalance || 0))}
+                        ${renderMeReportMetric("DLA movement", formatCurrency(dlaData.movement || 0))}
+                        ${renderMeReportMetric("DLA closing", formatCurrency(dlaData.closingBalance || 0))}
+                        ${renderMeReportMetric("Accounts", Number(dlaData.accountCount || 0).toLocaleString("en-GB"))}
+                        ${renderMeReportMetric("Transactions", Number(dlaData.transactionCount || 0).toLocaleString("en-GB"))}
+                    </div>
+                    <article class="me-report-insight-card me-report-table-card">
+                        <table>
+                            <thead><tr><th>Code</th><th>Account</th><th>Opening</th><th>Movement</th><th>Closing</th></tr></thead>
+                            <tbody>
+                                ${dlaData.accounts.map((row) => `
+                                    <tr>
+                                        <td>${escapeHTML(row.accountCode || row.code || "")}</td>
+                                        <td><strong>${escapeHTML(row.accountName || "Director loan account")}</strong><br><small>${escapeHTML(row.source || "")}</small></td>
+                                        <td>${formatCurrency(row.openingBalance || 0)}</td>
+                                        <td>${formatCurrency(row.movement || 0)}</td>
+                                        <td>${formatCurrency(row.closingBalance || 0)}</td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="5">No DLA accounts were extracted for this year end.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderYePrepFixedAssetsTab(customer = {}) {
+                const summary = customer?.summary || {};
+                const rows = meReportObjectRows(summary.fixedAssetChecks);
+                const totals = meReportFixedAssetTotals(summary, rows);
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Fixed asset register", formatCurrency(totals.registerTotal || 0))}
+                        ${renderMeReportMetric("Balance Sheet fixed assets", formatCurrency(totals.balanceSheetTotal || 0))}
+                        ${renderMeReportMetric("Difference", formatCurrency(totals.differenceTotal || 0))}
+                        ${renderMeReportMetric("Rows", rows.length.toLocaleString("en-GB"))}
+                    </div>
+                    <article class="me-report-insight-card me-report-table-card">
+                        <table>
+                            <thead><tr><th>Asset class</th><th>Balance Sheet</th><th>Register</th><th>Difference</th><th>Treatment</th></tr></thead>
+                            <tbody>
+                                ${rows.map((row) => `
+                                    <tr>
+                                        <td>${escapeHTML(row.assetClass || "Fixed assets")}</td>
+                                        <td>${formatCurrency(row.balanceSheetClosingCost || row.balanceSheetFixedAssets || 0)}</td>
+                                        <td>${formatCurrency(row.assetRegisterClosingCost || row.assetRegisterClosingBalance || 0)}</td>
+                                        <td>${formatCurrency(row.difference || 0)}</td>
+                                        <td>${escapeHTML(row.treatment || "Review")}</td>
+                                    </tr>
+                                `).join("") || '<tr><td colspan="5">No fixed asset rows were extracted.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </article>
+                `;
+            }
+
+            function renderYePrepAdjustmentsTab(customer = {}, yearEnd = "") {
+                const rows = yePrepAdjustmentsFor(customer, yearEnd);
+                const total = rows.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
+                return `
+                    <div class="ignition-summary-grid">
+                        ${renderMeReportMetric("Manual adjustments", rows.length.toLocaleString("en-GB"))}
+                        ${renderMeReportMetric("Adjustment total", formatCurrency(total))}
+                    </div>
+                    <article class="me-report-insight-card">
+                        <div class="me-report-card-heading-row">
+                            <div>
+                                <p class="eyebrow">Adjustments</p>
+                                <h3>Add YE journals and coding corrections</h3>
+                                <p class="detail-meta">Use this panel to capture manual YE adjustments before final posting.</p>
+                            </div>
+                        </div>
+                        <form id="yePrepAdjustmentForm" class="stack-form" style="margin-bottom: 12px;">
+                            <label>Date<input id="yePrepAdjustmentDate" type="date"></label>
+                            <label>Description<input id="yePrepAdjustmentDescription" type="text" placeholder="Adjustment description"></label>
+                            <label>Amount<input id="yePrepAdjustmentAmount" type="number" step="0.01" placeholder="0.00"></label>
+                            <label>Account code<input id="yePrepAdjustmentAccount" type="text" placeholder="e.g. 800"></label>
+                            <label>Tax code<input id="yePrepAdjustmentTax" type="text" placeholder="e.g. NONE"></label>
+                            <button class="primary-button" type="submit">Add adjustment</button>
+                        </form>
+                        <div class="jashflow-table-wrap">
+                            <table>
+                                <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Account</th><th>Tax</th><th>Action</th></tr></thead>
+                                <tbody>
+                                    ${rows.map((row) => `
+                                        <tr>
+                                            <td>${escapeHTML(row.date ? formatDate(row.date) : "—")}</td>
+                                            <td>${escapeHTML(row.description || "Adjustment")}</td>
+                                            <td>${formatCurrency(row.amount || 0)}</td>
+                                            <td>${escapeHTML(row.accountCode || "—")}</td>
+                                            <td>${escapeHTML(row.taxCode || "—")}</td>
+                                            <td><button class="ghost-button danger-button" type="button" data-ye-adjustment-delete="${escapeHTML(row.id || "")}">Delete</button></td>
+                                        </tr>
+                                    `).join("") || '<tr><td colspan="6">No manual adjustments added yet.</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    </article>
+                `;
+            }
+
+            function renderYePrepTab(customer = {}, yearEnd = "") {
+                if (yePrepActiveTab === "profit-loss") return renderYePrepProfitLossTab(customer, yearEnd);
+                if (yePrepActiveTab === "balance-sheet") return renderYePrepBalanceSheetTab(customer);
+                if (yePrepActiveTab === "transactions") return renderYePrepTransactionsTab(customer, yearEnd);
+                if (yePrepActiveTab === "dla") return renderYePrepDlaTab(customer);
+                if (yePrepActiveTab === "fixed-assets") return renderYePrepFixedAssetsTab(customer);
+                if (yePrepActiveTab === "adjustments") return renderYePrepAdjustmentsTab(customer, yearEnd);
+                return renderYePrepOverviewTab(customer, yearEnd);
             }
 
             function renderYePrepScreen() {
                 const summary = document.getElementById("yePrepSummary");
-                const body = document.getElementById("yePrepWorkspaceBody");
+                const customerListWrap = document.getElementById("yePrepCustomerListWrap");
+                const customerTableBody = document.getElementById("yePrepCustomerTableBody");
+                const workspaceWrap = document.getElementById("yePrepWorkspaceWrap");
+                const customerTitle = document.getElementById("yePrepCustomerTitle");
+                const customerMeta = document.getElementById("yePrepCustomerMeta");
+                const yearEndButtons = document.getElementById("yePrepYearEndButtons");
+                const deadlineCards = document.getElementById("yePrepDeadlineCards");
+                const tabButtonsWrap = document.getElementById("yePrepTabButtons");
+                const tabContent = document.getElementById("yePrepTabContent");
+                const backButton = document.getElementById("yePrepBackToCustomersButton");
                 const refreshButton = document.getElementById("yePrepRefreshButton");
-                if (!summary || !body) return;
+                const syncButton = document.getElementById("yePrepSyncButton");
+                if (!summary || !customerListWrap || !customerTableBody || !workspaceWrap || !customerTitle || !customerMeta || !yearEndButtons || !deadlineCards || !tabButtonsWrap || !tabContent || !backButton || !refreshButton || !syncButton) return;
 
-                if (refreshButton && refreshButton.dataset.yePrepWired !== "true") {
+                if (backButton.dataset.yePrepWired !== "true") {
+                    backButton.dataset.yePrepWired = "true";
+                    backButton.addEventListener("click", yePrepCloseCustomerWorkspace);
+                }
+                if (refreshButton.dataset.yePrepWired !== "true") {
                     refreshButton.dataset.yePrepWired = "true";
-                    refreshButton.addEventListener("click", () => {
-                        loadSupplierReconciliation(true);
+                    refreshButton.addEventListener("click", async () => {
+                        refreshButton.disabled = true;
+                        const label = refreshButton.textContent;
+                        refreshButton.textContent = "Refreshing...";
+                        try {
+                            await Promise.allSettled([
+                                loadSupplierReconciliation(true),
+                                loadMeReport(true),
+                                loadXeroLockDateOverview(true),
+                            ]);
+                            yePrepCompaniesHouseCompanyCache = {};
+                            showToast("YE Prep data refreshed", "success");
+                        } finally {
+                            refreshButton.disabled = false;
+                            refreshButton.textContent = label || "Refresh";
+                            renderYePrepScreen();
+                        }
+                    });
+                }
+                if (syncButton.dataset.yePrepWired !== "true") {
+                    syncButton.dataset.yePrepWired = "true";
+                    syncButton.addEventListener("click", yePrepSyncSelectedCustomer);
+                }
+                if (tabButtonsWrap.dataset.yePrepWired !== "true") {
+                    tabButtonsWrap.dataset.yePrepWired = "true";
+                    tabButtonsWrap.querySelectorAll("[data-ye-tab]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            yePrepActiveTab = String(button.dataset.yeTab || "overview");
+                            renderYePrepScreen();
+                        });
                     });
                 }
 
-                const connections = supplierReconciliationXeroConnections();
-                const connectedClients = supplierReconciliationConnectedClients();
-                if (supplierReconciliationLoading && !connections.length) {
-                    summary.textContent = "Loading connected Xero workspaces.";
-                    body.innerHTML = '<tr><td colspan="5">Loading workspace data...</td></tr>';
+                const rows = yePrepCustomerRows();
+                const selected = yePrepSelectedCustomer(rows);
+                const inWorkspace = Boolean(selected);
+
+                backButton.hidden = !inWorkspace;
+                syncButton.hidden = !inWorkspace;
+                customerListWrap.hidden = inWorkspace;
+                workspaceWrap.hidden = !inWorkspace;
+                tabButtonsWrap.querySelectorAll("[data-ye-tab]").forEach((button) => {
+                    button.classList.toggle("is-active", String(button.dataset.yeTab || "") === yePrepActiveTab);
+                });
+
+                if (supplierReconciliationLoading && !rows.length && !inWorkspace) {
+                    summary.textContent = "Loading year-end workspaces.";
+                    customerTableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading connected workspaces</h4><p>Pulling customer and lock-date data now.</p></div></td></tr>';
                     return;
                 }
 
-                if (!connections.length) {
-                    summary.textContent = "No connected Xero workspaces found.";
-                    body.innerHTML = '<tr><td colspan="5">Connect Xero workspaces to see year-end preparation workspaces here.</td></tr>';
+                if (!rows.length && !inWorkspace) {
+                    summary.textContent = "No YE prep workspaces are currently available.";
+                    customerTableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No customers</p><h4>No connected customers were found</h4><p>Connect Xero and add client register rows to start YE prep workspaces.</p></div></td></tr>';
                     return;
                 }
 
-                summary.textContent = `${connections.length.toLocaleString("en-GB")} connected Xero workspace${connections.length === 1 ? "" : "s"} available for year-end preparation.`;
-                body.innerHTML = connections.map((connection) => {
-                    const tenantId = String(connection?.tenantId || "").trim();
-                    const workspaceClients = connectedClients.filter((client) => String(client?.tenantId || "") === tenantId);
-                    const lastUpdated = String(connection?.updatedAt || connection?.createdAt || "").trim();
-                    return `
-                        <tr>
-                            <td><strong>${escapeHTML(connection?.tenantName || tenantId || "Workspace")}</strong></td>
-                            <td><small>${escapeHTML(tenantId || "-")}</small></td>
-                            <td>${escapeHTML(connection?.tenantType || "Organisation")}</td>
-                            <td>${workspaceClients.length.toLocaleString("en-GB")}</td>
-                            <td>${escapeHTML(lastUpdated ? formatDate(lastUpdated) : "Recently")}</td>
-                        </tr>
-                    `;
-                }).join("");
+                if (!inWorkspace) {
+                    const flagged = rows.filter((row) => yePrepLockCheckForCustomer(row).status === "flagged").length;
+                    summary.textContent = `${rows.length.toLocaleString("en-GB")} YE workspace${rows.length === 1 ? "" : "s"} available${flagged ? ` · ${flagged.toLocaleString("en-GB")} lock-date flag${flagged === 1 ? "" : "s"}` : ""}.`;
+                    customerTableBody.innerHTML = rows.map((row) => {
+                        const yearEnds = yePrepYearEndsForCustomer(row);
+                        const lockCheck = yePrepLockCheckForCustomer(row);
+                        return `
+                            <tr>
+                                <td><strong>${escapeHTML(row.companyName || "Client workspace")}</strong><small>${escapeHTML(row.connected?.xeroContactId || row.customer?.xeroContactId || "No Xero contact")}</small></td>
+                                <td>${escapeHTML(row.companyNumber || "—")}</td>
+                                <td>${escapeHTML(row.manager || "Client Manager")}</td>
+                                <td><span class="ch-pill ${lockCheck.className || "is-info"}">${yearEnds.length.toLocaleString("en-GB")} year end${yearEnds.length === 1 ? "" : "s"}</span></td>
+                                <td><button class="primary-button" type="button" data-ye-open="${escapeHTML(row.id || "")}">Open workspace</button></td>
+                            </tr>
+                        `;
+                    }).join("");
+                    customerTableBody.querySelectorAll("[data-ye-open]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            yePrepOpenCustomerWorkspace(button.dataset.yeOpen || "");
+                        });
+                    });
+                    return;
+                }
+
+                const yearEnds = yePrepYearEndsForCustomer(selected);
+                if (!yePrepSelectedYearEnd || !yearEnds.includes(yePrepSelectedYearEnd)) {
+                    yePrepSelectedYearEnd = yearEnds[0] || "";
+                }
+                const activeYearEnd = yePrepSelectedYearEnd;
+                const lockCheck = yePrepLockCheckForCustomer(selected, activeYearEnd);
+                yePrepLockDateCheck = lockCheck;
+
+                summary.textContent = `${selected.companyName} · YE Prep workspace${activeYearEnd ? ` · year end ${formatDate(activeYearEnd)}` : ""}.`;
+                customerTitle.textContent = selected.companyName || "Customer workspace";
+                customerMeta.textContent = [
+                    selected.companyNumber ? `Company no. ${selected.companyNumber}` : "Company number not set",
+                    selected.connected?.tenantId ? `Tenant ${selected.connected.tenantId}` : "Tenant mapping pending",
+                    lockCheck.label
+                ].join(" · ");
+                yearEndButtons.innerHTML = yearEnds.map((iso) => `
+                    <button class="page-pill ${iso === activeYearEnd ? "is-active" : ""}" type="button" data-ye-year-end="${escapeHTML(iso)}">${escapeHTML(formatDate(iso))}</button>
+                `).join("") || '<span class="ch-pill is-warn">No year ends available</span>';
+                yearEndButtons.querySelectorAll("[data-ye-year-end]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        yePrepSelectedYearEnd = String(button.dataset.yeYearEnd || "");
+                        renderYePrepScreen();
+                    });
+                });
+
+                const companyNumber = normaliseCompanyNumberInput(selected.companyNumber || "");
+                const chCompany = companyNumber ? (yePrepCompaniesHouseCompanyCache[companyNumber] || null) : null;
+                if (companyNumber && !chCompany) {
+                    loadYePrepCompaniesHouseDetail(selected)
+                        .catch((error) => console.warn("Unable to load YE Prep Companies House detail", error))
+                        .finally(() => {
+                            if (activeView === "ye-prep") renderYePrepScreen();
+                        });
+                }
+                const displayCompany = chCompany || selected.lockRow?.companiesHouse || {};
+                const deadlineRows = [
+                    { label: "CH next due", value: displayCompany?.nextDueDate ? formatDate(displayCompany.nextDueDate) : "—" },
+                    { label: "Made up to", value: displayCompany?.nextMadeUpToDate ? formatDate(displayCompany.nextMadeUpToDate) : "—" },
+                    { label: "Last filed", value: displayCompany?.lastFiledDate ? formatDate(displayCompany.lastFiledDate) : "—" },
+                    { label: "Xero period lock", value: selected.lockRow?.periodLockDate ? formatDate(selected.lockRow.periodLockDate) : "Not set" },
+                    { label: "Lock status", value: lockCheck.label },
+                    { label: "Comparative review", value: yePrepYearComparison(selected.summary, activeYearEnd).ready ? "Ready" : "Pending data" },
+                ];
+                deadlineCards.innerHTML = deadlineRows.map((row) => `
+                    <article class="key-metric-card">
+                        <span>${escapeHTML(row.label)}</span>
+                        <strong>${escapeHTML(row.value)}</strong>
+                    </article>
+                `).join("");
+
+                tabContent.innerHTML = renderYePrepTab(selected, activeYearEnd);
+
+                tabContent.querySelectorAll("[data-ye-account]").forEach((select) => {
+                    select.addEventListener("change", () => {
+                        const id = String(select.dataset.yeAccount || "");
+                        if (!id) return;
+                        const edits = yePrepEditStoreFor(selected, activeYearEnd);
+                        edits[id] = { ...(edits[id] || {}), accountCode: select.value || "" };
+                    });
+                });
+                tabContent.querySelectorAll("[data-ye-tax]").forEach((select) => {
+                    select.addEventListener("change", () => {
+                        const id = String(select.dataset.yeTax || "");
+                        if (!id) return;
+                        const edits = yePrepEditStoreFor(selected, activeYearEnd);
+                        edits[id] = { ...(edits[id] || {}), taxCode: select.value || "" };
+                    });
+                });
+                const adjustmentForm = tabContent.querySelector("#yePrepAdjustmentForm");
+                if (adjustmentForm) {
+                    adjustmentForm.addEventListener("submit", (event) => {
+                        event.preventDefault();
+                        const date = String(tabContent.querySelector("#yePrepAdjustmentDate")?.value || "").trim();
+                        const description = String(tabContent.querySelector("#yePrepAdjustmentDescription")?.value || "").trim();
+                        const amount = Number(tabContent.querySelector("#yePrepAdjustmentAmount")?.value || 0);
+                        const accountCode = String(tabContent.querySelector("#yePrepAdjustmentAccount")?.value || "").trim();
+                        const taxCode = String(tabContent.querySelector("#yePrepAdjustmentTax")?.value || "").trim();
+                        if (!description || !Number.isFinite(amount) || amount === 0) {
+                            showToast("Enter description and non-zero amount for the adjustment", "error");
+                            return;
+                        }
+                        const adjustments = yePrepAdjustmentsFor(selected, activeYearEnd);
+                        adjustments.unshift({
+                            id: `adj-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+                            date,
+                            description,
+                            amount,
+                            accountCode,
+                            taxCode,
+                        });
+                        renderYePrepScreen();
+                    });
+                }
+                tabContent.querySelectorAll("[data-ye-adjustment-delete]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const id = String(button.dataset.yeAdjustmentDelete || "");
+                        if (!id) return;
+                        const next = yePrepAdjustmentsFor(selected, activeYearEnd).filter((item) => String(item?.id || "") !== id);
+                        yePrepManualAdjustmentsByCustomerYear[yePrepStorageKeyFor(selected, activeYearEnd)] = next;
+                        renderYePrepScreen();
+                    });
+                });
+
+                if (selected?.customer?.id && !cachedCustomerTransactions(selected.customer) && !customerTransactionLoading.has(String(selected.customer.id))) {
+                    ensureCustomerTransactions(selected.customer, false, { silent: true });
+                }
             }
 
             function renderPracticePackScreen() {
