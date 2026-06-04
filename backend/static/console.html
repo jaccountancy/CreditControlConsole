@@ -31976,7 +31976,9 @@
                         body: JSON.stringify({}),
                     });
                     await loadXeroLockDateOverview(true);
-                    if (payload?.updated) {
+                    if (payload?.manualActionRequired) {
+                        showToast(payload?.message || "This tenant requires a manual lock-date update in Xero.", "info");
+                    } else if (payload?.updated) {
                         showToast(payload?.message || "Xero lock date updated.", "success");
                     } else {
                         showToast(payload?.message || "Xero lock date already covers the latest filed accounts period.", "info");
@@ -32473,6 +32475,7 @@
                 renderXeroLockMismatchModal();
                 openXeroLockFixProgressModal();
                 let fixedCount = 0;
+                let manualCount = 0;
                 let failedCount = 0;
                 for (const tenantId of selectedTenantIds) {
                     xeroLockFixCurrentTenantId = tenantId;
@@ -32483,7 +32486,10 @@
                             method: "POST",
                             body: JSON.stringify({}),
                         });
-                        if (payload?.updated) {
+                        if (payload?.manualActionRequired) {
+                            manualCount += 1;
+                            xeroLockMismatchFixState[tenantId] = { status: "failed", message: payload?.message || "Manual update required in Xero." };
+                        } else if (payload?.updated) {
                             fixedCount += 1;
                             xeroLockMismatchFixState[tenantId] = { status: "fixed", message: "Fixed. Xero lock date updated." };
                         } else {
@@ -32506,8 +32512,8 @@
                 const progressModal = document.getElementById("xeroLockFixProgressModal");
                 if (progressModal && !xeroLockFixProcessingInBackground) progressModal.hidden = true;
                 showToast(
-                    `Mismatch clean-up complete: ${fixedCount.toLocaleString("en-GB")} fixed${failedCount ? `, ${failedCount.toLocaleString("en-GB")} failed` : ""}.`,
-                    failedCount ? "info" : "success"
+                    `Mismatch clean-up complete: ${fixedCount.toLocaleString("en-GB")} fixed${manualCount ? `, ${manualCount.toLocaleString("en-GB")} manual` : ""}${failedCount ? `, ${failedCount.toLocaleString("en-GB")} failed` : ""}.`,
+                    failedCount || manualCount ? "info" : "success"
                 );
                 xeroLockFixProcessingInBackground = false;
                 renderXeroLockFixProgressUI();
@@ -33027,6 +33033,7 @@
             function runCompanySecretarialValidationFromWizard() {
                 const typeCode = document.getElementById("companySecretarialWizardType")?.value || "";
                 const config = companySecretarialTypeConfig(typeCode);
+                const draftPayload = companySecretarialWizardPayloadDraft();
                 const payload = {
                     companyId: document.getElementById("companySecretarialWizardCompany")?.value || "",
                     filingType: typeCode,
@@ -33035,14 +33042,16 @@
                     clientApproved: Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
                     internalApproved: Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
                     evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
+                    formData: draftPayload?.formData || {},
                 };
                 const issues = companySecretarialValidationMessages(payload, config);
                 const status = document.getElementById("companySecretarialWizardStatus");
                 if (status) {
                     status.textContent = issues.length
                         ? `Validation failed: ${issues.join(" ")}`
-                        : "Validation passed: draft can be created.";
+                        : "Validation passed: draft can be created and prepared for Companies House submission.";
                 }
+                companySecretarialRenderWizardSubmissionPreview();
                 showToast(issues.length ? "Validation issues found" : "Validation passed", issues.length ? "error" : "success");
             }
 
@@ -33053,9 +33062,11 @@
                 if (!config) return showToast("Select a valid filing type.", "error");
                 const companies = companySecretarialCompanies();
                 const companyId = document.getElementById("companySecretarialWizardCompany")?.value || "";
-                const company = companies.find((item) => item.id === companyId);
-                if (!company) return showToast("Select a valid company.", "error");
+                const company = companies.find((item) => item.id === companyId) || null;
+                const companyProfile = companySecretarialCompanyProfile(companyId);
+                if (!company || !companyProfile) return showToast("Select a valid company.", "error");
                 const effectiveDate = document.getElementById("companySecretarialWizardEffectiveDate")?.value || "";
+                const draftPayload = companySecretarialWizardPayloadDraft();
                 const payload = {
                     companyId,
                     filingType: config.code,
@@ -33064,11 +33075,12 @@
                     clientApproved: Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
                     internalApproved: Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
                     evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
+                    formData: draftPayload?.formData || {},
                 };
                 const issues = companySecretarialValidationMessages(payload, config);
                 const mode = document.getElementById("companySecretarialWizardMode")?.value || config.mode || "manual";
                 const feeAmount = Number(document.getElementById("companySecretarialWizardFee")?.value || 0);
-                const assignee = (document.getElementById("companySecretarialWizardAssignee")?.value || "").trim() || company.manager || "Client Manager";
+                const assignee = (document.getElementById("companySecretarialWizardAssignee")?.value || "").trim() || companyProfile.manager || "Client Manager";
                 const now = new Date().toISOString();
                 const dueDate = (() => {
                     const target = new Date(effectiveDate || now);
@@ -33088,8 +33100,8 @@
                     filingType: config.code,
                     filingName: config.name,
                     companyId,
-                    companyName: company.companyName,
-                    companyNumber: company.companyNumber,
+                    companyName: companyProfile.companyName,
+                    companyNumber: companyProfile.companyNumber,
                     status: nextStatus,
                     risk: config.risk,
                     mode,
@@ -33101,11 +33113,19 @@
                     internalApprovalStatus: config.internalApprovalRequired ? (payload.internalApproved ? "approved" : "pending") : "not_required",
                     evidenceAttached: payload.evidenceAttached,
                     submittedAt: "",
-                    companiesHouseStatus: issues.length ? "Validation failed" : "Draft ready",
+                    companiesHouseStatus: issues.length ? "Validation failed" : "Draft prepared for Companies House",
                     companiesHouseRef: "",
                     feeAmount: Number.isFinite(feeAmount) ? feeAmount : 0,
                     assignee,
                     notes: payload.notes,
+                    clientEmail: companyProfile.clientEmail || "",
+                    clientPhone: companyProfile.clientPhone || "",
+                    clientAddress: companyProfile.clientAddress || "",
+                    authCodeHint: companyProfile.authCodeHint || "",
+                    sourceFilename: companyProfile.sourceFilename || "",
+                    uploadedAt: companyProfile.uploadedAt || "",
+                    formData: payload.formData || {},
+                    preparedSubmission: draftPayload || null,
                     updatedAt: now,
                 };
                 companySecretarialQueue = [row, ...companySecretarialQueue];
@@ -33118,6 +33138,7 @@
                         : `${config.code} draft created for ${company.companyName}.`;
                 }
                 showToast(issues.length ? "Draft created with validation issues" : "Company secretarial draft created", issues.length ? "info" : "success");
+                if (!issues.length) closeCompanySecretarialWizard();
             }
 
             function handleCompanySecretarialAction(action = "", rowId = "") {

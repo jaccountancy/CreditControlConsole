@@ -1053,6 +1053,22 @@ def save_xero_tenant_company_mapping(user: dict, tenant_id: str, payload: dict) 
     return _serialise_tenant_mapping(mapping_row, tenant_id)
 
 
+def _is_xero_lock_date_manual_only_error(exc: HTTPException) -> bool:
+    if int(exc.status_code or 0) != status.HTTP_502_BAD_GATEWAY:
+        return False
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    upstream_status = detail.get("status_code")
+    try:
+        upstream_status_code = int(upstream_status)
+    except (TypeError, ValueError):
+        upstream_status_code = None
+    message = str(detail.get("message") or "").lower()
+    return (
+        upstream_status_code in (status.HTTP_404_NOT_FOUND, status.HTTP_405_METHOD_NOT_ALLOWED)
+        and "lock date update" in message
+    )
+
+
 async def fix_xero_lock_date_mismatch(user: dict, tenant_id: str) -> dict:
     safe_tenant_id = str(tenant_id or "").strip()
     if not safe_tenant_id:
@@ -1123,7 +1139,22 @@ async def fix_xero_lock_date_mismatch(user: dict, tenant_id: str) -> dict:
             "message": "Xero lock date already covers the latest filed Companies House accounts period.",
         }
 
-    updated_lock_dates = await update_organisation_period_lock_date(connection_row, target_lock_date)
+    try:
+        updated_lock_dates = await update_organisation_period_lock_date(connection_row, target_lock_date)
+    except HTTPException as exc:
+        if _is_xero_lock_date_manual_only_error(exc):
+            return {
+                "tenantId": safe_tenant_id,
+                "tenantName": str(connection_row.get("tenant_name") or ""),
+                "companyNumber": mapped_company_number,
+                "targetLockDate": target_lock_date.isoformat(),
+                "periodLockDate": existing_period_lock_date.isoformat() if existing_period_lock_date else "",
+                "endOfYearLockDate": existing_end_of_year_lock_date.isoformat() if existing_end_of_year_lock_date else "",
+                "updated": False,
+                "manualActionRequired": True,
+                "message": "Xero lock dates cannot be updated via API for this tenant. Update the lock date in Xero settings, then rerun mismatch cleanup.",
+            }
+        raise
     period_lock_date = updated_lock_dates.get("period_lock_date") or target_lock_date
     end_of_year_lock_date = updated_lock_dates.get("end_of_year_lock_date")
     base_currency = str(updated_lock_dates.get("base_currency") or snapshot_row.get("base_currency") or "").strip()
@@ -15877,12 +15908,24 @@ def _ignition_proposal_is_priority_renewal_plan(row: dict) -> bool:
             " ".join(_service_names_from_proposal(row)),
         )
     ).lower()
-    return any(marker in text for marker in ("zulu", "solo+", "solo plus"))
+    # Keep Solo plan renewals eligible even if their wording overlaps with
+    # self-assessment markers.
+    return any(
+        marker in text
+        for marker in (
+            "zulu",
+            "solo+",
+            "solo plus",
+            "solo plan",
+            "solo mtd",
+            "mtd solo",
+        )
+    )
 
 
 def _ignition_proposal_is_self_assessment(row: dict) -> bool:
     if _ignition_proposal_is_priority_renewal_plan(row):
-        # Zulu and Solo Plus renewals should remain eligible even when proposal text
+        # Zulu and Solo plan renewals should remain eligible even when proposal text
         # includes wording that would otherwise trigger a self-assessment marker.
         return False
     text = " ".join(
