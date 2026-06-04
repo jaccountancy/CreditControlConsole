@@ -29364,6 +29364,48 @@
                 practiceSubmenu.insertBefore(clonedButton, companySecretarialButton);
             }
 
+            function sidebarSortLabel(node) {
+                const title = node.querySelector(".app-nav-copy strong, .settings-sidebar-copy strong, .settings-nav-group-text");
+                if (!title) return "";
+                return String(title.textContent || "").trim().toLowerCase();
+            }
+
+            function sortSidebarButtonsByLabel(container) {
+                if (!container) return;
+                const items = [...container.children].filter((child) => child.matches?.(".app-nav-button"));
+                if (!items.length) return;
+                items
+                    .sort((a, b) => sidebarSortLabel(a).localeCompare(sidebarSortLabel(b), undefined, { sensitivity: "base" }))
+                    .forEach((item) => container.appendChild(item));
+            }
+
+            function sortSettingsSidebarGroupBlocks(container) {
+                if (!container) return;
+                const labels = [...container.children].filter((child) => child.matches?.("[data-settings-group-label]"));
+                if (!labels.length) return;
+                const blocks = labels.map((label) => {
+                    const group = label.dataset.settingsGroupLabel || "";
+                    const items = [...container.children].filter((child) => child.dataset?.settingsGroupItem === group);
+                    return { label, items };
+                });
+                blocks.forEach((block) => {
+                    block.items.sort((a, b) => sidebarSortLabel(a).localeCompare(sidebarSortLabel(b), undefined, { sensitivity: "base" }));
+                });
+                blocks
+                    .sort((a, b) => sidebarSortLabel(a.label).localeCompare(sidebarSortLabel(b.label), undefined, { sensitivity: "base" }))
+                    .forEach((block) => {
+                        container.appendChild(block.label);
+                        block.items.forEach((item) => container.appendChild(item));
+                    });
+            }
+
+            function sortSidebarsAlphabetically() {
+                sortSidebarButtonsByLabel(document.querySelector(".app-nav-group[data-app-nav-group=\"credit-control\"] .app-nav-submenu"));
+                sortSidebarButtonsByLabel(document.querySelector(".app-nav-group[data-app-nav-group=\"practice-tools\"] .app-nav-submenu"));
+                sortSettingsSidebarGroupBlocks(document.querySelector(".app-nav-group[data-app-nav-group=\"settings\"] .app-nav-submenu"));
+                sortSettingsSidebarGroupBlocks(document.querySelector(".settings-sidebar-main .app-nav"));
+            }
+
             function wireSidebarNavigation() {
                 document.querySelectorAll("[data-app-nav]").forEach((button) => {
                     if (button.dataset.sidebarNavWired === "true") return;
@@ -68893,6 +68935,7 @@
                 trimEmbeddedPageChrome();
                 wireAdaptiveTopbarLayout();
                 ensureConfirmationStatementsNavEntry();
+                sortSidebarsAlphabetically();
                 wireSidebarNavigation();
                 const xeroConnectionReturn = consumeXeroConnectionReturn();
                 const ignitionConnectionReturn = consumeIgnitionConnectionReturn();
