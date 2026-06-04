@@ -96,6 +96,7 @@ from .services import (
     ignition_renewals_email_preview,
     ignition_renewals_report_pdf,
     mark_ignition_renewal_proposals_ineligible,
+    restore_ignition_renewal_proposals_to_eligible,
     insights_payload,
     ignition_payload,
     ignition_renewals_payload,
@@ -1685,6 +1686,15 @@ async def api_mark_ignition_renewals_ineligible(request: Request, user: dict = D
     except Exception:
         payload = {}
     return {"status": "ok", **mark_ignition_renewal_proposals_ineligible(user, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/ignition/renewals/ineligible/restore")
+async def api_restore_ignition_renewals_to_eligible(request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **restore_ignition_renewal_proposals_to_eligible(user, payload if isinstance(payload, dict) else {})}
 
 
 @app.post("/api/ignition/renewals/{run_id}")

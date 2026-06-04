@@ -253,24 +253,59 @@
                 line-height: 1.1;
             }
             .settings-nav-group-label {
-                display: block;
-                margin: 8px 4px 2px;
-                padding: 0 2px;
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin: 8px 0 2px;
+                padding: 7px 10px;
+                border-radius: 12px;
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                background: rgba(255, 255, 255, 0.62);
                 color: var(--muted);
-                font-size: 0.6rem;
+                font: inherit;
+                font-size: 0.64rem;
                 font-weight: 900;
                 letter-spacing: 0.12em;
                 text-transform: uppercase;
+                text-align: left;
+                cursor: pointer;
+                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+            }
+            .settings-nav-group-label::after {
+                content: "";
+                width: 7px;
+                height: 7px;
+                border-right: 2px solid currentColor;
+                border-bottom: 2px solid currentColor;
+                transform: rotate(45deg);
+                opacity: 0.74;
+                transition: transform 0.16s ease;
+            }
+            .settings-nav-group-label[aria-expanded="true"] {
+                border-color: rgba(29, 103, 242, 0.26);
+                background: rgba(233, 241, 255, 0.82);
+                color: var(--blue);
+            }
+            .settings-nav-group-label[aria-expanded="true"]::after {
+                transform: rotate(-135deg);
+            }
+            .settings-nav-group-label:hover {
+                border-color: rgba(29, 103, 242, 0.22);
+                color: var(--blue);
             }
             .settings-sidebar-card .settings-nav-group-label:first-child {
                 margin-top: 2px;
             }
             .app-nav-submenu .settings-nav-group-label {
-                margin: 10px 2px 2px;
-                padding: 0 2px;
+                margin: 10px 0 2px;
+                padding: 6px 9px;
             }
             .app-nav-submenu .settings-nav-group-label:first-child {
                 margin-top: 2px;
+            }
+            .settings-nav-group-item.is-collapsed {
+                display: none !important;
             }
             .settings-sidebar-button[data-settings-nav="period-scope"],
             .settings-sidebar-button[data-settings-nav="outbox"] {
@@ -13123,6 +13158,48 @@
                 gap: 12px;
                 flex-wrap: wrap;
             }
+            .ignition-renewals-hero.is-finalised {
+                padding: 14px 16px;
+                border: 1px solid rgba(31, 143, 110, 0.26);
+                border-radius: 18px;
+                background: linear-gradient(135deg, rgba(231, 249, 240, 0.96), rgba(239, 250, 246, 0.92));
+            }
+            #ignitionRenewalsModalTitle.is-finalised-title {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                width: min(780px, 100%);
+                color: #1f4d3e;
+            }
+            .ignition-renewals-title-ref {
+                flex: 0 0 auto;
+            }
+            .ignition-renewals-title-finalised {
+                flex: 1 1 auto;
+                text-align: center;
+                font-size: 0.72em;
+                font-weight: 900;
+                letter-spacing: 0.04em;
+                text-transform: uppercase;
+                color: #1f6b53;
+            }
+            .ignition-renewals-hero.is-finalised #ignitionRenewalsSummary {
+                color: #1f5a45;
+            }
+            .ignition-renewals-hero.is-finalised #ignitionRenewalsMeta span {
+                border-color: rgba(31, 143, 110, 0.28);
+                background: rgba(255, 255, 255, 0.78);
+                color: #2e735d;
+            }
+            .ignition-renewals-hero.is-finalised .detail-actions .primary-button {
+                background: linear-gradient(135deg, #2fbe78, #1f8f6e);
+                box-shadow: 0 10px 24px rgba(31, 143, 110, 0.24);
+            }
+            .ignition-renewals-hero.is-finalised .detail-actions .ghost-button {
+                border-color: rgba(31, 143, 110, 0.28);
+                color: #1f5a45;
+                background: rgba(255, 255, 255, 0.74);
+            }
             #ignitionRenewalEmailModal.ignition-renewals-modal {
                 z-index: 140;
                 place-items: center;
@@ -13723,34 +13800,7 @@
             .ignition-renewals-panel.is-finalised-celebration .renewals-locked-fee {
                 animation: renewals-lock-value-in 0.56s cubic-bezier(.22, .61, .36, 1);
             }
-            .ignition-renewals-finalised-banner {
-                margin-bottom: 10px;
-                border: 1px solid rgba(31, 143, 110, 0.26);
-                border-radius: 14px;
-                background: linear-gradient(135deg, rgba(235, 252, 244, 0.94), rgba(240, 248, 255, 0.9));
-                color: #1f4d3e;
-                padding: 10px 12px;
-                font-size: 0.82rem;
-                font-weight: 820;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .ignition-renewals-finalised-banner::before {
-                content: "✓";
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                background: rgba(31, 143, 110, 0.16);
-                color: #1f8f6e;
-                font-size: 0.75rem;
-                font-weight: 900;
-                flex: 0 0 auto;
-            }
-            .ignition-renewals-panel.is-finalised-celebration .ignition-renewals-finalised-banner {
+            .ignition-renewals-hero.is-finalised {
                 animation: renewals-finalised-banner-pop 0.62s ease;
             }
             .ignition-renewals-panel .renewals-ai-cell.is-locking {
@@ -13930,6 +13980,45 @@
             .ignition-renewals-candidates-table td:nth-child(5) { width: 15%; }
             .ignition-renewals-candidates-table th:nth-child(6),
             .ignition-renewals-candidates-table td:nth-child(6) { width: 23%; }
+            .ignition-renewals-excluded-table {
+                min-width: 860px;
+            }
+            .ignition-renewals-excluded-table th:nth-child(2),
+            .ignition-renewals-excluded-table td:nth-child(2) { width: 30%; }
+            .ignition-renewals-excluded-table th:nth-child(3),
+            .ignition-renewals-excluded-table td:nth-child(3) { width: 11%; }
+            .ignition-renewals-excluded-table th:nth-child(4),
+            .ignition-renewals-excluded-table td:nth-child(4) { width: 13%; }
+            .ignition-renewals-excluded-table th:nth-child(5),
+            .ignition-renewals-excluded-table td:nth-child(5) { width: 13%; }
+            .ignition-renewals-excluded-table th:nth-child(6),
+            .ignition-renewals-excluded-table td:nth-child(6) { width: 16%; }
+            .ignition-renewals-excluded-table th:nth-child(7),
+            .ignition-renewals-excluded-table td:nth-child(7) { width: 17%; }
+            .ignition-renewals-exclusion-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                border-radius: 999px;
+                border: 1px solid rgba(79, 107, 153, 0.24);
+                background: rgba(238, 244, 255, 0.85);
+                color: #3f557a;
+                font-size: 0.72rem;
+                font-weight: 700;
+                padding: 4px 10px;
+                line-height: 1.15;
+            }
+            .ignition-renewals-exclusion-pill.is-manual {
+                border-color: rgba(24, 122, 72, 0.25);
+                background: rgba(227, 246, 236, 0.85);
+                color: #1f724a;
+            }
+            .ignition-renewals-exclusion-help {
+                display: block;
+                margin-top: 4px;
+                font-size: 0.74rem;
+                color: #60779b;
+            }
             .ignition-renewals-batch-stage {
                 display: grid;
                 grid-template-columns: minmax(0, 1fr);
@@ -18769,81 +18858,81 @@
                                 <span class="app-nav-copy"><strong>Settings</strong><span>Focused controls</span></span>
                             </button>
                             <div class="app-nav-submenu" role="group" aria-label="Settings sections">
-                                <span class="settings-nav-group-label">Connections</span>
-                                <button class="app-nav-button" type="button" data-settings-nav="data-import">
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false">Connections</button>
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="data-import">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="period-scope">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="period-scope">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h3"></path><path d="M13 15h3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Period Scope</strong><span>Invoice years</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="xero-connection">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="xero-connection">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Xero Link</strong><span>Connection</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="ignition-connection">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="ignition-connection">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Ignition Link</strong><span>Connection</span></span>
                                 </button>
-                                <span class="settings-nav-group-label">Practice Settings</span>
-                                <button class="app-nav-button" type="button" data-settings-nav="renewal-settings">
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false">Practice Settings</button>
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="renewal-settings">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Renewal Settings</strong><span>Batch unlock</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="confirmation-settings">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="confirmation-settings">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Confirmation Settings</strong><span>Companies House + Xero</span></span>
                                 </button>
-                                <a class="app-nav-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
+                                <a class="app-nav-button settings-nav-group-item" href="#credit-control-confirmation-statements" data-settings-group-item="practice-settings" data-app-nav="confirmation-statements">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>CS, Secretarial, Lock Dates</span></span>
                                 </a>
-                                <button class="app-nav-button" type="button" data-settings-nav="mapping">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="mapping">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
                                     <span class="app-nav-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
                                 </button>
-                                <a class="app-nav-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
+                                <a class="app-nav-button settings-nav-group-item" href="#credit-control-client-auth-register" data-settings-group-item="practice-settings" data-app-nav="client-auth-register">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Client Register</strong><span>CH auth code directory</span></span>
                                 </a>
-                                <button class="app-nav-button" type="button" data-settings-nav="lock-date-mapping">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="lock-date-mapping">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 14h3"></path><path d="M13 14h3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Lock-Date Mapping</strong><span>Tenant company links</span></span>
                                 </button>
-                                <span class="settings-nav-group-label">Communications</span>
-                                <button class="app-nav-button" type="button" data-settings-nav="outbox">
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false">Communications</button>
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="outbox">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="letters">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="letters">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Letter Templates</strong><span>Reminder copy</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="gmail-connection">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="gmail-connection">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path><path d="M16 14h4"></path><path d="M18 12v4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Gmail Account</strong><span>Email connection</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="me-report-email">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="me-report-email">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                     <span class="app-nav-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
                                 </button>
-                                <span class="settings-nav-group-label">Technical Settings</span>
-                                <button class="app-nav-button" type="button" data-settings-nav="factory-reset">
+                                <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false">Technical Settings</button>
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="factory-reset">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="system-status">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="system-status">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
                                     <span class="app-nav-copy"><strong>System Status</strong><span>Database metrics</span></span>
                                 </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="developer-log">
-                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
-                                </button>
-                                <button class="app-nav-button" type="button" data-settings-nav="usage">
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="usage">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 16V9"></path><path d="M12 16V5"></path><path d="M17 16v-3"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Usage</strong><span>API volume & cost</span></span>
+                                </button>
+                                <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="developer-log">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
                                 </button>
                             </div>
                         </div>
@@ -18867,81 +18956,81 @@
                             <span class="settings-sidebar-title-copy"><strong>Settings</strong><span>Focused controls</span></span>
                         </div>
                         <nav class="app-nav">
-                            <span class="settings-nav-group-label">Connections</span>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="data-import">
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="connections" aria-expanded="false">Connections</button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="data-import">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 5h16l-6 7v5l-4 2v-7Z"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Data Import</strong><span>Invoice filter</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="period-scope">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="period-scope">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h3"></path><path d="M13 15h3"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Period Scope</strong><span>Invoice years</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="xero-connection">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="xero-connection">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"></path><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Xero Link</strong><span>Connection</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="ignition-connection">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="connections" data-settings-nav="ignition-connection">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Ignition Link</strong><span>Connection</span></span>
                             </button>
-                            <span class="settings-nav-group-label">Practice Settings</span>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="renewal-settings">
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="practice-settings" aria-expanded="false">Practice Settings</button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="renewal-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Renewal Settings</strong><span>Batch unlock</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="confirmation-settings">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="confirmation-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Confirmation Settings</strong><span>Companies House + Xero</span></span>
                             </button>
-                            <a class="settings-sidebar-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
+                            <a class="settings-sidebar-button settings-nav-group-item" href="#credit-control-confirmation-statements" data-settings-group-item="practice-settings" data-app-nav="confirmation-statements">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Confirmation Statements</strong><span>CS, Secretarial, Lock Dates</span></span>
                             </a>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="mapping">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="mapping">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Mapping / COA</strong><span>Posting defaults</span></span>
                             </button>
-                            <a class="settings-sidebar-button" href="#credit-control-client-auth-register" data-app-nav="client-auth-register">
+                            <a class="settings-sidebar-button settings-nav-group-item" href="#credit-control-client-auth-register" data-settings-group-item="practice-settings" data-app-nav="client-auth-register">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="3" width="16" height="18" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h8"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Client Register</strong><span>CH auth code directory</span></span>
                             </a>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="lock-date-mapping">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="lock-date-mapping">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 14h3"></path><path d="M13 14h3"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Lock-Date Mapping</strong><span>Tenant company links</span></span>
                             </button>
-                            <span class="settings-nav-group-label">Communications</span>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="outbox">
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="communications" aria-expanded="false">Communications</button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="outbox">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 14h4l2 3h4l2-3h4"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Xero Outbox</strong><span>Queued actions</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="letters">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="letters">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Letter Templates</strong><span>Reminder copy</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="gmail-connection">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="gmail-connection">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="6" width="16" height="12" rx="2"></rect><path d="m4 8 8 6 8-6"></path><path d="M16 14h4"></path><path d="M18 12v4"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Gmail Account</strong><span>Email connection</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="me-report-email">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="me-report-email">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
                             </button>
-                            <span class="settings-nav-group-label">Technical Settings</span>
-                            <button class="settings-sidebar-button danger-button" id="settingsFactorySidebarButton" type="button">
+                            <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false">Technical Settings</button>
+                            <button class="settings-sidebar-button danger-button settings-nav-group-item" id="settingsFactorySidebarButton" type="button" data-settings-group-item="technical-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"></path><path d="M12 8v5"></path><path d="M12 17h.01"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Factory Reset</strong><span>Protected area</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="system-status">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="system-status">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="5" rx="7" ry="3"></ellipse><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5"></path><path d="M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>System Status</strong><span>Database metrics</span></span>
                             </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="developer-log">
-                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
-                                <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
-                            </button>
-                            <button class="settings-sidebar-button" type="button" data-settings-nav="usage">
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="usage">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 19h16"></path><path d="M7 16V9"></path><path d="M12 16V5"></path><path d="M17 16v-3"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Usage</strong><span>API volume & cost</span></span>
+                            </button>
+                            <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="developer-log">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="m8 10 3 3-3 3"></path><path d="M13 16h3"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Developer Log</strong><span>Activity audit</span></span>
                             </button>
                         </nav>
                     </div>
@@ -21194,6 +21283,7 @@
                                             <h3 id="ignitionRenewalStartTitle">Step 1: Select clients</h3>
                                             <div class="detail-actions ignition-renewals-start-actions">
                                                 <button class="ghost-button" id="ignitionRenewalsDeselectAllCandidatesButton" type="button">Deselect all</button>
+                                                <button class="ghost-button" id="ignitionRenewalsShowExcludedCandidatesButton" type="button">Show excluded proposals</button>
                                                 <button class="ghost-button danger-button" id="ignitionRenewalsMarkIneligibleCandidatesButton" type="button">Mark selected ineligible</button>
                                                 <button class="ghost-button" id="closeIgnitionRenewalStartButton" type="button">Close</button>
                                                 <button class="primary-button" id="confirmIgnitionRenewalStartButton" type="button">Include selected and continue</button>
@@ -21204,6 +21294,26 @@
                                 </div>
                                 <div class="ignition-renewals-meta" id="ignitionRenewalStartMeta"></div>
                                 <div class="ignition-renewals-table-wrap" id="ignitionRenewalStartCandidatesWrap"></div>
+                            </section>
+                        </div>
+                        <div class="ignition-renewals-modal" id="ignitionRenewalExcludedModal" hidden>
+                            <section class="ignition-renewals-modal-panel ignition-renewals-panel" role="dialog" aria-modal="true" aria-labelledby="ignitionRenewalExcludedTitle">
+                                <div class="ignition-renewals-modal-head">
+                                    <div class="ignition-renewals-start-head">
+                                        <p class="eyebrow">Renewals process</p>
+                                        <div class="ignition-renewals-start-title-row">
+                                            <h3 id="ignitionRenewalExcludedTitle">Excluded proposals</h3>
+                                            <div class="detail-actions ignition-renewals-start-actions">
+                                                <button class="ghost-button" id="ignitionRenewalsDeselectExcludedCandidatesButton" type="button">Deselect all</button>
+                                                <button class="ghost-button" id="closeIgnitionRenewalExcludedButton" type="button">Close</button>
+                                                <button class="primary-button" id="confirmIgnitionRenewalExcludedRestoreButton" type="button">Move selected to eligible</button>
+                                            </div>
+                                        </div>
+                                        <p class="detail-meta" id="ignitionRenewalExcludedSummary">Review proposals currently excluded from Step 1 eligibility.</p>
+                                    </div>
+                                </div>
+                                <div class="ignition-renewals-meta" id="ignitionRenewalExcludedMeta"></div>
+                                <div class="ignition-renewals-table-wrap" id="ignitionRenewalExcludedCandidatesWrap"></div>
                             </section>
                         </div>
                         <div class="ignition-renewals-modal" id="ignitionRenewalHistoryModal" hidden>
@@ -23178,6 +23288,8 @@
             let ignitionRenewalBatchRefs = loadIgnitionRenewalBatchRefs();
             let ignitionRenewalBatchRefCounter = Math.max(0, ...Object.values(ignitionRenewalBatchRefs).map((value) => Number(value) || 0));
             let ignitionRenewalStartModalOpen = false;
+            let ignitionRenewalExcludedModalOpen = false;
+            let ignitionRenewalExcludedSelection = new Set();
             let ignitionRenewalHistoryModalOpen = false;
             let ignitionRenewalAuditHistoryModalOpen = false;
             let ignitionRenewalEmailModalOpen = false;
@@ -23610,6 +23722,7 @@
                         ignitionRenewalRun: config.endpoints?.ignitionRenewalRun || "/api/ignition/renewals/:runId",
                         ignitionRenewalAuditHistory: config.endpoints?.ignitionRenewalAuditHistory || "/api/ignition/renewals/:runId/audit-history",
                         ignitionRenewalIneligible: config.endpoints?.ignitionRenewalIneligible || "/api/ignition/renewals/ineligible",
+                        ignitionRenewalRestoreEligible: config.endpoints?.ignitionRenewalRestoreEligible || "/api/ignition/renewals/ineligible/restore",
                         ignitionRenewalDelete: config.endpoints?.ignitionRenewalDelete || "/api/ignition/renewals/:runId",
                         ignitionRenewalEmail: config.endpoints?.ignitionRenewalEmail || "/api/ignition/renewals/:runId/email",
                         ignitionRenewalEmailPreview: config.endpoints?.ignitionRenewalEmailPreview || "/api/ignition/renewals/:runId/email-preview",
@@ -40439,6 +40552,18 @@
                 });
             }
 
+            function ignitionRenewalExcludedCandidates() {
+                const rows = ignitionRenewalCandidatePool().excludedCandidates;
+                if (!Array.isArray(rows)) return [];
+                const clientNameForSort = (item) => String(item?.clientName || "").toLowerCase();
+                const renewalDateForSort = (item) => Date.parse(item?.renewalDate || "") || Number.MAX_SAFE_INTEGER;
+                return [...rows].sort((left, right) => {
+                    const renewalDelta = renewalDateForSort(left) - renewalDateForSort(right);
+                    if (renewalDelta !== 0) return renewalDelta;
+                    return clientNameForSort(left).localeCompare(clientNameForSort(right), "en-GB");
+                });
+            }
+
             function seedIgnitionRenewalSelection() {
                 ignitionRenewalSelection = new Set();
             }
@@ -40450,6 +40575,19 @@
             function ignitionRenewalSelectionList() {
                 ensureIgnitionRenewalSelection();
                 return Array.from(ignitionRenewalSelection).filter(Boolean);
+            }
+
+            function seedIgnitionRenewalExcludedSelection() {
+                ignitionRenewalExcludedSelection = new Set();
+            }
+
+            function ensureIgnitionRenewalExcludedSelection() {
+                if (!(ignitionRenewalExcludedSelection instanceof Set)) seedIgnitionRenewalExcludedSelection();
+            }
+
+            function ignitionRenewalExcludedSelectionList() {
+                ensureIgnitionRenewalExcludedSelection();
+                return Array.from(ignitionRenewalExcludedSelection).filter(Boolean);
             }
 
             function loadIgnitionRenewalBatchRefs() {
@@ -40744,6 +40882,7 @@
                 const wrap = document.getElementById("ignitionRenewalStartCandidatesWrap");
                 const confirmButton = document.getElementById("confirmIgnitionRenewalStartButton");
                 const markIneligibleButton = document.getElementById("ignitionRenewalsMarkIneligibleCandidatesButton");
+                const showExcludedButton = document.getElementById("ignitionRenewalsShowExcludedCandidatesButton");
                 const candidatePool = ignitionRenewalCandidatePool();
                 const candidates = ignitionRenewalCandidates();
                 ensureIgnitionRenewalSelection();
@@ -40751,13 +40890,18 @@
                 const syncedCount = Number(candidatePool.syncedCount || 0);
                 const selfAssessmentExcludedCount = Number(candidatePool.selfAssessmentExcludedCount || 0);
                 const manuallyIneligibleCount = Number(candidatePool.manuallyIneligibleCount || 0);
+                const nameExcludedCount = Number(candidatePool.nameExcludedCount || 0);
                 const alreadyPickedCount = Number(candidatePool.alreadyPickedCount || 0);
                 const availableCount = Number(candidates.length || 0);
+                const excludedCount = Number(
+                    candidatePool.excludedCount
+                    || (selfAssessmentExcludedCount + manuallyIneligibleCount + nameExcludedCount)
+                );
 
                 if (summary) {
                     summary.textContent = ignitionRenewalStartLoading
                         ? "Syncing and preparing the eligible client list for this workflow window."
-                        : `${syncedCount.toLocaleString("en-GB")} proposal${syncedCount === 1 ? "" : "s"} synced. ${selfAssessmentExcludedCount.toLocaleString("en-GB")} excluded (Self Assessment / Employment Expenses Claim / Dormant Accounts / Catch Up Period / One Off Accounts / Annual Accounts & CT / Accountant Letter / LPC / Company Formation / Hourly Rate). ${availableCount.toLocaleString("en-GB")} eligible for Step 1 selection.`;
+                        : `${syncedCount.toLocaleString("en-GB")} proposal${syncedCount === 1 ? "" : "s"} synced. ${excludedCount.toLocaleString("en-GB")} excluded (${selfAssessmentExcludedCount.toLocaleString("en-GB")} self-assessment/services, ${manuallyIneligibleCount.toLocaleString("en-GB")} manually ineligible, ${nameExcludedCount.toLocaleString("en-GB")} name rule). ${availableCount.toLocaleString("en-GB")} eligible for Step 1 selection.`;
                 }
                 if (meta) {
                     meta.innerHTML = ignitionRenewalStartLoading
@@ -40780,6 +40924,7 @@
 
                 if (confirmButton) confirmButton.disabled = ignitionRenewalStartLoading || !selectedSet.size;
                 if (markIneligibleButton) markIneligibleButton.disabled = ignitionRenewalStartLoading || !selectedSet.size;
+                if (showExcludedButton) showExcludedButton.disabled = ignitionRenewalStartLoading || !excludedCount;
                 if (!wrap) return;
                 if (ignitionRenewalStartLoading) {
                     const loadingState = ignitionRenewalStartLoadingState();
@@ -40846,7 +40991,11 @@
                 if (modal) modal.hidden = !ignitionRenewalStartModalOpen;
                 if (ignitionRenewalStartModalOpen) {
                     seedIgnitionRenewalSelection();
+                    seedIgnitionRenewalExcludedSelection();
                     renderIgnitionRenewalStartModal();
+                    renderIgnitionRenewalExcludedModal();
+                } else {
+                    setIgnitionRenewalExcludedModalOpen(false);
                 }
             }
 
@@ -40875,6 +41024,113 @@
 
             function closeIgnitionRenewalStartModal() {
                 setIgnitionRenewalStartModalOpen(false);
+            }
+
+            function renderIgnitionRenewalExcludedModal() {
+                const summary = document.getElementById("ignitionRenewalExcludedSummary");
+                const meta = document.getElementById("ignitionRenewalExcludedMeta");
+                const wrap = document.getElementById("ignitionRenewalExcludedCandidatesWrap");
+                const confirmButton = document.getElementById("confirmIgnitionRenewalExcludedRestoreButton");
+                const candidatePool = ignitionRenewalCandidatePool();
+                const excludedCandidates = ignitionRenewalExcludedCandidates();
+                ensureIgnitionRenewalExcludedSelection();
+                const selectedSet = new Set(ignitionRenewalExcludedSelectionList());
+                const moveableIds = excludedCandidates
+                    .filter((item) => item?.canMoveToEligible)
+                    .map((item) => String(item?.proposalExternalId || ""))
+                    .filter(Boolean);
+                const moveableSet = new Set(moveableIds);
+                const excludedCount = Number(candidatePool.excludedCount || excludedCandidates.length || 0);
+                const manuallyIneligibleCount = Number(candidatePool.manuallyIneligibleCount || 0);
+                const selfAssessmentExcludedCount = Number(candidatePool.selfAssessmentExcludedCount || 0);
+                const nameExcludedCount = Number(candidatePool.nameExcludedCount || 0);
+
+                if (summary) {
+                    summary.textContent = excludedCount
+                        ? `${excludedCount.toLocaleString("en-GB")} proposal${excludedCount === 1 ? "" : "s"} are currently excluded from Step 1. Tick manually ineligible proposals to move them back into eligible.`
+                        : "No proposals are currently excluded from Step 1 eligibility.";
+                }
+                if (meta) {
+                    meta.innerHTML = [
+                        ["Excluded", excludedCount.toLocaleString("en-GB")],
+                        ["Can move to eligible", moveableSet.size.toLocaleString("en-GB")],
+                        ["Self-assessment/services", selfAssessmentExcludedCount.toLocaleString("en-GB")],
+                        ["Name rule", nameExcludedCount.toLocaleString("en-GB")],
+                        ["Manually ineligible", manuallyIneligibleCount.toLocaleString("en-GB")],
+                        ["Selected", selectedSet.size.toLocaleString("en-GB")],
+                    ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
+                }
+                if (confirmButton) confirmButton.disabled = !selectedSet.size;
+                if (!wrap) return;
+                if (!excludedCandidates.length) {
+                    wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No excluded proposals</p><h4>Everything available is already eligible</h4><p>There are currently no excluded proposals in this renewal window.</p></div>';
+                    return;
+                }
+                wrap.innerHTML = `
+                    <table class="ignition-renewals-table ignition-renewals-candidates-table ignition-renewals-excluded-table">
+                        <thead>
+                            <tr>
+                                <th><input type="checkbox" id="ignitionRenewalsSelectAllExcluded" ${moveableSet.size && selectedSet.size === moveableSet.size ? "checked" : ""} aria-label="Select all moveable excluded proposals"></th>
+                                <th>Client</th>
+                                <th>Client ID</th>
+                                <th>Proposal Start Date</th>
+                                <th>Proposal End Date</th>
+                                <th>Manager</th>
+                                <th>Exclusion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${excludedCandidates.map((item) => {
+                                const proposalId = String(item?.proposalExternalId || "");
+                                const canMove = !!item?.canMoveToEligible;
+                                const checked = selectedSet.has(proposalId);
+                                const reasonLabel = String(item?.exclusionLabel || "Excluded");
+                                const pillClass = String(item?.exclusionReason || "") === "manually-ineligible"
+                                    ? "ignition-renewals-exclusion-pill is-manual"
+                                    : "ignition-renewals-exclusion-pill";
+                                const helperText = canMove
+                                    ? "Can be moved to eligible"
+                                    : "Locked by eligibility rules";
+                                return `
+                                    <tr>
+                                        <td><input type="checkbox" data-renewal-excluded-id="${escapeHTML(proposalId)}" ${checked ? "checked" : ""} ${canMove ? "" : "disabled"}></td>
+                                        <td>
+                                            <strong>${escapeHTML(item.clientName || "Unknown client")}</strong>
+                                            <br><small>${escapeHTML(item.proposalName || "")}</small>
+                                            ${item.proposalNumber ? `<small class="ignition-renewals-proposal-number">Proposal #${escapeHTML(item.proposalNumber)}</small>` : ""}
+                                        </td>
+                                        <td>${escapeHTML(item.clientId || "--")}</td>
+                                        <td>${escapeHTML(formatDate(item.proposalStartDate || ""))}</td>
+                                        <td>${escapeHTML(formatDate(item.renewalDate || ""))}</td>
+                                        <td>${escapeHTML(item.clientManager || "Unassigned")}</td>
+                                        <td>
+                                            <span class="${pillClass}">${escapeHTML(reasonLabel)}</span>
+                                            <small class="ignition-renewals-exclusion-help">${escapeHTML(helperText)}</small>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join("")}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            function setIgnitionRenewalExcludedModalOpen(isOpen) {
+                ignitionRenewalExcludedModalOpen = Boolean(isOpen);
+                const modal = document.getElementById("ignitionRenewalExcludedModal");
+                if (modal) modal.hidden = !ignitionRenewalExcludedModalOpen;
+                if (ignitionRenewalExcludedModalOpen) {
+                    seedIgnitionRenewalExcludedSelection();
+                    renderIgnitionRenewalExcludedModal();
+                }
+            }
+
+            function openIgnitionRenewalExcludedModal() {
+                setIgnitionRenewalExcludedModalOpen(true);
+            }
+
+            function closeIgnitionRenewalExcludedModal() {
+                setIgnitionRenewalExcludedModalOpen(false);
             }
 
             function setIgnitionRenewalHistoryOpen(isOpen) {
@@ -41292,6 +41548,7 @@
                 const summary = document.getElementById("ignitionRenewalsSummary");
                 const meta = document.getElementById("ignitionRenewalsMeta");
                 const wrap = document.getElementById("ignitionRenewalsTableWrap");
+                const renewalsHero = document.querySelector(".ignition-renewals-hero");
                 const saveButton = document.getElementById("saveIgnitionRenewalsButton");
                 const emailButton = document.getElementById("emailIgnitionRenewalsButton");
                 const exportPdfButton = document.getElementById("exportIgnitionRenewalsPdfButton");
@@ -41304,7 +41561,10 @@
                     const candidates = ignitionRenewalCandidates();
                     const recentRuns = Array.isArray(ignitionData.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
                     ensureIgnitionRenewalSelection();
-                    if (title) title.textContent = "Renewal batches";
+                    if (title) {
+                        title.classList.remove("is-finalised-title");
+                        title.textContent = "Renewal batches";
+                    }
                     if (summary) {
                         summary.textContent = `Step 1: select eligible clients from Start workflow, then continue to pricing review. ${Number(recentRuns.length || 0).toLocaleString("en-GB")} batches in status.`;
                     }
@@ -41323,7 +41583,10 @@
                     const elapsed = ignitionRenewalsElapsedSeconds();
                     const loadingStep = ignitionRenewalsLoadingStep();
                     const progress = Math.min(96, Math.max(8, Math.round((elapsed / ignitionRenewalsEstimatedSeconds) * 100)));
-                    if (title) title.textContent = batchReference ? `${batchReference} · Preparing proposal list` : "Preparing proposal list";
+                    if (title) {
+                        title.classList.remove("is-finalised-title");
+                        title.textContent = batchReference ? `${batchReference} · Preparing proposal list` : "Preparing proposal list";
+                    }
                     if (summary) summary.textContent = `${loadingStep.detail} ${ignitionRenewalsEtaText()}.`;
                     if (meta) {
                         meta.innerHTML = [
@@ -41350,9 +41613,15 @@
                     const items = Array.isArray(run.items) ? run.items : [];
                     const finalised = Boolean(run.finalisedAt);
                     if (title) {
-                        title.textContent = batchReference
-                            ? `${batchReference} · Step 2: review monthly fees and finalise`
-                            : "Step 2: review monthly fees and finalise";
+                        if (finalised && batchReference) {
+                            title.classList.add("is-finalised-title");
+                            title.innerHTML = `<span class="ignition-renewals-title-ref">${escapeHTML(batchReference)}</span><span class="ignition-renewals-title-finalised">Renewal Batch Finalised</span>`;
+                        } else {
+                            title.classList.remove("is-finalised-title");
+                            title.textContent = batchReference
+                                ? `${batchReference} · Step 2: review monthly fees and finalise`
+                                : "Step 2: review monthly fees and finalise";
+                        }
                     }
                     if (summary) {
                         summary.textContent = items.length
@@ -41369,15 +41638,14 @@
                             ["Email", run.emailSentAt ? formatDateTime(run.emailSentAt) : `Ready for ${ignitionData.renewals?.recipientEmail || "Amie"}`]
                         ].map(([label, value]) => `<span>${escapeHTML(label)}: ${escapeHTML(value)}</span>`).join("");
                     }
-                    if (wrap) {
-                        const finalisedBanner = finalised
-                            ? '<div class="ignition-renewals-finalised-banner">Renewal batch finalised. Pricing is now locked and ready for export/email.</div>'
-                            : "";
-                        wrap.innerHTML = `${finalisedBanner}${renderIgnitionRenewalsTable(items, finalised)}`;
-                    }
+                    if (renewalsHero) renewalsHero.classList.toggle("is-finalised", finalised);
+                    if (wrap) wrap.innerHTML = renderIgnitionRenewalsTable(items, finalised);
                     updateIgnitionRenewalTotalsFromTable();
                 } else {
-                    if (title) title.textContent = batchReference ? `${batchReference} · Proposals ending in the coming 8 weeks` : "Proposals ending in the coming 8 weeks";
+                    if (title) {
+                        title.classList.remove("is-finalised-title");
+                        title.textContent = batchReference ? `${batchReference} · Proposals ending in the coming 8 weeks` : "Proposals ending in the coming 8 weeks";
+                    }
                     if (summary) summary.textContent = "No renewal batch is open. Return to Batches to select clients and start a renewal run.";
                     if (meta) {
                         meta.innerHTML = [
@@ -41388,6 +41656,7 @@
                     }
                     if (wrap) wrap.innerHTML = '<div class="empty-state"><p class="eyebrow">No active batch</p><h4>Start from renewal batches</h4><p>Open the batches stage, select clients, then continue to pricing.</p></div>';
                 }
+                if (!run && renewalsHero) renewalsHero.classList.remove("is-finalised");
 
                 const finalised = Boolean(run?.finalisedAt);
                 const pricingStage = ignitionRenewalsWorkspaceStage === "pricing";
@@ -42240,10 +42509,39 @@
                         "success"
                     );
                     renderIgnitionRenewalStartModal();
+                    renderIgnitionRenewalExcludedModal();
                     renderIgnitionRenewals();
                 } catch (error) {
                     console.error("Unable to mark renewal proposals as ineligible", error);
                     showToast(error.message || "Unable to mark selected proposals ineligible", "error");
+                }
+            }
+
+            async function restoreSelectedIgnitionRenewalsToEligible() {
+                const proposalExternalIds = ignitionRenewalExcludedSelectionList();
+                if (!proposalExternalIds.length) {
+                    showToast("Select at least one manually ineligible proposal to move to eligible.", "info");
+                    return;
+                }
+                if (!window.confirm(`Move ${proposalExternalIds.length.toLocaleString("en-GB")} selected proposal${proposalExternalIds.length === 1 ? "" : "s"} back to eligible?`)) return;
+                try {
+                    const payload = await requestJSON(
+                        api.endpoints.ignitionRenewalRestoreEligible,
+                        { method: "POST", body: JSON.stringify({ proposalExternalIds }) }
+                    );
+                    ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    ignitionRenewalExcludedSelection = new Set();
+                    const restoredCount = Number(payload?.restoredCount || proposalExternalIds.length);
+                    showToast(
+                        `Moved ${restoredCount.toLocaleString("en-GB")} proposal${restoredCount === 1 ? "" : "s"} to eligible.`,
+                        "success"
+                    );
+                    renderIgnitionRenewalExcludedModal();
+                    renderIgnitionRenewalStartModal();
+                    renderIgnitionRenewals();
+                } catch (error) {
+                    console.error("Unable to move excluded proposals to eligible", error);
+                    showToast(error.message || "Unable to move selected proposals to eligible", "error");
                 }
             }
 
@@ -55801,6 +56099,43 @@
                     meta: "Protected destructive controls are isolated from day-to-day settings."
                 }
             };
+            const settingsSectionGroupMap = {
+                "data-import": "connections",
+                "period-scope": "connections",
+                "xero-connection": "connections",
+                "ignition-connection": "connections",
+                "renewal-settings": "practice-settings",
+                "confirmation-settings": "practice-settings",
+                mapping: "practice-settings",
+                "lock-date-mapping": "practice-settings",
+                outbox: "communications",
+                letters: "communications",
+                "gmail-connection": "communications",
+                "me-report-email": "communications",
+                "factory-reset": "technical-settings",
+                "system-status": "technical-settings",
+                usage: "technical-settings",
+                "developer-log": "technical-settings",
+            };
+            let expandedSettingsNavGroups = new Set(["connections"]);
+
+            function settingsGroupForSection(section) {
+                return settingsSectionGroupMap[String(section || "").trim()] || "";
+            }
+
+            function syncSettingsNavGroups(activeSection = activeSettingsSection) {
+                const activeGroup = settingsGroupForSection(activeSection);
+                if (activeGroup) expandedSettingsNavGroups.add(activeGroup);
+                document.querySelectorAll("[data-settings-group-label]").forEach((label) => {
+                    const group = label.dataset.settingsGroupLabel || "";
+                    const expanded = expandedSettingsNavGroups.has(group);
+                    label.setAttribute("aria-expanded", expanded ? "true" : "false");
+                });
+                document.querySelectorAll("[data-settings-group-item]").forEach((item) => {
+                    const group = item.dataset.settingsGroupItem || "";
+                    item.classList.toggle("is-collapsed", !expandedSettingsNavGroups.has(group));
+                });
+            }
 
             function showSettingsSidebar(mode = "settings") {
                 setCreditControlGroupOpen("settings", true, mode !== "factory");
@@ -55827,6 +56162,7 @@
                 document.querySelectorAll("[data-settings-nav]").forEach((button) => {
                     button.classList.toggle("is-active", button.dataset.settingsNav === activeSettingsSection);
                 });
+                syncSettingsNavGroups(activeSettingsSection);
                 document.getElementById("factoryOpenResetPageButton")?.classList.toggle("is-active", activeSettingsSection === "factory-reset");
                 if (activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 if (activeSettingsSection === "renewal-settings") renderRenewalSettings();
@@ -56488,6 +56824,17 @@
                 document.querySelectorAll("[data-settings-nav]").forEach((button) => {
                     button.addEventListener("click", () => openSettingsScreen(button.dataset.settingsNav || "data-import", "settings"));
                 });
+                document.querySelectorAll("[data-settings-group-label]").forEach((button) => {
+                    if (button.dataset.settingsGroupWired === "true") return;
+                    button.dataset.settingsGroupWired = "true";
+                    button.addEventListener("click", () => {
+                        const group = button.dataset.settingsGroupLabel || "";
+                        const isExpanded = expandedSettingsNavGroups.has(group);
+                        expandedSettingsNavGroups = isExpanded ? new Set() : new Set([group]);
+                        syncSettingsNavGroups();
+                    });
+                });
+                syncSettingsNavGroups(activeSettingsSection);
                 document.getElementById("settingsFactorySidebarButton")?.addEventListener("click", () => {
                     showSettingsSidebar("factory");
                     renderSettingsNavigation();
@@ -56832,6 +57179,8 @@
                     ignitionRenewalSelection = new Set();
                     renderIgnitionRenewalStartModal();
                 });
+                const ignitionRenewalsShowExcludedCandidatesButton = document.getElementById("ignitionRenewalsShowExcludedCandidatesButton");
+                if (ignitionRenewalsShowExcludedCandidatesButton) ignitionRenewalsShowExcludedCandidatesButton.addEventListener("click", openIgnitionRenewalExcludedModal);
                 const ignitionRenewalsMarkIneligibleCandidatesButton = document.getElementById("ignitionRenewalsMarkIneligibleCandidatesButton");
                 if (ignitionRenewalsMarkIneligibleCandidatesButton) ignitionRenewalsMarkIneligibleCandidatesButton.addEventListener("click", markSelectedIgnitionRenewalsIneligible);
                 const confirmIgnitionRenewalStartButton = document.getElementById("confirmIgnitionRenewalStartButton");
@@ -56839,6 +57188,19 @@
                 const ignitionRenewalStartModal = document.getElementById("ignitionRenewalStartModal");
                 if (ignitionRenewalStartModal) ignitionRenewalStartModal.addEventListener("click", (event) => {
                     if (event.target.id === "ignitionRenewalStartModal") closeIgnitionRenewalStartModal();
+                });
+                const closeIgnitionRenewalExcludedButton = document.getElementById("closeIgnitionRenewalExcludedButton");
+                if (closeIgnitionRenewalExcludedButton) closeIgnitionRenewalExcludedButton.addEventListener("click", closeIgnitionRenewalExcludedModal);
+                const ignitionRenewalsDeselectExcludedCandidatesButton = document.getElementById("ignitionRenewalsDeselectExcludedCandidatesButton");
+                if (ignitionRenewalsDeselectExcludedCandidatesButton) ignitionRenewalsDeselectExcludedCandidatesButton.addEventListener("click", () => {
+                    ignitionRenewalExcludedSelection = new Set();
+                    renderIgnitionRenewalExcludedModal();
+                });
+                const confirmIgnitionRenewalExcludedRestoreButton = document.getElementById("confirmIgnitionRenewalExcludedRestoreButton");
+                if (confirmIgnitionRenewalExcludedRestoreButton) confirmIgnitionRenewalExcludedRestoreButton.addEventListener("click", restoreSelectedIgnitionRenewalsToEligible);
+                const ignitionRenewalExcludedModal = document.getElementById("ignitionRenewalExcludedModal");
+                if (ignitionRenewalExcludedModal) ignitionRenewalExcludedModal.addEventListener("click", (event) => {
+                    if (event.target?.id === "ignitionRenewalExcludedModal") closeIgnitionRenewalExcludedModal();
                 });
                 const ignitionRenewalHistoryModal = document.getElementById("ignitionRenewalHistoryModal");
                 if (ignitionRenewalHistoryModal) ignitionRenewalHistoryModal.addEventListener("click", (event) => {
@@ -57032,8 +57394,28 @@
                     else ignitionRenewalSelection.delete(candidateId);
                     renderIgnitionRenewalStartModal();
                 });
+                const ignitionRenewalExcludedCandidatesWrap = document.getElementById("ignitionRenewalExcludedCandidatesWrap");
+                if (ignitionRenewalExcludedCandidatesWrap) ignitionRenewalExcludedCandidatesWrap.addEventListener("change", (event) => {
+                    const selectAll = event.target?.id === "ignitionRenewalsSelectAllExcluded";
+                    if (selectAll) {
+                        const shouldSelect = !!event.target.checked;
+                        const selectableIds = ignitionRenewalExcludedCandidates()
+                            .filter((item) => item?.canMoveToEligible)
+                            .map((item) => String(item?.proposalExternalId || ""))
+                            .filter(Boolean);
+                        ignitionRenewalExcludedSelection = shouldSelect ? new Set(selectableIds) : new Set();
+                        renderIgnitionRenewalExcludedModal();
+                        return;
+                    }
+                    const candidateId = String(event.target?.dataset?.renewalExcludedId || "");
+                    if (!candidateId) return;
+                    if (event.target.checked) ignitionRenewalExcludedSelection.add(candidateId);
+                    else ignitionRenewalExcludedSelection.delete(candidateId);
+                    renderIgnitionRenewalExcludedModal();
+                });
                 document.addEventListener("keydown", (event) => {
                     if (event.key === "Escape" && ignitionRenewalStartModalOpen) closeIgnitionRenewalStartModal();
+                    if (event.key === "Escape" && ignitionRenewalExcludedModalOpen) closeIgnitionRenewalExcludedModal();
                     if (event.key === "Escape" && ignitionRenewalHistoryModalOpen) closeIgnitionRenewalHistory();
                     if (event.key === "Escape" && ignitionRenewalAuditHistoryModalOpen) closeIgnitionRenewalAuditHistory();
                     if (event.key === "Escape" && ignitionRenewalEmailModalOpen) closeIgnitionRenewalEmailModal();

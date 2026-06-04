@@ -15690,41 +15690,52 @@ def _is_accepted_ignition_proposal(row: dict) -> bool:
     return state == "accepted" or bool(row.get("accepted_at") or row.get("acceptedAt"))
 
 
+def _ignition_client_statuses(row: dict) -> list[str]:
+    values = (
+        row.get("status"),
+        row.get("state"),
+        row.get("client_status"),
+        row.get("clientStatus"),
+        row.get("lifecycle_stage"),
+        row.get("lifecycleStage"),
+    )
+    return [str(value).strip().lower() for value in values if str(value or "").strip()]
+
+
+def _ignition_status_is_active(status_text: str) -> bool | None:
+    normalized = str(status_text or "").strip().lower()
+    if not normalized:
+        return None
+    compact = normalized.replace("_", "").replace("-", "").strip()
+    if compact in {"inactive", "archived", "deleted", "cancelled", "canceled", "closed", "churned"}:
+        return False
+    if any(marker in normalized for marker in IGNITION_INACTIVE_CLIENT_STATUS_MARKERS):
+        return False
+    if normalized in IGNITION_ACTIVE_CLIENT_STATUSES or compact in {"active", "current", "live", "activeclient", "client", "customer", "subscribed"}:
+        return True
+    return None
+
+
 def _ignition_proposal_client_is_active(row: dict) -> bool:
     client = row.get("client") if isinstance(row.get("client"), dict) else {}
     customer = row.get("customer") if isinstance(row.get("customer"), dict) else {}
-    values = [
-        row.get("client_status"),
-        row.get("clientStatus"),
-        row.get("client_state"),
-        row.get("clientState"),
-        row.get("lifecycle_stage"),
-        row.get("lifecycleStage"),
-        client.get("status"),
-        client.get("state"),
-        client.get("lifecycle_stage"),
-        client.get("lifecycleStage"),
-        customer.get("status"),
-        customer.get("state"),
-        customer.get("lifecycle_stage"),
-        customer.get("lifecycleStage"),
+    statuses = [
+        *_ignition_client_statuses(row),
+        *_ignition_client_statuses(client),
+        *_ignition_client_statuses(customer),
+        str(row.get("client_state") or "").strip().lower(),
+        str(row.get("clientState") or "").strip().lower(),
     ]
-    statuses = [str(value).strip().lower() for value in values if str(value or "").strip()]
+    statuses = [status for status in statuses if status]
     if not statuses:
         return True
-    # Inactive states take precedence (e.g. "inactive client" must not pass because it contains "active").
     for status_text in statuses:
-        compact = status_text.replace("_", "").replace("-", "").strip()
-        if compact in {"inactive", "archived", "deleted", "cancelled", "canceled", "closed", "churned"}:
-            return False
-        if any(marker in status_text for marker in IGNITION_INACTIVE_CLIENT_STATUS_MARKERS):
+        status_state = _ignition_status_is_active(status_text)
+        if status_state is False:
             return False
     for status_text in statuses:
-        compact = status_text.replace("_", "").replace("-", "").strip()
-        if (
-            status_text in IGNITION_ACTIVE_CLIENT_STATUSES
-            or compact in {"active", "current", "live", "activeclient", "client", "customer", "subscribed"}
-        ):
+        status_state = _ignition_status_is_active(status_text)
+        if status_state is True:
             return True
     # Default to active unless there is an explicit inactive marker.
     return True
@@ -15771,7 +15782,24 @@ def _ignition_proposal_service_name(row: dict) -> str:
     return ", ".join(names)
 
 
+def _ignition_proposal_is_priority_renewal_plan(row: dict) -> bool:
+    text = " ".join(
+        str(value or "")
+        for value in (
+            row.get("name"),
+            row.get("reference_number"),
+            row.get("description"),
+            " ".join(_service_names_from_proposal(row)),
+        )
+    ).lower()
+    return any(marker in text for marker in ("zulu", "solo+", "solo plus"))
+
+
 def _ignition_proposal_is_self_assessment(row: dict) -> bool:
+    if _ignition_proposal_is_priority_renewal_plan(row):
+        # Zulu and Solo Plus renewals should remain eligible even when proposal text
+        # includes wording that would otherwise trigger a self-assessment marker.
+        return False
     text = " ".join(
         str(value or "")
         for value in (
@@ -15848,10 +15876,7 @@ def _ignition_client_email(row: dict) -> str:
 
 
 def _ignition_client_status(row: dict) -> str:
-    status = (
-        _first_mapping_text(row, ("status", "state", "client_status", "clientStatus", "lifecycle_stage", "lifecycleStage"))
-        or "active"
-    )
+    status = _first_mapping_text(row, ("status", "state", "client_status", "clientStatus", "lifecycle_stage", "lifecycleStage")) or "active"
     return status.strip() or "active"
 
 
@@ -16188,6 +16213,20 @@ def _ignition_client_created_lookup(client_records: list[dict]) -> dict[str, dat
         for key in _ignition_client_lookup_keys(payload):
             if key and key not in lookup:
                 lookup[key] = created_date
+    return lookup
+
+
+def _ignition_client_status_lookup(client_records: list[dict]) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for record in client_records or []:
+        payload = record.get("payload") or {}
+        statuses = _ignition_client_statuses(payload)
+        if not statuses:
+            continue
+        status_value = statuses[0]
+        for key in _ignition_client_lookup_keys(payload):
+            if key and key not in lookup:
+                lookup[key] = status_value
     return lookup
 
 
@@ -16678,6 +16717,7 @@ def _ignition_upcoming_renewal_proposals(
     manager_overrides = _ignition_client_register_manager_overrides(str(user_id or "").strip())
     client_id_lookup = _ignition_client_register_id_lookup(str(user_id or "").strip())
     client_created_lookup = _ignition_client_created_lookup(client_records or [])
+    client_status_lookup = _ignition_client_status_lookup(client_records or [])
     candidates = []
     for record in records:
         proposal_payload = record.get("payload") or {}
@@ -16689,6 +16729,20 @@ def _ignition_upcoming_renewal_proposals(
         if not _is_accepted_ignition_proposal(proposal_payload):
             continue
         if not _ignition_proposal_client_is_active(proposal_payload):
+            proposal_active = False
+        else:
+            proposal_active = True
+            for key in _ignition_client_lookup_keys(proposal_payload):
+                matched_status = client_status_lookup.get(key)
+                if not matched_status:
+                    continue
+                status_state = _ignition_status_is_active(matched_status)
+                if status_state is False:
+                    proposal_active = False
+                    break
+                if status_state is True:
+                    break
+        if not proposal_active:
             continue
         item = _ignition_renewal_item_seed(record, renewal_date)
         lookup_keys = _ignition_client_lookup_keys(proposal_payload)
@@ -17446,6 +17500,11 @@ def _ignition_renewal_candidates_for_user(
             str(excluded.get("proposal_external_id") or "") for excluded in self_assessment_excluded
         }
     ]
+    manually_ineligible_candidates = [
+        item
+        for item in non_self_assessment_candidates
+        if str(item.get("proposal_external_id") or "") in manually_ineligible
+    ]
     available = [
         item
         for item in non_self_assessment_candidates
@@ -17462,6 +17521,35 @@ def _ignition_renewal_candidates_for_user(
         for item in non_self_assessment_candidates
         if str(item.get("proposal_external_id") or "") in manually_ineligible
     )
+    excluded_candidates = [
+        *[
+            {
+                **_serialize_ignition_renewal_candidate(item),
+                "exclusionReason": "named-exclusion",
+                "exclusionLabel": "Excluded by proposal name rule",
+                "canMoveToEligible": False,
+            }
+            for item in named_excluded_candidates
+        ],
+        *[
+            {
+                **_serialize_ignition_renewal_candidate(item),
+                "exclusionReason": "self-assessment",
+                "exclusionLabel": "Self Assessment / excluded service",
+                "canMoveToEligible": False,
+            }
+            for item in self_assessment_excluded
+        ],
+        *[
+            {
+                **_serialize_ignition_renewal_candidate(item),
+                "exclusionReason": "manually-ineligible",
+                "exclusionLabel": "Marked ineligible",
+                "canMoveToEligible": True,
+            }
+            for item in manually_ineligible_candidates
+        ],
+    ]
     return {
         "windowStart": window_start.isoformat(),
         "windowEnd": window_end.isoformat(),
@@ -17474,6 +17562,8 @@ def _ignition_renewal_candidates_for_user(
         "availableCount": len(available),
         "alreadyPickedCount": already_picked_count,
         "candidates": [_serialize_ignition_renewal_candidate(item) for item in available],
+        "excludedCount": len(excluded_candidates),
+        "excludedCandidates": excluded_candidates,
     }
 
 
@@ -17790,7 +17880,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-        from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
         from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except Exception:
         lines = [
@@ -17814,9 +17904,9 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
     document = SimpleDocTemplate(
         buffer,
         pagesize=landscape(A4),
-        leftMargin=18,
-        rightMargin=18,
-        topMargin=16,
+        leftMargin=20,
+        rightMargin=20,
+        topMargin=20,
         bottomMargin=24,
     )
     styles = getSampleStyleSheet()
@@ -17824,61 +17914,54 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         "IgnitionRenewalsBody",
         parent=styles["BodyText"],
         fontName="Helvetica",
-        fontSize=7.8,
-        leading=9.2,
-        textColor=colors.HexColor("#17395A"),
+        fontSize=8.2,
+        leading=9.8,
+        textColor=colors.HexColor("#1E3650"),
     )
     title_style = ParagraphStyle(
         "IgnitionRenewalsTitle",
         parent=styles["Title"],
         fontName="Helvetica-Bold",
-        fontSize=18,
-        leading=21,
-        textColor=colors.HexColor("#035581"),
+        fontSize=28,
+        leading=30,
+        textColor=colors.HexColor("#0F2A4A"),
         spaceAfter=4,
     )
     subtitle_style = ParagraphStyle(
         "IgnitionRenewalsSubtitle",
         parent=body_style,
         fontName="Helvetica",
-        fontSize=8.2,
-        leading=10.2,
-        textColor=colors.HexColor("#035581"),
+        fontSize=9.2,
+        leading=11.2,
+        textColor=colors.HexColor("#5C7088"),
     )
-    metric_label_style = ParagraphStyle(
-        "IgnitionRenewalsMetricLabel",
+    metric_card_style = ParagraphStyle(
+        "IgnitionRenewalsMetricCard",
         parent=body_style,
-        fontName="Helvetica-Bold",
-        fontSize=7.0,
-        leading=8.4,
-        textColor=colors.white,
-    )
-    metric_value_style = ParagraphStyle(
-        "IgnitionRenewalsMetricValue",
-        parent=body_style,
-        fontName="Helvetica-Bold",
-        fontSize=10.2,
-        leading=11.8,
-        textColor=colors.white,
+        fontName="Helvetica",
+        fontSize=8.0,
+        leading=10.0,
+        textColor=colors.HexColor("#4B6078"),
+        alignment=TA_LEFT,
     )
     header_cell_style = ParagraphStyle(
         "IgnitionRenewalsHeaderCell",
         parent=body_style,
         fontName="Helvetica-Bold",
-        fontSize=7.2,
-        leading=8.8,
-        textColor=colors.white,
-        alignment=TA_LEFT,
+        fontSize=7.6,
+        leading=9.2,
+        textColor=colors.HexColor("#1E3650"),
+        alignment=TA_CENTER,
     )
     cell_style = ParagraphStyle(
         "IgnitionRenewalsCell",
         parent=body_style,
         fontName="Helvetica",
-        fontSize=6.9,
-        leading=8.3,
-        textColor=colors.HexColor("#17395A"),
+        fontSize=7.3,
+        leading=8.9,
+        textColor=colors.HexColor("#1E3650"),
         alignment=TA_LEFT,
-        wordWrap="CJK",
+        wordWrap="LTR",
     )
     money_cell_style = ParagraphStyle(
         "IgnitionRenewalsMoneyCell",
@@ -17927,38 +18010,27 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
     metrics_col_width = document.width / 3
     metrics_table = Table([
         [
-            Paragraph("Renewals", metric_label_style),
-            Paragraph("Current Monthly Total", metric_label_style),
-            Paragraph("New Monthly Total", metric_label_style),
+            Paragraph(f"<b>Renewals</b><br/>{len(items)}", metric_card_style),
+            Paragraph(f"<b>Current Monthly Total</b><br/>£{total_current:,.2f}", metric_card_style),
+            Paragraph(f"<b>New Monthly Total</b><br/>£{total_new:,.2f}", metric_card_style),
         ],
         [
-            Paragraph(str(len(items)), metric_value_style),
-            Paragraph(f"£{total_current:,.2f}", metric_value_style),
-            Paragraph(f"£{total_new:,.2f}", metric_value_style),
-        ],
-        [
-            Paragraph("Monthly Uplift", metric_label_style),
-            Paragraph("Annualised Uplift", metric_label_style),
-            Paragraph("Increase %", metric_label_style),
-        ],
-        [
-            Paragraph(f"£{variance:,.2f}", metric_value_style),
-            Paragraph(f"£{annualised_uplift:,.2f}", metric_value_style),
-            Paragraph(f"{variance_percent * Decimal('100'):.1f}%", metric_value_style),
+            Paragraph(f"<b>Monthly Uplift</b><br/>£{variance:,.2f}", metric_card_style),
+            Paragraph(f"<b>Annualised Uplift</b><br/>£{annualised_uplift:,.2f}", metric_card_style),
+            Paragraph(f"<b>Increase %</b><br/>{variance_percent * Decimal('100'):.1f}%", metric_card_style),
         ],
     ], colWidths=[metrics_col_width] * 3)
     metrics_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#0075C9")),
-        ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#035581")),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.55, colors.HexColor("#035581")),
-        ("LINEBELOW", (0, 2), (-1, 2), 0.55, colors.HexColor("#035581")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 4.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4.5),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F9FF")),
+        ("GRID", (0, 0), (-1, -1), 0.45, colors.HexColor("#D3DFED")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#D3DFED")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    story.extend([metrics_table, Spacer(1, 9)])
+    story.extend([metrics_table, Spacer(1, 10)])
 
     def _pdf_plain_text(value: object) -> str:
         text = str(value or "")
@@ -17967,20 +18039,23 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         return text
 
     table_rows = [[
+        Paragraph("#", header_cell_style),
         Paragraph("Client Name", header_cell_style),
         Paragraph("Client ID", header_cell_style),
         Paragraph("Proposal Number", header_cell_style),
-        Paragraph("Proposal Name", header_cell_style),
+        Paragraph("Proposal", header_cell_style),
         Paragraph("Manager", header_cell_style),
         Paragraph("Renewal Date", header_cell_style),
         Paragraph("Current Monthly", header_cell_style),
         Paragraph("Proposed Monthly", header_cell_style),
-        Paragraph("Variance", header_cell_style),
+        Paragraph("Change", header_cell_style),
+        Paragraph("Change %", header_cell_style),
     ]]
-    for item in items:
+    for index, item in enumerate(items, start=1):
         current = _money(item.get("current_monthly_fee"))
         proposed = _money(item.get("new_monthly_fee"))
         variance = _money(proposed - current)
+        variance_percent_item = ((variance / current) * Decimal("100")) if current > 0 else Decimal("0")
         proposal_payload = item.get("proposal_payload")
         if not isinstance(proposal_payload, dict):
             proposal_payload = {}
@@ -17989,6 +18064,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
             or str(proposal_payload.get("reference_number") or proposal_payload.get("proposal_number") or proposal_payload.get("referenceNumber") or proposal_payload.get("proposalNumber") or "").strip()
         )
         table_rows.append([
+            Paragraph(str(index), money_cell_style),
             Paragraph(_pdf_plain_text(item.get("client_name")) or "-", cell_style),
             Paragraph(_pdf_plain_text(item.get("client_id")) or "-", cell_style),
             Paragraph(_pdf_plain_text(proposal_number) or "-", cell_style),
@@ -17998,6 +18074,7 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
             Paragraph(f"£{current:,.2f}", money_cell_style),
             Paragraph(f"£{proposed:,.2f}", money_cell_style),
             Paragraph(f"£{variance:,.2f}", money_cell_style),
+            Paragraph(f"{variance_percent_item:.1f}%", money_cell_style),
         ])
 
     table_rows.append([
@@ -18010,18 +18087,21 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         Paragraph(f"£{total_current:,.2f}", total_row_style),
         Paragraph(f"£{total_new:,.2f}", total_row_style),
         Paragraph(f"£{variance:,.2f}", total_row_style),
+        Paragraph(f"{variance_percent * Decimal('100'):.1f}%", total_row_style),
     ])
 
     col_widths = [
-        document.width * 0.20,
+        document.width * 0.03,
+        document.width * 0.15,
+        document.width * 0.06,
+        document.width * 0.10,
+        document.width * 0.18,
         document.width * 0.08,
-        document.width * 0.10,
-        document.width * 0.16,
-        document.width * 0.11,
-        document.width * 0.10,
-        document.width * 0.12,
-        document.width * 0.12,
-        document.width * 0.11,
+        document.width * 0.08,
+        document.width * 0.08,
+        document.width * 0.08,
+        document.width * 0.08,
+        document.width * 0.08,
     ]
     table = Table(
         table_rows,
@@ -18029,22 +18109,24 @@ def _build_ignition_renewals_pdf(run: dict, items: list[dict], batch_reference: 
         colWidths=col_widths,
     )
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0075C9")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF2FC")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#1E3650")),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7C4D4")),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.6, colors.HexColor("#035581")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F5F8FC")]),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E7F1FA")),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.9, colors.HexColor("#0075C9")),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D3DFED")),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.7, colors.HexColor("#C6D6E8")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#F8FBFF")]),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#F0F6FF")),
+        ("LINEABOVE", (0, -1), (-1, -1), 0.9, colors.HexColor("#C6D6E8")),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#035581")),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#1E3650")),
+        ("ALIGN", (0, 0), (0, -1), "RIGHT"),
+        ("ALIGN", (7, 1), (-1, -1), "RIGHT"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
     ]))
     story.append(table)
 
@@ -18463,6 +18545,42 @@ def mark_ignition_renewal_proposals_ineligible(user: dict, payload: dict | None 
     return {"renewals": ignition_renewals_payload(user), "markedCount": len(cleaned_ids)}
 
 
+def restore_ignition_renewal_proposals_to_eligible(user: dict, payload: dict | None = None) -> dict:
+    safe_payload = payload if isinstance(payload, dict) else {}
+    proposal_external_ids = safe_payload.get("proposalExternalIds") or safe_payload.get("proposal_external_ids") or []
+    if not isinstance(proposal_external_ids, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="proposalExternalIds must be an array.")
+    cleaned_ids: list[str] = []
+    for value in proposal_external_ids:
+        proposal_id = str(value or "").strip()
+        if proposal_id and proposal_id not in cleaned_ids:
+            cleaned_ids.append(proposal_id)
+    if not cleaned_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select at least one proposal to move to eligible.")
+    restored_count = 0
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM ignition_renewal_ineligible_proposals
+                WHERE user_id = %s
+                  AND proposal_external_id = ANY(%s)
+                RETURNING proposal_external_id
+                """,
+                (user["id"], cleaned_ids),
+            )
+            restored_count = len(cursor.fetchall() or [])
+        connection.commit()
+    record_audit_event(
+        "ignition_renewal_candidates",
+        "manual-ineligible",
+        "ignition.renewals.ineligible.restored",
+        {"count": restored_count},
+        user["id"],
+    )
+    return {"renewals": ignition_renewals_payload(user), "restoredCount": restored_count}
+
+
 def _clean_ignition_renewal_email(value: object) -> str:
     email = str(value or "").strip()
     if not email:
@@ -18676,6 +18794,8 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
             "availableCount": 0,
             "alreadyPickedCount": 0,
             "candidates": [],
+            "excludedCount": 0,
+            "excludedCandidates": [],
             "error": "Unable to build renewal candidates from cached Ignition data.",
         }
     return {
