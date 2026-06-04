@@ -20029,6 +20029,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 3 5 6v6c0 4.7 2.8 8.3 7 9 4.2-.7 7-4.3 7-9V6l-7-3Z"></path><path d="m9.5 12 2 2 4-4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Risk Assessments</strong><span>Client risk</span></span>
                                 </a>
+                                <a class="app-nav-button" href="#credit-control-confirmation-statements" data-app-nav="confirmation-statements">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Confirmation Statements</strong><span>CS, Secretarial, Lock Dates</span></span>
+                                </a>
                                 <a class="app-nav-button" href="#credit-control-company-secreterial" data-app-nav="company-secreterial">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 4h7l5 5v11H7z"></path><path d="M14 4v5h5"></path><path d="M10 12h6"></path><path d="M10 16h6"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Company Secretarial</strong><span>Submissions</span></span>
@@ -45217,6 +45221,11 @@
             async function sendIgnitionRenewalClientCommsCurrentEmail() {
                 const runId = String(ignitionRenewalClientCommsRunId || "").trim();
                 if (!runId || ignitionRenewalClientCommsSending) return;
+                const smtpConfigured = state?.databaseMetrics?.health?.smtp?.configured;
+                if (smtpConfigured === false) {
+                    showToast("SMTP is not configured. Set SMTP_HOST and SMTP_FROM_EMAIL in Settings > System status before sending client comms.", "error");
+                    return;
+                }
                 const run = ignitionRenewalRunById(runId) || ignitionRenewalRun();
                 const queue = ignitionRenewalClientCommsQueueFromRun();
                 const item = queue[ignitionRenewalClientCommsIndex];

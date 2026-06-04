@@ -19401,7 +19401,10 @@ def extract_ignition_renewal_document_id(filename: str, content_type: str, file_
 async def send_ignition_renewal_client_comms_email(user: dict, run_id: str, payload: dict | None = None) -> dict:
     settings = get_settings()
     if not settings.smtp_host or not settings.smtp_from_email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending renewal emails.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending client communication emails.",
+        )
     safe_payload = payload if isinstance(payload, dict) else {}
     proposal_external_id = str(safe_payload.get("proposalExternalId") or "").strip()
     recipient = _clean_ignition_renewal_email(safe_payload.get("recipientEmail") or safe_payload.get("recipient"))
