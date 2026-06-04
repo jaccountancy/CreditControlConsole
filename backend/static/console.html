@@ -30793,34 +30793,287 @@
                 return companySecretarialFilingTypeRegistry.find((item) => item.code === code) || null;
             }
 
+            function companySecretarialRegisterRows() {
+                return Array.isArray(companiesHouseSettings?.authRegisterRows) ? companiesHouseSettings.authRegisterRows : [];
+            }
+
+            function companySecretarialAddressParts(rawAddress = "") {
+                const parts = String(rawAddress || "")
+                    .replace(/\r/g, "\n")
+                    .split(/[\n,]/)
+                    .map((part) => String(part || "").trim())
+                    .filter(Boolean);
+                const postcodeRegex = /[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}/i;
+                let postcode = "";
+                for (const part of parts) {
+                    if (postcodeRegex.test(part)) {
+                        postcode = String(part.match(postcodeRegex)?.[0] || "").toUpperCase().replace(/\s+/g, " ").trim();
+                        break;
+                    }
+                }
+                const countryCandidates = ["united kingdom", "uk", "england", "scotland", "wales", "northern ireland"];
+                let country = "";
+                for (const part of parts.slice().reverse()) {
+                    const key = part.toLowerCase();
+                    if (countryCandidates.some((item) => key.includes(item))) {
+                        country = part;
+                        break;
+                    }
+                }
+                const line1 = parts[0] || "";
+                const line2 = parts.length > 3 ? parts[1] : "";
+                const city = parts.length >= 3 ? parts[parts.length - 2] : (parts[1] || "");
+                return {
+                    line1,
+                    line2,
+                    city,
+                    postcode: postcode || "",
+                    country: country || "United Kingdom",
+                };
+            }
+
             function companySecretarialCompanies() {
-                const customers = (state.customers || [])
+                const merged = new Map();
+                const pushCompany = (company = {}) => {
+                    const companyNumber = normaliseCompanyNumberInput(company.companyNumber || "");
+                    const clientId = String(company.clientId || "");
+                    const key = companyNumber || clientId || `name:${normaliseStatus(company.companyName || "")}`;
+                    if (!key) return;
+                    const existing = merged.get(key) || {};
+                    merged.set(key, {
+                        ...existing,
+                        ...company,
+                        companyNumber: companyNumber || existing.companyNumber || "",
+                        companyName: company.companyName || existing.companyName || "Unknown company",
+                        manager: company.manager || existing.manager || "Client Manager",
+                        source: company.source || existing.source || "xero",
+                    });
+                };
+
+                companySecretarialRegisterRows().forEach((row, index) => {
+                    const companyNumber = normaliseCompanyNumberInput(row?.companyNumber || "");
+                    const companyName = String(row?.displayName || row?.companyName || "").trim();
+                    const clientId = String(row?.clientId || "");
+                    pushCompany({
+                        id: `co-reg-${companyNumber || clientId || index + 1}`,
+                        clientId,
+                        companyName: companyName || `Client ${index + 1}`,
+                        companyNumber: companyNumber || "",
+                        manager: String(row?.clientManager || "").trim() || "Client Manager",
+                        clientEmail: String(row?.clientEmail || "").trim(),
+                        clientPhone: String(row?.clientPhone || "").trim(),
+                        clientAddress: String(row?.clientAddress || "").trim(),
+                        authCodeHint: String(row?.authCodeHint || "").trim(),
+                        sourceFilename: String(row?.sourceFilename || "").trim(),
+                        uploadedAt: String(row?.uploadedAt || "").trim(),
+                        source: "client-register",
+                    });
+                });
+
+                (state.customers || [])
                     .filter((customer) => customer?.id)
-                    .slice(0, 120)
-                    .map((customer, index) => {
+                    .slice(0, 300)
+                    .forEach((customer, index) => {
                         const rawNumber = String(
                             customer.companyNumber
                             || customer.registrationNumber
                             || customer.companyNo
                             || customer.accountNumber
-                            || customer.id
                             || ""
                         ).toUpperCase().replace(/[^A-Z0-9]/g, "");
-                        const companyNumber = rawNumber.slice(0, 8).padStart(8, "0");
-                        return {
+                        const companyNumber = normaliseCompanyNumberInput(rawNumber);
+                        const primaryAddress = Array.isArray(customer?.addresses) ? (customer.addresses[0] || {}) : {};
+                        const addressLines = [
+                            primaryAddress.addressLine1,
+                            primaryAddress.addressLine2,
+                            primaryAddress.city,
+                            primaryAddress.region,
+                            primaryAddress.postalCode,
+                            primaryAddress.country
+                        ].map((value) => String(value || "").trim()).filter(Boolean);
+                        pushCompany({
                             id: `co-${customer.id}`,
                             clientId: String(customer.id),
-                            companyName: customer.name || `Client ${index + 1}`,
-                            companyNumber,
+                            companyName: String(customer.name || `Client ${index + 1}`).trim(),
+                            companyNumber: companyNumber || "",
                             manager: customer.owner || customer.accountManager || "Client Manager",
-                        };
+                            clientEmail: String(customer.email || "").trim(),
+                            clientPhone: String(customer.phone || "").trim(),
+                            clientAddress: addressLines.join(", "),
+                            source: "xero",
+                        });
                     });
+
+                const customers = Array.from(merged.values())
+                    .map((company, index) => ({
+                        ...company,
+                        id: company.id || `co-${company.companyNumber || company.clientId || index + 1}`,
+                        companyName: company.companyName || `Client ${index + 1}`,
+                        companyNumber: company.companyNumber || "",
+                    }))
+                    .sort((a, b) => String(a.companyName || "").localeCompare(String(b.companyName || "")));
                 if (customers.length) return customers;
                 return [
                     { id: "co-demo-1", clientId: "demo-1", companyName: "Riverview Joinery Ltd", companyNumber: "14100231", manager: "Jay" },
                     { id: "co-demo-2", clientId: "demo-2", companyName: "North Star Media Ltd", companyNumber: "12783019", manager: "Amie" },
                     { id: "co-demo-3", clientId: "demo-3", companyName: "Oakstone Property Group Ltd", companyNumber: "08944120", manager: "Accounts Team" },
                 ];
+            }
+
+            function companySecretarialCompanyProfile(companyId = "") {
+                const companies = companySecretarialCompanies();
+                const company = companies.find((item) => String(item.id) === String(companyId)) || companies[0] || null;
+                if (!company) return null;
+                const registerLookup = companiesHouseSettings?.authRegisterLookupByNumber instanceof Map
+                    ? companiesHouseSettings.authRegisterLookupByNumber
+                    : new Map();
+                const registerRecord = registerLookup.get(normaliseCompanyNumberInput(company.companyNumber || ""))
+                    || companySecretarialRegisterRows().find((row) => normaliseCompanyNumberInput(row?.companyNumber || "") === normaliseCompanyNumberInput(company.companyNumber || ""))
+                    || null;
+                const address = companySecretarialAddressParts(
+                    registerRecord?.clientAddress
+                    || company?.clientAddress
+                    || ""
+                );
+                return {
+                    ...company,
+                    registerRecord,
+                    address,
+                    authCodeHint: String(registerRecord?.authCodeHint || company?.authCodeHint || "").trim(),
+                    sourceFilename: String(registerRecord?.sourceFilename || company?.sourceFilename || "").trim(),
+                    uploadedAt: String(registerRecord?.uploadedAt || company?.uploadedAt || "").trim(),
+                    clientEmail: String(registerRecord?.clientEmail || company?.clientEmail || "").trim(),
+                    clientPhone: String(registerRecord?.clientPhone || company?.clientPhone || "").trim(),
+                    clientAddress: String(registerRecord?.clientAddress || company?.clientAddress || "").trim(),
+                    manager: String(registerRecord?.clientManager || company?.manager || "Client Manager"),
+                };
+            }
+
+            function companySecretarialWizardPayloadDraft() {
+                const typeCode = document.getElementById("companySecretarialWizardType")?.value || "";
+                const config = companySecretarialTypeConfig(typeCode);
+                const companyId = document.getElementById("companySecretarialWizardCompany")?.value || "";
+                const profile = companySecretarialCompanyProfile(companyId);
+                if (!config || !profile) return null;
+                const formData = {
+                    proposedCompanyName: String(document.getElementById("companySecretarialWizardProposedName")?.value || "").trim(),
+                    newRegisteredOffice: {
+                        line1: String(document.getElementById("companySecretarialWizardAddressLine1")?.value || "").trim(),
+                        line2: String(document.getElementById("companySecretarialWizardAddressLine2")?.value || "").trim(),
+                        city: String(document.getElementById("companySecretarialWizardAddressCity")?.value || "").trim(),
+                        postcode: String(document.getElementById("companySecretarialWizardAddressPostcode")?.value || "").trim().toUpperCase(),
+                        country: String(document.getElementById("companySecretarialWizardAddressCountry")?.value || "").trim(),
+                    }
+                };
+                const payload = {
+                    channel: "companies-house",
+                    filingType: config.code,
+                    filingName: config.name,
+                    preparedAt: new Date().toISOString(),
+                    effectiveDate: document.getElementById("companySecretarialWizardEffectiveDate")?.value || "",
+                    submissionMode: document.getElementById("companySecretarialWizardMode")?.value || config.mode || "manual",
+                    company: {
+                        id: profile.id,
+                        clientId: profile.clientId || "",
+                        companyName: profile.companyName || "",
+                        companyNumber: profile.companyNumber || "",
+                        manager: profile.manager || "",
+                        clientEmail: profile.clientEmail || "",
+                        clientPhone: profile.clientPhone || "",
+                        authCodeHint: profile.authCodeHint || "",
+                    },
+                    clientRegisterSnapshot: {
+                        sourceFile: profile.sourceFilename || "",
+                        uploadedAt: profile.uploadedAt || "",
+                        address: profile.clientAddress || "",
+                    },
+                    checklist: {
+                        evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
+                        clientApproved: Boolean(document.getElementById("companySecretarialWizardClientApproval")?.checked),
+                        internalApproved: Boolean(document.getElementById("companySecretarialWizardInternalApproval")?.checked),
+                    },
+                    notes: String(document.getElementById("companySecretarialWizardNotes")?.value || "").trim(),
+                    formData,
+                };
+                return payload;
+            }
+
+            function companySecretarialRenderWizardSubmissionPreview() {
+                const preview = document.getElementById("companySecretarialWizardSubmissionPreview");
+                if (!preview) return;
+                const payload = companySecretarialWizardPayloadDraft();
+                preview.value = payload ? JSON.stringify(payload, null, 2) : "";
+            }
+
+            function companySecretarialToggleWizardTypeFields() {
+                const typeCode = document.getElementById("companySecretarialWizardType")?.value || "";
+                const isNameChange = typeCode === "NM01";
+                const isAddressChange = typeCode === "AD01";
+
+                const proposedWrap = document.getElementById("companySecretarialWizardProposedNameWrap");
+                const proposedInput = document.getElementById("companySecretarialWizardProposedName");
+                if (proposedWrap) proposedWrap.hidden = !isNameChange;
+                if (proposedInput) proposedInput.required = isNameChange;
+
+                const addressFields = [
+                    ["companySecretarialWizardAddressLine1Wrap", "companySecretarialWizardAddressLine1", true],
+                    ["companySecretarialWizardAddressLine2Wrap", "companySecretarialWizardAddressLine2", false],
+                    ["companySecretarialWizardAddressCityWrap", "companySecretarialWizardAddressCity", true],
+                    ["companySecretarialWizardAddressPostcodeWrap", "companySecretarialWizardAddressPostcode", true],
+                    ["companySecretarialWizardAddressCountryWrap", "companySecretarialWizardAddressCountry", true],
+                ];
+                addressFields.forEach(([wrapId, inputId, required]) => {
+                    const wrap = document.getElementById(wrapId);
+                    const input = document.getElementById(inputId);
+                    if (wrap) wrap.hidden = !isAddressChange;
+                    if (input) input.required = isAddressChange && required;
+                });
+            }
+
+            function companySecretarialPopulateWizardFromProfile(force = false) {
+                const companyId = document.getElementById("companySecretarialWizardCompany")?.value || "";
+                const profile = companySecretarialCompanyProfile(companyId);
+                if (!profile) return;
+                const setText = (id, value) => {
+                    const node = document.getElementById(id);
+                    if (node) node.textContent = value || "—";
+                };
+                setText("companySecretarialWizardSnapshotManager", profile.manager || "Client Manager");
+                setText("companySecretarialWizardSnapshotSource", profile.sourceFilename || profile.source || "Direct client data");
+                setText("companySecretarialWizardSnapshotEmail", profile.clientEmail || "Not available");
+                setText("companySecretarialWizardSnapshotAuth", profile.authCodeHint ? `On file (${profile.authCodeHint})` : "Not stored");
+
+                const assignee = document.getElementById("companySecretarialWizardAssignee");
+                if (assignee && (force || !String(assignee.value || "").trim())) assignee.value = profile.manager || "Client Manager";
+
+                const proposedName = document.getElementById("companySecretarialWizardProposedName");
+                if (proposedName && (force || !String(proposedName.value || "").trim())) proposedName.value = "";
+
+                const addressLine1 = document.getElementById("companySecretarialWizardAddressLine1");
+                const addressLine2 = document.getElementById("companySecretarialWizardAddressLine2");
+                const addressCity = document.getElementById("companySecretarialWizardAddressCity");
+                const addressPostcode = document.getElementById("companySecretarialWizardAddressPostcode");
+                const addressCountry = document.getElementById("companySecretarialWizardAddressCountry");
+                if (addressLine1 && (force || !String(addressLine1.value || "").trim())) addressLine1.value = profile.address?.line1 || "";
+                if (addressLine2 && (force || !String(addressLine2.value || "").trim())) addressLine2.value = profile.address?.line2 || "";
+                if (addressCity && (force || !String(addressCity.value || "").trim())) addressCity.value = profile.address?.city || "";
+                if (addressPostcode && (force || !String(addressPostcode.value || "").trim())) addressPostcode.value = profile.address?.postcode || "";
+                if (addressCountry && (force || !String(addressCountry.value || "").trim())) addressCountry.value = profile.address?.country || "United Kingdom";
+            }
+
+            function openCompanySecretarialWizard() {
+                const modal = document.getElementById("companySecretarialWizardModal");
+                if (!modal) return;
+                modal.hidden = false;
+                companySecretarialToggleWizardTypeFields();
+                companySecretarialPopulateWizardFromProfile(false);
+                companySecretarialRenderWizardSubmissionPreview();
+                setTimeout(() => document.getElementById("companySecretarialWizardType")?.focus(), 0);
+            }
+
+            function closeCompanySecretarialWizard() {
+                const modal = document.getElementById("companySecretarialWizardModal");
+                if (modal) modal.hidden = true;
             }
 
             function companySecretarialSampleQueue() {
@@ -32754,6 +33007,9 @@
                 if (preview) preview.value = config?.fields?.join(", ") || "";
                 if (mode && config) mode.value = config.mode || "manual";
                 if (feeInput && config && Number(feeInput.value || 0) <= 0) feeInput.value = Number(config.fee || 0).toFixed(2);
+                companySecretarialToggleWizardTypeFields();
+                companySecretarialPopulateWizardFromProfile(false);
+                companySecretarialRenderWizardSubmissionPreview();
             }
 
             function runCompanySecretarialValidationFromWizard() {
