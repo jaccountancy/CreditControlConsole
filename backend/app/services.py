@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from email.message import EmailMessage
 from email.utils import formataddr
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from uuid import UUID, uuid4
 from xml.sax.saxutils import escape as xml_escape
 
@@ -7775,6 +7775,8 @@ GMAIL_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GMAIL_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
 GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+GOOGLE_CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList"
+GOOGLE_CALENDAR_EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 
 
 def _me_report_xero_connection(user: dict, client: dict | None = None) -> dict:
@@ -8117,6 +8119,218 @@ async def refresh_gmail_connection(row: dict) -> dict:
             updated = cursor.fetchone()
         connection.commit()
     return updated
+
+
+def _calendar_scope_granted(scope_value: str | None) -> bool:
+    scopes = set(_gmail_scopes_value(scope_value).split())
+    return (
+        "https://www.googleapis.com/auth/calendar.readonly" in scopes
+        or "https://www.googleapis.com/auth/calendar" in scopes
+    )
+
+
+def _calendar_sort_key(value: str) -> datetime:
+    raw = str(value or "").strip()
+    if not raw:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    if "T" not in raw:
+        raw = f"{raw}T00:00:00+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return datetime.max.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _calendar_event_times(event: dict) -> tuple[str, str, bool]:
+    start_raw = event.get("start") if isinstance(event.get("start"), dict) else {}
+    end_raw = event.get("end") if isinstance(event.get("end"), dict) else {}
+    start_value = str(start_raw.get("dateTime") or start_raw.get("date") or "").strip()
+    end_value = str(end_raw.get("dateTime") or end_raw.get("date") or "").strip()
+    all_day = bool(start_raw.get("date")) and not bool(start_raw.get("dateTime"))
+    return start_value, end_value, all_day
+
+
+async def company_calendar_payload(user: dict, days_ahead: int = 14, max_events: int = 20) -> dict:
+    now = utcnow()
+    response: dict = {
+        "status": "not_connected",
+        "checkedAt": now.isoformat(),
+        "needsReconnect": False,
+        "message": "Connect Gmail to read Google Workspace calendars.",
+        "windowDays": max(1, min(days_ahead, 90)),
+        "calendarCount": 0,
+        "includedCalendarCount": 0,
+        "upcomingCount": 0,
+        "nextEventAt": "",
+        "gmailEmail": "",
+        "calendars": [],
+        "events": [],
+    }
+    connection_row = gmail_connection_for_user(user)
+    if not connection_row:
+        return response
+    response["gmailEmail"] = connection_row.get("gmail_email") or ""
+
+    try:
+        connection_row = await refresh_gmail_connection(connection_row)
+    except HTTPException as exc:
+        response.update(
+            {
+                "status": "reauth_required",
+                "needsReconnect": True,
+                "message": str(exc.detail or "Reconnect Gmail to refresh the calendar access token."),
+            }
+        )
+        return response
+
+    if not _calendar_scope_granted(connection_row.get("scope")):
+        response.update(
+            {
+                "status": "reauth_required",
+                "needsReconnect": True,
+                "message": "Reconnect Gmail to grant Google Calendar read access.",
+            }
+        )
+        return response
+
+    time_min = now.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    time_max = (now + timedelta(days=max(1, min(days_ahead, 90)))).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    headers = {"Authorization": f"Bearer {connection_row.get('access_token') or ''}"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            calendar_list_response = await client.get(
+                GOOGLE_CALENDAR_LIST_URL,
+                headers=headers,
+                params={
+                    "showHidden": "false",
+                    "showDeleted": "false",
+                    "minAccessRole": "reader",
+                    "maxResults": 100,
+                },
+            )
+            if calendar_list_response.is_error:
+                detail = calendar_list_response.text[:300]
+                if calendar_list_response.status_code in (401, 403):
+                    response.update(
+                        {
+                            "status": "reauth_required",
+                            "needsReconnect": True,
+                            "message": "Google Calendar access is denied. Reconnect Gmail and include calendar permission.",
+                        }
+                    )
+                    return response
+                response.update(
+                    {
+                        "status": "error",
+                        "message": f"Google Calendar list lookup failed ({calendar_list_response.status_code}): {detail or 'Unknown error'}",
+                    }
+                )
+                return response
+            calendar_payload = calendar_list_response.json()
+            calendars = calendar_payload.get("items") if isinstance(calendar_payload, dict) else []
+            if not isinstance(calendars, list):
+                calendars = []
+            visible_calendars = [
+                row for row in calendars
+                if isinstance(row, dict) and row.get("id") and not row.get("deleted")
+            ]
+            visible_calendars.sort(
+                key=lambda row: (
+                    0 if row.get("primary") else 1,
+                    0 if row.get("selected", True) else 1,
+                    str(row.get("summaryOverride") or row.get("summary") or "").lower(),
+                )
+            )
+            included_calendars = visible_calendars[:8]
+
+            async def _fetch_calendar_events(calendar: dict) -> tuple[dict, list[dict]]:
+                calendar_id = str(calendar.get("id") or "")
+                events_response = await client.get(
+                    GOOGLE_CALENDAR_EVENTS_URL.format(calendar_id=quote(calendar_id, safe="")),
+                    headers=headers,
+                    params={
+                        "timeMin": time_min,
+                        "timeMax": time_max,
+                        "singleEvents": "true",
+                        "orderBy": "startTime",
+                        "showDeleted": "false",
+                        "maxResults": max(1, min(max_events, 200)),
+                    },
+                )
+                if events_response.is_error:
+                    return calendar, []
+                payload = events_response.json()
+                items = payload.get("items") if isinstance(payload, dict) else []
+                if not isinstance(items, list):
+                    items = []
+                return calendar, [item for item in items if isinstance(item, dict) and item.get("id")]
+
+            events_by_calendar = await asyncio.gather(*[_fetch_calendar_events(calendar) for calendar in included_calendars])
+    except Exception as exc:
+        response.update(
+            {
+                "status": "error",
+                "message": f"Unable to read Google Calendar right now: {str(exc) or exc.__class__.__name__}",
+            }
+        )
+        return response
+
+    events: list[dict] = []
+    calendar_rows: list[dict] = []
+    for calendar, rows in events_by_calendar:
+        calendar_id = str(calendar.get("id") or "")
+        calendar_name = str(calendar.get("summaryOverride") or calendar.get("summary") or "Calendar").strip()
+        calendar_rows.append(
+            {
+                "id": calendar_id,
+                "name": calendar_name or "Calendar",
+                "primary": bool(calendar.get("primary")),
+                "selected": bool(calendar.get("selected", True)),
+                "accessRole": str(calendar.get("accessRole") or ""),
+                "timeZone": str(calendar.get("timeZone") or ""),
+                "eventCount": len(rows),
+            }
+        )
+        for row in rows:
+            start_at, end_at, all_day = _calendar_event_times(row)
+            if not start_at:
+                continue
+            events.append(
+                {
+                    "id": str(row.get("id") or ""),
+                    "title": str(row.get("summary") or "Untitled event"),
+                    "calendarId": calendar_id,
+                    "calendarName": calendar_name or "Calendar",
+                    "startAt": start_at,
+                    "endAt": end_at,
+                    "allDay": all_day,
+                    "location": str(row.get("location") or ""),
+                    "htmlLink": str(row.get("htmlLink") or ""),
+                    "organizer": str((row.get("organizer") or {}).get("email") or ""),
+                }
+            )
+
+    events.sort(key=lambda item: _calendar_sort_key(item.get("startAt") or ""))
+    events = events[: max(1, min(max_events, 200))]
+    response.update(
+        {
+            "status": "connected",
+            "message": "Google Workspace calendars are syncing.",
+            "calendarCount": len(calendar_rows),
+            "includedCalendarCount": len(calendar_rows),
+            "upcomingCount": len(events),
+            "nextEventAt": events[0]["startAt"] if events else "",
+            "calendars": calendar_rows,
+            "events": events,
+        }
+    )
+    return response
 
 
 def _serialize_me_report_settings(row: dict | None) -> dict:

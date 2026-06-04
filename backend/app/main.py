@@ -75,6 +75,7 @@ from .services import (
     create_bad_debt_write_offs,
     create_bank_statement_account,
     create_late_payment_charges,
+    company_calendar_payload,
     create_payment_plan,
     customer_detail,
     customer_xero_transactions,
@@ -987,6 +988,11 @@ def api_panel_session(request: Request):
 @app.get("/api/insights")
 async def api_insights(user: dict = Depends(require_panel_user)):
     return await insights_payload(user)
+
+
+@app.get("/api/company-calendar")
+async def api_company_calendar(user: dict = Depends(require_panel_user)):
+    return await company_calendar_payload(user)
 
 
 @app.post("/api/practice-packs/generate")

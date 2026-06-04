@@ -6676,6 +6676,91 @@
                 font-weight: 780;
                 line-height: 1.3;
             }
+            .company-calendar-card {
+                border: 1px solid rgba(144, 163, 211, 0.3);
+                background: linear-gradient(145deg, rgba(249, 252, 255, 0.96), rgba(242, 246, 255, 0.9));
+            }
+            .company-calendar-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 0.8rem;
+                flex-wrap: wrap;
+                margin-bottom: 0.8rem;
+            }
+            .company-calendar-status {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.45rem;
+                padding: 0.34rem 0.64rem;
+                border-radius: 999px;
+                font-size: 0.72rem;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+                background: rgba(15, 23, 42, 0.06);
+                color: #334155;
+            }
+            .company-calendar-status::before {
+                content: "";
+                width: 0.5rem;
+                height: 0.5rem;
+                border-radius: 50%;
+                background: currentColor;
+                box-shadow: 0 0 0 0 rgba(51, 65, 85, 0.42);
+                animation: companyCalendarPulse 1.9s ease-in-out infinite;
+            }
+            .company-calendar-status.is-live {
+                background: rgba(31, 143, 110, 0.14);
+                color: #0f766e;
+            }
+            .company-calendar-status.is-warning {
+                background: rgba(245, 158, 11, 0.15);
+                color: #b45309;
+            }
+            .company-calendar-status.is-error {
+                background: rgba(239, 68, 68, 0.14);
+                color: #b91c1c;
+            }
+            .company-calendar-meta {
+                margin: 0;
+                font-size: 0.82rem;
+                color: rgba(61, 76, 114, 0.82);
+            }
+            .company-calendar-events {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 0.65rem;
+                margin-top: 0.85rem;
+            }
+            .company-calendar-event {
+                border: 1px solid rgba(139, 157, 201, 0.26);
+                border-radius: 12px;
+                padding: 0.62rem 0.7rem;
+                background: rgba(255, 255, 255, 0.82);
+            }
+            .company-calendar-event strong {
+                display: block;
+                font-size: 0.87rem;
+                color: #1e2e4d;
+                margin-bottom: 0.25rem;
+            }
+            .company-calendar-event p {
+                margin: 0;
+                font-size: 0.78rem;
+                color: rgba(59, 76, 115, 0.82);
+                line-height: 1.36;
+            }
+            .company-calendar-event time {
+                font-size: 0.74rem;
+                font-weight: 700;
+                color: #1f4ed8;
+            }
+            @keyframes companyCalendarPulse {
+                0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.34); }
+                70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+            }
             .insights-home-section {
                 scroll-margin-top: 84px;
             }
@@ -24254,6 +24339,8 @@
             let userActivityLoggingWired = false;
             let insightsData = null;
             let insightsLoading = false;
+            let companyCalendarData = null;
+            let companyCalendarLoading = false;
             let activeInsightsSection = persistedUIState.activeInsightsSection || "copilot";
             if (activeInsightsSection !== "copilot") activeInsightsSection = "copilot";
             let insightsClockTimer = null;
@@ -25103,6 +25190,7 @@
                         meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
                         meReportSettings: config.endpoints?.meReportSettings || "/api/me-report/settings",
                         insights: config.endpoints?.insights || "/api/insights",
+                        companyCalendar: config.endpoints?.companyCalendar || "/api/company-calendar",
                         practicePackGenerate: config.endpoints?.practicePackGenerate || "/api/practice-packs/generate",
                         practicePackRuns: config.endpoints?.practicePackRuns || "/api/practice-packs/runs",
                         practicePackRunDownload: config.endpoints?.practicePackRunDownload || "/api/practice-packs/runs/:runId/download",
@@ -28762,6 +28850,7 @@
                         event.preventDefault();
                         event.stopPropagation();
                         loadInsights(true);
+                        loadCompanyCalendar(true);
                         return;
                     }
                     const newLetterTemplateButton = event.target.closest?.("#newLetterTemplateButton");
@@ -53581,6 +53670,7 @@
                 const activeBankTotal = bankCounts.active + (bankStatementUploading ? 1 : 0);
                 const gmail = meReportData.settings?.gmail || {};
                 const gmailKnown = Boolean(meReportData.settings && Object.keys(meReportData.settings).length);
+                const calendar = companyCalendarSummary();
                 const ignitionConnection = ignitionData.connection || {};
                 const ignitionKnown = Boolean(ignitionConnection && Object.keys(ignitionConnection).length);
                 const meRun = meReportRunForDisplay?.() || null;
@@ -53613,6 +53703,12 @@
                         value: !gmailKnown ? "Not loaded" : gmail.connected ? "Connected" : gmail.configured ? "Ready" : "Not configured",
                         detail: gmail.email || "Email sending connection",
                         tone: !gmailKnown ? "warning" : gmail.connected ? "live" : gmail.configured ? "warning" : "error"
+                    },
+                    {
+                        label: "Company Calendar",
+                        value: calendar.label,
+                        detail: `${calendar.nextEventLabel} · ${calendar.nextEventDetail}`,
+                        tone: calendar.tone
                     },
                     {
                         label: "Ignition",
@@ -54531,6 +54627,44 @@
                 });
             }
 
+            function emptyCompanyCalendarPayload(status = "loading", message = "") {
+                return {
+                    status,
+                    checkedAt: "",
+                    needsReconnect: false,
+                    message: message || (status === "loading" ? "Loading calendar status..." : ""),
+                    windowDays: 14,
+                    calendarCount: 0,
+                    includedCalendarCount: 0,
+                    upcomingCount: 0,
+                    nextEventAt: "",
+                    gmailEmail: "",
+                    calendars: [],
+                    events: [],
+                };
+            }
+
+            async function loadCompanyCalendar(force = false) {
+                if (companyCalendarLoading) return;
+                if (companyCalendarData && !force) return;
+                companyCalendarLoading = true;
+                renderInsightsScreen();
+                try {
+                    companyCalendarData = await requestJSON(api.endpoints.companyCalendar);
+                } catch (error) {
+                    console.error("Unable to load company calendar", error);
+                    if (error instanceof AuthRequiredError) {
+                        markAuthenticationRequired(error.message);
+                        companyCalendarData = emptyCompanyCalendarPayload("auth_required", "Sign in to load company calendar.");
+                    } else {
+                        companyCalendarData = emptyCompanyCalendarPayload("error", error.message || "Company calendar is unavailable.");
+                    }
+                } finally {
+                    companyCalendarLoading = false;
+                    renderInsightsScreen();
+                }
+            }
+
             async function loadInsights(force = false) {
                 if (insightsLoading) return;
                 if (insightsData && !force) return;
@@ -54563,6 +54697,7 @@
                 closeTopbarMenu();
                 renderAll();
                 scrollConsoleToTop();
+                loadCompanyCalendar();
                 loadInsights();
             }
 
@@ -54601,6 +54736,48 @@
             function isDateInCurrentMonth(value, now = new Date()) {
                 const parsed = parseDateValue(value);
                 return Boolean(parsed && parsed.getMonth() === now.getMonth() && parsed.getFullYear() === now.getFullYear());
+            }
+
+            function companyCalendarSummary() {
+                const source = companyCalendarData || emptyCompanyCalendarPayload("loading");
+                const status = String(source.status || "").toLowerCase();
+                const events = Array.isArray(source.events) ? source.events : [];
+                const firstEvent = events[0] || null;
+                const nextEventLabel = firstEvent?.startAt
+                    ? formatDate(firstEvent.startAt)
+                    : "No upcoming events";
+                const nextEventDetail = firstEvent
+                    ? `${firstEvent.calendarName || "Calendar"} · ${firstEvent.title || "Event"}`
+                    : (source.message || "No events in the current window.");
+                let label = "Loading";
+                let tone = "warning";
+                if (status === "connected") {
+                    label = `${Number(source.upcomingCount || events.length || 0).toLocaleString("en-GB")} upcoming`;
+                    tone = "live";
+                } else if (status === "not_connected") {
+                    label = "Not connected";
+                    tone = "error";
+                } else if (status === "reauth_required") {
+                    label = "Reconnect required";
+                    tone = "warning";
+                } else if (status === "error") {
+                    label = "Unavailable";
+                    tone = "error";
+                } else if (status === "auth_required") {
+                    label = "Sign in required";
+                    tone = "warning";
+                }
+                return {
+                    status,
+                    label,
+                    tone,
+                    nextEventLabel,
+                    nextEventDetail,
+                    calendarCount: Number(source.includedCalendarCount || source.calendarCount || 0),
+                    events,
+                    message: String(source.message || ""),
+                    needsReconnect: Boolean(source.needsReconnect),
+                };
             }
 
             function systemInsightsSnapshot(analytics = {}) {
@@ -54645,7 +54822,7 @@
                     lateChargesMtdDetail: "Late payment charges raised",
                     writeOffsMtdValue: writeOffsMtd.toLocaleString("en-GB"),
                     writeOffsMtdDetail: "Invoices written off",
-                    systemStatusRows: statusItems.slice(0, 6),
+                    systemStatusRows: statusItems.slice(0, 8),
                 };
             }
 
@@ -54658,6 +54835,7 @@
                 const snapshot = systemInsightsSnapshot(payload.analytics || {});
                 const host = normaliseDomainHost(domainHealthSettings?.domainHost || "");
                 const domainSummary = domainHealthOverallSummary(domainHealthLastResult);
+                const calendar = companyCalendarSummary();
                 const dropdownRows = [
                     ["Debtor Book", snapshot.debtorBookValue, snapshot.debtorBookDetail],
                     ["Bank Clients", snapshot.bankClientsValue, snapshot.bankClientsDetail],
@@ -54667,9 +54845,10 @@
                     ["JUK Reports MTD", snapshot.jukReportsMtdValue, snapshot.jukReportsMtdDetail],
                     ["LPC Raised MTD", snapshot.lateChargesMtdValue, snapshot.lateChargesMtdDetail],
                     ["Write-Offs MTD", snapshot.writeOffsMtdValue, snapshot.writeOffsMtdDetail],
+                    ["Company Calendar", calendar.label, `${calendar.nextEventLabel} · ${calendar.nextEventDetail}`],
                     ["Domain Health", domainSummary.label, `${host || "Domain not set"} · ${domainSummary.detail}`],
                 ];
-                const compactHeadline = `${snapshot.debtorBookValue} receivables · ${snapshot.lateChargesMtdValue} LPC MTD · ${domainSummary.label} domain`;
+                const compactHeadline = `${snapshot.debtorBookValue} receivables · ${calendar.label} calendar · ${domainSummary.label} domain`;
                 const target = document.getElementById("insightsStatsCard");
                 if (!target) return;
                 target.innerHTML = `
@@ -54743,6 +54922,11 @@
                         const target = scope.querySelector(selector);
                         if (!target) return;
                         target.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                });
+                scope.querySelectorAll("[data-refresh-company-calendar]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        loadCompanyCalendar(true);
                     });
                 });
             }
@@ -54968,6 +55152,9 @@
                     value: Number(customer.totalDue || 0),
                 }));
                 const snapshot = systemInsightsSnapshot(analytics);
+                const calendar = companyCalendarSummary();
+                const calendarToneClass = calendar.tone === "error" ? "is-error" : calendar.tone === "warning" ? "is-warning" : "is-live";
+                const calendarRows = calendar.events.slice(0, 4);
                 const totalOutstanding = Number(totals.totalOutstanding ?? totals.totalDue ?? totals.accountsReceivable ?? totals.totalOpen ?? 0);
                 const overdueValue = Number(totals.totalOverdue ?? totals.overdueValue ?? 0);
                 const overdueShare = totalOutstanding > 0 ? (overdueValue / totalOutstanding) * 100 : 0;
@@ -55007,6 +55194,26 @@
                                 </article>
                             `).join("")}
                         </aside>
+                    </section>
+                    <section class="insight-chart insights-home-section company-calendar-card" id="insightsCompanyCalendarSection">
+                        <div class="company-calendar-header">
+                            <span>Company Calendar</span>
+                            <span class="company-calendar-status ${calendarToneClass}">${escapeHTML(calendar.label)}</span>
+                        </div>
+                        <p class="company-calendar-meta">${escapeHTML(`${calendar.nextEventLabel} · ${calendar.nextEventDetail}`)}</p>
+                        <div class="home-quick-actions" aria-label="Calendar actions">
+                            <button class="home-scroll-chip" data-refresh-company-calendar type="button">${companyCalendarLoading ? "Refreshing..." : "Refresh calendar sync"}</button>
+                            ${calendar.needsReconnect ? `<a class="home-scroll-chip action-link" href="/auth/gmail/start?redirect_to=%2F%23credit-control-home">Reconnect Gmail calendar</a>` : ""}
+                        </div>
+                        <div class="company-calendar-events">
+                            ${calendarRows.length ? calendarRows.map((event) => `
+                                <article class="company-calendar-event">
+                                    <time>${escapeHTML(formatDate(event.startAt))}</time>
+                                    <strong>${escapeHTML(event.title || "Calendar event")}</strong>
+                                    <p>${escapeHTML((event.calendarName || "Calendar") + (event.location ? ` · ${event.location}` : ""))}</p>
+                                </article>
+                            `).join("") : `<p>${escapeHTML(calendar.message || "No upcoming events were returned for the selected window.")}</p>`}
+                        </div>
                     </section>
                     <section class="insight-chart insights-home-section" id="insightsNextPlaysSection">
                         <span>Recommended Next Plays</span>
@@ -59722,6 +59929,7 @@
                 currentPage = 1;
                 latestSyncRun = null;
                 insightsData = null;
+                companyCalendarData = null;
                 state.organisation = panel?.organisation || emptyData.organisation;
                 state.dashboard = panel?.dashboard || emptyData.dashboard;
                 state.customers = Array.isArray(panel?.customers) ? panel.customers : [];
@@ -61064,7 +61272,10 @@
                     });
                 }
                 const refreshInsightsButton = document.getElementById("refreshInsightsButton");
-                if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => loadInsights(true));
+                if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => {
+                    loadInsights(true);
+                    loadCompanyCalendar(true);
+                });
                 const letterTemplateSettingsSelect = document.getElementById("letterTemplateSettingsSelect");
                 if (letterTemplateSettingsSelect) letterTemplateSettingsSelect.addEventListener("change", () => {
                     selectedLetterTemplateId = letterTemplateSettingsSelect.value;
