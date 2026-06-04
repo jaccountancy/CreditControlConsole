@@ -196,6 +196,10 @@ from .services import (
     gmail_authorize_url,
     gmail_oauth_configured,
     merge_me_report_duplicate_contact,
+    merge_me_report_contacts,
+    delete_me_report_draft_sales_invoice,
+    mark_me_report_purchases_paid_personally,
+    delete_me_report_unreconciled_transaction,
     queue_bank_statement_retry,
     queue_bank_statement_upload,
     store_gmail_connection,
@@ -1991,6 +1995,28 @@ async def api_update_me_report_exception(exception_id: str, request: Request, us
 @app.post("/api/me-report/exceptions/{exception_id}/merge-contact")
 async def api_merge_me_report_duplicate_contact(exception_id: str, user: dict = Depends(require_panel_user)):
     return {"status": "ok", "meReport": await merge_me_report_duplicate_contact(user, exception_id)}
+
+
+@app.post("/api/me-report/clients/{client_id}/xero/contacts/merge")
+async def api_merge_me_report_contacts(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": await merge_me_report_contacts(user, client_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.delete("/api/me-report/clients/{client_id}/xero/sales-invoices/{invoice_id}")
+async def api_delete_me_report_draft_sales_invoice(client_id: str, invoice_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": await delete_me_report_draft_sales_invoice(user, client_id, invoice_id)}
+
+
+@app.post("/api/me-report/clients/{client_id}/xero/purchases/mark-paid-personally")
+async def api_mark_me_report_purchases_paid_personally(client_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    payload = await request.json()
+    return {"status": "ok", "meReport": await mark_me_report_purchases_paid_personally(user, client_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.delete("/api/me-report/clients/{client_id}/xero/unreconciled-transactions/{transaction_id}")
+async def api_delete_me_report_unreconciled_transaction(client_id: str, transaction_id: str, user: dict = Depends(require_panel_user)):
+    return {"status": "ok", "meReport": await delete_me_report_unreconciled_transaction(user, client_id, transaction_id)}
 
 
 @app.post("/api/me-report/clients/{client_id}/reports")

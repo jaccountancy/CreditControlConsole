@@ -10648,6 +10648,28 @@
                 font-size: 0.76rem;
                 font-weight: 850;
             }
+            #meReportScreen .me-report-processing-steps {
+                margin: 0;
+                padding: 0;
+                list-style: none;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 8px;
+            }
+            #meReportScreen .me-report-processing-steps li {
+                border: 1px solid rgba(61, 85, 130, 0.16);
+                border-radius: 10px;
+                padding: 7px 9px;
+                color: #526381;
+                font-size: 0.72rem;
+                font-weight: 850;
+                background: rgba(255, 255, 255, 0.68);
+            }
+            #meReportScreen .me-report-processing-steps li.is-active {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
             @keyframes me-report-processing-panel-breathe {
                 0%, 100% { transform: translateY(0); }
                 50% { transform: translateY(-1px); }
@@ -10724,6 +10746,39 @@
             }
             #meReportScreen .me-report-client-search {
                 min-width: min(360px, 100%);
+            }
+            #meReportScreen .me-report-flow-quick-filters {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            #meReportScreen .me-report-flow-quick-filters button {
+                min-height: 36px;
+                border-radius: 999px;
+                border: 1px solid var(--line);
+                background: rgba(248, 251, 255, 0.92);
+                color: var(--ink);
+                font-weight: 850;
+                padding: 7px 12px;
+            }
+            #meReportScreen .me-report-flow-quick-filters button.is-active {
+                border-color: rgba(29, 103, 242, 0.34);
+                background: var(--blue-soft);
+                color: var(--blue);
+            }
+            #meReportScreen .me-report-flow-table-settings {
+                display: inline-flex;
+                align-items: center;
+                gap: 7px;
+                color: var(--muted);
+                font-size: 0.73rem;
+                font-weight: 900;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+            #meReportScreen .me-report-flow-table-settings input {
+                margin: 0;
             }
             #meReportScreen .me-report-client-control {
                 display: inline-flex;
@@ -10868,6 +10923,59 @@
                 min-height: 36px;
                 padding: 8px 13px;
                 white-space: nowrap;
+            }
+            #meReportScreen .me-report-client-table .bank-status-pill {
+                text-transform: none;
+                letter-spacing: 0.01em;
+                font-size: 0.73rem;
+            }
+            #meReportScreen .me-report-client-table .bank-status-pill.is-not-started {
+                background: rgba(133, 147, 173, 0.16);
+                color: #4f5f7d;
+            }
+            #meReportScreen .me-report-client-table .bank-status-pill.is-draft {
+                background: rgba(29, 103, 242, 0.14);
+                color: #1c56c3;
+            }
+            #meReportScreen .me-report-client-table .bank-status-pill.is-awaiting-review {
+                background: rgba(255, 159, 47, 0.2);
+                color: #935f0b;
+            }
+            #meReportScreen .me-report-client-table .bank-status-pill.is-bounceback {
+                background: rgba(255, 83, 83, 0.18);
+                color: #922f2f;
+            }
+            #meReportScreen .me-report-client-table .bank-status-pill.is-completed {
+                background: rgba(39, 176, 95, 0.2);
+                color: #1f7d47;
+            }
+            #meReportScreen .me-report-difficulty-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                border-radius: 999px;
+                padding: 4px 10px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                font-size: 0.75rem;
+                font-weight: 900;
+                background: rgba(248, 251, 255, 0.9);
+                color: #40506b;
+                white-space: nowrap;
+            }
+            #meReportScreen .me-report-difficulty-pill.is-easy {
+                border-color: rgba(39, 176, 95, 0.28);
+                background: rgba(232, 248, 238, 0.8);
+                color: #1f7d47;
+            }
+            #meReportScreen .me-report-difficulty-pill.is-medium {
+                border-color: rgba(255, 159, 47, 0.3);
+                background: rgba(255, 243, 223, 0.86);
+                color: #905d0c;
+            }
+            #meReportScreen .me-report-difficulty-pill.is-hard {
+                border-color: rgba(255, 83, 83, 0.3);
+                background: rgba(255, 231, 231, 0.88);
+                color: #942f2f;
             }
             #meReportScreen .me-report-client-no-results td {
                 padding: 24px;
@@ -16915,7 +17023,10 @@
             #bankExportRangePanel,
             #meReportDlaSetupPanel,
             #meReportBulkMatchPanel,
-            #meReportLossPanel {
+            #meReportLossPanel,
+            #meReportReviewReadyPanel,
+            #meReportBulkPeriodPanel,
+            #meReportFlowGuidePanel {
                 z-index: 260;
             }
             .developer-log-card {
@@ -17105,6 +17216,15 @@
             }
             .me-report-dla-setup-card {
                 width: min(1040px, 100%);
+            }
+            .me-report-review-ready-card {
+                width: min(980px, 100%);
+            }
+            .me-report-bulk-period-card {
+                width: min(760px, 100%);
+            }
+            .me-report-flow-guide-card {
+                width: min(980px, 100%);
             }
             .me-report-bulk-match-body {
                 display: grid;
@@ -17383,6 +17503,157 @@
                 gap: 18px;
                 padding: 20px 24px 24px;
                 overflow: auto;
+            }
+            .me-report-review-ready-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .me-report-bulk-period-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .me-report-flow-guide-body {
+                display: grid;
+                gap: 14px;
+                padding: 20px 24px 24px;
+                overflow: auto;
+            }
+            .me-report-flow-guide-step-list {
+                display: grid;
+                gap: 10px;
+            }
+            .me-report-flow-guide-step {
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.92);
+                padding: 12px 14px;
+                display: grid;
+                gap: 8px;
+            }
+            .me-report-flow-guide-step.is-active {
+                border-color: rgba(29, 103, 242, 0.30);
+                background: var(--blue-soft);
+            }
+            .me-report-flow-guide-step-head {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .me-report-flow-guide-step-number {
+                min-width: 24px;
+                min-height: 24px;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.22);
+                display: inline-grid;
+                place-items: center;
+                font-weight: 900;
+                font-size: 0.76rem;
+            }
+            .me-report-flow-guide-inline-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .me-report-flow-guide-summary {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid rgba(29, 103, 242, 0.24);
+                border-radius: 14px;
+                background: var(--blue-soft);
+                color: #355a95;
+                font-size: 0.85rem;
+                line-height: 1.45;
+                font-weight: 850;
+            }
+            .me-report-bulk-period-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+            .me-report-bulk-period-summary {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid rgba(29, 103, 242, 0.24);
+                border-radius: 14px;
+                background: var(--blue-soft);
+                color: #355a95;
+                font-size: 0.85rem;
+                line-height: 1.45;
+                font-weight: 850;
+            }
+            .me-report-review-ready-status {
+                margin: 0;
+                padding: 12px 14px;
+                border: 1px solid rgba(29, 103, 242, 0.24);
+                border-radius: 14px;
+                background: var(--blue-soft);
+                color: #355a95;
+                font-size: 0.86rem;
+                font-weight: 850;
+                line-height: 1.45;
+            }
+            .me-report-review-ready-status.is-error {
+                border-color: rgba(255, 83, 83, 0.30);
+                background: var(--red-soft);
+                color: #8f3232;
+            }
+            .me-report-review-ready-list {
+                display: grid;
+                gap: 10px;
+            }
+            .me-report-review-ready-item {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 10px;
+                align-items: start;
+                padding: 12px 14px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(248, 251, 255, 0.92);
+            }
+            .me-report-review-ready-item.is-pass {
+                border-color: rgba(39, 176, 95, 0.30);
+                background: rgba(232, 248, 238, 0.72);
+            }
+            .me-report-review-ready-item.is-fail {
+                border-color: rgba(255, 83, 83, 0.30);
+                background: rgba(255, 231, 231, 0.74);
+            }
+            .me-report-review-ready-mark {
+                min-width: 26px;
+                min-height: 26px;
+                display: inline-grid;
+                place-items: center;
+                border-radius: 999px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                font-size: 0.84rem;
+                font-weight: 950;
+                line-height: 1;
+            }
+            .me-report-review-ready-item.is-pass .me-report-review-ready-mark {
+                border-color: rgba(39, 176, 95, 0.34);
+                color: #1f7d47;
+                background: rgba(39, 176, 95, 0.14);
+            }
+            .me-report-review-ready-item.is-fail .me-report-review-ready-mark {
+                border-color: rgba(255, 83, 83, 0.34);
+                color: #992f2f;
+                background: rgba(255, 83, 83, 0.14);
+            }
+            .me-report-review-ready-item strong,
+            .me-report-review-ready-item small {
+                display: block;
+            }
+            .me-report-review-ready-item small {
+                margin-top: 4px;
+                color: var(--muted);
+                font-size: 0.79rem;
+                line-height: 1.35;
+                font-weight: 780;
             }
             .me-report-loss-preview-grid {
                 display: grid;
@@ -20051,7 +20322,7 @@
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-me-report" data-app-nav="me-report">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M8 3v4"></path><path d="M16 3v4"></path><path d="M4 10h16"></path><path d="M8 15h2"></path><path d="M12 15h4"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>ME Report</strong><span>Month End</span></span>
+                                    <span class="app-nav-copy"><strong>Monthly Flows</strong><span>Month End</span></span>
                                 </a>
                                 <a class="app-nav-button" href="#credit-control-practice-packs" data-app-nav="practice-packs">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 6.5 12 3l8 3.5"></path><path d="M4 6.5V17l8 4 8-4V6.5"></path><path d="M12 12 4 8"></path><path d="m12 12 8-4"></path><path d="M12 12v9"></path></svg></span>
@@ -20122,7 +20393,7 @@
                                 </button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="me-report-email">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
+                                    <span class="app-nav-copy"><strong>Monthly Flows</strong><span>Email snapshots</span></span>
                                 </button>
                                 <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span><span class="settings-nav-group-text">Technical Settings</span></button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="technical-settings" data-settings-nav="factory-reset">
@@ -20228,7 +20499,7 @@
                             </button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="communications" data-settings-nav="me-report-email">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14v16H5z"></path><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
-                                <span class="settings-sidebar-copy"><strong>ME Reports</strong><span>Email snapshots</span></span>
+                                <span class="settings-sidebar-copy"><strong>Monthly Flows</strong><span>Email snapshots</span></span>
                             </button>
                             <button class="settings-nav-group-label" type="button" data-settings-group-label="technical-settings" aria-expanded="false"><span class="settings-nav-group-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h6"></path><path d="M14 7h6"></path><circle cx="12" cy="7" r="2"></circle><path d="M4 17h10"></path><path d="M18 17h2"></path><circle cx="16" cy="17" r="2"></circle></svg></span><span class="settings-nav-group-text">Technical Settings</span></button>
                             <button class="settings-sidebar-button danger-button settings-nav-group-item" id="settingsFactorySidebarButton" type="button" data-settings-group-item="technical-settings">
@@ -20410,14 +20681,14 @@
                                 <strong id="bankContinuityTopbarTitle">No transactional gaps detected</strong>
                             </span>
                         </div>
-                        <div class="me-report-topbar-actions" id="meReportTopbarActions" aria-label="ME Report actions" hidden>
-                            <div class="me-report-topbar-metrics" id="meReportTopbarMetrics" aria-label="Selected ME Report summary" hidden></div>
+                        <div class="me-report-topbar-actions" id="meReportTopbarActions" aria-label="Monthly Flow actions" hidden>
+                            <div class="me-report-topbar-metrics" id="meReportTopbarMetrics" aria-label="Selected Monthly Flow summary" hidden></div>
                             <div class="me-report-topbar-core-actions">
                                 <button class="ghost-button" id="refreshMeReportButton" type="button">Refresh</button>
-                                <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Upload JUK Overview report from Xero</button>
+                                <button class="primary-button" id="bulkUploadMeReportsButton" type="button">Create flows from Xero clients</button>
                             </div>
                             <div class="me-report-topbar-workspace-actions" id="meReportWorkspaceTopbarActions" hidden>
-                                <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send</button>
+                                <button class="primary-button" id="bulkSendMeReportsButton" type="button">Bulk send client emails</button>
                                 <button class="ghost-button me-report-archive-button" id="archiveMeReportWorkspaceButton" type="button">Archive</button>
                                 <button class="ghost-button danger-button" id="deleteMeReportWorkspaceButton" type="button">Delete</button>
                             </div>
@@ -20554,7 +20825,7 @@
                                     <button type="button" id="menuJashflowButton">Jashflow</button>
                                     <button type="button" id="menuBankStatementsButton">Bank Statements</button>
                                     <button type="button" id="menuIgnitionButton">Renewals</button>
-                                    <button type="button" id="menuMeReportButton">ME Report</button>
+                                    <button type="button" id="menuMeReportButton">Monthly Flows</button>
                                     <button type="button" id="menuSyncButton" hidden>Resync from Xero</button>
                                     <a id="connectXeroButton" href="https://creditcontrolconsole-production.up.railway.app/auth/xero/start">Connect Xero</a>
                                     <button class="disconnect-xero-button" id="disconnectXeroButton" type="button" hidden>Disconnect Xero</button>
@@ -20856,6 +21127,7 @@
                                     </div>
                                     <div class="detail-actions">
                                         <button class="primary-button" id="domainSettingsRunChecksButton" type="button">Run checks now</button>
+                                        <button class="ghost-button" id="domainSettingsRefreshStatusButton" type="button">Refresh status</button>
                                         <button class="ghost-button" id="domainSettingsSaveConfigButton" type="button">Save profile</button>
                                     </div>
                                 </div>
@@ -23824,6 +24096,79 @@
                     </div>
                 </section>
 
+                <section class="developer-log-panel" id="meReportReviewReadyPanel" aria-modal="true" role="dialog" aria-labelledby="meReportReviewReadyTitle" hidden>
+                    <div class="developer-log-card me-report-review-ready-card">
+                        <form class="stack-form bank-account-dialog-form" id="meReportReviewReadyForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="meReportReviewReadyTitle">Manager review readiness check</h3>
+                                    <p id="meReportReviewReadySummary">Running final checks before this flow can be sent for manager review.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeMeReportReviewReadyPanelButton" type="button">Close</button>
+                                    <button class="primary-button" id="confirmMeReportReviewReadyButton" type="submit">Send for manager review</button>
+                                </div>
+                            </div>
+                            <div class="me-report-review-ready-body">
+                                <p class="me-report-review-ready-status" id="meReportReviewReadyStatus">Checking this flow now.</p>
+                                <div class="me-report-review-ready-list" id="meReportReviewReadyList"></div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="developer-log-panel" id="meReportBulkPeriodPanel" aria-modal="true" role="dialog" aria-labelledby="meReportBulkPeriodTitle" hidden>
+                    <div class="developer-log-card me-report-bulk-period-card">
+                        <form class="stack-form bank-account-dialog-form" id="meReportBulkPeriodForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="meReportBulkPeriodTitle">Create monthly flows</h3>
+                                    <p id="meReportBulkPeriodSummary">Choose the bookkeeping period that these flows should represent.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeMeReportBulkPeriodPanelButton" type="button">Close</button>
+                                    <button class="primary-button" id="confirmMeReportBulkPeriodButton" type="submit">Create flows</button>
+                                </div>
+                            </div>
+                            <div class="me-report-bulk-period-body">
+                                <div class="me-report-bulk-period-grid">
+                                    <label class="bank-account-field" for="meReportBulkPeriodStartInput">
+                                        <span class="bank-field-label"><span>Period start</span><small>DD/MM/YYYY</small></span>
+                                        <input id="meReportBulkPeriodStartInput" type="date" required>
+                                    </label>
+                                    <label class="bank-account-field" for="meReportBulkPeriodEndInput">
+                                        <span class="bank-field-label"><span>Period end</span><small>DD/MM/YYYY</small></span>
+                                        <input id="meReportBulkPeriodEndInput" type="date" required>
+                                    </label>
+                                </div>
+                                <p class="me-report-bulk-period-summary" id="meReportBulkPeriodComputedSummary">Deadline for this period is the 15th of the following month.</p>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="developer-log-panel" id="meReportFlowGuidePanel" aria-modal="true" role="dialog" aria-labelledby="meReportFlowGuideTitle" hidden>
+                    <div class="developer-log-card me-report-flow-guide-card">
+                        <form class="stack-form bank-account-dialog-form" id="meReportFlowGuideForm" novalidate>
+                            <div class="developer-log-head">
+                                <div>
+                                    <h3 id="meReportFlowGuideTitle">Start monthly flow workspace</h3>
+                                    <p id="meReportFlowGuideSummary">This guided setup runs when a flow is opened for the first time so data is refreshed from Xero before review work starts.</p>
+                                </div>
+                                <div class="developer-log-actions">
+                                    <button class="ghost-button" id="closeMeReportFlowGuidePanelButton" type="button">Close</button>
+                                    <button class="ghost-button" id="meReportFlowGuideBackButton" type="button">Back</button>
+                                    <button class="primary-button" id="meReportFlowGuideNextButton" type="submit">Next</button>
+                                </div>
+                            </div>
+                            <div class="me-report-flow-guide-body">
+                                <p class="me-report-flow-guide-summary" id="meReportFlowGuideStatus">Step 1 of 4</p>
+                                <div class="me-report-flow-guide-step-list" id="meReportFlowGuideStepList"></div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="developer-log-panel" id="meReportBulkMatchPanel" aria-modal="true" role="dialog" aria-labelledby="meReportBulkMatchTitle" hidden>
                     <div class="developer-log-card me-report-bulk-match-card">
                         <form class="stack-form bank-account-dialog-form" id="meReportBulkMatchForm" novalidate>
@@ -24262,7 +24607,7 @@
                 "supplier-reconciliation": "Supplier Reconciliation",
                 ignition: "Renewals",
                 "ignition-clients": "Ignition Client Register",
-                "me-report": "ME Report",
+                "me-report": "Monthly Flows",
                 "practice-packs": "Practice Pack Generator",
                 settings: "Settings"
             };
@@ -24287,7 +24632,7 @@
                 "supplier-reconciliation": "",
                 ignition: "Review and run proposal renewals from synced Ignition data.",
                 "ignition-clients": "Search and review the synced Ignition client register, ownership, fees, and activity.",
-                "me-report": "Prepare month-end client snapshots, review reporting data, and manage ME Report emails.",
+                "me-report": "Run monthly bookkeeping flows, complete checks, route review approvals, and send client-ready outputs.",
                 "practice-packs": "Generate management and staff practice-pack PDFs from BM client and task CSV files.",
                 settings: "Manage import scope, integrations, posting defaults, templates, logs, and system controls."
             };
@@ -24788,6 +25133,12 @@
             let meReportClientHealthFilter = "all";
             let meReportClientWorkFilter = "all";
             let meReportClientSortMode = "client-asc";
+            let meReportFlowStatusFilter = String(persistedUIState.meReportFlowStatusFilter || "needs-completing");
+            let meReportFlowManagerFilter = String(persistedUIState.meReportFlowManagerFilter || "all");
+            let meReportShowCompletedFlows = persistedUIState.meReportShowCompletedFlows === true;
+            if (!["needs-completing", "needs-approved", "all", "not_started", "draft", "awaiting_review", "bounceback", "completed"].includes(meReportFlowStatusFilter)) {
+                meReportFlowStatusFilter = "needs-completing";
+            }
             let meReportLoading = false;
             let meReportClientFormOpen = false;
             let selectedMeReportClientId = "";
@@ -24813,6 +25164,10 @@
             let meReportDlaSetupDialogState = null;
             const meReportDlaSetupPromptedKeys = new Set();
             let meReportCtCompsUploading = false;
+            let meReportReviewReadyDialogState = null;
+            let meReportBulkPeriodDialogState = null;
+            let meReportDirectorPaidPurchaseSelectionByClientId = {};
+            let meReportFlowGuideDialogState = null;
             let expandedMeReportCalculationKey = "";
             let expandedMeReportChartAccountKey = "";
             const expandedMeReportQualityWarningKeys = new Set();
@@ -25041,6 +25396,9 @@
                 if (button.dataset.meReportPdf) return "download";
                 if (button.dataset.meReportSend) return "send";
                 if (button.dataset.meGenerateReport) return "package";
+                if (button.dataset.meFlowDeleteDraftInvoice || button.dataset.meFlowDeleteUnreconciled) return "trash";
+                if (button.dataset.meFlowMergeContactException || button.dataset.meFlowMergeContactPair) return "actions";
+                if (button.dataset.meFlowMarkPaidPersonally) return "check-circle";
                 if (button.dataset.meReportBackReports) return "arrow-left";
                 if (button.dataset.bankUploadRetry) return "refresh";
                 if (button.dataset.bankUploadExportReason) return "download";
@@ -25189,6 +25547,10 @@
                         meReportMappings: config.endpoints?.meReportMappings || "/api/me-report/mappings/:mappingId",
                         meReportExceptions: config.endpoints?.meReportExceptions || "/api/me-report/exceptions/:exceptionId",
                         meReportMergeContact: config.endpoints?.meReportMergeContact || "/api/me-report/exceptions/:exceptionId/merge-contact",
+                        meReportMergeContacts: config.endpoints?.meReportMergeContacts || "/api/me-report/clients/:clientId/xero/contacts/merge",
+                        meReportDeleteDraftSalesInvoice: config.endpoints?.meReportDeleteDraftSalesInvoice || "/api/me-report/clients/:clientId/xero/sales-invoices/:invoiceId",
+                        meReportMarkPurchasePaidPersonally: config.endpoints?.meReportMarkPurchasePaidPersonally || "/api/me-report/clients/:clientId/xero/purchases/mark-paid-personally",
+                        meReportDeleteUnreconciledTransaction: config.endpoints?.meReportDeleteUnreconciledTransaction || "/api/me-report/clients/:clientId/xero/unreconciled-transactions/:transactionId",
                         meReportReports: config.endpoints?.meReportReports || "/api/me-report/clients/:clientId/reports",
                         meReportSendReport: config.endpoints?.meReportSendReport || "/api/me-report/reports/:reportId/send",
                         meReportBulkSend: config.endpoints?.meReportBulkSend || "/api/me-report/reports/bulk-send",
@@ -26037,6 +26399,9 @@
                         selectedFilter,
                         clientFilter,
                         meReportClientStatusFilter,
+                        meReportFlowStatusFilter,
+                        meReportFlowManagerFilter,
+                        meReportShowCompletedFlows,
                         meReportViewStateByClient,
                         lateChargeFilter,
                         dismissedLateChargeInvoiceIds: [...dismissedLateChargeInvoiceIds].slice(0, 5000),
@@ -28466,6 +28831,30 @@
                 const section = appNavSectionFromHash();
                 if (!section) return;
                 handleAppNavigation(section);
+            }
+
+            function ensureConfirmationStatementsNavEntry() {
+                const practiceSubmenu = document.querySelector(".app-nav-group[data-app-nav-group=\"practice-tools\"] .app-nav-submenu");
+                if (!practiceSubmenu) return;
+                const existingConfirmationButton = practiceSubmenu.querySelector("[data-app-nav=\"confirmation-statements\"]");
+                if (existingConfirmationButton) {
+                    existingConfirmationButton.hidden = false;
+                    existingConfirmationButton.removeAttribute("hidden");
+                    existingConfirmationButton.style.removeProperty("display");
+                    return;
+                }
+                const companySecretarialButton = practiceSubmenu.querySelector("[data-app-nav=\"company-secretarial\"], [data-app-nav=\"company-secreterial\"]");
+                if (!companySecretarialButton) return;
+                const clonedButton = companySecretarialButton.cloneNode(true);
+                clonedButton.dataset.appNav = "confirmation-statements";
+                clonedButton.setAttribute("href", "#credit-control-confirmation-statements");
+                clonedButton.classList.remove("is-active");
+                clonedButton.removeAttribute("aria-current");
+                const heading = clonedButton.querySelector(".app-nav-copy strong");
+                if (heading) heading.textContent = "Confirmation Statements";
+                const detail = clonedButton.querySelector(".app-nav-copy span");
+                if (detail) detail.textContent = "CS, Secretarial, Lock Dates";
+                practiceSubmenu.insertBefore(clonedButton, companySecretarialButton);
             }
 
             function wireSidebarNavigation() {
@@ -45719,6 +46108,163 @@
                 return String(client?.status || "active").toLowerCase() === "archived" ? "archived" : "active";
             }
 
+            function meReportFlowStatus(client = {}) {
+                const raw = String(client.flowStatus || client.workflowStatus || "").toLowerCase();
+                if (["not_started", "draft", "awaiting_review", "bounceback", "completed"].includes(raw)) return raw;
+                const hasWork = meReportClientSubmissions(client).length > 0 || meReportClientReports(client).length > 0;
+                return hasWork ? "draft" : "not_started";
+            }
+
+            function meReportFlowStatusLabel(status = "") {
+                const labels = {
+                    not_started: "Not started",
+                    draft: "Draft",
+                    awaiting_review: "Awaiting review",
+                    bounceback: "Bounceback",
+                    completed: "Completed"
+                };
+                return labels[String(status || "").toLowerCase()] || "Draft";
+            }
+
+            function meReportFlowStatusClass(status = "") {
+                const key = String(status || "").toLowerCase();
+                if (key === "completed") return "is-completed";
+                if (key === "awaiting_review") return "is-awaiting-review";
+                if (key === "bounceback") return "is-bounceback";
+                if (key === "not_started") return "is-not-started";
+                return "is-draft";
+            }
+
+            function meReportFlowLocked(client = {}) {
+                const status = meReportFlowStatus(client);
+                if (status === "awaiting_review" || status === "completed") return true;
+                return Boolean(client.flowLocked);
+            }
+
+            function meReportFlowName(client = {}) {
+                const periodStart = String(client.flowPeriodStart || "");
+                const periodStartDate = new Date(periodStart);
+                const month = Number(client.flowMonth || new Date().getMonth() + 1);
+                const year = Number(client.flowYear || new Date().getFullYear());
+                const safeMonth = month >= 1 && month <= 12 ? month : new Date().getMonth() + 1;
+                const monthLabel = !Number.isNaN(periodStartDate.getTime())
+                    ? periodStartDate.toLocaleString("en-GB", { month: "long" })
+                    : new Date(year, safeMonth - 1, 1).toLocaleString("en-GB", { month: "long" });
+                const freq = String(client.bookkeepingFrequency || "Monthly").toLowerCase() === "monthly"
+                    ? "bookkeeping"
+                    : String(client.bookkeepingFrequency || "bookkeeping");
+                return `${monthLabel} ${freq} flow`;
+            }
+
+            function meReportFlowManager(client = {}) {
+                return String(client.internalClientOwner || "").trim() || "Unassigned";
+            }
+
+            function meReportFlowStatusMatches(status = "") {
+                const key = String(status || "").toLowerCase();
+                if (meReportFlowStatusFilter === "all") return true;
+                if (meReportFlowStatusFilter === "needs-completing") return key !== "completed";
+                if (meReportFlowStatusFilter === "needs-approved") return key === "awaiting_review";
+                return key === meReportFlowStatusFilter;
+            }
+
+            function meReportDifficultyBand(score = 1) {
+                const value = Math.max(1, Math.min(10, Math.round(Number(score || 1))));
+                if (value >= 9) return "hard";
+                if (value >= 5) return "medium";
+                return "easy";
+            }
+
+            function meReportDifficultyLabel(score = 1) {
+                const band = meReportDifficultyBand(score);
+                if (band === "hard") return "Hard";
+                if (band === "medium") return "Medium";
+                return "Easy";
+            }
+
+            function meReportDifficultyMetrics(client = {}) {
+                const summary = meReportAdjustedSummary(client, meReportBaseSummaryForClient(client));
+                const contact = (meReportContactOptions(String(client.tenantId || meReportActiveTenantId() || ""))
+                    .find((item) => String(item?.xeroContactId || "") === String(client.xeroContactId || ""))) || {};
+                const vatRegistered = Boolean(
+                    client.vatRegisteredConfirmed
+                    || summary.vatRegisteredConfirmed
+                    || contact.vatRegisteredConfirmed
+                    || summary.vatNumber
+                    || contact.vatNumber
+                    || summary.vatLiabilityYtd
+                    || contact.vatLiabilityYtd
+                );
+                const staffCount = Math.max(0, Number(
+                    summary.staffCount
+                    || contact.staffCount
+                    || summary.employeeCount
+                    || contact.employeeCount
+                    || summary.payrollEmployeeCount
+                    || summary.payrollStaffCount
+                    || contact.payrollEmployeeCount
+                    || contact.payrollStaffCount
+                    || 0
+                ));
+                const turnover = Math.max(0, Number(
+                    summary.rolling12MonthTurnover
+                    || contact.rolling12MonthTurnover
+                    || summary.annualTurnover
+                    || contact.annualTurnover
+                    || summary.yearToDateSales
+                    || contact.yearToDateSales
+                    || 0
+                ));
+                const transactionCount = Math.max(0, Number(
+                    summary.transactionCount
+                    || contact.transactionCount
+                    || summary.ytdTransactionCount
+                    || contact.ytdTransactionCount
+                    || summary.bankTransactionCount
+                    || contact.bankTransactionCount
+                    || 0
+                ));
+                const journalCount = Math.max(0, Number(
+                    summary.journalCount
+                    || contact.journalCount
+                    || summary.manualJournalCount
+                    || contact.manualJournalCount
+                    || summary.monthJournalCount
+                    || contact.monthJournalCount
+                    || 0
+                ));
+                const creditNoteCount = Math.max(0, Number(
+                    summary.creditNoteCount
+                    || contact.creditNoteCount
+                    || summary.salesCreditNoteCount
+                    || contact.salesCreditNoteCount
+                    || summary.purchaseCreditNoteCount
+                    || contact.purchaseCreditNoteCount
+                    || 0
+                ));
+                return { vatRegistered, staffCount, turnover, transactionCount, journalCount, creditNoteCount };
+            }
+
+            function meReportDifficultyScore(client = {}) {
+                const metrics = meReportDifficultyMetrics(client);
+                let score = 1;
+                if (metrics.vatRegistered) score += 1.2;
+                if (metrics.staffCount >= 10) score += 1;
+                if (metrics.staffCount >= 25) score += 1;
+                if (metrics.staffCount >= 50) score += 1;
+                if (metrics.turnover >= 500000) score += 1;
+                if (metrics.turnover >= 1500000) score += 1;
+                if (metrics.turnover >= 5000000) score += 1;
+                if (metrics.transactionCount >= 300) score += 1;
+                if (metrics.transactionCount >= 1200) score += 1;
+                if (metrics.transactionCount >= 3000) score += 1;
+                if (metrics.journalCount >= 20) score += 0.8;
+                if (metrics.journalCount >= 80) score += 0.8;
+                if (metrics.creditNoteCount >= 5) score += 0.6;
+                if (metrics.creditNoteCount >= 25) score += 0.6;
+                return Math.max(1, Math.min(10, Math.round(score)));
+            }
+
             function meReportVisibleClients() {
                 const clients = meReportData.clients || [];
                 if (meReportClientStatusFilter === "all") return clients;
@@ -45797,14 +46343,16 @@
             function meReportClientMatchesSearch(client) {
                 const term = meReportClientSearchTerm.trim().toLowerCase();
                 if (!term) return true;
-                const light = meReportNormalisedTrafficLight(client.trafficLight || client.summary?.trafficLight || "amber");
                 const haystack = [
                     client.clientName,
+                    meReportFlowName(client),
+                    meReportFlowManager(client),
+                    meReportFlowStatusLabel(meReportFlowStatus(client)),
+                    `difficulty ${meReportDifficultyScore(client)} ${meReportDifficultyLabel(meReportDifficultyScore(client))}`,
                     client.xeroContactEmail,
                     client.reportRecipientEmail,
                     client.bookkeepingFrequency,
                     meReportClientStatus(client),
-                    meReportTrafficLightLabel(light),
                     meReportOpenReviewCount(client),
                     meReportClientSubmissions(client).length,
                     meReportReadyReportCount(client),
@@ -45814,27 +46362,23 @@
             }
 
             function meReportClientMatchesFilters(client) {
-                const light = meReportNormalisedTrafficLight(client.trafficLight || client.summary?.trafficLight || "amber");
-                if (meReportClientHealthFilter !== "all" && light !== meReportClientHealthFilter) return false;
-                const submissionCount = meReportClientSubmissions(client).length;
-                const openReviewCount = meReportOpenReviewCount(client);
-                if (meReportClientWorkFilter === "review") return openReviewCount > 0;
-                if (meReportClientWorkFilter === "submissions") return submissionCount > 0;
-                if (meReportClientWorkFilter === "ready") return meReportReadyReportCount(client) > 0;
-                if (meReportClientWorkFilter === "no-submissions") return submissionCount === 0;
+                const status = meReportFlowStatus(client);
+                if (!meReportShowCompletedFlows && status === "completed") return false;
+                if (!meReportFlowStatusMatches(status)) return false;
+                if (meReportFlowManagerFilter !== "all" && meReportFlowManager(client) !== meReportFlowManagerFilter) return false;
                 return true;
             }
 
             function meReportSortParts() {
                 const [key = "client", direction = "asc"] = String(meReportClientSortMode || "client-asc").split("-");
                 return {
-                    key: ["client", "frequency", "health", "review", "submissions", "activity", "status"].includes(key) ? key : "client",
+                    key: ["client", "flow", "manager", "difficulty", "status", "activity"].includes(key) ? key : "client",
                     direction: direction === "desc" ? "desc" : "asc"
                 };
             }
 
             function meReportDefaultSortDirection(key) {
-                return ["client", "frequency", "health", "status"].includes(key) ? "asc" : "desc";
+                return ["client", "flow", "manager", "status"].includes(key) ? "asc" : "desc";
             }
 
             function setMeReportClientSortMode(key) {
@@ -45846,14 +46390,12 @@
             }
 
             function meReportClientSortValue(client, key) {
-                const lightOrder = { red: 0, amber: 1, green: 2 };
-                const light = meReportNormalisedTrafficLight(client.trafficLight || client.summary?.trafficLight || "amber");
-                if (key === "frequency") return String(client.bookkeepingFrequency || "Monthly");
-                if (key === "health") return lightOrder[light] ?? 1;
-                if (key === "review") return meReportOpenReviewCount(client);
-                if (key === "submissions") return meReportClientSubmissions(client).length;
+                const flowOrder = { not_started: 0, draft: 1, bounceback: 2, awaiting_review: 3, completed: 4 };
+                if (key === "flow") return meReportFlowName(client);
+                if (key === "manager") return meReportFlowManager(client);
+                if (key === "difficulty") return meReportDifficultyScore(client);
+                if (key === "status") return flowOrder[meReportFlowStatus(client)] ?? 1;
                 if (key === "activity") return meReportClientLatestActivityTime(client);
-                if (key === "status") return meReportClientStatus(client);
                 return String(client.clientName || "");
             }
 
@@ -45892,10 +46434,14 @@
                 selectedMeReportClientId = clientId;
                 meReportWorkspaceOpen = true;
                 const savedState = meReportSavedViewState(clientId);
-                activeMeReportTab = meReportWorkspaceTabKeys.has(savedState?.workspaceTab) ? savedState.workspaceTab : "submission-history";
+                activeMeReportTab = meReportWorkspaceTabKeys.has(savedState?.workspaceTab) ? savedState.workspaceTab : "overview";
                 selectedMeReportSubmissionId = "";
                 meReportApplySavedViewState(clientId);
                 renderMeReportScreen();
+                const client = (meReportData.clients || []).find((item) => item.id === clientId);
+                if (client && meReportFlowStatus(client) === "not_started") {
+                    window.setTimeout(() => openMeReportFlowGuidePanel(client), 0);
+                }
             }
 
             function renderMeReportClientTableRows() {
@@ -45905,17 +46451,21 @@
                 const clients = filteredMeReportClients();
                 const summary = document.getElementById("meReportClientTableSummary");
                 if (summary) {
-                    const statusLabel = meReportClientStatusFilter === "all" ? "saved" : meReportClientStatusFilter;
                     summary.textContent = baseClients.length
-                        ? `Showing ${clients.length.toLocaleString("en-GB")} of ${baseClients.length.toLocaleString("en-GB")} ${statusLabel} ME Report client${baseClients.length === 1 ? "" : "s"}.`
-                        : `No ${statusLabel} ME Report clients in this view.`;
+                        ? `Showing ${clients.length.toLocaleString("en-GB")} of ${baseClients.length.toLocaleString("en-GB")} monthly flow${baseClients.length === 1 ? "" : "s"}.`
+                        : "No monthly flows in this view.";
                 }
                 const searchInput = document.getElementById("meReportClientSearch");
                 if (searchInput && searchInput.value !== meReportClientSearchTerm) searchInput.value = meReportClientSearchTerm;
-                const healthSelect = document.getElementById("meReportClientHealthFilter");
-                if (healthSelect && healthSelect.value !== meReportClientHealthFilter) healthSelect.value = meReportClientHealthFilter;
-                const workSelect = document.getElementById("meReportClientWorkFilter");
-                if (workSelect && workSelect.value !== meReportClientWorkFilter) workSelect.value = meReportClientWorkFilter;
+                const managerSelect = document.getElementById("meReportClientManagerFilter");
+                if (managerSelect && managerSelect.value !== meReportFlowManagerFilter) managerSelect.value = meReportFlowManagerFilter;
+                const statusSelect = document.getElementById("meReportClientStatusFlowFilter");
+                if (statusSelect && statusSelect.value !== meReportFlowStatusFilter) statusSelect.value = meReportFlowStatusFilter;
+                const completedToggle = document.getElementById("meReportShowCompletedFlows");
+                if (completedToggle) completedToggle.checked = meReportShowCompletedFlows;
+                document.querySelectorAll("[data-me-flow-shortcut]").forEach((button) => {
+                    button.classList.toggle("is-active", (button.dataset.meFlowShortcut || "") === meReportFlowStatusFilter);
+                });
                 const currentSort = meReportSortParts();
                 document.querySelectorAll("[data-me-report-client-sort]").forEach((button) => {
                     const active = button.dataset.meReportClientSort === currentSort.key;
@@ -45925,29 +46475,39 @@
                 });
 
                 if (!clients.length) {
-                    tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="6"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No ME Report clients match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
+                    tbody.innerHTML = `<tr class="me-report-client-no-results"><td colspan="7"><div class="empty-state"><p class="eyebrow">No matches</p><h4>No monthly flows match this view</h4><p>Adjust the search or filters to widen the table.</p></div></td></tr>`;
                     return;
                 }
 
                 tbody.innerHTML = clients.map((client) => {
-                    const clientStatus = meReportClientStatus(client);
-                    const openReviewCount = meReportOpenReviewCount(client);
-                    const submissions = meReportClientSubmissions(client);
-                    const latestSubmissionTime = meReportClientLatestSubmissionTime(client);
+                    const flowStatus = meReportFlowStatus(client);
+                    const flowStatusLabel = meReportFlowStatusLabel(flowStatus);
+                    const difficultyScore = meReportDifficultyScore(client);
+                    const difficultyBand = meReportDifficultyBand(difficultyScore);
                     const latestActivityTime = meReportClientLatestActivityTime(client);
-                    const readyReportCount = meReportReadyReportCount(client);
-                    const email = client.xeroContactEmail || client.reportRecipientEmail || "No Xero email";
+                    const manager = meReportFlowManager(client);
+                    const flowName = meReportFlowName(client);
+                    const periodStart = String(client.flowPeriodStart || "");
+                    const periodEnd = String(client.flowPeriodEnd || "");
+                    const deadlineAt = String(client.flowDeadlineAt || "");
+                    const periodCopy = periodStart && periodEnd
+                        ? `${meReportDateDisplay(periodStart)} to ${meReportDateDisplay(periodEnd)}`
+                        : `${String(client.bookkeepingFrequency || "Monthly")} cycle`;
+                    const deadlineCopy = deadlineAt ? ` · Deadline ${meReportDateDisplay(deadlineAt)}` : "";
+                    const email = client.xeroContactEmail || client.reportRecipientEmail || "No Xero email connected";
                     return `
-                        <tr class="${client.id === selectedMeReportClientId ? "is-active" : ""}${clientStatus === "archived" ? " is-archived" : ""}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
+                        <tr class="${client.id === selectedMeReportClientId ? "is-active" : ""}" tabindex="0" data-me-report-client-row="${escapeHTML(client.id || "")}">
                             <td>
                                 <div class="me-report-client-name-cell">
                                     <span class="me-report-client-table-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M16 21v-2a4 4 0 0 0-8 0v2"></path><circle cx="12" cy="7" r="4"></circle><path d="M20 21v-2a3 3 0 0 0-2-2.83"></path></svg></span>
                                     <div><strong>${escapeHTML(client.clientName || "Unnamed client")}</strong><small>${escapeHTML(email)}</small></div>
                                 </div>
                             </td>
-                            <td><strong>${openReviewCount.toLocaleString("en-GB")}</strong><small>open review point${openReviewCount === 1 ? "" : "s"}</small></td>
-                            <td><strong>${submissions.length.toLocaleString("en-GB")}</strong><small>${latestSubmissionTime ? `Latest ${escapeHTML(formatDate(new Date(latestSubmissionTime)))}` : "No submissions"}</small></td>
-                            <td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${readyReportCount ? `${readyReportCount.toLocaleString("en-GB")} ready to send` : "Latest activity"}</small></td>
+                            <td><strong>${escapeHTML(flowName)}</strong><small>${escapeHTML(periodCopy)}${escapeHTML(deadlineCopy)}</small></td>
+                            <td><strong>${escapeHTML(manager)}</strong><small>Client manager</small></td>
+                            <td><span class="me-report-difficulty-pill is-${escapeHTML(difficultyBand)}">${difficultyScore}/10 · ${escapeHTML(meReportDifficultyLabel(difficultyScore))}</span></td>
+                            <td><span class="bank-status-pill ${meReportFlowStatusClass(flowStatus)}">${escapeHTML(flowStatusLabel)}</span></td>
+                            <td><strong>${latestActivityTime ? escapeHTML(formatDate(new Date(latestActivityTime))) : "--"}</strong><small>${meReportFlowLocked(client) ? "Figures locked for review" : "Latest activity"}</small></td>
                             <td><button class="ghost-button" type="button" data-me-report-open-client="${escapeHTML(client.id || "")}">Open</button></td>
                         </tr>
                     `;
@@ -46058,7 +46618,7 @@
                     selectedMeReportClientId = visibleClients[0]?.id || "";
                     meReportWorkspaceOpen = false;
                 }
-                if (!["overview", "submission-history", "report-insights", "tax", "dividends", "dla", "alerts", "mappings", "reports"].includes(activeMeReportTab)) {
+                if (!["overview", "report-insights", "tax", "dividends", "dla", "alerts", "activity-log", "flow-settings"].includes(activeMeReportTab)) {
                     activeMeReportTab = "overview";
                 }
             }
@@ -46418,17 +46978,23 @@
                     const fallbackProgress = Math.min(96, Math.max(10, Math.round((elapsed / estimatedSeconds) * 100)));
                     const progress = runProgress || fallbackProgress;
                     const remaining = Math.max(0, estimatedSeconds - elapsed);
-                    const stage = progress < 35
-                        ? "Stage 1/3 · Validating source rows"
-                        : progress < 75
-                            ? "Stage 2/3 · Building P&L and balance sheet drill-down"
-                            : "Stage 3/3 · Running duplicate and misposting checks";
+                    const steps = [
+                        "Connect workspace and validate Xero contact",
+                        "Pull period data and trial balance",
+                        "Run anomalies and payroll/VAT checks",
+                        "Calculate CT estimate and dividend capacity",
+                        "Prepare review-ready flow outputs"
+                    ];
+                    const activeStep = progress < 20 ? 0 : progress < 45 ? 1 : progress < 70 ? 2 : progress < 88 ? 3 : 4;
+                    const stage = `Stage ${activeStep + 1}/${steps.length} · ${steps[activeStep]}`;
                     return {
-                        title: progress >= 60 ? "ME Report calculating" : "ME Report processing",
+                        title: progress >= 60 ? "Monthly Flow calculating" : "Monthly Flow processing",
                         detail: `${stage}. ${run?.summary || run?.currentStep || "Processing source report data and calculating month-end review."}`,
                         eta: remaining > 0 ? `Estimated ready in ${formatSyncDuration(remaining)}` : "Final checks in progress",
                         elapsed: `Elapsed ${formatSyncDuration(elapsed)}`,
-                        progress
+                        progress,
+                        steps,
+                        activeStep
                     };
                 }
                 if (meReportBulkUploading) {
@@ -46439,13 +47005,13 @@
                     const progress = Math.min(92, Math.max(8, Math.round((elapsed / estimatedSeconds) * 100)));
                     const remaining = Math.max(0, estimatedSeconds - elapsed);
                     const stage = progress < 35
-                        ? "Stage 1/3 · Uploading files"
+                        ? "Stage 1/3 · Reading connected Xero contacts"
                         : progress < 72
-                            ? "Stage 2/3 · Extracting year-to-date transactions"
-                            : "Stage 3/3 · Building client workspaces";
+                            ? "Stage 2/3 · Creating flow workspaces"
+                            : "Stage 3/3 · Applying default flow settings";
                     return {
-                        title: "Uploading JUK Overview reports",
-                        detail: `${stage}. Uploading and extracting ${expectedFiles.toLocaleString("en-GB")} file${expectedFiles === 1 ? "" : "s"} for month-end review workspaces.`,
+                        title: "Creating monthly flows",
+                        detail: `${stage}. Creating monthly flow records from connected Xero clients.`,
                         eta: remaining > 0 ? `Estimated ready in ${formatSyncDuration(remaining)}` : "Wrapping up upload",
                         elapsed: `Elapsed ${formatSyncDuration(elapsed)}`,
                         progress
@@ -46476,6 +47042,9 @@
             function renderMeReportProcessingBanner() {
                 const state = meReportProcessingUiState();
                 if (!state) return "";
+                const stepMarkup = Array.isArray(state.steps) && state.steps.length
+                    ? `<ol class="me-report-processing-steps">${state.steps.map((step, index) => `<li class="${index === Number(state.activeStep || 0) ? "is-active" : ""}">${escapeHTML(step)}</li>`).join("")}</ol>`
+                    : "";
                 return `
                     <section class="me-report-processing-banner" role="status" aria-live="polite">
                         <div class="me-report-processing-head">
@@ -46485,6 +47054,7 @@
                         <div class="me-report-processing-track" aria-hidden="true">
                             <span class="me-report-processing-fill" style="width: ${Math.max(0, Math.min(100, Number(state.progress || 0)))}%"></span>
                         </div>
+                        ${stepMarkup}
                         <div class="me-report-processing-meta">
                             <span>${escapeHTML(state.detail || "")}</span>
                             <span>${escapeHTML(state.elapsed || "")}</span>
@@ -46499,7 +47069,6 @@
                 const summary = meReportData.summary || {};
                 const allClients = meReportData.clients || [];
                 const activeClients = allClients.filter((client) => meReportClientStatus(client) === "active");
-                const archivedClients = allClients.filter((client) => meReportClientStatus(client) === "archived");
                 ensureMeReportSelection();
                 renderMeReportTopbarSummary();
                 renderTopbarIdentity();
@@ -46527,7 +47096,7 @@
                 const bulkUploadButton = document.getElementById("bulkUploadMeReportsButton");
                 if (bulkUploadButton) {
                     bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
-                    bulkUploadButton.textContent = meReportBulkUploading ? "Uploading..." : "Upload JUK Overview report from Xero";
+                    bulkUploadButton.textContent = meReportBulkUploading ? "Creating flows..." : "Create flows from Xero clients";
                 }
                 const workspaceClient = meReportWorkspaceOpen ? selectedMeReportClient() : null;
                 const workspaceClientArchived = workspaceClient ? meReportClientStatus(workspaceClient) === "archived" : false;
@@ -46541,7 +47110,7 @@
                 ), 0);
                 if (bulkSendButton) {
                     bulkSendButton.disabled = meReportEmailSending || readyReportCount === 0;
-                    bulkSendButton.textContent = readyReportCount ? `Bulk send ${readyReportCount}` : "Bulk send";
+                    bulkSendButton.textContent = readyReportCount ? `Bulk send ${readyReportCount}` : "Bulk send emails";
                 }
                 const archiveWorkspaceButton = document.getElementById("archiveMeReportWorkspaceButton");
                 if (archiveWorkspaceButton) {
@@ -46560,8 +47129,8 @@
                 const detail = document.getElementById("meReportDetail");
                 if (!clientList || !actionList || !detail) return;
                 const processingBannerMarkup = renderMeReportProcessingBanner();
-                const reportTableMode = meReportWorkspaceOpen && activeMeReportTab === "submission-history";
-                const reportInsightMode = meReportWorkspaceOpen && activeMeReportTab === "report-insights";
+                const reportTableMode = false;
+                const reportInsightMode = false;
                 const workspace = clientList.closest(".bank-statement-workspace");
                 if (workspace) {
                     workspace.classList.toggle("is-client-list", !meReportWorkspaceOpen);
@@ -46578,14 +47147,14 @@
 
                 if (meReportLoading) {
                     clientList.hidden = false;
-                    clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading ME Report clients</h4><p>Reading saved month-end register records from the backend.</p></div>`;
+                    clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Monthly Flows</h4><p>Reading saved client flow records from the backend.</p></div>`;
                     return;
                 }
                 if (!allClients.length) {
                     clientList.hidden = false;
                     actionList.hidden = true;
                     detail.hidden = true;
-                    clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">No clients</p><h4>No ME Report clients saved</h4><p>Add a client, then upload the first overview report to build CT, dividend and DLA calculations.</p></div>`;
+                    clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">No flows</p><h4>No monthly flows saved yet</h4><p>Use “Create flows from Xero clients” to bulk-create flow workspaces from connected Xero contacts.</p></div>`;
                     return;
                 }
 
@@ -46604,22 +47173,29 @@
                         meReportApplySavedViewState(client.id);
                         meReportLastStateClientId = client.id;
                     }
+                    const flowStatus = meReportFlowStatus(client);
+                    const locked = meReportFlowLocked(client);
                     const tabs = [
                         ["overview", "Overview"],
-                        ["submission-history", "Submission history"],
+                        ["report-insights", "Flow checks"],
                         ["tax", "Tax"],
                         ["dividends", "Dividends"],
                         ["dla", "DLA"],
-                        ["alerts", "AI Alerts"],
-                        ["mappings", "Mappings"],
-                        ["reports", "Reports"]
+                        ["alerts", "Anomalies"],
+                        ["activity-log", "Activity log"],
+                        ["flow-settings", "Flow settings"]
                     ];
                     actionList.innerHTML = `
-                        <button class="ghost-button" id="generateMeReportButton" type="button" ${client.reviews?.length && !isMeReportProcessing ? "" : "disabled"}>Generate report</button>
-                        <button class="ghost-button" id="setMeReportTradingLossButton" type="button">Set B/F loss</button>
+                        <button class="primary-button" type="button" data-me-flow-action="start-guided" ${flowStatus === "not_started" && !locked ? "" : "disabled"}>Start guided flow</button>
+                        <button class="ghost-button" type="button" data-me-flow-action="refresh">Refresh from Xero</button>
+                        <button class="ghost-button" type="button" data-me-flow-action="submit-review" ${locked ? "disabled" : ""}>Submit for review</button>
+                        <button class="primary-button" type="button" data-me-flow-action="approve" ${flowStatus !== "awaiting_review" ? "disabled" : ""}>Approve and email client</button>
+                        <button class="ghost-button" type="button" data-me-flow-action="bounceback" ${flowStatus !== "awaiting_review" ? "disabled" : ""}>Bounce back</button>
+                        <button class="ghost-button" type="button" data-me-flow-action="move-draft" ${flowStatus !== "bounceback" ? "disabled" : ""}>Move to draft</button>
+                        <button class="ghost-button" type="button" data-me-flow-action="download-pdf" ${flowStatus !== "completed" ? "disabled" : ""}>Download PDF</button>
+                        <button class="ghost-button" id="setMeReportTradingLossButton" type="button" ${locked ? "disabled" : ""}>Set B/F loss</button>
                         ${tabs.map(([key, label]) => `<button class="bank-account-card${activeMeReportTab === key ? " is-active" : ""}" type="button" data-me-report-tab="${key}"><strong>${label}</strong><span>${meReportTabHint(client, key)}</span></button>`).join("")}
                     `;
-                    document.getElementById("generateMeReportButton")?.addEventListener("click", generateSelectedMeReport);
                     document.getElementById("setMeReportTradingLossButton")?.addEventListener("click", () => setMeReportBroughtForwardLoss(client.id));
                     actionList.querySelectorAll("[data-me-report-tab]").forEach((button) => {
                         button.addEventListener("click", () => {
@@ -46632,7 +47208,7 @@
                         detail.innerHTML = `${processingBannerMarkup || ""}${renderMeReportTab(client, activeMeReportTab)}`;
                     } catch (error) {
                         console.error("Unable to render ME Report workspace", error);
-                        detail.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">ME Report workspace</p><h4>Unable to render this uploaded report</h4><p>Refresh the page, or delete the latest submission from this workspace and upload it again.</p></div>`;
+                        detail.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">Monthly Flow workspace</p><h4>Unable to render this flow</h4><p>Refresh the page and try this flow again.</p></div>`;
                         return;
                     }
                     try {
@@ -46644,62 +47220,56 @@
                     return;
                 }
 
-                const filterOptions = [
-                    ["active", `Active (${activeClients.length.toLocaleString("en-GB")})`],
-                    ["archived", `Archived (${archivedClients.length.toLocaleString("en-GB")})`],
-                    ["all", `All (${allClients.length.toLocaleString("en-GB")})`]
-                ];
-                const filterbar = document.createElement("div");
-                filterbar.className = "me-report-client-filterbar";
-                filterbar.innerHTML = filterOptions.map(([value, label]) => `
-                    <button class="${meReportClientStatusFilter === value ? "is-active" : ""}" type="button" data-me-report-client-filter="${value}">${escapeHTML(label)}</button>
-                `).join("");
                 if (processingBannerMarkup) {
                     const processingState = document.createElement("div");
                     processingState.innerHTML = processingBannerMarkup;
                     const processingElement = processingState.firstElementChild;
                     if (processingElement) clientList.appendChild(processingElement);
                 }
-                clientList.appendChild(filterbar);
-                filterbar.querySelectorAll("[data-me-report-client-filter]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        meReportClientStatusFilter = button.dataset.meReportClientFilter || "active";
-                        meReportWorkspaceOpen = false;
-                        persistState();
-                        renderMeReportScreen();
-                    });
-                });
 
                 const toolbar = document.createElement("div");
                 toolbar.className = "me-report-client-toolbar";
+                const managerOptions = Array.from(new Set(allClients.map((client) => meReportFlowManager(client))))
+                    .filter(Boolean)
+                    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
                 toolbar.innerHTML = `
                     <div>
-                        <p class="eyebrow">Client table</p>
+                        <p class="eyebrow">Monthly flows</p>
                         <p class="detail-meta" id="meReportClientTableSummary"></p>
                     </div>
                     <div class="me-report-client-controls">
+                        <div class="me-report-flow-quick-filters">
+                            <button class="${meReportFlowStatusFilter === "needs-completing" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-completing">Needs completing</button>
+                            <button class="${meReportFlowStatusFilter === "needs-approved" ? "is-active" : ""}" type="button" data-me-flow-shortcut="needs-approved">Needs approved</button>
+                            <button class="${meReportFlowStatusFilter === "all" ? "is-active" : ""}" type="button" data-me-flow-shortcut="all">All flows</button>
+                        </div>
                         <label class="search-wrap me-report-client-search">
                             <span class="search-icon">⌕</span>
-                            <input id="meReportClientSearch" type="search" placeholder="Search client, email, status..." value="${escapeHTML(meReportClientSearchTerm)}">
+                            <input id="meReportClientSearch" type="search" placeholder="Search client, flow, CM, status..." value="${escapeHTML(meReportClientSearchTerm)}">
                         </label>
                         <label class="me-report-client-control">
-                            Health
-                            <select id="meReportClientHealthFilter" aria-label="Filter ME Report clients by health">
+                            Client manager
+                            <select id="meReportClientManagerFilter" aria-label="Filter monthly flows by client manager">
+                                <option value="all">All managers</option>
+                                ${managerOptions.map((name) => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join("")}
+                            </select>
+                        </label>
+                        <label class="me-report-client-control">
+                            Status
+                            <select id="meReportClientStatusFlowFilter" aria-label="Filter monthly flows by status">
+                                <option value="needs-completing">Needs completing</option>
+                                <option value="needs-approved">Needs approved</option>
                                 <option value="all">All statuses</option>
-                                <option value="red">Red</option>
-                                <option value="amber">Yellow</option>
-                                <option value="green">Green</option>
+                                <option value="not_started">Not started</option>
+                                <option value="draft">Draft</option>
+                                <option value="awaiting_review">Awaiting review</option>
+                                <option value="bounceback">Bounceback</option>
+                                <option value="completed">Completed</option>
                             </select>
                         </label>
-                        <label class="me-report-client-control">
-                            Filter
-                            <select id="meReportClientWorkFilter" aria-label="Filter ME Report clients by work state">
-                                <option value="all">All work</option>
-                                <option value="review">Open review points</option>
-                                <option value="submissions">Has submissions</option>
-                                <option value="ready">Ready to send</option>
-                                <option value="no-submissions">No submissions</option>
-                            </select>
+                        <label class="me-report-flow-table-settings">
+                            <input id="meReportShowCompletedFlows" type="checkbox" ${meReportShowCompletedFlows ? "checked" : ""}>
+                            Show completed flows
                         </label>
                     </div>
                 `;
@@ -46712,8 +47282,10 @@
                         <thead>
                             <tr>
                                 <th>${meReportClientSortButton("client", "Client")}</th>
-                                <th>${meReportClientSortButton("review", "Review")}</th>
-                                <th>${meReportClientSortButton("submissions", "Submissions")}</th>
+                                <th>${meReportClientSortButton("flow", "Flow")}</th>
+                                <th>${meReportClientSortButton("manager", "Client manager")}</th>
+                                <th>${meReportClientSortButton("difficulty", "Difficulty")}</th>
+                                <th>${meReportClientSortButton("status", "Status")}</th>
                                 <th>${meReportClientSortButton("activity", "Last activity")}</th>
                                 <th><span>Action</span></th>
                             </tr>
@@ -46727,12 +47299,26 @@
                     meReportClientSearchTerm = event.target.value || "";
                     renderMeReportClientTableRows();
                 });
-                toolbar.querySelector("#meReportClientHealthFilter")?.addEventListener("change", (event) => {
-                    meReportClientHealthFilter = event.target.value || "all";
+                toolbar.querySelectorAll("[data-me-flow-shortcut]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        meReportFlowStatusFilter = button.dataset.meFlowShortcut || "needs-completing";
+                        persistState();
+                        renderMeReportScreen();
+                    });
+                });
+                toolbar.querySelector("#meReportClientManagerFilter")?.addEventListener("change", (event) => {
+                    meReportFlowManagerFilter = event.target.value || "all";
+                    persistState();
                     renderMeReportClientTableRows();
                 });
-                toolbar.querySelector("#meReportClientWorkFilter")?.addEventListener("change", (event) => {
-                    meReportClientWorkFilter = event.target.value || "all";
+                toolbar.querySelector("#meReportClientStatusFlowFilter")?.addEventListener("change", (event) => {
+                    meReportFlowStatusFilter = event.target.value || "needs-completing";
+                    persistState();
+                    renderMeReportClientTableRows();
+                });
+                toolbar.querySelector("#meReportShowCompletedFlows")?.addEventListener("change", (event) => {
+                    meReportShowCompletedFlows = Boolean(event.target.checked);
+                    persistState();
                     renderMeReportClientTableRows();
                 });
                 tableWrap.querySelectorAll("[data-me-report-client-sort]").forEach((button) => {
@@ -46747,12 +47333,487 @@
             function openMeReportSubmissionUpload(clientId = "") {
                 if (clientId) selectedMeReportClientId = clientId;
                 meReportWorkspaceOpen = true;
-                activeMeReportTab = "submission-history";
+                activeMeReportTab = "report-insights";
                 selectedMeReportSubmissionId = "";
                 meReportPersistViewStateForClient(selectedMeReportClientId);
                 renderMeReportScreen();
                 const fileInput = document.getElementById("meReportBulkSubmissionFiles");
                 if (fileInput) fileInput.click();
+            }
+
+            function meReportFlowActivityRows(client = {}) {
+                const rows = Array.isArray(client.flowActivityLog) ? client.flowActivityLog : [];
+                return rows
+                    .filter((item) => item && typeof item === "object")
+                    .sort((left, right) => meReportClientTimestamp(right.at || right.createdAt) - meReportClientTimestamp(left.at || left.createdAt));
+            }
+
+            function meReportFlowChecklistRows(client = {}) {
+                const defaults = [
+                    { key: "bank_reconciled", label: "All Xero bank accounts are fully reconciled", enabled: true },
+                    { key: "unreconciled_flagged", label: "Unreconciled or unreconciled-looking items are flagged", enabled: true },
+                    { key: "discrepancies_reviewed", label: "Discrepancies and anomalies are reviewed", enabled: true },
+                    { key: "ct_estimate_checked", label: "Corporation tax estimate reviewed", enabled: true },
+                    { key: "dividend_capacity_checked", label: "Dividend availability checked", enabled: true }
+                ];
+                const incoming = Array.isArray(client.flowChecklist) ? client.flowChecklist : [];
+                if (!incoming.length) return defaults;
+                return defaults.map((item) => {
+                    const existing = incoming.find((row) => String(row?.key || "") === item.key);
+                    return existing ? { ...item, ...existing, enabled: existing.enabled !== false } : item;
+                });
+            }
+
+            function meReportFlowStatusEventLabel(status = "") {
+                const key = String(status || "").toLowerCase();
+                if (key === "awaiting_review") return "Flow submitted for review";
+                if (key === "completed") return "Flow approved and completed";
+                if (key === "bounceback") return "Flow bounced back";
+                if (key === "draft") return "Flow moved to draft";
+                if (key === "not_started") return "Flow created";
+                return "Flow updated";
+            }
+
+            function meReportFixedAssetDifferenceValue(summary = {}) {
+                const registerTotal = meReportMoneyValue(summary.fixedAssetRegisterTotal || 0);
+                const balanceSheetFixedAssets = meReportMoneyValue(summary.balanceSheetFixedAssetTotal || 0);
+                const raw = summary.fixedAssetDifference
+                    ?? (Math.abs(registerTotal) || Math.abs(balanceSheetFixedAssets) ? (balanceSheetFixedAssets - registerTotal) : 0);
+                return meReportMoneyValue(raw);
+            }
+
+            function meReportInvoiceLikeNominalEntries(summary = {}) {
+                const trialBalanceAccounts = meReportObjectRows(summary.trialBalanceAccounts);
+                return trialBalanceAccounts.flatMap((account) => (
+                    meReportObjectRows(account.transactions).map((transaction) => ({
+                        description: String(transaction.description || "").toLowerCase(),
+                        amount: meReportMoneyValue(transaction.amount || 0),
+                        accountName: String(account.accountName || ""),
+                        accountCode: String(account.accountCode || "")
+                    }))
+                )).filter((row) => /invoice|bill|credit note|supplier invoice|cn\b/.test(row.description));
+            }
+
+            function meReportUnreconciledBankCount(summary = {}) {
+                const candidates = [
+                    summary.unreconciledBankStatements,
+                    summary.unreconciledTransactions,
+                    summary.unreconciledBankTransactionCount,
+                    summary.bankUnreconciledCount,
+                    summary.bankReconciliationOpenItems
+                ];
+                for (const item of candidates) {
+                    const value = Number(item || 0);
+                    if (Number.isFinite(value) && value > 0) return Math.round(value);
+                }
+                const warnings = [
+                    ...meReportInsightItems(summary.warnings, []),
+                    ...meReportInsightItems(summary.profitAndLossInsights?.needsAttention, []),
+                    ...meReportInsightItems(summary.profitAndLossInsights?.priorities, [])
+                ].join(" ").toLowerCase();
+                if (warnings.includes("unreconc")) return 1;
+                return 0;
+            }
+
+            function meReportManagerReviewReadiness(client = {}) {
+                const baseSummary = meReportBaseSummaryForClient(client);
+                const summary = meReportAdjustedSummary(client, baseSummary);
+                const fixedAssetDifference = meReportFixedAssetDifferenceValue(summary);
+                const duplicateRisks = meReportObjectRows(summary.duplicateTransactionRisks);
+                const invoiceLikeEntries = meReportInvoiceLikeNominalEntries(summary);
+                const unreconciledCount = meReportUnreconciledBankCount(summary);
+                const openReviewPoints = meReportOpenReviewCount(client);
+                const checklist = meReportFlowChecklistRows(client).filter((item) => item.enabled);
+                const checks = [];
+
+                checklist.forEach((item) => {
+                    if (item.key === "bank_reconciled") {
+                        const pass = unreconciledCount === 0;
+                        checks.push({
+                            key: item.key,
+                            label: item.label,
+                            pass,
+                            reason: pass
+                                ? "No unreconciled bank statement issues were detected."
+                                : `${unreconciledCount.toLocaleString("en-GB")} unreconciled bank statement issue${unreconciledCount === 1 ? "" : "s"} found.`
+                        });
+                        return;
+                    }
+                    if (item.key === "unreconciled_flagged") {
+                        const pass = unreconciledCount === 0;
+                        checks.push({
+                            key: item.key,
+                            label: item.label,
+                            pass,
+                            reason: pass
+                                ? "No unreconciled bank transactions are still outstanding."
+                                : "Unreconciled bank entries are still present."
+                        });
+                        return;
+                    }
+                    if (item.key === "discrepancies_reviewed") {
+                        const pass = openReviewPoints === 0;
+                        checks.push({
+                            key: item.key,
+                            label: item.label,
+                            pass,
+                            reason: pass
+                                ? "No open review anomalies remain."
+                                : `${openReviewPoints.toLocaleString("en-GB")} open anomaly${openReviewPoints === 1 ? "" : "ies"} still need review.`
+                        });
+                        return;
+                    }
+                    if (item.key === "ct_estimate_checked") {
+                        const ctEstimate = Number(summary.estimatedCorporationTax);
+                        const pass = Number.isFinite(ctEstimate);
+                        checks.push({
+                            key: item.key,
+                            label: item.label,
+                            pass,
+                            reason: pass
+                                ? `CT estimate available: ${formatCurrency(ctEstimate || 0)}.`
+                                : "CT estimate is missing from this flow."
+                        });
+                        return;
+                    }
+                    if (item.key === "dividend_capacity_checked") {
+                        const dividendCapacity = Number(summary.dividendCapacity);
+                        const pass = Number.isFinite(dividendCapacity);
+                        checks.push({
+                            key: item.key,
+                            label: item.label,
+                            pass,
+                            reason: pass
+                                ? `Dividend capacity available: ${formatCurrency(dividendCapacity || 0)}.`
+                                : "Dividend capacity has not been calculated yet."
+                        });
+                    }
+                });
+
+                checks.push({
+                    key: "fixed_assets_alignment",
+                    label: "Fixed asset register agrees with balance sheet",
+                    pass: Math.abs(fixedAssetDifference) < 0.01,
+                    reason: Math.abs(fixedAssetDifference) < 0.01
+                        ? "Fixed asset reconciliation is aligned."
+                        : `Fixed assets are out by ${formatCurrency(fixedAssetDifference)} and must be corrected before review.`
+                });
+                checks.push({
+                    key: "duplicate_transaction_risk",
+                    label: "No duplicate nominal and purchase-ledger style transaction risk",
+                    pass: duplicateRisks.length === 0 && invoiceLikeEntries.length === 0,
+                    reason: duplicateRisks.length === 0 && invoiceLikeEntries.length === 0
+                        ? "No duplicate posting patterns were detected."
+                        : `${(duplicateRisks.length + invoiceLikeEntries.length).toLocaleString("en-GB")} duplicate-risk indicator${duplicateRisks.length + invoiceLikeEntries.length === 1 ? "" : "s"} detected.`
+                });
+
+                return {
+                    client,
+                    summary,
+                    checks,
+                    blocking: checks.filter((item) => !item.pass),
+                    ready: checks.every((item) => item.pass)
+                };
+            }
+
+            function renderMeReportReviewReadinessPanel() {
+                const state = meReportReviewReadyDialogState;
+                const panel = document.getElementById("meReportReviewReadyPanel");
+                const title = document.getElementById("meReportReviewReadyTitle");
+                const summary = document.getElementById("meReportReviewReadySummary");
+                const status = document.getElementById("meReportReviewReadyStatus");
+                const list = document.getElementById("meReportReviewReadyList");
+                const submitButton = document.getElementById("confirmMeReportReviewReadyButton");
+                if (!panel || !title || !summary || !status || !list || !submitButton || !state) return;
+                panel.hidden = false;
+                title.textContent = `${state.client?.clientName || "Client"} · ${meReportFlowName(state.client || {})}`;
+                summary.textContent = "Final real-world readiness checks before manager review.";
+                status.classList.toggle("is-error", !state.ready);
+                if (state.ready) {
+                    status.textContent = "This flow is ready for manager review.";
+                } else {
+                    status.textContent = "Look, we really do not think you should send this for review yet. Fix the failed checks, refresh the flow, and run this check again.";
+                }
+                submitButton.disabled = !state.ready;
+                list.innerHTML = state.checks.map((item) => `
+                    <article class="me-report-review-ready-item ${item.pass ? "is-pass" : "is-fail"}">
+                        <span class="me-report-review-ready-mark">${item.pass ? "✓" : "!"}</span>
+                        <div>
+                            <strong>${escapeHTML(item.label)}</strong>
+                            <small>${escapeHTML(item.reason || "")}</small>
+                        </div>
+                    </article>
+                `).join("");
+            }
+
+            function openMeReportReviewReadinessPanel(client = {}) {
+                if (!client?.id) return;
+                meReportReviewReadyDialogState = meReportManagerReviewReadiness(client);
+                renderMeReportReviewReadinessPanel();
+            }
+
+            function closeMeReportReviewReadinessPanel() {
+                const panel = document.getElementById("meReportReviewReadyPanel");
+                if (panel) panel.hidden = true;
+                meReportReviewReadyDialogState = null;
+            }
+
+            function meReportDateInputValue(date = new Date()) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, "0");
+                const day = String(date.getDate()).padStart(2, "0");
+                return `${year}-${month}-${day}`;
+            }
+
+            function meReportDateDisplay(value = "") {
+                const date = new Date(value);
+                if (Number.isNaN(date.getTime())) return "--";
+                return date.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
+            }
+
+            function meReportBulkPeriodDeadline(periodEnd = "") {
+                const end = new Date(periodEnd);
+                if (Number.isNaN(end.getTime())) return "";
+                return meReportDateInputValue(new Date(end.getFullYear(), end.getMonth() + 1, 15));
+            }
+
+            function meReportDefaultBulkPeriod() {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const end = new Date(now.getFullYear(), now.getMonth(), 0);
+                const startValue = meReportDateInputValue(start);
+                const endValue = meReportDateInputValue(end);
+                return {
+                    periodStart: startValue,
+                    periodEnd: endValue,
+                    deadlineAt: meReportBulkPeriodDeadline(endValue)
+                };
+            }
+
+            function renderMeReportBulkPeriodPanel() {
+                const state = meReportBulkPeriodDialogState;
+                const panel = document.getElementById("meReportBulkPeriodPanel");
+                const startInput = document.getElementById("meReportBulkPeriodStartInput");
+                const endInput = document.getElementById("meReportBulkPeriodEndInput");
+                const summary = document.getElementById("meReportBulkPeriodComputedSummary");
+                const submit = document.getElementById("confirmMeReportBulkPeriodButton");
+                if (!panel || !startInput || !endInput || !summary || !submit || !state) return;
+                panel.hidden = false;
+                startInput.value = state.periodStart || "";
+                endInput.value = state.periodEnd || "";
+                const startDate = new Date(state.periodStart);
+                const endDate = new Date(state.periodEnd);
+                const validRange = !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && startDate <= endDate;
+                const deadline = state.deadlineAt || meReportBulkPeriodDeadline(state.periodEnd);
+                state.deadlineAt = deadline;
+                const monthLabel = !Number.isNaN(startDate.getTime())
+                    ? startDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+                    : "Selected period";
+                summary.textContent = validRange
+                    ? `${monthLabel} period: ${meReportDateDisplay(state.periodStart)} to ${meReportDateDisplay(state.periodEnd)}. Deadline is ${meReportDateDisplay(deadline)} (15th of the following month).`
+                    : "Choose a valid period where start date is before end date.";
+                submit.disabled = !validRange;
+            }
+
+            function openMeReportBulkPeriodPanel() {
+                meReportBulkPeriodDialogState = meReportDefaultBulkPeriod();
+                renderMeReportBulkPeriodPanel();
+            }
+
+            function closeMeReportBulkPeriodPanel() {
+                const panel = document.getElementById("meReportBulkPeriodPanel");
+                if (panel) panel.hidden = true;
+                meReportBulkPeriodDialogState = null;
+            }
+
+            function syncMeReportBulkPeriodInputs() {
+                if (!meReportBulkPeriodDialogState) return;
+                const startValue = String(document.getElementById("meReportBulkPeriodStartInput")?.value || "");
+                const endValue = String(document.getElementById("meReportBulkPeriodEndInput")?.value || "");
+                meReportBulkPeriodDialogState.periodStart = startValue;
+                meReportBulkPeriodDialogState.periodEnd = endValue;
+                meReportBulkPeriodDialogState.deadlineAt = meReportBulkPeriodDeadline(endValue);
+                renderMeReportBulkPeriodPanel();
+            }
+
+            function meReportFlowGuideDefaultState(client = {}) {
+                const defaults = meReportDefaultBulkPeriod();
+                const periodStart = String(client.flowPeriodStart || defaults.periodStart || "");
+                const periodEnd = String(client.flowPeriodEnd || defaults.periodEnd || "");
+                return {
+                    clientId: String(client.id || ""),
+                    step: 1,
+                    periodStart,
+                    periodEnd,
+                    deadlineAt: String(client.flowDeadlineAt || meReportBulkPeriodDeadline(periodEnd) || defaults.deadlineAt || ""),
+                    manager: String(client.internalClientOwner || "").trim(),
+                    needsDlaReview: false,
+                    syncing: false
+                };
+            }
+
+            function meReportFlowGuideStepCount() {
+                return 4;
+            }
+
+            function renderMeReportFlowGuidePanel() {
+                const state = meReportFlowGuideDialogState;
+                const panel = document.getElementById("meReportFlowGuidePanel");
+                const title = document.getElementById("meReportFlowGuideTitle");
+                const summary = document.getElementById("meReportFlowGuideSummary");
+                const status = document.getElementById("meReportFlowGuideStatus");
+                const list = document.getElementById("meReportFlowGuideStepList");
+                const backButton = document.getElementById("meReportFlowGuideBackButton");
+                const nextButton = document.getElementById("meReportFlowGuideNextButton");
+                if (!panel || !title || !summary || !status || !list || !backButton || !nextButton || !state) return;
+                const client = (meReportData.clients || []).find((item) => item.id === state.clientId) || selectedMeReportClient();
+                if (!client) return;
+                panel.hidden = false;
+                const stepCount = meReportFlowGuideStepCount();
+                title.textContent = `${client.clientName || "Client"} · ${meReportFlowName(client)} setup`;
+                summary.textContent = "Interactive startup flow for first-time access. Complete each step, then run Xero sync to begin the monthly flow.";
+                status.textContent = state.syncing
+                    ? "Starting Xero refresh and month-end calculations. This can take a moment."
+                    : `Step ${state.step} of ${stepCount}`;
+                backButton.disabled = state.syncing || state.step <= 1;
+                nextButton.disabled = state.syncing;
+                nextButton.textContent = state.step >= stepCount ? "Start flow sync" : "Next";
+                list.innerHTML = `
+                    <article class="me-report-flow-guide-step ${state.step === 1 ? "is-active" : ""}">
+                        <div class="me-report-flow-guide-step-head"><span class="me-report-flow-guide-step-number">1</span><strong>Confirm bookkeeping period</strong></div>
+                        <small>Choose the monthly bookkeeping period this flow represents. Deadline is auto-set to the 15th of the following month.</small>
+                        ${state.step === 1 ? `
+                            <div class="me-report-flow-guide-inline-grid">
+                                <label class="bank-account-field" for="meReportFlowGuidePeriodStartInput">
+                                    <span class="bank-field-label"><span>Period start</span><small>DD/MM/YYYY</small></span>
+                                    <input id="meReportFlowGuidePeriodStartInput" type="date" value="${escapeHTML(state.periodStart)}" required>
+                                </label>
+                                <label class="bank-account-field" for="meReportFlowGuidePeriodEndInput">
+                                    <span class="bank-field-label"><span>Period end</span><small>DD/MM/YYYY</small></span>
+                                    <input id="meReportFlowGuidePeriodEndInput" type="date" value="${escapeHTML(state.periodEnd)}" required>
+                                </label>
+                            </div>
+                            <small id="meReportFlowGuidePeriodHint">Deadline: ${escapeHTML(meReportDateDisplay(state.deadlineAt) || "--")}</small>
+                        ` : ""}
+                    </article>
+                    <article class="me-report-flow-guide-step ${state.step === 2 ? "is-active" : ""}">
+                        <div class="me-report-flow-guide-step-head"><span class="me-report-flow-guide-step-number">2</span><strong>Confirm client manager</strong></div>
+                        <small>Assign the person responsible for completing this flow before review submission.</small>
+                        ${state.step === 2 ? `
+                            <label class="bank-account-field" for="meReportFlowGuideManagerInput">
+                                <span class="bank-field-label"><span>Client manager</span><small>Required</small></span>
+                                <input id="meReportFlowGuideManagerInput" type="text" value="${escapeHTML(state.manager)}" placeholder="Client manager name">
+                            </label>
+                        ` : ""}
+                    </article>
+                    <article class="me-report-flow-guide-step ${state.step === 3 ? "is-active" : ""}">
+                        <div class="me-report-flow-guide-step-head"><span class="me-report-flow-guide-step-number">3</span><strong>Pre-check workspace scope</strong></div>
+                        <small>Confirm if Director Loan Account setup should be shown immediately after sync.</small>
+                        ${state.step === 3 ? `
+                            <label class="me-report-flow-table-settings">
+                                <input id="meReportFlowGuideDlaSetupInput" type="checkbox" ${state.needsDlaReview ? "checked" : ""}>
+                                Prompt DLA setup after sync
+                            </label>
+                        ` : ""}
+                    </article>
+                    <article class="me-report-flow-guide-step ${state.step === 4 ? "is-active" : ""}">
+                        <div class="me-report-flow-guide-step-head"><span class="me-report-flow-guide-step-number">4</span><strong>Start Xero sync and calculations</strong></div>
+                        <small>Jenius will refresh this Xero contact, recalculate CT/dividends, and open the flow checks workspace.</small>
+                    </article>
+                `;
+                document.getElementById("meReportFlowGuidePeriodStartInput")?.addEventListener("change", (event) => {
+                    meReportFlowGuideDialogState.periodStart = String(event.target.value || "");
+                    renderMeReportFlowGuidePanel();
+                });
+                document.getElementById("meReportFlowGuidePeriodEndInput")?.addEventListener("change", (event) => {
+                    const value = String(event.target.value || "");
+                    meReportFlowGuideDialogState.periodEnd = value;
+                    meReportFlowGuideDialogState.deadlineAt = meReportBulkPeriodDeadline(value);
+                    renderMeReportFlowGuidePanel();
+                });
+                document.getElementById("meReportFlowGuideManagerInput")?.addEventListener("input", (event) => {
+                    meReportFlowGuideDialogState.manager = String(event.target.value || "");
+                });
+                document.getElementById("meReportFlowGuideDlaSetupInput")?.addEventListener("change", (event) => {
+                    meReportFlowGuideDialogState.needsDlaReview = Boolean(event.target.checked);
+                });
+            }
+
+            function openMeReportFlowGuidePanel(client = {}, force = false) {
+                if (!client?.id) return;
+                const saved = meReportSavedViewState(client.id);
+                const completed = Boolean(saved?.flowGuideCompleted);
+                if (!force && (meReportFlowStatus(client) !== "not_started" || completed)) return;
+                meReportFlowGuideDialogState = meReportFlowGuideDefaultState(client);
+                renderMeReportFlowGuidePanel();
+            }
+
+            function closeMeReportFlowGuidePanel() {
+                const panel = document.getElementById("meReportFlowGuidePanel");
+                if (panel) panel.hidden = true;
+                meReportFlowGuideDialogState = null;
+            }
+
+            function meReportFlowGuideStepValid() {
+                const state = meReportFlowGuideDialogState;
+                if (!state) return false;
+                if (state.step === 1) {
+                    const startDate = new Date(state.periodStart);
+                    const endDate = new Date(state.periodEnd);
+                    return !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && startDate <= endDate;
+                }
+                if (state.step === 2) return String(state.manager || "").trim().length > 0;
+                return true;
+            }
+
+            async function confirmMeReportFlowGuideStep(event) {
+                if (event) event.preventDefault();
+                const state = meReportFlowGuideDialogState;
+                if (!state) return;
+                const client = (meReportData.clients || []).find((item) => item.id === state.clientId) || selectedMeReportClient();
+                if (!client) return;
+                const stepCount = meReportFlowGuideStepCount();
+                if (!meReportFlowGuideStepValid()) {
+                    showToast("Please complete this step before continuing", "error");
+                    return;
+                }
+                if (state.step < stepCount) {
+                    meReportFlowGuideDialogState.step += 1;
+                    renderMeReportFlowGuidePanel();
+                    return;
+                }
+                meReportFlowGuideDialogState.syncing = true;
+                renderMeReportFlowGuidePanel();
+                const payload = {
+                    internalClientOwner: String(state.manager || "").trim(),
+                    flowPeriodStart: String(state.periodStart || ""),
+                    flowPeriodEnd: String(state.periodEnd || ""),
+                    flowDeadlineAt: String(state.deadlineAt || meReportBulkPeriodDeadline(state.periodEnd)),
+                    flowGuideCompletedAt: new Date().toISOString(),
+                    flowStatus: meReportFlowStatus(client) === "not_started" ? "draft" : meReportFlowStatus(client)
+                };
+                try {
+                    await updateMeReportClientPreferences(client.id, payload, "");
+                    const existingState = meReportSavedViewState(client.id) || {};
+                    meReportViewStateByClient[client.id] = {
+                        ...existingState,
+                        flowGuideCompleted: true
+                    };
+                    persistState();
+                    closeMeReportFlowGuidePanel();
+                    if (state.needsDlaReview) openMeReportDlaSetupPanel(client.id);
+                    await runSelectedMeReportSync(client.id);
+                } catch (error) {
+                    closeMeReportFlowGuidePanel();
+                    showToast(error?.message || "Unable to start this flow", "error");
+                }
+            }
+
+            function previousMeReportFlowGuideStep() {
+                if (!meReportFlowGuideDialogState || meReportFlowGuideDialogState.syncing) return;
+                if (meReportFlowGuideDialogState.step <= 1) return;
+                meReportFlowGuideDialogState.step -= 1;
+                renderMeReportFlowGuidePanel();
             }
 
             function meReportTabHint(client, key) {
@@ -46762,14 +47823,14 @@
                 } catch (error) {
                     console.warn("Unable to calculate ME Report tab hint", error);
                 }
-                if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Upload overview report";
-                if (key === "submission-history") return `${meReportClientSubmissions(client).length} uploaded`;
+                if (key === "overview") return client.lastCalculatedAt ? `Last calculated ${formatDate(client.lastCalculatedAt)}` : "Open client flow";
+                if (key === "report-insights") return `${meReportOpenReviewCount(client)} review check${meReportOpenReviewCount(client) === 1 ? "" : "s"}`;
                 if (key === "tax") return formatCurrency(summary.estimatedCorporationTax || 0);
                 if (key === "dividends") return formatCurrency(summary.dividendCapacity || 0);
                 if (key === "dla") return `${String(summary.dlaStatus || "amber").toUpperCase()} · ${formatCurrency(summary.dlaBalance || 0)}`;
                 if (key === "alerts") return `${meReportOpenReviewCount(client)} open`;
-                if (key === "mappings") return `${(Array.isArray(client.mappings) ? client.mappings : []).length} accounts`;
-                if (key === "reports") return `${meReportClientReports(client).length} generated`;
+                if (key === "activity-log") return `${meReportFlowActivityRows(client).length} event${meReportFlowActivityRows(client).length === 1 ? "" : "s"}`;
+                if (key === "flow-settings") return `${meReportFlowChecklistRows(client).filter((row) => row.enabled).length} checks enabled`;
                 return "";
             }
 
@@ -46793,7 +47854,7 @@
                 ["fixed-assets", "Fixed assets"]
             ];
             const meReportSubmissionTabKeys = new Set(meReportSubmissionTabs.map(([key]) => key));
-            const meReportWorkspaceTabKeys = new Set(["overview", "submission-history", "report-insights", "tax", "dividends", "dla", "alerts", "mappings", "reports"]);
+            const meReportWorkspaceTabKeys = new Set(["overview", "report-insights", "tax", "dividends", "dla", "alerts", "activity-log", "flow-settings"]);
 
             function meReportSavedViewState(clientId = "") {
                 if (!clientId) return null;
@@ -46803,7 +47864,9 @@
 
             function meReportPersistViewStateForClient(clientId = "") {
                 if (!clientId) return;
+                const existing = meReportSavedViewState(clientId) || {};
                 meReportViewStateByClient[clientId] = {
+                    ...existing,
                     workspaceTab: activeMeReportTab,
                     submissionTab: activeMeReportSubmissionTab,
                     plSearch: meReportProfitLossSearchTerm,
@@ -48738,6 +49801,215 @@
                 `;
             }
 
+            function meReportRowsFromAny(items) {
+                if (Array.isArray(items)) return items.filter((item) => item && typeof item === "object");
+                if (items && typeof items === "object") return Object.values(items).filter((item) => item && typeof item === "object");
+                return [];
+            }
+
+            function meReportDraftSalesInvoiceRows(summary = {}) {
+                const rows = [
+                    ...meReportRowsFromAny(summary.draftSalesInvoices),
+                    ...meReportRowsFromAny(summary.salesDraftInvoices),
+                    ...meReportRowsFromAny(summary.salesInvoicesDraft),
+                    ...meReportRowsFromAny(summary.salesInvoices),
+                    ...meReportRowsFromAny(summary.invoices)
+                ];
+                const seen = new Set();
+                return rows.filter((row) => {
+                    const status = String(row.status || row.invoiceStatus || "").toLowerCase();
+                    const type = String(row.type || row.invoiceType || "").toLowerCase();
+                    const isDraft = status.includes("draft");
+                    const isSales = !type || type.includes("sales") || type.includes("accrec");
+                    const id = String(row.invoiceId || row.id || row.xeroInvoiceId || row.invoiceNumber || "").trim();
+                    if (!isDraft || !isSales || !id) return false;
+                    if (seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                }).slice(0, 40);
+            }
+
+            function meReportOutstandingPurchaseInvoiceRows(summary = {}) {
+                const rows = [
+                    ...meReportRowsFromAny(summary.outstandingPurchaseInvoices),
+                    ...meReportRowsFromAny(summary.purchaseInvoicesOutstanding),
+                    ...meReportRowsFromAny(summary.purchaseInvoices),
+                    ...meReportRowsFromAny(summary.billsOutstanding)
+                ];
+                const seen = new Set();
+                return rows.filter((row) => {
+                    const type = String(row.type || row.invoiceType || "").toLowerCase();
+                    const status = String(row.status || row.invoiceStatus || "").toLowerCase();
+                    const amountDue = Number(row.amountDue ?? row.outstandingAmount ?? row.balanceDue ?? 0);
+                    const isPurchase = !type || type.includes("purchase") || type.includes("accpay") || type.includes("bill");
+                    const isOutstanding = amountDue > 0 || status.includes("awaiting") || status.includes("authorised") || status.includes("approved");
+                    const id = String(row.invoiceId || row.id || row.xeroInvoiceId || row.invoiceNumber || "").trim();
+                    if (!isPurchase || !isOutstanding || !id) return false;
+                    if (seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                }).slice(0, 60);
+            }
+
+            function meReportDuplicateContactRows(client = {}, summary = {}) {
+                const rows = [];
+                meReportVisibleExceptions(client)
+                    .filter((item) => item?.actionPayload?.type === "duplicate_contact" && item.status === "open")
+                    .forEach((item) => {
+                        const payload = item.actionPayload || {};
+                        rows.push({
+                            source: "exception",
+                            exceptionId: String(item.id || ""),
+                            reason: String(item.detail || item.suggestedAction || payload.reason || "Possible duplicate contact"),
+                            primaryContactId: String(payload.primaryContactId || ""),
+                            duplicateContactId: String(payload.duplicateContactId || ""),
+                            primaryContactName: String(payload.primaryContactName || payload.primaryName || item.primaryContactName || ""),
+                            duplicateContactName: String(payload.duplicateContactName || payload.duplicateName || item.duplicateContactName || "")
+                        });
+                    });
+                [
+                    ...meReportRowsFromAny(summary.duplicateContacts),
+                    ...meReportRowsFromAny(summary.duplicateContactPairs),
+                    ...meReportRowsFromAny(summary.contactDuplicates)
+                ].forEach((row) => {
+                    rows.push({
+                        source: "summary",
+                        exceptionId: "",
+                        reason: String(row.reason || row.detail || "Possible duplicate contact"),
+                        primaryContactId: String(row.primaryContactId || row.primaryId || row.keepContactId || ""),
+                        duplicateContactId: String(row.duplicateContactId || row.secondaryContactId || row.mergeContactId || ""),
+                        primaryContactName: String(row.primaryContactName || row.primaryName || row.keepContactName || ""),
+                        duplicateContactName: String(row.duplicateContactName || row.duplicateName || row.mergeContactName || "")
+                    });
+                });
+                const seen = new Set();
+                return rows.filter((row) => {
+                    const key = [row.exceptionId, row.primaryContactId, row.duplicateContactId, row.primaryContactName, row.duplicateContactName]
+                        .map((item) => String(item || "").trim().toLowerCase())
+                        .join("|");
+                    if (!key.replace(/\|/g, "")) return false;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                }).slice(0, 40);
+            }
+
+            function meReportUnreconciledTransactionRows(summary = {}) {
+                const rows = [
+                    ...meReportRowsFromAny(summary.unreconciledTransactionsList),
+                    ...meReportRowsFromAny(summary.unreconciledTransactionRows),
+                    ...meReportRowsFromAny(summary.unreconciledTransactions),
+                    ...meReportRowsFromAny(summary.bankUnreconciledTransactions)
+                ];
+                const seen = new Set();
+                return rows.filter((row) => {
+                    const status = String(row.status || row.reconciliationStatus || "").toLowerCase();
+                    const unreconciledFlag = row.isUnreconciled === true || row.reconciled === false || status.includes("unreconc");
+                    const id = String(row.transactionId || row.id || row.bankTransactionId || "").trim();
+                    if (!unreconciledFlag || !id) return false;
+                    if (seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                }).slice(0, 80);
+            }
+
+            function meReportDirectorPaidPurchaseSelection(clientId = "") {
+                const key = String(clientId || "");
+                if (!key) return new Set();
+                const existing = meReportDirectorPaidPurchaseSelectionByClientId[key];
+                if (existing instanceof Set) return existing;
+                const next = new Set();
+                meReportDirectorPaidPurchaseSelectionByClientId[key] = next;
+                return next;
+            }
+
+            function renderMeReportXeroFlowActions(client = {}, summary = {}) {
+                const locked = meReportFlowLocked(client);
+                const draftSalesInvoices = meReportDraftSalesInvoiceRows(summary);
+                const duplicateContacts = meReportDuplicateContactRows(client, summary);
+                const outstandingPurchases = meReportOutstandingPurchaseInvoiceRows(summary);
+                const unreconciledTransactions = meReportUnreconciledTransactionRows(summary);
+                const rollingTurnover = meReportRolling12MonthTurnover(summary);
+                const vatThreshold = Number(summary.vatThreshold || 90000);
+                const vatRegistered = meReportVatRegistered(client, summary);
+                const vatExceeded = rollingTurnover > vatThreshold;
+                const purchaseSelection = meReportDirectorPaidPurchaseSelection(client.id);
+                const selectedOutstandingCount = outstandingPurchases.filter((row) => (
+                    purchaseSelection.has(String(row.invoiceId || row.id || row.xeroInvoiceId || row.invoiceNumber || ""))
+                )).length;
+                const actionDisabled = locked ? "disabled" : "";
+                return `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">Xero actions in flow</p>
+                        <h3>Resolve operational issues without leaving Monthly Flows</h3>
+                        <p class="detail-meta">${locked ? "This flow is locked while awaiting review/completed, so Xero write-back actions are disabled." : "These actions write directly to Xero and refresh this flow once complete."}</p>
+                        <div class="bank-flag-list">
+                            <div class="bank-flag-row">
+                                <strong>Draft sales invoices</strong>
+                                <small>${draftSalesInvoices.length.toLocaleString("en-GB")} draft invoice${draftSalesInvoices.length === 1 ? "" : "s"} detected. Delete directly here if they should not be posted.</small>
+                                ${draftSalesInvoices.length ? draftSalesInvoices.slice(0, 6).map((invoice) => {
+                                    const invoiceId = String(invoice.invoiceId || invoice.id || invoice.xeroInvoiceId || invoice.invoiceNumber || "");
+                                    return `<div class="detail-actions">
+                                        <small><strong>${escapeHTML(invoice.invoiceNumber || invoice.reference || invoiceId)}</strong> · ${escapeHTML(invoice.contactName || invoice.customerName || "No contact")} · ${formatCurrency(invoice.total ?? invoice.amount ?? 0)}</small>
+                                        <button class="ghost-button" type="button" data-me-flow-delete-draft-invoice="${escapeHTML(invoiceId)}" ${actionDisabled}>Delete in Xero</button>
+                                    </div>`;
+                                }).join("") : "<small>No draft sales invoices were found in the latest flow data.</small>"}
+                            </div>
+                            <div class="bank-flag-row">
+                                <strong>Duplicate contacts</strong>
+                                <small>${duplicateContacts.length.toLocaleString("en-GB")} potential duplicate contact match${duplicateContacts.length === 1 ? "" : "es"} detected (for example Mcdonald vs McDonald's).</small>
+                                ${duplicateContacts.length ? duplicateContacts.slice(0, 8).map((row) => {
+                                    const label = `${row.primaryContactName || "Contact A"} ↔ ${row.duplicateContactName || "Contact B"}`;
+                                    const hasExceptionId = Boolean(row.exceptionId);
+                                    const hasPairIds = Boolean(row.primaryContactId && row.duplicateContactId);
+                                    return `<div class="detail-actions">
+                                        <small><strong>${escapeHTML(label)}</strong>${row.reason ? ` · ${escapeHTML(row.reason)}` : ""}</small>
+                                        ${hasExceptionId
+                                            ? `<button class="primary-button" type="button" data-me-flow-merge-contact-exception="${escapeHTML(row.exceptionId)}" ${actionDisabled}>Match</button>`
+                                            : `<button class="primary-button" type="button" data-me-flow-merge-contact-pair data-me-flow-primary-contact-id="${escapeHTML(row.primaryContactId)}" data-me-flow-duplicate-contact-id="${escapeHTML(row.duplicateContactId)}" ${(!hasPairIds || locked) ? "disabled" : ""}>Match</button>`
+                                        }
+                                    </div>`;
+                                }).join("") : "<small>No duplicate contact suggestions were found in the latest flow data.</small>"}
+                            </div>
+                            <div class="bank-flag-row">
+                                <strong>Outstanding purchases paid personally</strong>
+                                <small>Select purchase invoices paid personally by the director. Jenius will raise/allocate Xero credit notes to DLA for selected rows.</small>
+                                ${outstandingPurchases.length ? outstandingPurchases.slice(0, 20).map((invoice) => {
+                                    const invoiceId = String(invoice.invoiceId || invoice.id || invoice.xeroInvoiceId || invoice.invoiceNumber || "");
+                                    const checked = purchaseSelection.has(invoiceId);
+                                    return `<label class="detail-actions">
+                                        <span><strong>${escapeHTML(invoice.invoiceNumber || invoice.reference || invoiceId)}</strong> · ${escapeHTML(invoice.contactName || invoice.supplierName || "No supplier")} · ${formatCurrency(invoice.amountDue ?? invoice.outstandingAmount ?? 0)}</span>
+                                        <input type="checkbox" data-me-flow-director-paid-select="${escapeHTML(invoiceId)}" ${checked ? "checked" : ""} ${actionDisabled}>
+                                    </label>`;
+                                }).join("") : "<small>No outstanding purchase invoices were found in this flow.</small>"}
+                                <div class="detail-actions">
+                                    <small>${selectedOutstandingCount.toLocaleString("en-GB")} purchase invoice${selectedOutstandingCount === 1 ? "" : "s"} selected.</small>
+                                    <button class="primary-button" type="button" data-me-flow-mark-paid-personally ${(!selectedOutstandingCount || locked) ? "disabled" : ""}>Mark as paid personally by director</button>
+                                </div>
+                            </div>
+                            <div class="bank-flag-row">
+                                <strong>VAT registration checker</strong>
+                                <small>Rolling 12-month turnover ${formatCurrency(rollingTurnover)} vs threshold ${formatCurrency(vatThreshold)} · status ${vatRegistered ? "VAT registered" : "not VAT registered"}${vatExceeded && !vatRegistered ? " (threshold exceeded)" : ""}.</small>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" type="button" data-me-report-toggle-vat="${vatRegistered ? "false" : "true"}" ${actionDisabled}>${vatRegistered ? "Mark as not VAT registered" : "Mark as VAT registered"}</button>
+                                </div>
+                            </div>
+                            <div class="bank-flag-row">
+                                <strong>Unreconciled transactions</strong>
+                                <small>${unreconciledTransactions.length.toLocaleString("en-GB")} unreconciled transaction row${unreconciledTransactions.length === 1 ? "" : "s"} detected in the latest flow data.</small>
+                                ${unreconciledTransactions.length ? unreconciledTransactions.slice(0, 12).map((transaction) => {
+                                    const transactionId = String(transaction.transactionId || transaction.id || transaction.bankTransactionId || "");
+                                    return `<div class="detail-actions">
+                                        <small><strong>${escapeHTML(transaction.reference || transaction.description || transactionId)}</strong> · ${formatCurrency(transaction.amount ?? transaction.total ?? 0)} · ${escapeHTML(formatDate(transaction.date) || "--")}</small>
+                                        <button class="ghost-button" type="button" data-me-flow-delete-unreconciled="${escapeHTML(transactionId)}" ${actionDisabled}>Delete in Xero</button>
+                                    </div>`;
+                                }).join("") : "<small>No unreconciled transaction rows were found in the latest flow data.</small>"}
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }
+
             function meReportSubmissionDataBasisText(tab = "insights", summary = {}) {
                 const period = meReportPeriodRangeLabel(summary);
                 if (tab === "tax") return `Data basis: Corporation tax from YTD earnings${period ? ` (${period})` : ""}`;
@@ -50289,6 +51561,7 @@
                         panel = `
                         ${renderMeReportReviewerInsightCard(client, summary)}
                         ${renderMeReportQualityTables(client, summary)}
+                        ${renderMeReportXeroFlowActions(client, summary)}
                         ${renderMeReportForecastBars(summary)}
                     `;
                 }
@@ -50314,15 +51587,33 @@
                     ? Number(summary.currentYearEarnings)
                     : Number(summary.yearToDateProfit || summary.accountingProfit || 0) - Number(summary.estimatedCorporationTax || 0);
                 const broughtForwardTradingLoss = meReportBroughtForwardTradingLoss(client, summary);
-                if (tab === "mappings") return renderMeReportMappings(client);
+                const flowStatus = meReportFlowStatus(client);
+                const locked = meReportFlowLocked(client);
+                const periodStart = String(client.flowPeriodStart || "");
+                const periodEnd = String(client.flowPeriodEnd || "");
+                const deadlineAt = String(client.flowDeadlineAt || "");
+                const difficultyScore = meReportDifficultyScore(client);
+                const difficultyLabel = meReportDifficultyLabel(difficultyScore);
+                const periodMeta = periodStart && periodEnd
+                    ? `Period ${meReportDateDisplay(periodStart)} to ${meReportDateDisplay(periodEnd)}${deadlineAt ? ` · deadline ${meReportDateDisplay(deadlineAt)}` : ""}.`
+                    : "Period dates not set.";
+                const flowLifecycleBanner = `
+                    <article class="me-report-insight-card">
+                        <p class="eyebrow">Flow lifecycle</p>
+                        <h3>${escapeHTML(meReportFlowName(client))} · ${escapeHTML(meReportFlowStatusLabel(flowStatus))}</h3>
+                        <p class="detail-meta">${escapeHTML(periodMeta)} Difficulty ${difficultyScore}/10 (${escapeHTML(difficultyLabel)}). ${locked ? "Figures are locked while this flow is awaiting review or completed." : "Figures are editable in draft and bounceback states."}</p>
+                    </article>
+                `;
                 if (tab === "alerts") return renderMeReportExceptions(client);
-                if (tab === "reports") return renderMeReportReports(client);
-                if (tab === "submission-history") return renderMeReportSubmissions(client);
+                if (tab === "activity-log") return renderMeReportFlowActivityLog(client);
+                if (tab === "flow-settings") return renderMeReportFlowSettings(client);
                 if (tab === "report-insights") {
                     const submissions = meReportClientSubmissions(client);
                     const submission = submissions.find((item) => item.id === selectedMeReportSubmissionId) || submissions.find(meReportSubmissionProcessed) || submissions[0];
-                    if (!submission) return renderMeReportSubmissions(client);
-                    return renderMeReportSubmissionInsightPage(client, submission);
+                    if (!submission) {
+                        return `${flowLifecycleBanner}<div class="empty-state"><p class="eyebrow">No source data yet</p><h4>Refresh from Xero to start this flow</h4><p>Once source data is available, this screen will show anomalies, CT estimate, dividends and DLA checks.</p></div>`;
+                    }
+                    return `${flowLifecycleBanner}${renderMeReportSubmissionInsightPage(client, submission)}`;
                 }
                 const metrics = [
                     ["Monthly sales", formatCurrency(summary.monthlySales || 0)],
@@ -50335,6 +51626,7 @@
                 ];
                 if (tab === "tax") {
                     return `
+                        ${flowLifecycleBanner}
                         <div class="jashflow-detail-head"><div><p class="eyebrow">Corporation tax engine</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">Rules-based estimate from accounting profit, mapped add-backs, brought-forward losses and review flags.</p></div><button class="ghost-button" type="button" data-me-report-loss>Edit B/F loss</button></div>
                         <div class="ignition-summary-grid">
                             ${renderMeReportMetric("Accounting profit", formatCurrency(summary.accountingProfit || 0))}
@@ -50363,6 +51655,7 @@
                 }
                 if (tab === "dividends") {
                     return `
+                        ${flowLifecycleBanner}
                         <div class="jashflow-detail-head"><div><p class="eyebrow">Dividend availability</p><h3>${escapeHTML(client.clientName)}</h3><p class="detail-meta">DLA credit should normally be repaid before dividends are considered.</p></div></div>
                         <div class="ignition-summary-grid">
                             ${renderMeReportMetric("Opening reserves", formatCurrency(summary.openingRetainedReserves || 0))}
@@ -50379,9 +51672,10 @@
                     `;
                 }
                 if (tab === "dla") {
-                    return renderMeReportDlaTab(client, summary, { showHead: true });
+                    return `${flowLifecycleBanner}${renderMeReportDlaTab(client, summary, { showHead: true })}`;
                 }
                 return `
+                    ${flowLifecycleBanner}
                     <div class="jashflow-detail-head">
                         <div>
                             <p class="eyebrow">Client detail</p>
@@ -50512,6 +51806,51 @@
                 `;
             }
 
+            function renderMeReportFlowActivityLog(client = {}) {
+                const rows = meReportFlowActivityRows(client);
+                return `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Flow activity log</p>
+                            <h3>${escapeHTML(client.clientName || "Client")} · ${rows.length.toLocaleString("en-GB")} event${rows.length === 1 ? "" : "s"}</h3>
+                            <p class="detail-meta">Workflow trail across submit, review, approval, bounceback and configuration edits.</p>
+                        </div>
+                    </div>
+                    <div class="bank-flag-list">
+                        ${rows.map((row) => `
+                            <div class="bank-flag-row">
+                                <strong>${escapeHTML(row.action || "Flow update")} · ${escapeHTML(formatDateTime(row.at || row.createdAt || new Date().toISOString()))}</strong>
+                                <small>${escapeHTML(row.detail || "No detail captured")}<br>${escapeHTML(row.actor || "System")}</small>
+                            </div>
+                        `).join("") || '<div class="empty-state"><p class="eyebrow">No activity</p><h4>No flow activity logged yet</h4><p>Activity entries are added when this flow is submitted, approved, bounced back or re-opened.</p></div>'}
+                    </div>
+                `;
+            }
+
+            function renderMeReportFlowSettings(client = {}) {
+                const rows = meReportFlowChecklistRows(client);
+                const enabledCount = rows.filter((item) => item.enabled).length;
+                return `
+                    <div class="jashflow-detail-head">
+                        <div>
+                            <p class="eyebrow">Flow settings</p>
+                            <h3>${enabledCount.toLocaleString("en-GB")} required check${enabledCount === 1 ? "" : "s"} enabled</h3>
+                            <p class="detail-meta">Configure what each monthly flow must review before submit-for-review is used.</p>
+                        </div>
+                    </div>
+                    <form class="bank-flag-list" id="meReportFlowSettingsForm">
+                        ${rows.map((item) => `
+                            <label class="bank-flag-row">
+                                <strong>${escapeHTML(item.label)}</strong>
+                                <small>Key: ${escapeHTML(item.key)}</small>
+                                <input type="checkbox" data-me-flow-check="${escapeHTML(item.key)}" ${item.enabled ? "checked" : ""}>
+                            </label>
+                        `).join("")}
+                        <button class="primary-button" type="submit">Save flow settings</button>
+                    </form>
+                `;
+            }
+
             function renderMeReportSubmissionPreview(submission) {
                 if (!submission) return "";
                 const calculation = submission.calculation || {};
@@ -50627,6 +51966,17 @@
 
             function wireMeReportDynamicActions(client) {
                 wireMeReportKeyboardShortcuts();
+                document.querySelectorAll("[data-me-flow-action]").forEach((button) => {
+                    button.addEventListener("click", () => handleMeReportFlowAction(client, button.dataset.meFlowAction || ""));
+                });
+                document.getElementById("meReportFlowSettingsForm")?.addEventListener("submit", async (event) => {
+                    event.preventDefault();
+                    const rows = meReportFlowChecklistRows(client).map((item) => ({
+                        ...item,
+                        enabled: Boolean(document.querySelector(`[data-me-flow-check="${item.key}"]`)?.checked)
+                    }));
+                    await saveMeReportFlowSettings(client, rows);
+                });
                 document.getElementById("meReportSubmissionForm")?.addEventListener("submit", (event) => uploadMeReportSubmission(event, client.id));
                 const submissionInput = document.getElementById("meReportSubmissionFile");
                 const selectedPreviewButton = document.getElementById("previewSelectedMeReportFileButton");
@@ -50663,7 +52013,7 @@
                 });
                 document.querySelectorAll("[data-me-report-back-reports]").forEach((button) => {
                     button.addEventListener("click", () => {
-                        activeMeReportTab = "submission-history";
+                        activeMeReportTab = "report-insights";
                         selectedMeReportSubmissionId = "";
                         meReportPersistViewStateForClient(client.id);
                         renderMeReportScreen();
@@ -50777,6 +52127,36 @@
                 });
                 document.querySelectorAll("[data-me-report-toggle-vat]").forEach((button) => {
                     button.addEventListener("click", () => toggleMeReportVatRegistered(client.id, button.dataset.meReportToggleVat === "true"));
+                });
+                document.querySelectorAll("[data-me-flow-delete-draft-invoice]").forEach((button) => {
+                    button.addEventListener("click", () => deleteMeReportDraftSalesInvoice(client, button.dataset.meFlowDeleteDraftInvoice || ""));
+                });
+                document.querySelectorAll("[data-me-flow-merge-contact-exception]").forEach((button) => {
+                    button.addEventListener("click", () => mergeMeReportContact(button.dataset.meFlowMergeContactException || ""));
+                });
+                document.querySelectorAll("[data-me-flow-merge-contact-pair]").forEach((button) => {
+                    button.addEventListener("click", () => mergeMeReportContactPair(
+                        client,
+                        button.dataset.meFlowPrimaryContactId || "",
+                        button.dataset.meFlowDuplicateContactId || ""
+                    ));
+                });
+                document.querySelectorAll("[data-me-flow-director-paid-select]").forEach((checkbox) => {
+                    checkbox.addEventListener("change", () => {
+                        const invoiceId = String(checkbox.dataset.meFlowDirectorPaidSelect || "");
+                        if (!invoiceId) return;
+                        const selected = meReportDirectorPaidPurchaseSelection(client.id);
+                        if (checkbox.checked) selected.add(invoiceId);
+                        else selected.delete(invoiceId);
+                        meReportDirectorPaidPurchaseSelectionByClientId[String(client.id)] = selected;
+                        renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-flow-mark-paid-personally]").forEach((button) => {
+                    button.addEventListener("click", () => markMeReportPurchasesPaidPersonally(client));
+                });
+                document.querySelectorAll("[data-me-flow-delete-unreconciled]").forEach((button) => {
+                    button.addEventListener("click", () => deleteMeReportUnreconciledTransaction(client, button.dataset.meFlowDeleteUnreconciled || ""));
                 });
                 document.querySelectorAll("[data-me-dla-setup-open]").forEach((button) => {
                     button.addEventListener("click", () => openMeReportDlaSetupPanel(button.dataset.meDlaSetupOpen || client.id));
@@ -50902,8 +52282,9 @@
 
             async function createMeReportClient(event) {
                 event.preventDefault();
+                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
                 const contact = selectedMeReportFormContact();
-                if (!contact) return showToast("Choose a Xero contact before saving this ME Report client", "error");
+                if (!contact) return showToast("Choose a Xero contact before creating this monthly flow", "error");
                 const payload = {
                     xeroContactId: contact.xeroContactId || "",
                     clientName: contact.name || "",
@@ -50911,18 +52292,29 @@
                     bookkeepingFrequency: document.getElementById("meReportFrequencyInput")?.value || "Monthly",
                     reportRecipientEmail: document.getElementById("meReportEmailInput")?.value || "",
                     yearEndMonth: document.getElementById("meReportYearEndMonthInput")?.value || 3,
-                    broughtForwardTradingLoss: document.getElementById("meReportBroughtForwardLossInput")?.value || 0
+                    broughtForwardTradingLoss: document.getElementById("meReportBroughtForwardLossInput")?.value || 0,
+                    flowStatus: "not_started",
+                    flowMonth: new Date().getMonth() + 1,
+                    flowYear: new Date().getFullYear(),
+                    flowChecklist: meReportFlowChecklistRows({}),
+                    flowActivityLog: [{
+                        id: `flow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        at: new Date().toISOString(),
+                        actor: "System",
+                        action: "Flow created",
+                        detail: "Flow workspace created."
+                    }]
                 };
                 try {
                     const response = await requestJSON(api.endpoints.meReportClients, { method: "POST", body: JSON.stringify(payload) });
                     meReportData = normaliseMeReportPayload(response);
                     selectedMeReportClientId = meReportData.clients[0]?.id || selectedMeReportClientId;
                     meReportClientFormOpen = false;
-                    showToast("ME Report client saved", "success");
+                    showToast("Monthly flow saved", "success");
                     renderMeReportScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to save ME Report client", "error");
+                    else showToast(error.message || "Unable to save monthly flow", "error");
                 }
             }
 
@@ -51094,9 +52486,19 @@
             async function updateMeReportClientPreferences(clientId, payload, successMessage) {
                 if (!clientId) return;
                 try {
+                    const currentClient = (meReportData.clients || []).find((item) => item.id === clientId) || selectedMeReportClient();
+                    const nextPayload = { ...(payload || {}) };
+                    if (!Object.prototype.hasOwnProperty.call(nextPayload, "flowActivityLog")) {
+                        const changedKeys = Object.keys(nextPayload).filter((key) => key !== "flowActivityLog");
+                        const detail = changedKeys.length
+                            ? `Updated ${changedKeys.join(", ")}.`
+                            : "Flow details updated.";
+                        const auditRow = meReportFlowAuditEntry("Flow updated", detail, "Client manager");
+                        nextPayload.flowActivityLog = [auditRow, ...meReportFlowActivityRows(currentClient)].slice(0, 400);
+                    }
                     const response = await requestJSON(api.endpoints.meReportClient, {
                         method: "POST",
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(nextPayload)
                     }, { clientId });
                     meReportData = normaliseMeReportPayload(response);
                     selectedMeReportClientId = clientId;
@@ -51106,6 +52508,293 @@
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to update ME Report client preference", "error");
                 }
+            }
+
+            function meReportFlowAuditEntry(action = "", detail = "", actor = "Client manager") {
+                return {
+                    id: `flow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    at: new Date().toISOString(),
+                    action,
+                    detail,
+                    actor
+                };
+            }
+
+            async function updateMeReportFlowStatus(client = {}, status = "", options = {}) {
+                if (!client?.id) return;
+                const nextStatus = String(status || "").toLowerCase();
+                if (!["not_started", "draft", "awaiting_review", "bounceback", "completed"].includes(nextStatus)) return;
+                const existingRows = meReportFlowActivityRows(client);
+                const detail = options.detail || `${meReportFlowName(client)} moved to ${meReportFlowStatusLabel(nextStatus)}.`;
+                const row = meReportFlowAuditEntry(meReportFlowStatusEventLabel(nextStatus), detail, options.actor || "Client manager");
+                await updateMeReportClientPreferences(
+                    client.id,
+                    {
+                        flowStatus: nextStatus,
+                        flowLocked: nextStatus === "awaiting_review" || nextStatus === "completed",
+                        flowActivityLog: [row, ...existingRows].slice(0, 400)
+                    },
+                    options.toast || `Flow moved to ${meReportFlowStatusLabel(nextStatus)}`
+                );
+            }
+
+            async function saveMeReportFlowSettings(client = {}, rows = []) {
+                if (!client?.id) return;
+                const logRow = meReportFlowAuditEntry(
+                    "Flow settings updated",
+                    `${rows.filter((item) => item.enabled).length} checks enabled for ${meReportFlowName(client)}.`,
+                    "Client manager"
+                );
+                await updateMeReportClientPreferences(
+                    client.id,
+                    {
+                        flowChecklist: rows,
+                        flowActivityLog: [logRow, ...meReportFlowActivityRows(client)].slice(0, 400)
+                    },
+                    "Flow settings saved"
+                );
+            }
+
+            async function approveMeReportFlow(client = {}) {
+                if (!client?.id) return;
+                const recipient = client.reportRecipientEmail || client.xeroContactEmail || "";
+                const defaultSubject = `${client.clientName || "Client"} · ${meReportFlowName(client)} approved`;
+                const subject = window.prompt("Email subject", defaultSubject);
+                if (subject === null) return;
+                const body = window.prompt(
+                    "Email message",
+                    `Hi,\n\nYour ${meReportFlowName(client)} has now been reviewed and approved.\n\nKind regards,\nJaccountancy`
+                );
+                if (body === null) return;
+                await updateMeReportFlowStatus(client, "completed", {
+                    toast: "Flow approved and completed",
+                    detail: `${meReportFlowName(client)} approved. Email prepared for ${recipient || "client email not set"} with subject "${subject}".`
+                });
+                showToast("Approval complete. Email draft prepared.", "success");
+            }
+
+            async function confirmMeReportManagerReviewSubmission(event) {
+                if (event) event.preventDefault();
+                const state = meReportReviewReadyDialogState;
+                if (!state?.client?.id) return;
+                if (!state.ready) {
+                    showToast("This flow is not ready for manager review yet", "error");
+                    return;
+                }
+                await updateMeReportFlowStatus(state.client, "awaiting_review", {
+                    toast: "Flow submitted for manager review",
+                    detail: `${meReportFlowName(state.client)} passed ${state.checks.length.toLocaleString("en-GB")} readiness checks and was submitted for manager review.`
+                });
+                closeMeReportReviewReadinessPanel();
+            }
+
+            function downloadMeReportFlowPdf(client = {}) {
+                if (!client?.id) return;
+                if (meReportFlowStatus(client) !== "completed") {
+                    showToast("Only completed flows can be exported as PDF", "error");
+                    return;
+                }
+                const summary = meReportAdjustedSummary(client, meReportBaseSummaryForClient(client));
+                const difficultyScore = meReportDifficultyScore(client);
+                const difficultyLabel = meReportDifficultyLabel(difficultyScore);
+                const createdRow = client.createdAt
+                    ? [{
+                        action: "Flow created",
+                        detail: `${meReportFlowName(client)} workspace created.`,
+                        actor: "System",
+                        at: client.createdAt
+                    }]
+                    : [];
+                const auditRows = [...createdRow, ...meReportFlowActivityRows(client)]
+                    .sort((left, right) => meReportClientTimestamp(left.at || left.createdAt) - meReportClientTimestamp(right.at || right.createdAt));
+                const reportTitle = `${client.clientName || "Client"} · ${meReportFlowName(client)} · Audit Trail`;
+                const popup = window.open("", "_blank", "noopener,noreferrer");
+                if (!popup) {
+                    showToast("Please allow pop-ups to download the flow PDF", "error");
+                    return;
+                }
+                const html = `
+                    <!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                        <meta charset="utf-8">
+                        <title>${escapeHTML(reportTitle)}</title>
+                        <style>
+                            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 26px; color: #1f2f4a; }
+                            h1 { margin: 0 0 6px; font-size: 1.55rem; }
+                            h2 { margin: 24px 0 10px; font-size: 1.08rem; }
+                            p { margin: 0 0 6px; font-size: 0.92rem; }
+                            .meta { color: #516380; }
+                            .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+                            .card { border: 1px solid #d6deea; border-radius: 10px; padding: 10px; background: #f8fbff; }
+                            .card span { display:block; font-size: 0.72rem; color:#6d7f9a; text-transform: uppercase; letter-spacing: 0.06em; }
+                            .card strong { font-size: 1rem; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                            th, td { border: 1px solid #d8e0ed; text-align: left; padding: 8px; font-size: 0.84rem; vertical-align: top; }
+                            th { background: #eef4ff; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.72rem; }
+                            @media print { body { margin: 12mm; } }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>${escapeHTML(reportTitle)}</h1>
+                        <p class="meta">Generated ${escapeHTML(formatDateTime(new Date().toISOString()))}</p>
+                        <p class="meta">Status: ${escapeHTML(meReportFlowStatusLabel(meReportFlowStatus(client)))}</p>
+                        <p class="meta">Difficulty: ${escapeHTML(`${difficultyScore}/10 (${difficultyLabel})`)}</p>
+                        <div class="grid">
+                            <article class="card"><span>CT estimate</span><strong>${escapeHTML(formatCurrency(summary.estimatedCorporationTax || 0))}</strong></article>
+                            <article class="card"><span>Dividend capacity</span><strong>${escapeHTML(formatCurrency(summary.dividendCapacity || 0))}</strong></article>
+                            <article class="card"><span>DLA balance</span><strong>${escapeHTML(formatCurrency(summary.dlaBalance || 0))}</strong></article>
+                        </div>
+                        <h2>Full Audit Trail</h2>
+                        <table>
+                            <thead><tr><th>Date</th><th>Actor</th><th>Action</th><th>What changed</th></tr></thead>
+                            <tbody>
+                                ${(auditRows.length ? auditRows : [{ action: "No activity captured", detail: "No audit activity is available for this flow.", actor: "System", at: new Date().toISOString() }]).map((row) => `
+                                    <tr>
+                                        <td>${escapeHTML(formatDateTime(row.at || row.createdAt || new Date().toISOString()))}</td>
+                                        <td>${escapeHTML(row.actor || "System")}</td>
+                                        <td>${escapeHTML(row.action || "Flow update")}</td>
+                                        <td>${escapeHTML(row.detail || "")}</td>
+                                    </tr>
+                                `).join("")}
+                            </tbody>
+                        </table>
+                    </body>
+                    </html>
+                `;
+                popup.document.open();
+                popup.document.write(html);
+                popup.document.close();
+                popup.focus();
+                window.setTimeout(() => popup.print(), 240);
+            }
+
+            async function handleMeReportFlowAction(client = {}, action = "") {
+                if (!client?.id) return;
+                if (action === "start-guided") {
+                    openMeReportFlowGuidePanel(client, true);
+                    return;
+                }
+                if (action === "refresh") {
+                    await runSelectedMeReportSync(client.id);
+                    return;
+                }
+                if (action === "submit-review") {
+                    openMeReportReviewReadinessPanel(client);
+                    return;
+                }
+                if (action === "approve") {
+                    await approveMeReportFlow(client);
+                    return;
+                }
+                if (action === "bounceback") {
+                    const reason = window.prompt("Bounceback reason", "Please resolve flagged anomalies before re-submission.");
+                    if (reason === null) return;
+                    await updateMeReportFlowStatus(client, "bounceback", {
+                        toast: "Flow bounced back",
+                        detail: `${meReportFlowName(client)} returned for changes. Reason: ${reason}`
+                    });
+                    return;
+                }
+                if (action === "move-draft") {
+                    await updateMeReportFlowStatus(client, "draft", { toast: "Flow moved to draft" });
+                    return;
+                }
+                if (action === "download-pdf") {
+                    downloadMeReportFlowPdf(client);
+                }
+            }
+
+            async function bulkCreateMeReportFlowsFromXero(periodConfig = null) {
+                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
+                const contacts = meReportContactOptions(meReportActiveTenantId());
+                if (!contacts.length) {
+                    showToast("No Xero contacts are available. Connect and sync Xero first.", "error");
+                    return;
+                }
+                const defaults = meReportDefaultBulkPeriod();
+                const selectedPeriod = {
+                    periodStart: String(periodConfig?.periodStart || defaults.periodStart || ""),
+                    periodEnd: String(periodConfig?.periodEnd || defaults.periodEnd || ""),
+                    deadlineAt: String(periodConfig?.deadlineAt || defaults.deadlineAt || "")
+                };
+                const periodStartDate = new Date(selectedPeriod.periodStart);
+                const periodEndDate = new Date(selectedPeriod.periodEnd);
+                if (Number.isNaN(periodStartDate.getTime()) || Number.isNaN(periodEndDate.getTime()) || periodStartDate > periodEndDate) {
+                    showToast("Choose a valid monthly bookkeeping period before creating flows", "error");
+                    return;
+                }
+                const existingContactIds = new Set((meReportData.clients || []).map((item) => String(item.xeroContactId || "")).filter(Boolean));
+                const candidates = contacts.filter((contact) => !existingContactIds.has(String(contact.xeroContactId || "")));
+                if (!candidates.length) {
+                    showToast("All Xero contacts already have flows", "success");
+                    return;
+                }
+                meReportBulkUploading = true;
+                meReportBulkUploadStartedAt = Date.now();
+                meReportBulkUploadExpectedCount = candidates.length;
+                renderMeReportScreen();
+                let created = 0;
+                let failed = 0;
+                try {
+                    for (const contact of candidates) {
+                        const payload = {
+                            xeroContactId: contact.xeroContactId || "",
+                            clientName: contact.name || "",
+                            internalClientOwner: "",
+                            bookkeepingFrequency: "Monthly",
+                            reportRecipientEmail: contact.email || "",
+                            yearEndMonth: 3,
+                            broughtForwardTradingLoss: 0,
+                            flowStatus: "not_started",
+                            flowMonth: periodStartDate.getMonth() + 1,
+                            flowYear: periodStartDate.getFullYear(),
+                            flowPeriodStart: selectedPeriod.periodStart,
+                            flowPeriodEnd: selectedPeriod.periodEnd,
+                            flowDeadlineAt: selectedPeriod.deadlineAt,
+                            flowChecklist: meReportFlowChecklistRows({}),
+                            flowActivityLog: [{
+                                id: `flow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                                at: new Date().toISOString(),
+                                actor: "System",
+                                action: "Flow created",
+                                detail: `Flow workspace created from Xero contact for ${meReportDateDisplay(selectedPeriod.periodStart)} to ${meReportDateDisplay(selectedPeriod.periodEnd)}.`
+                            }]
+                        };
+                        try {
+                            const response = await requestJSON(api.endpoints.meReportClients, { method: "POST", body: JSON.stringify(payload) });
+                            meReportData = normaliseMeReportPayload(response);
+                            created += 1;
+                        } catch (error) {
+                            failed += 1;
+                            console.warn("Unable to create monthly flow for contact", contact, error);
+                        }
+                    }
+                    showToast(`Bulk flow creation complete: ${created} created${failed ? `, ${failed} failed` : ""}`, failed ? "error" : "success");
+                } finally {
+                    meReportBulkUploading = false;
+                    meReportBulkUploadStartedAt = 0;
+                    meReportBulkUploadExpectedCount = 0;
+                    renderMeReportScreen();
+                }
+            }
+
+            async function confirmMeReportBulkPeriod(event) {
+                if (event) event.preventDefault();
+                if (!meReportBulkPeriodDialogState) return;
+                const config = {
+                    periodStart: String(meReportBulkPeriodDialogState.periodStart || ""),
+                    periodEnd: String(meReportBulkPeriodDialogState.periodEnd || ""),
+                    deadlineAt: String(meReportBulkPeriodDialogState.deadlineAt || "")
+                };
+                const startDate = new Date(config.periodStart);
+                const endDate = new Date(config.periodEnd);
+                if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || startDate > endDate) {
+                    showToast("Select a valid period before creating flows", "error");
+                    return;
+                }
+                closeMeReportBulkPeriodPanel();
+                await bulkCreateMeReportFlowsFromXero(config);
             }
 
             function dismissMeReportQualityWarning(clientId, warningKey) {
@@ -51298,7 +52987,7 @@
                 const client = (meReportData.clients || []).find((item) => item.id === clientId);
                 const submissionCount = (client?.submissions || []).length;
                 const reportCount = (client?.reports || []).length;
-                const message = `Delete ${client?.clientName || "this ME Report workspace"}? This removes ${submissionCount.toLocaleString("en-GB")} submission${submissionCount === 1 ? "" : "s"}, ${reportCount.toLocaleString("en-GB")} generated report${reportCount === 1 ? "" : "s"} and saved review history for this client.`;
+                const message = `Delete ${client?.clientName || "this monthly flow workspace"}? This removes ${submissionCount.toLocaleString("en-GB")} submission${submissionCount === 1 ? "" : "s"}, ${reportCount.toLocaleString("en-GB")} generated report${reportCount === 1 ? "" : "s"} and saved review history for this client.`;
                 if (!window.confirm(message)) return;
                 try {
                     const response = await requestJSON(api.endpoints.meReportClient, { method: "DELETE" }, { clientId });
@@ -51308,11 +52997,11 @@
                     meReportWorkspaceOpen = false;
                     activeMeReportTab = "overview";
                     ensureMeReportSelection();
-                    showToast("ME Report workspace deleted", "success");
+                    showToast("Monthly flow workspace deleted", "success");
                     renderMeReportScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to delete ME Report workspace", "error");
+                    else showToast(error.message || "Unable to delete monthly flow workspace", "error");
                 }
             }
 
@@ -51320,19 +53009,19 @@
                 if (!submissionId) return;
                 const client = selectedMeReportClient();
                 const submission = (client?.submissions || []).find((item) => item.id === submissionId);
-                if (!window.confirm(`Delete ${submission?.filename || "this ME Report submission"}? Any review and generated report linked to this upload will also be removed.`)) return;
+                if (!window.confirm(`Delete ${submission?.filename || "this monthly flow source submission"}? Any review and generated report linked to this upload will also be removed.`)) return;
                 try {
                     const response = await requestJSON(api.endpoints.meReportSubmission, { method: "DELETE" }, { submissionId });
                     meReportData = normaliseMeReportPayload(response);
                     selectedMeReportSubmissionId = "";
                     meReportWorkspaceOpen = true;
-                    activeMeReportTab = "submission-history";
+                    activeMeReportTab = "report-insights";
                     ensureMeReportSelection();
-                    showToast("ME Report submission deleted", "success");
+                    showToast("Monthly flow source submission deleted", "success");
                     renderMeReportScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(error.message || "Unable to delete ME Report submission", "error");
+                    else showToast(error.message || "Unable to delete monthly flow source submission", "error");
                 }
             }
 
@@ -51361,13 +53050,13 @@
                     meReportData = normaliseMeReportPayload(response);
                     selectedMeReportClientId = clientId;
                     meReportWorkspaceOpen = true;
-                    activeMeReportTab = "submission-history";
-                    showTopbarNotice("ME Report extraction complete", "Jenius AI processed the uploaded JUK Overview report.", "success");
-                    showToast("ME Report upload processed", "success");
+                    activeMeReportTab = "report-insights";
+                    showTopbarNotice("Monthly Flow extraction complete", "Jenius AI processed the uploaded source report.", "success");
+                    showToast("Monthly flow upload processed", "success");
                     renderMeReportScreen();
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
-                    else showToast(meReportUploadFailureMessage(error, "Unable to process ME Report upload"), "error");
+                    else showToast(meReportUploadFailureMessage(error, "Unable to process monthly flow upload"), "error");
                 } finally {
                     meReportUploadProcessing = false;
                     meReportUploadStartedAt = 0;
@@ -51976,6 +53665,95 @@
                 } catch (error) {
                     if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
                     else showToast(error.message || "Unable to merge contacts in Xero", "error");
+                }
+            }
+
+            async function mergeMeReportContactPair(client = {}, primaryContactId = "", duplicateContactId = "") {
+                if (!client?.id || !primaryContactId || !duplicateContactId) return;
+                if (!window.confirm("Match and merge these contacts in Xero now?")) return;
+                try {
+                    const response = await requestJSON(
+                        api.endpoints.meReportMergeContacts,
+                        {
+                            method: "POST",
+                            body: JSON.stringify({ primaryContactId, duplicateContactId })
+                        },
+                        { clientId: client.id }
+                    );
+                    if (response?.meReport) meReportData = normaliseMeReportPayload(response);
+                    else await loadMeReport(true);
+                    selectedMeReportClientId = client.id;
+                    showToast("Duplicate contacts matched and merged in Xero", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to merge duplicate contacts", "error");
+                }
+            }
+
+            async function deleteMeReportDraftSalesInvoice(client = {}, invoiceId = "") {
+                if (!client?.id || !invoiceId) return;
+                if (!window.confirm("Delete this draft sales invoice in Xero?")) return;
+                try {
+                    const response = await requestJSON(
+                        api.endpoints.meReportDeleteDraftSalesInvoice,
+                        { method: "DELETE" },
+                        { clientId: client.id, invoiceId }
+                    );
+                    if (response?.meReport) meReportData = normaliseMeReportPayload(response);
+                    else await loadMeReport(true);
+                    selectedMeReportClientId = client.id;
+                    showToast("Draft sales invoice deleted in Xero", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete draft sales invoice", "error");
+                }
+            }
+
+            async function markMeReportPurchasesPaidPersonally(client = {}) {
+                if (!client?.id) return;
+                const selected = Array.from(meReportDirectorPaidPurchaseSelection(client.id));
+                if (!selected.length) return showToast("Select outstanding purchase invoices first", "error");
+                if (!window.confirm(`Mark ${selected.length} purchase invoice${selected.length === 1 ? "" : "s"} as paid personally by director?`)) return;
+                try {
+                    const response = await requestJSON(
+                        api.endpoints.meReportMarkPurchasePaidPersonally,
+                        {
+                            method: "POST",
+                            body: JSON.stringify({ invoiceIds: selected })
+                        },
+                        { clientId: client.id }
+                    );
+                    if (response?.meReport) meReportData = normaliseMeReportPayload(response);
+                    else await loadMeReport(true);
+                    meReportDirectorPaidPurchaseSelectionByClientId[String(client.id)] = new Set();
+                    selectedMeReportClientId = client.id;
+                    showToast("Director-paid credit notes posted and allocated in Xero", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to mark purchases as paid personally", "error");
+                }
+            }
+
+            async function deleteMeReportUnreconciledTransaction(client = {}, transactionId = "") {
+                if (!client?.id || !transactionId) return;
+                if (!window.confirm("Delete this unreconciled transaction in Xero?")) return;
+                try {
+                    const response = await requestJSON(
+                        api.endpoints.meReportDeleteUnreconciledTransaction,
+                        { method: "DELETE" },
+                        { clientId: client.id, transactionId }
+                    );
+                    if (response?.meReport) meReportData = normaliseMeReportPayload(response);
+                    else await loadMeReport(true);
+                    selectedMeReportClientId = client.id;
+                    showToast("Unreconciled transaction deleted in Xero", "success");
+                    renderMeReportScreen();
+                } catch (error) {
+                    if (error instanceof AuthRequiredError) markAuthenticationRequired(error.message);
+                    else showToast(error.message || "Unable to delete unreconciled transaction", "error");
                 }
             }
 
@@ -53547,7 +55325,7 @@
                     "supplier-reconciliation": "Supplier Reconciliation",
                     ignition: "Ignition",
                     "ignition-clients": "Ignition Client Register",
-                    "me-report": "ME Report",
+                    "me-report": "Monthly Flows",
                     "sa100-prep": "SA100 Prep",
                     "practice-packs": "Practice Packs"
                 }[view] || "Console";
@@ -53726,9 +55504,9 @@
                         tone: !ignitionKnown ? "warning" : ignitionConnection.connected ? "live" : ignitionConnection.oauthConfigured === false ? "error" : "warning"
                     },
                     {
-                        label: "ME Report",
-                        value: syncRunIsActive(meRun) || isMeReportProcessing ? "Processing" : `${(meReportData.clients || []).length.toLocaleString("en-GB")} clients`,
-                        detail: meReportData.summary?.latestSubmissionAt ? `Latest ${formatDate(meReportData.summary.latestSubmissionAt)}` : "Month-end workspace",
+                        label: "Monthly Flows",
+                        value: syncRunIsActive(meRun) || isMeReportProcessing ? "Processing" : `${(meReportData.clients || []).length.toLocaleString("en-GB")} flows`,
+                        detail: meReportData.summary?.latestSubmissionAt ? `Latest ${formatDate(meReportData.summary.latestSubmissionAt)}` : "Flow workspace",
                         tone: syncRunIsActive(meRun) || isMeReportProcessing ? "warning" : "live"
                     },
                     {
@@ -58388,6 +60166,7 @@
                 const txtHostInput = document.getElementById("domainSettingsTxtHostInput");
                 const txtValueInput = document.getElementById("domainSettingsExpectedTxtInput");
                 const runButton = document.getElementById("domainSettingsRunChecksButton");
+                const settingsRefreshButton = document.getElementById("domainSettingsRefreshStatusButton");
                 const saveButton = document.getElementById("domainSettingsSaveConfigButton");
                 const refreshButton = document.getElementById("systemStatusDomainHealthRefreshButton");
                 const result = domainHealthLastResult;
@@ -58459,6 +60238,10 @@
                 if (runButton) {
                     runButton.disabled = domainHealthLoading;
                     runButton.textContent = domainHealthLoading ? "Checking..." : "Run checks now";
+                }
+                if (settingsRefreshButton) {
+                    settingsRefreshButton.disabled = domainHealthLoading;
+                    settingsRefreshButton.textContent = domainHealthLoading ? "Refreshing..." : "Refresh status";
                 }
                 if (saveButton) saveButton.disabled = domainHealthLoading;
                 if (refreshButton) refreshButton.disabled = domainHealthLoading;
@@ -60410,7 +62193,7 @@
                 });
                 document.getElementById("factoryOpenResetPageButton")?.addEventListener("click", () => openSettingsScreen("factory-reset", "factory"));
                 document.getElementById("settingsUsageRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
-                document.getElementById("domainSettingsSaveConfigButton")?.addEventListener("click", () => {
+                const captureDomainHealthSettingsFromInputs = () => {
                     domainHealthSettings = {
                         domainHost: String(document.getElementById("domainSettingsHostInput")?.value || "").trim(),
                         expectedCname: String(document.getElementById("domainSettingsExpectedCnameInput")?.value || "").trim(),
@@ -60418,17 +62201,18 @@
                         expectedTxt: String(document.getElementById("domainSettingsExpectedTxtInput")?.value || "").trim(),
                     };
                     persistDomainHealthSettings();
+                };
+                document.getElementById("domainSettingsSaveConfigButton")?.addEventListener("click", () => {
+                    captureDomainHealthSettingsFromInputs();
                     renderDomainHealthPanels();
                     showToast("Domain profile saved.", "success");
                 });
                 document.getElementById("domainSettingsRunChecksButton")?.addEventListener("click", async () => {
-                    domainHealthSettings = {
-                        domainHost: String(document.getElementById("domainSettingsHostInput")?.value || "").trim(),
-                        expectedCname: String(document.getElementById("domainSettingsExpectedCnameInput")?.value || "").trim(),
-                        txtHost: String(document.getElementById("domainSettingsTxtHostInput")?.value || "").trim(),
-                        expectedTxt: String(document.getElementById("domainSettingsExpectedTxtInput")?.value || "").trim(),
-                    };
-                    persistDomainHealthSettings();
+                    captureDomainHealthSettingsFromInputs();
+                    await runDomainHealthChecks({ silent: false });
+                });
+                document.getElementById("domainSettingsRefreshStatusButton")?.addEventListener("click", async () => {
+                    captureDomainHealthSettingsFromInputs();
                     await runDomainHealthChecks({ silent: false });
                 });
                 document.getElementById("systemStatusDomainHealthRefreshButton")?.addEventListener("click", () => runDomainHealthChecks({ silent: false }));
@@ -61140,7 +62924,7 @@
                 const refreshMeReportButton = document.getElementById("refreshMeReportButton");
                 if (refreshMeReportButton) refreshMeReportButton.addEventListener("click", () => loadMeReport(true));
                 const bulkUploadMeReportsButton = document.getElementById("bulkUploadMeReportsButton");
-                if (bulkUploadMeReportsButton) bulkUploadMeReportsButton.addEventListener("click", () => document.getElementById("meReportBulkSubmissionFiles")?.click());
+                if (bulkUploadMeReportsButton) bulkUploadMeReportsButton.addEventListener("click", openMeReportBulkPeriodPanel);
                 const bulkSendMeReportsButton = document.getElementById("bulkSendMeReportsButton");
                 if (bulkSendMeReportsButton) bulkSendMeReportsButton.addEventListener("click", bulkSendReadyMeReports);
                 const archiveMeReportWorkspaceButton = document.getElementById("archiveMeReportWorkspaceButton");
@@ -61309,6 +63093,35 @@
                 document.getElementById("closeMeReportLossPanelButton")?.addEventListener("click", closeMeReportLossPanel);
                 document.getElementById("meReportLossPanel")?.addEventListener("click", (event) => {
                     if (event.target.id === "meReportLossPanel") closeMeReportLossPanel();
+                });
+                document.getElementById("meReportReviewReadyForm")?.addEventListener("submit", confirmMeReportManagerReviewSubmission);
+                document.getElementById("closeMeReportReviewReadyPanelButton")?.addEventListener("click", closeMeReportReviewReadinessPanel);
+                document.getElementById("meReportReviewReadyPanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "meReportReviewReadyPanel") closeMeReportReviewReadinessPanel();
+                });
+                document.getElementById("meReportBulkPeriodForm")?.addEventListener("submit", confirmMeReportBulkPeriod);
+                document.getElementById("meReportBulkPeriodStartInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
+                document.getElementById("meReportBulkPeriodEndInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
+                document.getElementById("closeMeReportBulkPeriodPanelButton")?.addEventListener("click", closeMeReportBulkPeriodPanel);
+                document.getElementById("meReportBulkPeriodPanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "meReportBulkPeriodPanel") closeMeReportBulkPeriodPanel();
+                });
+                document.getElementById("meReportFlowGuideForm")?.addEventListener("submit", confirmMeReportFlowGuideStep);
+                document.getElementById("meReportFlowGuideBackButton")?.addEventListener("click", previousMeReportFlowGuideStep);
+                document.getElementById("closeMeReportFlowGuidePanelButton")?.addEventListener("click", closeMeReportFlowGuidePanel);
+                document.getElementById("meReportFlowGuidePanel")?.addEventListener("click", (event) => {
+                    if (event.target.id === "meReportFlowGuidePanel") closeMeReportFlowGuidePanel();
+                });
+                document.addEventListener("keydown", (event) => {
+                    if (event.key === "Escape" && !document.getElementById("meReportReviewReadyPanel")?.hidden) {
+                        closeMeReportReviewReadinessPanel();
+                    }
+                    if (event.key === "Escape" && !document.getElementById("meReportBulkPeriodPanel")?.hidden) {
+                        closeMeReportBulkPeriodPanel();
+                    }
+                    if (event.key === "Escape" && !document.getElementById("meReportFlowGuidePanel")?.hidden) {
+                        closeMeReportFlowGuidePanel();
+                    }
                 });
                 const reloadGmailConnectionButton = document.getElementById("reloadGmailConnectionButton");
                 if (reloadGmailConnectionButton) reloadGmailConnectionButton.addEventListener("click", () => loadMeReport(true));
@@ -65158,6 +66971,7 @@
             async function init() {
                 trimEmbeddedPageChrome();
                 wireAdaptiveTopbarLayout();
+                ensureConfirmationStatementsNavEntry();
                 wireSidebarNavigation();
                 const xeroConnectionReturn = consumeXeroConnectionReturn();
                 const ignitionConnectionReturn = consumeIgnitionConnectionReturn();

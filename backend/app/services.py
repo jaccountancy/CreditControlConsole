@@ -47,6 +47,7 @@ from .usage_metrics import (
 )
 from .xero import (
     ACCOUNTS_URL,
+    BANK_TRANSACTIONS_URL,
     CONTACTS_URL,
     CREDIT_NOTES_URL,
     INVOICES_URL,
@@ -66,6 +67,8 @@ from .xero import (
     normalise_contact,
     normalise_invoice,
     normalise_payment,
+    update_bank_transaction_status,
+    update_invoice_status,
     update_organisation_period_lock_date,
     xero_api_get,
 )
@@ -11703,6 +11706,16 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         }.values()
     )[:40]
     warnings.extend(local_warning_items)
+    payroll_control_warnings = _me_report_trial_balance_payroll_control_warnings_from_accounts(trial_balance_accounts)
+    for item in payroll_control_warnings:
+        account_label = " ".join(
+            part
+            for part in [str(item.get("accountCode") or "").strip(), str(item.get("accountName") or "").strip()]
+            if part
+        ) or "Payroll control account"
+        warnings.append(
+            f"{item.get('category') or 'Payroll payable'} balance is outstanding at £{_money(item.get('outstandingAmount')):,.2f} on {account_label}; review and clear before manager review."
+        )
     warnings = list(dict.fromkeys(warnings))
     stored_trial_balance_accounts = [
         {
@@ -11796,6 +11809,7 @@ def _build_me_report_pdf_summary(extracted: dict, client: dict) -> dict:
         },
         "chartOfAccountsIssues": chart_issues,
         "duplicateTransactionRisks": duplicate_risks,
+        "payrollControlWarnings": payroll_control_warnings,
         "trialBalanceAccounts": stored_trial_balance_accounts,
         "dataQualityIssueCount": len(chart_issues) + len(duplicate_risks),
         "commentary": (
@@ -12082,6 +12096,102 @@ def _report_amount(lines: list[dict], keywords: tuple[str, ...], fallback: Decim
             if amounts:
                 return _money(amounts[-1])
     return fallback
+
+
+def _me_report_trial_balance_payroll_control_warnings_from_accounts(trial_balance_accounts: list[dict]) -> list[dict]:
+    warnings: list[dict] = []
+    if not isinstance(trial_balance_accounts, list):
+        return warnings
+    patterns = [
+        (("wages payable",), "Wages payable"),
+        (("wage payable",), "Wages payable"),
+        (("payroll payable",), "Payroll payable"),
+        (("pension payable",), "Pension payable"),
+    ]
+    seen: set[str] = set()
+    for account in trial_balance_accounts:
+        if not isinstance(account, dict):
+            continue
+        label = " ".join([
+            str(account.get("accountCode") or "").strip(),
+            str(account.get("accountName") or "").strip(),
+            str(account.get("accountType") or "").strip(),
+        ]).strip()
+        label_lower = label.lower()
+        category = ""
+        for terms, category_label in patterns:
+            if all(term in label_lower for term in terms):
+                category = category_label
+                break
+        if not category:
+            continue
+        amount = _money(account.get("amount"))
+        if amount == Decimal("0.00"):
+            amount = _money(_money(account.get("debitYTD")) - _money(account.get("creditYTD")))
+        outstanding = abs(_money(amount))
+        if outstanding <= Decimal("0.00"):
+            continue
+        key = f"{category}|{str(account.get('accountCode') or '').strip().lower()}|{str(account.get('accountName') or '').strip().lower()}"
+        if key in seen:
+            continue
+        seen.add(key)
+        warnings.append(
+            {
+                "accountCode": str(account.get("accountCode") or "").strip(),
+                "accountName": str(account.get("accountName") or "").strip(),
+                "category": category,
+                "amount": float(_money(amount)),
+                "outstandingAmount": float(outstanding),
+                "source": str(account.get("source") or "").strip(),
+            }
+        )
+    return warnings
+
+
+def _me_report_trial_balance_payroll_control_warnings_from_report_payload(trial_balance_payload: dict) -> list[dict]:
+    lines = _xero_report_lines(trial_balance_payload if isinstance(trial_balance_payload, dict) else {})
+    warnings: list[dict] = []
+    patterns = [
+        (("wages payable",), "Wages payable"),
+        (("wage payable",), "Wages payable"),
+        (("payroll payable",), "Payroll payable"),
+        (("pension payable",), "Pension payable"),
+    ]
+    seen: set[str] = set()
+    for line in lines:
+        label = str(line.get("label") or "").strip()
+        label_lower = label.lower()
+        if not label_lower or label_lower in {"total", "totals"}:
+            continue
+        category = ""
+        for terms, category_label in patterns:
+            if all(term in label_lower for term in terms):
+                category = category_label
+                break
+        if not category:
+            continue
+        amounts = [item for item in (line.get("amounts") or []) if isinstance(item, Decimal)]
+        if not amounts:
+            continue
+        amount = _money(amounts[-1])
+        outstanding = abs(_money(amount))
+        if outstanding <= Decimal("0.00"):
+            continue
+        key = f"{category}|{label_lower}"
+        if key in seen:
+            continue
+        seen.add(key)
+        warnings.append(
+            {
+                "accountCode": "",
+                "accountName": label,
+                "category": category,
+                "amount": float(_money(amount)),
+                "outstandingAmount": float(outstanding),
+                "source": "Xero Trial Balance",
+            }
+        )
+    return warnings
 
 
 def _normalise_contact_match_name(value: str) -> str:
@@ -12546,6 +12656,7 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
     fixed_asset_difference = None if asset_register_total is None else _money(asset_register_total - balance_sheet_fixed_assets)
     duplicate_spend_candidates = _find_duplicate_spend_bill_candidates(bank_transactions_payload.get("BankTransactions") or [], outstanding_bills)
     duplicate_contact_candidates = _find_duplicate_contact_candidates(contacts)
+    payroll_control_warnings = _me_report_trial_balance_payroll_control_warnings_from_report_payload(trial_balance_payload)
     open_exceptions = []
     for label, error_message in reports_with_errors:
         if error_message:
@@ -12600,6 +12711,18 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
             "detail": f"{candidate['keepName']} and {candidate['mergeName']} look like the same contact.",
             "suggested_action": "Use Merge contact after staff review to combine the duplicate contact into the selected primary contact in Xero.",
             "action_payload": {"type": "duplicate_contact", **candidate},
+        })
+    for warning in payroll_control_warnings[:20]:
+        label = " ".join(
+            part
+            for part in [str(warning.get("accountCode") or "").strip(), str(warning.get("accountName") or "").strip()]
+            if part
+        ) or "Payroll control account"
+        open_exceptions.append({
+            "severity": "amber",
+            "title": f"{warning.get('category') or 'Payroll payable'} balance outstanding",
+            "detail": f"{label} has an outstanding balance of £{_money(warning.get('outstandingAmount')):,.2f}.",
+            "suggested_action": "Review payroll/pension liability postings and clear or reclassify balances before submitting for manager review.",
         })
     for mapping in low_confidence[:20]:
         open_exceptions.append({
@@ -12671,6 +12794,7 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
         "fixedAssetDifference": float(_money(fixed_asset_difference or 0)),
         "duplicateSpendBillCount": len(duplicate_spend_candidates),
         "duplicateContactCount": len(duplicate_contact_candidates),
+        "payrollControlWarnings": payroll_control_warnings,
         "mappingReviewCount": len(low_confidence),
         "exceptionCount": len(open_exceptions),
         "trafficLight": traffic_light,
@@ -12686,6 +12810,10 @@ async def run_me_report_sync(user: dict, sync_run_id: str) -> dict:
             f"{'above' if vat_threshold_exceeded else 'below'} the £{vat_threshold:,.0f} VAT threshold. "
             f"The director loan account is {'in credit' if dla_balance >= 0 else 'overdrawn'}, and DLA repayment should be considered before dividends where credit is available."
         ),
+        "warnings": [
+            f"{item.get('category') or 'Payroll payable'} balance outstanding: £{_money(item.get('outstandingAmount')):,.2f} in {str(item.get('accountName') or item.get('accountCode') or 'payroll control account')}."
+            for item in payroll_control_warnings
+        ],
     }
     raw_payload = {
         "accounts": accounts,
@@ -12902,6 +13030,235 @@ async def merge_me_report_duplicate_contact(user: dict, exception_id: str) -> di
             )
         connection.commit()
     record_audit_event("me_report_exception", exception_id, "me_report.contact_merged", action_payload, user["id"])
+    return me_report_payload(user)
+
+
+def _me_report_xero_invoice(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+    invoices = payload.get("Invoices") or payload.get("invoices") or []
+    if isinstance(invoices, list) and invoices:
+        first = invoices[0]
+        return first if isinstance(first, dict) else {}
+    invoice = payload.get("Invoice") or payload.get("invoice")
+    return invoice if isinstance(invoice, dict) else {}
+
+
+def _me_report_xero_bank_transaction(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+    rows = payload.get("BankTransactions") or payload.get("bankTransactions") or []
+    if isinstance(rows, list) and rows:
+        first = rows[0]
+        return first if isinstance(first, dict) else {}
+    row = payload.get("BankTransaction") or payload.get("bankTransaction")
+    return row if isinstance(row, dict) else {}
+
+
+def _me_report_director_loan_account_code(client_id: str) -> str:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT account_code, account_name, category, suggested_treatment, confidence
+                FROM me_report_account_mappings
+                WHERE client_id = %s
+                ORDER BY confidence DESC NULLS LAST, updated_at DESC
+                """,
+                (client_id,),
+            )
+            rows = cursor.fetchall()
+        connection.commit()
+    for row in rows:
+        category = str(row.get("category") or "").lower()
+        treatment = str(row.get("suggested_treatment") or "").lower()
+        account_name = str(row.get("account_name") or "").lower()
+        if (
+            "director loan" in category
+            or "director loan" in treatment
+            or ("director" in account_name and "loan" in account_name)
+        ):
+            code = str(row.get("account_code") or "").strip()
+            if code:
+                return code
+    return ""
+
+
+async def merge_me_report_contacts(user: dict, client_id: str, payload: dict) -> dict:
+    client = _me_report_client_row(user, client_id)
+    keep_contact_id = str(
+        payload.get("primaryContactId")
+        or payload.get("keepContactId")
+        or payload.get("keep_contact_id")
+        or ""
+    ).strip()
+    merge_contact_id = str(
+        payload.get("duplicateContactId")
+        or payload.get("mergeContactId")
+        or payload.get("merge_contact_id")
+        or ""
+    ).strip()
+    if not keep_contact_id or not merge_contact_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both primaryContactId and duplicateContactId are required.")
+    if keep_contact_id == merge_contact_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Primary and duplicate contact ids cannot be the same.")
+    connection_row = _me_report_xero_connection(user, client)
+    await merge_contacts(connection_row, keep_contact_id, merge_contact_id)
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.contacts_merged",
+        {"primaryContactId": keep_contact_id, "duplicateContactId": merge_contact_id},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+async def delete_me_report_draft_sales_invoice(user: dict, client_id: str, invoice_id: str) -> dict:
+    client = _me_report_client_row(user, client_id)
+    invoice_id = str(invoice_id or "").strip()
+    if not invoice_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice id is required.")
+    connection_row = _me_report_xero_connection(user, client)
+    invoice_payload = await xero_api_get(connection_row, f"{INVOICES_URL}/{invoice_id}")
+    invoice = _me_report_xero_invoice(invoice_payload)
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found in Xero.")
+    invoice_type = str(invoice.get("Type") or "").upper()
+    invoice_status = str(invoice.get("Status") or "").upper()
+    if invoice_type != "ACCREC":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only sales invoices can be deleted from this action.")
+    if invoice_status != "DRAFT":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only draft sales invoices can be deleted.")
+    await update_invoice_status(connection_row, invoice_id, "DELETED")
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.sales_invoice_deleted",
+        {"invoiceId": invoice_id, "invoiceNumber": str(invoice.get("InvoiceNumber") or "")},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+async def mark_me_report_purchases_paid_personally(user: dict, client_id: str, payload: dict) -> dict:
+    client = _me_report_client_row(user, client_id)
+    raw_ids = payload.get("invoiceIds") if isinstance(payload, dict) else []
+    invoice_ids = []
+    seen = set()
+    for raw_id in raw_ids if isinstance(raw_ids, list) else []:
+        invoice_id = str(raw_id or "").strip()
+        if invoice_id and invoice_id not in seen:
+            seen.add(invoice_id)
+            invoice_ids.append(invoice_id)
+    if not invoice_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provide at least one purchase invoice id.")
+
+    dla_account_code = _me_report_director_loan_account_code(str(client_id))
+    if not dla_account_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No director loan nominal code is configured for this flow. Confirm a DLA account first.",
+        )
+
+    connection_row = _me_report_xero_connection(user, client)
+    today = utcnow().date().isoformat()
+    processed = []
+    for invoice_id in invoice_ids:
+        invoice_payload = await xero_api_get(connection_row, f"{INVOICES_URL}/{invoice_id}")
+        invoice = _me_report_xero_invoice(invoice_payload)
+        if not invoice:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Purchase invoice {invoice_id} was not found in Xero.")
+        invoice_type = str(invoice.get("Type") or "").upper()
+        invoice_status = str(invoice.get("Status") or "").upper()
+        if invoice_type != "ACCPAY":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invoice {invoice_id} is not a purchase invoice.")
+        if invoice_status in {"PAID", "VOIDED", "DELETED"}:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invoice {invoice_id} is not outstanding.")
+        amount_due = abs(_money(invoice.get("AmountDue") if invoice.get("AmountDue") is not None else invoice.get("Total")))
+        if amount_due <= Decimal("0.00"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invoice {invoice_id} has no outstanding amount.")
+        contact = invoice.get("Contact") or {}
+        contact_id = str(contact.get("ContactID") or "").strip()
+        if not contact_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invoice {invoice_id} has no Xero contact id.")
+        invoice_number = str(invoice.get("InvoiceNumber") or invoice_id).strip()
+        currency_code = str(invoice.get("CurrencyCode") or "GBP").strip() or "GBP"
+        credit_note_payload = {
+            "Type": "ACCPAYCREDIT",
+            "Contact": {"ContactID": contact_id},
+            "Date": today,
+            "LineAmountTypes": "NoTax",
+            "Status": "AUTHORISED",
+            "Reference": f"Director paid personally {invoice_number}",
+            "LineItems": [
+                {
+                    "Description": (
+                        f"Director paid personally for purchase invoice {invoice_number}. "
+                        "Raised and allocated via Jenius Monthly Flows."
+                    ),
+                    "Quantity": 1,
+                    "UnitAmount": float(amount_due),
+                    "AccountCode": dla_account_code,
+                    "TaxType": "NONE",
+                }
+            ],
+            "CurrencyCode": currency_code,
+        }
+        credit_note_response = await create_credit_note(connection_row, credit_note_payload)
+        created_credit_note = ((credit_note_response or {}).get("CreditNotes") or [{}])[0]
+        credit_note_id = str(created_credit_note.get("CreditNoteID") or created_credit_note.get("ID") or "").strip()
+        if not credit_note_id:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Xero did not return a credit note id for invoice {invoice_number}.")
+        await allocate_credit_note(
+            connection_row,
+            credit_note_id,
+            {
+                "Invoice": {"InvoiceID": invoice_id},
+                "Amount": float(amount_due),
+                "Date": today,
+            },
+        )
+        processed.append(
+            {
+                "invoiceId": invoice_id,
+                "invoiceNumber": invoice_number,
+                "creditNoteId": credit_note_id,
+                "amount": float(amount_due),
+            }
+        )
+
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.purchases_marked_paid_personally",
+        {"count": len(processed), "invoiceIds": [row["invoiceId"] for row in processed], "dlaAccountCode": dla_account_code},
+        user["id"],
+    )
+    return me_report_payload(user)
+
+
+async def delete_me_report_unreconciled_transaction(user: dict, client_id: str, transaction_id: str) -> dict:
+    client = _me_report_client_row(user, client_id)
+    transaction_id = str(transaction_id or "").strip()
+    if not transaction_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transaction id is required.")
+    connection_row = _me_report_xero_connection(user, client)
+    payload = await xero_api_get(connection_row, f"{BANK_TRANSACTIONS_URL}/{transaction_id}")
+    transaction = _me_report_xero_bank_transaction(payload)
+    if not transaction:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bank transaction not found in Xero.")
+    is_reconciled = bool(transaction.get("IsReconciled"))
+    if is_reconciled:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This bank transaction is already reconciled and cannot be deleted.")
+    await update_bank_transaction_status(connection_row, transaction_id, "DELETED")
+    record_audit_event(
+        "me_report_client",
+        str(client_id),
+        "me_report.unreconciled_transaction_deleted",
+        {"transactionId": transaction_id},
+        user["id"],
+    )
     return me_report_payload(user)
 
 
