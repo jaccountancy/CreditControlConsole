@@ -32,6 +32,7 @@ function normaliseAPI(config) {
             note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
             promise: config.endpoints?.promise || "/api/invoices/:invoiceId/promises",
             status: config.endpoints?.status || "/api/invoices/:invoiceId/status",
+            bulkStatus: config.endpoints?.bulkStatus || "/api/invoices/bulk-status",
             login: config.endpoints?.login || "/auth/xero/start"
         }
     };
@@ -734,9 +735,10 @@ function wireForms() {
         persistState();
         renderAll();
         try {
-            await Promise.allSettled(invoiceIds.map((invoiceId) =>
-                requestJSON(api.endpoints.status, { method: "POST", body: JSON.stringify({ statusValue, note }) }, { invoiceId })
-            ));
+            await requestJSON(
+                api.endpoints.bulkStatus,
+                { method: "POST", body: JSON.stringify({ invoiceIds, statusValue, note }) }
+            );
             await hydrateFromAPI();
             renderAll();
         } catch (error) {

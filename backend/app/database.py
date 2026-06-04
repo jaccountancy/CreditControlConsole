@@ -238,6 +238,7 @@ CREATE TABLE IF NOT EXISTS invoice_status_history (
     changed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS invoice_status_history_invoice_created_idx ON invoice_status_history (invoice_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -246,6 +247,7 @@ CREATE TABLE IF NOT EXISTS notes (
     body TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS notes_invoice_created_idx ON notes (invoice_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS customer_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -268,6 +270,7 @@ CREATE TABLE IF NOT EXISTS payment_promises (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     resolved_at TIMESTAMPTZ
 );
+CREATE INDEX IF NOT EXISTS payment_promises_invoice_created_idx ON payment_promises (invoice_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1377,6 +1380,10 @@ CREATE TABLE IF NOT EXISTS audit_events (
 
 CREATE INDEX IF NOT EXISTS audit_events_entity_idx
 ON audit_events (entity_type, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_events_created_idx
+ON audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS audit_events_user_created_idx
+ON audit_events (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS usage_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

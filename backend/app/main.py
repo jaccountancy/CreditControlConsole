@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
@@ -233,6 +233,27 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 logger = logging.getLogger(__name__)
+BACKGROUND_JOB_MAX_WORKERS = 8
+background_job_executor = ThreadPoolExecutor(
+    max_workers=BACKGROUND_JOB_MAX_WORKERS,
+    thread_name_prefix="panel-bg",
+)
+
+
+def _submit_background_job(name: str, target, *args, **kwargs) -> None:
+    future = background_job_executor.submit(target, *args, **kwargs)
+
+    def _log_background_failure(done_future) -> None:
+        try:
+            done_future.result()
+        except Exception:
+            logger.exception("Background job failed: %s", name)
+
+    future.add_done_callback(_log_background_failure)
+
+
+def _run_async_job(coroutine_factory, *args, **kwargs) -> None:
+    asyncio.run(coroutine_factory(*args, **kwargs))
 
 
 @app.on_event("startup")
@@ -518,7 +539,7 @@ def queue_ignition_sync(user: dict) -> tuple[dict | None, bool]:
     try:
         sync_run, started = request_ignition_sync_run(user)
         if started:
-            threading.Thread(target=run_ignition_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+            _submit_background_job("ignition_sync", run_ignition_sync_job, dict(user), str(sync_run["id"]))
         return sync_run, started
     except Exception:
         logger.exception("Unable to queue Ignition sync")
@@ -633,7 +654,7 @@ def queue_initial_xero_sync(user: dict) -> tuple[dict | None, bool]:
     try:
         sync_run, started = request_sync_run(user)
         if started:
-            threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+            _submit_background_job("initial_xero_sync", run_sync_job, dict(user), str(sync_run["id"]))
         return sync_run, started
     except Exception as exc:
         logger.exception("Unable to queue initial Xero sync after login")
@@ -1052,7 +1073,7 @@ async def api_panel_sync(request: Request, user: dict = Depends(require_panel_us
         sync_options = normalise_sync_options((body or {}).get("syncOptions") or body)
         sync_run, started = request_sync_run(user, sync_options)
         if started:
-            threading.Thread(target=run_sync_job, args=(dict(user), str(sync_run["id"]), sync_options), daemon=True).start()
+            _submit_background_job("xero_sync", run_sync_job, dict(user), str(sync_run["id"]), sync_options)
         return {
             "status": "queued" if started else "running",
             "started": started,
@@ -1522,12 +1543,16 @@ async def api_late_payment_charges_run(request: Request, user: dict = Depends(re
     invoice_ids = payload.get("invoiceIds") or []
     options = {"chargeSelections": payload.get("chargeSelections") or payload.get("charges") or []}
     operation_run = request_operation_run(user, "late_payment_charges", invoice_ids, options)
-    threading.Thread(
-        target=lambda: asyncio.run(
-            run_invoice_operation_job(dict(user), str(operation_run["id"]), "late_payment_charges", invoice_ids, options)
-        ),
-        daemon=True,
-    ).start()
+    _submit_background_job(
+        "late_payment_charges_operation",
+        _run_async_job,
+        run_invoice_operation_job,
+        dict(user),
+        str(operation_run["id"]),
+        "late_payment_charges",
+        invoice_ids,
+        options,
+    )
     return {"status": "queued", "operationRun": serialize_operation_run(operation_run)}
 
 
@@ -1543,12 +1568,15 @@ async def api_write_offs_run(request: Request, user: dict = Depends(require_pane
     payload = await request.json()
     invoice_ids = payload.get("invoiceIds") or []
     operation_run = request_operation_run(user, "bad_debt_write_offs", invoice_ids)
-    threading.Thread(
-        target=lambda: asyncio.run(
-            run_invoice_operation_job(dict(user), str(operation_run["id"]), "bad_debt_write_offs", invoice_ids)
-        ),
-        daemon=True,
-    ).start()
+    _submit_background_job(
+        "bad_debt_write_offs_operation",
+        _run_async_job,
+        run_invoice_operation_job,
+        dict(user),
+        str(operation_run["id"]),
+        "bad_debt_write_offs",
+        invoice_ids,
+    )
     return {"status": "queued", "operationRun": serialize_operation_run(operation_run)}
 
 
@@ -1658,7 +1686,7 @@ def api_ignition(
 def api_ignition_sync(user: dict = Depends(require_panel_user)):
     sync_run, started = request_ignition_sync_run(user)
     if started:
-        threading.Thread(target=run_ignition_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+        _submit_background_job("ignition_sync_api", run_ignition_sync_job, dict(user), str(sync_run["id"]))
     return {"status": sync_run["status"], "started": started, "ignitionSyncRun": serialize_ignition_sync_run(sync_run)}
 
 
@@ -1904,7 +1932,7 @@ def api_connect_me_report_client_xero(client_id: str, user: dict = Depends(requi
 def api_me_report_sync(client_id: str, user: dict = Depends(require_panel_user)):
     sync_run, started = request_me_report_sync_run(user, client_id)
     if started:
-        threading.Thread(target=run_me_report_sync_job, args=(dict(user), str(sync_run["id"])), daemon=True).start()
+        _submit_background_job("me_report_sync", run_me_report_sync_job, dict(user), str(sync_run["id"]))
     return {"status": sync_run["status"], "started": started, "meReportSyncRun": serialize_me_report_sync_run(sync_run)}
 
 

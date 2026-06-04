@@ -15,6 +15,7 @@ import threading
 import time
 import zipfile
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -76,6 +77,22 @@ IGNITION_SYNC_STALE_AFTER = timedelta(minutes=45)
 IGNITION_SYNC_HEARTBEAT_INTERVAL_SECONDS = 20
 ME_REPORT_SUBMISSION_STALE_AFTER = timedelta(hours=2)
 PANEL_PAYMENT_LIMIT = 1000
+PANEL_AUDIT_LIMIT = 30
+PANEL_TIMELINE_LIMIT_PER_INVOICE = 12
+PANEL_CUSTOMER_NOTE_LIMIT_PER_CUSTOMER = 20
+DATABASE_METRICS_CACHE_TTL = timedelta(seconds=30)
+DATABASE_HOT_TABLE_SIZE_BYTES = 80 * 1024 * 1024
+DATABASE_HOT_TABLE_RECORDS = 200000
+DATABASE_QUEUE_WARNING_THRESHOLD = 120
+DATABASE_QUEUE_CRITICAL_THRESHOLD = 350
+DATABASE_FAILED_ACTION_WARNING_THRESHOLD = 15
+DATABASE_FAILED_ACTION_CRITICAL_THRESHOLD = 40
+DATABASE_HEARTBEAT_STALE_WARNING_SECONDS = 180
+DATABASE_HEARTBEAT_STALE_CRITICAL_SECONDS = 420
+DATABASE_ACTIVE_UPLOAD_WARNING_THRESHOLD = 4
+DATABASE_ACTIVE_UPLOAD_CRITICAL_THRESHOLD = 8
+DATABASE_ACTIVE_ME_SYNC_WARNING_THRESHOLD = 2
+DATABASE_ACTIVE_ME_SYNC_CRITICAL_THRESHOLD = 5
 JENIUS_NOTE_SIGNATURE = "By Jenius AI"
 OPENAI_MODEL_FALLBACKS = ("gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini")
 BANK_STATEMENT_CHUNK_MAX_PAGES = 1
@@ -175,6 +192,9 @@ _SYNC_SIGNAL_HANDLERS_INSTALLED = False
 DEVELOPER_LOG_CLEAR_EVENT_TYPE = "developer.logs.cleared"
 _PRACTICE_PACK_RETENTION_LOCK = threading.Lock()
 _PRACTICE_PACK_RETENTION_BY_USER: dict[str, list[dict]] = {}
+_ME_REPORT_BACKGROUND_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="me-report-bg")
+_DATABASE_METRICS_CACHE_LOCK = threading.Lock()
+_DATABASE_METRICS_CACHE_BY_SCOPE: dict[str, dict] = {}
 _PROCESS_BOOT_ID = str(uuid4())
 _PROCESS_STARTED_AT = utcnow()
 _PROCESS_STARTED_MONOTONIC = time.monotonic()
@@ -5336,7 +5356,41 @@ def _metric_int(value) -> int:
         return 0
 
 
+def _metric_size_label(value) -> str:
+    bytes_value = max(0, _metric_int(value))
+    units = ("B", "KB", "MB", "GB", "TB")
+    size = float(bytes_value)
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{bytes_value} B"
+    return f"{size:.1f} {units[unit_index]}"
+
+
+def _seconds_since(moment: datetime | None) -> int:
+    if not isinstance(moment, datetime):
+        return -1
+    return max(0, int((utcnow() - moment).total_seconds()))
+
+
+def _database_hotspot_summary(alerts: list[dict]) -> dict:
+    critical = sum(1 for alert in alerts if str(alert.get("severity") or "").lower() == "critical")
+    warning = sum(1 for alert in alerts if str(alert.get("severity") or "").lower() == "warning")
+    return {"total": len(alerts), "critical": critical, "warning": warning}
+
+
 def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None = None) -> dict:
+    cache_key = f"{tenant_id or '*'}::{user_id or '*'}"
+    now = utcnow()
+    with _DATABASE_METRICS_CACHE_LOCK:
+        cached = _DATABASE_METRICS_CACHE_BY_SCOPE.get(cache_key)
+        if cached:
+            generated_at = cached.get("generated_at")
+            if isinstance(generated_at, datetime) and now - generated_at <= DATABASE_METRICS_CACHE_TTL:
+                return dict(cached.get("payload") or {})
+
     table_names = list(DATABASE_METRIC_TABLES)
     cursor.execute(
         """
@@ -5630,31 +5684,237 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
         ch_connection_status = "completed"
     else:
         ch_connection_status = "connected" if ch_api_configured else "not_configured"
-    return {
-        "generatedAt": _iso(utcnow()),
+    ledger_payload = {
+        "tenants": _metric_int(customer_summary.get("tenants")),
+        "customers": _metric_int(customer_summary.get("customers")),
+        "customersWithBalance": _metric_int(customer_summary.get("customers_with_balance")),
+        "totalDue": _float(customer_summary.get("total_due")),
+        "overdueAmount": _float(customer_summary.get("overdue_amount")),
+        "latestCustomerUpdate": _iso(customer_summary.get("latest_customer_update")),
+        "invoices": _metric_int(invoice_summary.get("invoices")),
+        "outstandingInvoices": _metric_int(invoice_summary.get("outstanding_invoices")),
+        "settledInvoices": _metric_int(invoice_summary.get("settled_invoices")),
+        "outstandingAmount": _float(invoice_summary.get("outstanding_amount")),
+        "invoicedAmount": _float(invoice_summary.get("invoiced_amount")),
+        "latestInvoiceSync": _iso(invoice_summary.get("latest_invoice_sync")),
+        "pendingActions": _metric_int(action_summary.get("pending_actions")),
+        "processingActions": _metric_int(action_summary.get("processing_actions")),
+        "failedActions": _metric_int(action_summary.get("failed_actions")),
+        "completedActions": _metric_int(action_summary.get("completed_actions")),
+    }
+    health_payload = {
+        "environment": settings.app_env,
+        "baseUrlConfigured": bool(settings.base_url),
+        "openAiConfigured": bool(settings.openai_api_key),
+        "openAiModel": settings.openai_model,
+        "xero": {
+            "connected": bool(xero_connection),
+            "tenantName": xero_connection.get("tenant_name") or "",
+            "tenantId": xero_connection.get("tenant_id") or tenant_id or "",
+            "tokenExpiresAt": _iso(xero_connection.get("expires_at")) or "",
+            "lastConnectionUpdate": _iso(xero_connection.get("updated_at") or xero_connection.get("created_at")) or "",
+            "latestSyncStatus": xero_sync.get("status") or "",
+            "latestSyncStep": xero_sync.get("current_step") or "",
+            "latestSyncSummary": xero_sync.get("error_message") or xero_sync.get("summary") or "",
+            "latestSyncCreatedAt": _iso(xero_sync.get("created_at")) or "",
+            "latestSyncHeartbeatAt": _iso(xero_sync.get("heartbeat_at")) or "",
+            "latestSyncCompletedAt": _iso(xero_sync.get("completed_at")) or "",
+            "rateLimitUntil": _iso(xero_sync.get("rate_limit_until")) or "",
+            "retryAfterSeconds": _metric_int(xero_sync.get("retry_after_seconds")),
+            "customersSynced": _metric_int(xero_sync.get("customers_synced")),
+            "invoicesSynced": _metric_int(xero_sync.get("invoices_synced")),
+            "failedCount": _metric_int(xero_sync.get("failed_count")),
+        },
+        "ignition": {
+            "connected": bool(ignition_connection),
+            "status": ignition_connection.get("status") or "not_connected",
+            "practiceName": ignition_connection.get("practice_name") or "",
+            "practiceId": ignition_connection.get("practice_id") or "",
+            "tokenExpiresAt": _iso(ignition_connection.get("expires_at")) or "",
+            "lastSyncAt": _iso(ignition_connection.get("last_sync_at")) or "",
+            "errorMessage": ignition_connection.get("error_message") or "",
+            "latestSyncStatus": ignition_sync.get("status") or "",
+            "latestSyncStep": ignition_sync.get("current_step") or "",
+            "latestSyncSummary": ignition_sync.get("error_message") or ignition_sync.get("summary") or "",
+            "latestSyncCreatedAt": _iso(ignition_sync.get("created_at")) or "",
+            "latestSyncHeartbeatAt": _iso(ignition_sync.get("heartbeat_at")) or "",
+            "latestSyncCompletedAt": _iso(ignition_sync.get("completed_at")) or "",
+            "fetchedCount": _metric_int(ignition_sync.get("fetched_count")),
+            "processedCount": _metric_int(ignition_sync.get("processed_count")),
+            "failedCount": _metric_int(ignition_sync.get("failed_count")),
+            "datasets": [
+                {
+                    "name": row.get("dataset") or "",
+                    "records": _metric_int(row.get("record_count")),
+                    "latestSync": _iso(row.get("latest_sync")) or "",
+                }
+                for row in ignition_dataset_rows
+            ],
+        },
+        "bankStatements": {
+            "activeUploads": _metric_int(bank_upload_summary.get("active_uploads")),
+            "failedUploads": _metric_int(bank_upload_summary.get("failed_uploads")),
+            "completedUploads": _metric_int(bank_upload_summary.get("completed_uploads")),
+            "latestUploadAt": _iso(bank_upload_summary.get("latest_upload_at")) or "",
+            "latestCompletedAt": _iso(bank_upload_summary.get("latest_completed_at")) or "",
+        },
+        "meReport": {
+            "activeSyncs": _metric_int(me_sync_summary.get("active_me_syncs")),
+            "failedSyncs": _metric_int(me_sync_summary.get("failed_me_syncs")),
+            "latestCompletedAt": _iso(me_sync_summary.get("latest_me_completed_at")) or "",
+            "latestHeartbeatAt": _iso(me_sync_summary.get("latest_me_heartbeat_at")) or "",
+        },
+        "jashflow": {
+            "activeLoans": _metric_int(jashflow_summary.get("active_loans")),
+            "totalLoans": _metric_int(jashflow_summary.get("total_loans")),
+            "latestLoanUpdate": _iso(jashflow_summary.get("latest_loan_update")) or "",
+        },
+        "companiesHouse": {
+            "status": ch_connection_status,
+            "environment": str(ch_settings.get("environment") or "sandbox").strip().lower(),
+            "autoSyncEnabled": bool(ch_settings.get("auto_sync_enabled")),
+            "apiConfigured": ch_api_configured,
+            "gatewayConfigured": ch_gateway_configured,
+            "settingsUpdatedAt": _iso(ch_settings.get("updated_at")) or "",
+            "companiesTracked": _metric_int(ch_company_summary.get("companies_tracked")),
+            "dueSoonCount": _metric_int(ch_company_summary.get("due_soon_count")),
+            "latestSyncAt": _iso(ch_company_summary.get("latest_sync_at")) or "",
+            "latestSubmissionStatus": ch_latest_submission.get("status") or "",
+            "latestSubmissionReason": ch_latest_submission.get("rejection_reason") or "",
+            "latestSubmissionAt": _iso(
+                ch_latest_submission.get("submitted_at")
+                or ch_latest_submission.get("completed_at")
+                or ch_latest_submission.get("created_at")
+            ) or "",
+            "activeSubmissions": _metric_int(ch_submission_summary.get("active_submissions")),
+            "failedSubmissions": _metric_int(ch_submission_summary.get("failed_submissions")),
+            "completedSubmissions": _metric_int(ch_submission_summary.get("completed_submissions")),
+        },
+        "gmail": {
+            "status": gmail_status,
+            "configured": gmail_configured,
+            "connected": gmail_connected,
+            "email": gmail_connection.get("gmail_email") or "",
+            "tokenExpiresAt": _iso(gmail_connection.get("token_expires_at")) or "",
+            "lastConnectionUpdate": _iso(gmail_connection.get("updated_at") or gmail_connection.get("created_at")) or "",
+            "meReportProvider": me_report_settings.get("email_provider") or "smtp",
+        },
+        "smtp": {
+            "configured": bool(settings.smtp_host and settings.smtp_from_email),
+            "host": settings.smtp_host or "",
+            "port": settings.smtp_port,
+            "fromEmail": settings.smtp_from_email or "",
+            "fromName": settings.smtp_from_name or "",
+            "useTls": bool(settings.smtp_use_tls),
+        },
+        "sessions": {
+            "activeSessions": _metric_int(session_summary.get("active_sessions")),
+            "latestSeenAt": _iso(session_summary.get("latest_seen_at")) or "",
+        },
+        "audit": {
+            "events": _metric_int(audit_summary.get("log_count")),
+            "latestEventAt": _iso(audit_summary.get("latest_event_at")) or "",
+        },
+    }
+    alerts: list[dict] = []
+    for table in sorted(table_metrics, key=lambda item: (item.get("sizeBytes") or 0), reverse=True)[:5]:
+        table_size = _metric_int(table.get("sizeBytes"))
+        table_records = _metric_int(table.get("records"))
+        if table_size >= DATABASE_HOT_TABLE_SIZE_BYTES or table_records >= DATABASE_HOT_TABLE_RECORDS:
+            severity = "critical" if table_size >= DATABASE_HOT_TABLE_SIZE_BYTES * 2 or table_records >= DATABASE_HOT_TABLE_RECORDS * 2 else "warning"
+            alerts.append(
+                {
+                    "severity": severity,
+                    "source": "database_table",
+                    "title": f"Heavy table: {table.get('label') or table.get('name')}",
+                    "detail": f"{table_records:,} rows · {_metric_size_label(table_size)}",
+                    "recommendation": "Review retention and add archival for historical rows in this table.",
+                }
+            )
+    queue_backlog = _metric_int(ledger_payload.get("pendingActions")) + _metric_int(ledger_payload.get("processingActions"))
+    failed_actions = _metric_int(ledger_payload.get("failedActions"))
+    if queue_backlog >= DATABASE_QUEUE_WARNING_THRESHOLD or failed_actions >= DATABASE_FAILED_ACTION_WARNING_THRESHOLD:
+        severity = (
+            "critical"
+            if queue_backlog >= DATABASE_QUEUE_CRITICAL_THRESHOLD or failed_actions >= DATABASE_FAILED_ACTION_CRITICAL_THRESHOLD
+            else "warning"
+        )
+        alerts.append(
+            {
+                "severity": severity,
+                "source": "xero_outbox",
+                "title": "Xero outbox pressure is high",
+                "detail": (
+                    f"{queue_backlog:,} queued/processing actions · "
+                    f"{failed_actions:,} failed actions"
+                ),
+                "recommendation": "Reduce batch size, retry failed rows, and delay non-urgent sync runs until backlog clears.",
+            }
+        )
+    xero_status = str((xero_sync or {}).get("status") or "").strip().lower()
+    xero_heartbeat_age = _seconds_since((xero_sync or {}).get("heartbeat_at"))
+    if xero_status in ACTIVE_SYNC_STATUSES and xero_heartbeat_age >= DATABASE_HEARTBEAT_STALE_WARNING_SECONDS:
+        alerts.append(
+            {
+                "severity": "critical" if xero_heartbeat_age >= DATABASE_HEARTBEAT_STALE_CRITICAL_SECONDS else "warning",
+                "source": "xero_sync",
+                "title": "Xero sync heartbeat is stale",
+                "detail": f"No heartbeat for {xero_heartbeat_age}s while sync status is {xero_status}.",
+                "recommendation": "Check worker logs for stuck API pagination or rate-limit loops before starting another sync.",
+            }
+        )
+    ignition_status = str((ignition_sync or {}).get("status") or "").strip().lower()
+    ignition_heartbeat_age = _seconds_since((ignition_sync or {}).get("heartbeat_at"))
+    if ignition_status in ACTIVE_SYNC_STATUSES and ignition_heartbeat_age >= DATABASE_HEARTBEAT_STALE_WARNING_SECONDS:
+        alerts.append(
+            {
+                "severity": "critical" if ignition_heartbeat_age >= DATABASE_HEARTBEAT_STALE_CRITICAL_SECONDS else "warning",
+                "source": "ignition_sync",
+                "title": "Ignition sync heartbeat is stale",
+                "detail": f"No heartbeat for {ignition_heartbeat_age}s while sync status is {ignition_status}.",
+                "recommendation": "Pause new Ignition runs and inspect the active job for API throttling or stalled processing.",
+            }
+        )
+    me_active_syncs = _metric_int((me_sync_summary or {}).get("active_me_syncs"))
+    me_failed_syncs = _metric_int((me_sync_summary or {}).get("failed_me_syncs"))
+    if me_active_syncs >= DATABASE_ACTIVE_ME_SYNC_WARNING_THRESHOLD or me_failed_syncs > 0:
+        alerts.append(
+            {
+                "severity": (
+                    "critical"
+                    if me_active_syncs >= DATABASE_ACTIVE_ME_SYNC_CRITICAL_THRESHOLD or me_failed_syncs >= 3
+                    else "warning"
+                ),
+                "source": "me_report",
+                "title": "ME Report sync queue needs attention",
+                "detail": f"{me_active_syncs:,} active syncs · {me_failed_syncs:,} failed syncs",
+                "recommendation": "Run fewer concurrent submissions and resolve failed reports before queueing another bulk run.",
+            }
+        )
+    bank_active_uploads = _metric_int((bank_upload_summary or {}).get("active_uploads"))
+    bank_failed_uploads = _metric_int((bank_upload_summary or {}).get("failed_uploads"))
+    if bank_active_uploads >= DATABASE_ACTIVE_UPLOAD_WARNING_THRESHOLD or bank_failed_uploads > 0:
+        alerts.append(
+            {
+                "severity": (
+                    "critical"
+                    if bank_active_uploads >= DATABASE_ACTIVE_UPLOAD_CRITICAL_THRESHOLD or bank_failed_uploads >= 5
+                    else "warning"
+                ),
+                "source": "bank_statements",
+                "title": "Bank extraction queue is elevated",
+                "detail": f"{bank_active_uploads:,} active uploads · {bank_failed_uploads:,} failed",
+                "recommendation": "Process large PDF uploads in smaller batches and retry failed statements outside peak sync hours.",
+            }
+        )
+    metrics_payload = {
+        "generatedAt": _iso(now),
         "databaseName": database_row.get("database_name") or "",
         "databaseSizeBytes": _metric_int(database_row.get("database_size_bytes")),
         "totalRecords": total_records,
         "visibleTenantId": tenant_id or "",
         "tables": table_metrics,
-        "ledger": {
-            "tenants": _metric_int(customer_summary.get("tenants")),
-            "customers": _metric_int(customer_summary.get("customers")),
-            "customersWithBalance": _metric_int(customer_summary.get("customers_with_balance")),
-            "totalDue": _float(customer_summary.get("total_due")),
-            "overdueAmount": _float(customer_summary.get("overdue_amount")),
-            "latestCustomerUpdate": _iso(customer_summary.get("latest_customer_update")),
-            "invoices": _metric_int(invoice_summary.get("invoices")),
-            "outstandingInvoices": _metric_int(invoice_summary.get("outstanding_invoices")),
-            "settledInvoices": _metric_int(invoice_summary.get("settled_invoices")),
-            "outstandingAmount": _float(invoice_summary.get("outstanding_amount")),
-            "invoicedAmount": _float(invoice_summary.get("invoiced_amount")),
-            "latestInvoiceSync": _iso(invoice_summary.get("latest_invoice_sync")),
-            "pendingActions": _metric_int(action_summary.get("pending_actions")),
-            "processingActions": _metric_int(action_summary.get("processing_actions")),
-            "failedActions": _metric_int(action_summary.get("failed_actions")),
-            "completedActions": _metric_int(action_summary.get("completed_actions")),
-        },
+        "ledger": ledger_payload,
         "tenants": [
             {
                 "tenantId": row.get("tenant_id") or "",
@@ -5667,121 +5927,13 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
             }
             for row in tenant_rows
         ],
-        "health": {
-            "environment": settings.app_env,
-            "baseUrlConfigured": bool(settings.base_url),
-            "openAiConfigured": bool(settings.openai_api_key),
-            "openAiModel": settings.openai_model,
-            "xero": {
-                "connected": bool(xero_connection),
-                "tenantName": xero_connection.get("tenant_name") or "",
-                "tenantId": xero_connection.get("tenant_id") or tenant_id or "",
-                "tokenExpiresAt": _iso(xero_connection.get("expires_at")) or "",
-                "lastConnectionUpdate": _iso(xero_connection.get("updated_at") or xero_connection.get("created_at")) or "",
-                "latestSyncStatus": xero_sync.get("status") or "",
-                "latestSyncStep": xero_sync.get("current_step") or "",
-                "latestSyncSummary": xero_sync.get("error_message") or xero_sync.get("summary") or "",
-                "latestSyncCreatedAt": _iso(xero_sync.get("created_at")) or "",
-                "latestSyncHeartbeatAt": _iso(xero_sync.get("heartbeat_at")) or "",
-                "latestSyncCompletedAt": _iso(xero_sync.get("completed_at")) or "",
-                "rateLimitUntil": _iso(xero_sync.get("rate_limit_until")) or "",
-                "retryAfterSeconds": _metric_int(xero_sync.get("retry_after_seconds")),
-                "customersSynced": _metric_int(xero_sync.get("customers_synced")),
-                "invoicesSynced": _metric_int(xero_sync.get("invoices_synced")),
-                "failedCount": _metric_int(xero_sync.get("failed_count")),
-            },
-            "ignition": {
-                "connected": bool(ignition_connection),
-                "status": ignition_connection.get("status") or "not_connected",
-                "practiceName": ignition_connection.get("practice_name") or "",
-                "practiceId": ignition_connection.get("practice_id") or "",
-                "tokenExpiresAt": _iso(ignition_connection.get("expires_at")) or "",
-                "lastSyncAt": _iso(ignition_connection.get("last_sync_at")) or "",
-                "errorMessage": ignition_connection.get("error_message") or "",
-                "latestSyncStatus": ignition_sync.get("status") or "",
-                "latestSyncStep": ignition_sync.get("current_step") or "",
-                "latestSyncSummary": ignition_sync.get("error_message") or ignition_sync.get("summary") or "",
-                "latestSyncCreatedAt": _iso(ignition_sync.get("created_at")) or "",
-                "latestSyncHeartbeatAt": _iso(ignition_sync.get("heartbeat_at")) or "",
-                "latestSyncCompletedAt": _iso(ignition_sync.get("completed_at")) or "",
-                "fetchedCount": _metric_int(ignition_sync.get("fetched_count")),
-                "processedCount": _metric_int(ignition_sync.get("processed_count")),
-                "failedCount": _metric_int(ignition_sync.get("failed_count")),
-                "datasets": [
-                    {
-                        "name": row.get("dataset") or "",
-                        "records": _metric_int(row.get("record_count")),
-                        "latestSync": _iso(row.get("latest_sync")) or "",
-                    }
-                    for row in ignition_dataset_rows
-                ],
-            },
-            "bankStatements": {
-                "activeUploads": _metric_int(bank_upload_summary.get("active_uploads")),
-                "failedUploads": _metric_int(bank_upload_summary.get("failed_uploads")),
-                "completedUploads": _metric_int(bank_upload_summary.get("completed_uploads")),
-                "latestUploadAt": _iso(bank_upload_summary.get("latest_upload_at")) or "",
-                "latestCompletedAt": _iso(bank_upload_summary.get("latest_completed_at")) or "",
-            },
-            "meReport": {
-                "activeSyncs": _metric_int(me_sync_summary.get("active_me_syncs")),
-                "failedSyncs": _metric_int(me_sync_summary.get("failed_me_syncs")),
-                "latestCompletedAt": _iso(me_sync_summary.get("latest_me_completed_at")) or "",
-                "latestHeartbeatAt": _iso(me_sync_summary.get("latest_me_heartbeat_at")) or "",
-            },
-            "jashflow": {
-                "activeLoans": _metric_int(jashflow_summary.get("active_loans")),
-                "totalLoans": _metric_int(jashflow_summary.get("total_loans")),
-                "latestLoanUpdate": _iso(jashflow_summary.get("latest_loan_update")) or "",
-            },
-            "companiesHouse": {
-                "status": ch_connection_status,
-                "environment": str(ch_settings.get("environment") or "sandbox").strip().lower(),
-                "autoSyncEnabled": bool(ch_settings.get("auto_sync_enabled")),
-                "apiConfigured": ch_api_configured,
-                "gatewayConfigured": ch_gateway_configured,
-                "settingsUpdatedAt": _iso(ch_settings.get("updated_at")) or "",
-                "companiesTracked": _metric_int(ch_company_summary.get("companies_tracked")),
-                "dueSoonCount": _metric_int(ch_company_summary.get("due_soon_count")),
-                "latestSyncAt": _iso(ch_company_summary.get("latest_sync_at")) or "",
-                "latestSubmissionStatus": ch_latest_submission.get("status") or "",
-                "latestSubmissionReason": ch_latest_submission.get("rejection_reason") or "",
-                "latestSubmissionAt": _iso(
-                    ch_latest_submission.get("submitted_at")
-                    or ch_latest_submission.get("completed_at")
-                    or ch_latest_submission.get("created_at")
-                ) or "",
-                "activeSubmissions": _metric_int(ch_submission_summary.get("active_submissions")),
-                "failedSubmissions": _metric_int(ch_submission_summary.get("failed_submissions")),
-                "completedSubmissions": _metric_int(ch_submission_summary.get("completed_submissions")),
-            },
-            "gmail": {
-                "status": gmail_status,
-                "configured": gmail_configured,
-                "connected": gmail_connected,
-                "email": gmail_connection.get("gmail_email") or "",
-                "tokenExpiresAt": _iso(gmail_connection.get("token_expires_at")) or "",
-                "lastConnectionUpdate": _iso(gmail_connection.get("updated_at") or gmail_connection.get("created_at")) or "",
-                "meReportProvider": me_report_settings.get("email_provider") or "smtp",
-            },
-            "smtp": {
-                "configured": bool(settings.smtp_host and settings.smtp_from_email),
-                "host": settings.smtp_host or "",
-                "port": settings.smtp_port,
-                "fromEmail": settings.smtp_from_email or "",
-                "fromName": settings.smtp_from_name or "",
-                "useTls": bool(settings.smtp_use_tls),
-            },
-            "sessions": {
-                "activeSessions": _metric_int(session_summary.get("active_sessions")),
-                "latestSeenAt": _iso(session_summary.get("latest_seen_at")) or "",
-            },
-            "audit": {
-                "events": _metric_int(audit_summary.get("log_count")),
-                "latestEventAt": _iso(audit_summary.get("latest_event_at")) or "",
-            },
-        },
+        "health": health_payload,
+        "hotspots": alerts,
+        "hotspotSummary": _database_hotspot_summary(alerts),
     }
+    with _DATABASE_METRICS_CACHE_LOCK:
+        _DATABASE_METRICS_CACHE_BY_SCOPE[cache_key] = {"generated_at": now, "payload": metrics_payload}
+    return metrics_payload
 
 
 def _database_metrics_unavailable(error: Exception | None = None) -> dict:
@@ -5795,6 +5947,8 @@ def _database_metrics_unavailable(error: Exception | None = None) -> dict:
         "ledger": {},
         "tenants": [],
         "health": {},
+        "hotspots": [],
+        "hotspotSummary": {"total": 0, "critical": 0, "warning": 0},
         "error": str(error or "") or "Database metrics are unavailable.",
     }
 
@@ -5838,25 +5992,48 @@ def panel_payload(user: dict | None = None) -> dict:
                 (tenant_id, tenant_id),
             )
             invoice_rows = cursor.fetchall()
-            cursor.execute(
-                """
-                SELECT *
-                FROM audit_events
-                ORDER BY created_at DESC
-                LIMIT 30
-                """
-            )
+            if user and user.get("id"):
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM audit_events
+                    WHERE user_id = %s OR user_id IS NULL
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (user["id"], PANEL_AUDIT_LIMIT),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT *
+                    FROM audit_events
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (PANEL_AUDIT_LIMIT,),
+                )
             audit_rows = cursor.fetchall()
             cursor.execute(
                 """
-                SELECT customer_notes.*, users.full_name
-                FROM customer_notes
-                JOIN customers ON customers.id = customer_notes.customer_id
-                LEFT JOIN users ON users.id = customer_notes.user_id
-                WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
-                ORDER BY customer_notes.created_at DESC
+                WITH ranked_customer_notes AS (
+                    SELECT customer_notes.*,
+                           users.full_name,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY customer_notes.customer_id
+                               ORDER BY customer_notes.created_at DESC
+                           ) AS note_rank
+                    FROM customer_notes
+                    JOIN customers ON customers.id = customer_notes.customer_id
+                    LEFT JOIN users ON users.id = customer_notes.user_id
+                    WHERE (%s::text IS NULL OR customers.tenant_id = %s::text)
+                )
+                SELECT *
+                FROM ranked_customer_notes
+                WHERE note_rank <= %s
+                ORDER BY created_at DESC
                 """,
-                (tenant_id, tenant_id),
+                (tenant_id, tenant_id, PANEL_CUSTOMER_NOTE_LIMIT_PER_CUSTOMER),
             )
             customer_note_rows = cursor.fetchall()
             invoice_ids = [row["id"] for row in invoice_rows]
@@ -5868,35 +6045,65 @@ def panel_payload(user: dict | None = None) -> dict:
             if invoice_ids:
                 cursor.execute(
                     """
-                    SELECT notes.*, users.full_name
-                    FROM notes
-                    LEFT JOIN users ON users.id = notes.user_id
-                    WHERE notes.invoice_id = ANY(%s)
-                    ORDER BY notes.created_at DESC
+                    WITH ranked_notes AS (
+                        SELECT notes.*,
+                               users.full_name,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY notes.invoice_id
+                                   ORDER BY notes.created_at DESC
+                               ) AS note_rank
+                        FROM notes
+                        LEFT JOIN users ON users.id = notes.user_id
+                        WHERE notes.invoice_id = ANY(%s)
+                    )
+                    SELECT *
+                    FROM ranked_notes
+                    WHERE note_rank <= %s
+                    ORDER BY created_at DESC
                     """,
-                    (invoice_ids,),
+                    (invoice_ids, PANEL_TIMELINE_LIMIT_PER_INVOICE),
                 )
                 note_rows = cursor.fetchall()
                 cursor.execute(
                     """
-                    SELECT payment_promises.*, users.full_name
-                    FROM payment_promises
-                    LEFT JOIN users ON users.id = payment_promises.created_by_user_id
-                    WHERE payment_promises.invoice_id = ANY(%s)
-                    ORDER BY payment_promises.created_at DESC
+                    WITH ranked_promises AS (
+                        SELECT payment_promises.*,
+                               users.full_name,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY payment_promises.invoice_id
+                                   ORDER BY payment_promises.created_at DESC
+                               ) AS promise_rank
+                        FROM payment_promises
+                        LEFT JOIN users ON users.id = payment_promises.created_by_user_id
+                        WHERE payment_promises.invoice_id = ANY(%s)
+                    )
+                    SELECT *
+                    FROM ranked_promises
+                    WHERE promise_rank <= %s
+                    ORDER BY created_at DESC
                     """,
-                    (invoice_ids,),
+                    (invoice_ids, PANEL_TIMELINE_LIMIT_PER_INVOICE),
                 )
                 promise_rows = cursor.fetchall()
                 cursor.execute(
                     """
-                    SELECT invoice_status_history.*, users.full_name
-                    FROM invoice_status_history
-                    LEFT JOIN users ON users.id = invoice_status_history.changed_by_user_id
-                    WHERE invoice_status_history.invoice_id = ANY(%s)
-                    ORDER BY invoice_status_history.created_at DESC
+                    WITH ranked_statuses AS (
+                        SELECT invoice_status_history.*,
+                               users.full_name,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY invoice_status_history.invoice_id
+                                   ORDER BY invoice_status_history.created_at DESC
+                               ) AS status_rank
+                        FROM invoice_status_history
+                        LEFT JOIN users ON users.id = invoice_status_history.changed_by_user_id
+                        WHERE invoice_status_history.invoice_id = ANY(%s)
+                    )
+                    SELECT *
+                    FROM ranked_statuses
+                    WHERE status_rank <= %s
+                    ORDER BY created_at DESC
                     """,
-                    (invoice_ids,),
+                    (invoice_ids, PANEL_TIMELINE_LIMIT_PER_INVOICE),
                 )
                 status_rows = cursor.fetchall()
             cursor.execute(
@@ -7717,18 +7924,24 @@ def _gmail_env_alias_value(*keys: str) -> str:
 def _gmail_client_id_value() -> str:
     settings = get_settings()
     return _gmail_oauth_secret_value(settings.gmail_client_id) or _gmail_env_alias_value(
+        "GMAIL_CLIENT_ID",
         "GMAIL_OAUTH_CLIENT_ID",
+        "GMAIL_CLIENTID",
         "GOOGLE_CLIENT_ID",
         "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_CLIENTID",
     )
 
 
 def _gmail_client_secret_value() -> str:
     settings = get_settings()
     return _gmail_oauth_secret_value(settings.gmail_client_secret) or _gmail_env_alias_value(
+        "GMAIL_CLIENT_SECRET",
         "GMAIL_OAUTH_CLIENT_SECRET",
+        "GMAIL_CLIENTSECRET",
         "GOOGLE_CLIENT_SECRET",
         "GOOGLE_OAUTH_CLIENT_SECRET",
+        "GOOGLE_CLIENTSECRET",
     )
 
 
@@ -7739,9 +7952,13 @@ def _gmail_scopes_value(value: str | None) -> str:
 def gmail_redirect_uri() -> str:
     settings = get_settings()
     redirect_uri = _gmail_oauth_secret_value(settings.gmail_redirect_uri) or _gmail_env_alias_value(
+        "GMAIL_REDIRECT_URI",
+        "GMAIL_REDIRECT_URL",
         "GMAIL_OAUTH_REDIRECT_URI",
         "GOOGLE_REDIRECT_URI",
+        "GOOGLE_REDIRECT_URL",
         "GOOGLE_OAUTH_REDIRECT_URI",
+        "GOOGLE_OAUTH_REDIRECT_URL",
     )
     return redirect_uri or f"{settings.base_url.rstrip('/')}/auth/gmail/callback"
 
@@ -13546,11 +13763,22 @@ def _run_me_report_bulk_submission_job(user: dict, client_id: str, filename: str
 
 
 def _queue_me_report_bulk_submission_job(user: dict, client_id: str, filename: str, content_type: str, content: bytes) -> None:
-    threading.Thread(
-        target=_run_me_report_bulk_submission_job,
-        args=(dict(user), client_id, filename, content_type, content),
-        daemon=True,
-    ).start()
+    future = _ME_REPORT_BACKGROUND_EXECUTOR.submit(
+        _run_me_report_bulk_submission_job,
+        dict(user),
+        client_id,
+        filename,
+        content_type,
+        content,
+    )
+
+    def _log_background_failure(done_future) -> None:
+        try:
+            done_future.result()
+        except Exception:
+            logger.exception("Bulk ME Report background queue execution failed for %s", filename)
+
+    future.add_done_callback(_log_background_failure)
 
 
 async def bulk_upload_me_report_submission_pdfs(

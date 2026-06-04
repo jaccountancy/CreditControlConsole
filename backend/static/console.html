@@ -5694,6 +5694,44 @@
                 gap: 10px;
                 margin-top: 12px;
             }
+            .database-hotspot-list {
+                display: grid;
+                gap: 10px;
+                margin-top: 12px;
+            }
+            .database-hotspot-item {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.72);
+                padding: 12px;
+                display: grid;
+                gap: 6px;
+            }
+            .database-hotspot-item.is-warning {
+                border-color: rgba(255, 159, 47, 0.34);
+                background: rgba(255, 243, 223, 0.72);
+            }
+            .database-hotspot-item.is-critical {
+                border-color: rgba(255, 83, 83, 0.26);
+                background: rgba(255, 231, 231, 0.66);
+            }
+            .database-hotspot-item strong {
+                font-size: 0.94rem;
+                line-height: 1.25;
+            }
+            .database-hotspot-item span {
+                color: var(--muted);
+                font-size: 0.72rem;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+            .database-hotspot-item p {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.81rem;
+                font-weight: 700;
+                line-height: 1.35;
+            }
             .database-metric-card {
                 border: 1px solid var(--line);
                 border-radius: 12px;
@@ -5781,6 +5819,89 @@
             }
             .settings-usage-list .database-metrics-row {
                 grid-template-columns: minmax(0, 1fr) minmax(80px, auto) minmax(84px, auto);
+            }
+            .release-hotspot-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 10px;
+            }
+            .release-hotspot-list > li {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto auto;
+                gap: 12px;
+                align-items: center;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.68);
+                padding: 10px 12px;
+            }
+            .release-hotspot-main {
+                min-width: 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .release-hotspot-name {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .release-topic-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 999px;
+                padding: 3px 10px;
+                font-size: 0.68rem;
+                font-weight: 900;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+                white-space: nowrap;
+                border: 1px solid transparent;
+            }
+            .release-topic-pill--xero {
+                color: #146ad6;
+                background: #e8f1ff;
+                border-color: rgba(20, 106, 214, 0.24);
+            }
+            .release-topic-pill--backend {
+                color: #225e52;
+                background: #e9f7f3;
+                border-color: rgba(34, 94, 82, 0.24);
+            }
+            .release-topic-pill--logic {
+                color: #8a4d00;
+                background: #fff2de;
+                border-color: rgba(138, 77, 0, 0.24);
+            }
+            .release-topic-pill--ignition {
+                color: #7a3fd6;
+                background: #f0e8ff;
+                border-color: rgba(122, 63, 214, 0.24);
+            }
+            .release-topic-pill--renewals {
+                color: #35659e;
+                background: #e9f3ff;
+                border-color: rgba(53, 101, 158, 0.24);
+            }
+            .release-topic-pill--lpc {
+                color: #0f7f61;
+                background: #e4f8f1;
+                border-color: rgba(15, 127, 97, 0.24);
+            }
+            .release-topic-pill--bad-debt {
+                color: #a13b4f;
+                background: #ffeaf0;
+                border-color: rgba(161, 59, 79, 0.24);
+            }
+            .release-topic-pill--console {
+                color: #4c5d7a;
+                background: #edf1f8;
+                border-color: rgba(76, 93, 122, 0.24);
             }
             .database-metrics-heading,
             .database-metrics-row {
@@ -20229,6 +20350,7 @@
                                     </div>
                                     <span class="settings-help" id="databaseMetricsUpdated">Waiting for backend data</span>
                                 </div>
+                                <div class="database-hotspot-list" id="databaseHotspotAlerts"></div>
                                 <div class="system-health-grid" id="systemHealthGrid">
                                     <article class="database-metric-card"><span>System health</span><strong>--</strong><small>Waiting for backend data</small></article>
                                 </div>
@@ -25063,6 +25185,19 @@
                 };
             }
 
+            function shouldTrackAPIActivity(context) {
+                if (!context || typeof context !== "object") return true;
+                const method = String(context.method || "").toUpperCase();
+                if (method !== "GET") return true;
+                const path = String(context.path || "");
+                return !(
+                    path.startsWith("/api/panel/sync/")
+                    || path.startsWith("/api/operations/")
+                    || path.startsWith("/api/me-report/sync/")
+                    || path.startsWith("/api/ignition/sync/")
+                );
+            }
+
             function logAPIActivity(eventType, context, details = {}) {
                 const level = eventType.endsWith("failed") ? "error" : "info";
                 const action = eventType.endsWith("failed")
@@ -25720,10 +25855,11 @@
                     ...fetchOptions
                 } = options || {};
                 const activityContext = requestActivityContext(template, fetchOptions, params);
+                const trackActivity = shouldTrackAPIActivity(activityContext);
                 const startedAt = performance.now();
                 const resolvedEndpoint = endpointURL(template, params);
                 const method = String(fetchOptions.method || "GET").toUpperCase();
-                logAPIActivity("api.started", activityContext);
+                if (trackActivity) logAPIActivity("api.started", activityContext);
                 let response;
                 try {
                     response = await fetch(resolvedEndpoint, {
@@ -25732,10 +25868,12 @@
                         headers: { "Content-Type": "application/json", ...api.headers, ...panelAuthHeaders(), ...(fetchOptions.headers || {}) }
                     });
                 } catch (error) {
-                    logAPIActivity("api.failed", activityContext, {
-                        durationMs: Math.round(performance.now() - startedAt),
-                        error: error?.message || String(error || "Network request failed")
-                    });
+                    if (trackActivity) {
+                        logAPIActivity("api.failed", activityContext, {
+                            durationMs: Math.round(performance.now() - startedAt),
+                            error: error?.message || String(error || "Network request failed")
+                        });
+                    }
                     if (!suppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "Network request failed",
@@ -25758,12 +25896,14 @@
                     const message = typeof detail === "string"
                         ? detail
                         : detail?.message || "Your session has expired. Sign in with Xero again before syncing.";
-                    logAPIActivity("api.failed", activityContext, {
-                        statusCode: response.status,
-                        durationMs: Math.round(performance.now() - startedAt),
-                        error: message,
-                        response: sanitiseActivityValue(payload)
-                    });
+                    if (trackActivity) {
+                        logAPIActivity("api.failed", activityContext, {
+                            statusCode: response.status,
+                            durationMs: Math.round(performance.now() - startedAt),
+                            error: message,
+                            response: sanitiseActivityValue(payload)
+                        });
+                    }
                     if (!suppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: "Authentication required",
@@ -25790,12 +25930,14 @@
                         ? `${messageText} ${diagnostic}`
                         : messageText;
                     const specialisedFailure = companiesHouseBulkSubmissionFailureContext(resolvedEndpoint, response.status, detail || payload);
-                    logAPIActivity("api.failed", activityContext, {
-                        statusCode: response.status,
-                        durationMs: Math.round(performance.now() - startedAt),
-                        error: specialisedFailure?.message || message,
-                        response: sanitiseActivityValue(payload)
-                    });
+                    if (trackActivity) {
+                        logAPIActivity("api.failed", activityContext, {
+                            statusCode: response.status,
+                            durationMs: Math.round(performance.now() - startedAt),
+                            error: specialisedFailure?.message || message,
+                            response: sanitiseActivityValue(payload)
+                        });
+                    }
                     if (!suppressFailurePanel) {
                         openFailureDetailsPanel({
                             title: specialisedFailure?.title || "API request failed",
@@ -25809,12 +25951,14 @@
                     }
                     throw new APIRequestError(specialisedFailure?.message || message, { statusCode: response.status, details: detail || payload });
                 }
-                logAPIActivity("api.completed", activityContext, {
-                    statusCode: response.status,
-                    durationMs: Math.round(performance.now() - startedAt),
-                    responseType: contentType.includes("application/json") ? "json" : "text",
-                    responseSummary: sanitiseActivityValue(payload, 2)
-                });
+                if (trackActivity) {
+                    logAPIActivity("api.completed", activityContext, {
+                        statusCode: response.status,
+                        durationMs: Math.round(performance.now() - startedAt),
+                        responseType: contentType.includes("application/json") ? "json" : "text",
+                        responseSummary: sanitiseActivityValue(payload, 2)
+                    });
+                }
                 return contentType.includes("application/json") ? payload : null;
             }
 
@@ -44757,7 +44901,7 @@
                 }
                 updateIgnitionSyncProgress();
                 window.clearInterval(ignitionSyncProgressTimer);
-                ignitionSyncProgressTimer = window.setInterval(updateIgnitionSyncProgress, 1000);
+                ignitionSyncProgressTimer = window.setInterval(updateIgnitionSyncProgress, 2000);
                 renderChrome();
             }
 
@@ -50958,7 +51102,7 @@
                 }
                 updateMeReportProgress();
                 window.clearInterval(meReportProgressTimer);
-                meReportProgressTimer = window.setInterval(updateMeReportProgress, 1000);
+                meReportProgressTimer = window.setInterval(updateMeReportProgress, 2000);
                 renderChrome();
             }
 
@@ -53647,7 +53791,7 @@
             function startInsightsClock() {
                 updateInsightsLiveGreeting();
                 if (insightsClockTimer) return;
-                insightsClockTimer = window.setInterval(updateInsightsLiveGreeting, 1000);
+                insightsClockTimer = window.setInterval(updateInsightsLiveGreeting, 30000);
             }
 
             function localInsightsPayload(status = "local") {
@@ -57366,6 +57510,7 @@
                 const updated = document.getElementById("databaseMetricsUpdated");
                 const tenantTarget = document.getElementById("databaseTenantMetrics");
                 const tableTarget = document.getElementById("databaseMetricsTables");
+                const hotspotTarget = document.getElementById("databaseHotspotAlerts");
                 const healthGrid = document.getElementById("systemHealthGrid");
                 const healthDetails = document.getElementById("systemHealthDetails");
                 if (updated) {
@@ -57401,6 +57546,25 @@
                         </dl>
                     </article>
                 `;
+                const hotspots = Array.isArray(metrics.hotspots) ? metrics.hotspots : [];
+                const hotspotSummary = metrics.hotspotSummary || {};
+                if (hotspotTarget) {
+                    hotspotTarget.innerHTML = hotspots.length
+                        ? hotspots.map((alert) => {
+                            const severity = String(alert?.severity || "").toLowerCase();
+                            const severityLabel = severity === "critical" ? "Critical" : "Warning";
+                            const severityClass = severity === "critical" ? "is-critical" : "is-warning";
+                            return `
+                                <article class="database-hotspot-item ${severityClass}">
+                                    <span>${escapeHTML(severityLabel)} · ${escapeHTML(String(alert?.source || "system").replace(/_/g, " "))}</span>
+                                    <strong>${escapeHTML(alert?.title || "High system load detected")}</strong>
+                                    <p>${escapeHTML(alert?.detail || "No detail available.")}</p>
+                                    <p>${escapeHTML(alert?.recommendation || "")}</p>
+                                </article>
+                            `;
+                        }).join("")
+                        : '<article class="database-hotspot-item"><span>Load hotspots</span><strong>No current pressure flags</strong><p>The platform is currently operating within expected load thresholds.</p></article>';
+                }
                 if (healthGrid) {
                     const xero = health.xero || {};
                     const ignition = health.ignition || {};
@@ -57416,7 +57580,17 @@
                     const chStatus = companiesHouse.latestSubmissionStatus || companiesHouse.status || "not_configured";
                     const gmailStatus = gmail.status || (gmail.connected ? "connected" : "not_connected");
                     const smtpStatus = smtp.configured ? "configured" : "not_configured";
+                    const hotspotTotal = Number(hotspotSummary.total || hotspots.length || 0);
+                    const hotspotCritical = Number(hotspotSummary.critical || 0);
                     healthGrid.innerHTML = [
+                        healthCard(
+                            "Load hotspots",
+                            hotspotTotal ? `${formatInteger(hotspotTotal)} active` : "Clear",
+                            hotspotTotal
+                                ? `${formatInteger(hotspotCritical)} critical · ${formatInteger(Number(hotspotSummary.warning || 0))} warning`
+                                : "No heavy system flags right now",
+                            hotspotCritical ? "is-error" : hotspotTotal ? "is-warning" : "is-live"
+                        ),
                         healthCard("Environment", statusLabel(health.environment, "Unknown"), openAiReady ? `OpenAI ${health.openAiModel || "configured"}` : "OpenAI not configured", openAiReady ? "is-live" : "is-warning"),
                         healthCard("Xero", statusLabel(xeroStatus), xero.tenantName || xero.latestSyncSummary || "No connected organisation", statusClass(xeroStatus, xero.connected ? "is-live" : "is-error")),
                         healthCard("Ignition", statusLabel(ignitionStatus), ignition.practiceName || ignition.latestSyncSummary || "No active Ignition connection", statusClass(ignitionStatus)),
@@ -57690,7 +57864,7 @@
                     } else if (!hasData) {
                         summary.textContent = "No API usage data recorded yet for this period.";
                     } else {
-                        summary.textContent = `${highUsageRows.length.toLocaleString("en-GB")} hotspot${highUsageRows.length === 1 ? "" : "s"} in the last ${rangeDays.toLocaleString("en-GB")} days. Action buttons turn red when usage is high.`;
+                        summary.textContent = `${highUsageRows.length.toLocaleString("en-GB")} deployed item${highUsageRows.length === 1 ? "" : "s"} with high API usage in the last ${rangeDays.toLocaleString("en-GB")} days.`;
                     }
                 }
                 if (openUsageButton) {
@@ -57702,20 +57876,50 @@
                     target.innerHTML = '<div class="empty-state"><p class="eyebrow">No usage data</p><h4>No API usage hotspots yet</h4><p>Refresh this panel after API activity has been recorded.</p></div>';
                     return;
                 }
+                const resolveReleaseTopic = (row) => {
+                    const lowerName = String(row?.name || "").toLowerCase();
+                    const lowerProvider = String(row?.provider || "").toLowerCase();
+                    const source = `${lowerName} ${lowerProvider}`;
+
+                    if (source.includes("bad debt") || source.includes("bad-debt") || source.includes("bad_debt")) {
+                        return { label: "Bad Debt", tone: "bad-debt" };
+                    }
+                    if (source.includes("late payment") || source.includes("late-charge") || source.includes("late charge") || source.includes("lpc")) {
+                        return { label: "LPC", tone: "lpc" };
+                    }
+                    if (source.includes("renewal") || source.includes("renewals")) {
+                        return { label: "Renewals", tone: "renewals" };
+                    }
+                    if (source.includes("ignition")) {
+                        return { label: "Ignition", tone: "ignition" };
+                    }
+                    if (source.includes("logic") || source.includes("workflow") || source.includes("rules") || source.includes("engine")) {
+                        return { label: "Logic", tone: "logic" };
+                    }
+                    if (source.includes("xero")) {
+                        return { label: "Xero", tone: "xero" };
+                    }
+                    if (source.includes("backend") || source.includes("server") || source.includes("api") || row.kind === "endpoint") {
+                        return { label: "Backend", tone: "backend" };
+                    }
+                    return { label: "Console", tone: "console" };
+                };
+
                 target.innerHTML = `
-                    <ul>
+                    <ul class="release-hotspot-list">
                         ${merged.map((row, index) => {
                             const requests = Number(row.requests || 0);
                             const share = Number(row.share || 0);
-                            const isHigh = requests >= 30 || share >= 0.2;
-                            const isCritical = requests >= 60 || share >= 0.3;
-                            const actionLabel = isCritical ? "Urgent review" : isHigh ? "Review now" : "Review";
+                            const deployedTypeLabel = row.kind === "feature" ? "Deployed feature" : "Deployed API endpoint";
+                            const releaseTopic = resolveReleaseTopic(row);
                             return `
                                 <li>
-                                    <span>${escapeHTML(`#${index + 1} · ${row.kind === "feature" ? "Feature/Page" : "Endpoint"}: ${row.name || "Unknown"}`)}</span>
+                                    <span class="release-hotspot-main">
+                                        <span class="release-topic-pill release-topic-pill--${releaseTopic.tone}">${escapeHTML(releaseTopic.label)}</span>
+                                        <span class="release-hotspot-name">${escapeHTML(`#${index + 1} · ${deployedTypeLabel}: ${row.name || "Unknown"}`)}</span>
+                                    </span>
                                     <strong>${requests.toLocaleString("en-GB")} calls (${(share * 100).toFixed(1)}%)</strong>
                                     <small>${escapeHTML(String(row.provider || "api").toUpperCase())}</small>
-                                    <button class="ghost-button${isHigh ? " danger-button" : ""}" type="button" data-product-release-action="open-usage">${escapeHTML(actionLabel)}</button>
                                 </li>
                             `;
                         }).join("")}
@@ -57870,7 +58074,7 @@
                 }
                 updateOperationProgress();
                 window.clearInterval(operationProgressTimer);
-                operationProgressTimer = window.setInterval(updateOperationProgress, 1000);
+                operationProgressTimer = window.setInterval(updateOperationProgress, 2000);
                 renderChrome();
                 renderLateChargesScreen();
                 renderBadDebtScreen();
@@ -58049,7 +58253,7 @@
                 if (inlineProgressFill) inlineProgressFill.style.width = "0%";
                 updateSyncProgress();
                 window.clearInterval(syncProgressTimer);
-                syncProgressTimer = window.setInterval(updateSyncProgress, 1000);
+                syncProgressTimer = window.setInterval(updateSyncProgress, 2000);
                 renderChrome();
             }
 
@@ -58113,8 +58317,10 @@
 
             async function waitForSyncRun(syncRunId) {
                 let transientPollFailures = 0;
+                let unchangedPolls = 0;
+                let lastProgressSignature = "";
                 while (activeSyncRunId === syncRunId) {
-                    await delay(2500);
+                    await delay(unchangedPolls >= 6 ? 7000 : 4000);
                     let payload;
                     try {
                         payload = await requestJSON(api.endpoints.syncStatus, {}, { syncId: syncRunId });
@@ -58136,6 +58342,15 @@
                     }
                     const syncRun = payload?.syncRun || null;
                     if (syncRun) {
+                        const progressSignature = [
+                            syncRun.status || "",
+                            syncRun.currentStep || "",
+                            syncRun.heartbeatAt || "",
+                            syncRun.processedCount || "",
+                            syncRun.failedCount || "",
+                        ].join("|");
+                        unchangedPolls = progressSignature === lastProgressSignature ? unchangedPolls + 1 : 0;
+                        lastProgressSignature = progressSignature;
                         latestSyncRun = syncRun;
                         updateSyncProgress();
                         renderChrome();
@@ -59009,11 +59224,6 @@
                 });
                 document.getElementById("productReleasesRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
                 document.getElementById("productReleasesOpenUsageButton")?.addEventListener("click", () => openSettingsScreen("usage"));
-                document.getElementById("productReleasesApiHotspots")?.addEventListener("click", (event) => {
-                    const actionButton = event.target.closest?.("[data-product-release-action='open-usage']");
-                    if (!actionButton) return;
-                    openSettingsScreen("usage");
-                });
                 document.getElementById("reloadRenewalSettingsButton")?.addEventListener("click", () => loadIgnition(true));
                 document.getElementById("renewalSettingsUnlockRunSelect")?.addEventListener("change", renderRenewalSettings);
                 document.getElementById("unlockRenewalSettingsButton")?.addEventListener("click", unlockRenewalSettingsBatch);
