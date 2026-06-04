@@ -63469,7 +63469,7 @@
                 const scopedRows = selectedTenantId
                     ? rows.filter((row) => String(row?.tenantId || "").trim() === selectedTenantId)
                     : rows;
-                return scopedRows.filter((row) => Boolean(row?.hasMappedClient) && String(row?.clientId || "").trim());
+                return scopedRows.filter((row) => String(row?.tenantId || "").trim());
             }
 
             function selectedVatReturnEntry(rows = vatReturnQueueRows()) {
@@ -64344,6 +64344,16 @@
                     <article class="key-metric-card"><span>No VAT net total</span><strong>${formatCurrency(noVatNetTotal)}</strong></article>
                     <article class="key-metric-card"><span>Data source</span><strong>${escapeHTML(cache?.source || (isLoading ? "Loading Xero..." : "Pending"))}</strong></article>
                 `;
+
+                if (!String(activeEntry?.clientId || "").trim()) {
+                    exportButton.disabled = true;
+                    transactionsBody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p class="eyebrow">Client mapping required</p><h4>This Xero tenant is not mapped to a client record</h4><p>Map the tenant to a client in your workspace setup to pull VAT transactions for this period.</p></div></td></tr>';
+                    noVatBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No VAT report unavailable</p><h4>Cannot prepare no-VAT follow-up list yet</h4><p>VAT period metadata is loaded, but transactions need a mapped client contact.</p></div></td></tr>';
+                    warningsBody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p class="eyebrow">No warnings</p><h4>VAT warning checks are unavailable</h4><p>Connect this tenant to a mapped client contact to run line-level VAT checks.</p></div></td></tr>';
+                    renderVatAiReviewModal(activeEntry, []);
+                    renderVatClientApprovalModal(activeEntry, []);
+                    return;
+                }
 
                 exportButton.disabled = isLoading || !noVatRows.length;
                 if (exportButton.dataset.vatWired !== "true") {
