@@ -9722,18 +9722,13 @@ async def _extract_me_report_pdf(file_bytes: bytes, filename: str, client: dict)
         },
         "max_output_tokens": 12000,
     }
-    text = _extract_response_text(
-        await _post_openai_responses(
-            request_body,
-            "ME Report PDF extraction",
-            preferred_model=settings.me_report_openai_model or settings.openai_model,
-            timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS,
-        )
+    payload = await _post_openai_responses(
+        request_body,
+        "ME Report PDF extraction",
+        preferred_model=settings.me_report_openai_model or settings.openai_model,
+        timeout_seconds=OPENAI_ME_REPORT_TIMEOUT_SECONDS,
     )
-    try:
-        return json.loads(text) if text else {}
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI returned ME Report extraction that was not valid JSON.") from exc
+    return _load_openai_json_response(payload, "OpenAI returned ME Report extraction that was not valid JSON.")
 
 
 def _me_report_http_exception_detail(exc: Exception) -> str:
@@ -9884,14 +9879,10 @@ async def _extract_me_report_spreadsheet(file_bytes: bytes, filename: str, clien
         if extraction_error is not None:
             raise extraction_error
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OpenAI did not return ME Report spreadsheet extraction output.")
-    text = _extract_response_text(response_payload)
-    try:
-        return json.loads(text) if text else {}
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="OpenAI returned ME Report spreadsheet extraction that was not valid JSON.",
-        ) from exc
+    return _load_openai_json_response(
+        response_payload,
+        "OpenAI returned ME Report spreadsheet extraction that was not valid JSON.",
+    )
 
 
 def _me_report_step_note(label: str, treatment: str, source: str) -> str:
@@ -22369,6 +22360,70 @@ def _extract_response_text(payload: dict) -> str:
             if text:
                 parts.append(str(text))
     return "\n".join(parts).strip()
+
+
+def _extract_json_object_text(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text, flags=re.IGNORECASE)
+    if fence_match:
+        text = fence_match.group(1).strip()
+    if text.startswith("{") and text.endswith("}"):
+        return text
+    start = text.find("{")
+    if start < 0:
+        return ""
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        ch = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == "\"":
+                in_string = False
+            continue
+        if ch == "\"":
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1].strip()
+    return ""
+
+
+def _load_openai_json_response(payload: dict, invalid_json_detail: str) -> dict:
+    text = _extract_response_text(payload)
+    if not text:
+        reason = _openai_incomplete_reason(payload)
+        if reason:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"OpenAI stopped before returning ME Report extraction JSON: {reason}.",
+            )
+        return {}
+    try:
+        return json.loads(text)
+    except ValueError:
+        candidate = _extract_json_object_text(text)
+        if candidate:
+            try:
+                return json.loads(candidate)
+            except ValueError:
+                pass
+        reason = _openai_incomplete_reason(payload)
+        if reason:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"OpenAI stopped before returning valid ME Report extraction JSON: {reason}.",
+            )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=invalid_json_detail)
 
 
 PRACTICE_PACK_SERVICE_GROUP_SCHEMA = {
