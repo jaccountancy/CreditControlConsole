@@ -26182,11 +26182,11 @@
             let meReportShowCompletedFlows = persistedUIState.meReportShowCompletedFlows === true;
             const meReportClientTableDefaultColumns = {
                 client: true,
-                clientId: true,
+                clientId: false,
                 flow: true,
                 deadline: true,
                 manager: true,
-                difficulty: true,
+                difficulty: false,
                 status: true,
                 activity: true,
                 action: true,
@@ -39426,10 +39426,10 @@
                                     <tbody>
                                         ${supplierRows.length ? supplierRows.map((row) => `
                                             <tr data-supplier-recon-open-supplier="${escapeHTML(row.id)}">
-                                                <td><strong>${escapeHTML(row.name || "Unknown supplier")}</strong><small>${escapeHTML(row.address || "No address extracted")}</small></td>
-                                                <td><strong>${escapeHTML(row.email || "No email")}</strong><small>${escapeHTML(row.phone || "No telephone")}</small></td>
-                                                <td><strong>${escapeHTML(row.bankName || "No bank name")}</strong><small>${escapeHTML([row.bankAccountNumber, row.bankSortCode, row.bankIban, row.bankSwiftBic].filter(Boolean).join(" · ") || "No bank details extracted")}</small></td>
-                                                <td>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "—")}<small>Open supplier</small></td>
+                                                <td><strong>${escapeHTML(row.name || "Unknown supplier")}</strong></td>
+                                                <td><strong>${escapeHTML(row.email || "No email")}</strong></td>
+                                                <td><strong>${escapeHTML(row.bankName || "No bank name")}</strong></td>
+                                                <td>${escapeHTML(row.statementDate ? formatDate(row.statementDate) : "—")}</td>
                                                 <td><button class="ghost-button danger-button" type="button" data-supplier-recon-delete-supplier="${escapeHTML(row.id)}">Delete supplier</button></td>
                                             </tr>
                                         `).join("") : '<tr><td colspan="5">No supplier records extracted yet for this workspace.</td></tr>'}
@@ -39521,9 +39521,9 @@
                                     ${historyRows.length ? historyRows.map((row) => `
                                         <tr>
                                             <td><strong>${escapeHTML(row.submittedAt ? formatDateTime(row.submittedAt) : "—")}</strong><small>Submitted</small><small>${escapeHTML(row.completedAt ? `Completed ${formatDateTime(row.completedAt)}` : "Processing")}</small></td>
-                                            <td><strong>${escapeHTML(row.supplierDisplayName || "Unknown supplier")}</strong><small>${escapeHTML(row.supplierContactId || "")}</small>${resolveSupplierIdForSubmission(row) ? `<small><button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Open supplier</button></small>` : ""}</td>
+                                            <td><strong>${escapeHTML(row.supplierDisplayName || "Unknown supplier")}</strong>${resolveSupplierIdForSubmission(row) ? `<small><button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Review Supplier Statement</button></small>` : ""}</td>
                                             <td>${String(row.status || "").toLowerCase() === "processed" && resolveSupplierIdForSubmission(row)
-                                                ? `<button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Open supplier</button><small>${escapeHTML(row.filename || "Statement")}</small>`
+                                                ? `<button class="ghost-button" type="button" data-supplier-recon-history-supplier="${escapeHTML(resolveSupplierIdForSubmission(row))}">Review Supplier Statement</button><small>${escapeHTML(row.filename || "Statement")}</small>`
                                                 : `${escapeHTML(row.filename || "Statement")}<small>Available after processing</small>`}</td>
                                             <td><span class="supplier-recon-status ${supplierReconciliationSubmissionStatusClass(row.status)}">${escapeHTML(supplierReconciliationSubmissionStatusLabel(row.status))}</span>${row.errorMessage ? `<small>${escapeHTML(row.errorMessage)}</small>` : ""}</td>
                                             <td>${Number(row.missingCount || 0).toLocaleString("en-GB")}</td>
