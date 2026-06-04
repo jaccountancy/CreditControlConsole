@@ -21907,7 +21907,6 @@
                                     <p class="eyebrow">Late payment charge queue</p>
                                     <h3>Review and post eligible charges</h3>
                                 </div>
-                                <button class="ghost-button" id="lpcRefreshDataButton" type="button">Refresh Data</button>
                             </div>
                             <div class="late-charge-bulk-toolbar">
                                 <label class="search-wrap late-charge-search">
@@ -21928,7 +21927,7 @@
                                     Bulk charge
                                     <select id="bulkLateChargeAmountSelect"></select>
                                 </label>
-                                <button class="ghost-button" id="applyBulkLateChargeButton" type="button">Apply to selected</button>
+                                <button class="ghost-button" id="lpcRefreshDataButton" type="button">Refresh Data</button>
                             </div>
                             <p class="late-charge-summary" id="lateChargesSummary">No eligible invoices loaded.</p>
                             <div class="late-charge-list" id="lateChargesList"></div>
@@ -29988,13 +29987,6 @@
                         selectAllEligibleLatePaymentCharges();
                         return;
                     }
-                    const lateChargeApplyBulk = event.target.closest?.("#applyBulkLateChargeButton");
-                    if (lateChargeApplyBulk) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        applyBulkLatePaymentChargeAmount();
-                        return;
-                    }
                     const lateChargeRaise = event.target.closest?.("#raiseLateChargesButton");
                     if (lateChargeRaise) {
                         event.preventDefault();
@@ -32388,7 +32380,6 @@
                 selectedLateChargeInvoiceIds = new Set([...selectedLateChargeInvoiceIds].filter((invoiceId) => validIds.has(invoiceId)));
                 latePaymentChargeBaseAmounts = new Map([...latePaymentChargeBaseAmounts].filter(([invoiceId]) => validIds.has(invoiceId)));
                 const eligibleCount = stats.visibleEligibleCount;
-                const selectedCount = selectedLateChargeInvoiceIds.size;
                 renderLpcTopbarSummary();
                 const filterLabel = lateChargeFilterLabels[lateChargeFilter] || lateChargeFilterLabels.active;
                 summary.textContent = stats.candidateCount
@@ -32406,12 +32397,6 @@
                 if (bulkSelect) {
                     bulkSelect.innerHTML = latePaymentChargeOptionHTML(bulkSelect.value || DEFAULT_LATE_PAYMENT_CHARGE_BASE_AMOUNT);
                 }
-                const applyBulkButton = document.getElementById("applyBulkLateChargeButton");
-                if (applyBulkButton) {
-                    applyBulkButton.disabled = eligibleCount === 0 || isOperationRunning;
-                    applyBulkButton.textContent = selectedCount ? "Apply to selected" : "Apply to all eligible";
-                }
-
                 target.innerHTML = "";
                 if (!stats.candidateCount) {
                     const emptyState = document.getElementById("emptyStateTemplate").content.firstElementChild.cloneNode(true);
@@ -66549,8 +66534,6 @@
                 });
                 const selectAllLateChargesButton = document.getElementById("selectAllLateChargesButton");
                 if (selectAllLateChargesButton) selectAllLateChargesButton.addEventListener("click", selectAllEligibleLatePaymentCharges);
-                const applyBulkLateChargeButton = document.getElementById("applyBulkLateChargeButton");
-                if (applyBulkLateChargeButton) applyBulkLateChargeButton.addEventListener("click", applyBulkLatePaymentChargeAmount);
                 const raiseLateChargesButton = document.getElementById("raiseLateChargesButton");
                 if (raiseLateChargesButton) raiseLateChargesButton.addEventListener("click", raiseLatePaymentCharges);
                 const badDebtSearch = document.getElementById("badDebtSearch");
