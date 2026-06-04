@@ -8619,8 +8619,8 @@
                 z-index: 1100;
             }
             .company-secretarial-modal-panel {
-                width: min(980px, 100%);
-                max-height: calc(100vh - 48px);
+                width: min(1220px, 100%);
+                max-height: calc(100vh - 36px);
                 overflow: auto;
                 border-radius: 18px;
                 border: 1px solid var(--line);
@@ -16453,8 +16453,8 @@
                 display: none;
             }
             .operation-review-card {
-                width: min(940px, 100%);
-                max-height: min(85vh, 880px);
+                width: min(1120px, 100%);
+                max-height: min(90vh, 960px);
                 overflow: hidden;
                 border: 1px solid var(--line);
                 border-radius: 20px;
@@ -16725,15 +16725,16 @@
             }
             .operation-review-panel.is-fullscreen {
                 place-items: stretch;
-                padding: 0;
+                padding: 12px;
                 background: rgba(244, 247, 251, 0.88);
             }
             .operation-review-panel.is-fullscreen .operation-review-card {
-                width: 100vw;
-                max-height: 100vh;
-                border-radius: 0;
-                border-width: 0;
-                box-shadow: none;
+                width: min(1540px, 100%);
+                max-height: calc(100vh - 24px);
+                margin: 0 auto;
+                border-radius: 16px;
+                border-width: 1px;
+                box-shadow: 0 24px 70px rgba(30, 47, 77, 0.18);
             }
             .operation-review-panel.is-fullscreen .operation-review-body {
                 padding: 20px 24px;
@@ -49511,6 +49512,7 @@
                     periodStart: startValue,
                     periodEnd: endValue,
                     deadlineAt: meReportBulkPeriodDeadline(endValue),
+                    confirmedPeriod: false,
                     loadingContacts: false,
                     candidateContacts: [],
                     selectedContactIds: []
@@ -49520,16 +49522,14 @@
             function renderMeReportBulkPeriodPanel() {
                 const state = meReportBulkPeriodDialogState;
                 const panel = document.getElementById("meReportBulkPeriodPanel");
-                const startInput = document.getElementById("meReportBulkPeriodStartInput");
-                const endInput = document.getElementById("meReportBulkPeriodEndInput");
+                const confirmInput = document.getElementById("meReportBulkPeriodConfirmInput");
+                const question = document.getElementById("meReportBulkPeriodQuestion");
                 const summary = document.getElementById("meReportBulkPeriodComputedSummary");
                 const submit = document.getElementById("confirmMeReportBulkPeriodButton");
                 const clientsSummary = document.getElementById("meReportBulkPeriodClientsSummary");
                 const clientsList = document.getElementById("meReportBulkClientSelectionList");
-                if (!panel || !startInput || !endInput || !summary || !submit || !state) return;
+                if (!panel || !confirmInput || !question || !summary || !submit || !state) return;
                 panel.hidden = false;
-                startInput.value = state.periodStart || "";
-                endInput.value = state.periodEnd || "";
                 const startDate = new Date(state.periodStart);
                 const endDate = new Date(state.periodEnd);
                 const validRange = !Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime()) && startDate <= endDate;
@@ -49538,6 +49538,8 @@
                 const monthLabel = !Number.isNaN(startDate.getTime())
                     ? startDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" })
                     : "Selected period";
+                question.textContent = `Create flows for ${monthLabel}?`;
+                confirmInput.checked = !!state.confirmedPeriod;
                 summary.textContent = validRange
                     ? `${monthLabel} period: ${meReportDateDisplay(state.periodStart)} to ${meReportDateDisplay(state.periodEnd)}. Deadline is ${meReportDateDisplay(deadline)} (15th of the following month).`
                     : "Choose a valid period where start date is before end date.";
@@ -49545,7 +49547,7 @@
                 const selectedIds = new Set((state.selectedContactIds || []).map((item) => String(item || "")));
                 const selectableCount = candidates.length;
                 const selectedCount = candidates.filter((contact) => selectedIds.has(String(contact?.xeroContactId || ""))).length;
-                submit.disabled = !validRange || selectableCount === 0 || selectedCount === 0;
+                submit.disabled = !validRange || !state.confirmedPeriod || selectableCount === 0 || selectedCount === 0;
                 if (clientsSummary) {
                     if (state.loadingContacts) {
                         clientsSummary.textContent = "Loading Xero-connected client list...";
@@ -49633,11 +49635,7 @@
 
             function syncMeReportBulkPeriodInputs() {
                 if (!meReportBulkPeriodDialogState) return;
-                const startValue = String(document.getElementById("meReportBulkPeriodStartInput")?.value || "");
-                const endValue = String(document.getElementById("meReportBulkPeriodEndInput")?.value || "");
-                meReportBulkPeriodDialogState.periodStart = startValue;
-                meReportBulkPeriodDialogState.periodEnd = endValue;
-                meReportBulkPeriodDialogState.deadlineAt = meReportBulkPeriodDeadline(endValue);
+                meReportBulkPeriodDialogState.confirmedPeriod = !!document.getElementById("meReportBulkPeriodConfirmInput")?.checked;
                 renderMeReportBulkPeriodPanel();
             }
 
@@ -54879,6 +54877,10 @@
                 const selectedContactIds = Array.isArray(meReportBulkPeriodDialogState.selectedContactIds)
                     ? meReportBulkPeriodDialogState.selectedContactIds.map((item) => String(item || "")).filter(Boolean)
                     : [];
+                if (!meReportBulkPeriodDialogState.confirmedPeriod) {
+                    showToast("Tick the confirmation box before creating flows", "error");
+                    return;
+                }
                 if (!selectedContactIds.length) {
                     showToast("Select at least one Xero-connected client before creating flows", "error");
                     return;
@@ -68077,8 +68079,7 @@
                     if (event.target.id === "meReportReviewReadyPanel") closeMeReportReviewReadinessPanel();
                 });
                 document.getElementById("meReportBulkPeriodForm")?.addEventListener("submit", confirmMeReportBulkPeriod);
-                document.getElementById("meReportBulkPeriodStartInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
-                document.getElementById("meReportBulkPeriodEndInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
+                document.getElementById("meReportBulkPeriodConfirmInput")?.addEventListener("change", syncMeReportBulkPeriodInputs);
                 document.getElementById("meReportBulkSelectAllClientsButton")?.addEventListener("click", () => selectAllMeReportBulkClients(true));
                 document.getElementById("meReportBulkClearClientsButton")?.addEventListener("click", () => selectAllMeReportBulkClients(false));
                 document.getElementById("closeMeReportBulkPeriodPanelButton")?.addEventListener("click", closeMeReportBulkPeriodPanel);

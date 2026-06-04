@@ -1381,7 +1381,6 @@ def _prefill_no_changes_cs01_payload(
         "registeredEmailAddress",
         "acceptLawfulPurposeStatement",
         "stateConfirmation",
-        "reviewPeriodStart",
         "identityVerification",
         "sicCodes",
         "statementOfCapital",
@@ -1390,7 +1389,31 @@ def _prefill_no_changes_cs01_payload(
         if _is_empty(payload.get(key)) and not _is_empty(previous_payload.get(key)):
             payload[key] = previous_payload.get(key)
 
-    # Keep submission period end aligned with this year's review date.
+    if _is_empty(payload.get("sicCodes")) and isinstance(company_row.get("sic_codes"), list):
+        payload["sicCodes"] = company_row.get("sic_codes") or []
+    share_capital = company_row.get("share_capital") if isinstance(company_row.get("share_capital"), dict) else {}
+    statement_of_capital = share_capital.get("statementOfCapital") if isinstance(share_capital.get("statementOfCapital"), dict) else {}
+    if _is_empty(payload.get("statementOfCapital")) and statement_of_capital:
+        payload["statementOfCapital"] = statement_of_capital
+    shareholdings = _normalise_shareholdings(share_capital)
+    if _is_empty(payload.get("shareholdings")) and shareholdings:
+        payload["shareholdings"] = shareholdings
+
+    # Keep submission period aligned to this year's review date.
+    previous_review_end = _parse_date_from_text(previous_payload.get("reviewPeriodEnd"))
+    last_filed_date = company_row.get("last_filed_date")
+    derived_start = (
+        (previous_review_end + timedelta(days=1)) if isinstance(previous_review_end, date)
+        else ((last_filed_date + timedelta(days=1)) if isinstance(last_filed_date, date) else None)
+    )
+    current_review_start = _parse_date_from_text(payload.get("reviewPeriodStart"))
+    if isinstance(derived_start, date):
+        payload["reviewPeriodStart"] = derived_start.isoformat()
+    elif isinstance(current_review_start, date) and current_review_start <= review_date:
+        payload["reviewPeriodStart"] = current_review_start.isoformat()
+    else:
+        payload.pop("reviewPeriodStart", None)
+
     payload["reviewPeriodEnd"] = review_date.isoformat()
     if _is_empty(payload.get("acceptLawfulPurposeStatement")):
         payload["acceptLawfulPurposeStatement"] = True
