@@ -19796,9 +19796,6 @@
                                 <small id="xeroLockDateCHHealth">Companies House API status not checked yet.</small>
                             </article>
                             <div class="xero-lock-date-stats" id="xeroLockDateStats">
-                                <div class="xero-lock-date-stat-actions">
-                                    <button class="primary-button" id="xeroLockCleanupButton" type="button" hidden>Clean Up Mismatches</button>
-                                </div>
                             </div>
                         </div>
                         <div class="bank-account-topbar-summary" id="bankAccountTopbarSummary" aria-label="Selected bank account summary" hidden></div>
@@ -20180,9 +20177,6 @@
                                 <p class="eyebrow">Jenius AI settings</p>
                                 <h2>Settings</h2>
                                 <p class="detail-meta">Choose exactly what Xero data to import before running the next sync.</p>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="primary-button" id="settingsRunSyncButton" type="button">Run import</button>
                             </div>
                         </div>
 
@@ -20588,8 +20582,16 @@
                                         <p class="eyebrow">Product releases</p>
                                         <h3>Release notes and deployment updates</h3>
                                     </div>
+                                    <div class="detail-actions">
+                                        <button class="ghost-button" id="productReleasesRefreshButton" type="button">Refresh API usage</button>
+                                        <button class="ghost-button" id="productReleasesOpenUsageButton" type="button">Open usage dashboard</button>
+                                    </div>
                                 </div>
                                 <p class="settings-help">Track backend and console release history, rollout notes, and technical change summaries.</p>
+                                <p class="settings-help" id="productReleasesApiUsageSummary">Loading API usage hotspots…</p>
+                                <div class="database-metrics-list settings-usage-list" id="productReleasesApiHotspots">
+                                    <div class="empty-state"><p class="eyebrow">No usage data</p><h4>Open API Usage or refresh this panel</h4><p>This area highlights the pages/features currently consuming the most API calls.</p></div>
+                                </div>
                             </section>
 
                             <section class="detail-panel settings-panel danger-panel factory-reset-panel" data-settings-section="factory-reset">
@@ -21700,7 +21702,6 @@
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="xeroLockMismatchSelectAllButton" type="button">Select all</button>
                                     <button class="ghost-button" id="xeroLockMismatchClearSelectionButton" type="button">Clear</button>
-                                    <button class="primary-button" id="xeroLockMismatchApplyFixButton" type="button">Apply Fix to Selected</button>
                                     <button class="ghost-button" id="xeroLockMismatchDownloadPdfButton" type="button">Download PDF</button>
                                     <button class="ghost-button" id="xeroLockMismatchCloseButton" type="button">Close</button>
                                 </div>
@@ -21708,7 +21709,7 @@
                             <div class="xero-lock-mismatch-toolbar">
                                 <div>
                                     <strong id="xeroLockMismatchSelectionMeta">No mismatches selected</strong>
-                                    <span id="xeroLockMismatchProgressMeta">Choose the clients to fix in bulk.</span>
+                                    <span id="xeroLockMismatchProgressMeta">Review flagged mismatch rows.</span>
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="xeroLockMismatchSelectFlaggedButton" type="button">Select flagged only</button>
@@ -32309,7 +32310,6 @@
                 const progressMeta = document.getElementById("xeroLockMismatchProgressMeta");
                 const progressBar = document.getElementById("xeroLockMismatchProgressBar");
                 const progressFill = document.getElementById("xeroLockMismatchProgressFill");
-                const applyFixButton = document.getElementById("xeroLockMismatchApplyFixButton");
                 const selectAllToggle = document.getElementById("xeroLockMismatchSelectAllToggle");
                 const searchInput = document.getElementById("xeroLockMismatchSearchInput");
                 const statusFilterSelect = document.getElementById("xeroLockMismatchStatusFilter");
@@ -32358,14 +32358,14 @@
                 }
                 if (selectionMeta) {
                     selectionMeta.textContent = selectedCount
-                        ? `${selectedCount.toLocaleString("en-GB")} selected for bulk fix (${selectedVisibleCount.toLocaleString("en-GB")} visible)`
+                        ? `${selectedCount.toLocaleString("en-GB")} selected (${selectedVisibleCount.toLocaleString("en-GB")} visible)`
                         : "No mismatches selected";
                 }
                 const progress = xeroLockMismatchProgressSnapshot();
                 if (progressMeta) {
                     progressMeta.textContent = xeroLockMismatchFixing
                         ? `Fixing now: ${progress.fixed.toLocaleString("en-GB")} fixed, ${progress.failed.toLocaleString("en-GB")} failed.`
-                        : "Search and filter rows, then apply fixes to the selected mismatches.";
+                        : "Search and filter rows, export the list, and update lock dates manually in Xero.";
                 }
                 if (searchInput && searchInput.value !== xeroLockMismatchSearchTerm) searchInput.value = xeroLockMismatchSearchTerm;
                 if (statusFilterSelect && statusFilterSelect.value !== xeroLockMismatchStatusFilter) statusFilterSelect.value = xeroLockMismatchStatusFilter;
@@ -32375,14 +32375,6 @@
                     const denominator = Math.max(1, progress.total);
                     const percent = ((progress.fixed + progress.failed) / denominator) * 100;
                     progressFill.style.width = `${Math.max(0, Math.min(100, percent)).toFixed(2)}%`;
-                }
-                if (applyFixButton) {
-                    applyFixButton.disabled = xeroLockMismatchLoading || xeroLockMismatchFixing || selectedCount === 0;
-                    applyFixButton.textContent = xeroLockMismatchFixing
-                        ? "Applying Fix..."
-                        : selectedCount > 0
-                            ? `Apply Fix to Selected (${selectedCount})`
-                            : "Apply Fix to Selected";
                 }
                 if (selectAllToggle) {
                     selectAllToggle.checked = xeroLockMismatchVisibleTenantIds.length > 0 && selectedVisibleCount === xeroLockMismatchVisibleTenantIds.length;
@@ -32684,13 +32676,7 @@
                                 <span>${escapeHTML(card.label)}</span>
                                 <strong>${escapeHTML(card.value)}</strong>
                             </span>
-                        `).join("") + `
-                            <div class="xero-lock-date-stat-actions">
-                                <button class="primary-button" id="xeroLockCleanupButton" type="button" ${flagged > 0 ? "" : "disabled"}>
-                                    ${flagged > 0 ? `Clean Up Mismatches (${flagged})` : "Clean Up Mismatches"}
-                                </button>
-                            </div>
-                        `;
+                        `).join("");
                     }
                 }
                 const warningRows = xeroLockDateOverview.rows || [];
@@ -32754,11 +32740,6 @@
                     const selectedCount = selectedXeroLockDateTenantIds.size;
                     deleteSelectedButton.disabled = selectedCount === 0 || xeroLockDateLoading;
                     deleteSelectedButton.textContent = selectedCount > 0 ? `Delete Selected (${selectedCount})` : "Delete Selected";
-                }
-                const cleanupButton = document.getElementById("xeroLockCleanupButton");
-                if (cleanupButton && cleanupButton.dataset.lockDateWired !== "true") {
-                    cleanupButton.dataset.lockDateWired = "true";
-                    cleanupButton.addEventListener("click", () => identifyXeroLockMismatches(true));
                 }
                 body.innerHTML = filteredRows.length
                     ? filteredRows.map((row) => {
@@ -56241,6 +56222,7 @@
                 renderDatabaseMetrics();
                 renderPendingXeroActions();
                 renderSettingsUsage();
+                renderProductReleasesApiHotspots();
                 renderPostingSettings();
                 renderFactoryResetGuard();
                 renderLetterTemplateSettings();
@@ -57684,10 +57666,68 @@
                 }
             }
 
+            function renderProductReleasesApiHotspots() {
+                const summary = document.getElementById("productReleasesApiUsageSummary");
+                const target = document.getElementById("productReleasesApiHotspots");
+                const openUsageButton = document.getElementById("productReleasesOpenUsageButton");
+                const rangeDays = Number(settingsUsageData?.range?.days || settingsUsageDays || 30);
+                const topFeatures = Array.isArray(settingsUsageData?.topFeatures) ? settingsUsageData.topFeatures.slice(0, 8) : [];
+                const topEndpoints = Array.isArray(settingsUsageData?.topEndpoints) ? settingsUsageData.topEndpoints.slice(0, 8) : [];
+                const merged = [
+                    ...topFeatures.map((row) => ({ ...row, kind: "feature", name: row.feature || "Unknown feature" })),
+                    ...topEndpoints.map((row) => ({ ...row, kind: "endpoint", name: row.endpoint || "Unknown endpoint" })),
+                ]
+                    .sort((a, b) => Number(b.requests || 0) - Number(a.requests || 0))
+                    .slice(0, 8);
+
+                const hasData = merged.length > 0;
+                const highUsageRows = merged.filter((row) => Number(row.requests || 0) >= 30 || Number(row.share || 0) >= 0.2);
+                const anyCritical = merged.some((row) => Number(row.requests || 0) >= 60 || Number(row.share || 0) >= 0.3);
+
+                if (summary) {
+                    if (settingsUsageLoading) {
+                        summary.textContent = "Refreshing API usage hotspots…";
+                    } else if (!hasData) {
+                        summary.textContent = "No API usage data recorded yet for this period.";
+                    } else {
+                        summary.textContent = `${highUsageRows.length.toLocaleString("en-GB")} hotspot${highUsageRows.length === 1 ? "" : "s"} in the last ${rangeDays.toLocaleString("en-GB")} days. Action buttons turn red when usage is high.`;
+                    }
+                }
+                if (openUsageButton) {
+                    openUsageButton.classList.toggle("danger-button", anyCritical);
+                    openUsageButton.textContent = anyCritical ? "Open usage dashboard (high usage)" : "Open usage dashboard";
+                }
+                if (!target) return;
+                if (!hasData) {
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">No usage data</p><h4>No API usage hotspots yet</h4><p>Refresh this panel after API activity has been recorded.</p></div>';
+                    return;
+                }
+                target.innerHTML = `
+                    <ul>
+                        ${merged.map((row, index) => {
+                            const requests = Number(row.requests || 0);
+                            const share = Number(row.share || 0);
+                            const isHigh = requests >= 30 || share >= 0.2;
+                            const isCritical = requests >= 60 || share >= 0.3;
+                            const actionLabel = isCritical ? "Urgent review" : isHigh ? "Review now" : "Review";
+                            return `
+                                <li>
+                                    <span>${escapeHTML(`#${index + 1} · ${row.kind === "feature" ? "Feature/Page" : "Endpoint"}: ${row.name || "Unknown"}`)}</span>
+                                    <strong>${requests.toLocaleString("en-GB")} calls (${(share * 100).toFixed(1)}%)</strong>
+                                    <small>${escapeHTML(String(row.provider || "api").toUpperCase())}</small>
+                                    <button class="ghost-button${isHigh ? " danger-button" : ""}" type="button" data-product-release-action="open-usage">${escapeHTML(actionLabel)}</button>
+                                </li>
+                            `;
+                        }).join("")}
+                    </ul>
+                `;
+            }
+
             async function loadSettingsUsage(force = false) {
                 if (settingsUsageLoading && !force) return;
                 settingsUsageLoading = true;
                 renderSettingsUsage();
+                renderProductReleasesApiHotspots();
                 try {
                     const payload = await requestJSON(`${api.endpoints.settingsUsage}?days=${encodeURIComponent(settingsUsageDays)}`);
                     settingsUsageData = payload || settingsUsageData;
@@ -57701,6 +57741,7 @@
                 } finally {
                     settingsUsageLoading = false;
                     renderSettingsUsage();
+                    renderProductReleasesApiHotspots();
                 }
             }
 
@@ -58303,7 +58344,7 @@
                 if (activeSettingsSection === "ignition-connection") loadIgnition(true);
                 if (activeSettingsSection === "renewal-settings") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
-                if (activeSettingsSection === "usage") loadSettingsUsage();
+                if (activeSettingsSection === "usage" || activeSettingsSection === "product-releases") loadSettingsUsage();
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
             }
@@ -58966,6 +59007,13 @@
                     settingsUsageDays = Number(event.target?.value || 30);
                     loadSettingsUsage(true);
                 });
+                document.getElementById("productReleasesRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
+                document.getElementById("productReleasesOpenUsageButton")?.addEventListener("click", () => openSettingsScreen("usage"));
+                document.getElementById("productReleasesApiHotspots")?.addEventListener("click", (event) => {
+                    const actionButton = event.target.closest?.("[data-product-release-action='open-usage']");
+                    if (!actionButton) return;
+                    openSettingsScreen("usage");
+                });
                 document.getElementById("reloadRenewalSettingsButton")?.addEventListener("click", () => loadIgnition(true));
                 document.getElementById("renewalSettingsUnlockRunSelect")?.addEventListener("change", renderRenewalSettings);
                 document.getElementById("unlockRenewalSettingsButton")?.addEventListener("click", unlockRenewalSettingsBatch);
@@ -59056,11 +59104,6 @@
                 if (xeroLockMismatchDownloadPdfButton && xeroLockMismatchDownloadPdfButton.dataset.lockDateWired !== "true") {
                     xeroLockMismatchDownloadPdfButton.dataset.lockDateWired = "true";
                     xeroLockMismatchDownloadPdfButton.addEventListener("click", downloadXeroLockMismatchPdf);
-                }
-                const xeroLockMismatchApplyFixButton = document.getElementById("xeroLockMismatchApplyFixButton");
-                if (xeroLockMismatchApplyFixButton && xeroLockMismatchApplyFixButton.dataset.lockDateWired !== "true") {
-                    xeroLockMismatchApplyFixButton.dataset.lockDateWired = "true";
-                    xeroLockMismatchApplyFixButton.addEventListener("click", applyBulkFixXeroLockMismatches);
                 }
                 const xeroLockMismatchSelectAllButton = document.getElementById("xeroLockMismatchSelectAllButton");
                 if (xeroLockMismatchSelectAllButton && xeroLockMismatchSelectAllButton.dataset.lockDateWired !== "true") {
