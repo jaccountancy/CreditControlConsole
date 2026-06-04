@@ -33060,15 +33060,24 @@
                 const modal = document.getElementById("companySecretarialWizardModal");
                 if (!modal) return;
                 modal.hidden = false;
+                companySecretarialWizardStep = 1;
+                companySecretarialWizardValidationPassed = false;
+                companySecretarialWizardLastIssues = [];
                 companySecretarialToggleWizardTypeFields();
                 companySecretarialPopulateWizardFromProfile(true);
                 companySecretarialRenderWizardSubmissionPreview();
+                syncCompanySecretarialWizardStepUI();
+                syncCompanySecretarialWizardSubmitButton();
+                const status = document.getElementById("companySecretarialWizardStatus");
+                if (status) status.textContent = "Step 1: Select filing type to begin.";
+                closeCompanySecretarialValidationIssuesModal();
                 setTimeout(() => document.getElementById("companySecretarialWizardType")?.focus(), 0);
             }
 
             function closeCompanySecretarialWizard() {
                 const modal = document.getElementById("companySecretarialWizardModal");
                 if (modal) modal.hidden = true;
+                closeCompanySecretarialValidationIssuesModal();
             }
 
             function companySecretarialSampleQueue() {
@@ -35049,6 +35058,92 @@
                 });
             }
 
+            function companySecretarialWizardStepHint(step = 1) {
+                if (step === 1) return "Step 1 of 4: Select the filing type you want to submit.";
+                if (step === 2) return "Step 2 of 4: Select the client from your client register.";
+                if (step === 3) return "Step 3 of 4: Complete filing details and notes.";
+                return "Step 4 of 4: Run validation and then create the filing draft.";
+            }
+
+            function companySecretarialWizardIssueFix(issue = "") {
+                const value = String(issue || "");
+                if (/Select a company/i.test(value)) return "Go to Step 2 and choose a client from the register.";
+                if (/Select a filing type/i.test(value)) return "Go to Step 1 and choose the submission type first.";
+                if (/Effective date/i.test(value)) return "Go to Step 3 and enter an effective date.";
+                if (/supporting evidence/i.test(value)) return "In Step 4, tick 'Supporting evidence attached' once evidence is uploaded.";
+                if (/Client approval/i.test(value)) return "In Step 4, tick 'Client approval captured' after approval is recorded.";
+                if (/Internal approval/i.test(value)) return "In Step 4, tick 'Internal review completed' after internal sign-off.";
+                if (/proposed company name/i.test(value)) return "For NM01, complete 'Proposed company name' in Step 3.";
+                if (/address line 1/i.test(value)) return "For AD01, enter the first line of the new registered office in Step 3.";
+                if (/requires city/i.test(value)) return "For AD01, enter the town/city in Step 3.";
+                if (/requires postcode/i.test(value)) return "For AD01, enter the postcode in Step 3.";
+                if (/requires country/i.test(value)) return "For AD01, enter the country in Step 3.";
+                if (/DS01/i.test(value)) return "For DS01, add eligibility/declaration context in notes in Step 3.";
+                return "Review the field named in this validation message and update it before re-running validation.";
+            }
+
+            function closeCompanySecretarialValidationIssuesModal() {
+                const modal = document.getElementById("companySecretarialValidationIssuesModal");
+                if (modal) modal.hidden = true;
+            }
+
+            function openCompanySecretarialValidationIssuesModal(issues = []) {
+                const modal = document.getElementById("companySecretarialValidationIssuesModal");
+                const list = document.getElementById("companySecretarialValidationIssuesList");
+                if (list) {
+                    list.innerHTML = (issues || []).map((issue) => `
+                        <article class="company-secretarial-validation-item">
+                            <strong>${escapeHTML(issue)}</strong>
+                            <p>${escapeHTML(companySecretarialWizardIssueFix(issue))}</p>
+                        </article>
+                    `).join("");
+                }
+                if (modal) modal.hidden = false;
+            }
+
+            function syncCompanySecretarialWizardStepUI() {
+                document.querySelectorAll("[data-company-secretarial-step-section]").forEach((section) => {
+                    const step = Number(section.dataset.companySecretarialStepSection || 0);
+                    const active = step === companySecretarialWizardStep;
+                    section.hidden = !active;
+                    section.classList.toggle("is-active", active);
+                });
+                document.querySelectorAll("[data-company-secretarial-step-jump]").forEach((button) => {
+                    const step = Number(button.dataset.companySecretarialStepJump || 0);
+                    button.classList.toggle("is-active", step === companySecretarialWizardStep);
+                });
+                const stepHint = document.getElementById("companySecretarialWizardStepHint");
+                if (stepHint) stepHint.textContent = companySecretarialWizardStepHint(companySecretarialWizardStep);
+                const backButton = document.getElementById("companySecretarialWizardBackButton");
+                if (backButton) backButton.disabled = companySecretarialWizardStep <= 1;
+                const nextButton = document.getElementById("companySecretarialWizardNextButton");
+                if (nextButton) {
+                    const isLast = companySecretarialWizardStep >= 4;
+                    nextButton.hidden = isLast;
+                    nextButton.disabled = isLast;
+                }
+            }
+
+            function setCompanySecretarialWizardStep(step = 1) {
+                const safeStep = Math.max(1, Math.min(4, Number(step || 1)));
+                companySecretarialWizardStep = safeStep;
+                syncCompanySecretarialWizardStepUI();
+            }
+
+            function syncCompanySecretarialWizardSubmitButton() {
+                const submitButton = document.getElementById("companySecretarialWizardSubmitButton");
+                if (!submitButton) return;
+                submitButton.disabled = !companySecretarialWizardValidationPassed;
+                submitButton.textContent = companySecretarialWizardValidationPassed
+                    ? "Create draft filing"
+                    : "Run and pass validation first";
+            }
+
+            function invalidateCompanySecretarialWizardValidation() {
+                companySecretarialWizardValidationPassed = false;
+                syncCompanySecretarialWizardSubmitButton();
+            }
+
             function updateCompanySecretarialWizardFieldsPreview() {
                 const typeCode = document.getElementById("companySecretarialWizardType")?.value || "";
                 const preview = document.getElementById("companySecretarialWizardFieldsPreview");
@@ -35061,9 +35156,12 @@
                 companySecretarialToggleWizardTypeFields();
                 companySecretarialPopulateWizardFromProfile(false);
                 companySecretarialRenderWizardSubmissionPreview();
+                invalidateCompanySecretarialWizardValidation();
             }
 
-            function runCompanySecretarialValidationFromWizard() {
+            function runCompanySecretarialValidationFromWizard(options = {}) {
+                const silent = Boolean(options?.silent);
+                const openIssuesModal = options?.openIssuesModal !== false;
                 const typeCode = document.getElementById("companySecretarialWizardType")?.value || "";
                 const config = companySecretarialTypeConfig(typeCode);
                 const draftPayload = companySecretarialWizardPayloadDraft();
@@ -35078,18 +35176,37 @@
                     formData: draftPayload?.formData || {},
                 };
                 const issues = companySecretarialValidationMessages(payload, config);
+                companySecretarialWizardLastIssues = issues;
+                companySecretarialWizardValidationPassed = issues.length === 0;
+                syncCompanySecretarialWizardSubmitButton();
                 const status = document.getElementById("companySecretarialWizardStatus");
                 if (status) {
                     status.textContent = issues.length
-                        ? `Validation failed: ${issues.join(" ")}`
-                        : "Validation passed: draft can be created and prepared for Companies House submission.";
+                        ? `Validation failed with ${issues.length} issue${issues.length === 1 ? "" : "s"}. Resolve the items and run validation again.`
+                        : "Validation passed. Draft filing can now be created.";
                 }
                 companySecretarialRenderWizardSubmissionPreview();
-                showToast(issues.length ? "Validation issues found" : "Validation passed", issues.length ? "error" : "success");
+                if (!silent) showToast(issues.length ? "Validation issues found" : "Validation passed", issues.length ? "error" : "success");
+                if (issues.length && openIssuesModal) openCompanySecretarialValidationIssuesModal(issues);
+                if (!issues.length) closeCompanySecretarialValidationIssuesModal();
+                return { passed: issues.length === 0, issues };
             }
 
             async function submitCompanySecretarialWizard(event) {
                 event.preventDefault();
+                if (!companySecretarialWizardValidationPassed) {
+                    showToast("Run validation and pass it before creating the draft.", "error");
+                    setCompanySecretarialWizardStep(4);
+                    if (companySecretarialWizardLastIssues.length) openCompanySecretarialValidationIssuesModal(companySecretarialWizardLastIssues);
+                    return;
+                }
+                const latestValidation = runCompanySecretarialValidationFromWizard({ silent: true, openIssuesModal: false });
+                if (!latestValidation.passed) {
+                    showToast("Validation is no longer valid. Fix issues and validate again.", "error");
+                    setCompanySecretarialWizardStep(4);
+                    openCompanySecretarialValidationIssuesModal(latestValidation.issues || []);
+                    return;
+                }
                 const typeCode = document.getElementById("companySecretarialWizardType")?.value || "";
                 const config = companySecretarialTypeConfig(typeCode);
                 if (!config) return showToast("Select a valid filing type.", "error");
@@ -35110,7 +35227,6 @@
                     evidenceAttached: Boolean(document.getElementById("companySecretarialWizardEvidence")?.checked),
                     formData: draftPayload?.formData || {},
                 };
-                const issues = companySecretarialValidationMessages(payload, config);
                 const mode = document.getElementById("companySecretarialWizardMode")?.value || config.mode || "manual";
                 const feeAmount = Number(document.getElementById("companySecretarialWizardFee")?.value || 0);
                 const assignee = (document.getElementById("companySecretarialWizardAssignee")?.value || "").trim() || companyProfile.manager || "Client Manager";
@@ -35121,9 +35237,7 @@
                     target.setDate(target.getDate() + (config.risk === "high" ? 5 : 12));
                     return localDateKey(target);
                 })();
-                const nextStatus = issues.length
-                    ? "VALIDATION_FAILED"
-                    : config.clientApprovalRequired && !payload.clientApproved
+                const nextStatus = config.clientApprovalRequired && !payload.clientApproved
                     ? "AWAITING_CLIENT_APPROVAL"
                     : config.internalApprovalRequired && !payload.internalApproved
                     ? "AWAITING_INTERNAL_REVIEW"
@@ -35145,7 +35259,7 @@
                         internalApprovalRequired: config.internalApprovalRequired,
                         internalApprovalStatus: config.internalApprovalRequired ? (payload.internalApproved ? "approved" : "pending") : "not_required",
                         evidenceAttached: payload.evidenceAttached,
-                        companiesHouseStatus: issues.length ? "Validation failed" : "Draft prepared for Companies House",
+                        companiesHouseStatus: "Draft prepared for Companies House",
                         feeAmount: Number.isFinite(feeAmount) ? feeAmount : 0,
                         assignee,
                         notes: payload.notes,
@@ -35160,13 +35274,9 @@
                         preparedSubmission: draftPayload || null,
                     });
                     const status = document.getElementById("companySecretarialWizardStatus");
-                    if (status) {
-                        status.textContent = issues.length
-                            ? `Draft created with validation errors: ${issues.join(" ")}`
-                            : `${config.code} draft created for ${company.companyName}.`;
-                    }
-                    showToast(issues.length ? "Draft created with validation issues" : "Company secretarial draft created", issues.length ? "info" : "success");
-                    if (!issues.length) closeCompanySecretarialWizard();
+                    if (status) status.textContent = `${config.code} draft created for ${company.companyName}.`;
+                    showToast("Company secretarial draft created", "success");
+                    closeCompanySecretarialWizard();
                 } catch (error) {
                     console.error("Unable to create company secretarial filing", error);
                     showToast(error?.message || "Unable to create filing draft.", "error");
@@ -70637,6 +70747,37 @@
                     openCompanySecretarialWizard();
                 });
                 document.getElementById("companySecretarialWizardCloseButton")?.addEventListener("click", closeCompanySecretarialWizard);
+                document.getElementById("companySecretarialValidationIssuesCloseButton")?.addEventListener("click", closeCompanySecretarialValidationIssuesModal);
+                document.getElementById("companySecretarialWizardBackButton")?.addEventListener("click", () => {
+                    setCompanySecretarialWizardStep(companySecretarialWizardStep - 1);
+                });
+                document.getElementById("companySecretarialWizardNextButton")?.addEventListener("click", () => {
+                    setCompanySecretarialWizardStep(companySecretarialWizardStep + 1);
+                });
+                document.querySelectorAll("[data-company-secretarial-step-jump]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        setCompanySecretarialWizardStep(Number(button.dataset.companySecretarialStepJump || 1));
+                    });
+                });
+                document.getElementById("companySecretarialWizardModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "companySecretarialWizardModal") closeCompanySecretarialWizard();
+                });
+                document.getElementById("companySecretarialValidationIssuesModal")?.addEventListener("click", (event) => {
+                    if (event.target?.id === "companySecretarialValidationIssuesModal") closeCompanySecretarialValidationIssuesModal();
+                });
+                if (document.body.dataset.companySecretarialEscWired !== "true") {
+                    document.body.dataset.companySecretarialEscWired = "true";
+                    document.addEventListener("keydown", (event) => {
+                        if (event.key !== "Escape") return;
+                        const validationModal = document.getElementById("companySecretarialValidationIssuesModal");
+                        if (validationModal && !validationModal.hidden) {
+                            closeCompanySecretarialValidationIssuesModal();
+                            return;
+                        }
+                        const wizardModal = document.getElementById("companySecretarialWizardModal");
+                        if (wizardModal && !wizardModal.hidden) closeCompanySecretarialWizard();
+                    });
+                }
                 const search = document.getElementById("companySecretarialSearch");
                 if (search) search.addEventListener("input", (event) => {
                     companySecretarialSearchTerm = event.target.value || "";
@@ -70662,10 +70803,24 @@
                 document.getElementById("companySecretarialWizardCompany")?.addEventListener("change", () => {
                     companySecretarialPopulateWizardFromProfile(true);
                     companySecretarialRenderWizardSubmissionPreview();
+                    invalidateCompanySecretarialWizardValidation();
                 });
                 document.getElementById("companySecretarialWizardMode")?.addEventListener("change", updateCompanySecretarialWizardFieldsPreview);
                 document.getElementById("companySecretarialWizardValidateButton")?.addEventListener("click", runCompanySecretarialValidationFromWizard);
-                document.getElementById("companySecretarialWizardForm")?.addEventListener("submit", submitCompanySecretarialWizard);
+                const companySecretarialWizardForm = document.getElementById("companySecretarialWizardForm");
+                if (companySecretarialWizardForm) {
+                    companySecretarialWizardForm.addEventListener("submit", submitCompanySecretarialWizard);
+                    companySecretarialWizardForm.addEventListener("input", (event) => {
+                        const targetId = event.target?.id || "";
+                        if (targetId === "companySecretarialWizardSubmissionPreview") return;
+                        invalidateCompanySecretarialWizardValidation();
+                    });
+                    companySecretarialWizardForm.addEventListener("change", (event) => {
+                        const targetId = event.target?.id || "";
+                        if (targetId === "companySecretarialWizardSubmissionPreview") return;
+                        invalidateCompanySecretarialWizardValidation();
+                    });
+                }
                 document.getElementById("companySecretarialTableBody")?.addEventListener("click", (event) => {
                     const actionNode = event.target.closest?.("[data-company-secretarial-action]");
                     if (!actionNode) return;
