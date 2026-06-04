@@ -10600,6 +10600,16 @@
                 gap: 6px;
                 align-items: start;
             }
+            #meReportScreen .me-report-status-help-button {
+                border: 0;
+                cursor: pointer;
+                text-align: left;
+                font: inherit;
+            }
+            #meReportScreen .me-report-status-help-button:focus-visible {
+                outline: 2px solid rgba(38, 110, 255, 0.55);
+                outline-offset: 2px;
+            }
             #meReportScreen .me-report-status-detail {
                 font-size: 0.7rem;
                 font-weight: 700;
@@ -45349,6 +45359,101 @@
                 return "";
             }
 
+            function meReportSubmissionStatusGuidance(submission, client = {}) {
+                const status = String(submission?.status || "saved").toLowerCase();
+                const processing = meReportSubmissionProcessingState(submission);
+                const errorMessage = String(submission?.errorMessage || "").trim();
+                const summary = String(submission?.summary || "").trim();
+                const combined = `${errorMessage} ${summary}`.toLowerCase();
+                const uploadedAt = submission?.createdAt ? formatDate(submission.createdAt) : "Unknown";
+                const reportName = meReportSubmissionTableLabel(submission);
+                const payload = {
+                    client: client?.clientName || "",
+                    report: reportName,
+                    uploadedAt,
+                    status,
+                    summary: summary || "(none)",
+                    errorMessage: errorMessage || "(none)",
+                    whatHappened: "",
+                    howToFix: [],
+                };
+                if (processing) {
+                    payload.whatHappened = processing.remainingSeconds > 0
+                        ? "The extraction is still running in the background."
+                        : "The extraction is running past the normal ETA and may be stuck.";
+                    payload.howToFix = processing.remainingSeconds > 0
+                        ? [
+                            "Wait for processing to complete, then click Refresh.",
+                            "If it stays in processing for more than 10 minutes, re-upload the same file.",
+                            "If repeats, open Developer Log and review ME Report sync errors.",
+                        ]
+                        : [
+                            "Click Refresh to check if a completion update arrived.",
+                            "If it is still stuck, re-upload the report.",
+                            "If repeats, check Developer Log for backend/OpenAI timeout details.",
+                        ];
+                    return payload;
+                }
+                if (status === "failed" || status === "error") {
+                    if (combined.includes("not valid json") || combined.includes("invalid json")) {
+                        payload.whatHappened = "OpenAI read the uploaded report but could not return parseable structured data.";
+                        payload.howToFix = [
+                            "Upload the source report again as a clean PDF/Excel export (not scanned images).",
+                            "Ensure the file contains one client and one period with clear P&L / Balance Sheet sections.",
+                            "If this keeps failing, upload the workbook export from Xero instead of a reformatted document.",
+                        ];
+                    } else if (combined.includes("timed out") || combined.includes("timeout")) {
+                        payload.whatHappened = "The extraction timed out before processing finished.";
+                        payload.howToFix = [
+                            "Retry by uploading the same report again.",
+                            "Use a smaller/cleaner export if the file is very large.",
+                            "If repeated, check Developer Log for timeout and API errors.",
+                        ];
+                    } else if (combined.includes("xero") && (combined.includes("contact") || combined.includes("client") || combined.includes("match"))) {
+                        payload.whatHappened = "The report could not be mapped cleanly to a Xero client/contact.";
+                        payload.howToFix = [
+                            "Open the client in ME Report and confirm the Xero contact mapping.",
+                            "Re-upload after correcting the match.",
+                            "Use the bulk match review when prompted for unmatched files.",
+                        ];
+                    } else {
+                        payload.whatHappened = "The report extraction failed before a usable bookkeeping summary was created.";
+                        payload.howToFix = [
+                            "Re-upload the same report and retry processing.",
+                            "If it fails again, use a direct export from Xero (PDF/Excel).",
+                            "Open Developer Log to review the exact backend error details.",
+                        ];
+                    }
+                    return payload;
+                }
+                payload.whatHappened = "This report is available and processed.";
+                payload.howToFix = ["No action required."];
+                return payload;
+            }
+
+            function openMeReportSubmissionStatusHelp(submission, client = {}) {
+                if (!submission) return;
+                const guidance = meReportSubmissionStatusGuidance(submission, client);
+                const statusTitle = String(submission.status || "saved").replace(/_/g, " ");
+                openFailureDetailsPanel({
+                    title: `ME Report status · ${statusTitle}`,
+                    summary: guidance.whatHappened || "Submission status details.",
+                    endpoint: "/api/me-report/clients/:clientId/submissions",
+                    method: "GET",
+                    statusCode: String(submission.status || ""),
+                    message: guidance.whatHappened || guidance.summary || guidance.errorMessage || "",
+                    details: {
+                        client: guidance.client || "(unknown)",
+                        report: guidance.report,
+                        uploadedAt: guidance.uploadedAt,
+                        status: guidance.status,
+                        summary: guidance.summary,
+                        errorMessage: guidance.errorMessage,
+                        howToFix: guidance.howToFix,
+                    },
+                });
+            }
+
             function groupedMeReportSubmissions(submissions) {
                 const groups = new Map();
                 (submissions || []).slice().sort((a, b) => {
@@ -47273,7 +47378,7 @@
                                         <div class="me-report-report-row" role="row">
                                             <span class="me-report-file-cell" title="${escapeHTML(sourceFilename || displayLabel)}"><strong>${escapeHTML(displayLabel)}</strong><small>${escapeHTML(submission.summary || submission.errorMessage || (sourceFilename ? `Source: ${sourceFilename}` : "Jenius AI overview upload"))}</small></span>
                                             <span>${escapeHTML(formatDate(submission.createdAt))}</span>
-                                            <span class="me-report-status-cell"><mark class="bank-status-pill is-${escapeHTML(String(submission.status || "saved").toLowerCase())}">${escapeHTML(submission.status || "saved")}</mark>${statusDetail ? `<small class="me-report-status-detail">${escapeHTML(statusDetail)}</small>` : ""}</span>
+                                            <span class="me-report-status-cell"><button class="bank-status-pill me-report-status-help-button is-${escapeHTML(String(submission.status || "saved").toLowerCase())}" type="button" data-me-submission-status-help="${escapeHTML(submission.id)}" title="Show status details and fix steps">${escapeHTML(submission.status || "saved")}</button>${statusDetail ? `<small class="me-report-status-detail">${escapeHTML(statusDetail)}</small>` : ""}</span>
                                             <span>${formatCurrency(submission.estimatedCorporationTax || 0)}</span>
                                             <span>${formatCurrency(submission.dividendCapacity || 0)}</span>
                                             <span class="detail-actions">
@@ -47484,6 +47589,14 @@
                         meReportPersistViewStateForClient(client.id);
                         meReportWorkspaceOpen = true;
                         renderMeReportScreen();
+                    });
+                });
+                document.querySelectorAll("[data-me-submission-status-help]").forEach((button) => {
+                    button.addEventListener("click", () => {
+                        const submissionId = button.dataset.meSubmissionStatusHelp || "";
+                        const submission = meReportClientSubmissions(client).find((item) => item.id === submissionId);
+                        if (!submission) return showToast("Unable to load status details for this report", "error");
+                        openMeReportSubmissionStatusHelp(submission, client);
                     });
                 });
                 document.querySelectorAll("[data-me-submission-delete]").forEach((button) => {

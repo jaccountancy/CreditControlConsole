@@ -187,7 +187,7 @@ def _ensure_settings_row() -> dict:
             )
             row = cursor.fetchone()
             if row is None:
-                cursor.execute("SELECT * FROM ch_settings WHERE singleton_id =he  1")
+                cursor.execute("SELECT * FROM ch_settings WHERE singleton_id = 1")
                 row = cursor.fetchone()
         connection.commit()
     return row
