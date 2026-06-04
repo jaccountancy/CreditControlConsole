@@ -2040,6 +2040,113 @@
                 animation: insightsTopbarTileIn 0.56s cubic-bezier(0.16, 1, 0.3, 1) forwards;
                 animation-delay: calc(var(--insight-tile-index, 0) * 58ms);
             }
+            .insights-stats-card {
+                width: 100%;
+                display: grid;
+                gap: 8px;
+            }
+            .insights-stats-toggle {
+                width: 100%;
+                border: 1px solid rgba(61, 85, 130, 0.14);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.94);
+                color: var(--ink);
+                display: grid;
+                grid-template-columns: auto 1fr auto;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 10px;
+                text-align: left;
+                cursor: pointer;
+                font: inherit;
+            }
+            .insights-stats-toggle:hover,
+            .insights-stats-toggle:focus-visible {
+                border-color: rgba(29, 103, 242, 0.24);
+                box-shadow: 0 8px 16px rgba(29, 103, 242, 0.1);
+                outline: none;
+            }
+            .insights-stats-toggle-mark {
+                width: 30px;
+                height: 30px;
+                border-radius: 10px;
+                background: linear-gradient(135deg, rgba(29, 103, 242, 0.16), rgba(39, 176, 95, 0.14));
+                color: var(--blue);
+                display: grid;
+                place-items: center;
+                font-size: 0.66rem;
+                font-weight: 950;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .insights-stats-toggle-copy span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.56rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                line-height: 1.15;
+            }
+            .insights-stats-toggle-copy strong {
+                display: block;
+                color: var(--ink);
+                font-size: 0.88rem;
+                font-weight: 950;
+                line-height: 1.2;
+            }
+            .insights-stats-toggle-caret {
+                color: var(--muted);
+                font-size: 0.88rem;
+                font-weight: 950;
+            }
+            .insights-stats-panel {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+                gap: 8px;
+            }
+            .insights-stats-panel[hidden] {
+                display: none !important;
+            }
+            .insights-stats-tile {
+                border: 1px solid rgba(61, 85, 130, 0.11);
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.9);
+                padding: 8px 10px;
+                min-width: 0;
+            }
+            .insights-stats-tile span {
+                display: block;
+                color: var(--muted);
+                font-size: 0.52rem;
+                font-weight: 900;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .insights-stats-tile strong {
+                display: block;
+                margin-top: 3px;
+                color: var(--ink);
+                font-size: 0.82rem;
+                font-weight: 900;
+                line-height: 1.18;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .insights-stats-tile p {
+                margin: 2px 0 0;
+                color: var(--muted);
+                font-size: 0.62rem;
+                font-weight: 780;
+                line-height: 1.2;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
             @keyframes insightsTopbarTileIn {
                 to {
                     opacity: 1;
@@ -20144,14 +20251,7 @@
                             </button>
                         </div>
                         <div class="insights-topbar-summary" id="insightsTopbarSummary" aria-label="Whole system insights summary" hidden>
-                            <article><span>Debtor Book</span><strong id="insightsTopbarDebtorBookValue">£0.00</strong><p id="insightsTopbarDebtorBookDetail">0 open invoices</p></article>
-                            <article><span>Bank Clients</span><strong id="insightsTopbarBankClientsValue">0</strong><p id="insightsTopbarBankClientsDetail">0 accounts monitored</p></article>
-                            <article><span>ME Report Clients</span><strong id="insightsTopbarMeClientsValue">0</strong><p id="insightsTopbarMeClientsDetail">Month-end workspaces</p></article>
-                            <article><span>Jashflow Clients</span><strong id="insightsTopbarJashflowClientsValue">0</strong><p id="insightsTopbarJashflowClientsDetail">Loan accounts in scope</p></article>
-                            <article><span>Statements MTD</span><strong id="insightsTopbarBankStatementsMtdValue">0</strong><p id="insightsTopbarBankStatementsMtdDetail">Completed extraction uploads</p></article>
-                            <article><span>JUK Reports MTD</span><strong id="insightsTopbarJukReportsMtdValue">0</strong><p id="insightsTopbarJukReportsMtdDetail">Overview reports processed</p></article>
-                            <article><span>LPC Raised MTD</span><strong id="insightsTopbarLateChargesMtdValue">0</strong><p id="insightsTopbarLateChargesMtdDetail">Late payment charges raised</p></article>
-                            <article><span>Write-Offs MTD</span><strong id="insightsTopbarWriteOffsMtdValue">0</strong><p id="insightsTopbarWriteOffsMtdDetail">Invoices written off</p></article>
+                            <div class="insights-stats-card" id="insightsStatsCard"></div>
                         </div>
                         <div class="lpc-topbar-summary" id="lpcTopbarSummary" aria-label="Late payment charges summary" hidden></div>
                         <div class="lpc-topbar-summary bad-debt-topbar-summary" id="badDebtTopbarSummary" aria-label="Bad debt ageing summary" hidden></div>
@@ -24117,6 +24217,7 @@
                 usage: "Track OpenAI and Xero volume, estimated spend, and highest-traffic features.",
                 "developer-log": "Inspect sync events, backend errors, and API calls.",
                 "system-status": "Check stored record counts, database size, and backend health indicators.",
+                "domain-settings": "Track live custom-domain DNS, verification TXT records, and HTTPS reachability.",
                 "factory-reset": "Protected destructive controls are isolated from day-to-day settings."
             };
             let globalActivityOpen = false;
@@ -24180,6 +24281,7 @@
             let riskAssessmentActiveClientKey = "";
             let confirmationStatementsOnboardingDismissed = loadConfirmationStatementsOnboardingDismissed();
             let topbarContactDetailsOpen = false;
+            let insightsStatsExpanded = false;
             let latePaymentChargeBaseAmounts = new Map();
             let lateChargeSearchTerm = "";
             let badDebtSearchTerm = "";
@@ -54554,22 +54656,45 @@
                 if (summary.hidden) return;
                 const payload = insightsData || localInsightsPayload("local");
                 const snapshot = systemInsightsSnapshot(payload.analytics || {});
-                document.getElementById("insightsTopbarDebtorBookValue").textContent = snapshot.debtorBookValue;
-                document.getElementById("insightsTopbarDebtorBookDetail").textContent = snapshot.debtorBookDetail;
-                document.getElementById("insightsTopbarBankClientsValue").textContent = snapshot.bankClientsValue;
-                document.getElementById("insightsTopbarBankClientsDetail").textContent = snapshot.bankClientsDetail;
-                document.getElementById("insightsTopbarMeClientsValue").textContent = snapshot.meClientsValue;
-                document.getElementById("insightsTopbarMeClientsDetail").textContent = snapshot.meClientsDetail;
-                document.getElementById("insightsTopbarJashflowClientsValue").textContent = snapshot.jashflowClientsValue;
-                document.getElementById("insightsTopbarJashflowClientsDetail").textContent = snapshot.jashflowClientsDetail;
-                document.getElementById("insightsTopbarBankStatementsMtdValue").textContent = snapshot.bankStatementsMtdValue;
-                document.getElementById("insightsTopbarBankStatementsMtdDetail").textContent = snapshot.bankStatementsMtdDetail;
-                document.getElementById("insightsTopbarJukReportsMtdValue").textContent = snapshot.jukReportsMtdValue;
-                document.getElementById("insightsTopbarJukReportsMtdDetail").textContent = snapshot.jukReportsMtdDetail;
-                document.getElementById("insightsTopbarLateChargesMtdValue").textContent = snapshot.lateChargesMtdValue;
-                document.getElementById("insightsTopbarLateChargesMtdDetail").textContent = snapshot.lateChargesMtdDetail;
-                document.getElementById("insightsTopbarWriteOffsMtdValue").textContent = snapshot.writeOffsMtdValue;
-                document.getElementById("insightsTopbarWriteOffsMtdDetail").textContent = snapshot.writeOffsMtdDetail;
+                const host = normaliseDomainHost(domainHealthSettings?.domainHost || "");
+                const domainSummary = domainHealthOverallSummary(domainHealthLastResult);
+                const dropdownRows = [
+                    ["Debtor Book", snapshot.debtorBookValue, snapshot.debtorBookDetail],
+                    ["Bank Clients", snapshot.bankClientsValue, snapshot.bankClientsDetail],
+                    ["ME Report Clients", snapshot.meClientsValue, snapshot.meClientsDetail],
+                    ["Jashflow Clients", snapshot.jashflowClientsValue, snapshot.jashflowClientsDetail],
+                    ["Statements MTD", snapshot.bankStatementsMtdValue, snapshot.bankStatementsMtdDetail],
+                    ["JUK Reports MTD", snapshot.jukReportsMtdValue, snapshot.jukReportsMtdDetail],
+                    ["LPC Raised MTD", snapshot.lateChargesMtdValue, snapshot.lateChargesMtdDetail],
+                    ["Write-Offs MTD", snapshot.writeOffsMtdValue, snapshot.writeOffsMtdDetail],
+                    ["Domain Health", domainSummary.label, `${host || "Domain not set"} · ${domainSummary.detail}`],
+                ];
+                const compactHeadline = `${snapshot.debtorBookValue} receivables · ${snapshot.lateChargesMtdValue} LPC MTD · ${domainSummary.label} domain`;
+                const target = document.getElementById("insightsStatsCard");
+                if (!target) return;
+                target.innerHTML = `
+                    <button class="insights-stats-toggle" id="insightsStatsToggleButton" type="button" aria-expanded="${insightsStatsExpanded ? "true" : "false"}" aria-controls="insightsStatsPanel">
+                        <span class="insights-stats-toggle-mark" aria-hidden="true">JS</span>
+                        <span class="insights-stats-toggle-copy">
+                            <span>Jenius Stats</span>
+                            <strong>${escapeHTML(compactHeadline)}</strong>
+                        </span>
+                        <span class="insights-stats-toggle-caret" aria-hidden="true">${insightsStatsExpanded ? "▲" : "▼"}</span>
+                    </button>
+                    <div class="insights-stats-panel" id="insightsStatsPanel" ${insightsStatsExpanded ? "" : "hidden"}>
+                        ${dropdownRows.map(([label, value, detail]) => `
+                            <article class="insights-stats-tile">
+                                <span>${escapeHTML(label)}</span>
+                                <strong>${escapeHTML(String(value || "—"))}</strong>
+                                <p>${escapeHTML(String(detail || ""))}</p>
+                            </article>
+                        `).join("")}
+                    </div>
+                `;
+                target.querySelector("#insightsStatsToggleButton")?.addEventListener("click", () => {
+                    insightsStatsExpanded = !insightsStatsExpanded;
+                    renderInsightsTopbarSummary();
+                });
             }
 
             function renderInsightsScreen() {
@@ -54837,9 +54962,6 @@
                         urgency: action.urgency || "medium",
                     }));
                 const conversations = (ai.conversations || []).filter((item) => item && (item.question || item.answer)).slice(0, 4);
-                const commentary = ai.commentary || {};
-                const commentaryWatchouts = Array.isArray(commentary.watchouts) ? commentary.watchouts : [];
-                const commentaryWins = Array.isArray(commentary.wins) ? commentary.wins : [];
                 const monthlyRecent = monthly.slice(-6);
                 const topCustomerRows = topCustomers.slice(0, 8).map((customer) => ({
                     name: customer.name || "Client",
@@ -54886,20 +55008,10 @@
                             `).join("")}
                         </aside>
                     </section>
-                    <div class="insight-two-column insights-home-section">
-                        <section class="insight-chart" id="insightsNextPlaysSection">
-                            <span>Recommended Next Plays</span>
-                            ${insightActionCards(playRows, "No next plays are currently available.")}
-                        </section>
-                        <section class="insight-chart" id="insightsCommentarySection">
-                            <span>Copilot Commentary</span>
-                            <div class="copilot-commentary-block">
-                                <article><strong>What has happened recently</strong><p>${escapeHTML(commentary.recent || "Recent commentary is building from synced debtor book, bank extraction, Jashflow and ME Report activity.")}</p></article>
-                                <article><strong>Watchouts</strong><p>${escapeHTML(commentaryWatchouts.join(" • ") || "No watchouts flagged.")}</p></article>
-                                <article><strong>Wins</strong><p>${escapeHTML(commentaryWins.join(" • ") || "No wins flagged yet.")}</p></article>
-                            </div>
-                        </section>
-                    </div>
+                    <section class="insight-chart insights-home-section" id="insightsNextPlaysSection">
+                        <span>Recommended Next Plays</span>
+                        ${insightActionCards(playRows, "No next plays are currently available.")}
+                    </section>
                     <section class="insight-chart insights-home-section" id="insightsStatusSection">
                         <span>System Status Snapshot</span>
                         <div class="insights-status-grid">
@@ -57985,6 +58097,264 @@
                 }
             }
 
+            function normaliseDomainHost(value) {
+                return String(value || "").trim().replace(/\.$/, "").toLowerCase();
+            }
+
+            function normaliseTxtAnswer(value) {
+                return String(value || "").trim().replace(/^"+|"+$/g, "").replace(/\\"/g, "\"");
+            }
+
+            async function resolveDnsRecords(name, type) {
+                const safeName = normaliseDomainHost(name);
+                const safeType = String(type || "").trim().toUpperCase();
+                if (!safeName || !safeType) return [];
+                const endpoint = `https://dns.google/resolve?name=${encodeURIComponent(safeName)}&type=${encodeURIComponent(safeType)}`;
+                const response = await fetch(endpoint, { method: "GET", cache: "no-store" });
+                if (!response.ok) throw new Error(`DNS lookup failed (${response.status})`);
+                const payload = await response.json().catch(() => ({}));
+                const answers = Array.isArray(payload?.Answer) ? payload.Answer : [];
+                return answers.map((answer) => String(answer?.data || "").trim()).filter(Boolean);
+            }
+
+            function domainHealthCheckMarkup(check) {
+                const state = String(check?.state || "muted");
+                const stateClass = state === "ok" ? "is-ok" : state === "warn" ? "is-warn" : state === "error" ? "is-error" : "is-muted";
+                return `
+                    <article class="domain-health-check">
+                        <span class="domain-health-pill ${stateClass}">${escapeHTML(String(check?.label || "Check"))}</span>
+                        <strong>${escapeHTML(String(check?.headline || "No result"))}</strong>
+                        <small>${escapeHTML(String(check?.detail || ""))}</small>
+                    </article>
+                `;
+            }
+
+            function domainHealthOverallSummary(result) {
+                if (!result || !Array.isArray(result.checks) || !result.checks.length) {
+                    return {
+                        label: "Not checked",
+                        state: "muted",
+                        detail: "No checks run yet.",
+                    };
+                }
+                const failed = result.checks.filter((check) => check.state === "error").length;
+                const warned = result.checks.filter((check) => check.state === "warn").length;
+                const ok = result.checks.filter((check) => check.state === "ok").length;
+                if (failed > 0) {
+                    return {
+                        label: "Issue detected",
+                        state: "error",
+                        detail: `${failed} failed, ${warned} warning, ${ok} passing.`,
+                    };
+                }
+                if (warned > 0) {
+                    return {
+                        label: "Attention needed",
+                        state: "warn",
+                        detail: `${warned} warning, ${ok} passing.`,
+                    };
+                }
+                return {
+                    label: "Live",
+                    state: "ok",
+                    detail: `${ok} checks passing.`,
+                };
+            }
+
+            function renderDomainHealthPanels() {
+                const settingsSummary = document.getElementById("domainSettingsStatusSummary");
+                const settingsGrid = document.getElementById("domainSettingsCheckGrid");
+                const settingsTimeline = document.getElementById("domainSettingsTimeline");
+                const systemSummary = document.getElementById("systemStatusDomainHealthSummary");
+                const systemGrid = document.getElementById("systemStatusDomainHealthGrid");
+                const hostInput = document.getElementById("domainSettingsHostInput");
+                const cnameInput = document.getElementById("domainSettingsExpectedCnameInput");
+                const txtHostInput = document.getElementById("domainSettingsTxtHostInput");
+                const txtValueInput = document.getElementById("domainSettingsExpectedTxtInput");
+                const runButton = document.getElementById("domainSettingsRunChecksButton");
+                const saveButton = document.getElementById("domainSettingsSaveConfigButton");
+                const refreshButton = document.getElementById("systemStatusDomainHealthRefreshButton");
+                const result = domainHealthLastResult;
+                const summary = domainHealthOverallSummary(result);
+                const checkedAt = result?.checkedAt ? formatDate(result.checkedAt) : "Not checked yet";
+                const profileHost = normaliseDomainHost(domainHealthSettings?.domainHost || "");
+
+                if (hostInput && document.activeElement !== hostInput) hostInput.value = domainHealthSettings?.domainHost || "";
+                if (cnameInput && document.activeElement !== cnameInput) cnameInput.value = domainHealthSettings?.expectedCname || "";
+                if (txtHostInput && document.activeElement !== txtHostInput) txtHostInput.value = domainHealthSettings?.txtHost || "";
+                if (txtValueInput && document.activeElement !== txtValueInput) txtValueInput.value = domainHealthSettings?.expectedTxt || "";
+
+                if (settingsSummary) {
+                    settingsSummary.textContent = domainHealthLoading
+                        ? "Running live DNS checks…"
+                        : `${summary.label} · ${summary.detail} Last checked: ${checkedAt}`;
+                }
+                if (systemSummary) {
+                    systemSummary.textContent = domainHealthLoading
+                        ? "Checking domain health now…"
+                        : `${profileHost || "Domain not set"} · ${summary.label}. ${summary.detail} Last checked: ${checkedAt}`;
+                }
+                if (settingsGrid) {
+                    const checks = result?.checks || [
+                        { label: "CNAME", state: "muted", headline: "No DNS checks yet", detail: "Run checks to populate current live DNS state." },
+                        { label: "TXT verify", state: "muted", headline: "No TXT checks yet", detail: "Verification token status appears here." },
+                        { label: "HTTPS", state: "muted", headline: "No HTTPS checks yet", detail: "Domain reachability appears here." },
+                    ];
+                    settingsGrid.innerHTML = checks.map(domainHealthCheckMarkup).join("");
+                }
+                if (systemGrid) {
+                    const checks = result?.checks || [
+                        { label: "Domain", state: "muted", headline: "No checks run yet", detail: "Run checks in Domain Health settings." },
+                    ];
+                    systemGrid.innerHTML = checks.map(domainHealthCheckMarkup).join("");
+                }
+                if (settingsTimeline) {
+                    if (!result) {
+                        settingsTimeline.innerHTML = `
+                            <div class="empty-state">
+                                <p class="eyebrow">Domain timeline</p>
+                                <h4>No checks run yet</h4>
+                                <p>Run checks to log live CNAME, TXT verification, and HTTPS reachability.</p>
+                            </div>
+                        `;
+                    } else {
+                        const lines = [
+                            [`Checked`, checkedAt],
+                            [`Domain`, result.domainHost || "--"],
+                            [`Expected CNAME`, result.expectedCname || "--"],
+                            [`Expected TXT`, result.expectedTxt || "--"],
+                            [`Live CNAME`, (result.liveCname || []).join(" | ") || "None returned"],
+                            [`Live TXT`, (result.liveTxt || []).join(" | ") || "None returned"],
+                            [`HTTPS`, result.httpsStatus || "Not checked"],
+                        ];
+                        settingsTimeline.innerHTML = `
+                            <div class="database-metrics-heading"><span>Signal</span><span>Result</span><span>Notes</span></div>
+                            ${lines.map(([signal, value]) => `
+                                <div class="database-metrics-row">
+                                    <strong>${escapeHTML(signal)}</strong>
+                                    <b>${escapeHTML(String(value || "--"))}</b>
+                                    <b>${escapeHTML(signal === "Checked" ? "Most recent run" : "Live diagnostic")}</b>
+                                </div>
+                            `).join("")}
+                        `;
+                    }
+                }
+
+                if (runButton) {
+                    runButton.disabled = domainHealthLoading;
+                    runButton.textContent = domainHealthLoading ? "Checking..." : "Run checks now";
+                }
+                if (saveButton) saveButton.disabled = domainHealthLoading;
+                if (refreshButton) refreshButton.disabled = domainHealthLoading;
+            }
+
+            async function runDomainHealthChecks({ silent = false } = {}) {
+                if (domainHealthLoading) return;
+                domainHealthLoading = true;
+                renderDomainHealthPanels();
+                const domainHost = normaliseDomainHost(domainHealthSettings?.domainHost || "");
+                const expectedCname = normaliseDomainHost(domainHealthSettings?.expectedCname || "");
+                const txtHost = normaliseDomainHost(domainHealthSettings?.txtHost || "");
+                const expectedTxt = normaliseTxtAnswer(domainHealthSettings?.expectedTxt || "");
+                const checks = [];
+                let liveCname = [];
+                let liveTxt = [];
+                let httpsStatus = "Unknown";
+                try {
+                    if (!domainHost) throw new Error("Set a public domain before running checks.");
+                    if (expectedCname) {
+                        liveCname = await resolveDnsRecords(domainHost, "CNAME");
+                        const normalisedLiveCname = liveCname.map(normaliseDomainHost);
+                        const cnameOk = normalisedLiveCname.includes(expectedCname);
+                        checks.push({
+                            label: "CNAME",
+                            state: cnameOk ? "ok" : "error",
+                            headline: cnameOk ? "CNAME target matched" : "CNAME target mismatch",
+                            detail: cnameOk ? `${domainHost} points to ${expectedCname}` : `Live: ${(liveCname || []).join(", ") || "none"}`
+                        });
+                    } else {
+                        checks.push({
+                            label: "CNAME",
+                            state: "warn",
+                            headline: "Expected CNAME not set",
+                            detail: "Add expected CNAME target to enable strict validation.",
+                        });
+                    }
+                    if (txtHost) {
+                        liveTxt = await resolveDnsRecords(txtHost, "TXT");
+                        const normalisedLiveTxt = liveTxt.map(normaliseTxtAnswer);
+                        const txtOk = expectedTxt ? normalisedLiveTxt.includes(expectedTxt) : normalisedLiveTxt.length > 0;
+                        checks.push({
+                            label: "TXT verify",
+                            state: txtOk ? "ok" : "error",
+                            headline: txtOk ? "TXT verification present" : "TXT verification missing",
+                            detail: txtOk ? `${txtHost} verification record found` : `Live: ${(liveTxt || []).join(", ") || "none"}`
+                        });
+                    } else {
+                        checks.push({
+                            label: "TXT verify",
+                            state: "warn",
+                            headline: "Verification host not set",
+                            detail: "Add Railway TXT host to validate ownership checks.",
+                        });
+                    }
+                    try {
+                        await fetch(`https://${domainHost}`, { method: "HEAD", mode: "no-cors", cache: "no-store" });
+                        httpsStatus = "Reachable (no-cors probe)";
+                        checks.push({
+                            label: "HTTPS",
+                            state: "ok",
+                            headline: "HTTPS endpoint reachable",
+                            detail: `https://${domainHost} responded to probe.`,
+                        });
+                    } catch (error) {
+                        httpsStatus = `Probe failed: ${error?.message || "network error"}`;
+                        checks.push({
+                            label: "HTTPS",
+                            state: "warn",
+                            headline: "HTTPS probe did not confirm",
+                            detail: "Check SSL issuance in Railway if DNS is already correct.",
+                        });
+                    }
+
+                    domainHealthLastResult = {
+                        checkedAt: new Date().toISOString(),
+                        domainHost,
+                        expectedCname,
+                        txtHost,
+                        expectedTxt,
+                        liveCname,
+                        liveTxt,
+                        httpsStatus,
+                        checks,
+                    };
+                    if (!silent) showToast("Domain checks completed.", "success");
+                } catch (error) {
+                    domainHealthLastResult = {
+                        checkedAt: new Date().toISOString(),
+                        domainHost,
+                        expectedCname,
+                        txtHost,
+                        expectedTxt,
+                        liveCname,
+                        liveTxt,
+                        httpsStatus,
+                        checks: [
+                            {
+                                label: "Domain",
+                                state: "error",
+                                headline: "Unable to run checks",
+                                detail: error?.message || "Unknown domain check error",
+                            },
+                        ],
+                    };
+                    if (!silent) showToast(error?.message || "Unable to run domain checks.", "error");
+                } finally {
+                    domainHealthLoading = false;
+                    renderDomainHealthPanels();
+                }
+            }
+
             function renderDatabaseMetrics() {
                 const metrics = state.databaseMetrics || {};
                 const ledger = metrics.ledger || {};
@@ -58207,6 +58577,7 @@
                         `
                         : '<div class="empty-state"><p class="eyebrow">No database metrics</p><h4>Metrics are not available yet</h4><p>Refresh the panel after the backend is connected.</p></div>';
                 }
+                renderDomainHealthPanels();
             }
 
             function formatUsageUsd(amount) {
@@ -59054,6 +59425,11 @@
                     title: "System Status",
                     meta: "Check stored record counts, database size, and backend health indicators."
                 },
+                "domain-settings": {
+                    eyebrow: "Domain health",
+                    title: "Domain Health Control Panel",
+                    meta: "Monitor DNS verification, CNAME routing, and HTTPS reachability for your live custom domain."
+                },
                 "factory-reset": {
                     eyebrow: "Factory reset",
                     title: "Factory Reset",
@@ -59075,6 +59451,7 @@
                 "me-report-email": "communications",
                 "factory-reset": "technical-settings",
                 "system-status": "technical-settings",
+                "domain-settings": "technical-settings",
                 usage: "technical-settings",
                 "product-releases": "technical-settings",
                 "developer-log": "technical-settings",
@@ -59128,6 +59505,7 @@
                 document.getElementById("factoryOpenResetPageButton")?.classList.toggle("is-active", activeSettingsSection === "factory-reset");
                 if (activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
                 if (activeSettingsSection === "renewal-settings") renderRenewalSettings();
+                if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") renderDomainHealthPanels();
             }
 
             function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
@@ -59151,6 +59529,12 @@
                 if (activeSettingsSection === "renewal-settings") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
                 if (activeSettingsSection === "usage" || activeSettingsSection === "product-releases") loadSettingsUsage();
+                if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") {
+                    renderDomainHealthPanels();
+                    const lastCheckedAt = Date.parse(String(domainHealthLastResult?.checkedAt || ""));
+                    const stale = !Number.isFinite(lastCheckedAt) || (Date.now() - lastCheckedAt) > (15 * 60 * 1000);
+                    if (stale) runDomainHealthChecks({ silent: true });
+                }
                 document.getElementById("menuSettingsButton")?.blur();
                 scrollConsoleToTop();
             }
@@ -59809,6 +60193,28 @@
                 });
                 document.getElementById("factoryOpenResetPageButton")?.addEventListener("click", () => openSettingsScreen("factory-reset", "factory"));
                 document.getElementById("settingsUsageRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
+                document.getElementById("domainSettingsSaveConfigButton")?.addEventListener("click", () => {
+                    domainHealthSettings = {
+                        domainHost: String(document.getElementById("domainSettingsHostInput")?.value || "").trim(),
+                        expectedCname: String(document.getElementById("domainSettingsExpectedCnameInput")?.value || "").trim(),
+                        txtHost: String(document.getElementById("domainSettingsTxtHostInput")?.value || "").trim(),
+                        expectedTxt: String(document.getElementById("domainSettingsExpectedTxtInput")?.value || "").trim(),
+                    };
+                    persistDomainHealthSettings();
+                    renderDomainHealthPanels();
+                    showToast("Domain profile saved.", "success");
+                });
+                document.getElementById("domainSettingsRunChecksButton")?.addEventListener("click", async () => {
+                    domainHealthSettings = {
+                        domainHost: String(document.getElementById("domainSettingsHostInput")?.value || "").trim(),
+                        expectedCname: String(document.getElementById("domainSettingsExpectedCnameInput")?.value || "").trim(),
+                        txtHost: String(document.getElementById("domainSettingsTxtHostInput")?.value || "").trim(),
+                        expectedTxt: String(document.getElementById("domainSettingsExpectedTxtInput")?.value || "").trim(),
+                    };
+                    persistDomainHealthSettings();
+                    await runDomainHealthChecks({ silent: false });
+                });
+                document.getElementById("systemStatusDomainHealthRefreshButton")?.addEventListener("click", () => runDomainHealthChecks({ silent: false }));
                 document.getElementById("settingsUsageDaysSelect")?.addEventListener("change", (event) => {
                     settingsUsageDays = Number(event.target?.value || 30);
                     loadSettingsUsage(true);
