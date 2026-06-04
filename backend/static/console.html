@@ -64,7 +64,7 @@
             }
             button, input, textarea, select { font: inherit; }
             button { cursor: pointer; }
-            .ledger-shell {
+            .ledger-shell {                                 
                 grid-column: 2;
                 width: min(1320px, 100%);
                 margin: 10px auto 32px;
@@ -6141,6 +6141,22 @@
                 background: rgba(255, 255, 255, 0.72);
                 padding: 8px;
             }
+            .settings-usage-inspector .usage-detail-grid article.usage-metric-calls {
+                border-color: rgba(46, 182, 113, 0.26);
+                background: rgba(232, 248, 238, 0.86);
+            }
+            .settings-usage-inspector .usage-detail-grid article.usage-metric-errors {
+                border-color: rgba(255, 83, 83, 0.28);
+                background: rgba(255, 232, 232, 0.82);
+            }
+            .settings-usage-inspector .usage-detail-grid article.usage-metric-latency {
+                border-color: rgba(93, 134, 255, 0.28);
+                background: rgba(233, 241, 255, 0.84);
+            }
+            .settings-usage-inspector .usage-detail-grid article.usage-metric-cost {
+                border-color: rgba(141, 98, 255, 0.28);
+                background: rgba(238, 232, 255, 0.85);
+            }
             .settings-usage-inspector .usage-detail-grid span {
                 display: block;
                 color: var(--muted);
@@ -6165,12 +6181,115 @@
                 margin: 12px 0 4px;
                 font-size: 0.88rem;
             }
+            .usage-inspector-modal {
+                position: fixed;
+                inset: 0;
+                z-index: 760;
+                display: grid;
+                place-items: center;
+                padding: 26px 16px;
+                background: rgba(19, 30, 52, 0.42);
+                backdrop-filter: blur(4px);
+            }
+            .usage-inspector-modal-panel {
+                width: min(1080px, 100%);
+                max-height: calc(100vh - 52px);
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr);
+                border-radius: 16px;
+                border: 1px solid rgba(61, 85, 130, 0.2);
+                background: #ffffff;
+                box-shadow: 0 26px 56px rgba(22, 40, 74, 0.24);
+                overflow: hidden;
+            }
+            .usage-inspector-modal-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+                padding: 14px 16px;
+                border-bottom: 1px solid rgba(61, 85, 130, 0.12);
+                background: linear-gradient(180deg, rgba(246, 250, 255, 0.96) 0%, rgba(240, 246, 255, 0.9) 100%);
+            }
+            .usage-inspector-modal-head h4 {
+                margin: 0;
+                font-size: 1.02rem;
+            }
+            .usage-inspector-modal-head p {
+                margin: 3px 0 0;
+                color: var(--muted);
+                font-size: 0.79rem;
+                font-weight: 700;
+            }
+            .usage-inspector-modal-body {
+                overflow: auto;
+                padding: 14px 16px 16px;
+            }
+            .usage-inspector-modal-body .settings-usage-inspector {
+                margin-top: 0;
+                border-color: rgba(61, 85, 130, 0.14);
+                background: rgba(255, 255, 255, 0.95);
+            }
+            body.usage-inspector-modal-open {
+                overflow: hidden;
+            }
+            @media (max-width: 860px) {
+                .usage-inspector-modal {
+                    padding: 12px;
+                    align-items: end;
+                }
+                .usage-inspector-modal-panel {
+                    width: 100%;
+                    max-height: calc(100vh - 24px);
+                }
+                .usage-inspector-modal-head h4 {
+                    font-size: 0.96rem;
+                }
+            }
             .release-hotspot-list {
                 list-style: none;
                 margin: 0;
                 padding: 0;
                 display: grid;
                 gap: 10px;
+            }
+            .release-deployment-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: grid;
+                gap: 10px;
+            }
+            .release-deployment-list > li {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.76);
+                padding: 10px 12px;
+                display: grid;
+                gap: 7px;
+            }
+            .release-deployment-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .release-deployment-head strong {
+                font-size: 0.88rem;
+                line-height: 1.2;
+            }
+            .release-deployment-meta {
+                color: var(--muted);
+                font-size: 0.74rem;
+                font-weight: 800;
+            }
+            .release-deployment-list ul {
+                margin: 0;
+                padding: 0 0 0 18px;
+                color: #566581;
+                font-size: 0.81rem;
+                line-height: 1.32;
             }
             .release-hotspot-list > li {
                 display: grid;
@@ -21522,6 +21641,18 @@
                                 </div>
                                 <div class="database-metrics-list settings-usage-list" id="settingsUsageDailyTrend"></div>
                             </section>
+                            <div class="usage-inspector-modal" id="settingsUsageInspectorModal" hidden>
+                                <section class="usage-inspector-modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsUsageInspectorModalTitle">
+                                    <div class="usage-inspector-modal-head">
+                                        <div>
+                                            <h4 id="settingsUsageInspectorModalTitle">Usage inspector</h4>
+                                            <p>Feature and endpoint impact details</p>
+                                        </div>
+                                        <button class="ghost-button" id="closeSettingsUsageInspectorModalButton" type="button">Close</button>
+                                    </div>
+                                    <div class="usage-inspector-modal-body" id="settingsUsageInspectorModalContent"></div>
+                                </section>
+                            </div>
 
                             <section class="detail-panel settings-panel wide-settings-panel" data-settings-section="product-releases">
                                 <div class="panel-heading">
@@ -21530,11 +21661,15 @@
                                         <h3>Release notes and deployment updates</h3>
                                     </div>
                                     <div class="detail-actions">
-                                        <button class="ghost-button" id="productReleasesRefreshButton" type="button">Refresh API usage</button>
+                                        <button class="ghost-button" id="productReleasesRefreshButton" type="button">Refresh deployments</button>
                                         <button class="ghost-button" id="productReleasesOpenUsageButton" type="button">Open usage dashboard</button>
                                     </div>
                                 </div>
                                 <p class="settings-help">Track backend and console release history, rollout notes, and technical change summaries.</p>
+                                <p class="settings-help" id="productReleasesDeploymentsSummary">Loading deployment history…</p>
+                                <div class="database-metrics-list settings-usage-list" id="productReleasesDeploymentsList">
+                                    <div class="empty-state"><p class="eyebrow">Deployments</p><h4>Waiting for deployment data</h4><p>Refresh to load the latest deployments and release notes.</p></div>
+                                </div>
                                 <p class="settings-help" id="productReleasesApiUsageSummary">Loading API usage hotspots…</p>
                                 <div class="database-metrics-list settings-usage-list" id="productReleasesApiHotspots">
                                     <div class="empty-state"><p class="eyebrow">No usage data</p><h4>Open API Usage or refresh this panel</h4><p>This area highlights the pages/features currently consuming the most API calls.</p></div>
@@ -24755,6 +24890,9 @@
             let settingsUsageDetailLoading = false;
             let settingsUsageDetail = null;
             let settingsUsageSelection = null;
+            let settingsUsageInspectorModalOpen = false;
+            let productReleasesLoading = false;
+            let productReleasesData = { generatedAt: "", deployments: [] };
             let xeroAccounts = [];
             let xeroAccountsLoading = false;
             let xeroAccountsLoaded = false;
@@ -25496,6 +25634,7 @@
                         developerLogsClear: config.endpoints?.developerLogsClear || "/api/developer/logs/clear",
                         settingsUsage: config.endpoints?.settingsUsage || "/api/settings/usage",
                         settingsUsageDetail: config.endpoints?.settingsUsageDetail || "/api/settings/usage/detail",
+                        settingsReleases: config.endpoints?.settingsReleases || "/api/settings/releases",
                         note: config.endpoints?.note || "/api/invoices/:invoiceId/notes",
                         customerNote: config.endpoints?.customerNote || "/api/customers/:customerId/notes",
                         customerTransactions: config.endpoints?.customerTransactions || "/api/customers/:customerId/xero-transactions",
@@ -59041,6 +59180,7 @@
                 renderDatabaseMetrics();
                 renderPendingXeroActions();
                 renderSettingsUsage();
+                renderProductReleasesDeployments();
                 renderProductReleasesApiHotspots();
                 renderPostingSettings();
                 renderFactoryResetGuard();
@@ -60706,25 +60846,37 @@
                 }
             }
 
+            function setSettingsUsageInspectorModalOpen(open) {
+                settingsUsageInspectorModalOpen = Boolean(open && settingsUsageSelection);
+                const modal = document.getElementById("settingsUsageInspectorModal");
+                if (modal) modal.hidden = !settingsUsageInspectorModalOpen;
+                document.body.classList.toggle("usage-inspector-modal-open", settingsUsageInspectorModalOpen);
+            }
+
             function renderSettingsUsageInspector() {
                 const target = document.getElementById("settingsUsageInspector");
-                if (!target) return;
+                const modalContent = document.getElementById("settingsUsageInspectorModalContent");
+                if (!target || !modalContent) return;
                 if (!settingsUsageSelection) {
                     target.innerHTML = `
                         <div class="empty-state">
                             <p class="eyebrow">Usage inspector</p>
                             <h4>Click a feature or endpoint row</h4>
-                            <p>The inspector will explain what it does, where it is used, and how to reduce heavy API usage.</p>
+                            <p>The inspector opens as a popup with impact detail, recommendations, and operation links.</p>
                         </div>
                     `;
+                    modalContent.innerHTML = "";
+                    setSettingsUsageInspectorModalOpen(false);
                     return;
                 }
                 if (settingsUsageDetailLoading) {
-                    target.innerHTML = '<p class="settings-help">Loading usage breakdown and recommendations…</p>';
+                    modalContent.innerHTML = '<div class="settings-usage-inspector"><p class="settings-help">Loading usage breakdown and recommendations…</p></div>';
+                    setSettingsUsageInspectorModalOpen(settingsUsageInspectorModalOpen);
                     return;
                 }
                 if (settingsUsageDetail?.error) {
-                    target.innerHTML = `<p class="settings-help">${escapeHTML(settingsUsageDetail.error)}</p>`;
+                    modalContent.innerHTML = `<div class="settings-usage-inspector"><p class="settings-help">${escapeHTML(settingsUsageDetail.error)}</p></div>`;
+                    setSettingsUsageInspectorModalOpen(settingsUsageInspectorModalOpen);
                     return;
                 }
                 const detail = settingsUsageDetail || {};
@@ -60736,34 +60888,37 @@
                 const title = settingsUsageSelection.kind === "endpoint"
                     ? `${String(settingsUsageSelection.provider || "").toUpperCase()} · ${settingsUsageSelection.endpoint || "endpoint"}`
                     : `${String(settingsUsageSelection.provider || "").toUpperCase()} · ${settingsUsageSelection.feature || "feature"} · ${settingsUsageSelection.page || "page"}`;
-                target.innerHTML = `
-                    <div class="usage-inspector-header">
-                        <div>
-                            <p class="eyebrow">Usage inspector</p>
-                            <h4>${escapeHTML(title)}</h4>
-                            <p class="settings-help">${escapeHTML(explanation.whatIsThis || "Usage breakdown for the selected row.")}</p>
+                modalContent.innerHTML = `
+                    <div class="settings-usage-inspector">
+                        <div class="usage-inspector-header">
+                            <div>
+                                <p class="eyebrow">Usage inspector</p>
+                                <h4>${escapeHTML(title)}</h4>
+                                <p class="settings-help">${escapeHTML(explanation.whatIsThis || "Usage breakdown for the selected row.")}</p>
+                            </div>
+                            <span class="usage-severity-pill ${severityClass}">${escapeHTML(severity)}${help.isExtreme ? " · immediate action" : ""}</span>
                         </div>
-                        <span class="usage-severity-pill ${severityClass}">${escapeHTML(severity)}${help.isExtreme ? " · immediate action" : ""}</span>
+                        <h4>Recommendations</h4>
+                        <ul>
+                            ${(Array.isArray(help.recommendations) ? help.recommendations : []).map((item) => `<li>${escapeHTML(item)}</li>`).join("") || "<li>No recommendations available.</li>"}
+                        </ul>
+                        <div class="usage-detail-grid">
+                            <article class="usage-metric-calls"><span>Calls</span><strong>${formatInteger(summary.requests)}</strong></article>
+                            <article class="usage-metric-errors"><span>Error rate</span><strong>${((Number(summary.errorRate || 0)) * 100).toFixed(1)}%</strong></article>
+                            <article class="usage-metric-latency"><span>Avg latency</span><strong>${Math.round(Number(summary.avgLatencyMs || 0)).toLocaleString("en-GB")} ms</strong></article>
+                            <article class="usage-metric-cost"><span>Cost</span><strong>${formatUsageUsd(summary.estimatedCostUsd || 0)}</strong></article>
+                        </div>
+                        <h4>Used by features/pages</h4>
+                        <ul>
+                            ${(Array.isArray(detail.usedByFeatures) ? detail.usedByFeatures.slice(0, 8) : []).map((row) => `<li>${escapeHTML(`${row.feature} · ${row.page}`)} (${formatInteger(row.requests)} calls)</li>`).join("") || "<li>No feature/page linkage found.</li>"}
+                        </ul>
+                        <h4>Used by operations</h4>
+                        <ul>
+                            ${(Array.isArray(detail.operations) ? detail.operations.slice(0, 8) : []).map((row) => `<li>${escapeHTML(row.operation)} · ${formatInteger(row.requests)} calls (${formatInteger(row.errors)} errors)</li>`).join("") || "<li>No operation detail found.</li>"}
+                        </ul>
                     </div>
-                    <div class="usage-detail-grid">
-                        <article><span>Calls</span><strong>${formatInteger(summary.requests)}</strong></article>
-                        <article><span>Error rate</span><strong>${((Number(summary.errorRate || 0)) * 100).toFixed(1)}%</strong></article>
-                        <article><span>Avg latency</span><strong>${Math.round(Number(summary.avgLatencyMs || 0)).toLocaleString("en-GB")} ms</strong></article>
-                        <article><span>Cost</span><strong>${formatUsageUsd(summary.estimatedCostUsd || 0)}</strong></article>
-                    </div>
-                    <h4>Recommendations</h4>
-                    <ul>
-                        ${(Array.isArray(help.recommendations) ? help.recommendations : []).map((item) => `<li>${escapeHTML(item)}</li>`).join("") || "<li>No recommendations available.</li>"}
-                    </ul>
-                    <h4>Used by features/pages</h4>
-                    <ul>
-                        ${(Array.isArray(detail.usedByFeatures) ? detail.usedByFeatures.slice(0, 8) : []).map((row) => `<li>${escapeHTML(`${row.feature} · ${row.page}`)} (${formatInteger(row.requests)} calls)</li>`).join("") || "<li>No feature/page linkage found.</li>"}
-                    </ul>
-                    <h4>Used by operations</h4>
-                    <ul>
-                        ${(Array.isArray(detail.operations) ? detail.operations.slice(0, 8) : []).map((row) => `<li>${escapeHTML(row.operation)} · ${formatInteger(row.requests)} calls (${formatInteger(row.errors)} errors)</li>`).join("") || "<li>No operation detail found.</li>"}
-                    </ul>
                 `;
+                setSettingsUsageInspectorModalOpen(settingsUsageInspectorModalOpen);
             }
 
             function renderSettingsUsage() {
@@ -60884,6 +61039,55 @@
                 renderSettingsUsageInspector();
             }
 
+            function renderProductReleasesDeployments() {
+                const summary = document.getElementById("productReleasesDeploymentsSummary");
+                const target = document.getElementById("productReleasesDeploymentsList");
+                const refreshButton = document.getElementById("productReleasesRefreshButton");
+                if (refreshButton) {
+                    refreshButton.disabled = productReleasesLoading;
+                    refreshButton.textContent = productReleasesLoading ? "Refreshing deployments..." : "Refresh deployments";
+                }
+                if (!summary || !target) return;
+                const rows = Array.isArray(productReleasesData?.deployments) ? productReleasesData.deployments : [];
+                if (productReleasesLoading) {
+                    summary.textContent = "Refreshing deployments…";
+                    return;
+                }
+                const generatedAt = productReleasesData?.generatedAt;
+                if (!rows.length) {
+                    summary.textContent = "No deployment updates have been recorded yet.";
+                    target.innerHTML = '<div class="empty-state"><p class="eyebrow">Deployments</p><h4>No deployment history found</h4><p>Refresh to fetch the latest deployment records.</p></div>';
+                    return;
+                }
+                summary.textContent = `Showing ${rows.length.toLocaleString("en-GB")} deployment update${rows.length === 1 ? "" : "s"}${generatedAt ? ` · refreshed ${formatDate(generatedAt)}` : ""}.`;
+                target.innerHTML = `
+                    <ul class="release-deployment-list">
+                        ${rows.map((row, index) => {
+                            const heading = row.title || row.summary || `Deployment ${index + 1}`;
+                            const deployedAt = row.deployedAt || row.createdAt || row.updatedAt || "";
+                            const detailRows = Array.isArray(row.details) ? row.details.filter((item) => String(item || "").trim()) : [];
+                            return `
+                                <li>
+                                    <div class="release-deployment-head">
+                                        <strong>${escapeHTML(heading)}</strong>
+                                        <span class="release-deployment-meta">${escapeHTML(deployedAt ? formatDeveloperLogStamp(deployedAt) : "--")}</span>
+                                    </div>
+                                    <div class="release-deployment-meta">${escapeHTML([
+                                        row.deploymentId ? `Deploy ${row.deploymentId}` : "",
+                                        row.commitSha ? `Commit ${row.commitSha.slice(0, 10)}` : "",
+                                        row.source ? String(row.source).toUpperCase() : "",
+                                    ].filter(Boolean).join(" · ") || "Deployment metadata unavailable")}</div>
+                                    ${row.summary ? `<p class="settings-help">${escapeHTML(row.summary)}</p>` : ""}
+                                    ${detailRows.length
+                                        ? `<ul>${detailRows.slice(0, 8).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}</ul>`
+                                        : ""}
+                                </li>
+                            `;
+                        }).join("")}
+                    </ul>
+                `;
+            }
+
             function renderProductReleasesApiHotspots() {
                 const summary = document.getElementById("productReleasesApiUsageSummary");
                 const target = document.getElementById("productReleasesApiHotspots");
@@ -60969,6 +61173,22 @@
                         }).join("")}
                     </ul>
                 `;
+            }
+
+            async function loadProductReleases(force = false) {
+                if (productReleasesLoading && !force) return;
+                productReleasesLoading = true;
+                renderProductReleasesDeployments();
+                try {
+                    const payload = await requestJSON(`${api.endpoints.settingsReleases}?limit=120`);
+                    productReleasesData = payload || productReleasesData;
+                } catch (error) {
+                    console.error("Unable to load deployment releases", error);
+                    showToast(error?.message || "Unable to load deployment releases", "error");
+                } finally {
+                    productReleasesLoading = false;
+                    renderProductReleasesDeployments();
+                }
             }
 
             async function loadSettingsUsage(force = false) {
@@ -61614,6 +61834,7 @@
                 if (activeSettingsSection === "renewal-settings") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
                 if (activeSettingsSection === "usage" || activeSettingsSection === "product-releases") loadSettingsUsage();
+                if (activeSettingsSection === "product-releases") loadProductReleases();
                 if (activeSettingsSection === "domain-settings" || activeSettingsSection === "system-status") {
                     renderDomainHealthPanels();
                     const lastCheckedAt = Date.parse(String(domainHealthLastResult?.checkedAt || ""));
@@ -62320,6 +62541,7 @@
                 document.getElementById("settingsUsageTopFeatures")?.addEventListener("click", (event) => {
                     const row = event.target?.closest?.("[data-usage-kind='feature']");
                     if (!row) return;
+                    settingsUsageInspectorModalOpen = true;
                     loadSettingsUsageDetail({
                         kind: "feature",
                         provider: row.dataset.usageProvider || "xero",
@@ -62330,13 +62552,36 @@
                 document.getElementById("settingsUsageTopEndpoints")?.addEventListener("click", (event) => {
                     const row = event.target?.closest?.("[data-usage-kind='endpoint']");
                     if (!row) return;
+                    settingsUsageInspectorModalOpen = true;
                     loadSettingsUsageDetail({
                         kind: "endpoint",
                         provider: row.dataset.usageProvider || "xero",
                         endpoint: row.dataset.usageEndpoint || "",
                     });
                 });
-                document.getElementById("productReleasesRefreshButton")?.addEventListener("click", () => loadSettingsUsage(true));
+                const settingsUsageInspectorModal = document.getElementById("settingsUsageInspectorModal");
+                if (settingsUsageInspectorModal && settingsUsageInspectorModal.dataset.usageWired !== "true") {
+                    settingsUsageInspectorModal.dataset.usageWired = "true";
+                    settingsUsageInspectorModal.addEventListener("click", (event) => {
+                        if (event.target?.id !== "settingsUsageInspectorModal") return;
+                        setSettingsUsageInspectorModalOpen(false);
+                    });
+                }
+                const closeSettingsUsageInspectorModalButton = document.getElementById("closeSettingsUsageInspectorModalButton");
+                if (closeSettingsUsageInspectorModalButton && closeSettingsUsageInspectorModalButton.dataset.usageWired !== "true") {
+                    closeSettingsUsageInspectorModalButton.dataset.usageWired = "true";
+                    closeSettingsUsageInspectorModalButton.addEventListener("click", () => setSettingsUsageInspectorModalOpen(false));
+                }
+                if (document.body.dataset.settingsUsageInspectorEscWired !== "true") {
+                    document.body.dataset.settingsUsageInspectorEscWired = "true";
+                    document.addEventListener("keydown", (event) => {
+                        if (event.key !== "Escape" || !settingsUsageInspectorModalOpen) return;
+                        setSettingsUsageInspectorModalOpen(false);
+                    });
+                }
+                document.getElementById("productReleasesRefreshButton")?.addEventListener("click", async () => {
+                    await Promise.all([loadSettingsUsage(true), loadProductReleases(true)]);
+                });
                 document.getElementById("productReleasesOpenUsageButton")?.addEventListener("click", () => openSettingsScreen("usage"));
                 document.getElementById("reloadRenewalSettingsButton")?.addEventListener("click", () => loadIgnition(true));
                 document.getElementById("renewalSettingsUnlockRunSelect")?.addEventListener("change", renderRenewalSettings);

@@ -717,3 +717,79 @@ def usage_detail_payload(
             "recommendations": recommendations,
         },
     }
+
+
+def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
+    safe_limit = max(min(_to_int(limit, 120), 300), 1)
+    user_id = str(user.get("id") or "").strip() or None
+    rows: list[dict] = []
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    title,
+                    summary,
+                    details,
+                    deployment_id,
+                    commit_sha,
+                    source,
+                    created_at,
+                    updated_at
+                FROM release_updates
+                WHERE (%s::uuid IS NULL OR created_by_user_id IS NULL OR created_by_user_id = %s::uuid)
+                ORDER BY COALESCE(created_at, updated_at) DESC, id DESC
+                LIMIT %s
+                """,
+                (user_id, user_id, safe_limit),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+
+    deployments: list[dict] = []
+    for row in rows:
+        raw_details = row.get("details")
+        details: list[str] = []
+        if isinstance(raw_details, list):
+            details = [str(item).strip() for item in raw_details if str(item).strip()]
+        elif isinstance(raw_details, dict):
+            details = [str(value).strip() for value in raw_details.values() if str(value).strip()]
+        deployments.append(
+            {
+                "id": str(row.get("id") or ""),
+                "title": str(row.get("title") or "").strip(),
+                "summary": str(row.get("summary") or "").strip(),
+                "details": details,
+                "deploymentId": str(row.get("deployment_id") or "").strip(),
+                "commitSha": str(row.get("commit_sha") or "").strip(),
+                "source": str(row.get("source") or "manual").strip(),
+                "deployedAt": "" if not row.get("created_at") else row["created_at"].isoformat(),
+                "createdAt": "" if not row.get("created_at") else row["created_at"].isoformat(),
+                "updatedAt": "" if not row.get("updated_at") else row["updated_at"].isoformat(),
+            }
+        )
+
+    runtime_deployment_id = str(os.getenv("RAILWAY_DEPLOYMENT_ID") or "").strip()
+    if runtime_deployment_id and not any(row.get("deploymentId") == runtime_deployment_id for row in deployments):
+        deployments.insert(
+            0,
+            {
+                "id": f"runtime-{runtime_deployment_id}",
+                "title": "Current running deployment",
+                "summary": "Runtime deployment detected from environment variables.",
+                "details": [],
+                "deploymentId": runtime_deployment_id,
+                "commitSha": "",
+                "source": "runtime",
+                "deployedAt": utcnow().isoformat(),
+                "createdAt": utcnow().isoformat(),
+                "updatedAt": utcnow().isoformat(),
+            },
+        )
+
+    return {
+        "status": "ok",
+        "generatedAt": utcnow().isoformat(),
+        "deployments": deployments[:safe_limit],
+    }

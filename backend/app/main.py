@@ -206,7 +206,7 @@ from .services import (
     upload_me_report_submission_pdf,
     _process_bank_statement_upload,
 )
-from .usage_metrics import usage_detail_payload, usage_overview_payload
+from .usage_metrics import deployment_updates_payload, usage_detail_payload, usage_overview_payload
 from .ignition import (
     IgnitionConfigurationError,
     create_pkce_verifier,
@@ -1162,6 +1162,14 @@ def api_settings_usage_detail(
         page=page,
         endpoint=endpoint,
     )
+
+
+@app.get("/api/settings/releases")
+def api_settings_releases(
+    limit: int = Query(120, ge=1, le=300),
+    user: dict = Depends(require_panel_user),
+):
+    return deployment_updates_payload(user, limit=limit)
 
 
 @app.post("/api/xero/disconnect")
