@@ -18583,7 +18583,7 @@ async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
 
 async def unlock_ignition_renewals(user: dict, run_id: str) -> dict:
     run, _items = _ignition_renewal_run_with_items(user, run_id)
-    status_value = ignition_renewal_status_value(run)
+    status_value = str(run.get("status") or "").strip().lower().replace(" ", "_")
     is_locked = bool(run.get("finalised_at")) or status_value in {"finalised", "completed", "finished", "emailed"}
     if not is_locked:
         return {"renewals": ignition_renewals_payload(user, run_id), "alreadyUnlocked": True}
