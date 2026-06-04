@@ -20721,7 +20721,18 @@ def ignition_payload(user: dict, include_dashboard: bool = True) -> dict:
 
 
 def micro_analyzer_clients_payload(user: dict) -> dict:
-    connections = list_xero_connections_for_user(user["id"], include_fallback=True)
+    connections = [
+        row
+        for row in list_xero_connections_for_user(user["id"], include_fallback=False)
+        if str(row.get("tenant_id") or "").strip()
+    ]
+    organisation_connections = [
+        row
+        for row in connections
+        if str(row.get("tenant_type") or "").strip().upper() in ("", "ORGANISATION")
+    ]
+    if organisation_connections:
+        connections = organisation_connections
     tenant_ids = [str(row.get("tenant_id") or "").strip() for row in connections if str(row.get("tenant_id") or "").strip()]
     if not tenant_ids:
         return {"clients": [], "count": 0}
