@@ -155,7 +155,7 @@ class XeroRefreshTests(unittest.TestCase):
         self.assertEqual(client.refresh_tokens_used, ["refresh-1", "refresh-2"])
         self.assertEqual(len(cursor.update_params), 1)
         self.assertEqual(cursor.update_params[0][4], "user-1")
-        self.assertEqual(cursor.update_params[0][5], "refresh-1")
+        self.assertEqual(cursor.update_params[0][5], "refresh-2")
 
 
 if __name__ == "__main__":

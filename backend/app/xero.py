@@ -307,6 +307,7 @@ async def refresh_connection(connection_id: str) -> dict:
 
     settings = get_settings()
     previous_refresh_token = row["refresh_token"]
+    refresh_token_used = previous_refresh_token
     async with httpx.AsyncClient(timeout=XERO_STANDARD_TIMEOUT_SECONDS) as client:
         try:
             response = await client.post(
@@ -331,11 +332,12 @@ async def refresh_connection(connection_id: str) -> dict:
                     latest_row = cursor.fetchone()
                 connection.commit()
             if latest_row and latest_row.get("refresh_token") and latest_row["refresh_token"] != previous_refresh_token:
+                refresh_token_used = latest_row["refresh_token"]
                 retry_response = await client.post(
                     TOKEN_URL,
                     data={
                         "grant_type": "refresh_token",
-                        "refresh_token": latest_row["refresh_token"],
+                        "refresh_token": refresh_token_used,
                     },
                     auth=(settings.xero_client_id, settings.xero_client_secret),
                 )
@@ -352,7 +354,7 @@ async def refresh_connection(connection_id: str) -> dict:
     with get_connection() as connection:
         with connection.cursor() as cursor:
             # Xero rotates refresh tokens. A single user can have multiple tenant rows
-            # with the same token, so update every row still carrying the old token.
+            # with the same token, so update every row still carrying the token used.
             cursor.execute(
                 """
                 UPDATE xero_connections
@@ -369,7 +371,7 @@ async def refresh_connection(connection_id: str) -> dict:
                     expires_at,
                     now,
                     row["user_id"],
-                    previous_refresh_token,
+                    refresh_token_used,
                 ),
             )
             cursor.execute("SELECT * FROM xero_connections WHERE id = %s", (connection_id,))
