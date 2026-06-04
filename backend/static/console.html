@@ -26906,6 +26906,7 @@
             let sa100PrepView = "list";
             let sa100PrepStage = "workspace";
             let selectedVatReturnKey = "";
+            let vatReturnSelectedWorkspaceTenantId = "";
             let vatReturnDetailTab = "transactions";
             const codeBreakerStorageKey = `${STORAGE_KEY}:code-breaker-workspaces:v1`;
             let codeBreakerWorkspaces = loadCodeBreakerWorkspaces();
@@ -27627,6 +27628,7 @@
             let meReportClientFormOpen = false;
             let selectedMeReportClientId = "";
             let meReportWorkspaceOpen = false;
+            let meReportSelectedWorkspaceTenantId = "";
             let activeMeReportTab = "overview";
             let activeMeReportSubmissionTab = "insights";
             let selectedMeReportSubmissionId = "";
@@ -27720,6 +27722,7 @@
             const customerTransactionLoading = new Set();
             let operationReviewPanelVariantClass = "";
             let yePrepSelectedCustomerId = "";
+            let yePrepSelectedWorkspaceTenantId = "";
             let yePrepSelectedYearEnd = "";
             let yePrepActiveTab = "overview";
             let yePrepLockDateCheck = null;
@@ -49395,7 +49398,11 @@
             }
 
             function meReportVisibleClients() {
-                const clients = meReportData.clients || [];
+                let clients = meReportData.clients || [];
+                const selectedTenantId = String(meReportSelectedWorkspaceTenantId || "").trim();
+                if (selectedTenantId) {
+                    clients = clients.filter((client) => String(meReportClientTenantId(client)).trim() === selectedTenantId);
+                }
                 if (meReportClientStatusFilter === "all") return clients;
                 return clients.filter((client) => meReportClientStatus(client) === meReportClientStatusFilter);
             }
@@ -49901,6 +49908,14 @@
             }
 
             function ensureMeReportSelection() {
+                const workspaces = meReportOrganisationConnections();
+                if (workspaces.length === 1 && !meReportSelectedWorkspaceTenantId) {
+                    meReportSelectedWorkspaceTenantId = String(workspaces[0]?.tenantId || "").trim();
+                }
+                if (meReportSelectedWorkspaceTenantId && !workspaces.some((row) => String(row?.tenantId || "").trim() === String(meReportSelectedWorkspaceTenantId || "").trim())) {
+                    meReportSelectedWorkspaceTenantId = "";
+                    meReportWorkspaceOpen = false;
+                }
                 const visibleClients = meReportVisibleClients();
                 if (!visibleClients.length) {
                     selectedMeReportClientId = "";
@@ -49999,12 +50014,31 @@
                 return tenantId ? [{ tenantId, tenantName: tenantName || tenantId, tenantType: "" }] : [];
             }
 
+            function meReportOrganisationConnections() {
+                return meReportXeroConnections().filter((connection) => {
+                    const tenantType = String(connection?.tenantType || "").trim().toLowerCase();
+                    return !tenantType || tenantType === "organisation" || tenantType === "organization";
+                });
+            }
+
+            function meReportClientTenantId(client = {}) {
+                const direct = String(client?.tenantId || "").trim();
+                if (direct) return direct;
+                const contactId = String(client?.xeroContactId || "").trim();
+                if (!contactId) return "";
+                const contacts = Array.isArray(meReportData.xero?.contacts) ? meReportData.xero.contacts : [];
+                const matched = contacts.find((contact) => String(contact?.xeroContactId || "").trim() === contactId) || null;
+                return String(matched?.tenantId || "").trim();
+            }
+
             function meReportActiveTenantId() {
+                const selectedWorkspace = String(meReportSelectedWorkspaceTenantId || "").trim();
+                if (selectedWorkspace) return selectedWorkspace;
                 const configured = String(meReportBulkMatchTenantId || "").trim();
                 if (configured) return configured;
                 const fallback = String(meReportData.xero?.tenantId || "").trim();
                 if (fallback) return fallback;
-                const first = meReportXeroConnections()[0];
+                const first = meReportOrganisationConnections()[0] || meReportXeroConnections()[0];
                 return String(first?.tenantId || "").trim();
             }
 
@@ -50245,7 +50279,7 @@
 
             function selectedMeReportFormContact() {
                 const contactId = document.getElementById("meReportXeroContactSelect")?.value || "";
-                return meReportContactOptions().find((contact) => contact.xeroContactId === contactId) || null;
+                return meReportContactOptions(meReportActiveTenantId()).find((contact) => contact.xeroContactId === contactId) || null;
             }
 
             function syncMeReportSelectedContactFields() {
@@ -50258,7 +50292,7 @@
                 const select = document.getElementById("meReportXeroContactSelect");
                 const emailInput = document.getElementById("meReportEmailInput");
                 if (!select) return;
-                const contacts = meReportContactOptions();
+                const contacts = meReportContactOptions(meReportActiveTenantId());
                 const currentValue = select.value;
                 if (!contacts.length) {
                     select.innerHTML = '<option value="">Sync Xero contacts before adding clients</option>';
@@ -50479,6 +50513,8 @@
                 const allClients = meReportData.clients || [];
                 const activeClients = allClients.filter((client) => meReportClientStatus(client) === "active");
                 ensureMeReportSelection();
+                const workspaceConnections = meReportOrganisationConnections();
+                const workspacePickerRequired = !String(meReportSelectedWorkspaceTenantId || "").trim() && workspaceConnections.length > 1;
                 renderMeReportTopbarSummary();
                 renderTopbarIdentity();
                 renderSidebarSupportBubble();
@@ -50497,13 +50533,21 @@
                 if (formPanel) formPanel.hidden = !meReportClientFormOpen;
                 if (meReportClientFormOpen) renderMeReportClientForm();
                 const addButton = document.getElementById("addMeReportClientButton");
-                if (addButton) addButton.textContent = meReportClientFormOpen ? "Close form" : "Add client";
+                if (addButton) {
+                    addButton.hidden = workspacePickerRequired;
+                    addButton.textContent = meReportClientFormOpen ? "Close form" : "Add client";
+                }
                 const backButton = document.getElementById("backMeReportClientsButton");
-                if (backButton) backButton.hidden = !meReportWorkspaceOpen;
+                if (backButton) {
+                    const showWorkspaceBack = !meReportWorkspaceOpen && !workspacePickerRequired && Boolean(meReportSelectedWorkspaceTenantId) && workspaceConnections.length > 1;
+                    backButton.hidden = !(meReportWorkspaceOpen || showWorkspaceBack);
+                    backButton.textContent = meReportWorkspaceOpen ? "Back to clients" : "Back to client workspaces";
+                }
                 const refreshButton = document.getElementById("refreshMeReportButton");
                 if (refreshButton) refreshButton.disabled = meReportLoading || isMeReportProcessing;
                 const bulkUploadButton = document.getElementById("bulkUploadMeReportsButton");
                 if (bulkUploadButton) {
+                    bulkUploadButton.hidden = workspacePickerRequired;
                     bulkUploadButton.disabled = meReportBulkUploading || meReportUploadProcessing;
                     bulkUploadButton.textContent = meReportBulkUploading ? "Creating flows..." : "Create flows from Xero clients";
                 }
@@ -50557,6 +50601,49 @@
                 if (meReportLoading) {
                     clientList.hidden = false;
                     clientList.innerHTML = `${processingBannerMarkup || ""}<div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Monthly Flows</h4><p>Reading saved client flow records from the backend.</p></div>`;
+                    return;
+                }
+                if (workspacePickerRequired && !meReportWorkspaceOpen) {
+                    clientList.hidden = false;
+                    actionList.hidden = true;
+                    detail.hidden = true;
+                    clientList.innerHTML = `
+                        <div class="jashflow-detail-head">
+                            <div>
+                                <p class="eyebrow">Monthly flows</p>
+                                <h3>Select Client Workspace</h3>
+                                <p class="detail-meta">Choose a connected Xero workspace before reviewing or creating monthly flows.</p>
+                            </div>
+                        </div>
+                        <div class="supplier-recon-client-table-wrap">
+                            <table class="supplier-recon-client-table" aria-label="Monthly flow Xero workspaces">
+                                <thead>
+                                    <tr>
+                                        <th>Tenant</th>
+                                        <th>Type</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${workspaceConnections.map((connection) => `
+                                        <tr>
+                                            <td><strong>${escapeHTML(connection.tenantName || connection.tenantId)}</strong><small>${escapeHTML(connection.tenantId || "")}</small></td>
+                                            <td>${escapeHTML(connection.tenantType || "Organisation")}</td>
+                                            <td><button class="primary-button" type="button" data-me-report-open-tenant="${escapeHTML(connection.tenantId || "")}">Open workspace</button></td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    clientList.querySelectorAll("[data-me-report-open-tenant]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            meReportSelectedWorkspaceTenantId = String(button.dataset.meReportOpenTenant || "").trim();
+                            meReportClientFormOpen = false;
+                            meReportWorkspaceOpen = false;
+                            renderMeReportScreen();
+                        });
+                    });
                     return;
                 }
                 if (!allClients.length) {
@@ -63245,7 +63332,7 @@
                 return base;
             }
 
-            function vatReturnQueueRows() {
+            function vatReturnAllQueueRows() {
                 if (!state.organisation?.xeroConnected) return [];
                 const connections = meReportXeroConnections()
                     .filter((connection) => {
@@ -63293,6 +63380,13 @@
                         };
                     })
                     .sort((left, right) => left.deadline.getTime() - right.deadline.getTime() || left.clientName.localeCompare(right.clientName));
+            }
+
+            function vatReturnQueueRows() {
+                const rows = vatReturnAllQueueRows();
+                const selectedTenantId = String(vatReturnSelectedWorkspaceTenantId || "").trim();
+                if (!selectedTenantId) return rows;
+                return rows.filter((row) => String(row?.tenantId || "").trim() === selectedTenantId);
             }
 
             function selectedVatReturnEntry(rows = vatReturnQueueRows()) {
@@ -63909,9 +64003,15 @@
                 const exportButton = document.getElementById("vatReturnExportNoVatButton");
                 if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !createFlowsButton || !connectXeroButton || !aiReviewButton || !finaliseButton || !exportButton) return;
 
+                const allRows = vatReturnAllQueueRows();
+                if (vatReturnSelectedWorkspaceTenantId && !allRows.some((row) => String(row?.tenantId || "").trim() === String(vatReturnSelectedWorkspaceTenantId || "").trim())) {
+                    vatReturnSelectedWorkspaceTenantId = "";
+                    selectedVatReturnKey = "";
+                }
                 const rows = vatReturnQueueRows();
                 const activeEntry = selectedVatReturnEntry(rows);
                 const inDetail = Boolean(activeEntry);
+                const workspacePickerRequired = !String(vatReturnSelectedWorkspaceTenantId || "").trim() && allRows.length > 1;
                 if (!inDetail) {
                     if (vatAiReviewModalOpen) closeVatAiReviewModal();
                     if (vatFinaliseModalOpen) closeVatFinaliseModal();
@@ -63920,7 +64020,8 @@
 
                 queueWrap.hidden = inDetail;
                 detailWrap.hidden = !inDetail;
-                backButton.hidden = !inDetail;
+                backButton.hidden = !(inDetail || (!inDetail && !workspacePickerRequired && Boolean(vatReturnSelectedWorkspaceTenantId) && allRows.length > 1));
+                backButton.textContent = inDetail ? "Back to return queue" : "Back to client workspaces";
                 aiReviewButton.hidden = !inDetail;
                 finaliseButton.hidden = !inDetail;
                 exportButton.hidden = !inDetail;
@@ -63933,7 +64034,14 @@
 
                 if (backButton.dataset.vatWired !== "true") {
                     backButton.dataset.vatWired = "true";
-                    backButton.addEventListener("click", closeVatReturnEntry);
+                    backButton.addEventListener("click", () => {
+                        if (selectedVatReturnKey) {
+                            closeVatReturnEntry();
+                            return;
+                        }
+                        vatReturnSelectedWorkspaceTenantId = "";
+                        renderVatReturnPrepareScreen();
+                    });
                 }
                 if (refreshButton.dataset.vatWired !== "true") {
                     refreshButton.dataset.vatWired = "true";
@@ -64007,6 +64115,35 @@
                     warningsBody.innerHTML = "";
                     exportButton.disabled = true;
                     refreshButton.disabled = false;
+                    closeVatAiReviewModal();
+                    closeVatFinaliseModal();
+                    closeVatClientApprovalModal();
+                    return;
+                }
+
+                if (workspacePickerRequired && !inDetail) {
+                    summary.textContent = `${allRows.length.toLocaleString("en-GB")} Xero client workspace${allRows.length === 1 ? "" : "s"} available. Select one to open VAT return preparation.`;
+                    queueBody.innerHTML = allRows.map((row) => `
+                        <tr>
+                            <td><strong>${escapeHTML(row.tenantName || row.clientName || row.tenantId)}</strong><small>${escapeHTML(row.tenantId || "")}</small></td>
+                            <td>${escapeHTML(formatDate(row.periodEndISO))}</td>
+                            <td>${escapeHTML(formatDate(row.deadlineISO))}</td>
+                            <td><span class="lock-status-pill is-open">Workspace</span></td>
+                            <td><button class="primary-button" type="button" data-vat-workspace-open="${escapeHTML(row.tenantId || "")}">Open workspace</button></td>
+                        </tr>
+                    `).join("");
+                    queueBody.querySelectorAll("[data-vat-workspace-open]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            vatReturnSelectedWorkspaceTenantId = String(button.dataset.vatWorkspaceOpen || "").trim();
+                            selectedVatReturnKey = "";
+                            renderVatReturnPrepareScreen();
+                        });
+                    });
+                    metrics.innerHTML = "";
+                    transactionsBody.innerHTML = "";
+                    noVatBody.innerHTML = "";
+                    warningsBody.innerHTML = "";
+                    exportButton.disabled = true;
                     closeVatAiReviewModal();
                     closeVatFinaliseModal();
                     closeVatClientApprovalModal();
@@ -64259,7 +64396,7 @@
                 return [...values].sort((left, right) => dateSortValue(right) - dateSortValue(left)).slice(0, 6);
             }
 
-            function yePrepCustomerRows() {
+            function yePrepCustomerRows(tenantIdFilter = yePrepSelectedWorkspaceTenantId) {
                 const stateCustomers = Array.isArray(state.customers) ? state.customers : [];
                 const customersById = new Map(stateCustomers.map((customer) => [String(customer?.id || ""), customer]).filter(([id]) => id));
                 const customersByCompanyNumber = new Map();
@@ -64351,7 +64488,12 @@
                     })
                     .filter((row) => row.connected?.tenantId && (row.id || row.companyNumber || row.companyName));
 
-                return rows.sort((left, right) => String(left.companyName || "").localeCompare(String(right.companyName || "")));
+                const selectedTenant = String(tenantIdFilter || "").trim();
+                const scopedRows = selectedTenant
+                    ? rows.filter((row) => String(row?.connected?.tenantId || "").trim() === selectedTenant)
+                    : rows;
+
+                return scopedRows.sort((left, right) => String(left.companyName || "").localeCompare(String(right.companyName || "")));
             }
 
             function yePrepSortValue(row = {}, key = "companyName") {
@@ -65458,7 +65600,16 @@
 
                 if (backButton.dataset.yePrepWired !== "true") {
                     backButton.dataset.yePrepWired = "true";
-                    backButton.addEventListener("click", yePrepCloseCustomerWorkspace);
+                    backButton.addEventListener("click", () => {
+                        if (yePrepSelectedCustomerId) {
+                            yePrepCloseCustomerWorkspace();
+                            return;
+                        }
+                        yePrepSelectedWorkspaceTenantId = "";
+                        yePrepWorkspaceConfirmOpen = false;
+                        renderYePrepWorkspaceConfirmModal();
+                        renderYePrepScreen();
+                    });
                 }
                 if (refreshButton.dataset.yePrepWired !== "true") {
                     refreshButton.dataset.yePrepWired = "true";
@@ -65549,11 +65700,26 @@
                     });
                 }
 
+                const allRows = yePrepCustomerRows("");
+                if (yePrepSelectedWorkspaceTenantId && !allRows.some((row) => String(row?.connected?.tenantId || "").trim() === String(yePrepSelectedWorkspaceTenantId || "").trim())) {
+                    yePrepSelectedWorkspaceTenantId = "";
+                    yePrepSelectedCustomerId = "";
+                }
                 const rows = yePrepCustomerRows();
                 const selected = yePrepSelectedCustomer(rows);
                 const inWorkspace = Boolean(selected);
+                const workspaceRows = Array.from(
+                    allRows.reduce((map, row) => {
+                        const tenantId = String(row?.connected?.tenantId || "").trim();
+                        if (!tenantId || map.has(tenantId)) return map;
+                        map.set(tenantId, row);
+                        return map;
+                    }, new Map()).values()
+                );
+                const workspacePickerRequired = !String(yePrepSelectedWorkspaceTenantId || "").trim() && workspaceRows.length > 1;
 
-                backButton.hidden = !inWorkspace;
+                backButton.hidden = !(inWorkspace || (!workspacePickerRequired && Boolean(yePrepSelectedWorkspaceTenantId) && workspaceRows.length > 1));
+                backButton.textContent = inWorkspace ? "Back to customers" : "Back to client workspaces";
                 aiReviewButton.hidden = !inWorkspace;
                 syncButton.hidden = !inWorkspace;
                 customerListWrap.hidden = inWorkspace;
@@ -65566,6 +65732,28 @@
                 if ((xeroLockDateLoading || meReportLoading) && !rows.length && !inWorkspace) {
                     summary.textContent = "Loading year-end workspaces.";
                     customerTableBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">Loading</p><h4>Loading Xero-connected organisations</h4><p>Pulling connected organisations and lock-date data now.</p></div></td></tr>';
+                    return;
+                }
+
+                if (workspacePickerRequired && !inWorkspace) {
+                    summary.textContent = `${workspaceRows.length.toLocaleString("en-GB")} Xero client workspace${workspaceRows.length === 1 ? "" : "s"} available. Select one to open YE prep.`;
+                    customerTableBody.innerHTML = workspaceRows.map((row) => `
+                        <tr>
+                            <td><strong>${escapeHTML(row.connected?.tenantName || row.companyName || row.connected?.tenantId || "Client workspace")}</strong><small>${escapeHTML(row.connected?.tenantId || "")}</small></td>
+                            <td>${escapeHTML(row.companyNumber || "—")}</td>
+                            <td>${escapeHTML(row.manager || "Client Manager")}</td>
+                            <td><span class="ch-pill is-info">${yePrepYearEndsForCustomer(row).length.toLocaleString("en-GB")} year end${yePrepYearEndsForCustomer(row).length === 1 ? "" : "s"}</span></td>
+                            <td><button class="primary-button" type="button" data-ye-workspace-open="${escapeHTML(row.connected?.tenantId || "")}">Open workspace</button></td>
+                        </tr>
+                    `).join("");
+                    customerTableBody.querySelectorAll("[data-ye-workspace-open]").forEach((button) => {
+                        button.addEventListener("click", () => {
+                            yePrepSelectedWorkspaceTenantId = String(button.dataset.yeWorkspaceOpen || "").trim();
+                            yePrepSelectedCustomerId = "";
+                            yePrepSelectedYearEnd = "";
+                            renderYePrepScreen();
+                        });
+                    });
                     return;
                 }
 
@@ -71233,8 +71421,13 @@
                 });
                 const backMeReportClientsButton = document.getElementById("backMeReportClientsButton");
                 if (backMeReportClientsButton) backMeReportClientsButton.addEventListener("click", () => {
-                    meReportWorkspaceOpen = false;
-                    activeMeReportTab = "overview";
+                    if (meReportWorkspaceOpen) {
+                        meReportWorkspaceOpen = false;
+                        activeMeReportTab = "overview";
+                    } else {
+                        meReportSelectedWorkspaceTenantId = "";
+                        meReportClientFormOpen = false;
+                    }
                     renderMeReportScreen();
                 });
                 const meReportClientForm = document.getElementById("meReportClientForm");
