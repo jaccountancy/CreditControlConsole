@@ -25134,6 +25134,7 @@
             let yePrepAiReviewModalOpen = false;
             let yePrepAiReviewLoading = false;
             let yePrepAiReviewRows = [];
+            let yePrepAiReviewByKey = {};
             let vatFinaliseModalOpen = false;
             let vatClientApprovalModalOpen = false;
             const vatReturnTransactionCache = new Map();
@@ -61328,6 +61329,7 @@
                 yePrepSelectedYearEnd = "";
                 yePrepActiveTab = "overview";
                 yePrepLockDateCheck = null;
+                closeYePrepAiReviewModal();
                 renderYePrepScreen();
             }
 
@@ -61336,6 +61338,7 @@
                 yePrepSelectedYearEnd = "";
                 yePrepActiveTab = "overview";
                 yePrepLockDateCheck = null;
+                closeYePrepAiReviewModal();
                 renderYePrepScreen();
             }
 
@@ -61637,6 +61640,304 @@
                 return renderYePrepOverviewTab(customer, yearEnd);
             }
 
+            function yePrepAiKey(customer = {}, yearEnd = "") {
+                return `${String(customer?.id || "")}:${String(yearEnd || "")}`;
+            }
+
+            function yePrepRateClassForSeverity(severity = "") {
+                const key = String(severity || "").toLowerCase();
+                if (key === "high") return "is-overdue";
+                if (key === "medium") return "is-due";
+                if (key === "low") return "is-open";
+                return "is-review";
+            }
+
+            function yePrepMileageBandsForDate(dateValue = "") {
+                const iso = yePrepNormaliseIsoDate(dateValue);
+                const threshold = Date.UTC(2026, 3, 6);
+                const effective = iso ? Date.parse(iso) : NaN;
+                const firstBandRate = Number.isFinite(effective) && effective >= threshold ? 0.55 : 0.45;
+                return {
+                    firstBandMiles: 10000,
+                    firstBandRate,
+                    additionalRate: 0.25,
+                    rateEffectiveDate: "2026-04-06",
+                };
+            }
+
+            function yePrepMileageClaim(dateValue = "", milesValue = 0) {
+                const miles = Math.max(0, Number(milesValue || 0));
+                const bands = yePrepMileageBandsForDate(dateValue);
+                const firstBandMilesUsed = Math.min(miles, bands.firstBandMiles);
+                const additionalMiles = Math.max(0, miles - bands.firstBandMiles);
+                const amount = (firstBandMilesUsed * bands.firstBandRate) + (additionalMiles * bands.additionalRate);
+                return {
+                    ...bands,
+                    miles,
+                    firstBandMilesUsed,
+                    additionalMiles,
+                    amount: meReportMoneyValue(amount),
+                };
+            }
+
+            function yePrepAiRow(area = "", severity = "review", finding = "", evidence = "") {
+                return {
+                    area: String(area || "Review"),
+                    severity: String(severity || "Review"),
+                    finding: String(finding || "Review this area before sign-off."),
+                    evidence: String(evidence || "No additional evidence specified."),
+                };
+            }
+
+            function yePrepLocalAiReviewRows(customer = {}, yearEnd = "") {
+                const summary = customer?.summary || {};
+                const transactions = yePrepTransactionsWithEdits(customer, yearEnd, yePrepTransactionsForCustomer(customer, yearEnd));
+                const txDescription = (row = {}) => `${row.description || ""} ${row.reference || ""}`.toLowerCase();
+                const sumByRegex = (regex) => transactions.reduce((sum, row) => (
+                    regex.test(txDescription(row)) ? sum + Math.abs(Number(row.netAmount || row.grossAmount || 0)) : sum
+                ), 0);
+                const hasRegex = (regex) => transactions.some((row) => regex.test(txDescription(row)));
+                const trialAccounts = meReportObjectRows(summary.trialBalanceAccounts);
+                const balanceRows = meReportBalanceSheetRows(summary);
+                const fixedAssets = meReportObjectRows(summary.fixedAssetChecks);
+                const accountMatch = (regex) => trialAccounts.some((row) => regex.test(`${row.accountName || ""} ${row.accountType || ""}`.toLowerCase()));
+
+                const loanIndicators = accountMatch(/\b(loan|mortgage|finance lease|hire purchase|bank loan)\b/) || hasRegex(/\b(loan repayment|mortgage|finance payment)\b/);
+                const loanInterestValue = Math.max(
+                    sumByRegex(/\b(loan interest|mortgage interest|finance interest)\b/),
+                    Math.abs(Number(summary.loanInterest || 0)),
+                    Math.abs(Number(summary.financeInterest || 0))
+                );
+                const buildingIndicators = fixedAssets.some((row) => /\b(building|property|land|premises)\b/i.test(String(row?.assetClass || "")))
+                    || balanceRows.some((row) => /\b(buildings?|property|land)\b/i.test(String(row?.name || "")));
+                const mortgagePayments = sumByRegex(/\b(mortgage|home loan|property loan)\b/);
+                const dividends = Math.max(0, Number(summary.dividendsTaken || 0));
+                const entertainment = sumByRegex(/\b(entertain|restaurant|meal|hospitality|client lunch|client dinner|bar tab)\b/);
+                const accrualPrepaymentIndicators = balanceRows.filter((row) => /\b(accrual|prepayment|deferred|accrued)\b/i.test(String(row?.name || "")));
+                const mileageIndicators = hasRegex(/\b(mileage|mile claim|travel claim|amap)\b/) || accountMatch(/\b(mileage|motor expenses|travel)\b/);
+
+                const rows = [];
+                if (loanIndicators || loanInterestValue > 0) {
+                    rows.push(yePrepAiRow(
+                        "Loans and interest",
+                        "High",
+                        loanInterestValue > 0
+                            ? `Loan/mortgage indicators detected with estimated interest impact ${formatCurrency(loanInterestValue)}.`
+                            : "Loan or finance account movements detected.",
+                        "Request full year loan statements and lender annual interest certificates. Reconcile principal vs interest postings."
+                    ));
+                }
+                if (buildingIndicators && mortgagePayments > 0) {
+                    rows.push(yePrepAiRow(
+                        "Buildings and mortgages",
+                        "High",
+                        `Building/property assets and mortgage-like payments (${formatCurrency(mortgagePayments)}) were detected.`,
+                        "Request mortgage statements for the year end and split capital vs interest correctly."
+                    ));
+                } else if (buildingIndicators) {
+                    rows.push(yePrepAiRow(
+                        "Buildings review",
+                        "Medium",
+                        "Building/property balances exist but mortgage payment evidence is not obvious.",
+                        "Confirm if finance exists. If yes, collect lender statements and ensure liabilities/interest are complete."
+                    ));
+                }
+                if (dividends > 0) {
+                    rows.push(yePrepAiRow(
+                        "Dividends",
+                        "High",
+                        `Dividends taken recorded at ${formatCurrency(dividends)}.`,
+                        "Check board minutes/vouchers, distributable reserves, DLA interactions and posting period."
+                    ));
+                } else {
+                    rows.push(yePrepAiRow(
+                        "Dividends",
+                        "Low",
+                        "No dividends flagged in current extracted summary.",
+                        "Confirm with client that no dividends were declared outside posted data."
+                    ));
+                }
+                if (entertainment > 0) {
+                    rows.push(yePrepAiRow(
+                        "Entertainment costs",
+                        "High",
+                        `Potential entertainment spend detected (${formatCurrency(entertainment)}).`,
+                        "Review business purpose and ensure non-deductible entertaining is treated correctly for CT."
+                    ));
+                } else {
+                    rows.push(yePrepAiRow(
+                        "Entertainment costs",
+                        "Low",
+                        "No obvious entertainment descriptions found in extracted transaction text.",
+                        "Spot-check nominals for hidden entertainment/mixed-use postings."
+                    ));
+                }
+                if (accrualPrepaymentIndicators.length) {
+                    rows.push(yePrepAiRow(
+                        "Accruals and prepayments",
+                        "Medium",
+                        `${accrualPrepaymentIndicators.length.toLocaleString("en-GB")} accrual/prepayment line(s) detected on the balance sheet.`,
+                        "Obtain schedules supporting opening, movement and closing balances with reversal timing."
+                    ));
+                } else {
+                    rows.push(yePrepAiRow(
+                        "Accruals and prepayments",
+                        "Medium",
+                        "No explicit accrual/prepayment rows found in extracted data.",
+                        "Confirm with client if accruals/prepayments are required and post where needed."
+                    ));
+                }
+                rows.push(yePrepAiRow(
+                    "Mileage claims",
+                    mileageIndicators ? "Medium" : "Low",
+                    mileageIndicators
+                        ? "Mileage/travel indicators detected. Apply AMAP rates and retain mileage logs."
+                        : "No clear mileage postings detected yet.",
+                    "Use mileage model: before 6 April 2026 = 45p first 10,000 then 25p; on/after 6 April 2026 = 55p first 10,000 then 25p."
+                ));
+                if (!rows.length) {
+                    rows.push(yePrepAiRow(
+                        "General YE review",
+                        "Review",
+                        "No specific flags were inferred from current data extracts.",
+                        "Run full ledger drilldown and obtain standard YE evidence pack."
+                    ));
+                }
+                return rows;
+            }
+
+            async function loadYePrepAiReviewRows(customer = {}, yearEnd = "", force = false) {
+                const key = yePrepAiKey(customer, yearEnd);
+                if (!force && Array.isArray(yePrepAiReviewByKey[key]) && yePrepAiReviewByKey[key].length) {
+                    yePrepAiReviewRows = yePrepAiReviewByKey[key];
+                    return yePrepAiReviewRows;
+                }
+                const localRows = yePrepLocalAiReviewRows(customer, yearEnd);
+                try {
+                    const payload = await requestJSON(api.endpoints.yePrepAiReview, {
+                        method: "POST",
+                        body: JSON.stringify({
+                            customer: {
+                                id: String(customer?.id || ""),
+                                name: String(customer?.companyName || ""),
+                                companyNumber: String(customer?.companyNumber || ""),
+                            },
+                            yearEnd,
+                            summary: customer?.summary || {},
+                            lockDateCheck: yePrepLockCheckForCustomer(customer, yearEnd),
+                            transactions: yePrepTransactionsWithEdits(customer, yearEnd, yePrepTransactionsForCustomer(customer, yearEnd)).slice(0, 120),
+                            localFindings: localRows,
+                        }),
+                    });
+                    const returnedRows = Array.isArray(payload?.items)
+                        ? payload.items.map((item) => yePrepAiRow(item.area, item.severity, item.finding || item.message, item.evidence || item.action))
+                        : [];
+                    const finalRows = returnedRows.length ? returnedRows : localRows;
+                    yePrepAiReviewByKey[key] = finalRows;
+                    yePrepAiReviewRows = finalRows;
+                    return finalRows;
+                } catch (error) {
+                    yePrepAiReviewByKey[key] = localRows;
+                    yePrepAiReviewRows = localRows;
+                    return localRows;
+                }
+            }
+
+            function closeYePrepAiReviewModal() {
+                yePrepAiReviewModalOpen = false;
+                const modal = document.getElementById("yePrepAiReviewModal");
+                if (modal) modal.hidden = true;
+            }
+
+            async function openYePrepAiReviewModal(customer = {}, yearEnd = "", force = false) {
+                if (!customer) return;
+                yePrepAiReviewModalOpen = true;
+                yePrepAiReviewLoading = true;
+                renderYePrepAiReviewModal(customer, yearEnd);
+                try {
+                    await loadYePrepAiReviewRows(customer, yearEnd, force);
+                } finally {
+                    yePrepAiReviewLoading = false;
+                    renderYePrepAiReviewModal(customer, yearEnd);
+                }
+            }
+
+            function renderYePrepAiReviewModal(customer = {}, yearEnd = "") {
+                const modal = document.getElementById("yePrepAiReviewModal");
+                const summary = document.getElementById("yePrepAiReviewSummary");
+                const body = document.getElementById("yePrepAiReviewBody");
+                const closeButton = document.getElementById("yePrepAiReviewCloseButton");
+                const refreshButton = document.getElementById("yePrepAiReviewRefreshButton");
+                const mileageForm = document.getElementById("yePrepMileageForm");
+                const mileageDate = document.getElementById("yePrepMileageDate");
+                const mileageMiles = document.getElementById("yePrepMileageMiles");
+                const mileageAmount = document.getElementById("yePrepMileageClaimAmount");
+                const mileageSummary = document.getElementById("yePrepMileageSummary");
+                if (!modal || !summary || !body || !closeButton || !refreshButton || !mileageForm || !mileageDate || !mileageMiles || !mileageAmount || !mileageSummary) return;
+
+                modal.hidden = !yePrepAiReviewModalOpen;
+                if (!yePrepAiReviewModalOpen) return;
+
+                const key = yePrepAiKey(customer, yearEnd);
+                const rows = Array.isArray(yePrepAiReviewByKey[key]) ? yePrepAiReviewByKey[key] : yePrepAiReviewRows;
+                refreshButton.dataset.yePrepCustomerId = String(customer?.id || "");
+                refreshButton.dataset.yePrepYearEnd = String(yearEnd || "");
+                summary.textContent = yePrepAiReviewLoading
+                    ? `Running AI review for ${customer?.companyName || "customer"} (${yearEnd ? formatDate(yearEnd) : "selected year end"})...`
+                    : `${rows.length.toLocaleString("en-GB")} YE review area${rows.length === 1 ? "" : "s"} analyzed for ${customer?.companyName || "customer"}.`;
+
+                if (closeButton.dataset.yePrepWired !== "true") {
+                    closeButton.dataset.yePrepWired = "true";
+                    closeButton.addEventListener("click", closeYePrepAiReviewModal);
+                }
+                if (refreshButton.dataset.yePrepWired !== "true") {
+                    refreshButton.dataset.yePrepWired = "true";
+                    refreshButton.addEventListener("click", () => {
+                        const customerId = String(refreshButton.dataset.yePrepCustomerId || "");
+                        const contextYearEnd = String(refreshButton.dataset.yePrepYearEnd || "");
+                        const contextCustomer = yePrepCustomerRows().find((row) => String(row?.id || "") === customerId) || null;
+                        if (!contextCustomer) return;
+                        openYePrepAiReviewModal(contextCustomer, contextYearEnd, true);
+                    });
+                }
+                if (modal.dataset.yePrepWired !== "true") {
+                    modal.dataset.yePrepWired = "true";
+                    modal.addEventListener("click", (event) => {
+                        if (event.target === modal) closeYePrepAiReviewModal();
+                    });
+                }
+                if (mileageForm.dataset.yePrepWired !== "true") {
+                    mileageForm.dataset.yePrepWired = "true";
+                    const updateMileage = () => {
+                        const claim = yePrepMileageClaim(mileageDate.value || "", mileageMiles.value || 0);
+                        mileageAmount.value = formatCurrency(claim.amount || 0);
+                        mileageSummary.textContent = `Rate applied: ${Math.round(claim.firstBandRate * 100)}p for first ${claim.firstBandMiles.toLocaleString("en-GB")} miles, then ${Math.round(claim.additionalRate * 100)}p. Effective change date: 06 April 2026.`;
+                    };
+                    mileageDate.addEventListener("change", updateMileage);
+                    mileageMiles.addEventListener("input", updateMileage);
+                    mileageForm.addEventListener("submit", (event) => event.preventDefault());
+                    updateMileage();
+                } else {
+                    const claim = yePrepMileageClaim(mileageDate.value || "", mileageMiles.value || 0);
+                    mileageAmount.value = formatCurrency(claim.amount || 0);
+                }
+
+                if (yePrepAiReviewLoading && !rows.length) {
+                    body.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">AI review</p><h4>Analyzing year-end risks</h4><p>Assessing loans, mortgages, dividends, entertainment, accruals/prepayments, and mileage checks.</p></div></td></tr>';
+                    return;
+                }
+                body.innerHTML = rows.length
+                    ? rows.map((row) => `
+                        <tr>
+                            <td><strong>${escapeHTML(row.area || "Review area")}</strong></td>
+                            <td><span class="lock-status-pill ${escapeHTML(yePrepRateClassForSeverity(row.severity))}">${escapeHTML(row.severity || "Review")}</span></td>
+                            <td>${escapeHTML(row.finding || "No finding")}</td>
+                            <td>${escapeHTML(row.evidence || "No evidence specified")}</td>
+                        </tr>
+                    `).join("")
+                    : '<tr><td colspan="4"><div class="empty-state"><p class="eyebrow">No flags</p><h4>No AI findings were returned</h4><p>Run refresh analysis after syncing Xero data.</p></div></td></tr>';
+            }
+
             function renderYePrepScreen() {
                 const summary = document.getElementById("yePrepSummary");
                 const customerListWrap = document.getElementById("yePrepCustomerListWrap");
@@ -61650,8 +61951,9 @@
                 const tabContent = document.getElementById("yePrepTabContent");
                 const backButton = document.getElementById("yePrepBackToCustomersButton");
                 const refreshButton = document.getElementById("yePrepRefreshButton");
+                const aiReviewButton = document.getElementById("yePrepAiReviewButton");
                 const syncButton = document.getElementById("yePrepSyncButton");
-                if (!summary || !customerListWrap || !customerTableBody || !workspaceWrap || !customerTitle || !customerMeta || !yearEndButtons || !deadlineCards || !tabButtonsWrap || !tabContent || !backButton || !refreshButton || !syncButton) return;
+                if (!summary || !customerListWrap || !customerTableBody || !workspaceWrap || !customerTitle || !customerMeta || !yearEndButtons || !deadlineCards || !tabButtonsWrap || !tabContent || !backButton || !refreshButton || !aiReviewButton || !syncButton) return;
 
                 if (backButton.dataset.yePrepWired !== "true") {
                     backButton.dataset.yePrepWired = "true";
@@ -61682,6 +61984,19 @@
                     syncButton.dataset.yePrepWired = "true";
                     syncButton.addEventListener("click", yePrepSyncSelectedCustomer);
                 }
+                if (aiReviewButton.dataset.yePrepWired !== "true") {
+                    aiReviewButton.dataset.yePrepWired = "true";
+                    aiReviewButton.addEventListener("click", async () => {
+                        const rows = yePrepCustomerRows();
+                        const selectedCustomer = yePrepSelectedCustomer(rows);
+                        if (!selectedCustomer) return;
+                        const yearEnds = yePrepYearEndsForCustomer(selectedCustomer);
+                        const yearEnd = (yePrepSelectedYearEnd && yearEnds.includes(yePrepSelectedYearEnd))
+                            ? yePrepSelectedYearEnd
+                            : (yearEnds[0] || "");
+                        await openYePrepAiReviewModal(selectedCustomer, yearEnd, false);
+                    });
+                }
                 if (tabButtonsWrap.dataset.yePrepWired !== "true") {
                     tabButtonsWrap.dataset.yePrepWired = "true";
                     tabButtonsWrap.querySelectorAll("[data-ye-tab]").forEach((button) => {
@@ -61697,9 +62012,11 @@
                 const inWorkspace = Boolean(selected);
 
                 backButton.hidden = !inWorkspace;
+                aiReviewButton.hidden = !inWorkspace;
                 syncButton.hidden = !inWorkspace;
                 customerListWrap.hidden = inWorkspace;
                 workspaceWrap.hidden = !inWorkspace;
+                if (!inWorkspace && yePrepAiReviewModalOpen) closeYePrepAiReviewModal();
                 tabButtonsWrap.querySelectorAll("[data-ye-tab]").forEach((button) => {
                     button.classList.toggle("is-active", String(button.dataset.yeTab || "") === yePrepActiveTab);
                 });
@@ -61846,6 +62163,7 @@
                 if (selected?.customer?.id && !cachedCustomerTransactions(selected.customer) && !customerTransactionLoading.has(String(selected.customer.id))) {
                     ensureCustomerTransactions(selected.customer, false, { silent: true });
                 }
+                renderYePrepAiReviewModal(selected, activeYearEnd);
             }
 
             function renderPracticePackScreen() {
