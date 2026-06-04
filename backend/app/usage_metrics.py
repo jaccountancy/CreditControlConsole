@@ -10,6 +10,7 @@ from .database import get_connection, utcnow
 DEFAULT_DAYS = 30
 TOP_FEATURE_LIMIT = 18
 TOP_ENDPOINT_LIMIT = 18
+USAGE_DETAIL_CROSS_LIMIT = 20
 
 _OPENAI_RATE_TABLE = {
     "gpt-5": {"input": Decimal("1.25"), "output": Decimal("10.00")},
@@ -20,6 +21,18 @@ _OPENAI_RATE_TABLE = {
     "gpt-4o-mini": {"input": Decimal("0.15"), "output": Decimal("0.60")},
 }
 _DEFAULT_OPENAI_RATE = {"input": Decimal("0.40"), "output": Decimal("1.60")}
+FEATURE_DESCRIPTIONS = {
+    "xero-contacts": "Reads contact records from Xero. Used during ledger sync and contact-driven workflows.",
+    "xero-invoices": "Reads and writes invoice data used by the debtor ledger and follow-up workflows.",
+    "xero-credit-allocation": "Handles credit notes and overpayment allocations tied to invoice balances.",
+    "xero-payments": "Imports payment events so invoice balances and statuses stay accurate.",
+    "xero-coa": "Loads Xero chart of accounts and posting settings metadata.",
+    "xero-lock-date": "Loads or updates Xero organisation period lock dates.",
+    "me-report": "Runs ME Report data pulls and AI analysis for client review packs.",
+    "ignition": "Syncs Ignition reporting data and renewal automation state.",
+    "insights": "Generates AI summaries and analytics in the Insights page.",
+    "xero-api": "General Xero API traffic not mapped to a narrower feature bucket.",
+}
 
 
 def _to_int(value, default: int = 0) -> int:
@@ -464,4 +477,243 @@ def usage_overview_payload(user: dict, days: int = DEFAULT_DAYS) -> dict:
         "topFeatures": top_features,
         "topFeaturesByProvider": by_provider,
         "topEndpoints": top_endpoints,
+    }
+
+
+def _usage_severity(requests: int, error_rate: float, avg_latency_ms: float) -> str:
+    if requests >= 350 or error_rate >= 0.12 or avg_latency_ms >= 1200:
+        return "extreme"
+    if requests >= 140 or error_rate >= 0.05 or avg_latency_ms >= 700:
+        return "high"
+    if requests >= 40 or error_rate >= 0.02 or avg_latency_ms >= 350:
+        return "elevated"
+    return "normal"
+
+
+def _usage_recommendations(*, provider: str, feature: str, endpoint: str, severity: str, error_rate: float, avg_latency_ms: float) -> list[str]:
+    recommendations: list[str] = []
+    endpoint_lower = endpoint.lower()
+    feature_lower = feature.lower()
+    if provider == "xero" and ("contacts" in feature_lower or "/contacts" in endpoint_lower):
+        recommendations.append("Use incremental sync windows and avoid full contact re-pulls unless a manual refresh is required.")
+        recommendations.append("Use cached customer rows for dropdowns and lookups, and only call Xero Contacts when cache is stale.")
+    if provider == "xero" and "/invoices" in endpoint_lower:
+        recommendations.append("Limit invoice calls with narrower `where` filters and lower page limits where possible.")
+    if error_rate >= 0.05:
+        recommendations.append("Review failed calls in Developer Log and clear retry queues before running additional syncs.")
+    if avg_latency_ms >= 700:
+        recommendations.append("Reduce concurrent sync jobs and increase poll intervals while long-running jobs are active.")
+    if severity in {"high", "extreme"} and provider == "openai":
+        recommendations.append("Lower prompt/file payload size and consolidate requests to reduce token and latency overhead.")
+    if not recommendations:
+        recommendations.append("Usage is within expected range; keep monitoring for spikes and regressions.")
+    return recommendations[:5]
+
+
+def usage_detail_payload(
+    user: dict,
+    *,
+    days: int = DEFAULT_DAYS,
+    provider: str,
+    feature: str | None = None,
+    page: str | None = None,
+    endpoint: str | None = None,
+) -> dict:
+    safe_days = max(min(_to_int(days, DEFAULT_DAYS), 180), 1)
+    user_id = str(user.get("id") or "").strip() or None
+    cutoff = utcnow() - timedelta(days=safe_days)
+    provider_value = str(provider or "").strip().lower()
+    if provider_value not in {"openai", "xero"}:
+        provider_value = "xero"
+    feature_value = str(feature or "").strip()
+    page_value = str(page or "").strip()
+    endpoint_value = str(endpoint or "").strip()
+    match_mode = "endpoint" if endpoint_value else "feature"
+
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) AS requests,
+                    COUNT(*) FILTER (WHERE success) AS success,
+                    COUNT(*) FILTER (WHERE NOT success) AS errors,
+                    COALESCE(AVG(duration_ms), 0)::numeric(12,2) AS avg_latency_ms,
+                    COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                    COALESCE(SUM(estimated_cost_usd), 0)::numeric(14,6) AS estimated_cost_usd,
+                    MIN(created_at) AS first_seen_at,
+                    MAX(created_at) AS last_seen_at
+                FROM usage_events
+                WHERE created_at >= %s
+                  AND provider = %s
+                  AND (%s::uuid IS NULL OR user_id = %s::uuid)
+                  AND (%s::text = '' OR feature = %s::text)
+                  AND (%s::text = '' OR page = %s::text)
+                  AND (%s::text = '' OR endpoint = %s::text)
+                """,
+                (
+                    cutoff,
+                    provider_value,
+                    user_id,
+                    user_id,
+                    feature_value,
+                    feature_value,
+                    page_value,
+                    page_value,
+                    endpoint_value,
+                    endpoint_value,
+                ),
+            )
+            summary_row = cursor.fetchone() or {}
+
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(feature, ''), 'unclassified') AS feature,
+                    COALESCE(NULLIF(page, ''), 'unknown') AS page,
+                    COUNT(*) AS requests,
+                    COALESCE(AVG(duration_ms), 0)::numeric(12,2) AS avg_latency_ms
+                FROM usage_events
+                WHERE created_at >= %s
+                  AND provider = %s
+                  AND (%s::uuid IS NULL OR user_id = %s::uuid)
+                  AND (%s::text = '' OR endpoint = %s::text)
+                GROUP BY feature, page
+                ORDER BY requests DESC, avg_latency_ms DESC
+                LIMIT %s
+                """,
+                (cutoff, provider_value, user_id, user_id, endpoint_value, endpoint_value, USAGE_DETAIL_CROSS_LIMIT),
+            )
+            feature_page_rows = cursor.fetchall() or []
+
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(endpoint, ''), 'unclassified') AS endpoint,
+                    COUNT(*) AS requests,
+                    COALESCE(AVG(duration_ms), 0)::numeric(12,2) AS avg_latency_ms
+                FROM usage_events
+                WHERE created_at >= %s
+                  AND provider = %s
+                  AND (%s::uuid IS NULL OR user_id = %s::uuid)
+                  AND (%s::text = '' OR feature = %s::text)
+                  AND (%s::text = '' OR page = %s::text)
+                GROUP BY endpoint
+                ORDER BY requests DESC, avg_latency_ms DESC
+                LIMIT %s
+                """,
+                (cutoff, provider_value, user_id, user_id, feature_value, feature_value, page_value, page_value, USAGE_DETAIL_CROSS_LIMIT),
+            )
+            endpoint_rows = cursor.fetchall() or []
+
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(NULLIF(operation, ''), 'request') AS operation,
+                    COUNT(*) AS requests,
+                    COUNT(*) FILTER (WHERE NOT success) AS errors,
+                    COALESCE(AVG(duration_ms), 0)::numeric(12,2) AS avg_latency_ms
+                FROM usage_events
+                WHERE created_at >= %s
+                  AND provider = %s
+                  AND (%s::uuid IS NULL OR user_id = %s::uuid)
+                  AND (%s::text = '' OR feature = %s::text)
+                  AND (%s::text = '' OR page = %s::text)
+                  AND (%s::text = '' OR endpoint = %s::text)
+                GROUP BY operation
+                ORDER BY requests DESC, errors DESC
+                LIMIT %s
+                """,
+                (
+                    cutoff,
+                    provider_value,
+                    user_id,
+                    user_id,
+                    feature_value,
+                    feature_value,
+                    page_value,
+                    page_value,
+                    endpoint_value,
+                    endpoint_value,
+                    USAGE_DETAIL_CROSS_LIMIT,
+                ),
+            )
+            operation_rows = cursor.fetchall() or []
+        connection.commit()
+
+    requests = _to_int(summary_row.get("requests"))
+    success = _to_int(summary_row.get("success"))
+    errors = _to_int(summary_row.get("errors"))
+    avg_latency_ms = _to_float(summary_row.get("avg_latency_ms"))
+    error_rate = (errors / requests) if requests > 0 else 0.0
+    severity = _usage_severity(requests, error_rate, avg_latency_ms)
+    dominant_feature = feature_value or (feature_page_rows[0].get("feature") if feature_page_rows else "")
+    recommendations = _usage_recommendations(
+        provider=provider_value,
+        feature=dominant_feature,
+        endpoint=endpoint_value,
+        severity=severity,
+        error_rate=error_rate,
+        avg_latency_ms=avg_latency_ms,
+    )
+    return {
+        "status": "ok",
+        "range": {
+            "days": safe_days,
+            "from": cutoff.date().isoformat(),
+            "to": utcnow().date().isoformat(),
+        },
+        "match": {
+            "mode": match_mode,
+            "provider": provider_value,
+            "feature": feature_value,
+            "page": page_value,
+            "endpoint": endpoint_value,
+        },
+        "summary": {
+            "requests": requests,
+            "success": success,
+            "errors": errors,
+            "errorRate": round(error_rate, 4),
+            "avgLatencyMs": avg_latency_ms,
+            "totalTokens": _to_int(summary_row.get("total_tokens")),
+            "estimatedCostUsd": _to_float(summary_row.get("estimated_cost_usd")),
+            "firstSeenAt": "" if not summary_row.get("first_seen_at") else summary_row["first_seen_at"].isoformat(),
+            "lastSeenAt": "" if not summary_row.get("last_seen_at") else summary_row["last_seen_at"].isoformat(),
+            "severity": severity,
+        },
+        "explanation": {
+            "whatIsThis": FEATURE_DESCRIPTIONS.get(dominant_feature, "Usage events grouped by provider, feature/page, endpoint, and operation."),
+            "extremeThreshold": "Extreme when request volume, latency, or error rate crosses configured thresholds.",
+        },
+        "usedByFeatures": [
+            {
+                "feature": str(row.get("feature") or "unclassified"),
+                "page": str(row.get("page") or "unknown"),
+                "requests": _to_int(row.get("requests")),
+                "avgLatencyMs": _to_float(row.get("avg_latency_ms")),
+            }
+            for row in feature_page_rows
+        ],
+        "usedByEndpoints": [
+            {
+                "endpoint": str(row.get("endpoint") or "unclassified"),
+                "requests": _to_int(row.get("requests")),
+                "avgLatencyMs": _to_float(row.get("avg_latency_ms")),
+            }
+            for row in endpoint_rows
+        ],
+        "operations": [
+            {
+                "operation": str(row.get("operation") or "request"),
+                "requests": _to_int(row.get("requests")),
+                "errors": _to_int(row.get("errors")),
+                "avgLatencyMs": _to_float(row.get("avg_latency_ms")),
+            }
+            for row in operation_rows
+        ],
+        "help": {
+            "isExtreme": severity == "extreme",
+            "recommendations": recommendations,
+        },
     }

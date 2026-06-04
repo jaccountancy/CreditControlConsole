@@ -17732,6 +17732,35 @@ def _store_ignition_view_cache(user_id: str, cache_key: str, source_signature: s
         connection.commit()
 
 
+def _delete_ignition_view_cache(user_id: str, cache_key: str) -> None:
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM ignition_view_cache
+                WHERE user_id = %s
+                  AND cache_key = %s
+                """,
+                (user_id, cache_key),
+            )
+        connection.commit()
+
+
+def _ignition_candidate_missing_client_id_count(candidate_pool: dict | None) -> int:
+    if not isinstance(candidate_pool, dict):
+        return 0
+    candidates = candidate_pool.get("candidates")
+    if not isinstance(candidates, list):
+        return 0
+    missing_count = 0
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        if not str(item.get("clientId") or "").strip():
+            missing_count += 1
+    return missing_count
+
+
 def _enrich_ignition_renewal_items_with_recommendations(user: dict, items: list[dict], cursor) -> None:
     if not items:
         return
@@ -18967,6 +18996,38 @@ def restore_ignition_renewal_proposals_to_eligible(user: dict, payload: dict | N
         user["id"],
     )
     return {"renewals": ignition_renewals_payload(user), "restoredCount": restored_count}
+
+
+def populate_ignition_renewal_candidate_client_ids(user: dict) -> dict:
+    before_pool: dict = {}
+    try:
+        before_pool = _ignition_renewal_candidates_for_user_cached(user)
+    except Exception:
+        logger.exception("Unable to read existing Ignition renewal candidate pool before client ID populate")
+    before_missing = _ignition_candidate_missing_client_id_count(before_pool)
+
+    _delete_ignition_view_cache(user["id"], IGNITION_RENEWAL_CANDIDATE_CACHE_KEY)
+    renewals = ignition_renewals_payload(user)
+    after_pool = renewals.get("candidatePool") if isinstance(renewals, dict) else {}
+    after_missing = _ignition_candidate_missing_client_id_count(after_pool if isinstance(after_pool, dict) else {})
+    populated_count = max(0, before_missing - after_missing)
+
+    record_audit_event(
+        "ignition_renewal_candidates",
+        "client-id-populate",
+        "ignition.renewals.client_ids_populated",
+        {
+            "before_missing": before_missing,
+            "after_missing": after_missing,
+            "populated_count": populated_count,
+        },
+        user["id"],
+    )
+    return {
+        "renewals": renewals,
+        "populatedCount": populated_count,
+        "remainingMissingCount": after_missing,
+    }
 
 
 def _clean_ignition_renewal_email(value: object) -> str:
