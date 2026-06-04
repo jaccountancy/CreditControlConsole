@@ -261,7 +261,7 @@
                 padding: 7px 10px;
                 border-radius: 12px;
                 border: 1px solid rgba(61, 85, 130, 0.16);
-                background: rgba(255, 255, 255, 0.62);
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(245, 249, 255, 0.74));
                 color: var(--muted);
                 font: inherit;
                 font-size: 0.64rem;
@@ -270,7 +270,18 @@
                 text-transform: uppercase;
                 text-align: left;
                 cursor: pointer;
-                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
+                position: relative;
+                transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+            }
+            .settings-nav-group-label::before {
+                content: "";
+                width: 6px;
+                height: 6px;
+                margin-right: 8px;
+                border-radius: 999px;
+                background: currentColor;
+                opacity: 0.34;
+                flex: 0 0 auto;
             }
             .settings-nav-group-label::after {
                 content: "";
@@ -286,6 +297,7 @@
                 border-color: rgba(29, 103, 242, 0.26);
                 background: rgba(233, 241, 255, 0.82);
                 color: var(--blue);
+                box-shadow: 0 8px 14px rgba(29, 103, 242, 0.1);
             }
             .settings-nav-group-label[aria-expanded="true"]::after {
                 transform: rotate(-135deg);
@@ -293,6 +305,13 @@
             .settings-nav-group-label:hover {
                 border-color: rgba(29, 103, 242, 0.22);
                 color: var(--blue);
+                transform: translateY(-1px);
+                box-shadow: 0 8px 14px rgba(30, 47, 77, 0.08);
+            }
+            .settings-nav-group-label:focus-visible {
+                outline: none;
+                border-color: rgba(29, 103, 242, 0.42);
+                box-shadow: 0 0 0 3px rgba(29, 103, 242, 0.14);
             }
             .settings-sidebar-card .settings-nav-group-label:first-child {
                 margin-top: 2px;
@@ -13413,10 +13432,16 @@
                 background: #f8fbff;
             }
             .ignition-renewals-client-comms-actions {
+                position: sticky;
+                bottom: 0;
+                z-index: 2;
                 display: flex;
                 align-items: center;
                 justify-content: flex-end;
                 gap: 10px;
+                padding: 10px 0 0;
+                border-top: 1px solid rgba(188, 204, 228, 0.85);
+                background: linear-gradient(180deg, rgba(248, 251, 255, 0.32), rgba(248, 251, 255, 0.97) 34%, rgba(248, 251, 255, 1) 100%);
             }
             .ignition-renewals-client-comms-table {
                 min-width: 920px;
@@ -13430,7 +13455,9 @@
             .ignition-renewals-client-comms-table th:nth-child(4),
             .ignition-renewals-client-comms-table td:nth-child(4) { width: 30%; }
             .ignition-renewals-client-comms-table th:nth-child(5),
-            .ignition-renewals-client-comms-table td:nth-child(5) { width: 16%; }
+            .ignition-renewals-client-comms-table td:nth-child(5) { width: 10%; }
+            .ignition-renewals-client-comms-table th:nth-child(6),
+            .ignition-renewals-client-comms-table td:nth-child(6) { width: 6%; text-align: center; }
             .ignition-renewals-client-email-value {
                 display: inline-block;
                 min-height: 1em;
@@ -13504,6 +13531,45 @@
                 border-color: rgba(29, 103, 242, 0.4);
                 color: #1d67f2;
                 background: linear-gradient(135deg, rgba(233, 241, 255, 0.94), rgba(241, 246, 255, 0.95));
+            }
+            .ignition-renewals-prop-reference {
+                display: inline-flex;
+                align-items: center;
+                border-radius: 999px;
+                border: 1px solid rgba(76, 101, 147, 0.2);
+                background: rgba(238, 244, 255, 0.92);
+                color: #3f5579;
+                font-size: 0.74rem;
+                font-weight: 760;
+                padding: 4px 10px;
+                white-space: nowrap;
+            }
+            .ignition-renewals-prop-reference.is-empty {
+                border-style: dashed;
+                color: #7f92b1;
+                background: rgba(245, 249, 255, 0.96);
+            }
+            .ignition-renewals-ready-indicator {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                border-radius: 999px;
+                border: 1px solid rgba(63, 85, 121, 0.25);
+                font-size: 0.7rem;
+                font-weight: 800;
+                line-height: 1;
+            }
+            .ignition-renewals-ready-indicator.is-ready {
+                border-color: rgba(24, 122, 72, 0.3);
+                color: #1f724a;
+                background: rgba(227, 246, 236, 0.9);
+            }
+            .ignition-renewals-ready-indicator.is-pending {
+                border-color: rgba(171, 106, 2, 0.28);
+                color: #9a5a04;
+                background: rgba(255, 238, 210, 0.9);
             }
             .ignition-renewals-client-comms-email {
                 max-width: 920px;
@@ -19185,7 +19251,7 @@
                                 </button>
                                 <button class="app-nav-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="confirmation-settings">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
-                                    <span class="app-nav-copy"><strong>Confirmation Settings</strong><span>Companies House + Xero</span></span>
+                                    <span class="app-nav-copy"><strong>Companies House Settings</strong><span>Companies House + Xero</span></span>
                                 </button>
                                 <a class="app-nav-button settings-nav-group-item" href="#credit-control-confirmation-statements" data-settings-group-item="practice-settings" data-app-nav="confirmation-statements">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
@@ -19283,7 +19349,7 @@
                             </button>
                             <button class="settings-sidebar-button settings-nav-group-item" type="button" data-settings-group-item="practice-settings" data-settings-nav="confirmation-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
-                                <span class="settings-sidebar-copy"><strong>Confirmation Settings</strong><span>Companies House + Xero</span></span>
+                                <span class="settings-sidebar-copy"><strong>Companies House Settings</strong><span>Companies House + Xero</span></span>
                             </button>
                             <a class="settings-sidebar-button settings-nav-group-item" href="#credit-control-confirmation-statements" data-settings-group-item="practice-settings" data-app-nav="confirmation-statements">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h5"></path><path d="m10 16 2 2 4-4"></path></svg></span>
@@ -21728,7 +21794,7 @@
                                         <p class="detail-meta" id="ignitionRenewalClientCommsSummary">Upload each engagement letter before reviewing and sending client emails.</p>
                                     </div>
                                     <div class="detail-actions">
-                                        <button class="ignition-renewals-client-comms-populate" id="ignitionRenewalClientCommsPopulateButton" type="button">Populate</button>
+                                        <button class="ignition-renewals-client-comms-populate" id="ignitionRenewalClientCommsPopulateButton" type="button">Populate Emails</button>
                                         <button class="ghost-button" id="closeIgnitionRenewalClientCommsButton" type="button">Close</button>
                                     </div>
                                 </header>
@@ -24065,6 +24131,7 @@
                         ignitionRenewalEmail: config.endpoints?.ignitionRenewalEmail || "/api/ignition/renewals/:runId/email",
                         ignitionRenewalEmailPreview: config.endpoints?.ignitionRenewalEmailPreview || "/api/ignition/renewals/:runId/email-preview",
                         ignitionRenewalClientCommsSend: config.endpoints?.ignitionRenewalClientCommsSend || "/api/ignition/renewals/:runId/client-comms/send",
+                        ignitionRenewalDocumentIdExtract: config.endpoints?.ignitionRenewalDocumentIdExtract || "/api/ignition/renewals/document-id/extract",
                         ignitionRenewalPdf: config.endpoints?.ignitionRenewalPdf || "/api/ignition/renewals/:runId/pdf",
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
                         ignitionRenewalUnlock: config.endpoints?.ignitionRenewalUnlock || "/api/ignition/renewals/:runId/unlock",
@@ -41809,6 +41876,14 @@
                     .slice(0, 80);
             }
 
+            function ignitionRenewalPropReferenceFromFileName(fileName = "") {
+                const value = String(fileName || "").trim();
+                if (!value) return "";
+                const match = value.match(/\bPROP[-_\s]?([A-Za-z0-9]{2,})\b/i);
+                if (!match) return "";
+                return `PROP-${String(match[1] || "").toUpperCase()}`;
+            }
+
             async function extractIgnitionRenewalDocumentIdFromFile(file = null) {
                 if (!file) return "";
                 const fileName = String(file.name || "").toLowerCase();
@@ -41816,13 +41891,22 @@
                 const isPdf = fileType === "application/pdf" || fileName.endsWith(".pdf");
                 if (!isPdf) return "";
                 try {
+                    const formData = new FormData();
+                    formData.append("file", file, String(file.name || "engagement-letter.pdf"));
+                    const payload = await requestFormData(api.endpoints.ignitionRenewalDocumentIdExtract, formData);
+                    const extractedDocumentId = normaliseIgnitionRenewalDocumentId(payload?.documentId || "");
+                    if (extractedDocumentId) return extractedDocumentId;
+                } catch (error) {
+                    console.warn("Unable to extract renewal document ID with backend parser, falling back to local scan", error);
+                }
+                try {
                     const arrayBuffer = await file.arrayBuffer();
                     const bytes = new Uint8Array(arrayBuffer);
                     const decoder = new TextDecoder("latin1");
                     const raw = decoder.decode(bytes);
-                    const focusedMatch = raw.match(/Document\s*ID[\s\S]{0,220}?(prop_[a-z0-9]+)/i);
+                    const focusedMatch = raw.match(/Document\s*ID[\s\S]{0,280}?(prop_[a-z0-9][a-z0-9_-]{5,})/i);
                     if (focusedMatch?.[1]) return normaliseIgnitionRenewalDocumentId(focusedMatch[1]);
-                    const broadMatch = raw.match(/\b(prop_[a-z0-9]{10,})\b/i);
+                    const broadMatch = raw.match(/\b(prop_[a-z0-9][a-z0-9_-]{5,})\b/i);
                     if (broadMatch?.[1]) return normaliseIgnitionRenewalDocumentId(broadMatch[1]);
                     return "";
                 } catch (error) {
@@ -43261,7 +43345,7 @@
                     populateButton.hidden = !showPopulate;
                     populateButton.disabled = ignitionRenewalClientCommsEmailPopulateInFlight || !items.length;
                     populateButton.classList.toggle("is-populating", ignitionRenewalClientCommsEmailPopulateInFlight);
-                    populateButton.textContent = ignitionRenewalClientCommsEmailPopulateInFlight ? "Populating..." : "Populate";
+                    populateButton.textContent = ignitionRenewalClientCommsEmailPopulateInFlight ? "Populating..." : "Populate Emails";
                 }
 
                 if (ignitionRenewalClientCommsStage === "upload") {
@@ -43278,7 +43362,8 @@
                                     <th>Document ID</th>
                                     <th>Email</th>
                                     <th>Engagement Letter & Upload</th>
-                                    <th>Status</th>
+                                    <th>PROP Reference</th>
+                                    <th aria-label="Ready state"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -43295,6 +43380,8 @@
                                     const emailClass = populatedEmail === undefined
                                         ? "ignition-renewals-client-email-value"
                                         : `ignition-renewals-client-email-value${populatedEmail ? "" : " is-empty"}`;
+                                    const propReference = ignitionRenewalPropReferenceFromFileName(fileName) || "--";
+                                    const rowReady = sent || !!fileName;
                                     return `
                                         <tr data-renewal-comms-proposal="${escapeHTML(proposalId)}">
                                             <td>
@@ -43315,7 +43402,8 @@
                                                     ${fileName ? `<small>${escapeHTML(fileName)}</small>` : ""}
                                                 </div>
                                             </td>
-                                            <td>${escapeHTML(sent ? "Complete" : (fileName ? "Ready" : "Pending"))}</td>
+                                            <td><span class="ignition-renewals-prop-reference ${propReference === "--" ? "is-empty" : ""}">${escapeHTML(propReference)}</span></td>
+                                            <td><span class="ignition-renewals-ready-indicator ${rowReady ? "is-ready" : "is-pending"}" title="${rowReady ? "Ready" : "Not ready"}" aria-label="${rowReady ? "Ready" : "Not ready"}">${rowReady ? "✓" : "!"}</span></td>
                                         </tr>
                                     `;
                                 }).join("")}
@@ -56934,6 +57022,11 @@
                     title: "Renewal Settings",
                     meta: "Unlock finalised renewal batches when you need to make pricing changes."
                 },
+                "confirmation-settings": {
+                    eyebrow: "Companies House settings",
+                    title: "Companies House Settings",
+                    meta: "Manage Companies House credentials, filing environment, and default Xero invoice posting values."
+                },
                 mapping: {
                     eyebrow: "Mappings",
                     title: "Mapping Changes / COA",
@@ -57011,7 +57104,7 @@
 
             function syncSettingsNavGroups(activeSection = activeSettingsSection) {
                 const activeGroup = settingsGroupForSection(activeSection);
-                if (activeGroup) expandedSettingsNavGroups.add(activeGroup);
+                if (!expandedSettingsNavGroups.size && activeGroup) expandedSettingsNavGroups.add(activeGroup);
                 document.querySelectorAll("[data-settings-group-label]").forEach((label) => {
                     const group = label.dataset.settingsGroupLabel || "";
                     const expanded = expandedSettingsNavGroups.has(group);
@@ -57066,6 +57159,7 @@
                 loadPendingXeroActions();
                 loadDeveloperLog();
                 if (activeSettingsSection === "mapping") loadXeroPostingSettings();
+                if (activeSettingsSection === "confirmation-settings") loadCompaniesHouseSettings();
                 if (activeSettingsSection === "lock-date-mapping") {
                     loadXeroLockDateOverview();
                     loadXeroLockDateCHHealth();
@@ -60179,20 +60273,82 @@
                 return [];
             }
 
+            function chFriendlySubmissionIssueText(reason, company = null) {
+                const text = String(reason || "").trim();
+                if (!text) return "";
+                const normalised = text.toLowerCase();
+                const syncHint = company?.lastSyncedAt
+                    ? "Run Sync Companies House to refresh filing dates, then try again."
+                    : "Run Sync Companies House first to pull filing dates, then try again.";
+                if (/missing next due date|missing made[- ]up[- ]to date/.test(normalised)) {
+                    return `Missing Companies House filing dates. ${syncHint}`;
+                }
+                if (/missing authentication code|missing companies house authentication code|authentication code could not be decrypted|authentication code must be 6/.test(normalised)) {
+                    return "Authentication code missing or invalid. Add the 6-character Companies House code in company detail (or import it), then retry.";
+                }
+                if (/filing authority is not authorised|client filing authority is not recorded as authorised/.test(normalised)) {
+                    return "Filing authority is not authorised. Set authority status to Authorised in full review before submitting.";
+                }
+                if (/filing authority has expired|client filing authority has expired/.test(normalised)) {
+                    return "Filing authority has expired. Renew authority before submitting.";
+                }
+                if (/blocked by internal status|internal status is/.test(normalised)) {
+                    return "Submission blocked by internal status. Set the company to an active filing status first.";
+                }
+                if (/not currently eligible for submission/.test(normalised)) {
+                    return "Not currently eligible for submission. Check auth code, authority status, and filing dates.";
+                }
+                return text.replace(/\s+/g, " ").replace(/\.$/, "");
+            }
+
+            function chFriendlySubmissionFailureMessage(error) {
+                const rawMessage = String(error?.message || "").trim();
+                const statusCode = Number(error?.statusCode || 0);
+                const detailPayload = error?.details;
+                const detailMessage = (() => {
+                    if (typeof detailPayload === "string") return detailPayload;
+                    if (!detailPayload || typeof detailPayload !== "object") return "";
+                    if (typeof detailPayload.message === "string") return detailPayload.message;
+                    if (typeof detailPayload.error === "string") return detailPayload.error;
+                    if (Array.isArray(detailPayload.errors)) return detailPayload.errors.join(" | ");
+                    return "";
+                })();
+                const combined = `${rawMessage} ${detailMessage}`.trim();
+                const lower = combined.toLowerCase();
+                const timeoutLikeFailure = statusCode >= 500
+                    && /respond|timed out|timeout|took too long|gateway/.test(lower);
+                if (timeoutLikeFailure) {
+                    return "Submission timed out while waiting for Companies House. Retry with one company first; the workflow will then retry in smaller batches.";
+                }
+                if (/missing made[- ]up[- ]to date|missing next due date|sync companies house company data/.test(lower)) {
+                    return "Submission blocked because filing dates are missing. Run Sync Companies House, refresh, and try again.";
+                }
+                if (/presenter id|presenter authentication code|credit account number/.test(lower)) {
+                    return `Submission blocked by Companies House settings. ${combined || "Set presenter details and credit account number in settings."}`;
+                }
+                if (/select at least one company/.test(lower)) {
+                    return "No companies were selected for submission.";
+                }
+                if (/maximum 500 companies/.test(lower)) {
+                    return "Submission limit reached. Select 500 companies or fewer per run.";
+                }
+                return rawMessage || "Unable to submit selected companies.";
+            }
+
             function chSubmissionIneligibilityReasons(company) {
                 const modelIssues = chCompanySubmissionIssues(company);
-                if (modelIssues.length) return modelIssues;
+                if (modelIssues.length) return modelIssues.map((issue) => chFriendlySubmissionIssueText(issue, company)).filter(Boolean);
                 const reasons = [];
                 const internalStatus = String(company?.internalStatus || "active");
                 const authorityStatus = String(company?.filingAuthorityStatus || "pending").toLowerCase();
-                if (!company?.nextDueDate) reasons.push("Missing next due date");
-                if (!company?.nextMadeUpToDate) reasons.push("Missing made-up-to date");
-                if (!company?.authCodeOnFile) reasons.push("Missing auth code (re-import BM CSV with Auth Code column or add it in company detail)");
-                if (["paused", "do_not_file", "inactive"].includes(internalStatus)) reasons.push(`Blocked by internal status (${internalStatus.replace(/_/g, " ")})`);
+                if (!company?.nextDueDate) reasons.push(chFriendlySubmissionIssueText("Missing next due date.", company));
+                if (!company?.nextMadeUpToDate) reasons.push(chFriendlySubmissionIssueText("Missing made-up-to date.", company));
+                if (!company?.authCodeOnFile) reasons.push(chFriendlySubmissionIssueText("Missing authentication code.", company));
+                if (["paused", "do_not_file", "inactive"].includes(internalStatus)) reasons.push(chFriendlySubmissionIssueText(`Blocked by internal status (${internalStatus.replace(/_/g, " ")}).`, company));
                 if (authorityStatus !== "authorised" && !company?.authCodeOnFile) {
-                    reasons.push("Filing authority is not authorised (set to Authorised in full review)");
+                    reasons.push(chFriendlySubmissionIssueText("Filing authority is not authorised.", company));
                 }
-                return reasons;
+                return reasons.filter(Boolean);
             }
 
             function chUpdateWorkflowControls() {
@@ -60242,10 +60398,10 @@
                     const reasonText = Array.from(countsByReason.entries())
                         .sort((left, right) => right[1] - left[1])
                         .slice(0, 3)
-                        .map(([reason, count]) => `${count.toLocaleString("en-GB")} ${reason.toLowerCase()}`)
+                        .map(([reason, count]) => `${count.toLocaleString("en-GB")} x ${reason}`)
                         .join(" · ");
                     chSetWorkflowStatus(
-                        `${selectedCount.toLocaleString("en-GB")} selected, 0 ready to submit. ${reasonText || "Check auth code, authority status, and Companies House made-up-to date."}`,
+                        `${selectedCount.toLocaleString("en-GB")} selected, 0 ready to submit. ${reasonText || "Run Sync Companies House, then check auth code and authority status."}`,
                         "error"
                     );
                     return;
@@ -61572,11 +61728,7 @@
                     if (error instanceof AuthRequiredError) {
                         markAuthenticationRequired(error.message);
                     }
-                    const timeoutLikeFailure = Number(error?.statusCode || 0) >= 500
-                        && String(error?.message || "").toLowerCase().includes("respond");
-                    const workflowMessage = timeoutLikeFailure
-                        ? "Submission timed out. Retry with one company first, then use smaller batches."
-                        : (error?.message || "Unable to submit selected companies.");
+                    const workflowMessage = chFriendlySubmissionFailureMessage(error);
                     chSetWorkflowStatus(workflowMessage, "error");
                     showToast(workflowMessage, "error");
                 } finally {

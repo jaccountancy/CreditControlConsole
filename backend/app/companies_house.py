@@ -3600,21 +3600,21 @@ def list_auth_code_register(limit: int = 300) -> dict:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id,
-                       company_number,
-                       COALESCE(NULLIF(company_name, ''), client_name, '') AS display_name,
-                       client_manager,
-                       client_id,
+                SELECT r.id,
+                       r.company_number,
+                       COALESCE(NULLIF(r.company_name, ''), r.client_name, '') AS display_name,
+                       r.client_manager,
+                       r.client_id,
                        c.contact_email,
                        c.contact_phone,
                        c.client_address,
-                       code_hint,
-                       source_filename,
-                       uploaded_at
-                FROM ch_auth_code_register
+                       r.code_hint,
+                       r.source_filename,
+                       r.uploaded_at
+                FROM ch_auth_code_register r
                 LEFT JOIN ch_companies c
-                  ON c.company_number = ch_auth_code_register.company_number
-                ORDER BY uploaded_at DESC
+                  ON c.company_number = r.company_number
+                ORDER BY r.uploaded_at DESC
                 LIMIT %s
                 """,
                 (safe_limit,),

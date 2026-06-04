@@ -60,6 +60,56 @@ class _DummyClient:
 
 @unittest.skipIf(ch is None, f"Companies House tests skipped: {_CH_TEST_IMPORT_ERROR}")
 class CompaniesHouseTests(unittest.TestCase):
+    def test_list_auth_code_register_uses_qualified_columns(self):
+        class _FakeCursor:
+            def __init__(self):
+                self.queries = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute(self, query, params=None):
+                self.queries.append(str(query))
+
+            def fetchall(self):
+                return []
+
+            def fetchone(self):
+                return {"total": 0}
+
+        class _FakeConnection:
+            def __init__(self, cursor):
+                self._cursor = cursor
+                self.committed = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def cursor(self):
+                return self._cursor
+
+            def commit(self):
+                self.committed = True
+
+        fake_cursor = _FakeCursor()
+        fake_connection = _FakeConnection(fake_cursor)
+        with patch.object(ch, "get_connection", return_value=fake_connection):
+            payload = ch.list_auth_code_register(limit=300)
+
+        self.assertEqual(payload.get("totalCount"), 0)
+        self.assertEqual(payload.get("rows"), [])
+        self.assertTrue(fake_connection.committed)
+        first_query = fake_cursor.queries[0]
+        self.assertIn("SELECT r.id", first_query)
+        self.assertIn("FROM ch_auth_code_register r", first_query)
+        self.assertIn("ON c.company_number = r.company_number", first_query)
+
     def test_reconcile_status_code(self):
         self.assertEqual(ch._reconcile_submission_status_code("ACCEPT"), "accepted")
         self.assertEqual(ch._reconcile_submission_status_code("REJECT"), "rejected")

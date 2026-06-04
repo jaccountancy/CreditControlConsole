@@ -152,6 +152,7 @@ from .services import (
     save_posting_settings,
     save_xero_tenant_company_mapping,
     send_ignition_renewal_client_comms_email,
+    extract_ignition_renewal_document_id,
     serialize_sync_run,
     serialize_xero_rate_limit,
     serialize_ignition_sync_run,
@@ -1670,6 +1671,16 @@ def api_ignition_sync_status(sync_run_id: str, user: dict = Depends(require_pane
 @app.get("/api/ignition/renewals")
 def api_ignition_renewals(user: dict = Depends(require_panel_user)):
     return {"status": "ok", "renewals": ignition_renewals_payload(user)}
+
+
+@app.post("/api/ignition/renewals/document-id/extract")
+async def api_extract_ignition_renewal_document_id(
+    file: UploadFile = File(...),
+    user: dict = Depends(require_panel_user),
+):
+    _ = user
+    file_bytes = await file.read()
+    return {"status": "ok", **extract_ignition_renewal_document_id(file.filename or "engagement-letter.pdf", file.content_type or "application/pdf", file_bytes)}
 
 
 @app.get("/api/ignition/renewals/{run_id}")

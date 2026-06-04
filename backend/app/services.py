@@ -18704,6 +18704,54 @@ def _decode_base64_file_payload(content: str) -> bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment must be valid base64 content.") from exc
 
 
+def _normalise_ignition_renewal_document_id(value: str) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"^[^A-Za-z0-9]+|[^A-Za-z0-9]+$", "", cleaned)
+    return cleaned[:80]
+
+
+def extract_ignition_renewal_document_id(filename: str, content_type: str, file_bytes: bytes) -> dict:
+    name = str(filename or "").lower()
+    mime = str(content_type or "").lower()
+    if mime != "application/pdf" and not name.endswith(".pdf"):
+        return {"documentId": ""}
+    if not file_bytes:
+        return {"documentId": ""}
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        return {"documentId": ""}
+
+    text_chunks: list[str] = []
+    try:
+        reader = PdfReader(io.BytesIO(file_bytes))
+        if getattr(reader, "is_encrypted", False):
+            try:
+                reader.decrypt("")
+            except Exception:
+                pass
+        for page in reader.pages:
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                page_text = ""
+            if page_text.strip():
+                text_chunks.append(page_text)
+    except Exception:
+        return {"documentId": ""}
+
+    text = "\n\n".join(text_chunks)
+    focused_match = re.search(r"document\s*id[\s:._-]{0,24}(prop_[a-z0-9][a-z0-9_-]{5,})", text, flags=re.IGNORECASE)
+    if focused_match and focused_match.group(1):
+        return {"documentId": _normalise_ignition_renewal_document_id(focused_match.group(1))}
+    broad_match = re.search(r"\b(prop_[a-z0-9][a-z0-9_-]{5,})\b", text, flags=re.IGNORECASE)
+    if broad_match and broad_match.group(1):
+        return {"documentId": _normalise_ignition_renewal_document_id(broad_match.group(1))}
+    return {"documentId": ""}
+
+
 async def send_ignition_renewal_client_comms_email(user: dict, run_id: str, payload: dict | None = None) -> dict:
     settings = get_settings()
     if not settings.smtp_host or not settings.smtp_from_email:
