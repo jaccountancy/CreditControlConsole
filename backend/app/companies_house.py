@@ -131,6 +131,10 @@ def _mask(value: str) -> str:
     return "•" * (len(text) - MASK_VISIBLE_CHARS) + text[-MASK_VISIBLE_CHARS:]
 
 
+def _ch_md5_auth_value(value: str) -> str:
+    return hashlib.md5((value or "").strip().encode("utf-8")).hexdigest().upper()
+
+
 def _coerce_decimal(value, field: str) -> Decimal:
     if value in (None, ""):
         return Decimal("0")
@@ -1388,8 +1392,8 @@ def _build_ch_submission_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "clear"
-    ET.SubElement(auth, "Value").text = presenter_auth
+    ET.SubElement(auth, "Method").text = "MD5"
+    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
 
@@ -1536,8 +1540,8 @@ def _build_ch_status_xml(
     id_auth = ET.SubElement(sender_details, "IDAuthentication")
     ET.SubElement(id_auth, "SenderID").text = presenter_id
     auth = ET.SubElement(id_auth, "Authentication")
-    ET.SubElement(auth, "Method").text = "clear"
-    ET.SubElement(auth, "Value").text = presenter_auth
+    ET.SubElement(auth, "Method").text = "MD5"
+    ET.SubElement(auth, "Value").text = _ch_md5_auth_value(presenter_auth)
     govtalk_details = ET.SubElement(gov, "GovTalkDetails")
     ET.SubElement(govtalk_details, "Keys")
     body = ET.SubElement(gov, "Body")

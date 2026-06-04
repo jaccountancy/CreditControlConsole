@@ -211,6 +211,45 @@ class CompaniesHouseTests(unittest.TestCase):
         self.assertEqual(key1, key2)
         self.assertNotEqual(key1, key3)
 
+    def test_build_status_xml_hashes_presenter_auth_with_md5(self):
+        xml = ch._build_ch_status_xml(
+            presenter_id="00046248000",
+            presenter_auth="PLCTL2F87WL",
+            environment="production",
+            transaction_id="tx-1",
+            submission_number="ZZZZZZ",
+        )
+        root = ET.fromstring(xml)
+        method = root.find(".//{*}Method")
+        value = root.find(".//{*}Value")
+        self.assertIsNotNone(method)
+        self.assertIsNotNone(value)
+        self.assertEqual(method.text, "MD5")
+        self.assertEqual(value.text, ch._ch_md5_auth_value("PLCTL2F87WL"))
+
+    def test_build_submission_xml_hashes_presenter_auth_with_md5(self):
+        xml = ch._build_ch_submission_xml(
+            presenter_id="00046248000",
+            presenter_auth="PLCTL2F87WL",
+            environment="production",
+            company_number="12345678",
+            company_name="Example Ltd",
+            company_auth_code="A1B2C3",
+            review_date=date(2026, 6, 1),
+            registered_email="ops@example.com",
+            package_reference="pkg-1",
+            transaction_id="tx-2",
+            submission_number="123456",
+            cs_payload={},
+        )
+        root = ET.fromstring(xml)
+        method = root.find(".//{*}Method")
+        value = root.find(".//{*}Value")
+        self.assertIsNotNone(method)
+        self.assertIsNotNone(value)
+        self.assertEqual(method.text, "MD5")
+        self.assertEqual(value.text, ch._ch_md5_auth_value("PLCTL2F87WL"))
+
     def test_authorisation_failure_reason_includes_uk_causes(self):
         reason = ch._enhance_authorisation_failure_reason(
             "ConfirmationStatement - 502 - Authorisation Failure",
