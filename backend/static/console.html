@@ -66306,12 +66306,38 @@
             }
 
             function codeBreakerConnections() {
+                const byTenantId = new Map();
+                const include = (row = {}) => {
+                    const tenantId = String(row?.tenantId || row?.xeroTenantId || "").trim();
+                    if (!tenantId) return;
+                    const tenantName = String(row?.tenantName || row?.xeroTenantName || "").trim();
+                    const tenantType = String(row?.tenantType || "").trim();
+                    const existing = byTenantId.get(tenantId) || {};
+                    byTenantId.set(tenantId, {
+                        tenantId,
+                        tenantName: tenantName || existing.tenantName || tenantId,
+                        tenantType: tenantType || existing.tenantType || "",
+                    });
+                };
+
                 const fromMeReport = typeof meReportXeroConnections === "function" ? meReportXeroConnections() : [];
-                if (Array.isArray(fromMeReport) && fromMeReport.length) return fromMeReport;
-                const tenantId = String(state?.organisation?.xeroTenantId || "").trim();
-                const tenantName = String(state?.organisation?.xeroTenantName || state?.organisation?.tenantName || "").trim();
-                if (tenantId) return [{ tenantId, tenantName: tenantName || tenantId, tenantType: "" }];
-                return [];
+                if (Array.isArray(fromMeReport)) fromMeReport.forEach(include);
+
+                const fromSupplierRec = typeof supplierReconciliationXeroConnections === "function" ? supplierReconciliationXeroConnections() : [];
+                if (Array.isArray(fromSupplierRec)) fromSupplierRec.forEach(include);
+
+                const customerRows = Array.isArray(state?.customers) ? state.customers : [];
+                customerRows.forEach((row) => include({
+                    tenantId: row?.tenantId || row?.xeroTenantId || row?.tenant,
+                    tenantName: row?.tenantName || row?.xeroTenantName,
+                }));
+
+                include({
+                    tenantId: state?.organisation?.xeroTenantId,
+                    tenantName: state?.organisation?.xeroTenantName || state?.organisation?.tenantName,
+                });
+
+                return [...byTenantId.values()];
             }
 
             function codeBreakerCustomersForTenant(tenantId = "") {
@@ -66443,7 +66469,15 @@
             }
 
             async function openCodeBreakerWorkspaceSetupDialog() {
-                const connections = codeBreakerConnections();
+                let connections = codeBreakerConnections();
+                if (!connections.length && typeof loadMeReport === "function") {
+                    try {
+                        await loadMeReport(true);
+                    } catch (error) {
+                        console.warn("Unable to refresh ME Report connections for Code Breaker setup", error);
+                    }
+                    connections = codeBreakerConnections();
+                }
                 const fallbackCompany = [...(Array.isArray(codeBreakerCompanies) ? codeBreakerCompanies : [])]
                     .sort((left, right) => dateSortValue(right?.latestSubmissionCompletedAt || right?.latestSubmissionAt || right?.lastFiledDate || "") - dateSortValue(left?.latestSubmissionCompletedAt || left?.latestSubmissionAt || left?.lastFiledDate || ""))[0] || null;
                 const fallbackCustomer = codeBreakerCustomersForTenant(connections[0]?.tenantId || "")[0] || null;
@@ -66487,7 +66521,11 @@
                                     <label>Xero connection
                                         <select id="codeBreakerSetupModalTenant">
                                             ${connections.length
-                                                ? connections.map((row) => `<option value="${escapeHTML(String(row.tenantId || ""))}" ${String(row.tenantId || "") === draft.tenantId ? "selected" : ""}>${escapeHTML(String(row.tenantName || row.tenantId || "Xero tenant"))}</option>`).join("")
+                                                ? connections.map((row) => {
+                                                    const tenantId = String(row.tenantId || "");
+                                                    const tenantLabel = xeroWorkspaceLabel(row.tenantName, tenantId, "Xero tenant");
+                                                    return `<option value="${escapeHTML(tenantId)}" ${tenantId === draft.tenantId ? "selected" : ""}>${escapeHTML(tenantLabel)}</option>`;
+                                                }).join("")
                                                 : '<option value="">No Xero connections</option>'}
                                         </select>
                                     </label>
@@ -66571,7 +66609,11 @@
                     id: `code-breaker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                     clientName: decision.clientName,
                     xeroTenantId: decision.tenantId,
-                    xeroTenantName: String((connections.find((row) => String(row?.tenantId || "") === decision.tenantId) || {}).tenantName || "").trim(),
+                    xeroTenantName: xeroWorkspaceLabel(
+                        String((connections.find((row) => String(row?.tenantId || "") === decision.tenantId) || {}).tenantName || "").trim(),
+                        decision.tenantId,
+                        "Xero tenant"
+                    ),
                     xeroContactId: decision.xeroContactId,
                     companyNumber: decision.companyNumber,
                     yearEndDate: decision.yearEndDate,
@@ -66777,7 +66819,7 @@
                         const compare = codeBreakerCompareStatus(workspace);
                         return `
                             <tr>
-                                <td><strong>${escapeHTML(workspace.clientName || "Workspace")}</strong><small>${escapeHTML(workspace.xeroTenantName || workspace.xeroTenantId || "")}</small></td>
+                                <td><strong>${escapeHTML(workspace.clientName || "Workspace")}</strong><small>${escapeHTML(xeroWorkspaceLabel(workspace.xeroTenantName, workspace.xeroTenantId, "Xero tenant"))}</small></td>
                                 <td>${escapeHTML(workspace.companyNumber || "--")}</td>
                                 <td>${escapeHTML(formatDate(workspace.yearEndDate || workspace.submittedAt || ""))}</td>
                                 <td>${escapeHTML(formatDate(workspace.submittedAt || ""))}</td>
