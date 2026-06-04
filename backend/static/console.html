@@ -25759,6 +25759,28 @@
                 }
             }
 
+            function loadDomainHealthSettings() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem(DOMAIN_HEALTH_SETTINGS_KEY) || "{}");
+                    return {
+                        domainHost: String(stored.domainHost || defaultDomainHealthSettings.domainHost || "").trim(),
+                        expectedCname: String(stored.expectedCname || defaultDomainHealthSettings.expectedCname || "").trim(),
+                        txtHost: String(stored.txtHost || defaultDomainHealthSettings.txtHost || "").trim(),
+                        expectedTxt: String(stored.expectedTxt || defaultDomainHealthSettings.expectedTxt || "").trim(),
+                    };
+                } catch {
+                    return { ...defaultDomainHealthSettings };
+                }
+            }
+
+            function persistDomainHealthSettings() {
+                try {
+                    localStorage.setItem(DOMAIN_HEALTH_SETTINGS_KEY, JSON.stringify(domainHealthSettings || {}));
+                } catch {
+                    // Domain profile persistence is optional in restricted storage contexts.
+                }
+            }
+
             function loadConfirmationStatementsOnboardingDismissed() {
                 try {
                     return localStorage.getItem(CONFIRMATION_STATEMENTS_ONBOARDING_KEY) === "1";
