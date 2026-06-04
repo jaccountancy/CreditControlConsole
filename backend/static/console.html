@@ -68754,10 +68754,15 @@
                 if (!isXeroConnected() && !allowBackendConnectionCheck) {
                     clearSyncFailureBanner();
                     renderChrome();
-                    showToast("Connect Xero before syncing.", "info", {
-                        label: "Connect Xero",
-                        onClick: () => window.location.assign(loginURL())
-                    });
+                    if (automatic) {
+                        showToast("Connect Xero before syncing.", "info", {
+                            label: "Connect Xero",
+                            onClick: () => window.location.assign(loginURL())
+                        });
+                        return;
+                    }
+                    showToast("Redirecting to Xero connection…", "info");
+                    window.location.assign(loginURL());
                     return;
                 }
                 let keepFailureBanner = false;
@@ -68827,10 +68832,15 @@
                             persistState();
                             clearSyncFailureBanner();
                             renderAll();
-                            showToast("Connect Xero before syncing.", "info", {
-                                label: "Connect Xero",
-                                onClick: () => window.location.assign(loginURL())
-                            });
+                            if (automatic) {
+                                showToast("Connect Xero before syncing.", "info", {
+                                    label: "Connect Xero",
+                                    onClick: () => window.location.assign(loginURL())
+                                });
+                                return;
+                            }
+                            showToast("Redirecting to Xero connection…", "info");
+                            window.location.assign(loginURL());
                             return;
                         }
                         if (isSigtermInterruptedSyncError(error) && sigtermRetryCount < 1) {
@@ -74893,6 +74903,10 @@
                 if (activeView === "confirmation-statements") {
                     activateCompaniesHouseTab(companiesHouseState.activeTab || "dashboard");
                     loadCompaniesHouseSettings();
+                }
+                if (activeView === "tasks") {
+                    loadAuthCodeRegisterDirectory();
+                    loadTaskTrackerCompanyDirectory();
                 }
                 if (activeView === "hmrc-64-8s") {
                     loadHmrc648Requests();
