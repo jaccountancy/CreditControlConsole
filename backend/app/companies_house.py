@@ -1329,6 +1329,76 @@ def _build_cs01_payload(company_row: dict, *, include_change_sections: bool = Tr
     return payload
 
 
+def _load_latest_submission_cs01_payload(company_id: str) -> dict:
+    safe_company_id = str(company_id or "").strip()
+    if not safe_company_id:
+        return {}
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT response_payload
+                FROM ch_submissions
+                WHERE company_id = %s
+                ORDER BY submitted_at DESC NULLS LAST, created_at DESC
+                LIMIT 30
+                """,
+                (safe_company_id,),
+            )
+            rows = cursor.fetchall() or []
+        connection.commit()
+    for row in rows:
+        response_payload = row.get("response_payload") if isinstance(row.get("response_payload"), dict) else {}
+        candidate = response_payload.get("csPayload")
+        if isinstance(candidate, dict):
+            return candidate
+    return {}
+
+
+def _prefill_no_changes_cs01_payload(
+    company_row: dict,
+    current_payload: dict | None,
+    review_date: date,
+) -> dict:
+    payload = dict(current_payload) if isinstance(current_payload, dict) else {}
+    previous_payload = _load_latest_submission_cs01_payload(str(company_row.get("id") or ""))
+
+    def _is_empty(value: object) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return not value.strip()
+        if isinstance(value, (list, dict)):
+            return len(value) == 0
+        return False
+
+    for key in (
+        "tradingOnMarket",
+        "dtr5Applies",
+        "pscExemptAsTradingOnRegulatedMarket",
+        "pscExemptAsSharesAdmittedOnMarket",
+        "pscExemptAsTradingOnUKRegulatedMarket",
+        "registeredEmailAddress",
+        "acceptLawfulPurposeStatement",
+        "stateConfirmation",
+        "reviewPeriodStart",
+        "identityVerification",
+        "sicCodes",
+        "statementOfCapital",
+        "shareholdings",
+    ):
+        if _is_empty(payload.get(key)) and not _is_empty(previous_payload.get(key)):
+            payload[key] = previous_payload.get(key)
+
+    # Keep submission period end aligned with this year's review date.
+    payload["reviewPeriodEnd"] = review_date.isoformat()
+    if _is_empty(payload.get("acceptLawfulPurposeStatement")):
+        payload["acceptLawfulPurposeStatement"] = True
+    if _is_empty(payload.get("stateConfirmation")):
+        payload["stateConfirmation"] = True
+    return payload
+
+
 def _cs01_psc_market_errors(pscs: list[dict], cs_payload: dict) -> list[str]:
     errors: list[str] = []
     has_pscs = any(isinstance(item, dict) and not str(item.get("ceasedOn") or "").strip() for item in pscs)
@@ -5981,6 +6051,8 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
             )
             continue
         cs_payload = _build_cs01_payload(row, include_change_sections=include_change_sections)
+        if not include_change_sections:
+            cs_payload = _prefill_no_changes_cs01_payload(row, cs_payload, review_date)
         validation_errors = _validate_cs01_payload(
             row,
             review_date,
@@ -6037,6 +6109,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                                 "mode": "live_gateway",
                                 "companyNumber": company_number,
                                 "workflowAction": workflow_action,
+                                "csPayload": cs_payload,
                             }
                         ),
                         user_id,
@@ -6275,6 +6348,7 @@ def bulk_submit_confirmation_statements(user: dict, payload: dict | None = None)
                 "gatewayErrors": parsed_submission.get("errors") or [],
                 "paymentEvidence": payment_evidence,
                 "paymentReconciliation": payment_reconciliation or {},
+                "csPayload": cs_payload,
                 "rawResponse": parsed_submission.get("rawResponse") or "",
             }
 
