@@ -16705,6 +16705,11 @@
                 color: var(--blue);
                 background: rgba(255, 255, 255, 0.92);
             }
+            .ch-review-step-button.has-error {
+                border-color: rgba(220, 38, 38, 0.42);
+                color: #9f1d1d;
+                background: rgba(255, 239, 239, 0.72);
+            }
             .operation-review-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -16712,6 +16717,44 @@
                 padding: 14px 20px 18px;
                 border-top: 1px solid var(--line);
                 background: rgba(248, 251, 255, 0.6);
+            }
+            .operation-review-panel.is-fullscreen {
+                place-items: stretch;
+                padding: 0;
+                background: rgba(244, 247, 251, 0.88);
+            }
+            .operation-review-panel.is-fullscreen .operation-review-card {
+                width: 100vw;
+                max-height: 100vh;
+                border-radius: 0;
+                border-width: 0;
+                box-shadow: none;
+            }
+            .operation-review-panel.is-fullscreen .operation-review-body {
+                padding: 20px 24px;
+            }
+            .operation-review-panel.is-fullscreen .operation-review-summary,
+            .operation-review-panel.is-fullscreen .operation-review-head,
+            .operation-review-panel.is-fullscreen .operation-review-actions {
+                padding-left: 24px;
+                padding-right: 24px;
+            }
+            .ch-detail-card .ch-field-invalid {
+                border-color: rgba(220, 38, 38, 0.45);
+                box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+                background: rgba(255, 239, 239, 0.88);
+            }
+            .ch-detail-card .ch-field-invalid:focus-visible {
+                outline: none;
+                border-color: rgba(220, 38, 38, 0.6);
+                box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.16);
+            }
+            .ch-step-error {
+                margin: 0;
+                color: #b42318;
+                font-size: 12px;
+                font-weight: 700;
+                line-height: 1.35;
             }
             .client-invoices-panel { margin: 18px 0; }
             .account-file-panel {
@@ -25133,17 +25176,16 @@
                                 </div>
                             </div>
                             <div class="me-report-bulk-period-body">
-                                <div class="me-report-bulk-period-grid">
-                                    <label class="bank-account-field" for="meReportBulkPeriodStartInput">
-                                        <span class="bank-field-label"><span>Period start</span><small>DD/MM/YYYY</small></span>
-                                        <input id="meReportBulkPeriodStartInput" type="date" required>
-                                    </label>
-                                    <label class="bank-account-field" for="meReportBulkPeriodEndInput">
-                                        <span class="bank-field-label"><span>Period end</span><small>DD/MM/YYYY</small></span>
-                                        <input id="meReportBulkPeriodEndInput" type="date" required>
-                                    </label>
+                                <label class="me-report-bulk-period-confirm" for="meReportBulkPeriodConfirmInput">
+                                    <input id="meReportBulkPeriodConfirmInput" type="checkbox">
+                                    <div>
+                                        <strong id="meReportBulkPeriodQuestion">Create flows for the previous month</strong>
+                                        <small>Tick to confirm this period before selecting clients.</small>
+                                    </div>
+                                </label>
+                                <div class="me-report-bulk-period-auto" id="meReportBulkPeriodAuto">
+                                    <p class="me-report-bulk-period-summary" id="meReportBulkPeriodComputedSummary">Deadline for this period is the 15th of the following month.</p>
                                 </div>
-                                <p class="me-report-bulk-period-summary" id="meReportBulkPeriodComputedSummary">Deadline for this period is the 15th of the following month.</p>
                                 <div class="me-report-bulk-period-selectors">
                                     <div class="developer-log-actions">
                                         <button class="ghost-button" id="meReportBulkSelectAllClientsButton" type="button">Select all</button>
@@ -32049,6 +32091,7 @@
             function closeOperationReviewPanel(confirmed = false) {
                 const panel = document.getElementById("operationReviewPanel");
                 if (panel) panel.hidden = true;
+                if (panel) panel.classList.remove("is-fullscreen");
                 const resolver = operationReviewResolver;
                 const resultProvider = operationReviewResultProvider;
                 operationReviewResolver = null;
@@ -32068,6 +32111,7 @@
 
             async function showOperationReviewDialog(config = {}) {
                 const panel = document.getElementById("operationReviewPanel");
+                const card = panel?.querySelector(".operation-review-card");
                 const eyebrow = document.getElementById("operationReviewEyebrow");
                 const title = document.getElementById("operationReviewTitle");
                 const subtitle = document.getElementById("operationReviewSubtitle");
@@ -32077,6 +32121,10 @@
                 const cancelButton = document.getElementById("cancelOperationReviewButton");
                 if (!panel || !eyebrow || !title || !subtitle || !summary || !body || !confirmButton || !cancelButton) return false;
                 if (operationReviewResolver) closeOperationReviewPanel(false);
+                panel.classList.toggle("is-fullscreen", config.panelMode === "fullscreen");
+                if (card) {
+                    card.scrollTop = 0;
+                }
                 operationReviewResultProvider = null;
                 eyebrow.textContent = config.eyebrow || "Review action";
                 title.textContent = config.title || "Confirm operation";
@@ -45643,8 +45691,8 @@
                 if (awaitingReviewButton) {
                     const alreadyAwaitingReview = ignitionRenewalStatusValue(run) === "awaiting_review";
                     awaitingReviewButton.hidden = !pricingStage;
-                    awaitingReviewButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length || alreadyAwaitingReview;
-                    awaitingReviewButton.textContent = alreadyAwaitingReview ? "Awaiting Review" : "Mark batch as Awaiting Review";
+                    awaitingReviewButton.disabled = !pricingStage || ignitionRenewalsLoading || !run || finalised || !run.items?.length;
+                    awaitingReviewButton.textContent = alreadyAwaitingReview ? "Approve" : "Mark batch as Awaiting Review";
                 }
                 if (topbarStatusPill) {
                     const statusMeta = run ? ignitionRenewalStatusMeta(run) : { value: "none", label: "No batch open", tone: "draft" };
@@ -45857,7 +45905,7 @@
                     const isAiApplied = persistedAiApplied || ignitionRenewalAIAppliedRows.has(rowId);
                     if (isAiApplied) ignitionRenewalAIAppliedRows.add(rowId);
                     const hasManualValue = Number.isFinite(proposed) && proposed > 0;
-                    const showValue = locked || isAiApplied;
+                    const showValue = hasManualValue;
                     const variance = showValue && hasManualValue ? proposed - current : 0;
                     const increasePercent = showValue && hasManualValue && current > 0 ? variance / current : 0;
                     const lockedNewFeeMarkup = showValue && hasManualValue
@@ -46609,10 +46657,15 @@
                     ignitionRenewalStatusChangedTimers.delete(safeRunId);
                 }
                 renderIgnitionRenewals();
+                const currentRun = ignitionRenewalRun();
+                const hasEditableRowsInView = Boolean(document.querySelector("[data-renewal-row]"));
+                const edits = (String(currentRun?.id || "") === safeRunId && hasEditableRowsInView)
+                    ? collectIgnitionRenewalEdits()
+                    : [];
                 try {
                     const payload = await requestJSON(
                         api.endpoints.ignitionRenewalRun,
-                        { method: "POST", body: JSON.stringify({ status: safeStatus, items: [] }) },
+                        { method: "POST", body: JSON.stringify({ status: safeStatus, items: edits }) },
                         { runId: safeRunId }
                     );
                     ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
@@ -46650,6 +46703,16 @@
                     return;
                 }
                 await updateIgnitionRenewalBatchStatus(run.id, "awaiting_review");
+            }
+
+            async function handleIgnitionRenewalReviewAction() {
+                const run = ignitionRenewalRun();
+                if (!run?.id) return;
+                if (ignitionRenewalStatusValue(run) === "awaiting_review") {
+                    await finaliseIgnitionRenewals();
+                    return;
+                }
+                await markIgnitionRenewalsAwaitingReview();
             }
 
             async function deleteIgnitionRenewalsRun(runId, { skipConfirm = false } = {}) {
@@ -48426,6 +48489,17 @@
                 }
             }
 
+            function meReportConnectedPanelClientsForBulkFlows() {
+                const rows = Array.isArray(state?.customers) ? state.customers : [];
+                return rows
+                    .map((client) => ({
+                        xeroContactId: String(client?.xeroContactId || client?.contactId || "").trim(),
+                        name: String(client?.name || client?.clientName || "").trim(),
+                        email: String(client?.email || client?.contact || "").trim(),
+                    }))
+                    .filter((client) => client.xeroContactId);
+            }
+
             function meReportBulkFlowCandidates(companies = [], tenantId = "") {
                 const contacts = meReportContactOptions(tenantId);
                 const contactsById = new Map();
@@ -48439,11 +48513,20 @@
                     const contactId = String(company?.xeroContactId || "").trim();
                     if (!contactId || candidatesByContactId.has(contactId)) return;
                     const contact = contactsById.get(contactId);
-                    if (!contact) return;
                     candidatesByContactId.set(contactId, {
                         xeroContactId: contactId,
                         name: String(company?.companyName || company?.clientName || contact?.name || "Unnamed client"),
                         email: String(company?.contactEmail || contact?.email || ""),
+                    });
+                });
+                meReportConnectedPanelClientsForBulkFlows().forEach((client) => {
+                    const contactId = String(client?.xeroContactId || "").trim();
+                    if (!contactId || candidatesByContactId.has(contactId)) return;
+                    const contact = contactsById.get(contactId);
+                    candidatesByContactId.set(contactId, {
+                        xeroContactId: contactId,
+                        name: String(client?.name || contact?.name || "Unnamed client"),
+                        email: String(client?.email || contact?.email || ""),
                     });
                 });
                 return Array.from(candidatesByContactId.values()).sort((left, right) => String(left?.name || "").localeCompare(String(right?.name || ""), "en", { sensitivity: "base" }));
@@ -48977,7 +49060,7 @@
                             <input id="meReportShowCompletedFlows" type="checkbox" ${meReportShowCompletedFlows ? "checked" : ""}>
                             Show completed flows
                         </label>
-                        <a class="ghost-button" href="${escapeHTML(endpointURL("/auth/xero/start"))}">Connect additional Xero</a>
+                        <a class="ghost-button" href="${escapeHTML(forceXeroConnectURL("me-report"))}">Connect additional Xero</a>
                         <details class="xero-lock-columns me-report-flow-columns">
                             <summary class="ghost-button">Columns</summary>
                             <div class="xero-lock-columns-menu">
@@ -65627,16 +65710,19 @@
                     target.innerHTML = '<div class="empty-state"><p class="eyebrow">Deployments</p><h4>No deployment history found</h4><p>Refresh to fetch the latest deployment records.</p></div>';
                     return;
                 }
-                summary.textContent = `Showing ${rows.length.toLocaleString("en-GB")} published deployment${rows.length === 1 ? "" : "s"}${generatedAt ? ` · refreshed ${formatDate(generatedAt)}` : ""}.`;
+                summary.textContent = `Showing ${rows.length.toLocaleString("en-GB")} release update${rows.length === 1 ? "" : "s"}${generatedAt ? ` · refreshed ${formatDate(generatedAt)}` : ""}.`;
                 target.innerHTML = `
                     <div class="database-metrics-heading"><span>Deployment</span><span>Published</span><span>Source</span></div>
                     <ul class="release-deployment-list">
                         ${rows.map((row, index) => {
                             const heading = row.title || row.summary || `Deployment ${index + 1}`;
                             const deployedAt = row.deployedAt || row.createdAt || row.updatedAt || "";
-                            const sourceLabel = String(row.source || "").toLowerCase() === "runtime"
+                            const normalisedSource = String(row.source || "").toLowerCase();
+                            const sourceLabel = normalisedSource === "runtime"
                                 ? "RAILWAY RUNTIME"
-                                : String(row.source || "RAILWAY").toUpperCase();
+                                : normalisedSource === "git_push"
+                                    ? "GIT PUSH"
+                                    : String(row.source || "RAILWAY").toUpperCase();
                             return `
                                 <li class="database-metrics-row">
                                     <strong>${escapeHTML(heading)}</strong>
@@ -67453,7 +67539,7 @@
                 const finaliseIgnitionRenewalsButton = document.getElementById("finaliseIgnitionRenewalsButton");
                 if (finaliseIgnitionRenewalsButton) finaliseIgnitionRenewalsButton.addEventListener("click", finaliseIgnitionRenewals);
                 const markIgnitionRenewalsAwaitingReviewButton = document.getElementById("markIgnitionRenewalsAwaitingReviewButton");
-                if (markIgnitionRenewalsAwaitingReviewButton) markIgnitionRenewalsAwaitingReviewButton.addEventListener("click", markIgnitionRenewalsAwaitingReview);
+                if (markIgnitionRenewalsAwaitingReviewButton) markIgnitionRenewalsAwaitingReviewButton.addEventListener("click", handleIgnitionRenewalReviewAction);
                 const closeIgnitionRenewalEmailButton = document.getElementById("closeIgnitionRenewalEmailButton");
                 if (closeIgnitionRenewalEmailButton) closeIgnitionRenewalEmailButton.addEventListener("click", closeIgnitionRenewalEmailModal);
                 const sendIgnitionRenewalEmailButton = document.getElementById("sendIgnitionRenewalEmailButton");
@@ -70449,12 +70535,89 @@
                 });
                 const rowById = new Map(rows.map((row) => [row.companyId, row]));
                 const editableRows = rows.filter((row) => row.workflowAction === "changes-required");
+                const cs01StepOrder = ["company", "people", "address", "sic", "capital", "authority"];
+                const cs01FieldPathByStep = {
+                    address: ["contactEmail", "reviewPeriodStart", "reviewPeriodEnd"],
+                    sic: ["sicCodes", "tradingOnMarket", "dtr5Applies"],
+                    capital: ["totalNumberOfSharesIssued", "totalAggregateNominalValue"],
+                    authority: ["filingAuthorityStatus", "filingAuthorityReference", "lawfulPurposeStatement", "stateConfirmation", "identityRequired", "identityStatementGiven", "identityRelevantOfficer"],
+                };
+                const cs01ValidationForCard = (card, row) => {
+                    const emptyResult = {
+                        isValid: true,
+                        firstInvalidStep: null,
+                        errorsByStep: { company: [], people: [], address: [], sic: [], capital: [], authority: [] },
+                        invalidFieldNames: new Set(),
+                    };
+                    if (!card || !row || row.workflowAction !== "changes-required") return emptyResult;
+                    const getFieldValue = (name) => String(card.querySelector(`[data-ch-review-field="${name}"]`)?.value || "").trim();
+                    const isYesNoValue = (value) => value === "true" || value === "false";
+                    const errorsByStep = { company: [], people: [], address: [], sic: [], capital: [], authority: [] };
+                    const invalidFieldNames = new Set();
+                    const pushError = (step, fieldName, message) => {
+                        if (errorsByStep[step]) errorsByStep[step].push(message);
+                        if (fieldName) invalidFieldNames.add(fieldName);
+                    };
+                    const email = getFieldValue("contactEmail");
+                    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email)) {
+                        pushError("address", "contactEmail", "Enter a valid registered email.");
+                    }
+                    const periodStart = getFieldValue("reviewPeriodStart");
+                    const periodEnd = getFieldValue("reviewPeriodEnd");
+                    if (!periodStart) pushError("address", "reviewPeriodStart", "Review period start is required.");
+                    if (!periodEnd) pushError("address", "reviewPeriodEnd", "Review period end is required.");
+                    if (periodStart && periodEnd && periodStart > periodEnd) {
+                        pushError("address", "reviewPeriodStart", "Review period start must be on or before review period end.");
+                        pushError("address", "reviewPeriodEnd", "Review period end must be on or after review period start.");
+                    }
+                    const sicCodes = toSicCodes(getFieldValue("sicCodes"));
+                    if (!sicCodes.length) pushError("sic", "sicCodes", "Provide at least one SIC code.");
+                    const tradingOnMarket = getFieldValue("tradingOnMarket");
+                    if (!isYesNoValue(tradingOnMarket)) pushError("sic", "tradingOnMarket", "Select whether the company is trading on market.");
+                    const dtr5Applies = getFieldValue("dtr5Applies");
+                    if (!isYesNoValue(dtr5Applies)) pushError("sic", "dtr5Applies", "Select whether DTR5 applies.");
+                    if (!getFieldValue("totalNumberOfSharesIssued")) {
+                        pushError("capital", "totalNumberOfSharesIssued", "Total shares issued is required.");
+                    }
+                    if (!getFieldValue("totalAggregateNominalValue")) {
+                        pushError("capital", "totalAggregateNominalValue", "Total aggregate nominal value is required.");
+                    }
+                    const authorityStatus = getFieldValue("filingAuthorityStatus").toLowerCase();
+                    if (!authorityStatus || authorityStatus === "pending") {
+                        pushError("authority", "filingAuthorityStatus", "Choose a filing authority status before continuing.");
+                    }
+                    const authCode = getFieldValue("filingAuthorityReference");
+                    if (!authCode) pushError("authority", "filingAuthorityReference", "Authentication code is required.");
+                    if (getFieldValue("lawfulPurposeStatement") !== "true") {
+                        pushError("authority", "lawfulPurposeStatement", "Lawful purpose statement must be confirmed.");
+                    }
+                    if (getFieldValue("stateConfirmation") !== "true") {
+                        pushError("authority", "stateConfirmation", "State confirmation must be confirmed.");
+                    }
+                    const identityRequired = getFieldValue("identityRequired") === "true";
+                    if (identityRequired) {
+                        if (getFieldValue("identityStatementGiven") !== "true") {
+                            pushError("authority", "identityStatementGiven", "Identity verification statement must be confirmed when identity verification is required.");
+                        }
+                        if (!getFieldValue("identityRelevantOfficer")) {
+                            pushError("authority", "identityRelevantOfficer", "Relevant officer/member is required when identity verification is required.");
+                        }
+                    }
+                    const firstInvalidStep = cs01StepOrder.find((step) => (errorsByStep[step] || []).length > 0) || null;
+                    return {
+                        isValid: !firstInvalidStep,
+                        firstInvalidStep,
+                        errorsByStep,
+                        invalidFieldNames,
+                    };
+                };
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
                     title: "CS01 review by client",
                     subtitle: "Review every selected client. Rows marked 'No changes' are read-only.",
                     confirmLabel: editableRows.length ? "Save changes" : "Continue",
                     cancelLabel: "Back",
+                    panelMode: "fullscreen",
                     summaryChips: [
                         `${rows.length.toLocaleString("en-GB")} selected`,
                         `${editableRows.length.toLocaleString("en-GB")} changes required`,
@@ -70462,7 +70625,7 @@
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
                     rows: [{ companyName: "Loading..." }],
-                    onRender: ({ body }) => {
+                    onRender: ({ body, confirmButton }) => {
                         const stepDefinitions = [
                             { key: "company", label: "Company details" },
                             { key: "people", label: "Officers + PSC" },
@@ -70618,15 +70781,61 @@
                                             <button type="button" class="ghost-button" data-ch-step-nav="prev">Previous section</button>
                                             <button type="button" class="ghost-button" data-ch-step-nav="next">Next section</button>
                                             <span class="ch-settings-status is-muted" data-ch-step-status>Step 1 of ${stepDefinitions.length}: Company details</span>
+                                            <p class="ch-step-error" data-ch-step-error hidden></p>
                                         </div>
                                     </article>
                                 `).join("")}
                             </div>
                         `;
+                        const getCurrentStep = (card) => String(card?.getAttribute("data-ch-step-active") || cs01StepOrder[0]);
+                        const indexForStep = (stepKey) => Math.max(0, cs01StepOrder.indexOf(stepKey));
+                        const refreshCardValidationState = (card) => {
+                            const companyId = String(card?.getAttribute("data-ch-review-company-id") || "");
+                            const row = rowById.get(companyId);
+                            const result = cs01ValidationForCard(card, row);
+                            card.querySelectorAll("[data-ch-review-field]").forEach((fieldNode) => {
+                                const fieldName = String(fieldNode?.getAttribute?.("data-ch-review-field") || "");
+                                fieldNode.classList.toggle("ch-field-invalid", result.invalidFieldNames.has(fieldName));
+                            });
+                            Object.entries(cs01FieldPathByStep).forEach(([stepKey, fieldNames]) => {
+                                const jumpButton = card.querySelector(`[data-ch-step-jump="${stepKey}"]`);
+                                if (!jumpButton) return;
+                                const hasErrors = fieldNames.some((name) => result.invalidFieldNames.has(name));
+                                jumpButton.classList.toggle("has-error", hasErrors);
+                            });
+                            const currentStep = getCurrentStep(card);
+                            const statusNode = card.querySelector("[data-ch-step-status]");
+                            const errorNode = card.querySelector("[data-ch-step-error]");
+                            const currentStepErrors = result.errorsByStep[currentStep] || [];
+                            if (errorNode) {
+                                if (currentStepErrors.length) {
+                                    errorNode.hidden = false;
+                                    errorNode.textContent = currentStepErrors[0];
+                                } else {
+                                    errorNode.hidden = true;
+                                    errorNode.textContent = "";
+                                }
+                            }
+                            if (statusNode) {
+                                statusNode.classList.toggle("is-error", currentStepErrors.length > 0);
+                                statusNode.classList.toggle("is-muted", currentStepErrors.length === 0);
+                            }
+                            return result;
+                        };
+                        const syncConfirmState = () => {
+                            if (!confirmButton) return;
+                            const editableCards = Array.from(body.querySelectorAll('[data-ch-review-company-id][data-ch-review-editable="true"]'));
+                            const hasBlockingErrors = editableCards.some((card) => !refreshCardValidationState(card).isValid);
+                            confirmButton.disabled = hasBlockingErrors;
+                            if (hasBlockingErrors) {
+                                confirmButton.title = "Complete all required fields before continuing.";
+                            } else {
+                                confirmButton.removeAttribute("title");
+                            }
+                        };
                         const setStep = (card, nextStepKey) => {
                             if (!card) return;
-                            const stepKeys = stepDefinitions.map((step) => step.key);
-                            const resolvedStep = stepKeys.includes(nextStepKey) ? nextStepKey : stepKeys[0];
+                            const resolvedStep = cs01StepOrder.includes(nextStepKey) ? nextStepKey : cs01StepOrder[0];
                             card.setAttribute("data-ch-step-active", resolvedStep);
                             stepDefinitions.forEach((step, index) => {
                                 const panel = card.querySelector(`[data-ch-step-panel="${step.key}"]`);
@@ -70642,18 +70851,31 @@
                                     status.textContent = `Step ${index + 1} of ${stepDefinitions.length}: ${step.label}`;
                                 }
                             });
-                            const resolvedIndex = Math.max(0, stepKeys.indexOf(resolvedStep));
+                            const resolvedIndex = indexForStep(resolvedStep);
                             const prevButton = card.querySelector('[data-ch-step-nav="prev"]');
                             const nextButton = card.querySelector('[data-ch-step-nav="next"]');
                             if (prevButton) prevButton.disabled = resolvedIndex === 0;
-                            if (nextButton) nextButton.disabled = resolvedIndex === stepKeys.length - 1;
+                            if (nextButton) nextButton.disabled = resolvedIndex === cs01StepOrder.length - 1;
+                            refreshCardValidationState(card);
+                        };
+                        const canMoveForward = (card) => {
+                            const companyId = String(card?.getAttribute("data-ch-review-company-id") || "");
+                            const row = rowById.get(companyId);
+                            if (!row || row.workflowAction !== "changes-required") return true;
+                            const result = refreshCardValidationState(card);
+                            const currentStep = getCurrentStep(card);
+                            return (result.errorsByStep[currentStep] || []).length === 0;
                         };
                         const moveStep = (card, direction) => {
-                            const stepKeys = stepDefinitions.map((step) => step.key);
-                            const currentKey = String(card?.getAttribute("data-ch-step-active") || stepKeys[0]);
-                            const currentIndex = Math.max(0, stepKeys.indexOf(currentKey));
-                            const nextIndex = Math.max(0, Math.min(stepKeys.length - 1, currentIndex + direction));
-                            setStep(card, stepKeys[nextIndex]);
+                            const currentKey = getCurrentStep(card);
+                            const currentIndex = indexForStep(currentKey);
+                            const nextIndex = Math.max(0, Math.min(cs01StepOrder.length - 1, currentIndex + direction));
+                            if (direction > 0 && nextIndex > currentIndex && !canMoveForward(card)) {
+                                showToast("Complete required fields in this section before moving on.", "error");
+                                return;
+                            }
+                            setStep(card, cs01StepOrder[nextIndex]);
+                            syncConfirmState();
                         };
                         body.querySelectorAll("[data-ch-review-company-id]").forEach((card) => {
                             const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
@@ -70666,7 +70888,6 @@
                             if (dtr5Select && row) dtr5Select.value = boolToSelect(row.cs01Flags.dtr5Applies);
                             const pscRouteSelect = card.querySelector('[data-ch-review-field="pscExemptionRoute"]');
                             if (pscRouteSelect && row) pscRouteSelect.value = row.pscExemptionRoute || "none";
-                            setStep(card, "company");
                             const rowIsEditable = row?.workflowAction === "changes-required";
                             card.setAttribute("data-ch-review-editable", rowIsEditable ? "true" : "false");
                             if (!rowIsEditable) {
@@ -70681,10 +70902,22 @@
                             card.querySelectorAll("[data-ch-step-jump]").forEach((jumpButton) => {
                                 jumpButton.addEventListener("click", () => {
                                     const stepKey = String(jumpButton.getAttribute("data-ch-step-jump") || "company");
+                                    const currentStep = getCurrentStep(card);
+                                    if (indexForStep(stepKey) > indexForStep(currentStep) && !canMoveForward(card)) {
+                                        showToast("Complete required fields in this section before moving on.", "error");
+                                        return;
+                                    }
                                     setStep(card, stepKey);
+                                    syncConfirmState();
                                 });
                             });
+                            card.querySelectorAll("[data-ch-review-field]").forEach((fieldNode) => {
+                                fieldNode.addEventListener("input", syncConfirmState);
+                                fieldNode.addEventListener("change", syncConfirmState);
+                            });
+                            setStep(card, "company");
                         });
+                        syncConfirmState();
                     },
                     resultProvider: () => {
                         const fromSelect = (value) => {
@@ -70693,6 +70926,16 @@
                             if (text === "false") return false;
                             return null;
                         };
+                        const editableCardNodes = Array.from(document.querySelectorAll('#operationReviewBody [data-ch-review-company-id][data-ch-review-editable="true"]'));
+                        const hasInvalidCard = editableCardNodes.some((card) => {
+                            const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
+                            const original = rowById.get(companyId);
+                            return !cs01ValidationForCard(card, original).isValid;
+                        });
+                        if (hasInvalidCard) {
+                            showToast("Cannot continue: complete all required confirmation statement fields first.", "error");
+                            return [];
+                        }
                         const updates = [];
                         const completedSections = {
                             company: true,

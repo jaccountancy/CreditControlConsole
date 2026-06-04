@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import subprocess
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
@@ -722,6 +723,7 @@ def usage_detail_payload(
 def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
     safe_limit = max(min(_to_int(limit, 120), 300), 1)
     user_id = str(user.get("id") or "").strip() or None
+    _sync_git_push_release_updates(max(180, safe_limit))
     rows: list[dict] = []
     with get_connection() as connection:
         with connection.cursor() as cursor:
@@ -797,3 +799,101 @@ def deployment_updates_payload(user: dict, limit: int = 120) -> dict:
         "generatedAt": utcnow().isoformat(),
         "deployments": deployments[:safe_limit],
     }
+
+
+def _git_history_rows(limit: int = 180) -> list[dict]:
+    safe_limit = max(min(_to_int(limit, 180), 500), 1)
+    module_dir = os.path.dirname(__file__)
+    repo_root = os.path.abspath(os.path.join(module_dir, "..", ".."))
+    refs = ("origin/main", "HEAD")
+    for ref in refs:
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    repo_root,
+                    "log",
+                    ref,
+                    "--date=iso-strict",
+                    "--pretty=format:%H%x1f%cI%x1f%s",
+                    "-n",
+                    str(safe_limit),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        except Exception:
+            continue
+        if result.returncode != 0 or not str(result.stdout or "").strip():
+            continue
+        commits: list[dict] = []
+        for line in str(result.stdout).splitlines():
+            parts = line.split("\x1f")
+            if len(parts) < 3:
+                continue
+            sha = str(parts[0] or "").strip()
+            committed_at = str(parts[1] or "").strip()
+            subject = str(parts[2] or "").strip()
+            if not sha:
+                continue
+            commits.append(
+                {
+                    "sha": sha,
+                    "committed_at": committed_at,
+                    "subject": subject,
+                }
+            )
+        if commits:
+            return commits
+    return []
+
+
+def _sync_git_push_release_updates(limit: int = 180) -> None:
+    commits = _git_history_rows(limit=limit)
+    if not commits:
+        return
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            for commit in commits:
+                sha = str(commit.get("sha") or "").strip()
+                if not sha:
+                    continue
+                short_sha = sha[:8]
+                committed_at = str(commit.get("committed_at") or "").strip()
+                subject = str(commit.get("subject") or "").strip() or f"Pushed commit {short_sha}"
+                cursor.execute(
+                    """
+                    INSERT INTO release_updates (
+                        title,
+                        summary,
+                        details,
+                        deployment_id,
+                        commit_sha,
+                        source,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s::timestamptz, %s)
+                    ON CONFLICT (deployment_id) DO UPDATE
+                    SET title = EXCLUDED.title,
+                        summary = EXCLUDED.summary,
+                        details = EXCLUDED.details,
+                        commit_sha = EXCLUDED.commit_sha,
+                        source = EXCLUDED.source,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    (
+                        f"Git push · {short_sha}",
+                        subject,
+                        json.dumps([f"Commit {short_sha} recorded from git history."]),
+                        f"push:{sha}",
+                        sha,
+                        "git_push",
+                        committed_at or now.isoformat(),
+                        now,
+                    ),
+                )
+        connection.commit()
