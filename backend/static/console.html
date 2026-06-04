@@ -41795,6 +41795,42 @@
                 return ignitionRenewalClientCommsDraftsByProposal[String(proposalExternalId || "").trim()] || null;
             }
 
+            function ignitionRenewalClientCommsDocumentId(proposalExternalId = "") {
+                const key = String(proposalExternalId || "").trim();
+                if (!key) return "";
+                const value = ignitionRenewalClientCommsDocumentIdByProposal[key];
+                return typeof value === "string" ? value : "";
+            }
+
+            function normaliseIgnitionRenewalDocumentId(value = "") {
+                return String(value || "")
+                    .trim()
+                    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "")
+                    .slice(0, 80);
+            }
+
+            async function extractIgnitionRenewalDocumentIdFromFile(file = null) {
+                if (!file) return "";
+                const fileName = String(file.name || "").toLowerCase();
+                const fileType = String(file.type || "").toLowerCase();
+                const isPdf = fileType === "application/pdf" || fileName.endsWith(".pdf");
+                if (!isPdf) return "";
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const bytes = new Uint8Array(arrayBuffer);
+                    const decoder = new TextDecoder("latin1");
+                    const raw = decoder.decode(bytes);
+                    const focusedMatch = raw.match(/Document\s*ID[\s\S]{0,220}?(prop_[a-z0-9]+)/i);
+                    if (focusedMatch?.[1]) return normaliseIgnitionRenewalDocumentId(focusedMatch[1]);
+                    const broadMatch = raw.match(/\b(prop_[a-z0-9]{10,})\b/i);
+                    if (broadMatch?.[1]) return normaliseIgnitionRenewalDocumentId(broadMatch[1]);
+                    return "";
+                } catch (error) {
+                    console.error("Unable to extract renewal document ID", error);
+                    return "";
+                }
+            }
+
             function ignitionRenewalClientCommsSourceEmail(item = {}) {
                 return String(item?.clientEmail || "").trim();
             }
@@ -41837,6 +41873,7 @@
                 ignitionRenewalClientCommsLettersByProposal = {};
                 ignitionRenewalClientCommsDraftsByProposal = {};
                 ignitionRenewalClientCommsPopulatedEmailByProposal = {};
+                ignitionRenewalClientCommsDocumentIdByProposal = {};
                 ignitionRenewalClientCommsEmailPopulateInFlight = false;
             }
 
@@ -43238,7 +43275,7 @@
                             <thead>
                                 <tr>
                                     <th>Client</th>
-                                    <th>Client ID</th>
+                                    <th>Document ID</th>
                                     <th>Email</th>
                                     <th>Engagement Letter & Upload</th>
                                     <th>Status</th>
@@ -43249,6 +43286,7 @@
                                     const proposalId = String(item?.proposalExternalId || "");
                                     const sent = sentIds.has(proposalId);
                                     const letter = ignitionRenewalClientCommsLetter(proposalId);
+                                    const documentId = ignitionRenewalClientCommsDocumentId(proposalId);
                                     const fileName = letter?.name || "";
                                     const uploadBadgeText = sent ? "Email sent" : (fileName ? "Letter uploaded" : "");
                                     const uploadActionLabel = sent ? "" : (fileName ? "Replace letter" : "Awaiting upload · Choose file");
@@ -43263,7 +43301,7 @@
                                                 <strong>${escapeHTML(item.clientName || "Unknown client")}</strong>
                                                 <br><small>${escapeHTML(item.proposalName || "")}</small>
                                             </td>
-                                            <td>${escapeHTML(item.clientId || "--")}</td>
+                                            <td>${escapeHTML(documentId || "")}</td>
                                             <td><span class="${emailClass}" data-renewal-comms-email-value>${escapeHTML(emailDisplay)}</span></td>
                                             <td>
                                                 <div class="ignition-renewals-upload-inline">
@@ -43416,6 +43454,11 @@
                     size: Number(file.size || 0),
                     contentBase64: base64,
                 };
+                const documentId = await extractIgnitionRenewalDocumentIdFromFile(file);
+                ignitionRenewalClientCommsDocumentIdByProposal[safeProposalId] = documentId;
+                if (!documentId && (/\.pdf$/i.test(String(file.name || "")) || String(file.type || "") === "application/pdf")) {
+                    showToast("Document ID not found in this PDF. Please check it includes a visible 'Document ID prop_...'.", "info");
+                }
                 renderIgnitionRenewalClientCommsModal();
             }
 
