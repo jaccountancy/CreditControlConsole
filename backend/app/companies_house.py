@@ -247,25 +247,10 @@ def _connection_test_probe_company_number(overrides: dict) -> str:
     if override_number:
         _, number_digits = _ch_split_company_number(override_number)
         return override_number if number_digits else ""
-    try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT company_number
-                    FROM ch_companies
-                    WHERE COALESCE(company_number, '') <> ''
-                    ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-                    LIMIT 1
-                    """
-                )
-                row = cursor.fetchone() or {}
-            connection.commit()
-    except Exception:
-        return ""
-    company_number = _xml_text(row.get("company_number"))
-    _, number_digits = _ch_split_company_number(company_number)
-    return company_number if number_digits else ""
+    # Keep default connection tests independent of per-company filing authority.
+    # A random "latest" company can trigger intermittent authorisation failures
+    # even when presenter credentials and gateway connectivity are valid.
+    return ""
 
 
 def test_companies_house_connection(payload: dict | None = None) -> dict:
