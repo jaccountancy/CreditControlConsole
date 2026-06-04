@@ -18765,6 +18765,10 @@
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Ignition Link</strong><span>Connection</span></span>
                                 </button>
+                                <button class="app-nav-button" type="button" data-settings-nav="renewal-settings">
+                                    <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
+                                    <span class="app-nav-copy"><strong>Renewal Settings</strong><span>Batch unlock</span></span>
+                                </button>
                                 <button class="app-nav-button" type="button" data-settings-nav="confirmation-settings">
                                     <span class="app-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
                                     <span class="app-nav-copy"><strong>Confirmation Settings</strong><span>Companies House + Xero</span></span>
@@ -18854,6 +18858,10 @@
                             <button class="settings-sidebar-button" type="button" data-settings-nav="ignition-connection">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"></path></svg></span>
                                 <span class="settings-sidebar-copy"><strong>Ignition Link</strong><span>Connection</span></span>
+                            </button>
+                            <button class="settings-sidebar-button" type="button" data-settings-nav="renewal-settings">
+                                <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span>
+                                <span class="settings-sidebar-copy"><strong>Renewal Settings</strong><span>Batch unlock</span></span>
                             </button>
                             <button class="settings-sidebar-button" type="button" data-settings-nav="confirmation-settings">
                                 <span class="settings-sidebar-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="m10 16 2 2 4-4"></path></svg></span>
@@ -19523,6 +19531,24 @@
                                         <span>Open this panel to refresh the connection state.</span>
                                     </div>
                                     <p class="settings-help">Reconnect only when Ignition authorisation changes or the Reporting API token needs refreshing.</p>
+                                </div>
+                            </section>
+
+                            <section class="detail-panel settings-panel" data-settings-section="renewal-settings">
+                                <div class="panel-heading">
+                                    <div>
+                                        <p class="eyebrow">Renewal settings</p>
+                                        <h3>Unlock posted batches</h3>
+                                    </div>
+                                    <button class="ghost-button" id="reloadRenewalSettingsButton" type="button">Reload from backend</button>
+                                </div>
+                                <p class="settings-help" id="renewalSettingsUnlockSummary">Load Ignition renewals to unlock finalised batches.</p>
+                                <div class="stack-form letter-template-fields">
+                                    <label for="renewalSettingsUnlockRunSelect">Finalised batch</label>
+                                    <select id="renewalSettingsUnlockRunSelect" aria-label="Finalised batch"></select>
+                                    <div class="letter-action-row">
+                                        <button class="danger-button" id="unlockRenewalSettingsButton" type="button">Unlock posted batch</button>
+                                    </div>
                                 </div>
                             </section>
 
@@ -22723,6 +22749,7 @@
                 "period-scope": "Limit imports to specific invoice years when you need a tighter sync window.",
                 "xero-connection": "Manage the linked Xero organisation and disconnect only when switching accounts.",
                 "ignition-connection": "Connect or reconnect the Ignition account used for Reporting API syncs.",
+                "renewal-settings": "Unlock finalised renewal batches so they can be edited again.",
                 "client-auth-register": "Open and maintain the shared client register and Companies House auth code directory.",
                 mapping: "Review posting defaults and chart-of-account assumptions.",
                 outbox: "Review queued Xero actions waiting for a successful push.",
@@ -23127,6 +23154,7 @@
             let ignitionRenewalAuditHistoryModalOpen = false;
             let ignitionRenewalEmailModalOpen = false;
             let ignitionRenewalEmailSending = false;
+            let renewalSettingsUnlocking = false;
             let ignitionRenewalEmailRunId = "";
             let ignitionRenewalHistoryLoading = false;
             let ignitionRenewalHistorySelectedRunId = "";
@@ -23559,6 +23587,7 @@
                         ignitionRenewalEmailPreview: config.endpoints?.ignitionRenewalEmailPreview || "/api/ignition/renewals/:runId/email-preview",
                         ignitionRenewalPdf: config.endpoints?.ignitionRenewalPdf || "/api/ignition/renewals/:runId/pdf",
                         ignitionRenewalFinalise: config.endpoints?.ignitionRenewalFinalise || "/api/ignition/renewals/:runId/finalise",
+                        ignitionRenewalUnlock: config.endpoints?.ignitionRenewalUnlock || "/api/ignition/renewals/:runId/unlock",
                         meReport: config.endpoints?.meReport || "/api/me-report",
                         meReportClients: config.endpoints?.meReportClients || "/api/me-report/clients",
                         meReportClient: config.endpoints?.meReportClient || "/api/me-report/clients/:clientId",
@@ -39882,6 +39911,7 @@
                 } finally {
                     ignitionLoading = false;
                     renderIgnitionScreen();
+                    if (activeView === "settings" && activeSettingsSection === "renewal-settings") renderRenewalSettings();
                 }
             }
 
@@ -40487,6 +40517,74 @@
                 if (!run || typeof run !== "object") return false;
                 const status = ignitionRenewalStatusValue(run);
                 return Boolean(run.finalisedAt || run.completedAt || run.finishedAt || ["finalised", "completed", "finished", "emailed"].includes(status));
+            }
+
+            function renewalSettingsFinalisedRuns() {
+                const runs = Array.isArray(ignitionData?.renewals?.recentRuns) ? ignitionData.renewals.recentRuns : [];
+                return runs.filter((run) => ignitionRenewalRunIsLocked(run));
+            }
+
+            function renderRenewalSettings() {
+                const select = document.getElementById("renewalSettingsUnlockRunSelect");
+                const summary = document.getElementById("renewalSettingsUnlockSummary");
+                const unlockButton = document.getElementById("unlockRenewalSettingsButton");
+                const reloadButton = document.getElementById("reloadRenewalSettingsButton");
+                const runs = renewalSettingsFinalisedRuns();
+                const selectedId = String(select?.value || "").trim();
+                if (select) {
+                    const options = runs.map((run) => {
+                        const label = ignitionRenewalBatchReferenceForRun(run);
+                        const windowLabel = `${formatDate(run.windowStart)} to ${formatDate(run.windowEnd)}`;
+                        return `<option value="${escapeHTML(String(run.id || ""))}">${escapeHTML(label)} · ${escapeHTML(windowLabel)}</option>`;
+                    });
+                    select.innerHTML = options.length
+                        ? `<option value="">Select a batch to unlock</option>${options.join("")}`
+                        : `<option value="">No finalised batches found</option>`;
+                    if (options.length && selectedId && runs.some((run) => String(run.id || "") === selectedId)) {
+                        select.value = selectedId;
+                    } else {
+                        select.value = "";
+                    }
+                    select.disabled = ignitionLoading || renewalSettingsUnlocking || !runs.length;
+                }
+                if (summary) {
+                    summary.textContent = ignitionLoading
+                        ? "Loading Ignition renewals..."
+                        : runs.length
+                        ? `${runs.length.toLocaleString("en-GB")} finalised batch${runs.length === 1 ? "" : "es"} can be unlocked.`
+                        : "No finalised renewal batches are currently available to unlock.";
+                }
+                if (unlockButton) {
+                    unlockButton.disabled = ignitionLoading || renewalSettingsUnlocking || !select?.value;
+                    unlockButton.textContent = renewalSettingsUnlocking ? "Unlocking..." : "Unlock posted batch";
+                }
+                if (reloadButton) {
+                    reloadButton.disabled = ignitionLoading || renewalSettingsUnlocking;
+                    reloadButton.textContent = ignitionLoading ? "Reloading..." : "Reload from backend";
+                }
+            }
+
+            async function unlockRenewalSettingsBatch() {
+                const select = document.getElementById("renewalSettingsUnlockRunSelect");
+                const runId = String(select?.value || "").trim();
+                if (!runId || renewalSettingsUnlocking) return;
+                const run = renewalSettingsFinalisedRuns().find((item) => String(item?.id || "") === runId) || null;
+                const runLabel = run ? ignitionRenewalBatchReferenceForRun(run) : "this batch";
+                if (!window.confirm(`Unlock ${runLabel}? This will unfinalise it so you can edit it again.`)) return;
+                renewalSettingsUnlocking = true;
+                renderRenewalSettings();
+                try {
+                    const payload = await requestJSON(api.endpoints.ignitionRenewalUnlock, { method: "POST", body: JSON.stringify({}) }, { runId });
+                    ignitionData.renewals = payload?.renewals || ignitionData.renewals || {};
+                    showToast(payload?.alreadyUnlocked ? "Batch is already unlocked" : "Batch unlocked and ready to edit", "success");
+                    renderIgnitionScreen();
+                } catch (error) {
+                    console.error("Unable to unlock renewal batch", error);
+                    showToast(error.message || "Unable to unlock renewal batch", "error");
+                } finally {
+                    renewalSettingsUnlocking = false;
+                    renderRenewalSettings();
+                }
             }
 
             function ignitionRenewalStatusValue(run = null) {
@@ -55619,6 +55717,11 @@
                     title: "Ignition Reporting API Connection",
                     meta: "Connect or reconnect the Ignition account used for Reporting API syncs."
                 },
+                "renewal-settings": {
+                    eyebrow: "Renewal settings",
+                    title: "Renewal Settings",
+                    meta: "Unlock finalised renewal batches when you need to make pricing changes."
+                },
                 mapping: {
                     eyebrow: "Mappings",
                     title: "Mapping Changes / COA",
@@ -55698,6 +55801,7 @@
                 });
                 document.getElementById("factoryOpenResetPageButton")?.classList.toggle("is-active", activeSettingsSection === "factory-reset");
                 if (activeSettingsSection === "lock-date-mapping") renderSettingsLockDateMapping();
+                if (activeSettingsSection === "renewal-settings") renderRenewalSettings();
             }
 
             function openSettingsScreen(section = activeSettingsSection || "data-import", sidebarMode = "settings") {
@@ -55717,6 +55821,7 @@
                     loadXeroLockDateCHHealth();
                 }
                 if (activeSettingsSection === "ignition-connection") loadIgnition(true);
+                if (activeSettingsSection === "renewal-settings") loadIgnition(true);
                 if (activeSettingsSection === "me-report-email" || activeSettingsSection === "gmail-connection") loadMeReport(true);
                 if (activeSettingsSection === "usage") loadSettingsUsage();
                 document.getElementById("menuSettingsButton")?.blur();
@@ -56370,6 +56475,9 @@
                     settingsUsageDays = Number(event.target?.value || 30);
                     loadSettingsUsage(true);
                 });
+                document.getElementById("reloadRenewalSettingsButton")?.addEventListener("click", () => loadIgnition(true));
+                document.getElementById("renewalSettingsUnlockRunSelect")?.addEventListener("change", renderRenewalSettings);
+                document.getElementById("unlockRenewalSettingsButton")?.addEventListener("click", unlockRenewalSettingsBatch);
                 document.getElementById("postingSettingsForm")?.addEventListener("submit", savePostingSettings);
                 document.getElementById("reloadXeroAccountsButton")?.addEventListener("click", () => loadXeroPostingSettings(true));
                 const menuInsightsButton = document.getElementById("menuInsightsButton");

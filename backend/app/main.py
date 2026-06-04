@@ -91,6 +91,7 @@ from .services import (
     create_ignition_renewal_run,
     delete_ignition_renewal_run,
     finalise_ignition_renewals,
+    unlock_ignition_renewals,
     ignition_renewals_audit_history,
     ignition_renewals_email_preview,
     ignition_renewals_report_pdf,
@@ -1715,6 +1716,12 @@ async def api_ignition_renewals_email_preview(run_id: str, user: dict = Depends(
 async def api_finalise_ignition_renewals(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
     await request.body()
     return {"status": "ok", **await finalise_ignition_renewals(user, run_id)}
+
+
+@app.post("/api/ignition/renewals/{run_id}/unlock")
+async def api_unlock_ignition_renewals(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    await request.body()
+    return {"status": "ok", **await unlock_ignition_renewals(user, run_id)}
 
 
 @app.get("/api/ignition/renewals/{run_id}/pdf")

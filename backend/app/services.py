@@ -16133,6 +16133,24 @@ def _ignition_proposal_client_created_date(row: dict) -> date | None:
     return None
 
 
+def _ignition_proposal_client_id(row: dict) -> str:
+    client = row.get("client")
+    customer = row.get("customer")
+    candidates = (
+        row.get("client_id"),
+        row.get("clientId"),
+        row.get("client_external_id"),
+        row.get("clientExternalId"),
+        _first_mapping_text(client, ("id", "external_id", "externalId", "uuid", "reference_number", "referenceNumber", "code")),
+        _first_mapping_text(customer, ("id", "external_id", "externalId", "uuid", "reference_number", "referenceNumber", "code")),
+    )
+    for candidate in candidates:
+        value = str(candidate or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _ignition_client_lookup_keys(row: dict) -> list[str]:
     client = row.get("client")
     customer = row.get("customer")
@@ -16549,7 +16567,7 @@ def _ignition_renewal_item_seed(record: dict, renewal_date: date) -> dict:
         "proposal_external_id": str(record.get("external_id") or ""),
         "proposal_name": row.get("name") or row.get("reference_number") or "Ignition proposal",
         "proposal_number": str(row.get("reference_number") or row.get("proposal_number") or row.get("referenceNumber") or row.get("proposalNumber") or "").strip(),
-        "client_id": "",
+        "client_id": _ignition_proposal_client_id(row),
         "client_name": _ignition_proposal_client_name(row),
         "client_manager": _ignition_proposal_client_manager(row),
         "service_name": service_name,
@@ -16595,6 +16613,9 @@ def _ignition_client_register_id_lookup(user_id: str) -> dict[str, str]:
         client_id = str(row.get("client_id") or "").strip()
         if not client_id:
             continue
+        for key in _ignition_name_match_keys(client_id):
+            if key and key not in lookup:
+                lookup[key] = client_id
         for raw_name in (row.get("client_name"), row.get("company_name")):
             for key in _ignition_name_match_keys(raw_name or ""):
                 if key and key not in lookup:
@@ -16897,6 +16918,7 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
     proposal_payload = row.get("proposal_payload")
     if not isinstance(proposal_payload, dict):
         proposal_payload = {}
+    proposal_client_id = _ignition_proposal_client_id(proposal_payload)
     return {
         "id": str(row.get("id") or ""),
         "runId": str(row.get("run_id") or ""),
@@ -16910,7 +16932,7 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
             or proposal_payload.get("proposalNumber")
             or ""
         ).strip(),
-        "clientId": str(row.get("client_id") or ""),
+        "clientId": str(row.get("client_id") or proposal_client_id or ""),
         "clientName": row.get("client_name") or "",
         "clientManager": row.get("client_manager") or "",
         "serviceName": row.get("service_name") or "",
@@ -17048,6 +17070,7 @@ def _ignition_renewal_audit_event_title(event_type: str) -> str:
         "ignition.renewals.status_updated": "Status updated",
         "ignition.renewals.pricing_updated": "Pricing edits saved",
         "ignition.renewals.finalised": "Batch finalised",
+        "ignition.renewals.unlocked": "Batch unlocked",
         "ignition.renewals.emailed": "Email sent",
         "ignition.renewals.deleted": "Batch deleted",
     }
@@ -17069,6 +17092,9 @@ def _ignition_renewal_audit_event_detail(event_type: str, payload: dict) -> str:
     if event_type == "ignition.renewals.finalised":
         items = int(payload.get("items") or 0)
         return f"Finalised with {items} item{'s' if items != 1 else ''}."
+    if event_type == "ignition.renewals.unlocked":
+        previous = str(payload.get("from_status") or "finalised").replace("_", " ")
+        return f"Batch unlocked from {previous}."
     if event_type == "ignition.renewals.emailed":
         recipient = str(payload.get("recipient") or "").strip()
         return f"Report emailed to {recipient}." if recipient else "Report emailed."
@@ -18552,6 +18578,37 @@ async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
             )
         connection.commit()
     record_audit_event("ignition_renewal_run", run_id, "ignition.renewals.finalised", {"items": len(items)}, user["id"])
+    return {"renewals": ignition_renewals_payload(user, run_id)}
+
+
+async def unlock_ignition_renewals(user: dict, run_id: str) -> dict:
+    run, _items = _ignition_renewal_run_with_items(user, run_id)
+    status_value = ignition_renewal_status_value(run)
+    is_locked = bool(run.get("finalised_at")) or status_value in {"finalised", "completed", "finished", "emailed"}
+    if not is_locked:
+        return {"renewals": ignition_renewals_payload(user, run_id), "alreadyUnlocked": True}
+    now = utcnow()
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ignition_renewal_runs
+                SET status = 'awaiting_review',
+                    finalised_at = NULL,
+                    email_sent_at = NULL,
+                    updated_at = %s
+                WHERE id = %s AND user_id = %s
+                """,
+                (now, run_id, user["id"]),
+            )
+        connection.commit()
+    record_audit_event(
+        "ignition_renewal_run",
+        run_id,
+        "ignition.renewals.unlocked",
+        {"from_status": status_value},
+        user["id"],
+    )
     return {"renewals": ignition_renewals_payload(user, run_id)}
 
 
