@@ -23917,25 +23917,21 @@
                     </section>
 
                     <section class="late-charges-screen detail-card" id="sa100PrepScreen" hidden>
-                        <section class="detail-panel bank-statement-workspace sa100-workspace">
-                            <div class="sa100-panel sa100-panel-clients">
-                                <div class="sa100-panel-head">
-                                    <h4>Client Workspaces</h4>
-                                    <p>Choose the active client workspace and open this tax-year prep run.</p>
+                        <section class="detail-panel">
+                            <div class="detail-hero">
+                                <div>
+                                    <p class="eyebrow">Practice Tools</p>
+                                    <h3>SA100 Prep</h3>
+                                    <p class="detail-meta">Manage self-assessment client workspaces, select tax years, and open Pulltether self-employed profit and loss.</p>
                                 </div>
-                                <div class="sa100-panel-note">Workspaces can be reviewed independently before final SA100 compilation.</div>
-                                <div class="sa100-workspace-list" id="sa100WorkspaceList"></div>
-                            </div>
-                            <div class="sa100-panel sa100-panel-stages">
-                                <div class="sa100-panel-head">
-                                    <h4>Filing Stages</h4>
-                                    <p>Track completion from workspace setup through draft summary and sign-off prep.</p>
+                                <div class="detail-actions">
+                                    <button class="ghost-button" id="sa100BackToClientsButton" type="button" hidden>Back to clients</button>
+                                    <button class="primary-button" id="sa100ImportClientsButton" type="button">Import self-assessment clients</button>
+                                    <button class="ghost-button" id="sa100RefreshButton" type="button">Refresh</button>
                                 </div>
-                                <div class="sa100-stage-list" id="sa100StageList"></div>
                             </div>
-                            <div class="sa100-panel sa100-panel-detail">
-                                <div class="sa100-detail" id="sa100PrepDetail"></div>
-                            </div>
+                            <p class="late-charge-summary" id="sa100PrepSummary">Loading SA100 client workspaces.</p>
+                            <div id="sa100PrepContent"></div>
                         </section>
                     </section>
 
@@ -24020,6 +24016,8 @@
                                 </div>
                                 <div class="detail-actions">
                                     <button class="ghost-button" id="vatReturnBackButton" type="button" hidden>Back to return queue</button>
+                                    <button class="primary-button" id="vatReturnCreateFlowsButton" type="button">Create flows from Xero clients</button>
+                                    <button class="ghost-button" id="vatReturnConnectXeroButton" type="button">Connect additional Xero</button>
                                     <button class="ghost-button" id="vatReturnRefreshButton" type="button">Refresh</button>
                                     <button class="ghost-button" id="vatReturnAiReviewButton" type="button" hidden>AI Review VAT Return</button>
                                     <button class="ghost-button" id="vatReturnFinaliseButton" type="button" hidden>Finalise</button>
@@ -25504,6 +25502,9 @@
                 ? persistedUIState.activeView
                 : "ledger";
             let selectedSa100WorkspaceId = "";
+            let selectedSa100ClientId = "";
+            let selectedSa100TaxYear = "";
+            let sa100PrepView = "list";
             let sa100PrepStage = "workspace";
             let selectedVatReturnKey = "";
             let vatReturnDetailTab = "transactions";
@@ -29610,6 +29611,8 @@
 
             function openSa100PrepScreen() {
                 activeView = "sa100-prep";
+                sa100SyncConnectedXeroWorkspaces();
+                if (!sa100PrepView) sa100PrepView = "list";
                 if (!selectedSa100WorkspaceId && sa100PrepWorkspaces.length) {
                     selectedSa100WorkspaceId = sa100PrepWorkspaces[0].id;
                 }
@@ -48413,6 +48416,39 @@
                 return tenantScoped.length ? tenantScoped : contacts;
             }
 
+            async function meReportConnectedCompaniesForBulkFlows() {
+                try {
+                    const payload = await requestJSON("/api/companies-house/companies?xeroConnected=true");
+                    return Array.isArray(payload?.companies) ? payload.companies : [];
+                } catch (error) {
+                    console.warn("Unable to load Xero-connected Jenius clients for ME Report flow creation", error);
+                    return [];
+                }
+            }
+
+            function meReportBulkFlowCandidates(companies = [], tenantId = "") {
+                const contacts = meReportContactOptions(tenantId);
+                const contactsById = new Map();
+                contacts.forEach((contact) => {
+                    const contactId = String(contact?.xeroContactId || "").trim();
+                    if (!contactId || contactsById.has(contactId)) return;
+                    contactsById.set(contactId, contact);
+                });
+                const candidatesByContactId = new Map();
+                (Array.isArray(companies) ? companies : []).forEach((company) => {
+                    const contactId = String(company?.xeroContactId || "").trim();
+                    if (!contactId || candidatesByContactId.has(contactId)) return;
+                    const contact = contactsById.get(contactId);
+                    if (!contact) return;
+                    candidatesByContactId.set(contactId, {
+                        xeroContactId: contactId,
+                        name: String(company?.companyName || company?.clientName || contact?.name || "Unnamed client"),
+                        email: String(company?.contactEmail || contact?.email || ""),
+                    });
+                });
+                return Array.from(candidatesByContactId.values()).sort((left, right) => String(left?.name || "").localeCompare(String(right?.name || ""), "en", { sensitivity: "base" }));
+            }
+
             async function refreshMeReportContactOptionsFromXero(tenantId = "") {
                 if (meReportContactRefreshInFlight || !meReportData.xero?.connected) return;
                 meReportContactRefreshInFlight = true;
@@ -49349,21 +49385,21 @@
                 }
                 if (clientsList) {
                     if (state.loadingContacts) {
-                        clientsList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Refreshing Xero contacts</h4><p>Please wait while the latest connected clients are loaded.</p></div>';
+                        clientsList.innerHTML = '<div class="empty-state"><p class="eyebrow">Loading</p><h4>Refreshing connected clients</h4><p>Please wait while the latest Xero-linked Jenius clients are loaded.</p></div>';
                     } else if (!selectableCount) {
                         clientsList.innerHTML = '<div class="empty-state"><p class="eyebrow">No clients</p><h4>No Xero-connected clients available</h4><p>Connect and sync Xero, or clear existing flows before creating new ones.</p></div>';
                     } else {
                         clientsList.innerHTML = candidates.map((contact) => {
                             const contactId = String(contact?.xeroContactId || "");
                             const checked = selectedIds.has(contactId);
-                            const label = String(contact?.name || "Unnamed Xero contact");
+                            const label = String(contact?.name || "Unnamed client");
                             const email = String(contact?.email || "");
                             return `
                                 <label class="me-report-bulk-match-item">
                                     <input type="checkbox" data-me-report-bulk-client="${escapeHTML(contactId)}" ${checked ? "checked" : ""}>
                                     <div>
                                         <strong>${escapeHTML(label)}</strong>
-                                        <small>${escapeHTML(email || contactId || "Xero contact")}</small>
+                                        <small>${escapeHTML(email || contactId || "Xero-linked client")}</small>
                                     </div>
                                 </label>
                             `;
@@ -49387,8 +49423,8 @@
                 if (!meReportBulkPeriodDialogState) return;
                 meReportBulkPeriodDialogState.loadingContacts = true;
                 renderMeReportBulkPeriodPanel();
-                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
-                const contacts = meReportContactOptions(meReportActiveTenantId());
+                const companies = await meReportConnectedCompaniesForBulkFlows();
+                const contacts = meReportBulkFlowCandidates(companies, meReportActiveTenantId());
                 const existingContactIds = new Set((meReportData.clients || []).map((item) => String(item.xeroContactId || "")).filter(Boolean));
                 const candidates = contacts
                     .filter((contact) => String(contact?.xeroContactId || "").trim())
@@ -54576,10 +54612,10 @@
             }
 
             async function bulkCreateMeReportFlowsFromXero(periodConfig = null, selectedContactIds = []) {
-                await refreshMeReportContactOptionsFromXero(meReportActiveTenantId());
-                const contacts = meReportContactOptions(meReportActiveTenantId());
+                const companies = await meReportConnectedCompaniesForBulkFlows();
+                const contacts = meReportBulkFlowCandidates(companies, meReportActiveTenantId());
                 if (!contacts.length) {
-                    showToast("No Xero contacts are available. Connect and sync Xero first.", "error");
+                    showToast("No Xero-connected Jenius clients are available. Check Companies House links and Xero sync first.", "error");
                     return;
                 }
                 const defaults = meReportDefaultBulkPeriod();
@@ -54600,7 +54636,7 @@
                     .filter((contact) => !existingContactIds.has(String(contact.xeroContactId || "")))
                     .filter((contact) => selectedSet.size === 0 || selectedSet.has(String(contact.xeroContactId || "")));
                 if (!candidates.length) {
-                    showToast(selectedSet.size ? "No selected Xero clients are eligible for new flows." : "All Xero contacts already have flows", "success");
+                    showToast(selectedSet.size ? "No selected Xero-connected clients are eligible for new flows." : "All Xero-connected clients already have flows", "success");
                     return;
                 }
                 meReportBulkUploading = true;
@@ -60522,6 +60558,64 @@
                 return `sa100-ws-${next}`;
             }
 
+            function sa100CurrentTaxYearLabel(reference = new Date()) {
+                const now = reference instanceof Date ? reference : new Date();
+                const year = now.getFullYear();
+                const taxYearStart = new Date(year, 3, 6);
+                const startYear = now >= taxYearStart ? year : year - 1;
+                const endYearShort = String(startYear + 1).slice(-2);
+                return `${startYear}/${endYearShort}`;
+            }
+
+            function sa100YearEndLabelFromTaxYear(taxYear = "") {
+                const match = String(taxYear || "").match(/^(\d{4})\/(\d{2})$/);
+                if (!match) return "";
+                const year = Number(`20${match[2]}`);
+                return `05 Apr ${year}`;
+            }
+
+            function sa100ConnectedCustomerRows() {
+                if (!state.organisation?.xeroConnected) return [];
+                return (Array.isArray(state.customers) ? state.customers : [])
+                    .filter((customer) => String(customer?.xeroContactId || customer?.contactId || "").trim())
+                    .map((customer) => ({
+                        id: String(customer?.id || "").trim(),
+                        name: String(customer?.name || customer?.clientName || "Client").trim(),
+                        utr: String(customer?.utr || customer?.taxUtr || customer?.saUtr || "").trim(),
+                        xeroContactId: String(customer?.xeroContactId || customer?.contactId || "").trim(),
+                        turnoverEstimate: Number(customer?.turnoverEstimate || customer?.annualRevenue || customer?.estimatedTurnover || 0) || 0,
+                    }))
+                    .filter((row) => row.id && row.xeroContactId);
+            }
+
+            function sa100SyncConnectedXeroWorkspaces() {
+                const connectedRows = sa100ConnectedCustomerRows();
+                if (!connectedRows.length) return 0;
+                const existingByClientId = new Set(
+                    sa100PrepWorkspaces
+                        .map((workspace) => String(workspace?.clientId || "").trim())
+                        .filter(Boolean)
+                );
+                const taxYear = sa100CurrentTaxYearLabel();
+                const yearEnd = sa100YearEndLabelFromTaxYear(taxYear) || "05 Apr 2026";
+                const additions = connectedRows
+                    .filter((row) => !existingByClientId.has(row.id))
+                    .map((row) => ({
+                        id: createSa100WorkspaceId(),
+                        clientId: row.id,
+                        clientName: row.name,
+                        utr: row.utr || "Not set",
+                        taxYear,
+                        yearEnd,
+                        turnoverEstimate: Number(row.turnoverEstimate || 0),
+                        xeroContactId: row.xeroContactId,
+                        source: "xero",
+                    }));
+                if (!additions.length) return 0;
+                sa100PrepWorkspaces = [...additions, ...sa100PrepWorkspaces];
+                return additions.length;
+            }
+
             function createSa100SeedBankRows(workspace) {
                 const range = sa100TaxYearBounds(workspace.taxYear);
                 const startYear = Number((range.start || "").slice(0, 4) || "2025");
@@ -60680,6 +60774,7 @@
             }
 
             function renderSa100PrepScreen() {
+                sa100SyncConnectedXeroWorkspaces();
                 const workspaceList = document.getElementById("sa100WorkspaceList");
                 const stageList = document.getElementById("sa100StageList");
                 const detail = document.getElementById("sa100PrepDetail");
@@ -60965,21 +61060,104 @@
                 });
 
                 document.getElementById("sa100ConnectXeroWorkspaceButton")?.addEventListener("click", () => {
-                    const count = sa100PrepWorkspaces.filter((workspace) => workspace.source === "xero").length + 1;
-                    const newWorkspace = {
-                        id: createSa100WorkspaceId(),
-                        clientName: `Xero Linked Client ${count}`,
-                        utr: `${Math.floor(10000 + Math.random() * 89999)} ${Math.floor(10000 + Math.random() * 89999)}`,
-                        taxYear: "2025/26",
-                        yearEnd: "05 Apr 2026",
-                        turnoverEstimate: 30000 + Math.round(Math.random() * 70000),
-                        source: "xero"
-                    };
-                    sa100PrepWorkspaces = [newWorkspace, ...sa100PrepWorkspaces];
-                    selectedSa100WorkspaceId = newWorkspace.id;
-                    sa100WorkspaceManualFormOpen = false;
-                    renderSa100PrepScreen();
-                    if (typeof showToast === "function") showToast("Workspace connected from Xero.", "success");
+                    const connectedRows = sa100ConnectedCustomerRows();
+                    const existingByClientId = new Set(
+                        sa100PrepWorkspaces
+                            .map((workspace) => String(workspace?.clientId || "").trim())
+                            .filter(Boolean)
+                    );
+                    const candidates = connectedRows.filter((row) => !existingByClientId.has(row.id));
+                    if (!candidates.length) {
+                        if (typeof showToast === "function") showToast("All connected Xero clients are already in SA100 Prep.", "info");
+                        return;
+                    }
+                    const taxYear = sa100CurrentTaxYearLabel();
+                    const yearEnd = sa100YearEndLabelFromTaxYear(taxYear) || "05 Apr 2026";
+                    showOperationReviewDialog({
+                        eyebrow: "SA100 Prep",
+                        title: "Import connected Xero clients",
+                        subtitle: "Select connected Xero clients to add to SA100 workspaces.",
+                        confirmLabel: "Import selected",
+                        cancelLabel: "Cancel",
+                        summaryChips: [
+                            `${candidates.length.toLocaleString("en-GB")} connected Xero clients`,
+                            `Tax year ${taxYear}`,
+                            "Source: client register",
+                        ],
+                        columns: [
+                            { key: "selected", label: "" },
+                            { key: "name", label: "Client" },
+                            { key: "utr", label: "UTR" },
+                            { key: "xeroContactId", label: "Xero contact" },
+                        ],
+                        rows: candidates,
+                        onRender: ({ body }) => {
+                            const wrap = body.querySelector(".operation-review-table-wrap");
+                            if (!wrap) return;
+                            wrap.innerHTML = `
+                                <table class="operation-review-table">
+                                    <thead>
+                                        <tr>
+                                            <th><input type="checkbox" id="sa100ImportSelectAll" checked></th>
+                                            <th>Client</th>
+                                            <th>UTR</th>
+                                            <th>Xero contact</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${candidates.map((row) => `
+                                            <tr>
+                                                <td><input type="checkbox" data-sa100-import-client="${escapeHTML(row.id)}" checked></td>
+                                                <td><strong>${escapeHTML(row.name || "Client")}</strong></td>
+                                                <td>${escapeHTML(row.utr || "Not set")}</td>
+                                                <td>${escapeHTML(row.xeroContactId || "—")}</td>
+                                            </tr>
+                                        `).join("")}
+                                    </tbody>
+                                </table>
+                            `;
+                            wrap.querySelector("#sa100ImportSelectAll")?.addEventListener("change", (event) => {
+                                wrap.querySelectorAll("[data-sa100-import-client]").forEach((checkbox) => {
+                                    checkbox.checked = Boolean(event.target.checked);
+                                });
+                            });
+                        },
+                        resultProvider: () => {
+                            const selectedClientIds = Array.from(document.querySelectorAll("#operationReviewBody [data-sa100-import-client]:checked"))
+                                .map((node) => String(node.getAttribute("data-sa100-import-client") || ""))
+                                .filter(Boolean);
+                            return { selectedClientIds };
+                        },
+                    }).then((result) => {
+                        if (!result) return;
+                        const selectedClientIds = Array.isArray(result?.selectedClientIds) ? result.selectedClientIds : [];
+                        if (!selectedClientIds.length) {
+                            if (typeof showToast === "function") showToast("No clients selected.", "info");
+                            return;
+                        }
+                        const selectedSet = new Set(selectedClientIds);
+                        const additions = candidates
+                            .filter((row) => selectedSet.has(row.id))
+                            .map((row) => ({
+                                id: createSa100WorkspaceId(),
+                                clientId: row.id,
+                                clientName: row.name,
+                                utr: row.utr || "Not set",
+                                taxYear,
+                                yearEnd,
+                                turnoverEstimate: Number(row.turnoverEstimate || 0),
+                                xeroContactId: row.xeroContactId,
+                                source: "xero",
+                            }));
+                        if (!additions.length) return;
+                        sa100PrepWorkspaces = [...additions, ...sa100PrepWorkspaces];
+                        selectedSa100WorkspaceId = additions[0].id;
+                        sa100WorkspaceManualFormOpen = false;
+                        renderSa100PrepScreen();
+                        if (typeof showToast === "function") {
+                            showToast(`${additions.length.toLocaleString("en-GB")} connected Xero client${additions.length === 1 ? "" : "s"} added.`, "success");
+                        }
+                    });
                 });
 
                 document.getElementById("sa100AddManualWorkspaceButton")?.addEventListener("click", () => {
@@ -61168,8 +61346,13 @@
 
             function vatReturnQueueRows() {
                 if (!state.organisation?.xeroConnected) return [];
+                const clientHasXeroConnection = (client) => {
+                    const contactId = String(client?.xeroContactId || client?.contactId || "").trim();
+                    const linked = Boolean(client?.xeroConnected) || Boolean(client?.xeroConnectedAt) || Boolean(client?.xeroTenantId);
+                    return Boolean(contactId) || linked;
+                };
                 return (state.customers || [])
-                    .filter((client) => String(client?.xeroContactId || client?.contactId || "").trim())
+                    .filter((client) => clientHasXeroConnection(client))
                     .map((client) => {
                         const configuredPeriodEnd = parseDateValue(client?.vatPeriodEnd || client?.vat?.periodEnd || client?.vatReturnPeriodEnd || "");
                         const window = configuredPeriodEnd && configuredPeriodEnd <= new Date()
@@ -61805,10 +61988,12 @@
                 const warningsBody = document.getElementById("vatReturnWarningsBody");
                 const backButton = document.getElementById("vatReturnBackButton");
                 const refreshButton = document.getElementById("vatReturnRefreshButton");
+                const createFlowsButton = document.getElementById("vatReturnCreateFlowsButton");
+                const connectXeroButton = document.getElementById("vatReturnConnectXeroButton");
                 const aiReviewButton = document.getElementById("vatReturnAiReviewButton");
                 const finaliseButton = document.getElementById("vatReturnFinaliseButton");
                 const exportButton = document.getElementById("vatReturnExportNoVatButton");
-                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !aiReviewButton || !finaliseButton || !exportButton) return;
+                if (!summary || !queueWrap || !queueBody || !detailWrap || !metrics || !tabsWrap || !transactionsTabButton || !noVatTabButton || !warningsTabButton || !transactionsWrap || !transactionsBody || !noVatWrap || !noVatBody || !warningsWrap || !warningsBody || !backButton || !refreshButton || !createFlowsButton || !connectXeroButton || !aiReviewButton || !finaliseButton || !exportButton) return;
 
                 const rows = vatReturnQueueRows();
                 const activeEntry = selectedVatReturnEntry(rows);
@@ -61855,6 +62040,18 @@
                             refreshButton.disabled = false;
                             refreshButton.textContent = originalLabel || "Refresh";
                         }
+                    });
+                }
+                if (createFlowsButton.dataset.vatWired !== "true") {
+                    createFlowsButton.dataset.vatWired = "true";
+                    createFlowsButton.addEventListener("click", () => {
+                        openMeReportBulkPeriodPanel();
+                    });
+                }
+                if (connectXeroButton.dataset.vatWired !== "true") {
+                    connectXeroButton.dataset.vatWired = "true";
+                    connectXeroButton.addEventListener("click", () => {
+                        openSettingsScreen("xero-connection", "settings");
                     });
                 }
                 if (tabsWrap.dataset.vatWired !== "true") {
@@ -61904,7 +62101,7 @@
 
                 if (!rows.length) {
                     summary.textContent = "No VAT return workspaces are currently available.";
-                    queueBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No Xero-linked clients available</h4><p>Add clients with active Xero contact links to build the VAT queue.</p></div></td></tr>';
+                    queueBody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p class="eyebrow">No clients</p><h4>No Xero-connected clients available</h4><p>Use “Create flows from Xero clients” after syncing or connect additional Xero organisations.</p></div></td></tr>';
                     metrics.innerHTML = "";
                     transactionsBody.innerHTML = "";
                     noVatBody.innerHTML = "";
@@ -68159,6 +68356,7 @@
             const AUTH_REGISTER_TABLE_PREFS_KEY = "creditControl.authRegisterTablePrefs.v1";
             const AUTH_REGISTER_COLUMNS = [
                 { key: "displayName", label: "Company" },
+                { key: "clientType", label: "Client Type" },
                 { key: "clientId", label: "Client ID" },
                 { key: "companyNumber", label: "Number" },
                 { key: "authCodeHint", label: "Auth code" },
@@ -68285,6 +68483,7 @@
                     if (!search) return true;
                     const searchValues = [
                         row?.displayName,
+                        row?.clientType,
                         row?.clientId,
                         row?.companyNumber,
                         row?.authCodeHint,
@@ -68634,6 +68833,7 @@
                         updates: [
                             { key: "lineNumber", label: "Line", kind: "number" },
                             { key: "displayName", label: "Company" },
+                            { key: "clientType", label: "Client Type" },
                             { key: "companyNumber", label: "Number" },
                             { key: "clientId", label: "Client ID" },
                             { key: "clientManager", label: "Manager" },
@@ -68642,12 +68842,14 @@
                         creates: [
                             { key: "lineNumber", label: "Line", kind: "number" },
                             { key: "displayName", label: "Company" },
+                            { key: "clientType", label: "Client Type" },
                             { key: "companyNumber", label: "Number" },
                             { key: "clientId", label: "Client ID" },
                             { key: "clientManager", label: "Manager" },
                         ],
                         deletes: [
                             { key: "displayName", label: "Company" },
+                            { key: "clientType", label: "Client Type" },
                             { key: "companyNumber", label: "Number" },
                             { key: "clientId", label: "Client ID" },
                             { key: "clientManager", label: "Manager" },
@@ -70106,7 +70308,7 @@
                 return true;
             }
 
-            async function chShowWorkflowChangesDialog(companies = []) {
+            async function chShowWorkflowChangesDialog(companies = [], workflowActionsByCompanyId = {}) {
                 const toNullableBool = (value) => {
                     if (value === true || value === false) return value;
                     const text = String(value ?? "").trim().toLowerCase();
@@ -70201,8 +70403,12 @@
                             return `${shareClass}: ${numberHeld}`;
                         }).filter(Boolean).join(" | ")
                         : "No shareholding rows loaded";
+                    const companyId = String(company.id || "");
+                    const workflowAction = String(workflowActionsByCompanyId[companyId] || "no-changes") === "changes-required"
+                        ? "changes-required"
+                        : "no-changes";
                     return {
-                        companyId: String(company.id || ""),
+                        companyId,
                         companyName: String(company.companyName || "—"),
                         companyNumber: String(company.companyNumber || "—"),
                         companyType: String(company.companyType || "—"),
@@ -70236,19 +70442,21 @@
                             verificationStatementGiven: identityVerification.verificationStatementGiven !== false,
                             relevantOfficer: String(identityVerification.relevantOfficer || ""),
                         },
+                        workflowAction,
                     };
                 });
                 const rowById = new Map(rows.map((row) => [row.companyId, row]));
+                const editableRows = rows.filter((row) => row.workflowAction === "changes-required");
                 const reviewResult = await showOperationReviewDialog({
                     eyebrow: "Confirmation statements",
-                    title: "Full review for clients needing changes",
-                    subtitle: "Step through each confirmation statement section before submission.",
-                    confirmLabel: "Save changes",
+                    title: "CS01 review by client",
+                    subtitle: "Review every selected client. Rows marked 'No changes' are read-only.",
+                    confirmLabel: editableRows.length ? "Save changes" : "Continue",
                     cancelLabel: "Back",
                     summaryChips: [
-                        `${rows.length.toLocaleString("en-GB")} need changes`,
-                        "Guided CS01 walkthrough",
-                        "Authority, SIC, PSC, capital",
+                        `${rows.length.toLocaleString("en-GB")} selected`,
+                        `${editableRows.length.toLocaleString("en-GB")} changes required`,
+                        `${Math.max(0, rows.length - editableRows.length).toLocaleString("en-GB")} no changes (read-only)`,
                     ],
                     columns: [{ key: "companyName", label: "Company" }],
                     rows: [{ companyName: "Loading..." }],
@@ -70273,6 +70481,7 @@
                                                 <p class="eyebrow">${escapeHTML(row.companyNumber)}</p>
                                                 <h3 style="margin:0;">${escapeHTML(row.companyName)}</h3>
                                                 <p class="ch-section-sub">${escapeHTML(row.issues.join(" | ") || "No blocking issues detected.")}</p>
+                                                <p class="ch-section-sub">${row.workflowAction === "changes-required" ? "Changes required: editing enabled for this client." : "No changes required: CS01 view is locked for this client."}</p>
                                             </div>
                                         </header>
                                         <div class="ch-preflight-helper" style="margin-bottom: 10px;">
@@ -70456,6 +70665,15 @@
                             const pscRouteSelect = card.querySelector('[data-ch-review-field="pscExemptionRoute"]');
                             if (pscRouteSelect && row) pscRouteSelect.value = row.pscExemptionRoute || "none";
                             setStep(card, "company");
+                            const rowIsEditable = row?.workflowAction === "changes-required";
+                            card.setAttribute("data-ch-review-editable", rowIsEditable ? "true" : "false");
+                            if (!rowIsEditable) {
+                                card.querySelectorAll("[data-ch-review-field]").forEach((fieldNode) => {
+                                    if (fieldNode && typeof fieldNode === "object" && "disabled" in fieldNode) {
+                                        fieldNode.disabled = true;
+                                    }
+                                });
+                            }
                             card.querySelector('[data-ch-step-nav="prev"]')?.addEventListener("click", () => moveStep(card, -1));
                             card.querySelector('[data-ch-step-nav="next"]')?.addEventListener("click", () => moveStep(card, 1));
                             card.querySelectorAll("[data-ch-step-jump]").forEach((jumpButton) => {
@@ -70487,6 +70705,7 @@
                             const companyId = String(card.getAttribute("data-ch-review-company-id") || "");
                             const original = rowById.get(companyId);
                             if (!original) return;
+                            if (original.workflowAction !== "changes-required") return;
                             const nextStatus = String(card.querySelector('[data-ch-review-field="filingAuthorityStatus"]')?.value || "pending").toLowerCase();
                             const nextReference = String(card.querySelector('[data-ch-review-field="filingAuthorityReference"]')?.value || "").trim();
                             const nextContactEmail = String(card.querySelector('[data-ch-review-field="contactEmail"]')?.value || "").trim();
@@ -70571,7 +70790,7 @@
                 if (!reviewResult) return false;
                 const updates = Array.isArray(reviewResult) ? reviewResult : [];
                 if (!updates.length) {
-                    showToast("No walkthrough updates recorded.", "info");
+                    if (editableRows.length) showToast("No walkthrough updates recorded.", "info");
                     return true;
                 }
                 let successCount = 0;
@@ -70753,19 +70972,21 @@
                         .filter(Boolean)
                 );
 
-                if (changeRequiredIds.size) {
-                    const requestedChanges = initiallySelected.filter((company) => changeRequiredIds.has(String(company.id || "")));
-                    const reviewed = await chShowWorkflowChangesDialog(requestedChanges);
-                    if (!reviewed) return;
-                    const selectedIds = new Set(initiallySelected.map((company) => String(company.id || "")));
-                    await loadCompaniesHouseCompanies(true);
-                    companiesHouseState.selectedCompanyIds = new Set(
-                        (companiesHouseState.companies || [])
-                            .map((company) => String(company.id || ""))
-                            .filter((companyId) => selectedIds.has(companyId))
-                    );
-                    renderCompaniesHouseCompaniesTable();
-                }
+                const workflowActionsByCompanyId = Object.fromEntries(
+                    selectedActions
+                        .map((item) => [String(item?.companyId || ""), String(item?.action || "no-changes")])
+                        .filter(([companyId]) => Boolean(companyId))
+                );
+                const reviewed = await chShowWorkflowChangesDialog(initiallySelected, workflowActionsByCompanyId);
+                if (!reviewed) return;
+                const selectedIds = new Set(initiallySelected.map((company) => String(company.id || "")));
+                await loadCompaniesHouseCompanies(true);
+                companiesHouseState.selectedCompanyIds = new Set(
+                    (companiesHouseState.companies || [])
+                        .map((company) => String(company.id || ""))
+                        .filter((companyId) => selectedIds.has(companyId))
+                );
+                renderCompaniesHouseCompaniesTable();
 
                 const authCodesResolved = await chResolveMissingAuthCodesForSubmission(chSelectedCompanies());
                 if (!authCodesResolved) return;
