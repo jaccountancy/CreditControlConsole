@@ -5733,6 +5733,14 @@ def _database_metrics(cursor, tenant_id: str | None = None, user_id: str | None 
                 "lastConnectionUpdate": _iso(gmail_connection.get("updated_at") or gmail_connection.get("created_at")) or "",
                 "meReportProvider": me_report_settings.get("email_provider") or "smtp",
             },
+            "smtp": {
+                "configured": bool(settings.smtp_host and settings.smtp_from_email),
+                "host": settings.smtp_host or "",
+                "port": settings.smtp_port,
+                "fromEmail": settings.smtp_from_email or "",
+                "fromName": settings.smtp_from_name or "",
+                "useTls": bool(settings.smtp_use_tls),
+            },
             "sessions": {
                 "activeSessions": _metric_int(session_summary.get("active_sessions")),
                 "latestSeenAt": _iso(session_summary.get("latest_seen_at")) or "",
@@ -15272,7 +15280,7 @@ IGNITION_RENEWAL_MAX_UPLIFT = Decimal("0.1000")
 IGNITION_RENEWAL_HISTORY_LIMIT = 8
 IGNITION_RENEWAL_EDITABLE_STATUSES = {"draft", "awaiting_review", "review_needed", "failed"}
 IGNITION_RENEWAL_EXCLUDED_PROPOSAL_NAMES = {"ges 2024 accounts"}
-IGNITION_RENEWAL_CANDIDATE_CACHE_KEY = "renewals:candidate_pool:v1"
+IGNITION_RENEWAL_CANDIDATE_CACHE_KEY = "renewals:candidate_pool:v2"
 IGNITION_RENEWAL_CLIENT_COMMS_BCC = "fmfhdkgaptpyubgms@accountancymanager.co.uk"
 
 IGNITION_RENEWAL_RECOMMENDATION_SCHEMA = {
@@ -17653,13 +17661,37 @@ def _ignition_renewal_candidates_for_user(
 
 
 def _ignition_renewal_candidates_for_user_cached(user: dict) -> dict:
+    def _cache_int(payload: dict, key: str) -> int:
+        try:
+            return int(payload.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _cache_payload_has_exclusion_rows(payload: dict) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        candidates = payload.get("candidates")
+        excluded_candidates = payload.get("excludedCandidates")
+        if not isinstance(candidates, list) or not isinstance(excluded_candidates, list):
+            return False
+        excluded_count = _cache_int(payload, "excludedCount")
+        named_count = _cache_int(payload, "nameExcludedCount")
+        self_assessment_count = _cache_int(payload, "selfAssessmentExcludedCount")
+        manually_ineligible_count = _cache_int(payload, "manuallyIneligibleCount")
+        declared_excluded = max(excluded_count, named_count + self_assessment_count + manually_ineligible_count)
+        if declared_excluded > 0 and not excluded_candidates:
+            return False
+        if excluded_count > len(excluded_candidates):
+            return False
+        return True
+
     window_start = utcnow().date()
     window_end = window_start + timedelta(weeks=IGNITION_RENEWAL_WINDOW_WEEKS)
     source_signature = _ignition_renewal_candidate_source_signature(user["id"], window_start, window_end)
     cached = _load_ignition_view_cache(user["id"], IGNITION_RENEWAL_CANDIDATE_CACHE_KEY)
     if cached and str(cached.get("source_signature") or "") == source_signature:
         payload = cached.get("payload")
-        if isinstance(payload, dict):
+        if _cache_payload_has_exclusion_rows(payload):
             return payload
     payload = _ignition_renewal_candidates_for_user(user, window_start=window_start, window_end=window_end)
     _store_ignition_view_cache(user["id"], IGNITION_RENEWAL_CANDIDATE_CACHE_KEY, source_signature, payload)

@@ -13413,7 +13413,7 @@
                 height: calc(100vh - 36px);
                 max-height: none;
                 display: grid;
-                grid-template-rows: auto auto minmax(0, 1fr) auto;
+                grid-template-rows: auto auto minmax(0, 1fr);
                 gap: 12px;
             }
             .ignition-renewals-client-comms-head {
@@ -21990,15 +21990,13 @@
                                     </div>
                                     <div class="detail-actions">
                                         <button class="ignition-renewals-client-comms-populate" id="ignitionRenewalClientCommsPopulateButton" type="button">Populate Emails</button>
+                                        <button class="ghost-button" id="ignitionRenewalClientCommsBackButton" type="button">Back</button>
+                                        <button class="primary-button" id="ignitionRenewalClientCommsNextButton" type="button">Next</button>
                                         <button class="ghost-button" id="closeIgnitionRenewalClientCommsButton" type="button">Close</button>
                                     </div>
                                 </header>
                                 <div class="ignition-renewals-meta" id="ignitionRenewalClientCommsMeta"></div>
                                 <div class="ignition-renewals-client-comms-wrap" id="ignitionRenewalClientCommsWrap"></div>
-                                <footer class="ignition-renewals-client-comms-actions">
-                                    <button class="ghost-button" id="ignitionRenewalClientCommsBackButton" type="button">Back</button>
-                                    <button class="primary-button" id="ignitionRenewalClientCommsNextButton" type="button">Next</button>
-                                </footer>
                             </section>
                         </div>
                         <section class="ignition-tab-panel" data-ignition-panel="staff-income" hidden>
@@ -42272,25 +42270,81 @@
             }
 
             function ignitionRenewalClientCommsDefaultSubject(item, run = null) {
-                const batchReference = ignitionRenewalBatchReferenceForRun(run || ignitionRenewalRun());
                 const clientName = String(item?.clientName || "Client").trim();
-                return `${batchReference} · Updated engagement letter for ${clientName}`;
+                return `${clientName} Renewal`;
+            }
+
+            function ignitionRenewalClientCommsExpiryDateRaw(item = {}) {
+                const candidate = String(
+                    item?.renewalDate
+                    || item?.proposalEndDate
+                    || item?.periodEndDate
+                    || ""
+                ).trim();
+                return candidate;
+            }
+
+            function ignitionRenewalClientCommsTenureLine(item = {}) {
+                const context = item?.recommendationContext && typeof item.recommendationContext === "object"
+                    ? item.recommendationContext
+                    : {};
+                const pointDates = (Array.isArray(context.proposalPoints) ? context.proposalPoints : [])
+                    .map((point) => String(point?.date || "").trim())
+                    .filter(Boolean)
+                    .sort((left, right) => (Date.parse(left) || 0) - (Date.parse(right) || 0));
+                const firstProposalDateRaw = String(
+                    pointDates[0]
+                    || item?.firstProposalDate
+                    || item?.firstAcceptedProposalDate
+                    || item?.proposalStartDate
+                    || ""
+                ).trim();
+                const firstProposalDateMs = Date.parse(firstProposalDateRaw);
+                if (!Number.isFinite(firstProposalDateMs)) return "";
+
+                const expiryMs = Date.parse(ignitionRenewalClientCommsExpiryDateRaw(item));
+                const referenceDate = Number.isFinite(expiryMs) ? new Date(expiryMs) : new Date();
+                const firstProposalDate = new Date(firstProposalDateMs);
+                const monthDelta = Math.max(
+                    0,
+                    ((referenceDate.getUTCFullYear() - firstProposalDate.getUTCFullYear()) * 12)
+                        + (referenceDate.getUTCMonth() - firstProposalDate.getUTCMonth())
+                );
+                if (monthDelta >= 12) {
+                    const years = Math.max(1, Math.floor(monthDelta / 12));
+                    return `We are delighted to have been supporting you for over ${years} year${years === 1 ? "" : "s"}, and we hope to continue providing this service for many more years.`;
+                }
+                if (monthDelta >= 1) {
+                    return "We are delighted to have been supporting you over the last year, and we hope to continue providing this service for many more years.";
+                }
+                return "";
             }
 
             function ignitionRenewalClientCommsDefaultBody(item, run = null) {
-                const batchReference = ignitionRenewalBatchReferenceForRun(run || ignitionRenewalRun());
                 const clientName = String(item?.clientName || "Client").trim();
+                const expiryDateRaw = ignitionRenewalClientCommsExpiryDateRaw(item);
+                const expiryLabel = formatDate(expiryDateRaw) || "the date shown in your current agreement";
+                const proposalId = String(item?.proposalExternalId || "").trim();
+                const letter = ignitionRenewalClientCommsLetter(proposalId);
+                const propReference = ignitionRenewalPropReferenceFromFileName(letter?.name || "");
+                const tenureLine = ignitionRenewalClientCommsTenureLine(item);
                 return [
                     `Hi ${clientName},`,
                     "",
+                    tenureLine,
                     "Please find your updated Engagement Letter attached for your renewal.",
-                    "If anything needs amending, reply to this email and we will update it straight away.",
+                    propReference
+                        ? `The attached letter reference is ${propReference}.`
+                        : "The attached letter confirms your next renewal period.",
                     "",
-                    `Batch reference: ${batchReference}`,
+                    `Your current engagement letter expires on ${expiryLabel}.`,
+                    `If you do not wish to renew our working relationship, please let us know in writing at least 7 days before ${expiryLabel}.`,
+                    "",
+                    "If anything needs amending, reply to this email and we will update it straight away.",
                     "",
                     "Kind regards,",
                     "Jaccountancy",
-                ].join("\n");
+                ].filter((line) => line !== "").join("\n");
             }
 
             function ignitionRenewalClientCommsReset(runId = "") {
@@ -56662,17 +56716,20 @@
                     const jashflow = health.jashflow || {};
                     const companiesHouse = health.companiesHouse || {};
                     const gmail = health.gmail || {};
+                    const smtp = health.smtp || {};
                     const openAiReady = Boolean(health.openAiConfigured);
                     const ignitionStatus = ignition.latestSyncStatus || ignition.status || "not_connected";
                     const xeroStatus = xero.latestSyncStatus || (xero.connected ? "connected" : "disconnected");
                     const chStatus = companiesHouse.latestSubmissionStatus || companiesHouse.status || "not_configured";
                     const gmailStatus = gmail.status || (gmail.connected ? "connected" : "not_connected");
+                    const smtpStatus = smtp.configured ? "configured" : "not_configured";
                     healthGrid.innerHTML = [
                         healthCard("Environment", statusLabel(health.environment, "Unknown"), openAiReady ? `OpenAI ${health.openAiModel || "configured"}` : "OpenAI not configured", openAiReady ? "is-live" : "is-warning"),
                         healthCard("Xero", statusLabel(xeroStatus), xero.tenantName || xero.latestSyncSummary || "No connected organisation", statusClass(xeroStatus, xero.connected ? "is-live" : "is-error")),
                         healthCard("Ignition", statusLabel(ignitionStatus), ignition.practiceName || ignition.latestSyncSummary || "No active Ignition connection", statusClass(ignitionStatus)),
                         healthCard("Companies House", statusLabel(chStatus, "not configured"), `${formatInteger(companiesHouse.companiesTracked)} tracked · ${formatInteger(companiesHouse.dueSoonCount)} due soon`, statusClass(chStatus, companiesHouse.apiConfigured ? "is-live" : "is-warning")),
                         healthCard("Gmail", statusLabel(gmailStatus, "not configured"), gmail.email || (gmail.configured ? "OAuth configured, no mailbox connected" : "OAuth not configured"), statusClass(gmailStatus, gmail.connected ? "is-live" : "is-warning")),
+                        healthCard("SMTP", statusLabel(smtpStatus, "not configured"), smtp.fromEmail || "Set SMTP_HOST + SMTP_FROM_EMAIL", smtp.configured ? "is-live" : "is-warning"),
                         healthCard("Bank extraction", `${formatInteger(bankStatements.activeUploads)} active`, `${formatInteger(bankStatements.failedUploads)} failed · ${formatInteger(bankStatements.completedUploads)} completed`, Number(bankStatements.failedUploads || 0) ? "is-error" : Number(bankStatements.activeUploads || 0) ? "is-warning" : "is-live"),
                         healthCard("ME Report", `${formatInteger(meReport.activeSyncs)} active`, `${formatInteger(meReport.failedSyncs)} failed syncs`, Number(meReport.failedSyncs || 0) ? "is-error" : Number(meReport.activeSyncs || 0) ? "is-warning" : "is-live"),
                         healthCard("Jashflow", `${formatInteger(jashflow.activeLoans)} active`, `${formatInteger(jashflow.totalLoans)} total loans`, "is-live"),
@@ -56683,6 +56740,7 @@
                     const ignition = health.ignition || {};
                     const companiesHouse = health.companiesHouse || {};
                     const gmail = health.gmail || {};
+                    const smtp = health.smtp || {};
                     const bankStatements = health.bankStatements || {};
                     const meReport = health.meReport || {};
                     const sessions = health.sessions || {};
@@ -56727,6 +56785,14 @@
                             ["Connection updated", gmail.lastConnectionUpdate ? formatDeveloperLogStamp(gmail.lastConnectionUpdate) : "--"],
                             ["ME Report provider", statusLabel(gmail.meReportProvider, "smtp")],
                         ], statusClass(gmail.status, gmail.connected ? "is-live" : "is-warning")),
+                        detailCard("SMTP", [
+                            ["Status", smtp.configured ? "Configured" : "Missing required vars"],
+                            ["Host", smtp.host || "--"],
+                            ["Port", String(smtp.port || "--")],
+                            ["From", smtp.fromEmail || "--"],
+                            ["Sender name", smtp.fromName || "--"],
+                            ["TLS", smtp.useTls ? "Enabled" : "Disabled"],
+                        ], smtp.configured ? "is-live" : "is-warning"),
                         detailCard("Operational Queues", [
                             ["Xero outbox", `${formatInteger(ledger.pendingActions)} pending · ${formatInteger(ledger.processingActions)} processing · ${formatInteger(ledger.failedActions)} failed`],
                             ["Bank PDFs", `${formatInteger(bankStatements.activeUploads)} active · ${formatInteger(bankStatements.failedUploads)} failed`],
