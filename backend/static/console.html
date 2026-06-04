@@ -31965,7 +31965,6 @@
                         event.preventDefault();
                         event.stopPropagation();
                         loadInsights(true);
-                        loadCompanyCalendar(true);
                         return;
                     }
                     const newLetterTemplateButton = event.target.closest?.("#newLetterTemplateButton");
@@ -60386,7 +60385,6 @@
                 closeTopbarMenu();
                 renderAll();
                 scrollConsoleToTop();
-                loadCompanyCalendar();
                 loadInsights();
             }
 
@@ -60604,11 +60602,6 @@
                         target.scrollIntoView({ behavior: "smooth", block: "start" });
                     });
                 });
-                scope.querySelectorAll("[data-refresh-company-calendar]").forEach((button) => {
-                    button.addEventListener("click", () => {
-                        loadCompanyCalendar(true);
-                    });
-                });
             }
 
             function insightCard(label, value, detail) {
@@ -60817,30 +60810,7 @@
                     name: customer.name || "Client",
                     value: Number(customer.totalDue || 0),
                 }));
-                const calendar = companyCalendarSummary();
-                const calendarToneClass = calendar.tone === "error" ? "is-error" : calendar.tone === "warning" ? "is-warning" : "is-live";
-                const calendarRows = calendar.events.slice(0, 4);
                 return `<div class="insights-home">
-                    <section class="insight-chart insights-home-section company-calendar-card" id="insightsCompanyCalendarSection">
-                        <div class="company-calendar-header">
-                            <span>Company Calendar</span>
-                            <span class="company-calendar-status ${calendarToneClass}">${escapeHTML(calendar.label)}</span>
-                        </div>
-                        <p class="company-calendar-meta">${escapeHTML(`${calendar.nextEventLabel} · ${calendar.nextEventDetail}`)}</p>
-                        <div class="home-quick-actions" aria-label="Calendar actions">
-                            <button class="home-scroll-chip" data-refresh-company-calendar type="button">${companyCalendarLoading ? "Refreshing..." : "Refresh calendar sync"}</button>
-                            ${calendar.needsReconnect ? `<a class="home-scroll-chip action-link" href="/auth/gmail/start?redirect_to=%2F%23credit-control-home">Reconnect Gmail calendar</a>` : ""}
-                        </div>
-                        <div class="company-calendar-events">
-                            ${calendarRows.length ? calendarRows.map((event) => `
-                                <article class="company-calendar-event">
-                                    <time>${escapeHTML(formatDate(event.startAt))}</time>
-                                    <strong>${escapeHTML(event.title || "Calendar event")}</strong>
-                                    <p>${escapeHTML((event.calendarName || "Calendar") + (event.location ? ` · ${event.location}` : ""))}</p>
-                                </article>
-                            `).join("") : `<p>${escapeHTML(calendar.message || "No upcoming events were returned for the selected window.")}</p>`}
-                        </div>
-                    </section>
                     <div class="insight-two-column insights-home-section" id="insightsExposureSection">
                         ${barChart("Top customer exposure", topCustomerRows, "value", "name")}
                         ${barChart("Last 6 months collection ratio", monthlyRecent, "collectionRatio", "label")}
@@ -71371,7 +71341,6 @@
                 const refreshInsightsButton = document.getElementById("refreshInsightsButton");
                 if (refreshInsightsButton) refreshInsightsButton.addEventListener("click", () => {
                     loadInsights(true);
-                    loadCompanyCalendar(true);
                 });
                 const letterTemplateSettingsSelect = document.getElementById("letterTemplateSettingsSelect");
                 if (letterTemplateSettingsSelect) letterTemplateSettingsSelect.addEventListener("change", () => {
