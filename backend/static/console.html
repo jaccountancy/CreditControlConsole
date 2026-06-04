@@ -8253,17 +8253,22 @@
             }
             .company-secretarial-summary-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-                gap: 12px;
+                grid-template-columns: repeat(6, minmax(0, 1fr));
+                gap: 1px;
                 margin-top: 12px;
+                padding: 1px;
+                border: 1px solid var(--line);
+                border-radius: 14px;
+                background: rgba(150, 167, 193, 0.35);
+                overflow: hidden;
             }
             .company-secretarial-summary-grid article {
                 display: grid;
                 gap: 4px;
-                padding: 10px 12px;
-                border: 1px solid var(--line);
-                border-radius: 12px;
-                background: rgba(248, 251, 255, 0.72);
+                align-content: center;
+                min-height: 74px;
+                padding: 12px;
+                background: rgba(248, 251, 255, 0.9);
             }
             .company-secretarial-summary-grid span {
                 color: var(--muted);
@@ -8474,6 +8479,70 @@
                 margin: 0;
                 padding: 0;
             }
+            .company-secretarial-wizard-steps {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+            .company-secretarial-wizard-steps .ghost-button {
+                min-height: 34px;
+                border-radius: 10px;
+                font-size: 0.74rem;
+                font-weight: 900;
+                justify-content: center;
+            }
+            .company-secretarial-wizard-steps .ghost-button.is-active {
+                color: #0f52cc;
+                border-color: rgba(29, 103, 242, 0.3);
+                background: rgba(29, 103, 242, 0.12);
+            }
+            .company-secretarial-wizard-section {
+                display: grid;
+                grid-column: 1 / -1;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+                padding: 12px;
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                background: rgba(248, 251, 255, 0.74);
+            }
+            .company-secretarial-wizard-section h5 {
+                margin: 0;
+                grid-column: 1 / -1;
+                font-size: 0.98rem;
+            }
+            .company-secretarial-wizard-section .detail-meta {
+                margin: -2px 0 0;
+                grid-column: 1 / -1;
+            }
+            .company-secretarial-wizard-nav {
+                justify-content: space-between;
+            }
+            .company-secretarial-validation-panel {
+                max-width: 760px;
+            }
+            .company-secretarial-validation-list {
+                display: grid;
+                gap: 10px;
+            }
+            .company-secretarial-validation-item {
+                border: 1px solid rgba(220, 78, 78, 0.26);
+                border-radius: 12px;
+                background: rgba(255, 241, 241, 0.72);
+                padding: 10px 12px;
+                display: grid;
+                gap: 5px;
+            }
+            .company-secretarial-validation-item strong {
+                font-size: 0.86rem;
+            }
+            .company-secretarial-validation-item p {
+                margin: 0;
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+            }
             .company-secretarial-registry {
                 display: grid;
                 gap: 8px;
@@ -8572,12 +8641,21 @@
                 .company-secretarial-columns {
                     grid-template-columns: 1fr;
                 }
+                .company-secretarial-wizard-steps {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                }
             }
             @media (max-width: 720px) {
                 .company-secretarial-summary-grid {
                     grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
                 .company-secretarial-form-grid {
+                    grid-template-columns: 1fr;
+                }
+                .company-secretarial-wizard-section {
+                    grid-template-columns: 1fr;
+                }
+                .company-secretarial-wizard-steps {
                     grid-template-columns: 1fr;
                 }
                 .company-secretarial-mini-grid {
@@ -22512,100 +22590,142 @@
                                             <button class="ghost-button" type="button" id="companySecretarialWizardCloseButton">Close</button>
                                         </div>
                                     </div>
+                                    <div class="company-secretarial-wizard-steps" id="companySecretarialWizardSteps" aria-label="Filing wizard steps">
+                                        <button class="ghost-button" type="button" data-company-secretarial-step-jump="1">1. Filing type</button>
+                                        <button class="ghost-button" type="button" data-company-secretarial-step-jump="2">2. Client</button>
+                                        <button class="ghost-button" type="button" data-company-secretarial-step-jump="3">3. Filing details</button>
+                                        <button class="ghost-button" type="button" data-company-secretarial-step-jump="4">4. Validate & create</button>
+                                    </div>
+                                    <p class="company-secretarial-status-line" id="companySecretarialWizardStepHint">Step 1 of 4: Select the filing type you want to submit.</p>
                                     <form class="company-secretarial-form-grid" id="companySecretarialWizardForm">
-                                        <label>
-                                            Filing type
-                                            <select id="companySecretarialWizardType" required></select>
-                                        </label>
-                                        <label>
-                                            Company
-                                            <select id="companySecretarialWizardCompany" required></select>
-                                        </label>
-                                        <label>
-                                            Effective date
-                                            <input id="companySecretarialWizardEffectiveDate" type="date" required>
-                                        </label>
-                                        <label>
-                                            Submission mode
-                                            <select id="companySecretarialWizardMode" required>
-                                                <option value="api">Mode 1 · Full API / software filing</option>
-                                                <option value="assisted">Mode 2 · Assisted filing</option>
-                                                <option value="manual">Mode 3 · Manual filing pack</option>
-                                            </select>
-                                        </label>
-                                        <label>
-                                            Companies House fee (£)
-                                            <input id="companySecretarialWizardFee" type="number" min="0" step="0.01" value="0.00">
-                                        </label>
-                                        <label>
-                                            Assigned to
-                                            <input id="companySecretarialWizardAssignee" type="text" placeholder="Client Manager" value="Client Manager">
-                                        </label>
-                                        <label class="is-wide">
-                                            Required fields snapshot
-                                            <input id="companySecretarialWizardFieldsPreview" type="text" readonly>
-                                        </label>
-                                        <div class="company-secretarial-mini-grid is-wide" id="companySecretarialWizardClientRegisterSnapshot">
-                                            <article>
-                                                <span>Client manager</span>
-                                                <strong id="companySecretarialWizardSnapshotManager">—</strong>
-                                            </article>
-                                            <article>
-                                                <span>Client register source</span>
-                                                <strong id="companySecretarialWizardSnapshotSource">—</strong>
-                                            </article>
-                                            <article>
-                                                <span>Client email</span>
-                                                <strong id="companySecretarialWizardSnapshotEmail">—</strong>
-                                            </article>
-                                            <article>
-                                                <span>Auth code on file</span>
-                                                <strong id="companySecretarialWizardSnapshotAuth">—</strong>
-                                            </article>
-                                        </div>
-                                        <label class="is-wide" id="companySecretarialWizardProposedNameWrap" hidden>
-                                            Proposed company name
-                                            <input id="companySecretarialWizardProposedName" type="text" placeholder="New legal company name">
-                                        </label>
-                                        <label class="is-wide" id="companySecretarialWizardAddressLine1Wrap" hidden>
-                                            New registered office address line 1
-                                            <input id="companySecretarialWizardAddressLine1" type="text" placeholder="Address line 1">
-                                        </label>
-                                        <label id="companySecretarialWizardAddressLine2Wrap" hidden>
-                                            Address line 2
-                                            <input id="companySecretarialWizardAddressLine2" type="text" placeholder="Address line 2">
-                                        </label>
-                                        <label id="companySecretarialWizardAddressCityWrap" hidden>
-                                            Town or city
-                                            <input id="companySecretarialWizardAddressCity" type="text" placeholder="Town or city">
-                                        </label>
-                                        <label id="companySecretarialWizardAddressPostcodeWrap" hidden>
-                                            Postcode
-                                            <input id="companySecretarialWizardAddressPostcode" type="text" placeholder="Postcode">
-                                        </label>
-                                        <label id="companySecretarialWizardAddressCountryWrap" hidden>
-                                            Country
-                                            <input id="companySecretarialWizardAddressCountry" type="text" placeholder="United Kingdom">
-                                        </label>
-                                        <label class="is-wide">
-                                            Instruction / notes
-                                            <textarea id="companySecretarialWizardNotes" placeholder="Instruction summary, key risks, missing evidence, override reason, special handling..."></textarea>
-                                        </label>
-                                        <label class="is-wide">
-                                            Prepared Companies House submission payload
-                                            <textarea id="companySecretarialWizardSubmissionPreview" readonly></textarea>
-                                        </label>
-                                        <div class="company-secretarial-form-ticks is-wide">
-                                            <label><input id="companySecretarialWizardEvidence" type="checkbox"> Supporting evidence attached</label>
-                                            <label><input id="companySecretarialWizardClientApproval" type="checkbox"> Client approval captured</label>
-                                            <label><input id="companySecretarialWizardInternalApproval" type="checkbox"> Internal review completed</label>
-                                        </div>
-                                        <div class="detail-actions is-wide">
-                                            <button class="ghost-button" id="companySecretarialWizardValidateButton" type="button">Run validation</button>
-                                            <button class="primary-button" type="submit">Create draft filing</button>
+                                        <section class="company-secretarial-wizard-section is-active" data-company-secretarial-step-section="1">
+                                            <h5>Step 1: Choose submission type</h5>
+                                            <p class="detail-meta">Start by selecting what filing you want to submit. The wizard will load exactly the fields required for that filing.</p>
+                                            <label>
+                                                Filing type
+                                                <select id="companySecretarialWizardType" required></select>
+                                            </label>
+                                            <label class="is-wide">
+                                                Required fields snapshot
+                                                <input id="companySecretarialWizardFieldsPreview" type="text" readonly>
+                                            </label>
+                                        </section>
+                                        <section class="company-secretarial-wizard-section" data-company-secretarial-step-section="2" hidden>
+                                            <h5>Step 2: Select client from register</h5>
+                                            <p class="detail-meta">Choose the client and we will pull through their company details from your client register automatically.</p>
+                                            <label>
+                                                Company
+                                                <select id="companySecretarialWizardCompany" required></select>
+                                            </label>
+                                            <div class="company-secretarial-mini-grid is-wide" id="companySecretarialWizardClientRegisterSnapshot">
+                                                <article>
+                                                    <span>Client manager</span>
+                                                    <strong id="companySecretarialWizardSnapshotManager">—</strong>
+                                                </article>
+                                                <article>
+                                                    <span>Client register source</span>
+                                                    <strong id="companySecretarialWizardSnapshotSource">—</strong>
+                                                </article>
+                                                <article>
+                                                    <span>Client email</span>
+                                                    <strong id="companySecretarialWizardSnapshotEmail">—</strong>
+                                                </article>
+                                                <article>
+                                                    <span>Auth code on file</span>
+                                                    <strong id="companySecretarialWizardSnapshotAuth">—</strong>
+                                                </article>
+                                            </div>
+                                        </section>
+                                        <section class="company-secretarial-wizard-section" data-company-secretarial-step-section="3" hidden>
+                                            <h5>Step 3: Complete filing details</h5>
+                                            <p class="detail-meta">Check key filing settings and complete any type-specific fields before validation.</p>
+                                            <label>
+                                                Effective date
+                                                <input id="companySecretarialWizardEffectiveDate" type="date" required>
+                                            </label>
+                                            <label>
+                                                Submission mode
+                                                <select id="companySecretarialWizardMode" required>
+                                                    <option value="api">Mode 1 · Full API / software filing</option>
+                                                    <option value="assisted">Mode 2 · Assisted filing</option>
+                                                    <option value="manual">Mode 3 · Manual filing pack</option>
+                                                </select>
+                                            </label>
+                                            <label>
+                                                Companies House fee (£)
+                                                <input id="companySecretarialWizardFee" type="number" min="0" step="0.01" value="0.00">
+                                            </label>
+                                            <label>
+                                                Assigned to
+                                                <input id="companySecretarialWizardAssignee" type="text" placeholder="Client Manager" value="Client Manager">
+                                            </label>
+                                            <label class="is-wide" id="companySecretarialWizardProposedNameWrap" hidden>
+                                                Proposed company name
+                                                <input id="companySecretarialWizardProposedName" type="text" placeholder="New legal company name">
+                                            </label>
+                                            <label class="is-wide" id="companySecretarialWizardAddressLine1Wrap" hidden>
+                                                New registered office address line 1
+                                                <input id="companySecretarialWizardAddressLine1" type="text" placeholder="Address line 1">
+                                            </label>
+                                            <label id="companySecretarialWizardAddressLine2Wrap" hidden>
+                                                Address line 2
+                                                <input id="companySecretarialWizardAddressLine2" type="text" placeholder="Address line 2">
+                                            </label>
+                                            <label id="companySecretarialWizardAddressCityWrap" hidden>
+                                                Town or city
+                                                <input id="companySecretarialWizardAddressCity" type="text" placeholder="Town or city">
+                                            </label>
+                                            <label id="companySecretarialWizardAddressPostcodeWrap" hidden>
+                                                Postcode
+                                                <input id="companySecretarialWizardAddressPostcode" type="text" placeholder="Postcode">
+                                            </label>
+                                            <label id="companySecretarialWizardAddressCountryWrap" hidden>
+                                                Country
+                                                <input id="companySecretarialWizardAddressCountry" type="text" placeholder="United Kingdom">
+                                            </label>
+                                            <label class="is-wide">
+                                                Instruction / notes
+                                                <textarea id="companySecretarialWizardNotes" placeholder="Instruction summary, key risks, missing evidence, override reason, special handling..."></textarea>
+                                            </label>
+                                        </section>
+                                        <section class="company-secretarial-wizard-section" data-company-secretarial-step-section="4" hidden>
+                                            <h5>Step 4: Validate and create draft</h5>
+                                            <p class="detail-meta">Run validation first. You can only create the draft once validation passes.</p>
+                                            <label class="is-wide">
+                                                Prepared Companies House submission payload
+                                                <textarea id="companySecretarialWizardSubmissionPreview" readonly></textarea>
+                                            </label>
+                                            <div class="company-secretarial-form-ticks is-wide">
+                                                <label><input id="companySecretarialWizardEvidence" type="checkbox"> Supporting evidence attached</label>
+                                                <label><input id="companySecretarialWizardClientApproval" type="checkbox"> Client approval captured</label>
+                                                <label><input id="companySecretarialWizardInternalApproval" type="checkbox"> Internal review completed</label>
+                                            </div>
+                                            <div class="detail-actions is-wide">
+                                                <button class="ghost-button" id="companySecretarialWizardValidateButton" type="button">Run validation</button>
+                                                <button class="primary-button" id="companySecretarialWizardSubmitButton" type="submit" disabled>Create draft filing</button>
+                                            </div>
+                                        </section>
+                                        <div class="detail-actions is-wide company-secretarial-wizard-nav">
+                                            <button class="ghost-button" id="companySecretarialWizardBackButton" type="button">Back</button>
+                                            <button class="primary-button" id="companySecretarialWizardNextButton" type="button">Next</button>
                                         </div>
                                     </form>
-                                    <p class="company-secretarial-status-line" id="companySecretarialWizardStatus">Select filing type and company to start.</p>
+                                    <p class="company-secretarial-status-line" id="companySecretarialWizardStatus">Step 1: Select filing type to begin.</p>
+                                </div>
+                            </div>
+                            <div class="company-secretarial-modal" id="companySecretarialValidationIssuesModal" hidden>
+                                <div class="company-secretarial-modal-panel company-secretarial-validation-panel" role="dialog" aria-modal="true" aria-labelledby="companySecretarialValidationIssuesTitle">
+                                    <div class="company-secretarial-modal-head">
+                                        <div>
+                                            <p class="eyebrow">Validation issues</p>
+                                            <h4 id="companySecretarialValidationIssuesTitle">Fix these items before creating the draft</h4>
+                                            <p class="detail-meta">Each item shows what failed and what to do next.</p>
+                                        </div>
+                                        <div class="detail-actions">
+                                            <button class="ghost-button" type="button" id="companySecretarialValidationIssuesCloseButton">Close</button>
+                                        </div>
+                                    </div>
+                                    <div class="company-secretarial-validation-list" id="companySecretarialValidationIssuesList"></div>
                                 </div>
                             </div>
                         </section>
@@ -25232,6 +25352,9 @@
             let companySecretarialStatusFilter = "all";
             let companySecretarialTypeFilter = "all";
             let companySecretarialRiskFilter = "all";
+            let companySecretarialWizardStep = 1;
+            let companySecretarialWizardValidationPassed = false;
+            let companySecretarialWizardLastIssues = [];
             const hmrc648State = {
                 requests: [],
                 summary: { total: 0, draft: 0, awaitingCode: 0, authorised: 0, overdueCode: 0 },
