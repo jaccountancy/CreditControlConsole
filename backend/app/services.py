@@ -8986,8 +8986,9 @@ def me_report_payload(user: dict) -> dict:
 
 
 def create_me_report_client(user: dict, payload: dict) -> dict:
+    requested_tenant_id = str(payload.get("tenantId") or "").strip()
     xero_contact_id = str(payload.get("xeroContactId") or "").strip()
-    xero_contact = _me_report_contact_for_user(user, xero_contact_id) if xero_contact_id else None
+    xero_contact = _me_report_contact_for_user(user, xero_contact_id, requested_tenant_id or None) if xero_contact_id else None
     if xero_contact_id and not xero_contact:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a valid Xero contact from the ME Report client dropdown.")
     client_name = str(payload.get("clientName") or "").strip()
@@ -9005,7 +9006,7 @@ def create_me_report_client(user: dict, payload: dict) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Year end month must be a number from 1 to 12.") from exc
     year_end_month = min(12, max(1, year_end_month))
     try:
-        connection_row = get_xero_connection_for_user(user["id"])
+        connection_row = xero_connection_for_user_tenant(user, requested_tenant_id or None)
     except HTTPException:
         connection_row = {}
     with get_connection() as connection:
