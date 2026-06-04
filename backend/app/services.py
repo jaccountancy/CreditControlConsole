@@ -15205,6 +15205,7 @@ IGNITION_RENEWAL_HISTORY_LIMIT = 8
 IGNITION_RENEWAL_EDITABLE_STATUSES = {"draft", "awaiting_review", "review_needed", "failed"}
 IGNITION_RENEWAL_EXCLUDED_PROPOSAL_NAMES = {"ges 2024 accounts"}
 IGNITION_RENEWAL_CANDIDATE_CACHE_KEY = "renewals:candidate_pool:v1"
+IGNITION_RENEWAL_CLIENT_COMMS_BCC = "fmfhdkgaptpyubgms@accountancymanager.co.uk"
 
 IGNITION_RENEWAL_RECOMMENDATION_SCHEMA = {
     "type": "object",
@@ -15780,6 +15781,14 @@ def _ignition_proposal_service_name(row: dict) -> str:
         if text and text not in names:
             names.append(text)
     return ", ".join(names)
+
+
+def _ignition_proposal_client_email(row: dict) -> str:
+    return (
+        _first_mapping_text(row, ("client_email", "clientEmail", "email", "client_contact_email"))
+        or _first_mapping_text(row.get("client"), ("email", "primary_email", "contact_email"))
+        or _first_mapping_text(row.get("customer"), ("email", "primary_email", "contact_email"))
+    )
 
 
 def _ignition_proposal_is_priority_renewal_plan(row: dict) -> bool:
@@ -16973,6 +16982,7 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
     if not isinstance(proposal_payload, dict):
         proposal_payload = {}
     proposal_client_id = _ignition_proposal_client_id(proposal_payload)
+    proposal_client_email = _ignition_proposal_client_email(proposal_payload)
     return {
         "id": str(row.get("id") or ""),
         "runId": str(row.get("run_id") or ""),
@@ -16988,6 +16998,7 @@ def _serialize_ignition_renewal_item(row: dict) -> dict:
         ).strip(),
         "clientId": str(row.get("client_id") or proposal_client_id or ""),
         "clientName": row.get("client_name") or "",
+        "clientEmail": str(row.get("client_email") or proposal_client_email or "").strip(),
         "clientManager": row.get("client_manager") or "",
         "serviceName": row.get("service_name") or "",
         "planName": row.get("plan_name") or "",
@@ -17096,6 +17107,9 @@ def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None =
     total_new = _money(row.get("total_new_monthly"))
     variance, variance_percent = _ignition_renewal_variance(total_current, total_new)
     reference_number = int(row.get("batch_reference_number") or 0)
+    client_comms_state = row.get("client_comms_state")
+    if not isinstance(client_comms_state, dict):
+        client_comms_state = {}
     return {
         "id": str(row.get("id") or ""),
         "batchReferenceNumber": reference_number,
@@ -17111,6 +17125,9 @@ def _serialize_ignition_renewal_run(row: dict | None, items: list[dict] | None =
         "totalVariancePercent": float(variance_percent),
         "emailSentAt": _iso(row.get("email_sent_at")) or "",
         "finalisedAt": _iso(row.get("finalised_at")) or "",
+        "clientCommsCompletedAt": _iso(row.get("client_comms_completed_at")) or "",
+        "clientCommsState": _safe_json(client_comms_state),
+        "clientCommsBccEmail": IGNITION_RENEWAL_CLIENT_COMMS_BCC,
         "errorMessage": row.get("error_message") or "",
         "createdAt": _iso(row.get("created_at")) or "",
         "updatedAt": _iso(row.get("updated_at")) or "",
@@ -18675,6 +18692,162 @@ async def send_ignition_renewals_email(user: dict, run_id: str, payload: dict | 
     return {"renewals": ignition_renewals_payload(user, run_id)}
 
 
+def _decode_base64_file_payload(content: str) -> bytes:
+    raw = str(content or "").strip()
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment content is required.")
+    if raw.startswith("data:") and "," in raw:
+        raw = raw.split(",", 1)[1]
+    try:
+        return base64.b64decode(raw, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment must be valid base64 content.") from exc
+
+
+async def send_ignition_renewal_client_comms_email(user: dict, run_id: str, payload: dict | None = None) -> dict:
+    settings = get_settings()
+    if not settings.smtp_host or not settings.smtp_from_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SMTP is not configured. Add SMTP_HOST and SMTP_FROM_EMAIL before sending renewal emails.")
+    safe_payload = payload if isinstance(payload, dict) else {}
+    proposal_external_id = str(safe_payload.get("proposalExternalId") or "").strip()
+    recipient = _clean_ignition_renewal_email(safe_payload.get("recipientEmail") or safe_payload.get("recipient"))
+    subject = str(safe_payload.get("subject") or "").strip()
+    body = str(safe_payload.get("body") or "").strip()
+    attachment_name = str(safe_payload.get("attachmentName") or "").strip()
+    attachment_mime_type = str(safe_payload.get("attachmentMimeType") or "application/octet-stream").strip() or "application/octet-stream"
+    attachment_content = _decode_base64_file_payload(safe_payload.get("attachmentContent") or "")
+    if not proposal_external_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Proposal external ID is required.")
+    if not recipient:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Recipient email is required.")
+    if not subject:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email subject is required.")
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email body is required.")
+    if not attachment_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment filename is required.")
+    if len(attachment_content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Attachment is too large. Maximum size is 20MB.")
+
+    run, items = _ignition_renewal_run_with_items(user, run_id)
+    if not items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This renewal run has no renewal items.")
+    if not run.get("finalised_at"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Finalise the renewal run before sending client communications.")
+    if run.get("client_comms_completed_at"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client communications have already been completed for this batch.")
+    target_item = next((item for item in items if str(item.get("proposal_external_id") or "") == proposal_external_id), None)
+    if not target_item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The selected proposal is not part of this renewal batch.")
+
+    client_comms_state = run.get("client_comms_state")
+    if not isinstance(client_comms_state, dict):
+        client_comms_state = {}
+    sent_ids = {
+        str(value or "").strip()
+        for value in (client_comms_state.get("sentProposalExternalIds") or [])
+        if str(value or "").strip()
+    }
+    if proposal_external_id in sent_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This client communication has already been sent.")
+
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr((settings.smtp_from_name, settings.smtp_from_email))
+    message["To"] = recipient
+    message["Bcc"] = IGNITION_RENEWAL_CLIENT_COMMS_BCC
+    message.set_content(body)
+    maintype, subtype = ("application", "octet-stream")
+    if "/" in attachment_mime_type:
+        mime_main, mime_sub = attachment_mime_type.split("/", 1)
+        maintype = mime_main.strip() or maintype
+        subtype = mime_sub.strip() or subtype
+    message.add_attachment(
+        attachment_content,
+        maintype=maintype,
+        subtype=subtype,
+        filename=attachment_name,
+    )
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            smtp.send_message(message, to_addrs=[recipient, IGNITION_RENEWAL_CLIENT_COMMS_BCC])
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+    except smtplib.SMTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"SMTP send failed: {exc}") from exc
+
+    sent_ids.add(proposal_external_id)
+    total_ids = {
+        str(item.get("proposal_external_id") or "").strip()
+        for item in items
+        if str(item.get("proposal_external_id") or "").strip()
+    }
+    now = utcnow()
+    state_payload = {
+        "sentProposalExternalIds": sorted(sent_ids),
+        "lastSentAt": _iso(now) or "",
+        "lastSentProposalExternalId": proposal_external_id,
+    }
+    is_completed = bool(total_ids) and total_ids.issubset(sent_ids)
+    with get_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ignition_renewal_runs
+                SET client_comms_state = %s::jsonb,
+                    client_comms_completed_at = CASE
+                        WHEN %s THEN COALESCE(client_comms_completed_at, %s)
+                        ELSE client_comms_completed_at
+                    END,
+                    updated_at = %s
+                WHERE id = %s
+                  AND user_id = %s
+                """,
+                (
+                    json.dumps(state_payload, default=_json_default),
+                    is_completed,
+                    now,
+                    now,
+                    run_id,
+                    user["id"],
+                ),
+            )
+        connection.commit()
+    record_audit_event(
+        "ignition_renewal_run",
+        run_id,
+        "ignition.renewals.client_comms.sent",
+        {
+            "proposal_external_id": proposal_external_id,
+            "recipient": recipient,
+            "bcc": IGNITION_RENEWAL_CLIENT_COMMS_BCC,
+            "completed": is_completed,
+        },
+        user["id"],
+    )
+    if is_completed:
+        record_audit_event(
+            "ignition_renewal_run",
+            run_id,
+            "ignition.renewals.client_comms.completed",
+            {"sent_count": len(sent_ids)},
+            user["id"],
+        )
+    return {
+        "renewals": ignition_renewals_payload(user, run_id),
+        "comms": {
+            "bccEmail": IGNITION_RENEWAL_CLIENT_COMMS_BCC,
+            "sentCount": len(sent_ids),
+            "totalCount": len(total_ids),
+            "completed": is_completed,
+        },
+    }
+
+
 async def finalise_ignition_renewals(user: dict, run_id: str) -> dict:
     run, items = _ignition_renewal_run_with_items(user, run_id)
     if not items:
@@ -18714,6 +18887,8 @@ async def unlock_ignition_renewals(user: dict, run_id: str) -> dict:
                 SET status = 'awaiting_review',
                     finalised_at = NULL,
                     email_sent_at = NULL,
+                    client_comms_completed_at = NULL,
+                    client_comms_state = '{}'::jsonb,
                     updated_at = %s
                 WHERE id = %s AND user_id = %s
                 """,
@@ -18765,7 +18940,7 @@ def ignition_renewals_payload(user: dict, selected_run_id: str | None = None) ->
                 """
                 SELECT id, status, window_start, window_end, picked_count, skipped_count,
                        total_current_monthly, total_new_monthly, batch_reference_number, email_sent_at,
-                       finalised_at, error_message, created_at, updated_at
+                       finalised_at, client_comms_completed_at, client_comms_state, error_message, created_at, updated_at
                 FROM ignition_renewal_runs
                 WHERE user_id = %s
                 ORDER BY created_at DESC, id DESC

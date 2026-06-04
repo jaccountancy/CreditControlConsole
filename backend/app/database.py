@@ -1015,6 +1015,8 @@ ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS total_current_monthly
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS total_new_monthly NUMERIC(12, 2) NOT NULL DEFAULT 0;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS finalised_at TIMESTAMPTZ;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS client_comms_completed_at TIMESTAMPTZ;
+ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS client_comms_state JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS zapier_response JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS error_message TEXT;
 ALTER TABLE ignition_renewal_runs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();

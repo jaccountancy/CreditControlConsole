@@ -149,6 +149,7 @@ from .services import (
     run_sync_job,
     save_posting_settings,
     save_xero_tenant_company_mapping,
+    send_ignition_renewal_client_comms_email,
     serialize_sync_run,
     serialize_xero_rate_limit,
     serialize_ignition_sync_run,
@@ -1715,6 +1716,15 @@ async def api_send_ignition_renewals_email(run_id: str, request: Request, user: 
     except Exception:
         payload = {}
     return {"status": "ok", **await send_ignition_renewals_email(user, run_id, payload if isinstance(payload, dict) else {})}
+
+
+@app.post("/api/ignition/renewals/{run_id}/client-comms/send")
+async def api_send_ignition_renewal_client_comms(run_id: str, request: Request, user: dict = Depends(require_panel_user)):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    return {"status": "ok", **await send_ignition_renewal_client_comms_email(user, run_id, payload if isinstance(payload, dict) else {})}
 
 
 @app.get("/api/ignition/renewals/{run_id}/email-preview")
